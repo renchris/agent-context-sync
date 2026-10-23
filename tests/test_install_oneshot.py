@@ -8396,10 +8396,10 @@ STATE_OPEN_TAIL = {
     "state-notfile": STATE_NOTFILE_TAIL,
     "state-lost": STATE_LOST_TAIL,
     "state-side-notfile": (
-        "; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else "
-        "that is not a file (not damage), at its config step when it is the -wal or this account cannot read "
-        "it, and at its status step otherwise: fixing that is the person's (keeping a copy, they move it "
-        f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
+        "; step 2 stops at its config step on the -wal or -shm of agentsync's state file, which is a folder "
+        "or something else that is not a file (not damage): fixing that is the person's (keeping a copy, "
+        f"they move it aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its state_dir.files "
+        "line"
     ),
     "state-dir-write": (
         "; step 2 stops at its status step on agentsync's state folder, which this account can open but not "
@@ -8415,6 +8415,14 @@ STATE_OPEN_TAIL = {
 """Step 1's tails for a state folder or file this account cannot open (B13 round 20 X9, X29), by the owner of
 its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: init opens past a -wal or a
 -shm); the noun covers the folder (Y14)."""
+
+SIDE_STATUS_TAIL = (
+    "; step 2 stops at its status step on the -shm of agentsync's state file, which is a folder (not "
+    "damage): fixing that is the person's (keeping a copy, they move it "
+    f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
+)
+"""Step 1's tail for a folder at the -shm this account can read, which init opens past (B13 round 26 E15:
+measured; every other side file that is not a file stops init, at the config step)."""
 
 
 @pytest.mark.parametrize(
@@ -8451,6 +8459,9 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "SN-shm-0500",
         "SN-wal-link",
         "SN-wal",
+        "SN-shm-fifo",
+        "SN-shm-link",
+        "SN-wal-fifo",
         "SW",
         "SW-bare",
         "SW-wal",
@@ -8527,6 +8538,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-0500": "state-side-notfile",
         "SN-wal-link": "state-side-notfile",
         "SN-wal": "state-side-notfile",
+        "SN-shm-fifo": "state-side-notfile",
+        "SN-shm-link": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
@@ -8597,10 +8610,12 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.unlink(missing_ok=True)
             if state == "SN-wal":
                 wal.mkdir(0o755)
-            elif state == "SN-wal-link":
+            elif state in ("SN-wal-link", "SN-shm-link"):
                 elsewhere = db.with_name("elsewhere")
                 elsewhere.mkdir(0o700)
-                wal.symlink_to(elsewhere)
+                (wal if state == "SN-wal-link" else shm).symlink_to(elsewhere)
+            elif state in ("SN-shm-fifo", "SN-wal-fifo"):  # round 26 E15, E55
+                os.mkfifo(shm if state == "SN-shm-fifo" else wal)
             else:
                 shm.mkdir({"SN-shm-shut": 0, "SN-shm-0500": 0o500}.get(state, 0o700))
         elif state.startswith("SW"):  # round 24 B12: a 0500 state folder, with both side files or not
@@ -8621,23 +8636,28 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         if db.is_dir():
             db.chmod(0o700)
             db.rmdir()
-        if wal.is_symlink():
-            wal.unlink()
+        for side in (wal, shm):
+            if side.is_symlink() or stat.S_ISFIFO(side.lstat().st_mode if side.exists() else 0):
+                side.unlink()
         if wal.is_dir():
             wal.rmdir()
         if shm.is_dir():
             shm.chmod(0o700)
             shm.rmdir()
+        if db.with_name("elsewhere").is_dir():
+            db.with_name("elsewhere").rmdir()
         for f in (db, wal, shm):
             if f.exists():
                 subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live"):
+    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
+    if state in ("SN-shm", "SN-shm-0500"):  # round 26 E15: a folder it can read at the -shm, measured
+        tail = SIDE_STATUS_TAIL
     assert last_line(cp).endswith(tail), last_line(cp)
     assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
     assert "damaged" not in last_line(cp) and "cannot be read" not in last_line(cp), last_line(cp)
