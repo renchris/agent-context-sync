@@ -516,6 +516,7 @@ if [ "$1 $2" = "tool install" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
   fi
   mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
+  rm -f "$HOME/.local/bin/agentsync"  # a new file: macOS kills a Mach-O overwritten in place after it ran
   cp "$STUB_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/bin/agentsync"
 elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then

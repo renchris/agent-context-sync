@@ -3492,12 +3492,12 @@ def test_media_reads_the_helper_under_the_configured_cache_dir(
 ) -> None:
     _real_media(monkeypatch)
     helper = ocr._helper_path(sample_config.cache_dir, media.MEDIA)
-    fake_media(helper.parent).replace(helper)
+    fake_media(helper.parent, name=helper.name)
     r = by_name(run_checks(sample_config))["media"]
     assert r.ok and r.detail == f"media helper: ready ({MEDIA_READY})"
     assert by_name(run_checks(sample_config))["docs_repo.permissions"].ok, "the helper is owner-only"
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
-    fake_media(tmp_path, version_exit=3).replace(helper)  # built, and it stopped answering
+    fake_media(helper.parent, version_exit=3, name=helper.name)  # built, and it stopped answering
     r = by_name(run_checks(sample_config))["media"]
     assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
     assert r.detail == "media helper: not working (the media helper exited 3: no message)"
@@ -3545,7 +3545,7 @@ def test_speech_off_is_ok_and_names_the_switch_or_the_missing_models(
     assert (r.ok, r.detail) == (True, "speech: off (AGENTSYNC_OCR=0)")
     monkeypatch.delenv("AGENTSYNC_OCR")
     helper = ocr._helper_path(sample_config.cache_dir, speech.SPEECH)
-    fake_speech(helper.parent).replace(helper)
+    fake_speech(helper.parent, name=helper.name)
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.detail) == (
         True,
@@ -3581,7 +3581,7 @@ def test_speech_failed_is_a_warn_never_a_fail(sample_config: Config, monkeypatch
     _real_speech(monkeypatch)
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     helper = ocr._helper_path(sample_config.cache_dir, speech.SPEECH)
-    fake_speech(helper.parent, version_exit=3).replace(helper)
+    fake_speech(helper.parent, version_exit=3, name=helper.name)
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.severity) == (False, Severity.WARN)
     assert r.detail == "speech: failed (the speech helper exited 3: no message)"

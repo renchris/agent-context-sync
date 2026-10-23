@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import exec_stub
 from agentsync.config import Config, ConvertConfig
 from agentsync.convert import naming, ocr, speech
 from agentsync.convert.naming import Naming, Voice, name_voices, vetoed, voice_text
@@ -249,7 +250,7 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     assert speech.probe(sample_config.convert, cache) == ("failed", reason)
 
     old = json.dumps({"engine": "fluidaudio", "fluidaudio": _OLD_COMMIT, "helper": "0.1.0"})
-    fake_speech(helper.parent, version=old).replace(helper)
+    fake_speech(helper.parent, version=old, name=helper.name)
     place_models(helper.parent)
     ocr._marker(helper).unlink()
     # the installer by its path (B13 round 18 V68)
@@ -266,7 +267,7 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     # a helper that reports a commit after the floor is refused too: the check is the exact pin, so the
     # refusal never says "or later" (W67)
     later = json.dumps({"engine": "fluidaudio", "fluidaudio": "2" * 40, "helper": "0.1.0"})
-    fake_speech(helper.parent, version=later).replace(helper)
+    fake_speech(helper.parent, version=later, name=helper.name)
     assert speech.probe(sample_config.convert, cache) == ("failed", refusal)
     assert "or later" not in refusal and speech.FLUIDAUDIO_PIN[:7] in refusal
 
@@ -281,8 +282,7 @@ def test_no_voice_vector_is_written_anywhere(
     monkeypatch.setattr(sys, "platform", "darwin")
     cache = tmp_path / "cache"
     helper = ocr._helper_path(cache, speech.SPEECH)
-    models = place_models(fake_speech(helper.parent).parent)
-    helper.parent.joinpath("fake-speech").replace(helper)
+    models = place_models(fake_speech(helper.parent, name=helper.name).parent)
     for name, files in speech.MODEL_FILES.items():
         monkeypatch.setitem(speech.MODEL_DIGESTS, name, speech.folder_digest(models / name, files) or "")
     found = speech.engine(ConvertConfig(), cache)
@@ -297,14 +297,17 @@ def test_no_voice_vector_is_written_anywhere(
     )
     with caplog.at_level(logging.DEBUG):
         for reply in replies:
-            fake_speech(tmp_path / "bin", reply={"voices": json.dumps(reply)}).replace(helper)
+            fake_speech(helper.parent, reply={"voices": json.dumps(reply)}, name=helper.name)
             with pytest.raises(SpeechError) as error:
                 found.voices(audio, timeout=60)
             assert str(error.value) == "the speech helper's answer is not the expected JSON"
     marker = str(_VECTOR[0])
     assert marker not in caplog.text
+    script = {helper, exec_stub.body_path(helper)}  # the stub and the body it runs (B13 round 24 B92)
     holding = [
-        p for p in tmp_path.rglob("*") if p.is_file() and p != helper and marker.encode() in p.read_bytes()
+        p
+        for p in tmp_path.rglob("*")
+        if p.is_file() and p not in script and marker.encode() in p.read_bytes()
     ]
     assert holding == [], "only the fake helper's own script may hold the made-up vector"
 

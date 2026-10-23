@@ -16,8 +16,7 @@ SHIP_LAND = REPO / "scripts" / "ship-land.sh"
 
 STUB_GATE = '#!/bin/bash\necho ran >>"$STUB_GATE_LOG"\nexit "${STUB_GATE_RC:-0}"\n'
 # Every origin/main run is red: `run list` names run 101, `run watch` fails, `run view` says failure.
-STUB_GH = """#!/bin/bash
-case "$1 $2" in
+STUB_GH = """case "$1 $2" in
   "run list") echo 101 ;;
   "run watch") exit 1 ;;
   "run view") echo completed failure ;;
@@ -135,11 +134,7 @@ def test_nothing_to_land_runs_no_gate(remote: Path, tmp_path: Path, env: dict[st
 
 def test_a_red_trunk_stops_the_push_unless_allowed(remote: Path, tmp_path: Path, env: dict[str, str]) -> None:
     clone = _clone(remote, tmp_path / "a", env, "one")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    (bin_dir / "gh").write_text(STUB_GH)
-    (bin_dir / "gh").chmod(0o755)
-    env = {**env, "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}"}
+    env = _with_gh(tmp_path, env, STUB_GH)  # a Mach-O, not a #! exec (B13 round 24 B91)
     before = _git(remote, "rev-parse", "main")
     cp = _land(clone, env)
     assert cp.returncode == 6

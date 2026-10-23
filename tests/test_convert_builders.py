@@ -358,7 +358,7 @@ def build_picture_pdf(
 SHADE_HOOK = """\
 if "--" in args:
     import struct, zlib
-    table = json.loads(Path(sys.argv[0] + ".shades").read_text())
+    table = json.loads(Path({self!r} + ".shades").read_text())
     results = []
     for index, p in enumerate(args[args.index("--") + 1:]):
         data = Path(p).read_bytes()
@@ -385,11 +385,7 @@ def shade_engine(folder: Path, said: Mapping[int, Any]) -> OcrEngine:
     reports instead (``{"error": "recognition failed"}``, ``{"skipped": True}``), or to ``"fail"``, which
     makes a run that holds such an image exit 3.  A shade it does not name has no text.  255 is a page with
     no picture on it."""
-    engine = fake_engine(folder)
-    text = engine.helper.read_text(encoding="utf-8")
-    at = 'if "--version" in args:'
-    assert at in text
-    engine.helper.write_text(text.replace(at, SHADE_HOOK + at, 1), encoding="utf-8")
+    engine = fake_engine(folder, hook=SHADE_HOOK)
     Path(str(engine.helper) + ".shades").write_text(json.dumps(said), encoding="utf-8")
     return engine
 

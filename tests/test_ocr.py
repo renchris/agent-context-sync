@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 
+import exec_stub
 from agentsync import governance
 from agentsync.config import ConvertConfig
 from agentsync.convert import media, ocr
@@ -44,7 +45,7 @@ import json, os, sys
 from pathlib import Path
 
 args = sys.argv[1:]
-with open(sys.argv[0] + ".calls", "a") as log:
+with open({self!r} + ".calls", "a") as log:
     log.write(json.dumps({"args": args, "cwd": os.getcwd(), "env": sorted(os.environ)}) + "\n")
 if "--version" in args:
     print({version!r})
@@ -95,18 +96,20 @@ def write_fake(
     reply: str | None = None,
     version: str = FAKE_VERSION,
     version_exit: int = 0,
+    hook: str = "",
 ) -> Path:
     """The fake helper at ``path``, owner-only.  It reads what ``fake_image`` wrote and logs each call in
     ``<path>.calls``.  ``fail``: every read exits 3.  ``reply``: every read prints this instead.  ``version``
-    and ``version_exit``: what ``--version`` prints and returns."""
-    values = {"python": sys.executable, "fail": fail, "reply": reply, "version": version}
-    text = FAKE_HELPER.replace("{version_exit}", str(version_exit))
+    and ``version_exit``: what ``--version`` prints and returns.  ``hook``: Python run first, once the call
+    is logged (``{self!r}`` is the helper's path).  A Mach-O stub run by path, not a ``#!`` exec (B13 round
+    24 B92): it names its own path, never ``sys.argv[0]``, which the trampoline makes its body's."""
+    values = {"python": sys.executable, "self": str(path), "fail": fail, "reply": reply, "version": version}
+    at = 'if "--version" in args:'
+    text = FAKE_HELPER.replace(at, hook + at, 1).replace("{version_exit}", str(version_exit))
     for key, value in values.items():
         text = text.replace("{" + key + "!r}", repr(value)).replace("{" + key + "}", str(value))
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.write_text(text, encoding="utf-8")
-    path.chmod(0o700)
-    return path
+    return exec_stub.write(path, text, 0o700)
 
 
 def calls(helper: Path) -> list[dict[str, Any]]:
@@ -553,7 +556,7 @@ def test_the_helper_gets_one_fixed_environment(tmp_path: Path, monkeypatch: pyte
 
 
 def test_engine_identity_names_engine_helper_and_layout_but_no_machine(tmp_path: Path) -> None:
-    eng = fake_engine(tmp_path)
+    eng = fake_engine(tmp_path / "bin")
     assert eng.identity == f"ocr-paper-vision-r2-h0.3.0-l{ocr._LAYOUT_REVISION}"
     assert eng.description == "paper-vision revision 2, helper 0.3.0"
     assert ocr.LANGUAGES == ("en-US",) and ocr.MAX_PAGES == 40 and ocr.MAX_MEGAPIXELS == 50
@@ -792,9 +795,11 @@ cat > "$out" <<'EOF'
 
 
 def script(path: Path, body: str) -> Path:
-    path.write_text(f'#!/bin/sh\necho "$@" >> "$0.calls"\nenv > "$0.env"\n{body}\n')
-    path.chmod(0o700)
-    return path
+    """A stand-in tool at ``path`` that logs its arguments in ``<path>.calls`` and its environment in
+    ``<path>.env``, then runs ``body``. ``$self`` is its own path: a body that reads ``$0`` stays a ``#!``
+    file, as the trampoline makes ``$0`` its body's path (B13 round 24 B92)."""
+    head = f'#!/bin/sh\nself={shlex.quote(str(path))}\necho "$@" >> "$self.calls"\nenv > "$self.env"\n'
+    return exec_stub.write(path, f"{head}{body}\n", 0o700)
 
 
 def lines_of(path: Path) -> list[str]:

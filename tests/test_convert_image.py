@@ -112,16 +112,11 @@ class Recording(ocr.OcrEngine):
 
 def sinking(folder: Path) -> ocr.OcrEngine:
     """An engine whose helper exits 3 on any run that holds a picture with ``SINK`` in its bytes."""
-    engine = fake_engine(folder)
     hook = (
         'if "--" in args and any(b"SINK" in Path(p).read_bytes() for p in args[args.index("--") + 1:]):\n'
         "    sys.exit(3)\n"
     )
-    text = engine.helper.read_text(encoding="utf-8")
-    at = 'if "--version" in args:'
-    assert at in text
-    engine.helper.write_text(text.replace(at, hook + at, 1), encoding="utf-8")
-    return engine
+    return fake_engine(folder, hook=hook)
 
 
 def convert(src: Path, name: str, registry: Registry, cache: Path) -> ConversionResult:

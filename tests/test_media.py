@@ -38,7 +38,7 @@ NEW_TOTAL = row("Total | 412 | 4,425,000", 0.05, 0.40, 0.40, 0.03)
 STRIP = row("Dana Okafor", 0.90, 0.20, 0.08, 0.02)
 LABEL = row("Luis Fernandez", 0.01, 0.97, 0.08, 0.02, 0.5)
 STUB_VERSION = '{"engine": "stub-media", "helper": "9.9.9"}'
-SWIFTC_OK = f"""cp main.swift "$0.source"
+SWIFTC_OK = f"""cp main.swift "$self.source"
 out=""
 while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done
 cat > "$out" <<'EOF'
@@ -70,8 +70,7 @@ def engine_of(folder: Path, script_: dict[str, Any] | None = None, **kw: Any) ->
 def place_fake(cache: Path, **kw: Any) -> Path:
     """A fake media helper where this agentsync's built one goes."""
     helper = ocr._helper_path(cache, media.MEDIA)
-    fake_media(helper.parent, **kw).replace(helper)
-    return helper
+    return fake_media(helper.parent, name=helper.name, **kw)
 
 
 @pytest.fixture

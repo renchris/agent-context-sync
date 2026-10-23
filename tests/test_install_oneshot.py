@@ -142,6 +142,7 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
     echo "error: failed to remove directory (stub): Directory not empty (os error 66)" >&2; exit 2
   fi
   mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
+  rm -f "$HOME/.local/bin/agentsync"  # a new file: macOS kills a Mach-O overwritten in place after it ran
   cp "$STUB_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/bin/agentsync"
 @PYPANDOC@  echo "Installed 1 executable: agentsync" >&2
@@ -2145,7 +2146,7 @@ def test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line(
     current agentsync ends a private copy after its Redaction section (H75), which tests/test_setup_report.py
     covers (B13 round 8 J44, J79)."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
     for private in (False, True):
         old.write_text(
@@ -3555,7 +3556,7 @@ def test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_rev
     it is."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
     old.write_text(
         "# agentsync setup report\n\n## Redaction\n\n"
@@ -3602,7 +3603,7 @@ def test_a_folder_at_the_bring_back_path_takes_no_file(
     written: N71's NEXT, with no earlier-file clause, and no temp file in it or beside it."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     back = report_path(env).parent / "bring-back.md"
     setup = back.parent / "setup"
     setup.mkdir(parents=True)
@@ -3885,7 +3886,7 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     does. Keying on the cut-off words alone would drop the advice a busy state file needs."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
     summary = (
         "- doctor: cut off after 20.0s, the wait the report gives "
@@ -3986,7 +3987,7 @@ def test_a_cut_off_report_with_local_work_branches_says_either_way_once(
     one "either way, review"; Y23's words are kept as they are."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     heads = home / "src" / "agent-context-sync" / ".git" / "refs" / "heads"
     heads.mkdir(parents=True)
     (heads / "local-work-20261020-220940").write_text("a" * 40 + "\n")
@@ -4050,7 +4051,7 @@ def test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable(
     it, so it was never sent. The NEXT gives the remedy first, and the later report sends the patch."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
     old.write_text(
         "# agentsync setup report\n\n## Redaction\n\n"
@@ -7159,7 +7160,7 @@ def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
     py = _tool_python(env)
     bin_ = Path(env["HOME"]) / ".local" / "bin"
     bin_.mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
     commit = head if stamp != "an older commit's" else "0123456789ab"
     (py.parent.parent / ".agentsync-install-source").write_text(f"commit={commit} source={checkout}")
     subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
@@ -7810,7 +7811,7 @@ def test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_ch
     py = _tool_python(env)
     bin_ = Path(env["HOME"]) / ".local" / "bin"
     bin_.mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
     (py.parent.parent / ".agentsync-install-source").write_text(f"commit={head} source={checkout}")
     subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
     cp = install_sh(env, "--list-folders", script=script)
@@ -8411,8 +8412,11 @@ STUB_UV_REAL = """#!/bin/bash
 echo "uv $*" >> "$STUB_LOG"
 if [ "$1 $2" = "tool install" ]; then
   mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
-  printf '#!/bin/sh\\nexec "%s" "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/share/uv/tools/agentsync/bin/python"
-  printf '#!/bin/sh\\nexec "%s" -m agentsync "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/bin/agentsync"
+  for t in share/uv/tools/agentsync/bin/python bin/agentsync; do  # new files (see STUB_UV)
+    rm -f "$HOME/.local/$t"
+  done
+  cp "$STUB_TOOL_PYTHON" "$HOME/.local/share/uv/tools/agentsync/bin/python"
+  cp "$STUB_TOOL_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/share/uv/tools/agentsync/bin/python" "$HOME/.local/bin/agentsync"
 @PYPANDOC@elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
@@ -8421,7 +8425,9 @@ elif [ "$1 $2" = "tool dir" ]; then
 fi
 """.replace("@PYPANDOC@", STUB_PYPANDOC)
 """uv for a run with the real agentsync: its ``tool install`` puts, where uv would, launchers for the Python
-running these tests (which has agentsync) as the tool's interpreter and as ``agentsync``."""
+running these tests (which has agentsync) as the tool's interpreter and as ``agentsync``: copies of the two
+Mach-O stubs ``real_env`` writes (install.sh runs the tool's Python about two dozen times a run; B13 round 24
+B93), each as a new file."""
 
 
 @pytest.fixture
@@ -8429,6 +8435,10 @@ def real_env(env: dict[str, str], tmp_path: Path) -> dict[str, str]:
     """``env`` with the real agentsync behind the uv stub: its init, add-source, status, sync and
     setup-report run in the tmp HOME, with no OCR helper, no tmutil and a git identity of its own."""
     _write_exe(Path(env["PATH"].split(":")[0]) / "uv", STUB_UV_REAL)
+    tool = tmp_path / "uv-tool"
+    tool.mkdir()
+    tool_python = _write_exe(tool / "python", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    tool_agentsync = _write_exe(tool / "agentsync", f'#!/bin/sh\nexec "{sys.executable}" -m agentsync "$@"\n')
     gitconfig = tmp_path / "gitconfig"
     gitconfig.write_text(
         "[user]\n\tname = agentsync-test\n\temail = test@localhost\n[init]\n\tdefaultBranch = main\n"
@@ -8436,6 +8446,8 @@ def real_env(env: dict[str, str], tmp_path: Path) -> dict[str, str]:
     return {
         **env,
         "REAL_PYTHON": sys.executable,
+        "STUB_TOOL_PYTHON": str(tool_python),
+        "STUB_TOOL_AGENTSYNC": str(tool_agentsync),
         "AGENTSYNC_OCR": "0",
         "AGENTSYNC_TM_EXCLUDE": "0",
         "GIT_CONFIG_GLOBAL": str(gitconfig),
@@ -11673,7 +11685,7 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it
     installer gives it F20's label by the report's own Summary, as the renderer's condition is: an attempt
     whose run is in the tail keeps "(what the agent saw)"."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     old = tmp_path / "old-report.md"
     old.write_text(
         _old_renderer_report(summary, ["# run=20261012T090000Z-41 install.sh", "done", "NEXT: stop"])
@@ -11700,7 +11712,7 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_drops_its_quiet_friction_
     by the renderer's own rule; one that counts another kind, or legacy lines, stays, and so does the friction
     log's count."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     dropped = [
         "- friction (attempt 2): 2 event line(s): 1 error, 1 finished",
         "- friction (attempt 3): 3 event line(s): 1 deviation, 1 error, 1 finished",
@@ -11849,7 +11861,7 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_numbers_runs_started_in_o
     pointed at the first run. The shim labels each by install.log, and leaves a report already numbered as it
     is."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     assert install_sh(env, "--log-start", "x").returncode == 2
     st = _one_second_runs(env)
     old = tmp_path / "old-report.md"
@@ -12030,7 +12042,7 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
         ]
     )
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     assert install_sh(env, "--log-start", "x").returncode == 2
     stub = tmp_path / "old-report.md"
     stub.write_text(report, encoding="utf-8")
@@ -12195,7 +12207,7 @@ def test_a_stopped_copy_by_an_older_agentsync_counts_its_nouns(
         ]
     )
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     assert install_sh(env, "--log-start", "x").returncode == 2
     stub = tmp_path / "old-report.md"
     stub.write_text(report, encoding="utf-8")
@@ -12231,7 +12243,7 @@ def _old_wait_now(n: int, k: int) -> str:
 def _stopped_copy_of(env: dict[str, str], tmp_path: Path, report: str) -> str:
     """The stopped copy install.sh writes of ``report``, rendered by the installed (stub) agentsync."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True, exist_ok=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     assert install_sh(env, "--log-start", "x").returncode == 2
     stub = tmp_path / "old-report.md"
     stub.write_text(report, encoding="utf-8")
@@ -12693,7 +12705,7 @@ def _step1_stop_home(
     step's tokens; ``friction``: lines this attempt logged; ``before``: install.log lines before its list."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(
         "Attempt: 2026-10-18T09:00:00Z\nPrompt: v10\nAgent: x\n2026-10-18T09:05:00Z | end | finished\n"
@@ -12965,7 +12977,7 @@ def test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkou
     error leaves the report as rendered, and the current words pass unchanged."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(
         f"Attempt: 2026-10-18T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
@@ -13042,7 +13054,7 @@ def _git_stop_report(env: dict[str, str], tmp_path: Path, friction: str, log: li
     installed v10 build renders (``report``); the report as install.sh leaves it."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
-    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(f"Attempt: 2026-10-18T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n{friction}")
     (home / "agent-context" / "setup" / "install.log").write_text("\n".join(log) + "\n", encoding="utf-8")
@@ -13573,7 +13585,7 @@ def test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected(
     doctor's "re-run install.sh" fix, under a NEXT that says to copy the prompt again. The installer, which
     runs from the current checkout, gives that report J18's words; any other wording is left as it is."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     old = tmp_path / "old-report.md"
     old.write_text(_old_doctor_report(summary, head, fenced))
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
@@ -13631,7 +13643,7 @@ def test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version(
     version are left. B13 round 11 M27, M52: that clause was a second bracket right before the renderer's
     "(python ...)" one; it opens inside it, joined by "; ", and a line that has it already is left."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     meta_old = f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (python 3.11.9, /usr/bin/python3)"
     meta_same = f"- agentsync: 0.1.0, setup prompt v{COMPAT} (python 3.11.9, /usr/bin/python3)"
     meta_new = (
@@ -13682,7 +13694,7 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
     left out, so its count is the fence's install.out lines plus those; a summary in another wording, an
     older agentsync's, is left as it is."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
-    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    exec_stub.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     end = [
         "report: ~/agent-context/setup-report.md",
         "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)",

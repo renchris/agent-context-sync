@@ -53,8 +53,7 @@ def _speech_on(monkeypatch: pytest.MonkeyPatch) -> None:
 def place_fake(cache: Path, script_: dict[str, Any] | None = None, **kw: Any) -> Path:
     """A fake speech helper where this agentsync's built one goes."""
     helper = ocr._helper_path(cache, speech.SPEECH)
-    fake_speech(helper.parent, script_, **kw).replace(helper)
-    return helper
+    return fake_speech(helper.parent, script_, name=helper.name, **kw)
 
 
 def pin_to_placed(monkeypatch: pytest.MonkeyPatch, models: Path) -> None:
@@ -249,7 +248,7 @@ def test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again(tools: Path,
         str(error.value)
         == f"git merge-base was stopped by SIGSEGV (signal 11): error: it failed (exit 1); {later}"
     )
-    script(tools / "git", f'case "$3" in rev-parse) echo {FAKE_PIN}; chmod -x "$0" ;; esac')
+    script(tools / "git", f'case "$3" in rev-parse) echo {FAKE_PIN}; chmod -x "$self" ;; esac')
     with pytest.raises(SpeechError, match=r"^git merge-base does not run: Permission denied$"):
         speech.build(cache)  # a check that could not run is not the floor refusal either
 
@@ -583,7 +582,7 @@ def test_the_build_gives_swiftpm_the_shells_proxy_and_the_helper_never_gets_it(
     helper_logs_env = SWIFT_OK.replace(
         "  chmod 755 $out", "  echo 'env > \"$0.env\"' >> $out\n  chmod 755 $out"
     )
-    script(tools / "swift", 'env > "$0.$1.env"\n' + helper_logs_env)
+    script(tools / "swift", 'env > "$self.$1.env"\n' + helper_logs_env)
     cache = tmp_path / "cache"
     helper = speech.build(cache)
     for step in ("package", "build"):
@@ -626,7 +625,7 @@ def test_the_build_gives_git_the_shells_ca_and_never_turns_verification_off(
     monkeypatch.setenv("GIT_SSL_CAPATH", "")
     assert "GIT_SSL_CAPATH" not in speech._build_env(), "an empty value is not passed"
 
-    script(tools / "swift", 'env > "$0.$1.env"\n' + SWIFT_OK)
+    script(tools / "swift", 'env > "$self.$1.env"\n' + SWIFT_OK)
     helper = speech.build(tmp_path / "cache")
     for step in ("package", "build"):
         seen = dict(ln.split("=", 1) for ln in lines_of(tools / f"swift.{step}.env"))
@@ -792,7 +791,7 @@ NEMO_CACHE_NAME = (
 PAYLOAD = b"made-up Contoso xcframework bytes\n"
 FAKE_CURL = """while [ $# -gt 0 ]; do [ "$1" = "--output" ] && out="$2"; shift; done
 printf 'made-up Contoso xcframework bytes\\n' > "$out"
-[ -f "$0.exit" ] && exit "$(cat "$0.exit")"
+[ -f "$self.exit" ] && exit "$(cat "$self.exit")"
 exit 0"""
 
 
@@ -811,7 +810,7 @@ def curl(tools: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(speech, "NEMO_SHA256", hashlib.sha256(PAYLOAD).hexdigest())
     script(
         tools / "swift",
-        'if [ "$1" = package ]; then ls -a "$3/artifacts" > "$0.seen" 2>/dev/null; fi\n' + SWIFT_OK,
+        'if [ "$1" = package ]; then ls -a "$3/artifacts" > "$self.seen" 2>/dev/null; fi\n' + SWIFT_OK,
     )
     return tools / "curl"
 

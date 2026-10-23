@@ -35,6 +35,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml.chart.series import CT_NumDataSource
 from pptx.util import Inches
 
+import exec_stub
 from agentsync import cycle as cycle_mod
 from agentsync import policy
 from agentsync.config import ConvertConfig
@@ -2300,7 +2301,11 @@ def test_the_pdfminer_fallback_runs_no_ocr(tmp_path: Path, monkeypatch: pytest.M
     with_engine = PdfConverter(CFG, ocr=engine).convert(src, name="s.pdf")
     assert with_engine == PdfConverter(CFG).convert(src, name="s.pdf")
     assert "1 without a text layer (scanned; OCR not run)" in with_engine[0].summary
-    assert calls(engine.helper) == [] and sorted(p.name for p in tmp_path.iterdir()) == ["bin", "s.pdf"]
+    body = exec_stub.body_path(engine.helper).parent  # the fake helper's own script (B13 round 24 B92)
+    assert calls(engine.helper) == [] and sorted(p.name for p in tmp_path.iterdir() if p != body) == [
+        "bin",
+        "s.pdf",
+    ]
 
 
 def test_an_encrypted_pdf_is_refused_before_ocr_looks_at_it(tmp_path: Path) -> None:
@@ -2314,7 +2319,13 @@ def test_an_encrypted_pdf_is_refused_before_ocr_looks_at_it(tmp_path: Path) -> N
     got = _through_the_cache(locked, Registry.default(CFG, ocr=engine), tmp_path / "cache")
     assert got.status is ConversionStatus.UNREADABLE and str(got.reason).startswith("encrypted-pdf (")
     assert calls(engine.helper) == []
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "cache", "locked.pdf", "restricted.pdf"]
+    body = exec_stub.body_path(engine.helper).parent  # the fake helper's own script (B13 round 24 B92)
+    assert sorted(p.name for p in tmp_path.iterdir() if p != body) == [
+        "bin",
+        "cache",
+        "locked.pdf",
+        "restricted.pdf",
+    ]
 
 
 def _png_pixels(data: bytes) -> tuple[int, int, int, list[bytes]]:
@@ -3273,17 +3284,17 @@ def test_anything_the_word_picture_pass_raises_is_the_same_fixed_error(
 
 def _pandoc_that(tmp_path: Path, name: str, first: str) -> Path:
     """A pandoc for ``[convert] pandoc_path``: the bundled one behind a shell script that runs ``first``
-    in the job folder, with the filter's path in ``$filter``, before it starts."""
-    script = tmp_path / name
-    script.write_text(
+    in the job folder, with the filter's path in ``$filter``, before it starts: a Mach-O stub run by path,
+    not a ``#!`` exec (B13 round 24 B91)."""
+    (tmp_path / "pandoc-bin").mkdir(exist_ok=True)  # its body goes to tmp_path / ".pandoc-bin-real"
+    return exec_stub.write(
+        tmp_path / "pandoc-bin" / name,
         "#!/bin/sh\n"
         'for arg in "$@"; do case "$arg" in --lua-filter=*) filter="${arg#--lua-filter=}";; esac; done\n'
         f"{first}\n"
         f'exec "{resolved_pandoc(None)[0]}" "$@"\n',
-        encoding="utf-8",
+        0o700,
     )
-    script.chmod(0o700)
-    return script
 
 
 _NO_PLACING = {

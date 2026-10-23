@@ -15,10 +15,17 @@ from pathlib import Path
 import pytest
 
 import exec_stub
+from media_kit import calls as media_calls
+from media_kit import fake_media
+from speech_kit import calls as speech_calls
+from speech_kit import fake_speech
+from test_convert_formats import _pandoc_that
 from test_deploy_pack import _fake_step1_tools
 from test_install_next_line import _exe
-from test_install_oneshot import _write_exe
+from test_install_oneshot import _write_exe, env, real_env  # noqa: F401  (fixtures)
 from test_launcher import stubs  # noqa: F401  (fixture)
+from test_ocr import calls as ocr_calls
+from test_ocr import script, write_fake
 from test_ship_land import _with_gh
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,37 +162,125 @@ def test_the_harness_helpers_write_mach_o_stubs(
     """test_install_oneshot's ``_write_exe``, test_install_next_line's ``_exe``, test_launcher's ``stubs``,
     test_ship_land's ``_with_gh`` and test_deploy_pack's ``_fake_step1_tools`` write their stubs through
     ``exec_stub.write``: the launchctl stub (install.sh runs its getenv 18 times and print twice) was 77% of
-    the ``#!`` execs of a run of the three install files (B13 round 23 A97's count)."""
+    the ``#!`` execs of a run of the three install files (B13 round 23 A97's count). agentsync's stand-in,
+    which the stub uv copies at each install (round 24 B93), and test_convert_formats' ``_pandoc_that``
+    (B91) are Mach-O stubs too."""
     (tmp_path / "a").mkdir()
     _with_gh(tmp_path, {"PATH": "/usr/bin:/bin"}, "exit 0\n")
     _fake_step1_tools(tmp_path / "step1", tmp_path / "calls.log")
     for stub in (
+        _pandoc_that(tmp_path, "old-pandoc", ":"),
         _write_exe(tmp_path / "a" / "launchctl-stub", "#!/bin/bash\necho print\n"),
         Path(_exe(tmp_path / "a" / "scutil", "#!/bin/bash\nexit 0\n")),
         tmp_path / "bin" / "gh",
         tmp_path / "step1" / "git",
         Path(stubs["AGENTSYNC_LAUNCHCTL"]),
         Path(stubs["PATH"].split(":")[0]) / "uv",
+        Path(stubs["STUB_AGENTSYNC"]),
     ):
         assert stub.read_bytes()[:4] in MACH_O, stub
-    assert Path(stubs["STUB_AGENTSYNC"]).read_text().startswith("#!/bin/bash\n"), "copied: a #! file"
+
+
+def test_the_real_agentsyncs_tool_stubs_are_mach_o(
+    trampoline: bytes,
+    real_env: dict[str, str],  # noqa: F811
+) -> None:
+    """``real_env``'s stub uv copies the tool's Python and ``agentsync`` from two Mach-O stubs, not a ``#!``
+    file printf writes: install.sh runs the tool's Python about two dozen times a run, 999 ``#!`` execs of the
+    suite's census with agentsync's 350 (B13 round 24 B93)."""
+    home = Path(real_env["HOME"]) / ".local"
+    uv = Path(real_env["PATH"].split(":")[0]) / "uv"
+    py, cli = home / "share" / "uv" / "tools" / "agentsync" / "bin" / "python", home / "bin" / "agentsync"
+    inodes: list[tuple[int, int]] = []
+    for i in range(2):  # the second install copies over the copies that ran, each as a new file
+        subprocess.run([str(uv), "tool", "install", "agentsync"], env=real_env, check=True, timeout=60)
+        assert py.read_bytes()[:4] in MACH_O and cli.read_bytes()[:4] in MACH_O, i
+        inodes.append((py.stat().st_ino, cli.stat().st_ino))
+        assert _run(py, "-c", "import agentsync; print(7)")[:2] == (0, "7\n"), i
+        assert _run(cli, "--help", HOME=real_env["HOME"])[0] == 0, i
+    assert inodes[0][0] != inodes[1][0] and inodes[0][1] != inodes[1][1], "rm -f before cp"
+
+
+def _installs_a_new_agentsync(harness: dict[str, str]) -> None:
+    """The stub uv's install, twice: its agentsync is a new file each time (``rm -f`` before ``cp``, so not
+    a Mach-O overwritten in place after it ran), and runs."""
+    uv = Path(harness["PATH"].split(":")[0]) / "uv"
+    cli = Path(harness["HOME"]) / ".local" / "bin" / "agentsync"
+    inodes = []
+    for i in range(2):
+        subprocess.run([str(uv), "tool", "install", "agentsync"], env=harness, check=True, timeout=60)
+        assert cli.read_bytes()[:4] in MACH_O, i
+        assert _run(cli, "status", STUB_LOG=harness["STUB_LOG"], HOME=harness["HOME"])[0] == 0, i
+        inodes.append(cli.stat().st_ino)
+    assert inodes[0] != inodes[1], "rm -f before cp (B13 round 24 B93)"
+
+
+def test_test_launchers_stub_uv_installs_a_new_agentsync(
+    trampoline: bytes,
+    stubs: dict[str, str],  # noqa: F811
+) -> None:
+    _installs_a_new_agentsync(stubs)
+
+
+def test_test_install_oneshots_stub_uv_installs_a_new_agentsync(
+    trampoline: bytes,
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    _installs_a_new_agentsync(env)
 
 
 def test_agentsyncs_stand_in_copied_onto_one_that_ran_still_runs(trampoline: bytes, tmp_path: Path) -> None:
-    """The harness copies agentsync's stand-in onto ``~/.local/bin/agentsync`` again and again (``STUB_UV``'s
-    ``cp`` at each install, ``shutil.copy`` in test_install_oneshot), and macOS kills a Mach-O copied over a
-    Mach-O that ran (the land gate's SIGKILL in ``agentsync setup-report``, 294 of 300 in a loop), so a stub
-    named ``agentsync...`` stays a ``#!`` file and every copy of it runs."""
+    """The harness copies agentsync's stand-in onto ``~/.local/bin/agentsync`` again and again (the stub uv's
+    ``cp`` at each install, ``exec_stub.copy`` in test_install_oneshot). macOS kills a Mach-O copied in place
+    over one that ran (round 23: 294 of 300 in a loop; round 24: 93 of 100 in one run, 0 in the next three)
+    and never one written as a new file, so each copier unlinks first: ``rm -f`` before ``cp``, or
+    ``exec_stub.copy`` (B13 round 24 B93)."""
+    (tmp_path / "src").mkdir()
     (tmp_path / "bin").mkdir()
-    stand_in = _write_exe(tmp_path / "agentsync-stub", "#!/bin/bash\necho synced\n")
+    a = _write_exe(tmp_path / "src" / "agentsync-a", "#!/bin/bash\necho a\n")
+    b = _write_exe(tmp_path / "src" / "agentsync-stand-in-b", "#!/bin/bash\necho b\n")
+    assert a.read_bytes()[:4] in MACH_O and b.read_bytes()[:4] in MACH_O
     installed = tmp_path / "bin" / "agentsync"
-    for i in range(5):
-        if i % 2:
-            shutil.copy(stand_in, installed)
+    rm_cp = 'rm -f "$2"\ncp "$1" "$2"\n'
+    for i in range(200):
+        src = (a, b)[i % 2]
+        if i % 4 < 2:
+            subprocess.run(["/bin/sh", "-c", rm_cp, "_", str(src), str(installed)], check=True)
         else:
-            subprocess.run(["/bin/cp", str(stand_in), str(installed)], check=True)
-        assert _run(installed) == (0, "synced\n", ""), i
-    assert installed.read_text() == stand_in.read_text() == "#!/bin/bash\necho synced\n"
+            assert exec_stub.copy(src, installed) == installed
+        assert _run(installed) == (0, "ab"[i % 2] + "\n", ""), i
+
+
+def test_the_convert_kits_fakes_are_mach_o_and_log_their_calls(trampoline: bytes, tmp_path: Path) -> None:
+    """The OCR, media and speech fakes and test_ocr's ``script`` tools ran 2,161 ``#!`` execs of the suite's
+    census, read their own path only to name their call log, and now name it when written: each is a Mach-O
+    stub whose ``calls`` (``<stub>.calls``) still logs, its body as owner-only as the stub (a helper's body
+    under a cache_dir is inside what doctor's ``docs_repo.permissions`` walks). A fake written at a helper's
+    name logs under that name; a ``script`` body that reads ``$0`` stays a ``#!`` file (B13 round 24 B92)."""
+    helpers = tmp_path / "cache" / "speech"
+    fakes = (
+        (write_fake(tmp_path / "bin" / "fake-ocr"), ocr_calls),
+        (fake_media(tmp_path / "helpers"), media_calls),
+        (fake_speech(tmp_path / "helpers"), speech_calls),
+        (fake_speech(helpers, name="agentsync-speech-0123456789abcdef"), speech_calls),
+    )
+    for fake, calls in fakes:
+        assert fake.read_bytes()[:4] in MACH_O, fake
+        assert exec_stub.body_path(fake).stat().st_mode & 0o777 == fake.stat().st_mode & 0o777 == 0o700, fake
+        cp = subprocess.run([str(fake), "--version"], capture_output=True, text=True, check=False, timeout=60)
+        assert cp.returncode == 0 and cp.stdout.startswith('{"engine": "paper-'), fake
+        assert [c["args"] for c in calls(fake)] == [["--version"]], fake
+    assert sorted(p.name for p in helpers.iterdir()) == [
+        "agentsync-speech-0123456789abcdef",
+        "agentsync-speech-0123456789abcdef.calls",
+    ]
+    (tmp_path / "tools").mkdir()
+    tool = script(tmp_path / "tools" / "xcrun", 'echo "found $1"')
+    assert tool.read_bytes()[:4] in MACH_O
+    assert _run(tool, "--find", "swiftc", V="x") == (0, "found --find\n", "")
+    assert Path(f"{tool}.calls").read_text() == "--find swiftc\n" and "V=x" in Path(f"{tool}.env").read_text()
+    reads_0 = script(tmp_path / "tools" / "git", 'chmod -x "$0"')
+    assert reads_0.read_bytes().startswith(b"#!/bin/sh\n"), "its $0 is the stub's own path"
 
 
 def _sha256_fn(**swap: str) -> str:

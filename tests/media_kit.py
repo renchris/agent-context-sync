@@ -38,6 +38,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import exec_stub
+
 GRID_W, GRID_H = 320, 180
 FAKE_MEDIA_VERSION = '{"engine": "paper-media", "helper": "0.1.0"}'
 
@@ -47,7 +49,7 @@ from pathlib import Path
 
 GW, GH = 320, 180
 args = sys.argv[1:]
-with open(sys.argv[0] + ".calls", "a") as log:
+with open({self!r} + ".calls", "a") as log:
     log.write(json.dumps({"args": args, "cwd": os.getcwd()}) + "\n")
 if "--version" in args:
     print({version!r})
@@ -233,13 +235,17 @@ def fake_media(
     reply: dict[str, str] | None = None,
     version: str = FAKE_MEDIA_VERSION,
     version_exit: int = 0,
+    name: str = "fake-media",
 ) -> Path:
-    """The fake media helper at ``folder/fake-media``, owner-only.  ``script`` is what a recording without a
-    script of its own shows (see ``recording``).  ``fail``: commands that exit 3 with that message.
-    ``reply``: commands that print this text instead.  ``version`` and ``version_exit``: what ``--version``
-    prints and returns.  Each call is logged in ``<helper>.calls`` (``calls``)."""
+    """The fake media helper at ``folder/name``, owner-only: a Mach-O stub run by path, whose body names the
+    stub's own path (B13 round 24 B92), so ``name`` is the one it runs as (never renamed after).  ``script``
+    is what a recording without a script of its own shows (see ``recording``).  ``fail``: commands that exit
+    3 with that message.  ``reply``: commands that print this text instead.  ``version`` and
+    ``version_exit``: what ``--version`` prints and returns.  Each call is logged in ``<helper>.calls``
+    (``calls``)."""
     values = {
         "python": sys.executable,
+        "self": str(folder / name),
         "script": script if script is not None else recording(),
         "fail": fail or {},
         "reply": reply or {},
@@ -248,11 +254,9 @@ def fake_media(
     text = FAKE_MEDIA.replace("{version_exit}", str(version_exit))
     for key, value in values.items():
         text = text.replace("{" + key + "!r}", repr(value)).replace("{" + key + "}", str(value))
-    path = folder / "fake-media"
+    path = folder / name
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.write_text(text, encoding="utf-8")
-    path.chmod(0o700)
-    return path
+    return exec_stub.write(path, text, 0o700)
 
 
 def calls(helper: Path) -> list[dict[str, Any]]:

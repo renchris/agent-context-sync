@@ -27,6 +27,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import exec_stub
+
 FAKE_PIN = "04e363c29d9a754022d602d6fe1468ab80a0f705"
 FAKE_SPEECH_VERSION = json.dumps(
     {"engine": "paper-speech", "fluidaudio": FAKE_PIN, "helper": "0.1.0"}, sort_keys=True
@@ -37,7 +39,7 @@ import json, os, sys
 from pathlib import Path
 
 args = sys.argv[1:]
-with open(sys.argv[0] + ".calls", "a") as log:
+with open({self!r} + ".calls", "a") as log:
     log.write(json.dumps({"args": args, "cwd": os.getcwd()}) + "\n")
 if "--version" in args:
     print({version!r})
@@ -91,13 +93,16 @@ def fake_speech(
     reply: dict[str, str] | None = None,
     version: str = FAKE_SPEECH_VERSION,
     version_exit: int = 0,
+    name: str = "fake-speech",
 ) -> Path:
-    """The fake speech helper at ``folder/fake-speech``, owner-only.  ``script``: what the sound holds (see
-    the module).  ``fail``: commands that exit 3 with that message.  ``reply``: commands that print this text
-    instead.  ``version`` and ``version_exit``: what ``--version`` prints and returns.  Each call is logged
-    in ``<helper>.calls`` (``calls``)."""
+    """The fake speech helper at ``folder/name``, owner-only: a Mach-O stub run by path, whose body names the
+    stub's own path (B13 round 24 B92), so ``name`` is the one it runs as (never renamed after).  ``script``:
+    what the sound holds (see the module).  ``fail``: commands that exit 3 with that message.  ``reply``:
+    commands that print this text instead.  ``version`` and ``version_exit``: what ``--version`` prints and
+    returns.  Each call is logged in ``<helper>.calls`` (``calls``)."""
     values = {
         "python": sys.executable,
+        "self": str(folder / name),
         "script": script or {},
         "fail": fail or {},
         "reply": reply or {},
@@ -106,11 +111,9 @@ def fake_speech(
     text = FAKE_SPEECH.replace("{version_exit}", str(version_exit))
     for key, value in values.items():
         text = text.replace("{" + key + "!r}", repr(value)).replace("{" + key + "}", str(value))
-    path = folder / "fake-speech"
+    path = folder / name
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.write_text(text, encoding="utf-8")
-    path.chmod(0o700)
-    return path
+    return exec_stub.write(path, text, 0o700)
 
 
 def calls(helper: Path) -> list[dict[str, Any]]:

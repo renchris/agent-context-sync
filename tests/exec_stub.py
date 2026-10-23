@@ -14,10 +14,12 @@ Why a copy per stub and not a symlink to one binary: a test that chmods, rewrite
 change the shared binary under every other test, and ``cp`` or ``shutil.copy`` of a symlinked stub copies the
 binary without its body. A copy carries the body's absolute path in its trailer, so a copied stub still runs.
 
-A stub named ``agentsync...`` stays a ``#!`` file too: the harness copies agentsync's stand-in onto
-``~/.local/bin/agentsync`` (``STUB_UV``'s ``cp``, 20 ``shutil.copy`` calls), often onto a copy that already
-ran, and macOS kills a Mach-O overwritten in place after it ran (SIGKILL in 294 of 300 runs, measured); a
-script written over a script or over a Mach-O runs.
+A stub copied onto a path that may hold one that ran is copied as a new file (:func:`copy`, or ``rm -f``
+before ``cp`` in a stub's shell): macOS kills a Mach-O overwritten in place after it ran (SIGKILL in 294 of
+300 runs in round 23; in round 24, 93 of 100 in one run and 0 of 300 in the next three), and never one
+written as a new file (0 in every run). So agentsync's stand-ins, which the harness copies onto
+``~/.local/bin/agentsync`` at each install, are Mach-O stubs too (B13 round 24 B93; round 23 kept them
+``#!`` files).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ import hashlib
 import os
 import platform
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -41,8 +44,6 @@ TRAMPOLINE: bytes | None = None
 """The trampoline's bytes, or ``None``: every stub is then the plain ``#!`` file."""
 
 _SELF_PATH = re.compile(r"\$0|\$\{0|BASH_SOURCE|argv\[0\]|__file__")
-_COPIED = "agentsync"
-"""The name prefix of the stubs tests copy onto a path that may hold one that ran (see above)."""
 
 
 def body_path(stub: Path) -> Path:
@@ -61,13 +62,7 @@ def _plain(path: Path, text: str, mode: int) -> Path:
 def write(path: Path, text: str, mode: int = 0o755) -> Path:
     """Write ``text`` as an executable stub at ``path`` (see the module docstring)."""
     path = Path(path)
-    if (
-        TRAMPOLINE is None
-        or not text.startswith("#!")
-        or _SELF_PATH.search(text)
-        or path.name.startswith(_COPIED)
-        or path.is_symlink()
-    ):
+    if TRAMPOLINE is None or not text.startswith("#!") or _SELF_PATH.search(text) or path.is_symlink():
         return _plain(path, text, mode)
     body = body_path(path)
     try:
@@ -77,13 +72,23 @@ def write(path: Path, text: str, mode: int = 0o755) -> Path:
         body.write_text(text)
     except OSError:  # no room beside the stub's folder
         return _plain(path, text, mode)
-    body.chmod(0o755)
+    body.chmod(mode)  # the stub's: a helper's body under a cache_dir is inside what doctor's permissions walk
     raw = os.fsencode(str(body))
     with contextlib.suppress(FileNotFoundError):
         path.unlink()  # a new file, never the old one rewritten: macOS kills a signed file changed under it
     path.write_bytes(TRAMPOLINE + raw + struct.pack("<I", len(raw)) + MAGIC)
     path.chmod(mode)
     return path
+
+
+def copy(src: Path, dst: Path) -> Path:
+    """``shutil.copy`` as a new file: ``dst`` is unlinked first, as macOS kills a Mach-O overwritten in place
+    after it ran (see the module docstring)."""
+    dst = Path(dst)
+    with contextlib.suppress(FileNotFoundError):
+        dst.unlink()
+    shutil.copy(src, dst)
+    return dst
 
 
 def build(cache: Path) -> bytes | None:
