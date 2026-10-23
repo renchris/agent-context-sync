@@ -94,11 +94,16 @@ _ERRORS = frozenset(
 )
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
 _PATH_RE = re.compile(
-    r"(?P<uq>['\"])[A-Za-z][\w+.-]*://[^'\"\s]*(?P=uq)"  # a quoted URL: to its own closing quote (B39)
+    # a quoted URL: to its own closing quote (B39), one that ends a word: a URL may hold an apostrophe (D51)
+    r"(?P<uq>['\"])[A-Za-z][\w+.-]*://[^'\"\s]*(?P=uq)(?=[:;,.)\]]?(?:\s|$))"
+    # an unquoted URL but a file:// one (any case), ending where a colon and a space follow it or the line
+    # ends: one that runs into a space may hold more of a path, and is a path; so is a quoted URL that is no
+    # word of its own (a space inside) (B13 round 25 D84)
+    r"|(?<![\w.<~/'\"])(?P<url>(?![Ff][Ii][Ll][Ee]:)[A-Za-z][\w+.-]*://[^\s'\"]+?)(?=:\s|[:;,.)]?$)"
     r"|(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
     r"|(?<![\w.<])~?/\S.*?(?=:\d+:\d+: |$)"  # an unquoted one: to a compiler's line:column, else to the end
 )
-_GIT_COMMAND_RE = re.compile(r"(Git command ').*(' failed:)")
+_GIT_COMMAND_RE = re.compile(r"(Git command ').*?(' failed:)")
 _clock = time.monotonic
 
 
@@ -191,9 +196,13 @@ def _plain(text: str | bytes) -> str:
 
     A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
     but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote, and a
-    quoted URL through its own.  SwiftPM's ``Git command '...' failed: <cause>`` keeps its cause: the
-    command (``git -C`` and SwiftPM's cache), up to the line's last ``' failed:`` as a path may hold an
-    apostrophe, is ``<command>`` (B13 round 24 B39)."""
+    quoted URL through its own, one followed by a space or the line's end, perhaps after a stop or a colon,
+    as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL is ``<url>`` where a colon and a
+    space follow it (``<url>: <cause>``) or the line ends, but a ``file://`` one; one that runs into a space
+    is a path, as a raw space may be part of it (D84).  SwiftPM's ``Git command '...' failed: <cause>`` keeps
+    its cause: the command (``git -C`` and SwiftPM's cache), up to its own
+    ``' failed:`` (a folder's apostrophe is followed by no such words), is ``<command>``, each of two on one
+    line (B13 round 24 B39, round 25 D84)."""
     s = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")
@@ -206,6 +215,8 @@ def _plain(text: str | bytes) -> str:
         def scrubbed(m: re.Match[str]) -> str:
             if m["uq"]:
                 return f"{m['uq']}<url>{m['uq']}"
+            if m["url"]:
+                return "<url>"
             return f"{m['quote'] or ''}<path>{m['quote'] or ''}"
 
         return _PATH_RE.sub(scrubbed, part)

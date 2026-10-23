@@ -473,6 +473,45 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "'HOME/Library/Caches/org.swift.swiftpm/repositories/y-8056ed04': No such file or directory",
         "error: Git command '<command>' failed: fatal: cannot change to '<path>': No such file or directory",
     ),
+    "an apostrophe and a letter inside a quoted URL close nothing": (
+        "error: cannot open 'file://HOME/Contoso's%20Drive/a.png' at all",
+        "error: cannot open 'file:<path>",
+    ),
+    "an apostrophe and a stop inside a quoted URL close nothing": (
+        "fatal: unable to access 'https://git.contoso.com/Jane'.git/x': Could not resolve host: contoso.com",
+        "fatal: unable to access 'https:<path>",
+    ),
+    "a quoted URL with a space inside is a path": (
+        "error: cannot open 'https://contoso.sharepoint.com/sites/Contoso Files/x' now",
+        "error: cannot open 'https:<path>",
+    ),
+    "an unquoted URL keeps the cause after it": (
+        "error: Failed to clone repository https://github.com/Contoso/Kit.git: fatal: could not create work "
+        "tree dir HOME/x: Permission denied",
+        "error: Failed to clone repository <url>: fatal: could not create work tree dir <path>",
+    ),
+    "an unquoted URL loses its user and token": (
+        "error: Failed to clone repository https://kim:tok@github.com/Contoso/Kit.git",
+        "error: Failed to clone repository <url>",
+    ),
+    "an unquoted file URL with a space is a path": (
+        "error: see file://HOME/Contoso Drive/x.txt now",
+        "error: see file:<path>",
+    ),
+    "a file URL in capitals is a path too": (
+        "error: FILE://HOME/Contoso Drive/x.txt not found",
+        "error: FILE:<path>",
+    ),
+    "an unquoted URL that runs into a space is a path": (
+        "error: Failed to clone repository ssh://git@git.contoso.com/HOME/Contoso Repos/Kit.git: fatal",
+        "error: Failed to clone repository ssh:<path>",
+    ),
+    "two Git commands keep both causes": (
+        "error: Git command 'git -C HOME/a fetch' failed: fatal: first cause; "
+        "Git command 'git -C /b clone' failed: fatal: second cause",
+        "error: Git command '<command>' failed: fatal: first cause; "
+        "Git command '<command>' failed: fatal: second cause",
+    ),
 }
 
 
