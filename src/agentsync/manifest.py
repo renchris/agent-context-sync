@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import sqlite3
+import stat
 import time
 import unicodedata
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -809,8 +810,10 @@ def manifest_lost(db_path: Path) -> bool:
     breaker's suspended removals and the archive (B13 round 23 A29). Keyed on the state folder alone: a docs
     repo restored onto a new Mac, with no heartbeat, is a first sync. An unreadable heartbeat is no record."""
     try:
-        db_path.lstat()
-        return False
+        if not stat.S_ISLNK(db_path.lstat().st_mode):
+            return False
+        db_path.stat()  # a symlink to a missing file is a missing manifest: a sync would start a new one
+        return False  # through it, the A29 hazard by a link (B13 round 24 B64)
     except FileNotFoundError:
         pass
     except OSError:

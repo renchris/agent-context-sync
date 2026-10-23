@@ -1707,6 +1707,72 @@ def test_every_state_file_on_a_read_only_volume_is_one_line_with_one_fix(
     ], failed
 
 
+def test_a_state_file_without_read_or_write_on_a_read_only_volume_joins_the_volume_line(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 24 B65: on a read-only volume a 0400 file got the agent's ``chmod 600`` (its mode was tested
+    before the volume), which fails with EROFS there, and beside a 0600 manifest A85's one volume line split
+    in two. The volume comes first, as state_path_fix and refused_files_fix test it."""
+    db = sample_config.state_paths.db
+    wal = db.with_name(db.name + "-wal")
+    db.parent.mkdir(parents=True, exist_ok=True)
+    for f, mode in ((db, 0o600), (wal, 0o400)):
+        f.write_bytes(b"")
+        f.chmod(mode)
+    files = [db, wal]
+    real_access = os.access
+    monkeypatch.setattr(doctor.os, "access", lambda p, m: False if Path(p) in files else real_access(p, m))
+    monkeypatch.setattr(doctor, "_read_only", lambda p: Path(p) in files)
+    failed = [r for r in doctor._check_state_dir(sample_config) if not r.ok]
+    (line,) = failed
+    assert "manifest.sqlite (0600), manifest.sqlite-wal (0400)" in line.detail, line.detail
+    assert line.fix == doctor.read_only_fix(db) == doctor.refused_files_fix(sample_config, files)
+    wal.unlink()
+    db.chmod(0o400)
+    (line,) = [r for r in doctor._check_state_dir(sample_config) if not r.ok]
+    assert line.fix == doctor.read_only_fix(db) and not (line.fix or "").startswith("chmod "), line
+    db.chmod(0o600)
+
+
+def test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl(
+    sample_config: Config,
+) -> None:
+    """B13 round 24 B64: a symlink to a missing file at manifest.sqlite was "refused to this account by an
+    ACL or a privacy setting" (the link's own mode is 0755), with a ``chmod -N`` that fails on a link to
+    nothing. A link into a folder a sync can write is no FAIL (the first sync creates the file); one into a
+    folder that is missing is the person's, to point it elsewhere or remove it; after earlier passes it is a
+    lost manifest, which no sync replaces through the link."""
+    from agentsync.manifest import LOST_MANIFEST, manifest_lost  # noqa: PLC0415
+
+    db = sample_config.state_paths.db
+    db.parent.mkdir(parents=True, exist_ok=True)
+    for side in ("", "-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+
+    def failed() -> list[doctor.CheckResult]:
+        out = [r for r in doctor._check_state_dir(sample_config) if not r.ok]
+        assert not any("ACL" in r.detail or "chmod -N" in (r.fix or "") for r in out), out
+        return out
+
+    db.symlink_to(db.parent / "elsewhere.sqlite")  # (a) a folder the sync can write: no FAIL
+    assert failed() == []
+    db.unlink()
+    db.symlink_to(db.parent / "gone" / "manifest.sqlite")  # (b) its folder is missing: the person's
+    (line,) = failed()
+    assert line.name == "state_dir.manifest" and "is a symlink to " in line.detail, line
+    assert line.fix is not None and line.fix.startswith("the person points the link at an existing file")
+    assert doctor.is_persons_fix(line.fix)
+    db.unlink()
+    db.symlink_to(db.parent / "elsewhere.sqlite")  # (c) earlier passes recorded: a lost manifest
+    (db.parent / "heartbeat.json").write_text(
+        '{"contoso": {"last_success_at": "2026-10-01T00:00:00Z"}}', encoding="utf-8"
+    )
+    assert manifest_lost(db)
+    (line,) = failed()
+    assert line.name == "state_dir.manifest" and line.detail.endswith(LOST_MANIFEST), line
+    assert line.fix == doctor.LOST_MANIFEST_FIX
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content(
     sample_config: Config,

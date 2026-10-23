@@ -1293,6 +1293,25 @@ def state_file_kind(path: Path) -> str | None:
     return None if kind is None else f"a symlink to {kind}"
 
 
+def dangling_target(path: Path) -> Path | None:
+    """Where ``path`` points when it is a symlink to nothing (its target is missing), else None. Such a link
+    is no file this account is refused: an ACL line and its ``chmod -N`` were false of it, and the chmod
+    fails on a link to nothing (B13 round 24 B64)."""
+    try:
+        if not stat.S_ISLNK(path.lstat().st_mode):
+            return None
+        path.stat()
+        return None
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return None
+    try:
+        return path.parent / path.readlink()
+    except OSError:  # gone in between
+        return None
+
+
 def _them(names: Sequence[str], one: str, many: str) -> str:
     """``one`` for a single file, ``many`` for more (B13 round 20 X17: "them: manifest.sqlite (0000)")."""
     return one if len(names) == 1 else many
@@ -1505,7 +1524,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     modes: list[str] = []
     others: list[str] = []  # another account's (a sudo sync): only the whole folder's chown leaves none
     shut: list[str] = []  # this account's, with no read or no write for it (chmod 000, 0400)
-    denied: list[Path] = []  # this account's at a mode that gives it access, refused anyway: an ACL
+    denied: list[Path] = []  # this account's at a mode that gives it access, or on a read-only volume
     nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
     for p in (
         sp.db,
@@ -1532,6 +1551,18 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
+        target = dangling_target(p)
+        if target is not None:  # by what a sync does through it, never an ACL (B13 round 24 B64)
+            folder = target.parent
+            if p == sp.db and manifest_lost(expand(sp.db)):
+                continue  # earlier passes recorded: the lost manifest's FAIL below, the person's
+            if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK):
+                continue  # the first sync creates the file it points at, as with no file there
+            name = "state_dir.manifest" if p == sp.db else "state_dir.files"
+            detail = f"{expand(p)} is a symlink to {target}, whose folder does not exist or refuses a write"
+            fix = f"the person points the link at an existing file or removes it: rm {_shell_path(expand(p))}"
+            nonfile.append(_bad(name, detail, fix=fix))
+            continue
         kind = state_file_kind(p)  # a link by what it points to (A46); a link to a file keeps its mode FAIL
         if kind is not None:
             # B13 round 21 Y47: a folder at 0700 read "[ok] manifest.sqlite (0700): this account's alone"
@@ -1548,7 +1579,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         if fst.st_uid != os.getuid():
             others.append(f"{p.name} (owner uid {fst.st_uid}, mode {m:04o})")
         elif not os.access(p, os.R_OK | os.W_OK):
-            if m & 0o600 == 0o600:  # a chmod 600 would change nothing (B13 round 21, lane P's measure)
+            # a read-only volume before the mode, as state_path_fix tests it: no chmod writes there (B13
+            # round 22 Z78), so a 0400 file on one joins A85's one volume line (B13 round 24 B65)
+            if m & 0o600 == 0o600 or _read_only(p):  # a chmod 600 would change nothing (B13 round 21)
                 denied.append(expand(p))  # an ACL, or a read-only volume (its own words below)
             else:
                 shut.append(f"{p.name} ({m:04o})")
