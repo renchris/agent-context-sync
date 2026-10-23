@@ -27587,6 +27587,9 @@ Z65's; lane B's new `STATE_REFUSED_STEP` and fix words are not quoted by the pro
   ~/src/agent-context-sync/scripts/install.sh --report-only again, and that either way I review the file and copy it
   back; name no branch; do not add the patches or run the report again yourself;`; and the file's parenthesis adds
   `or a note of the commits it could not carry`.
+Amended 2026-10-23, §16.173 B17: v33's step 3 says whose a status [FAIL] fix is by its NEXT and what then: `a [FAIL] fix that is
+mine (its NEXT: says it is not a step for the agent) stays mine: as in step 2, log the sync that stopped as a step 3
+error with its exit code, show me that [FAIL] line and go to the report; do not run the sync again.` (lane B's words).
 Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state`
 (`STATE_CHMOD_IS_YOURS`, `FAIL_IS_MINE`), `test_readme_step3_gives_the_agent_the_same_chmod`
 (`STEP3_STATE_CHMOD_IS_YOURS`), `test_readme_finish_relays_the_local_work_next` (`LOCAL_WORK_TOLD`, keyed on
@@ -28362,6 +28365,9 @@ the sentence alone would promise an Items line nothing writes, so `compute_outco
 as a reason, `step 3 logged 1 error`: worked with help, never failed (`stopping_error` still skips that step; the next
 sync ended 0). Tests: `test_readme_step3_gives_the_agent_the_same_chmod` (`STEP3_STATE_CHMOD_IS_YOURS`),
 `test_the_prompt_text_changes_only_with_its_version` and `test_a_step_3_sync_that_stopped_is_worked_with_help`.
+Amended 2026-10-23, §16.173 B1, B8, B22, B40, B50, B60, B79, B96: v33 keeps the sentence and corrects its reason: `(agentsync
+records a sync that stopped on its state file, but not the chmod you ran or every stop; the report pairs your line
+with its record)`, since round 23's A9 keeps sync-stops.log.
 
 **The person's kinds name a state folder that is not a folder** (A2, A6, A21, A32, A80, ruling 6; amends §16.160
 Z65). `a state file that is damaged, another account's or not a file, a state folder that is not a folder, or a
@@ -28369,6 +28375,8 @@ state file or folder that an ACL, a privacy setting, a folder above it or a read
 words, in one commit in `doctor.PERSONS_KINDS`, `setup_report._PERSONS_KINDS_COPY`, install.sh's `PERSONS_FAILS`
 and its header list, the prompt's step 2 list and the test literals (tests/test_cli.py's included), which the
 equality pins hold together.
+Amended 2026-10-23, §16.173 B3: the kinds read `a state file that is damaged, missing after earlier syncs, another account's
+or not a file, ...` (round 24 ruling 7, lane B's words).
 
 **Comment and test hygiene** (A61, A51). `state_not_a_file`'s comment quoted `cannot be opened: Is a directory`,
 which init no longer prints since Z51; it quotes `<db> is a folder, not the state file` and keeps the old words as
@@ -28893,6 +28901,30 @@ with no side file or only one, init stops on creating it, and `state-access` sta
 SN-shm-0500, SN-wal-link, SW, SW-bare and SW-wal cases of
 `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`, and, with the real agentsync,
 `test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it`.
+
+**Setup prompt v33** (B1, B8, B22, B40, B50, B60, B79, B96 and B17; ruling 9, one build, and lane B's words for
+B17; amends §16.166 A36 and §16.160 Z38). Version 33 everywhere the bump list names it (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`,
+`PROMPT_VERSION` and its docstrings, the form's placeholder, the version pins in tests/test_install_oneshot.py and
+tests/test_setup_report.py, setup-feedback's version mentions and its row K57). v32's step 3 told the agent to log a
+sync that stopped "(unlike step 2's install.sh, no record of a sync is kept for the report)", while round 23's A9
+(lane B) writes sync-stops.log for such a stop, so the report counted one stop twice. The record holds neither the
+chmod nor every stop (a second `skipped: lock held`, a run with no setup folder, NO_NEXT_HINT), and an unfixed or
+unmeasured stop reads "fully one command" without the agent's line, so the instruction stays (dropping it makes
+things worse, the verifiers of B22, B40 and B60) and only its reason changes: `(agentsync records a sync that stopped
+on its state file, but not the chmod you ran or every stop; the report pairs your line with its record)`. Pairing the
+two one to one is lane RA's (§16.171). Lane B's B17: status's [FAIL] fix that is the person's said only `(step 2)
+stays mine`; it reads `(its NEXT: says it is not a step for the agent) stays mine: as in step 2, log the sync that
+stopped as a step 3 error with its exit code, show me that [FAIL] line and go to the report; do not run the sync
+again.` Prompt words from other lanes: lane B's (B17 and the kind below); no other lane sent any. Tests:
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_step3_gives_the_agent_the_same_chmod`
+(`STEP3_STATE_CHMOD_IS_YOURS`, `STEP3_PERSONS_FAIL`) and `test_readme_step3_runs_the_loop_then_the_report`
+(`STATUS_NEXT`).
+
+**The person's kinds name a lost manifest** (B3, rulings 6 and 7; amends §16.166 A2). Ruling 7's new kind joins the
+person's kinds in the v33 commit: `a state file that is damaged, missing after earlier syncs, another account's or
+not a file, ...` (lane B's words) in `doctor.PERSONS_KINDS`, `setup_report._PERSONS_KINDS_COPY`, install.sh's
+`PERSONS_FAILS` and its header, the prompt's step 2 list and the test literals, which the equality pins hold
+together.
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 

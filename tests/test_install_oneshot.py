@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v32) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v33) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -460,11 +460,11 @@ def test_a_timed_out_install_run_leaves_none_of_its_processes_running(tmp_path: 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
     """README step 1: "If the --version inside step 1's one command does not end with
-    "setup-prompt-compat 32", ... stop"."""
+    "setup-prompt-compat 33", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 32" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 33" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -931,11 +931,11 @@ PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu", "configured", "not-abso
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
     "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
-    "docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, a "
-    "state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder "
-    "above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a "
-    "native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once "
-    "fixed, "
+    "docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another "
+    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
+    "privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, "
+    "Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go "
+    "on to the report; once fixed, "
 )
 
 

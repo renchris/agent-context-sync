@@ -607,7 +607,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (32, "26aed725e49bf1907dba82c48f98819056221c226c1ad8c1ea930dce0ebb8685")
+PROMPT = (33, "6ce03efb3aed3701142cb994f5ce675a5a464c4074c2dab1e1d4fe53f5f36256")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -843,11 +843,15 @@ never checked."""
 
 STATUS_NEXT = (
     f"`{AGENTSYNC} status` prints the same NEXT: line without syncing, unless one of its checks FAILs: then"
-    " it exits 1, its NEXT: names that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in"
-    " comes first, as in a sync's NEXT, and a [FAIL] fix that is mine (step 2) stays mine."
+    " it exits 1, its NEXT: names that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in "
+    "comes first, as in a sync's NEXT, and a [FAIL] fix that is mine (its NEXT: says it is not a step for "
+    "the agent) stays mine: as in step 2, log the sync that stopped as a step 3 error with its exit code, "
+    "show me that [FAIL] line and go to the report; do not run the sync again."
 )
 """Step 3's sentence on status, since v23 (B13 round 14 Q2; lane B's words for its Q1, Q9, Q33): a sync's NEXT
 does not stop at a failing check, status's does, and a person's fix stays the person's, as step 2 says.
+Since v33 it says how to know one (its NEXT: says so) and what to do: log the sync that stopped, show the
+line and go to the report (B13 round 24 B17, lane B's words: the agent ran the sync again).
 Since v24 it names the steps rule 1 gives first, a FAIL or not (B13 round 15 S60): with the skill copy
 missing or out of date, or a Graph source signed out, status's NEXT is that step, as a sync's is
 (``loop.next_step``; :func:`test_status_next_names_rule_1s_own_steps_before_a_fail`)."""
@@ -3069,12 +3073,13 @@ FAIL_IS_MINE = (
     "A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]] block or path, a [convert] "
     "line or a [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, "
     "rename or sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to "
-    "replace or remove, a docs-repo remote to remove or allow, a state file that is damaged, another "
-    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
-    "privacy setting, a folder above it or a read-only volume refuses) is mine too: show it to me and do not "
-    "make that edit or run its command. Otherwise, re-running the install.sh command its fix names is yours, "
-    "once, even when the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays "
-    "mine: if the same [FAIL] line comes back after it, show it to me, log it and go to step 3's report."
+    "replace or remove, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
+    "earlier syncs, another account's or not a file, a state folder that is not a folder, or a state file or "
+    "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses) is mine too: "
+    "show it to me and do not make that edit or run its command. Otherwise, re-running the install.sh "
+    "command its fix names is yours, once, even when the fix goes on to name a [convert] edit for me (the "
+    "bundled pandoc's), which stays mine: if the same [FAIL] line comes back after it, show it to me, log it "
+    "and go to step 3's report."
 )
 """Step 2's words, since v22, on whose a [FAIL] line's fix is (B13 round 13 O11, O30): v21 named only [warn]
 and WAITING ON YOU: lines as the person's, so a renamed folder's "fix path in [[source]]" read as the agent's
@@ -3113,16 +3118,27 @@ STEP3_STATE_CHMOD_IS_YOURS = (
     "A chmod 600 or chmod 700 that a [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix"
     " of agentsync's own state folder or a file in it is yours here too, once each in this step, as in step"
     " 2: run it as written, then the sync again. Log the sync that stopped as a step 3 error with its exit"
-    " code and the chmod you ran (unlike step 2's install.sh, no record of a sync is kept for the report). If"
-    " the sync stops on a chmod you already ran, show me, log it as a step 3 error and go to the report. A"
-    " sudo or a chown stays mine."
+    " code and the chmod you ran (agentsync records a sync that stopped on its state file, but not the chmod"
+    " you ran or every stop; the report pairs your line with its record). If the sync stops on a chmod you"
+    " already ran, show me, log it as a step 3 error and go to the report. A sudo or a chown stays mine."
 )
 """Step 3's words, since v31, for the same chmod when a sync, then status, stops on it (B13 round 22 Z38):
 v30 named it only in step 2, which ends in "the same install.sh command again", so step 3 had neither the
 "once" bound nor what to run after it. "Once each in this step", so a chmod spent in step 2 does not use up
-step 3's. Since v32 (B13 round 23 A36) the sync that stopped is logged as a step 3 error: no record of a sync
-is kept for the report, which said "fully one command, 0 error" over it; the report reads that error as a
-turn (worked with help)."""
+step 3's. Since v32 (B13 round 23 A36) the sync that stopped is logged as a step 3 error: v32 said no
+record of a sync is kept for the report, which said "fully one command, 0 error" over it; the report reads
+that error as a turn (worked with help). Round 23's A9 (lane B) then kept one, sync-stops.log, so v33 keeps
+the instruction to log and corrects only its reason (round 24 ruling 9: B1, B8, B22, B40, B50, B60, B79,
+B96): the record holds neither the chmod nor every stop (a second "skipped: lock held", a run with no setup
+folder), and the report pairs the agent's line with it (lane RA)."""
+
+STEP3_PERSONS_FAIL = (
+    "(its NEXT: says it is not a step for the agent) stays mine: as in step 2, log the sync that stopped as a"
+    " step 3 error with its exit code, show me that [FAIL] line and go to the report; do not run the sync"
+    " again."
+)
+"""Step 3's words, since v33, for a status [FAIL] whose fix is the person's (B13 round 24 B17, lane B's words:
+"(step 2) stays mine" said whose, but not what to log or where to go, and the agent ran the sync again)."""
 
 LOCAL_WORK_TOLD = (
     "if the report's NEXT: line says bring-back.md does not carry the commits of some local-work branches,"
@@ -7756,7 +7772,7 @@ def test_readme_step3_gives_the_agent_the_same_chmod() -> None:
     step3 = " ".join(_prompt_steps()[3].split())
     assert step3.count(STEP3_STATE_CHMOD_IS_YOURS) == 1
     assert (
-        f"and a [FAIL] fix that is mine (step 2) stays mine. {STEP3_STATE_CHMOD_IS_YOURS} The steps" in step3
+        f"and a [FAIL] fix that is mine {STEP3_PERSONS_FAIL} {STEP3_STATE_CHMOD_IS_YOURS} The steps" in step3
     )
 
 

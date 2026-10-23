@@ -318,7 +318,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v32). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v33). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -356,7 +356,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v32, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v33, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -419,11 +419,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 32", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 33", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
    report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
    connect to" message, but keeps a public host such as github.com; the role rule is for your own words), as a step 1
-   error, starting its what-text with prompt v32, <agent> and a colon (the same words as in step 1's command; write
+   error, starting its what-text with prompt v33, <agent> and a colon (the same words as in step 1's command; write
    no colon inside <agent>), and go to the report. If it exists and its output does not end so (or the command
    fails), that stop has no report either: tell me that the code on this Mac is not this prompt's version and that
    setup stopped before it could be updated, and
@@ -433,9 +433,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 32", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v32, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v32, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 33", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v33, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v33, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -506,9 +506,9 @@ the name in fix-request.md.
    commands nor its sources.toml edits. A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]]
    block or path, a [convert] line or a [governance] value) or policy.toml (a [policy] value), asks me to sign in, or
    to put back, rename or sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to
-   replace or remove, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a
-   file, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder
-   above it or a read-only volume refuses) is
+   replace or remove, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier
+   syncs, another account's or not a file, a state folder that is not a folder, or a state file or folder that an
+   ACL, a privacy setting, a folder above it or a read-only volume refuses) is
    mine too: show it to me and do not make that edit or run its command. Otherwise, re-running the install.sh command
    its fix names is yours, once, even when the fix goes on to name a [convert] edit for me (the bundled pandoc's),
    which stays mine: if
@@ -539,12 +539,15 @@ the name in fix-request.md.
    questions to write, usually followed by `~/.local/bin/agentsync sync` again. `~/.local/bin/agentsync status`
    prints the same NEXT: line without syncing, unless one of its checks FAILs: then it exits 1, its NEXT: names
    that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's NEXT, and a
-   [FAIL] fix that is mine (step 2) stays mine. A chmod 600 or chmod 700 that a [FAIL] line (state_dir, lock,
+   [FAIL] fix that is mine (its NEXT: says it is not a step for the agent) stays mine: as in step 2, log the sync
+   that stopped as a step 3 error with its exit code, show me that [FAIL] line and go to the report; do not run the
+   sync again. A chmod 600 or chmod 700 that a [FAIL] line (state_dir, lock,
    heartbeat or governance) names as the fix of agentsync's own state folder or a file in it is yours here too, once
    each in this step, as in step 2: run it as written, then the sync again. Log the sync that stopped as a step 3
-   error with its exit code and the chmod you ran (unlike step 2's install.sh, no record of a sync is kept for the
-   report). If the sync stops on a chmod you already ran, show me, log it as a step 3 error and go to the report. A
-   sudo or a chown stays mine. The steps a NEXT: line
+   error with its exit code and the chmod you ran (agentsync records a sync that stopped on its state file, but not
+   the chmod you ran or every stop; the report pairs your line with its record). If the sync stops on a chmod you
+   already ran, show me, log it as a step 3 error and go to the report. A sudo or a chown stays mine. The steps a
+   NEXT: line
    refers to (the
    agentsync-docs skill, its "Baseline questions" section and the page rules) are written out in
    ~/agent-context/docs/AGENTS.md (CLAUDE.md for Claude Code): read it, and write every page and question file
