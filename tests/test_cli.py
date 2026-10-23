@@ -2998,7 +2998,7 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
         "state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a "
         "folder above it or a read-only volume refuses"
     )
-    assert kind in cli.PERSONS_KINDS
+    assert kind in doctor.PERSONS_KINDS
     root = tmp_path / "state"
     root.mkdir()
     for fix in (
@@ -6250,9 +6250,10 @@ def test_a_folder_where_the_manifest_belongs_is_not_judged_for_time_machine(
     ],
 )
 def test_statuss_next_for_a_persons_fail_names_no_catalog_of_kinds(fix: str) -> None:
-    """B13 round 23 A31: status's NEXT for a person's FAIL listed all of PERSONS_KINDS (about 530 characters),
-    not the one kind its [FAIL] line names. The line below states the fix; the NEXT says whose it is, and
-    keeps "not a step for the agent", which the setup report counts a person's stop by."""
+    """B13 round 23 A31: status's NEXT for a person's FAIL was a sentence of about 540 characters that listed
+    all of doctor.PERSONS_KINDS, not the one kind its [FAIL] line names (round 24 B68). The line below states
+    the fix; the NEXT says whose it is, and keeps "not a step for the agent", which the setup report counts a
+    person's stop by."""
     step = cli._fail_step(doctor.CheckResult("state_dir", False, "x", doctor.Severity.ERROR, fix=fix))
     assert doctor.is_persons_fix(fix)
     assert step == (

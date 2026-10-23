@@ -4186,7 +4186,7 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     a state file that cannot be read (``PERSONS_FIX_RE``'s "the person "), so a run stopped on one of those
     was described by kinds that left it out. The clause reads doctor's one list, which cli's NEXT and
     install.sh's PERSONS_FAILS name too; the report's copy for a broken doctor is the same words."""
-    assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS == cli.PERSONS_KINDS
+    assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS
     head = "# run=20261019T100000Z-4242 2026-10-19T10:00:00Z install.sh"
     run = [
         head,

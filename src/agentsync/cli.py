@@ -1513,20 +1513,14 @@ class _Status:
         return [*self.loop, self.line, *self.check_lines(), *self.detail]
 
 
-# The kinds of fix ``doctor.is_persons_fix`` reads as the person's, in the words of install.sh's
-# PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9). It lives beside the rule in doctor,
-# where the setup report reads it too (round 17 U11).
-PERSONS_KINDS = doctor.PERSONS_KINDS
-
-
 def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
     keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
-    fix that is the person's (``doctor.is_persons_fix``: the kinds :data:`PERSONS_KINDS` names; a third
+    fix that is the person's (``doctor.is_persons_fix``: the kinds ``doctor.PERSONS_KINDS`` names; a third
     hand-kept list went stale, B13 round 17 U69) is named as theirs, as install.sh's NEXT names it, not as a
     step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17 U2,
     U16, U11). No catalog of the person's kinds: the [FAIL] line right below states the one fix, and the
-    whole list (about 480 characters) named every kind but that one (B13 round 23 A31). "not a step for the
+    whole list (447 characters) named every kind but that one (B13 round 23 A31). "not a step for the
     agent" stays: the setup report counts a person's stop by it."""
     if doctor.is_persons_fix(result.fix):
         return (
