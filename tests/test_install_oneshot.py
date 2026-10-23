@@ -7984,11 +7984,17 @@ def _acl_deny(path: Path) -> None:
         pytest.skip("no ACL that refuses the owner here")
 
 
+SHUT_OPEN = "; they first open a folder shut to this account, as status names it"
+"""The clause each not-a-file fix of install.sh ends with (B13 round 25 D79's D-L1d): macOS refuses to copy or
+rename a folder this account cannot read, write and search (EACCES), so status's fix (lane B's D72) names the
+chmod 700, or another account's sudo chown, to run first; install.sh names no path, so it defers to it."""
+
 STATE_NOTFILE_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or "
     "something else that is not a file (not damage of its contents): fixing that is the person's (keeping a "
     "copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync "
-    "starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+    f"starts a new manifest{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its "
+    "state_dir.manifest line"
 )
 """Step 1's tail for a folder where manifest.sqlite belongs (B13 round 22 Z11), in doctor.MANIFEST_FIX's
 words: the folder goes aside with heartbeat.json, or the next run stops on a lost manifest (round 24 ruling
@@ -7998,8 +8004,10 @@ STATE_NOTFILE_NEXT = (
     "NEXT: agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the "
     "error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
     "line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and "
-    "heartbeat.json with it, so the next sync starts a new manifest), not a step for the agent, so show them "
-    "the error and go on to the report; once it is fixed, the next run is: {rerun}"
+    "heartbeat.json with it, so the next sync starts a new manifest"
+    + SHUT_OPEN
+    + "), not a step for the agent, "
+    "so show them the error and go on to the report; once it is fixed, the next run is: {rerun}"
 )
 """Step 2's NEXT for it, at the config step init stops on (B13 round 22 Z11; round 24 ruling 8)."""
 
@@ -8026,6 +8034,33 @@ STATE_LOST_NEXT = (
     "next run is: {rerun}"
 )
 """Step 2's NEXT for it, where fail's generic "fix the error above" read as the agent's step (ruling 7)."""
+
+LOST_LINK_FIX = (
+    "fixing {it} the person's (they remove the link first; then they restore the file from a copy they "
+    "trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest)"
+)
+"""The person's fix for a lost manifest that is a symlink into a folder that does not exist or refuses a
+write, as status's (lane B's round 25 D71): heartbeat.json aside alone leaves a link no sync can create the
+manifest through (B13 round 25 D79: D-L1c)."""
+
+STATE_LOST_LINK_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink into a folder "
+    "that does not exist or refuses a write, which is missing though heartbeat.json beside it records "
+    "earlier passes (not damage, not a mode): "
+    + LOST_LINK_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for it (D79)."""
+
+STATE_LOST_LINK_NEXT = (
+    "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
+    "refuses a write, and is missing, though heartbeat.json beside it records earlier passes (the error "
+    "above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+    + LOST_LINK_FIX.format(it="it is")
+    + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
+    "next run is: {rerun}"
+)
+"""Step 2's NEXT for it (D79)."""
 
 
 SIDE_STOPS = (
@@ -8126,7 +8161,7 @@ STATE_OPEN_TAIL = {
         "; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else "
         "that is not a file (not damage), at its config step when it is the -wal or this account cannot read "
         "it, and at its status step otherwise: fixing that is the person's (keeping a copy, they move it "
-        "aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
+        f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
     "state-dir-write": (
         "; step 2 stops at its status step on agentsync's state folder, which this account can open but not "
@@ -8172,6 +8207,7 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "LM-none",
         "LM-link",
         "LM-link-live",
+        "LM-link-gone",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -8247,6 +8283,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM-older": "state-lost",
         "LM-wal": "state-lost",
         "LM-link": "state-lost",
+        "LM-link-gone": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -8312,6 +8349,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             # round 24 B64; one to the manifest moved elsewhere is not
             if state == "LM-link":
                 db.symlink_to(db.with_name("gone.sqlite"))
+            elif state == "LM-link-gone":  # round 25 D79 (D-L1c): into a folder that does not exist
+                db.symlink_to(db.parent / "gone" / "manifest.sqlite")
             elif state == "LM-link-live":
                 db.with_name("moved.sqlite").write_bytes(moved)
                 db.symlink_to(db.with_name("moved.sqlite"))
@@ -8360,7 +8399,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
-    assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
+    tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
+    assert last_line(cp).endswith(tail), last_line(cp)
     assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
     assert "damaged" not in last_line(cp) and "cannot be read" not in last_line(cp), last_line(cp)
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
@@ -9738,6 +9778,39 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+def test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_words_say(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 25 D79 (D-L1c), with the real agentsync: a lost manifest that is a symlink into a folder that
+    does not exist got ruling 7's words, and moving heartbeat.json aside as they say left a link no sync can
+    create the manifest through: a second stop. Step 1's tail and step 2's NEXT say to remove the link first,
+    as status's fix does (lane B's D71); following them, the link removed and heartbeat.json aside, ends 0."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    db.symlink_to(db.parent / "gone" / "manifest.sqlite")
+    listed = install_sh(env, "--list-folders")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_LOST_LINK_TAIL), last_line(listed)
+    assert install_log(env)[-2].endswith(" config_err=state-lost"), install_log(env)[-2]
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_LINK_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(
+        lost
+    )
+    db.unlink()  # "they remove the link first"
+    heartbeat = db.with_name("heartbeat.json")
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # "then ... move heartbeat.json aside"
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
 def _inlined_lost() -> Callable[[Path], bool]:
     """Step 1's lost(), the copy of manifest.manifest_lost that config_errors' probe runs, from install.sh."""
     script = INSTALL_SH.read_text(encoding="utf-8")
@@ -9837,8 +9910,8 @@ def test_a_refused_remote_beside_a_lost_manifest_gives_the_lost_manifests_next_f
 SIDE_NOTFILE_NEXT = (
     "NEXT: the -wal or -shm of agentsync's state file is a folder or something else that is not a file "
     "(~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the "
-    "person's (keeping a copy, they move it aside), not a step for the agent, so show them the error and go "
-    "on to the report; once it is fixed, the next run is: {rerun}"
+    f"person's (keeping a copy, they move it aside{SHUT_OPEN}), not a step for the agent, so show them the "
+    "error and go on to the report; once it is fixed, the next run is: {rerun}"
 )
 """Step 2's NEXT for a folder where the -wal or -shm belongs, at the config step (round 24 B52)."""
 

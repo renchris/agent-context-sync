@@ -29781,6 +29781,25 @@ is cut from the report's own text too. Tests:
 `test_a_hold_word_the_report_shows_only_on_the_cut_hold_line_keeps_the_report_public`, and B51's review test, now
 `test_a_hold_value_never_cuts_a_short_word_from_the_shell_report` (`Földer` is cut).
 
+**Lead note 1's install.sh residuals** (D79: D-L1c, D-L1d and D-L1h, the install.sh halves; the rest of D-L1a to
+D-L1j is lanes RA's and B's). D-L1h is D76 above, and the step 1 and step 2 probes reading a dangling link as lost
+are D33. Two words follow lane B's doctor fixes. (1) D-L1c: a lost manifest that is a symlink into a folder that does
+not exist or refuses a write (`gone_link` in `config_errors`, which adds a `lost-link` line read apart from the
+words, as a `role-` line is; `state_lost` prints 2 and sets `STATE_LOST_LINK`) gets step 1's tail and step 2's NEXT
+`fixing ... is the person's (they remove the link first; then they restore the file from a copy they trust, or move
+heartbeat.json aside, keeping a copy, so the next sync starts a new manifest)`, as doctor's state_dir.manifest fix
+names `rm` first (lane B's D71): heartbeat.json moved aside alone leaves a link no sync can create the manifest
+through, a second stop. A link into a writable folder keeps ruling 7's words, which work there. `config_err` stays
+`state-lost`. (2) D-L1d: macOS refuses to copy or rename a folder this account cannot read, write and search
+(EACCES), so every not-a-file fix of install.sh (step 1's `state-notfile` and `state-side-notfile` tails, step 2's
+two NEXTs; §16.173's B52 paragraph quotes the round 24 `state-side-notfile` tail, before this clause) ends `; they
+first open a folder shut to this account, as status names it`: install.sh names no path, and
+status's fix (lane B's D72) names the `chmod 700`, or another account's `sudo chown`, to run first. The guide quotes
+them. Tests: `test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_words_say` (the real
+agentsync: the link removed and heartbeat.json aside, as the words say, ends 0), the step 1 table's `LM-link-gone`,
+and the not-a-file tests through `SHUT_OPEN` (`STATE_NOTFILE_TAIL`, `STATE_NOTFILE_NEXT`, `SIDE_NOTFILE_NEXT`,
+`STATE_OPEN_TAIL["state-side-notfile"]`).
+
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one
