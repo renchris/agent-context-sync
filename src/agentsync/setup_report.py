@@ -2772,7 +2772,10 @@ def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str]) -> str:
 _SKIPPED_RE = re.compile(r"\bskipped: lock held\b", re.IGNORECASE)
 _CHMOD_RE = re.compile(r"\bchmod\b", re.IGNORECASE)
 _CHMOD_MODE_RE = re.compile(r"\bchmod\s+(?:-[A-Za-z]+\s+)*0?([0-7]{3})\b", re.IGNORECASE)
-_EXIT_RE = re.compile(r"\b(?:exited|exit(?: code| status)?|rc)\s*[=:]?\s*([1-9]\d*)\b", re.IGNORECASE)
+_EXIT_RE = re.compile(
+    r"\b(?:exited|exit(?: code| status)?|rc)(?: with(?: exit)? (?:code|status))?\s*[=:]?\s*([1-9]\d*)\b",
+    re.IGNORECASE,
+)
 
 
 def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
@@ -9945,11 +9948,25 @@ def _measured_stops(r: _Run, lo: datetime, hi: datetime) -> list[_SyncStop]:
         if os.access(hb, os.R_OK | os.W_OK):
             beat = datetime.fromtimestamp(hb.stat().st_mtime, UTC)
     stops = _read_sync_stops(r.install_log, lo, hi, starts, beat)
-    if starts is None:  # B13 round 25 D4: the report's own read says why, when the manifest is missing now
-        with contextlib.suppress(OSError):
-            if not os.path.lexists(expand(r.config.state_paths.db)):
-                stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
+    if starts is None and _manifest_missing(expand(r.config.state_paths.db)):  # B13 round 25 D4
+        stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
     return stops
+
+
+def _manifest_missing(db: Path) -> bool:
+    """Whether nothing is at ``db`` in a state folder this account can search (B13 round 25 D4): an lstat
+    that finds no file, never one a shut folder or a file where a folder belongs refuses (``lexists`` says
+    False for those too, and the stop's own folder words are then the right ones). False on any doubt."""
+    try:
+        db.lstat()
+    except FileNotFoundError:
+        try:
+            return stat.S_ISDIR(db.parent.stat().st_mode) and not _state_folder_shut(db)
+        except OSError:
+            return False
+    except OSError:
+        return False
+    return False
 
 
 def _late_stops(r: _Run, index: int) -> list[tuple[_SyncStop, FrictionEvent | None]]:
@@ -10039,7 +10056,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         fr.attempts[index],
         runs,
         doctor_fails=_doctor_fails(r, runs) if latest else (),
-        config_cause=_outcome_cause(r, runs),
+        config_cause=_outcome_cause(r, runs, latest=latest),
         sync_stops=_step3_stops(r, index),
         persons_fails=_persons_fails(r, runs) if latest else (),
     )
@@ -12734,12 +12751,13 @@ def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
     return "after the file's mode was fixed"
 
 
-def _outcome_cause(r: _Run, runs: Sequence[InstallRun]) -> str | None:
+def _outcome_cause(r: _Run, runs: Sequence[InstallRun], *, latest: bool = True) -> str | None:
     """What the last install run's config step met, when it failed there on the state
     (:func:`_state_open_words` with no bracket), for :func:`compute_outcome` (B13 round 22 Z6: it said only
     "its config step failed with rc 1" while install.sh named the cause and that the fix is the person's).
     B13 round 25 ruling 12 (D9): a run whose status step reported [FAIL] lines while the manifest's -wal or
-    -shm is not a file (a folder at -shm lets init run) met that side file, by the report's own stat. None
+    -shm is not a file (a folder at -shm lets init run) met that side file, by the report's own stat: only for
+    the latest attempt (``latest``), the one that shares today's state, as its doctor FAILs are. None
     otherwise."""
     installs = install_runs_only(runs)
     if not installs or installs[-1].rc in (0, None):
@@ -12748,6 +12766,7 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun]) -> str | None:
         words = _state_open_words(r, installs[-1], bracket=False)
         if (
             words is None
+            and latest
             and r.config is not None
             and _status_fail_words(installs[-1]).startswith(": its status step reported")
         ):

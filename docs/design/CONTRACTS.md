@@ -29699,6 +29699,14 @@ manifest yet (no sync has run)`. `_NoManifestError` carries the count (`_Mirror.
 once in the OCR part (`_state_wide` takes it); an empty mirror keeps `no sync has run`. Test:
 `test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them`.
 
+**The lane's review** (a fresh reviewer over the branch, two defects and one gap, each fixed). D4's "the state file
+is missing" keyed on `os.path.lexists`, which says False for a manifest in a 0000 state folder or under a file where
+the folder belongs, so a state-folder stop read "missing" over its own folder words: `_manifest_missing` takes only
+an lstat that finds no file in a folder this account can search. D9's status-step side cause read today's files for
+every attempt, so an earlier attempt's status FAIL was blamed on a side file that came later: `_outcome_cause` takes
+it only for the latest attempt (`latest`), as `doctor_fails` and `persons_fails` are. And `_claims` reads "exited
+with code 1" and "with exit status 1" as a non-zero exit too. Tests: the D4, ruling 12 and ruling 11 tests above.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

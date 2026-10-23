@@ -5338,6 +5338,15 @@ def test_every_step_3_stop_claims_the_agents_line_that_names_its_fix(fake_mac: d
     assert _items_of(summary)[:2] == [_FOLDER_ITEM, _LOCK_ITEM_54 + " (F4: the agent's account of it)"], (
         summary
     )
+    # the review: "exited with code 1" names the exit too, for a person's stop
+    person = setup_report._SyncStop(datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "manifest", "person", None)
+    for what, claimed in (
+        ("agentsync sync exited with code 1: its state file is missing", True),
+        ("agentsync sync failed with exit status 1", True),
+        ("agentsync sync exited 1; ran chmod 600 x", False),
+    ):
+        event = setup_report.FrictionEvent(9, None, 3, "error", what, "-")
+        assert setup_report._claims(person, event) is claimed, what
     # D75: a line in the second the next stop was recorded in, or seconds after it, is the earlier stop's
     for first, second in (("41", "43"), ("45", "50")):
         errors = _step3_error(first, _LOCK_LINE) + _step3_error(second, _LOCK_LINE)
@@ -13951,6 +13960,13 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
         "(computed: install.sh exited 1 at its status step on the state file's -shm, which is a folder, "
         "not a file: the person's to fix)"
     ), outcome
+    shm.mkdir(mode=0o700)
+    try:  # the review: an earlier attempt does not share today's state, so it is never blamed on it
+        run = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        assert setup_report._outcome_cause(run, run.install_runs) is not None
+        assert setup_report._outcome_cause(run, run.install_runs, latest=False) is None
+    finally:
+        shm.rmdir()
     _rc, text, _ = report(tmp_path, cfg)  # with no side file there, the status step's own words
     assert "its status step reported [FAIL] lines (rc 1)" in _line(section(text, "Summary"), "- **outcome: ")
     # a sync that stopped on it (lane B's record) says the side file's words when not measured
@@ -14033,6 +14049,16 @@ def test_a_stop_not_measured_because_the_manifest_is_gone_says_so(fake_mac: dict
     summary = summary_of(fake_mac)[1]
     items = _items_of(summary)
     assert len(items) == 2 and all("not measured (the state file is missing)" in ln for ln in items), items
+    # the review: a state folder this account cannot search, or a file where it belongs, is no missing file
+    assert setup_report._manifest_missing(db)
+    db.parent.chmod(0)
+    try:
+        assert not setup_report._manifest_missing(db)
+    finally:
+        db.parent.chmod(0o700)
+    blocker = db.parent.parent / "blocker"
+    blocker.write_text("x\n", encoding="utf-8")
+    assert not setup_report._manifest_missing(blocker / "agentsync" / db.name)
 
 
 @pytest.mark.usefixtures("clean_doctor")
