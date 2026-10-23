@@ -24639,6 +24639,9 @@ which builds nothing; a plain run keeps the folders already synced`, no bracket 
 Amended 2026-10-22, §16.175 B42: "any other failed build keeps no fix" now has one exception, a build whose
 `swift package resolve` (the FluidAudio fetch) failed: its fix is the re-run and where to look if it fails again
 (§16.175).
+Amended 2026-10-23, §16.181 D85: and a second, a build step a signal stopped (its reason ends in the marker's
+retry clause, for the OCR, media and speech helpers alike): its fix is the plain re-run, with no time limit and no
+"less busy" (§16.181).
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -29308,6 +29311,17 @@ the closing quote of the span around it": at the first apostrophe, which leaks t
 An unquoted URL (`Failed to clone repository https://...`) still runs to the end of the line. Tests: three cases in
 `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (a fetch, a folder with an apostrophe
 beside a quoted URL, SwiftPM 6.2's own `cannot change to '<path>'` shape), each scrubbed again unchanged.
+Amended 2026-10-23, §16.181 D51: a quoted URL closes only at a quote followed by a space or the line's end,
+perhaps after one stop or colon: a URL may hold an apostrophe (`Contoso's%20Drive`, `Jane'.git`), and the first
+one let the rest of the URL through; such a URL runs to the end of the line as a path again (§16.181).
+Amended 2026-10-23, §16.181 D84: an unquoted URL but a `file://` one is now `<url>` where a colon and a space
+follow it or the line ends, so `Failed to clone repository <url>: <cause>` keeps its cause; a `file://` one in any
+case, and one that runs into a space, still run to the end of the line as a path. The command of a `Git command '...' failed:` clause runs to
+its own `' failed:`, not the line's last, so two on one line keep both causes (§16.181).
+Amended 2026-10-23, §16.181 D50: on a first fetch SwiftPM 6.2.4 prints only the `cannot change to '<path>'` shape
+for an unreachable host (a host whose DNS fails and a refused port, measured); the quoted-URL shapes come from a
+later fetch over an existing clone, not "the likely transient cause". That shape's reason now reads `swift package
+resolve failed (exit N): FluidAudio could not be fetched (the clone did not complete)` (§16.181).
 
 **A speech build whose FluidAudio fetch failed has the re-run as its fix (B42; `agentsync.convert.speech`,
 `agentsync.ops.doctor`; dated line at §16.137 V5).** Doctor's `[warn] speech` for a `.failed` marker reading
@@ -29326,6 +29340,13 @@ tools keep theirs. The setup report's bucket stays keyed on `BUILD_TIMED_OUT` al
 `test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix`, and
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`, whose
 no-fix case is a `swift build` failure now.
+Amended 2026-10-23, §16.181 D53, D65: the fix reads `run <install.sh> again; it fetches FluidAudio and the
+library it links from GitHub again, and if this line comes back, check that this Mac reaches github.com, or the
+SwiftPM mirror it uses for FluidAudio, and release-assets.githubusercontent.com (behind a proxy: HTTPS_PROXY set in
+the shell)`: resolve also downloads NemoTextProcessing from GitHub's release host, and the reason's URL is `<url>`
+(§16.181).
+Amended 2026-10-23, §16.181 D85: a build step a signal stopped no longer keeps no fix: its fix is the plain re-run
+(§16.181).
 
 **The timing marker names both kinds of test it holds (B72; `pyproject.toml`, `tests/conftest.py`; dated line at
 §16.54 Q59).** The registered `timing` marker and conftest's hook said a timing test "asserts a time bound that is
@@ -29499,7 +29520,91 @@ Reserved for round 25 lane B of B13.
 
 ### 16.181 Round 25: the speech and OCR reasons and the timing pin (2026-10-23, wave B13 round 25 lane E)
 
-Reserved for round 25 lane E of B13.
+Round 25's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 25"; specs `round25/items/D<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-23, §16.181 D<n>`.
+
+**A quoted URL closes at a quote that ends it (D51; `agentsync.convert.ocr`; dated line at §16.175 B39).** B39's
+quoted-URL rule ran to the first quote character, and a URL may hold an apostrophe unencoded (RFC 3986; NSURL leaves
+it so): `'https://git.contoso.com/Jane's-team/Kit.git/'` gave `'<url>'s-team/Kit.git/'`, the rest of the URL kept
+(a regression from c93fcd96, which gave `'https:<path>`). The closing quote is now one followed by a space or the
+line's end, perhaps after one stop or colon (`[:;,.)\]]`); a URL whose apostrophe is followed by anything else runs
+to the end of the line as a path, as before B39. Not the finder's "a closing quote no word character follows":
+`Jane'.git`, `a'@b` and `O'(Brien)` still leaked. Tests: two cases in
+`test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (an apostrophe then a letter, then a stop),
+each scrubbed again unchanged.
+
+**An unquoted URL is `<url>`, and two Git commands keep both causes (D84; `agentsync.convert.ocr`; dated line at
+§16.175 B39).** `Failed to clone repository https://github.com/Contoso/Kit.git: fatal: ...` gave `Failed to clone
+repository https:<path>`, its cause gone with the URL, and of two `Git command '...' failed:` clauses on one line the
+greedy command took the first cause. An unquoted URL but a `file://` one (in any case: a scheme is) is now
+`<url>`, credentials included, where a colon and a space follow it (`<url>: <cause>`) or the line ends, perhaps
+after a stop. One that runs into a space is a path to the end of the line, as before: a raw space may be part of
+it (`ssh://git@git.contoso.com/Users/kim/Contoso Repos/Kit.git: fatal` would otherwise leak `Repos/Kit.git`). A
+quote or a slash before it makes it no such URL, so a quoted one that holds a space
+(`'https://contoso.sharepoint.com/sites/Contoso Files/x'`) stays a path rather than leak `Files/x'`. The command
+runs to its own `' failed:`, which a folder's apostrophe is not followed by. Not the finder's "every scheme:// run
+up to a space": a `file:///Users/kim/Contoso Drive/x.txt` would leak `Drive/x.txt`. Not the verifier's end "at a
+space, or a stop or colon before one": a lane review found it leaked the tail of an unquoted URL with a raw space
+and of `FILE://`, which the code before it hid. Tests: seven cases in
+`test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (a clone line, a URL with a user and token,
+a spaced `file://` URL and one in capitals, an unquoted URL that runs into a space, a quoted URL with a space, two
+Git commands).
+
+**A clone that never happened says the fetch failed (D50; `agentsync.convert.speech`; dated line at §16.175
+B39).** SwiftPM 6.2.4's only stderr for a FluidAudio host it cannot reach (a DNS failure and a refused port,
+measured) is git asked about a cache folder no clone made: `error: Git command 'git -C <cache>/repositories/<x>
+config --get remote.origin.url' failed: fatal: cannot change to '<cache>/repositories/<x>': No such file or
+directory`, which after B39 read as a missing folder in install.sh's `speech:` line and the report's Installer row.
+`speech._step` reads the resolve step's raw stderr for that shape (`_UNCLONED_RE`) before `ocr._plain` makes the
+command `<command>`, and writes `swift package resolve failed (exit N): FluidAudio could not be fetched (the clone
+did not complete)`: the `RESOLVE_FAILED` head stays, so doctor's fetch fix applies. Not keyed on
+`.build/checkouts/FluidAudio` being absent: a tools-version failure past the clone (`is using Swift tools version
+99.0.0 but the installed version is 6.2.4`, measured) leaves none either, and keeps its own words. Not the
+verifier's "from github.com": `_shared_config` copies the person's SwiftPM mirrors, which may route the clone, so
+the reason names no host and doctor's fix names where to look. Test:
+`test_speech.py::test_a_clone_that_never_happened_says_the_fetch_failed` (the shape, a tools-version failure kept,
+the same line from `git` kept).
+
+**The fetch's fix names every host resolve reaches (D53, D65; `agentsync.ops.doctor`, `agentsync.convert.speech`;
+dated line at §16.175 B42).** One defect from two finders, built once. B42's fix sent the person to github.com
+only, but resolve also downloads NemoTextProcessing (`speech.NEMO_URL`) from GitHub's release host, which a proxy
+allowing only github.com blocks (`docs/deploy/it-request.md`), and a SwiftPM mirror may route FluidAudio's own
+clone; the reason's URL is `<url>`, so the fix is the person's only pointer. It now reads `run <install.sh> again;
+it fetches FluidAudio and the library it links from GitHub again, and if this line comes back, check that this Mac
+reaches github.com, or the SwiftPM mirror it uses for FluidAudio, and release-assets.githubusercontent.com (behind
+a proxy: HTTPS_PROXY set in the shell)`, the hosts read from `speech.FETCH_HOSTS`. The mirror is FluidAudio's
+alone: a mirror routes package URLs, not the binary target's. The proxy clause holds for both: `_seed` fetches the
+library through it first. Test: `test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix`
+(the fix, and each host among `setup_report._PUBLIC_HOSTS`).
+
+**A build step a signal stopped has the re-run as its fix (D85; `agentsync.ops.doctor`; dated lines at §16.137 V5
+and §16.175 B42).** Round 24's B42 point 3, not built then as outside its defect. A reason that ends in
+`skill.HELPER_RETRY_CLAUSE` but starts with no time-out words (`ocr._signal_reason`'s, for `ocr._compile` and
+`speech._step` alike) got no fix, though each install.sh run builds the helper again. `doctor._helper_again_fix`
+keeps the time-out branch first, then gives such a reason the plain re-run, `run <install.sh> again`
+(`AGAIN_UNDER_INSTALL_SH` under install.sh), with no time limit and no "less busy": a signal is no time-out. The
+line drops the clause, so the re-run is said once; missing developer tools keep their fix, an older marker without
+the clause and a `swift build` failure keep none, and the setup report's bucket stays keyed on `BUILD_TIMED_OUT`.
+Test: `test_ops_doctor.py::test_a_helper_build_a_signal_stopped_has_the_re_run_as_its_fix` (OCR, media and speech,
+a SIGKILL and a crash).
+
+**The floor check reads the head its step writes (D54; `agentsync.convert.speech`).** B42 added `speech._FAILED`
+for `_step`'s head, but the FluidAudio floor check still matched a literal `"git merge-base failed (exit "`. The
+step's name is bound once and the check reads `f"{merge_base}{_FAILED}"`, byte-identical today. Test:
+`test_speech.py::test_the_floor_check_reads_the_head_its_step_writes` (with `_FAILED` reworded the floor refusal
+still fires; at the literal it was the raw step error).
+
+**`_helper_again_fix`'s docstring names the other fixes (D55; `agentsync.ops.doctor`).** It said "any other failed
+build keeps no fix" after B42 gave a failed fetch `_resolve_again_fix`'s re-run. It now names that, D85's signal
+case and `_check_speech`'s order, as do `_helper_detail`'s and the three checks' docstrings. Wording only, held by
+the tests above.
+
+**The timing marker's pin reads the threshold (D56; `tests/test_perf.py`).** B72's test pinned "above 4 per core"
+as a literal, so a changed `conftest._TIMING_LOAD_PER_CORE` left the marker's words stale and the test green. It
+builds the words from the constant with `:g` (4.0 is `4`, 4.5 stays `4.5`; `:.0f` would round 4.5 to `4`, the
+drift itself). Measured: with the constant at 4.5 the new test fails and the old one passed. The 4 in this
+document's prose (§16.54 and later) is not pinned. Test:
+`test_perf.py::test_the_timing_marker_names_both_kinds_of_test_it_holds`.
 
 ### 16.182 Round 25: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-23, wave B13 round 25 lane D)
 
