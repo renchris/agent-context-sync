@@ -1641,6 +1641,37 @@ guards), E 5 (the speech helper's reason, the timing marker, the waiting stubs),
 CI time), K 4 (the suite's remaining #! execs: 4,735 by the harvest's census). Lead: B6, B19, B30, B38, B47, B87 (the
 fixture check runs from `<root>/fixture`).
 
+### B13 round 24 landed (2026-10-23)
+
+All seven lanes landed; CI green on `8900fb45` (ci `39953300563`; prompt v33 in `357dc812`). Notes
+`lanes/r24-<lane>.md`, lead notes `round24/lead-notes.md`. 101 of the 102 items are built; B17 is not (status's NEXT
+for a person's FAIL at step 3: lane B measured that a change makes status worse for every other caller, and its
+words went into v33's step 3 instead), and B75 is a wording fix only, as its verifier said. Lane B also built lane
+RA's B16 writer half and lane P's B105 report half; lane RB built B101's shell half for lane RA; lane D's alias half of
+B84 duplicated RB's B68 and was dropped at its rebase. Lane K cut the whole suite's #! execs from 4,762 to 315.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `b1c31b59..63f7b95d`, 4 commits |
+| P | `a37be5dd..7b3bda87`, 6 commits (v33) |
+| RB | `c5a97bfb..54af8be5`, 8 commits |
+| K | `cc66adbb..7ed8f649`, 3 commits |
+| B | `a23be87c..197ab3d4`, 18 commits |
+| D | `4f22ceff..58183bb5`, 5 commits, and `8900fb45` (after RA, whose words its test reads) |
+| RA | `fd810089..625312aa`, 10 commits |
+
+Learnings: trunk stayed green all round, and every lane's last land read back its ci run (round 23's `1031e03e`). The
+load ran 10 to 27 per core; each land took about 40 minutes. The capacity gate turned lanes D and K away once (nine
+sessions mid-turn) and admitted them on the second try; lane RB's `/goal` was not armed (a dialog was open in its
+pane at arm time) and it built and landed from its brief alone. The lead's pane moved from 16 to 134 when its session
+was resumed, so round 24's briefs name `agent-context-sync-134`; its self-recycle was refused twice (a stale draft in
+its input box, then an `/exit` it could not read back), and the lead stayed in this context. Lane RA's lesson: a new
+word in any `setup_report.py` string literal joins `report_words()` and stops a one-word value equal to it from being
+redacted (B55 hit it); round 25's harvest measures it.
+
+Round 25: the round 24 workflow with prompt v33 on this section's landed tip, BASE `c93fcd96` (ids D<n>, since C has
+`§16.11 C15`; outputs `round25/`); scenario C plays the v32 and v31 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
