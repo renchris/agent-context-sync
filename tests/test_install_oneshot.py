@@ -2741,11 +2741,13 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
         assert word not in "\n".join(shown), shown
 
 
-def test_a_hold_value_never_cuts_a_short_or_report_word_from_the_shell_report(tmp_path: Path) -> None:
+def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Path) -> None:
     """B13 round 24 B51 review: a pair holds no TAB, so a value with one also gives its parts, each of 3
-    characters or more: the 2-letter part of "Wingtip<TAB>IT" cut every "it" of the report. And the one-word
-    test reads the value without its accents, as Python's _norm does: "Földer" is the report word "folder",
-    which the bare form a pair adds would have cut from every line."""
+    characters or more: the 2-letter part of "Wingtip<TAB>IT" cut every "it" of the report. The one-word
+    test reads the value without its accents, as Python's _norm does: "Földer" is the report word "folder".
+    B51 left such a word out; since round 25 D80 it is cut (flag h) in every form, the word itself too, and
+    the report goes private only (test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_
+    private)."""
     hold = {
         "owner": "Wingtip\tIT",
         "reason": "F\u00f6lder",
@@ -2755,7 +2757,58 @@ def test_a_hold_value_never_cuts_a_short_or_report_word_from_the_shell_report(tm
     shown = _shell_hold_redact(
         tmp_path, [hold], ["set by Wingtip\tIT", "the folder list and it stay", "the F\u00f6lder list"]
     )
-    assert shown == ["set by <value>\tIT", "the folder list and it stay", "the F\u00f6lder list"], shown
+    assert shown == ["set by <value>\tIT", "the <value> list and it stay", "the <value> list"], shown
+
+
+@pytest.mark.parametrize("owner", ["Mark", "Early", "Page"])
+def test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private(
+    env: dict[str, str], folder: Path, wheel: Path, owner: str
+) -> None:
+    """B13 round 25 D80 (D-L2), the shell half: hold_values left out a one-word value the report prints, so
+    it would not cut that word from every line, and setup_report._hold_values did the same against its own
+    list. The lists differ (the shell's has "mark", Python's "early"; both "page"), so a one-word owner quoted
+    on a line other than the cut hold line ("F4 | step 3 | question | 1 | Mark said ...") printed in clear in
+    one report or both. Each is cut now, in any case, as a whole word, and where the shell cut one that is a
+    word it prints, its <value> in the report's own text reads back as the word: the report is for a private
+    copy, with no issue link, as for a one-word folder (F92). Only the shell's own list decides that here."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "governance"
+    state.mkdir(parents=True)
+    hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    (state / "holds.json").write_text(json.dumps({"holds": [hold]}), encoding="utf-8")
+    said = f"F4 | step 3 | question | 1 | {owner} said the hold stays on | -"
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    assert "F4 | step 3 | question | 1 | <value> said the hold stays on | -" in text, text
+    assert not re.search(rf"\b{owner}\b", text), [ln for ln in text.splitlines() if owner in ln]
+    private = "\nPrivate only: a hold's reason or owner is also a word this report prints, so where <value>"
+    if (
+        owner == "Early"
+    ):  # a word Python's list holds, not the shell's: cut, and not a word this report prints
+        assert private not in text and setup_report.ISSUE_URL in text, text
+        return
+    assert private in text, text
+    assert "\nSend it: privately (docs/deploy/setup-feedback.md" in text, text
+    assert setup_report.ISSUE_URL not in text, text
+
+
+def test_a_hold_word_the_report_shows_only_on_the_cut_hold_line_keeps_the_report_public(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 25 D80: the private-only line is for a hold word redaction cut, never for one registered and
+    not met. hold_cut cuts the hold's own line by its fixed words before any pair is matched, so a report
+    whose only copy of the owner is that line stays public."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "governance"
+    state.mkdir(parents=True)
+    hold = {"owner": "Mark", "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    (state / "holds.json").write_text(json.dumps({"holds": [hold]}), encoding="utf-8")
+    said = "HOLD: hold alpha (state): Fabrikam review — set by Mark since 2026-10-21T09:00:00Z."
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text and "reason and owner not shown" in text, text
+    assert "Mark" not in text and "Private only" not in text and setup_report.ISSUE_URL in text, text
 
 
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(

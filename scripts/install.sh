@@ -1845,7 +1845,7 @@ hold_values() {
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
-	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs
+	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -2672,11 +2672,14 @@ pacv=\1/p' || true
 	# Each hold's reason and owner (hold_values) is <value>, matched in any case as a whole word (flag i), as
 	# setup_report registers each with ignore_case (B13 round 24 B51: hold_cut works a line at a time, so the
 	# lines of a reason of several lines printed in clear). Last, as Python registers them, so a value another
-	# pair holds keeps that pair's placeholder. A value under 2 characters, and a one-word one the report prints
-	# (report_word, output_word: "legal"), is left out, which would cut that word from every line; the word is
-	# tested without its accents, as Python tests _norm ("Détail" is "detail"). A value holding a TAB, which a
-	# pair cannot hold, also gives each of its parts of 3 characters or more: a shorter one would cut a common
-	# word ("it") from every line.
+	# pair holds keeps that pair's placeholder. A value under 2 characters is left out. A one-word one the report
+	# prints (report_word, output_word: "page") is a pair of flag h: cut as flag i cuts, and where it cut, the
+	# report is for a private copy only, since its <value> in the report's own text reads back as the word, as a
+	# one-word folder's does (B13 round 25 D80: it was left out, so a one-word owner quoted on another line
+	# printed in clear in one report and was cut in the other, whose lists differ); the word is tested without its
+	# accents, as Python tests _norm ("Détail" is "detail"). A value holding a TAB, which a pair cannot hold, also
+	# gives each of its parts of 3 characters or more: a shorter one would cut a common word ("it") from every
+	# line.
 	while IFS= read -r v; do
 		w="$v"
 		case "$v" in *$'\t'*) w="$v"$'\n'"$(printf '%s\n' "$v" | LC_ALL=C tr '\t' '\n' | LC_ALL=C awk '{ s = $0; gsub(/^[ ]+|[ ]+$/, "", s); if (length(s) >= 3) print s }' || true)" ;; esac
@@ -2687,11 +2690,12 @@ pacv=\1/p' || true
 			low="$(printf '%s' "$v" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null |
 				LC_ALL=C sed "s/$(printf '\314')[$(printf '\200')-$(printf '\277')]//g;s/$(printf '\315')[$(printf '\200')-$(printf '\257')]//g" |
 				LC_ALL=C tr '[:upper:]' '[:lower:]')" || low=""
+			fl=i
 			case "${low:-$v}" in *[!A-Za-z]*) ;; *)
-				if report_word "$low" || output_word "$low"; then continue; fi
+				if report_word "$low" || output_word "$low"; then fl=h; fi
 				;;
 			esac
-			add_forms "$v" "<value>" i
+			add_forms "$v" "<value>" "$fl"
 		done <<<"$w"
 	done < <(hold_values)
 }
@@ -3102,7 +3106,7 @@ redact_stream() {
 			# under LC_ALL=C tolower keeps every byte where it is, so the offsets found in the lower-cased text cut
 			# the line as written (B13 round 13 O2, O67). Its kind is in its placeholder: no other pair writes one
 			if ((index(f[2], "<proxy-") || index(f[2], "<link-")) && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1]) # a link: ignore_case (B13 round 17 U61)
-			if (f[3] == "i") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
+			if (f[3] == "i" || f[3] == "h") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
@@ -3161,7 +3165,7 @@ redact_stream() {
 				continue
 			}
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w" || f[3] == "i"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
+			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
@@ -3174,6 +3178,7 @@ redact_stream() {
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""
 						keep(f[2], 1)
+						if (f[3] == "h") hold_word = 1 # a hold value that is a report word was cut (D80)
 					}
 					s = substr(s, i + n)
 				}
@@ -3185,7 +3190,8 @@ redact_stream() {
 		line = ""
 		for (j = 1; j <= ns; j++) line = line seg[j]
 		print line
-	}'
+	}
+	END { if (hold_word && ENVIRON["HOLD_WORD_FILE"] != "") printf "" > ENVIRON["HOLD_WORD_FILE"] }'
 }
 launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `launchctl print`
 	printf '%s\n' "$1" | sed -n "s/^	$2 = //p" | head -1
@@ -4340,10 +4346,18 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		report_word "$low" || output_word "$low" || continue
 		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."
-		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
 		PRIVATE_ONLY=1 # the report then ends with no issue link (the caller's subshell reads it)
 		break
 	done <<<"$pairs"
+	# and a one-word hold reason or owner that is such a word, where the body cut it (redact_stream's flag h,
+	# HOLD_WORD_SHOWN), as the agentsync report says it (B13 round 25 D80)
+	if [ -n "${HOLD_WORD_SHOWN:-}" ]; then
+		say "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands in the"
+		say "report's own text it can be read back."
+		PRIVATE_ONLY=1
+	fi
+	[ -z "$PRIVATE_ONLY" ] ||
+		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
 	# One line that starts at column 0, in the agentsync report's words: for a link that fills no field, or
 	# for the fields it fills (H24).
 	[ -n "$PRIVATE_ONLY" ] || {
@@ -4593,13 +4607,16 @@ write_fallback_report() { # RC WHY
 	(
 		umask 077
 		AGENT_KEPT_FILE="$tmp.agent"
-		export AGENT_KEPT_FILE
-		rm -f "$AGENT_KEPT_FILE"
+		HOLD_WORD_FILE="$tmp.hold"
+		export AGENT_KEPT_FILE HOLD_WORD_FILE
+		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE"
 		fallback_body "$1" "$2" "$friction" | strip_run_pids | agent_protect | redact_stream | agent_restore |
 			scrub_exclude_lists >"$tmp"
 		AGENT_KEPT=""
 		[ ! -f "$AGENT_KEPT_FILE" ] || AGENT_KEPT=1
-		rm -f "$AGENT_KEPT_FILE"
+		HOLD_WORD_SHOWN=""
+		[ ! -f "$HOLD_WORD_FILE" ] || HOLD_WORD_SHOWN=1
+		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE"
 		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
 		# What it fills is read from the redacted Summary just written.
 		fallback_issue_link "$tmp"

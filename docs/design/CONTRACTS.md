@@ -29020,7 +29020,10 @@ pair); `redaction_pairs` registers each value line by line as `<value>`, in any 
 characters or more.
 `hold_cut` is unchanged. Tests: `test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_report`,
 `test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does` (the same lines as the Python
-`Redactor` for one config and holds.json), `test_a_hold_value_never_cuts_a_short_or_report_word_from_the_shell_report`.
+`Redactor` for one config and holds.json), `test_a_hold_value_never_cuts_a_short_word_from_the_shell_report`.
+Amended 2026-10-23, §16.179 D80: a one-word value the report prints is no longer left out: it is a pair of flag `h`,
+cut as flag `i` cuts, and a report where it was cut is for a private copy only; the last test, named
+`..._never_cuts_a_short_or_report_word_...` until then, keeps only its short-word half.
 
 **The shell report reads sync-stops.log** (B95; round 24 ruling 9). The shell fallback had no reader of the file
 round 23's A9 writes, so an attempt whose install run ended 0 and whose step 3 sync stopped said to choose the
@@ -29760,6 +29763,23 @@ aside, then install.sh again). It is shown before the summary, in the CLI's orde
 out of install.log's note (the awk that sums the summary never reads it). Kept on stdout, not moved to stderr: the
 CLI's stream is pinned (`tests/test_cli.py`'s B37 test) and stderr would print apart from its run. Test:
 `test_the_first_sync_shows_the_new_manifest_note`.
+
+**A one-word hold value that is a report word is cut, and the shell report goes private** (D80's shell half, D-L2;
+amends §16.172 B51; the agentsync report's half is lane RA's). B51 left out of `hold_values` a one-word
+reason or owner the report prints (`report_word`, `output_word`), so it would not cut that word from every line, and
+`setup_report._hold_values` did the same against its own list; the lists differ (the shell's holds `mark`, Python's
+`early`, both `page`), so such an owner quoted on a line other than the cut hold line (a friction line, `Mark said
+...`) printed in clear in one report or both. It is a pair of flag `h` now: cut as flag `i` cuts (any case, a whole
+word, in every form `add_forms` gives, the accentless one too), and where `redact_stream` cut one (its END writes
+`HOLD_WORD_FILE`), `fallback_redaction` says `Private only: a hold's reason or owner is also a word this report
+prints, so where <value> stands in the report's own text it can be read back.` (lane RA's words, after the folder
+line when both show), sends it privately and
+ends with no issue link, as F92 does for a one-word folder; a hold word met only on the hold's own line, which
+`hold_cut` cuts by its fixed words first, keeps the report public. The trade is F92's: a common word such as `page`
+is cut from the report's own text too. Tests:
+`test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private` (Mark, Early, Page),
+`test_a_hold_word_the_report_shows_only_on_the_cut_hold_line_keeps_the_report_public`, and B51's review test, now
+`test_a_hold_value_never_cuts_a_short_word_from_the_shell_report` (`Földer` is cut).
 
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
