@@ -75,6 +75,7 @@ from agentsync.model import (
     RenderedUnit,
     RowState,
     ScanResult,
+    SourceKind,
     UnitKind,
     Verdict,
 )
@@ -4628,6 +4629,67 @@ def test_the_upgrades_retry_note_says_an_image_stubbed_for_want_of_its_engine_wa
     assert len(reads(healthy.helper)) == 1, "the next sync with the engine reads it, as the note says"
     fm, body = _image_page(config, rel)
     assert fm["status"] == "current" and body.rstrip().endswith("Loading dock"), (fm, body)
+
+
+@pytest.mark.parametrize("name", ["Contoso chart.png", "Contoso all hands.mp4"], ids=["image", "recording"])
+def test_the_upgrades_retry_settles_a_graph_file_no_sync_reads_again(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """B13 round 24 B73: ``_stub_settled``'s download clause had no test (made ``return False``, every
+    legacy test stayed green), and it took only images. A Graph file an older build gave up on, stubbed ``no
+    converter`` by the upgrade's sync (an image is never downloaded for OCR; a recording has no converter
+    with no media helper), is read again by no sync: ``_reread`` refuses a Graph source and
+    ``_recording_candidates`` reads stubs through a LocalArm only. The run counts it settled, never waiting,
+    so the note never says a later sync reads it."""
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
+    drive = FakeDrive({"I1": (name, b"Contoso bytes no converter reads")})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    try:
+        run(config, client=client, only=["drive"])
+        with Manifest(config.state_paths.db) as m:  # as a build before the stub left it
+            failed = f"{convert_mod.CONVERSION_FAILED}: Contoso crashed"
+            m.set_state("drive", "I1", RowState.QUARANTINED, failed)
+            m.set_verdict("drive", "I1", Verdict.TOUCHED_NOT_CHANGED)
+            m.set_meta(cycle_mod._RETRY_META + "drive", "{}")
+            m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+        report = run(config, client=client, only=["drive"])
+    finally:
+        client.close()
+    [row] = _file_rows(config, "drive").values()
+    assert row.name == name and cycle_mod._no_converter_stub(row), row
+    assert (report.legacy_retried, report.legacy_settled, report.legacy_waiting) == (1, 1, 0), report
+
+
+@pytest.mark.parametrize(
+    ("kind", "name", "dataless", "settled"),
+    [
+        ("graph_drive", "Contoso all hands.mp4", False, True),
+        ("graph_drive", "Contoso chart.png", False, True),
+        ("local", "Contoso review.mov", True, True),
+        ("local", "Contoso review.m4v", False, False),
+        ("local", "Contoso chart.png", False, False),
+    ],
+    ids=["graph recording", "graph image", "online-only recording", "local recording", "local image"],
+)
+def test_a_recording_only_a_download_would_read_is_settled_with_no_media_helper(
+    kind: str, name: str, dataless: bool, settled: bool
+) -> None:
+    """B13 round 24 B73: with no media helper no converter claims a recording, so the upgrade's sync stubs one
+    ``no converter``; a Graph or online-only one is read again by no sync (``_reread`` refuses a Graph source,
+    ``_recording_candidates`` reads stubs through a LocalArm only), yet it was counted waiting, and the note
+    said the next sync with a helper reads it. The engine-only suffixes are the converters' own, not this
+    run's registry, which claims no recording here. One on this Mac waits, as an image there does."""
+    me: Any = SimpleNamespace(
+        registry=SimpleNamespace(policy=SimpleNamespace(labels_active=False)),
+        config=SimpleNamespace(sources=[SimpleNamespace(id=SID, kind=SourceKind(kind))]),
+    )
+    row: Any = SimpleNamespace(source_id=SID, name=name, dataless=dataless)
+    assert cycle_mod._Cycle._stub_settled(me, row) is settled
 
 
 def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs(

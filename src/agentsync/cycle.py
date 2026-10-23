@@ -2825,9 +2825,10 @@ class _Cycle:
         """Of the rows the upgrade's retry moved, ``(current, settled, waiting)`` after this run, in one
         manifest read: current is live (or dataless) again; settled is a row this sync tried or removed with
         no retry left, that is gone, a tombstone, or held for a reason other than a failed conversion (an
-        unreadable or refused stub); waiting is a ``no converter`` stub a later sync on this config reads
-        again once a converter for it is ready (``_stub_settled``: not one a label rule withholds, nor an
-        image only a download would read), which no try counts and the re-read reads, so it is neither
+        unreadable or refused stub); waiting is a ``no converter`` stub a later sync reads again once a
+        converter for its type is ready, an engine built or the switch turned back on (``_stub_settled``: not
+        one a label rule withholds, nor an image or a recording only a download would read; B13 round 24 B73,
+        B75), which no try counts and the re-read reads, so it is neither
         settled nor retried (B13 round 23 A63: an image the upgrade's sync stubbed with no OCR engine, or
         after the helper stopped, was called settled and "not tried again", and the next sync with the engine
         read it again). The sync's note gives each its own words and keeps the retry words for the rest,
@@ -2862,16 +2863,22 @@ class _Cycle:
         return current, settled, waiting
 
     def _stub_settled(self, row: ItemRow) -> bool:
-        """True when ``row``'s ``no converter`` stub is one no later sync on this config reads again: a label
-        rule withholds its suffix (an image, a .msg, msg-mime's own refusal of a binary .msg among them), or
-        it is an image that reading means a download for (a Graph item, an online-only file), which a re-read
-        never fetches (``_no_converter``). Any other is read again once a converter for its type is ready:
-        the OCR engine for an image (``_lacks``, ``_reread_targets``; B13 round 23 A63)."""
+        """True when ``row``'s ``no converter`` stub is one a later sync never reads again, whatever converter
+        it has: a label rule withholds its suffix (an image, a .msg, msg-mime's own refusal of a binary .msg
+        among them), or it is an image or a recording that reading means a download for (a Graph item, an
+        online-only file), which a re-read never fetches (``_no_converter``; ``_reread`` refuses a Graph
+        source and ``_recording_candidates`` reads stubs through a LocalArm only). The suffixes are the
+        converters' own, not this run's registry, which claims no recording when there is no media helper,
+        the case that stubs one (B13 round 24 B73). Any other is read again by the first sync with a
+        converter for its type: the OCR engine for an image (built, and ``[convert] ocr`` / ``AGENTSYNC_OCR``
+        not switched off; ``[convert] recordings`` for a recording), so a stub left while a switch is off
+        waits too (``_lacks``, ``_reread_targets``; B13 round 23 A63, round 24 B75)."""
         suffix = Path(row.name).suffix.lower()
         if self.registry.policy.labels_active and suffix in label_withheld_suffixes():
             return True
         graph = any(s.kind.is_graph for s in self.config.sources if s.id == row.source_id)
-        return suffix in ImageConverter.extensions and (graph or row.dataless)
+        engine_only = suffix in ImageConverter.extensions or suffix in RecordingConverter.extensions
+        return engine_only and (graph or row.dataless)
 
     def _rescreen_left(self) -> int:
         """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is

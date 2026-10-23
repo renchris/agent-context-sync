@@ -5850,6 +5850,11 @@ _ROUND_23_E_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: A63's `legacy_waiting` row in §16.28's run-record table, and A65's at
 §16.42's diagram Tests paragraph, whose label-rule count Q78 changed."""
 
+_ROUND_24_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.175 B73"),)
+"""Round 24 lane E's dated line at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: B73's in §16.28's `legacy_waiting` row (a recording only a download would
+read is settled too)."""
+
 _ROUND_23_B_PARAGRAPH_AMENDS = (
     ("16.29", "Every one is a path a sync makes owner-only", "§16.167 A94"),
     ("16.32", "Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without", "§16.167 A94"),
@@ -5928,7 +5933,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     and §16.150 (lane E) three: X57's at §16.25, §16.34 and §16.35. Round 21's §16.157 (lane D) two: Y76's
     under §9's exit-code list and Y60's at §16.28's Configuration paragraph, and §16.155 (lane B) two:
     Y49's at §16.12's governance paragraph and Y20's at §16.32's `<run again>` table. Round 23's §16.170
-    (lane K) two: A97's at §16.30's two patch-hash bullets.
+    (lane K) two: A97's at §16.30's two patch-hash bullets. Round 24's §16.175 (lane E) one: B73's at §16.28's
+    `legacy_waiting` row.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5948,6 +5954,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_21_D_PARAGRAPH_AMENDS)) == len(_ROUND_21_D_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS)) == len(_ROUND_21_B_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_23_K_PARAGRAPH_AMENDS)) == len(_ROUND_23_K_PARAGRAPH_AMENDS) == 2
+    assert len(_pinned_dated_lines(_ROUND_24_E_PARAGRAPH_AMENDS)) == len(_ROUND_24_E_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5979,6 +5986,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_23_E_PARAGRAPH_AMENDS,
         *_ROUND_23_B_PARAGRAPH_AMENDS,
         *_ROUND_23_K_PARAGRAPH_AMENDS,
+        *_ROUND_24_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
