@@ -2793,6 +2793,33 @@ def compute_outcome(
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
     version = layout.version
+    # B13 round 24 B20: the installer stopped this copy, and a stand-alone install.sh run after its end line
+    # failed (or has no end line): that run's exit is not this attempt's, which ran none and failed at step 1;
+    # it read "failed at step 2" in this attempt's outcome and in every later report's earlier list. A late
+    # run that ended 0 keeps round 21 Y19's words, below
+    late_installs = install_runs_only(_stopped_split(attempt, runs)[1]) if attempt is not None else []
+    if attempt is not None and late_installs and late_installs[-1].rc != 0:
+        inside = _stopped_split(attempt, runs)[0]
+        copy_stop = stopping_error(attempt, inside) or _unresolved_error(attempt)
+        if copy_stop is not None and not install_runs_only(inside):
+            late_rc = late_installs[-1].rc
+            ended = "which has no end line" if late_rc is None else f"which ended rc {late_rc}"
+            n = (
+                "the install.sh run"
+                if len(late_installs) == 1
+                else f"the last of {len(late_installs)} install.sh runs"
+            )
+            return Outcome(
+                "failed",
+                copy_stop.step,
+                (
+                    f"no install.sh run during this attempt, and step {copy_stop.step} logged an error "
+                    f"(F{copy_stop.line})",
+                    f"the installer stopped this copy at step 1, and {n} after its end line, {ended}, is a "
+                    "stand-alone run that does not change it",
+                ),
+                version,
+            )
     if last is not None and last.rc == 0:
         why: list[str] = []
         if attempt is None:

@@ -26674,6 +26674,10 @@ above an install line naming one that did; for such a stop with an rc 0 run afte
 installer stopped this copy at step 1; the install.sh run after its end line, which ended rc 0, is a stand-alone run
 and does not resolve it`. Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
 `test_a_stand_alone_install_run_after_a_stopped_copy_asks_no_folder_question`.
+Amended 2026-10-23, §16.171 B20: the guard held only for an rc 0 run; a stand-alone run after the end line that
+failed or has no end line made the copy `failed at step 2`, so whatever its exit the copy is `failed at step 1`, its
+reason `the installer stopped this copy at step 1, and the install.sh run after its end line, which ended rc N, is
+a stand-alone run that does not change it`.
 
 **A run a signal stopped is said to be stopped, not failed** (Y6). install.sh's `on_exit` closes the step a signal
 stopped as failed with the signal's rc, and the outcome read `install.sh exited 143: its config step failed with
@@ -28888,6 +28892,17 @@ is the person's` or `the fix is the agent's chmod`; "after the person's fix" sta
 cause (an ACL, a privacy setting) is not named: the log does not record it. Tests:
 `test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind` and
 `test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
+
+**A failed run after a stopped copy's end line is not its outcome** (B20; amends §16.152 Y19). Y19's guard sat
+only in `compute_outcome`'s rc 0 branch, so a stand-alone install.sh run after the end line of a copy the
+installer stopped that exited 2 (or 1, or 143, or has no end line) made the attempt `failed at step 2`, in its own
+outcome and in every later report's `earlier:` list, and lost `_rerun_note`'s note, which only an outcome failed at
+step 1 gets. Before that branch, for a copy `_prompt_copy_note` reads as stopped whose only install runs are after
+its end line (`_stopped_split`) and the last of them did not end 0, the outcome is failed at the copy's stop step
+(1): `no install.sh run during this attempt, and step 1 logged an error (F<n>)` and `the installer stopped this
+copy at step 1, and the install.sh run after its end line, which ended rc N (or: which has no end line), is a
+stand-alone run that does not change it` ("the last of N install.sh runs" for several). A late run that ended 0
+keeps Y19's words. Test: `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome`.
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 

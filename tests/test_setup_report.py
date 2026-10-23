@@ -16810,6 +16810,57 @@ def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tm
     assert ordinary.kind != "failed", "another step 1 error is still resolved by a later run"
 
 
+def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path: Path) -> None:
+    """B13 round 24 B20: Y19's guard sat only in the rc 0 branch, so a stand-alone install.sh after a stopped
+    copy's end line that failed made the copy "failed at step 2" (the late run's step), in its own outcome
+    and in every later report's earlier list, and lost its rerun note. Whatever the late run's exit, the
+    copy ran no install.sh and failed at step 1, and the reason names the late run and how it ended."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    copy = (
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n"
+    )
+    run = "20261020T100500Z-4242"
+    head = (
+        f"2026-10-20T10:05:00Z run={run} start install.sh compat=28 commit=0123456789ab kind=checkout "
+        "source=- args=\n"
+        f"2026-10-20T10:05:00Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
+    )
+    for rc, ended in (
+        ("2", "which ended rc 2"),
+        ("1", "which ended rc 1"),
+        ("143", "which ended rc 143"),
+        (None, "which has no end line"),
+    ):
+        tail = f"2026-10-20T10:05:00Z run={run} end rc={rc} seconds=60\n" if rc is not None else ""
+        log = tmp_path / "install.log"
+        log.write_text(head + tail, encoding="utf-8")
+        fr = setup_report.parse_friction(copy)
+        runs = setup_report.runs_for_attempt(fr, 0, setup_report.read_install_runs(log))
+        outcome = setup_report.compute_outcome(fr.attempts[0], runs)
+        assert (outcome.kind, outcome.step) == ("failed", 1), (rc, outcome)
+        assert outcome.why == (
+            "no install.sh run during this attempt, and step 1 logged an error (F4)",
+            f"the installer stopped this copy at step 1, and the install.sh run after its end line, {ended}, "
+            "is a stand-alone run that does not change it",
+        ), (rc, outcome)
+    # an earlier attempt in a later report: never "failed at step 2"
+    log.write_text(head + f"2026-10-20T10:05:00Z run={run} end rc=2 seconds=60\n", encoding="utf-8")
+    fresh = (
+        "Attempt: 2026-10-20T10:30:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
+        "2026-10-20T10:31:00Z | end | finished\n"
+    )
+    fr = setup_report.parse_friction(copy + fresh)
+    runs = setup_report.runs_for_attempt(fr, 0, setup_report.read_install_runs(log))
+    assert len(runs) == 1, "the late run sits before the next attempt"
+    outcome = setup_report.compute_outcome(fr.attempts[0], runs)
+    assert (outcome.kind, outcome.step) == ("failed", 1), outcome
+
+
 def test_a_stopped_copys_time_and_folders_lines_put_a_run_after_its_end_line_apart(
     fake_mac: dict[str, Path],
 ) -> None:
