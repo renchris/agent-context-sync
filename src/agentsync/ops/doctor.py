@@ -2269,13 +2269,22 @@ def _check_graph(config: Config) -> list[CheckResult]:
 
 
 def _check_disk(config: Config) -> list[CheckResult]:
-    """At least 2 GiB free on the state and docs volumes."""
+    """At least 2 GiB free on the state and docs volumes. Measured at the nearest folder: a file where the
+    folder or one above it belongs is on the same volume, so its free figure stands, but the line names the
+    folder that holds it, never "free at" a path state_dir calls a file, not a folder (B13 round 24 B28;
+    round 23 ruling 4 keeps disk.state measured)."""
     out: list[CheckResult] = []
-    for name, path in (("disk.state", config.state_dir), ("disk.docs", config.docs_repo)):
-        anchor = _nearest_existing(path)
+    for name, path, judged in (
+        ("disk.state", config.state_dir, "state_dir"),
+        ("disk.docs", config.docs_repo, "docs_repo.git"),
+    ):
+        anchor = held = _nearest_existing(path)
+        while not anchor.is_dir() and anchor != anchor.parent:
+            anchor = anchor.parent
         free = _disk_free(anchor)
         if free >= _MIN_FREE_BYTES:
-            out.append(_ok(name, f"{_gib(free)} free at {anchor}"))
+            at = f"{anchor}, the folder that holds {held}, which is not a folder (see {judged})"
+            out.append(_ok(name, f"{_gib(free)} free at {at if held != anchor else anchor}"))
         else:
             out.append(
                 _bad(

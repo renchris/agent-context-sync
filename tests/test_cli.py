@@ -4606,6 +4606,28 @@ def test_library_refusing_a_search_or_a_linked_state_folder_is_still_one_fail_th
     assert named["disk.state"].detail.endswith(f" free at {vol}"), named["disk.state"]
 
 
+@pytest.mark.parametrize("where", ["the state folder", "a folder above it"])
+def test_disk_state_over_a_file_where_a_folder_belongs_names_the_folder_that_holds_it(
+    initialised: Config, where: str
+) -> None:
+    """B13 round 24 B28: with a file where the state folder (or a folder above it) belongs, disk.state said
+    "<free> free at <that file>", beside a state_dir FAIL calling the same path a file, not a folder. It stays
+    measured (round 23 ruling 4; the same volume) and names the folder that holds the file."""
+    root = expand(initialised.state_paths.root)
+    if root.exists():
+        root.rename(root.with_name(root.name + ".kept"))
+    file = root if where == "the state folder" else root.parent
+    if where == "a folder above it":
+        file.rename(file.with_name(file.name + ".kept"))
+    file.write_text("not a folder\n", encoding="utf-8")
+    disk = {r.name: r for r in doctor._check_disk(initialised)}["disk.state"]
+    assert disk.ok, disk
+    assert f" free at {file.parent}, the folder that holds {file}, which is not a folder (see state_dir)" in (
+        disk.detail
+    ), disk.detail
+    assert not disk.detail.endswith(str(file)), disk.detail
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_two_sources_over_a_shut_state_folder_give_status_one_fail(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
