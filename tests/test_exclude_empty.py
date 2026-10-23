@@ -408,3 +408,40 @@ def test_the_write_refuses_an_exclude_changed_since_it_was_read(tmp_path: Path) 
     assert cfg.read_bytes() == before
     config = set_source_exclude(cfg, "alpha", ["*.bak", "~$*", "/Empty/"], expected=("*.bak", "~$*"))
     assert config.source("alpha").exclude == ("*.bak", "~$*", "/Empty/")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_sync_over_a_heartbeat_it_cannot_open_still_prints_the_waits_its_alarm_points_at(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B43: over a heartbeat at 0000 an interactive sync printed the empty-folder alarm, which
+    names "the WAITING ON YOU line ... at the end of a sync's output", then its one NEXT and stopped: no
+    WAITING ON YOU line. It prints the loop's waits after its NEXT, the same as status's, and still one NEXT
+    and one stderr line."""
+    root = _root()
+    (root / "Empty A").mkdir()
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    capsys.readouterr()
+    for _ in range(2):  # the second pass's listing is the one the wait names
+        assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    first = capsys.readouterr().out.splitlines()
+    assert any(ln.startswith("WAITING ON YOU: ") for ln in first), "\n".join(first)
+    hb = load_config(cfg).state_paths.heartbeat
+    hb.chmod(0)
+    try:
+        rc = cli.main(["sync", "--config", str(cfg)])
+        said = capsys.readouterr()
+        cli.main(["status", "--config", str(cfg)])
+        status = capsys.readouterr().out.splitlines()
+    finally:
+        hb.chmod(0o600)
+    lines = said.out.splitlines()
+    assert rc == cli.EXIT_FAILED, said
+    assert [ln for ln in lines if ln.startswith("NEXT: ")] == [f"NEXT: {cli.HEARTBEAT_REFUSED_STEP}"], lines
+    waits = [ln for ln in lines if ln.startswith(loop.WAIT_PREFIX)]
+    assert any("empty cloud folder" in ln for ln in waits), waits
+    assert waits == [ln for ln in status if ln.startswith(loop.WAIT_PREFIX)], (waits, status)
+    assert lines.index(waits[0]) > lines.index(f"NEXT: {cli.HEARTBEAT_REFUSED_STEP}")
+    assert [ln for ln in said.err.splitlines() if ln.strip()] == [
+        ln for ln in said.err.splitlines() if ln.startswith("error: state: ")
+    ] and len([ln for ln in said.err.splitlines() if ln.strip()]) == 1, said.err

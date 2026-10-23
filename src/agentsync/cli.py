@@ -1082,6 +1082,12 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         said = f"error: state: {_heartbeat_line(config, report.heartbeat_refused)}"
         _err(said)
         _out(loop.NEXT_PREFIX + HEARTBEAT_REFUSED_STEP)
+        # the loop's WAITING ON YOU lines, which the empty-folder alarm points at "at the end of a sync's
+        # output", but not its NEXT (a second, contrary one) or its notes ("sync again" before status), and
+        # quiet, so stderr keeps its one line (B13 round 24 B43)
+        for line in loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True):
+            if line.startswith(loop.WAIT_PREFIX):
+                _out(line)
         _record_sync_stop(args, said, config.state_paths.heartbeat)
         return report.exit_code or EXIT_FAILED
     if hints:
@@ -1096,7 +1102,8 @@ HEARTBEAT_REFUSED_STEP = (
 )
 """The NEXT of an interactive sync whose heartbeat this account cannot open (round 23 ruling 5). Not
 :data:`STATE_REFUSED_STEP`, whose "so this sync did not run" is false here: the sync ran and published its
-changes (B13 round 23 A1, A34, A84)."""
+changes (B13 round 23 A1, A34, A84). The loop's WAITING ON YOU lines follow it, never its NEXT (B13 round 24
+B43)."""
 
 
 def _heartbeat_line(config: Config, exc: PermissionError) -> str:
