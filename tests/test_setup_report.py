@@ -4189,6 +4189,8 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     was described by kinds that left it out. The clause reads doctor's one list, which cli's NEXT and
     install.sh's PERSONS_FAILS name too; the report's copy for a broken doctor is the same words."""
     assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS
+    # B13 round 24 B56, B102: the lost manifest's words, matched in the sync's line, are lane B's own
+    assert setup_report._STATE_LOST_COPY == f" {manifest_mod.LOST_MANIFEST}" == setup_report._state_lost()
     head = "# run=20261019T100000Z-4242 2026-10-19T10:00:00Z install.sh"
     run = [
         head,
@@ -9376,10 +9378,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "the volume was made writable",
         ),
     ):
-        out.write_text(
+        out.write_text(  # cli's own line (B13 round 24 B102), so a change to its words reaches this row
             "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
-            "error: state: the state folder /Users/x/agentsync cannot be written by this account "
-            f"(fix: {fix})\n"
+            f"{cli._folder_unwritable_line('/Users/x/agentsync', fix)}\n"
             "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
             encoding="utf-8",
         )
@@ -9405,10 +9406,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "on agentsync's state folder, which is not a folder: the person's to fix",
             "it was moved aside",
         ),
-        (  # lane B's lost manifest (B13 round 23 A29): no new one over earlier passes, the person decides
-            f"error: state: {db} is missing, but heartbeat.json records earlier passes (fix: the person "
-            "decides: restore manifest.sqlite from a copy they trust, or move heartbeat.json aside, keeping "
-            "a copy, so the next sync starts a new manifest)",
+        (  # lane B's lost manifest (B13 round 23 A29): no new one over earlier passes, the person decides;
+            # its words from their source, as the sync prints them (B13 round 24 B56, B102)
+            f"error: state: {db} {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})",
             "on agentsync's state file, which is missing though heartbeat.json records earlier passes: the "
             "person's to fix",
             "the file was restored or heartbeat.json moved aside",

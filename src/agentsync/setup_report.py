@@ -11923,9 +11923,21 @@ not a directory", or "<path> is <kind>, not a folder"), or where a folder above 
 folder <root> sits under it"; B13 round 23 ruling 4)."""
 
 
-_STATE_LOST = " is missing, but heartbeat.json records earlier passes"
+_STATE_LOST_COPY = " is missing, but heartbeat.json records earlier passes"
 """Lane B's words for a manifest lost from a Mac that has synced (``manifest.LOST_MANIFEST``, after the path
-in the sync's ``error: state:`` line; B13 round 23 A29), which no sync replaces with a new one."""
+in the sync's ``error: state:`` line; B13 round 23 A29), which no sync replaces with a new one: the report's
+copy for an installed build without them, which a test keeps equal to the source (B13 round 24 B56, B102)."""
+
+
+def _state_lost() -> str:
+    """``" " + manifest.LOST_MANIFEST``, or :data:`_STATE_LOST_COPY` when the manifest module does not import
+    or has no such words (an older installed build), as :func:`_persons_kinds` reads doctor's list: the report
+    never imports agentsync at module level (B13 round 24 B102)."""
+    try:
+        from agentsync import manifest  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _STATE_LOST_COPY
+    return " " + str(getattr(manifest, "LOST_MANIFEST", _STATE_LOST_COPY.strip()))
 
 
 _FOLDER_ACL_FIX_HEADS = (
@@ -11969,7 +11981,7 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             return f" on agentsync's state file, which is {what}: the person's to fix", (
                 "after it was moved aside or the state file put back"
             )
-        if ln.startswith("error: state: ") and _STATE_LOST in ln:  # B13 round 23 A29: the person decides
+        if ln.startswith("error: state: ") and _state_lost() in ln:  # B13 round 23 A29: the person decides
             return (
                 " on agentsync's state file, which is missing though heartbeat.json records earlier passes: "
                 "the person's to fix",

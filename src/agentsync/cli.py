@@ -3357,6 +3357,12 @@ def _refused_folder(args: argparse.Namespace) -> str | None:
         fix = doctor.state_folder_fix(root)
     except Exception:  # the error path: never a second error over the first
         return None
+    return _folder_unwritable_line(root, fix)
+
+
+def _folder_unwritable_line(root: Path | str, fix: str) -> str:
+    """:func:`_refused_folder`'s line, apart so the report's test builds its row from it (B13 round 24 B102:
+    setup_report's ``_STATE_OPEN_RE`` reads these words, and a change here must reach that test)."""
     return f"error: state: the state folder {root} cannot be written by this account (fix: {fix})"
 
 

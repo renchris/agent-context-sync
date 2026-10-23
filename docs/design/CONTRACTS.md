@@ -28863,6 +28863,18 @@ Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons` and
 `test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced` (the OCR line once).
 
+**Lane B's words are matched through their source** (B56, B102). `_STATE_LOST`, the report's hand copy of
+`manifest.LOST_MANIFEST` that `_state_open_words` matches in the sync's `error: state:` line, had no test tying
+it to its source: changing the constant left every report test green while the report would lose the cause. It
+is `_STATE_LOST_COPY` now, read through `_state_lost()`, which imports `agentsync.manifest` lazily and falls back
+to the copy (the report imports nothing from agentsync at module level, and install.sh may run an older
+installed build), and `test_the_persons_clause_names_every_kind_the_rule_reads` asserts the copy equals
+`" " + manifest.LOST_MANIFEST`. The A29 row of `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`
+is built from `manifest.LOST_MANIFEST` and `doctor.LOST_MANIFEST_FIX`, and its A59 row from
+`cli._folder_unwritable_line`, the one place `_refused_folder`'s line is written now (also asserted by
+`test_a_state_folder_at_0500_names_the_folders_fix_and_a_next_not_sqlites_bare_line`), so a change to cli's
+words runs through `_STATE_OPEN_RE` in the report's test. No output changes.
+
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
 Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four

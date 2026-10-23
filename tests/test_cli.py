@@ -6438,9 +6438,10 @@ def test_a_state_folder_at_0500_names_the_folders_fix_and_a_next_not_sqlites_bar
     assert state.endswith(f"(fix: {fix})"), state
     assert rc == cli.EXIT_FAILED and "OperationalError" not in said.err, said.err
     (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
-    assert line == f"error: state: the state folder {root} cannot be written by this account (fix: {fix})", (
+    assert line == cli._folder_unwritable_line(root, fix), (
         line
-    )
+    )  # B13 round 24 B102: the report's row reads it
+    assert line == f"error: state: the state folder {root} cannot be written by this account (fix: {fix})"
     assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
         f"NEXT: {cli.STATE_REFUSED_STEP}"
     ]
