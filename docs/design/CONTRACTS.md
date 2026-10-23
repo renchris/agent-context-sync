@@ -28311,6 +28311,8 @@ mode refuses this account (`refused` for an ACL or a read-only volume), so `conf
 NEXT. Tests: `test_a_side_file_this_account_cannot_read_stops_step_2_at_its_config_step_on_the_agents_chmod` (an
 empty -wal, a -shm, a -wal with frames, both: the chmod as written, then a pass) and the PM-shm-acl case, now
 `state-refused`.
+Amended 2026-10-23, §16.173 B12, B52: a folder where a side file belongs is `state-side-notfile`, the person's, and a 0500
+state folder holding the manifest and both side files is `state-dir-write`, a status-step stop.
 
 **Step 1's chmods are plural** (A37; amends §16.154 Y14). `state-access` ends `the chmods that fix it are the
 agent's to run, once each, as step 2's NEXT names them`, `state-side-access` `... once each, when step 2 stops on
@@ -28865,6 +28867,32 @@ its mode fixes that` for a named status-step file, a -wal or a -shm; the NEXT ad
 it, even a chmod, is the person's`, so the agent runs neither. doctor's `chmod -N` fix is unchanged: it is the
 person's. Tests: the STATE_REFUSED_NEXT, state-refused, state-side-refused and file-tail literals in
 `tests/test_install_oneshot.py` (PM-parent, PM-acl and the ACL cases at steps 1 and 2).
+
+**A folder where the -wal or -shm belongs is the person's; a 0500 state folder init opens past stops at status**
+(B52, B12; amends §16.166 A78). B52: `not_a_file` judged the manifest alone, so a folder at manifest.sqlite-shm got
+`state-access` at 0000 (the agent's chmods), `state-side-access` at 0500 and nothing at 0700, and step 2's NEXT at
+0000 named an ACL, a folder above it or a read-only volume, while status's `state_dir.files` line says the person
+moves it aside. Measured with the real agentsync: at 0000 init exits 1 (`unable to open database file`), at 0700
+init passes and status FAILs. `config_errors` now judges each side file with `not_a_file` before its access, in the
+loop's order (the folder and the manifest first), and writes `state-side-notfile`, tail `; step 2 stops on the -wal
+or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage), at its
+config step when this account cannot read it and at its status step when it can: fixing that is the person's
+(keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line`;
+`config_failed` asks `state_side_not_a_file` (lstat, a link judged by its target) after `state_not_a_file` and sets
+`the -wal or -shm of agentsync's state file is a folder or something else that is not a file (~/.local/bin/agentsync
+status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it
+aside), not a step for the agent, ...`; `state_open_fix` skips a side that is a folder. Followed with the real
+agentsync, moving the folder aside ends it; macOS renames a folder only when it can write it, so a shut one is opened
+first (doctor's words, lane B's, say only "moves it aside"). B12: a state folder of this account's own at 0500 got
+the config step's words, while with the manifest, its -wal and its -shm all there init opens past it (it creates
+nothing) and status FAILs `state_dir` with `chmod 700` (measured: init 0, status 1). Only then is it
+`state-dir-write`, tail `; step 2 stops at its status step on agentsync's state folder, which this account can open
+but not write (a mode, not damage): the chmod 700 that fixes it is the agent's to run, once, as step 2's NEXT names
+it, and ~/.local/bin/agentsync status prints it on its state_dir line`, and the status-step files are read under it;
+with no side file or only one, init stops on creating it, and `state-access` stays. Tests: the SN-shm, SN-shm-shut,
+SN-shm-0500, SN-wal-link, SW, SW-bare and SW-wal cases of
+`test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`, and, with the real agentsync,
+`test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it`.
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 

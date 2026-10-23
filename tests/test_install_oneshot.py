@@ -7782,6 +7782,17 @@ STATE_OPEN_TAIL = {
     ),
     "state-notfile": STATE_NOTFILE_TAIL,
     "state-lost": STATE_LOST_TAIL,
+    "state-side-notfile": (
+        "; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else "
+        "that is not a file (not damage), at its config step when this account cannot read it and at its "
+        "status step when it can: fixing that is the person's (keeping a copy, they move it aside), and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+    ),
+    "state-dir-write": (
+        "; step 2 stops at its status step on agentsync's state folder, which this account can open but not "
+        "write (a mode, not damage): the chmod 700 that fixes it is the agent's to run, once, as step 2's "
+        "NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir line"
+    ),
     "state-side-refused": (
         f"{SIDE_STOPS}which this account is refused, and no change of its mode fixes that (an ACL, or a "
         "volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and "
@@ -7819,6 +7830,13 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "LM-wal",
         "LM-new",
         "LM-none",
+        "SN-shm",
+        "SN-shm-shut",
+        "SN-shm-0500",
+        "SN-wal-link",
+        "SW",
+        "SW-bare",
+        "SW-wal",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7858,7 +7876,13 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     said "(none is needed)". It says the person's stop, by manifest_lost's rule inlined, so an installed build
     without it says the same (LM-older); a heartbeat that records no pass (LM-new) or none at all (LM-none) is
     a first sync, with nothing said. The lane's review: a stale -wal at 0000 beside it got `state-access`, a
-    chmod that ended nothing, as init stops on the lost manifest before it opens anything (LM-wal)."""
+    chmod that ended nothing, as init stops on the lost manifest before it opens anything (LM-wal).
+
+    Round 24 B52: a folder where the -shm belongs (at 0700, 0000 or 0500) or a -wal that is a link to a folder
+    got the agent's chmod words, or none: no mode fixes it, and moving it aside is the person's, as status's
+    state_dir.files line says. B12: a 0500 state folder holding the manifest, its -wal and its -shm stops step
+    2 at its status step (init opens past it, measured), not its config step; with no side file (SW-bare) or
+    only the -wal (SW-wal) init stops on creating one, and the config step's words stay."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7879,6 +7903,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM": "state-lost",
         "LM-older": "state-lost",
         "LM-wal": "state-lost",
+        "SN-shm": "state-side-notfile",
+        "SN-shm-shut": "state-side-notfile",
+        "SN-shm-0500": "state-side-notfile",
+        "SN-wal-link": "state-side-notfile",
+        "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
@@ -7933,6 +7962,22 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
                 wal.write_bytes(b"")
                 wal.chmod(0)
+        elif state.startswith("SN-"):  # round 24 B52: a folder where a -wal or -shm belongs
+            for f in (wal, shm):
+                f.unlink(missing_ok=True)
+            if state == "SN-wal-link":
+                elsewhere = db.with_name("elsewhere")
+                elsewhere.mkdir(0o700)
+                wal.symlink_to(elsewhere)
+            else:
+                shm.mkdir({"SN-shm-shut": 0, "SN-shm-0500": 0o500}.get(state, 0o700))
+        elif state.startswith("SW"):  # round 24 B12: a 0500 state folder, with both side files or not
+            for f in (wal, shm):
+                f.unlink(missing_ok=True)
+            for f in {"SW": (wal, shm), "SW-wal": (wal,)}.get(state, ()):
+                f.write_bytes(b"")
+                f.chmod(0o600)
+            db.parent.chmod(0o500)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
@@ -7944,6 +7989,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         if db.is_dir():
             db.chmod(0o700)
             db.rmdir()
+        if wal.is_symlink():
+            wal.unlink()
+        if shm.is_dir():
+            shm.chmod(0o700)
+            shm.rmdir()
         for f in (db, wal, shm):
             if f.exists():
                 subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
@@ -9281,6 +9331,50 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(lost)
     assert heartbeat.is_file() and not db.exists(), "the NEXT moves nothing: the choice is the person's"
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+SIDE_NOTFILE_NEXT = (
+    "NEXT: the -wal or -shm of agentsync's state file is a folder or something else that is not a file "
+    "(~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the "
+    "person's (keeping a copy, they move it aside), not a step for the agent, so show them the error and go "
+    "on to the report; once it is fixed, the next run is: {rerun}"
+)
+"""Step 2's NEXT for a folder where the -wal or -shm belongs, at the config step (round 24 B52)."""
+
+
+def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """Round 24 B52 (probe shmdir), with the real agentsync: a 0000 folder where manifest.sqlite-shm belongs
+    stops init ("unable to open database file"); step 1 said the agent's chmods (`state-access`) and step 2's
+    NEXT named an ACL, a folder above it or a read-only volume, while status says the person moves it aside.
+    Step 1 logs `state-side-notfile`, step 2's NEXT is the person's, with no chmod; moving it aside, as the
+    words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    shm = _state_db(env).with_name("manifest.sqlite-shm")
+    shm.unlink(missing_ok=True)
+    shm.mkdir(0)
+    try:
+        listed = install_sh(env, "--list-folders")
+        logged = install_log(env)[-2]
+        cp = install_sh(env, str(wheel))
+    finally:
+        shm.chmod(0o700)
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-notfile"]), last_line(listed)
+    assert logged.endswith(" config_err=state-side-notfile"), logged
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert "chmod" not in last_line(cp) and "ACL" not in last_line(cp), last_line(cp)
+    # "they move it aside": macOS renames a folder only when it can write the folder (its ".." entry), so a
+    # person opens a shut one first; the finally above did
+    shm.rename(shm.with_name("manifest.sqlite-shm.aside"))
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

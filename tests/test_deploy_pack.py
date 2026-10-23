@@ -6319,6 +6319,8 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-side-owner",
         "state-side-access",
         "state-side-refused",
+        "state-dir-write",  # B13 round 24 B12: a 0500 state folder init opens past
+        "state-side-notfile",  # B13 round 24 B52: a folder where the -wal or -shm belongs
         "state-notfile",  # B13 round 22 Z11: a folder where manifest.sqlite belongs
         "state-lost",  # B13 round 24 ruling 7: no manifest, while heartbeat.json records a pass
         "state-notdir",  # B13 round 23 ruling 4: no folder where the state folder belongs
@@ -6328,13 +6330,14 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
-        "`state-side-access`, `state-side-owner`, `state-side-refused`, `state-notfile`, `state-lost`, "
-        "`state-notdir`, "
+        "`state-side-access`, `state-side-owner`, `state-side-refused`, `state-side-notfile`, "
+        "`state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`, "
         "`state-file-access`, `state-file-owner` and `state-file-refused`" in section
     )
     words_read = (
         "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused"
-        "|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$"
+        "|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access"
+        "|state-file-owner|state-file-refused)$"
     )
     assert words_read in script, "the list reads every word config_errors writes"
     [row] = [

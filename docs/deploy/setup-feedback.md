@@ -674,7 +674,19 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, and step 2's config step its own
   `NEXT:` (`agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier
   passes (...): fixing it is the person's (...), not a step for the agent, so show them the error and go on to the
-  report; ...`), where it said `fix the error above` (round 24 ruling 7). Something that
+  report; ...`), where it said `fix the error above` (round 24 ruling 7). A folder (or a link to one) where the -wal or
+  -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod words,
+  or none): `state-side-notfile`, `; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or
+  something else that is not a file (not damage), at its config step when this account cannot read it and at its
+  status step when it can: fixing that is the person's (keeping a copy, they move it aside), and
+  ~/.local/bin/agentsync status prints it on its state_dir.files line`, and step 2's config step its own `NEXT:`
+  (`the -wal or -shm of agentsync's state file is a folder or something else that is not a file (...): fixing it is
+  the person's (keeping a copy, they move it aside), not a step for the agent, ...`). A state folder of this
+  account's own that it can open but not write, holding the manifest, its -wal and its -shm, is opened past by init,
+  so step 2 stops at its status step on the chmod 700 (round 24 B12): `state-dir-write`, `; step 2 stops at its
+  status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod
+  700 that fixes it is the agent's to run, once, as step 2's NEXT names it, and ~/.local/bin/agentsync status prints
+  it on its state_dir line`; without both side files init stops on creating one, and `state-access` stays. Something that
   is not a folder (a file, a symlink to one, a fifo) where the state folder or a folder above it belongs is the
   person's too, judged before every probe above (round 23 ruling 4, A2, A6, A21, A32, A80: the access probe gave
   the agent a chmod of that file, then the re-run blamed an ACL): `state-notdir`, `; step 2 stops at its config step
@@ -710,7 +722,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
-  `state-side-refused`, `state-notfile`, `state-lost`, `state-notdir`, `state-file-access`, `state-file-owner` and
+  `state-side-refused`, `state-side-notfile`, `state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`,
+  `state-file-access`, `state-file-owner` and
   `state-file-refused`, never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

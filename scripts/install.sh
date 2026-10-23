@@ -6287,6 +6287,10 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # "state-lost" when no manifest is there while heartbeat.json beside it records a pass (manifest.manifest_lost,
 # inlined, as the installed build may predate it): every init step 2 reinstalls stops on it, and the choice
 # is the person's (round 24 ruling 7: B3, B24, B33, B41, B48, B69, B83, B85; step 1 said "(none is needed)").
+# "state-side-notfile" when a -wal or -shm is a folder (or a link to one), not a file: no mode fixes it, and
+# moving it aside is the person's (round 24 B52: it got the agent's chmod words). "state-dir-write" when the
+# state folder is this account's own and it can open but not write it while the manifest, its -wal and its -shm
+# are all there for it, which init opens past: step 2 stops at its status step, on the chmod 700 (B12).
 # "state-file-owner", "state-file-access" or "state-file-refused" for the lock, the heartbeat, governance/ or its
 # holds.json, purge queue, suppressed.json or audit.jsonl, the files status checks by name, each by the access
 # its step needs, when nothing above is said (A17, A83; round 24 B10, B54, B59, B81, B105), with a
@@ -6399,10 +6403,18 @@ except NotADirectoryError:
     notdir = True
 except OSError as exc:  # a symlink loop where the folder belongs is no folder either (the review)
     notdir = exc.errno == errno.ELOOP
-access = None
-for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+access = dirwrite = None
+sides = (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
+for p in () if notdir else (db.parent, db, *sides):
     if p == db and notfile:  # judged below, whatever its mode: it is no file to chmod (the review of Z11)
         continue
+    if p in sides:  # a folder (or a link to one) where a -wal or -shm belongs: no mode fixes it (round 24 B52)
+        try:
+            if not_a_file(p):
+                access = "state-side-notfile"
+                break
+        except OSError:
+            pass
     # a -wal or -shm this account cannot read stops init as the manifest does, empty or not; only one it can
     # read but not write is opened past, to status or a sync (round 23 A78)
     word = "state-" if p in (db.parent, db) or not os.access(p, os.R_OK) else "state-side-"
@@ -6428,8 +6440,20 @@ for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.wi
             fix = "chmod"
         else:
             fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
-        access = word + ("access" if fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
+        ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
+        if ok and p == db.parent and os.access(p, os.R_OK | os.X_OK) and all(
+            f.is_file() and not f.is_symlink() and f.stat().st_uid == os.getuid() and os.access(f, os.R_OK | os.W_OK)
+            for f in (db, *sides)
+        ):
+            # a folder it can open but not write, holding the manifest, its -wal and its -shm, which init opens
+            # past (it creates none there), so step 2 stops at its status step on the chmod 700; without
+            # either side file init stops on creating it (round 24 B12)
+            dirwrite = True
+            continue
+        access = word + ("access" if ok else "refused")
         break
+if access is None and dirwrite:
+    access = "state-dir-write"
 # the files status checks by name, judged as above: step 2 stops on them at its status step, past the config
 # step, so only when nothing above stops it first (round 23 A17, A83). Each by the access the step that uses
 # it needs, as setup_report._refused_files reads them (round 24 B10, B54, B59, B81): the lock read and write
@@ -6442,7 +6466,7 @@ for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.wi
 # that already has them is an ACL or a volume mounted read-only, for the person. role: which one, in fixed
 # words (B13)
 checked = role = None
-if not (notdir or notfile) and (access is None or access.startswith("state-side-")):
+if not (notdir or notfile) and (access is None or access.startswith("state-side-") or access == "state-dir-write"):
     sp = config.state_paths
     gov = db.parent / "governance"
     rw, r = os.R_OK | os.W_OK, os.R_OK
@@ -6644,7 +6668,7 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 			fi
@@ -6808,6 +6832,8 @@ list_folders() {
 		case ",$cerr," in *",state-side-owner,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmods that fix it are the agent's to run, once each, when step 2 stops on them, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused, and no change of its mode fixes that (an ACL, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-dir-write,"*) stail="; step 2 stops at its status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod 700 that fixes it is the agent's to run, once, as step 2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
+		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage), at its config step when this account cannot read it and at its status step when it can: fixing that is the person's (keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
@@ -7610,6 +7636,8 @@ else:  # the folder and the manifest open: a -wal or -shm this account cannot op
     for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
             side.lstat()
+            if side.is_dir():  # a folder there is no chmod: state_side_not_a_file (round 24 B52)
+                continue
         except FileNotFoundError:
             continue
         except OSError:
@@ -7688,6 +7716,36 @@ except NotADirectoryError:
     print(1)
 except OSError as exc:  # a symlink loop where the folder belongs is no folder either
     print(int(exc.errno == errno.ELOOP))
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	[ "$n" = 1 ]
+}
+# Whether the -wal or the -shm of the manifest is there and is no file (a folder, a socket, a fifo, or a link to
+# one), as not_a_file judges the manifest: init exits 1 on one this account cannot read, and its fix, moving it
+# aside, is the person's, as doctor's state_dir.files line gives it; state_open_fix gave the agent's or the
+# ACL's words (round 24 B52). Keyed on lstat, never on the error's words. False when it cannot say. -I:
+# nothing from the folder this runs in is imported.
+state_side_not_a_file() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import errno, stat, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+n = 0
+for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    try:
+        mode = side.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            mode = side.stat().st_mode
+    except OSError as exc:  # a link loop is no file; a shut folder above it says nothing (state_open_fix)
+        n = n or int(exc.errno == errno.ELOOP)
+        continue
+    n = n or int(not stat.S_ISREG(mode))
+print(n)
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
 	[ "$n" = 1 ]
@@ -7784,6 +7842,8 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_side_not_a_file; then
+		FAIL_NEXT="the -wal or -shm of agentsync's state file is a folder or something else that is not a file (~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it aside), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ]; then
 		local fix
 		fix="$(state_open_fix)"
