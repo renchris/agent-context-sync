@@ -5272,6 +5272,10 @@ Amended 2026-10-16, §16.92 M36: the report's own words spell it "capitalized", 
 Amended 2026-10-20, §16.146 X35: every doctor FAIL still keeps the outcome from "fully one command", but only a
 FAIL in no bucket of the Summary's doctor line is called unexpected; one in a bucket is `N doctor FAIL(s) with a
 known cause: <checks> (<the bucket's words>)`, and both lines read one sort.
+Amended 2026-10-23, §16.171 B97: a report-step error no step-3 sync stop claims is an outcome reason (A36),
+so it is an Items line, and the friction line says `F<n> is one of the outcome's reasons (see Items)`, with
+`the others do not change it by themselves` when other lines remain; "none of these changes the outcome by
+itself" only when no listed line feeds the outcome, so the Agent friction heading is true of its list.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -28811,7 +28815,28 @@ gets the same 12 digits from stdin and from a file, and the pin in
 
 ### 16.171 Round 24: setup report: the lost manifest's words and one step 3 stop counted once (2026-10-22, wave B13 round 24 lane RA)
 
-Reserved for round 24 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 24").
+Lane RA's 24 items (`src/agentsync/setup_report.py`; specs `round24/items/<id>.md`, each built as its verifier
+corrected it). Rulings 7 and 9 of `docs/lanes/COMMON.md` govern the first two groups.
+
+**One step 3 stop, counted once** (B2, B23, B78, B97; amends §16.14 K10). Since round 23's A9 a foreground sync
+that exits 1 on a state file appends a sync-stops.log line, and the prompt still has the agent log the same stop
+as a step 3 error (ruling 9), so one stop gave two outcome reasons (`1 sync at step 3 exited 1 ...` and `step 3
+logged 1 error`), an Items line, an F-line under the heading that says it changes nothing, and a friction line
+ending "none of these changes the outcome by itself". `_stop_pairs` pairs them one to one, by order, never by a
+time window: in time order, each recorded stop whose later sync ended 0 claims the first unclaimed error of the
+report step (3, or 5 in a v5 layout) at or after it and before the next recorded stop. `compute_outcome` counts
+only the unpaired errors (`_unpaired_errors`) in `step N logged K error`; a paired stop is one Items line,
+`<the stop's line> (F<n>: the agent's account of it)`, and its F-line is in no other list. When the outcome is
+"worked with help", each unpaired report-step error is an Items line too (after the sync-stop lines), and the
+Agent friction list keeps only the lines that feed nothing, so its heading is true. The friction line says what
+feeds the outcome: `1 step-3 sync stop agentsync logged itself, one of the outcome's reasons (see Items; F4 is
+the agent's account of it)`, `F5 is one of the outcome's reasons (see Items)`, then `the others do not change it
+by themselves` when other lines remain; "none of these changes the outcome by itself" only when no listed line
+feeds it (a failed run, where no such reason is added, keeps it). An error logged before the stop, a second
+"skipped: lock held" (which writes no sync-stops.log line) and an error with no time stay unpaired. Tests:
+`test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason` and
+`test_a_step_3_sync_that_stopped_is_worked_with_help` (its Items slice now ends at Run metadata, so the F-line is
+checked where it is, not under Agent friction).
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 

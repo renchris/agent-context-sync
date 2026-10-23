@@ -3117,7 +3117,9 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
         "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
         "it ended 0 after the agent's chmod" in items
     ), items
-    assert "; 1 step-3 sync stop agentsync logged itself (see Items)" in _line(summary, "- agent friction: ")
+    assert _line(summary, "- agent friction: ").endswith(
+        "; 1 step-3 sync stop agentsync logged itself, one of the outcome's reasons (see Items)"
+    )
     write_friction(fake_mac, V12_HAPPY.replace("Prompt: v12", "Prompt: v6"))
     assert summary_of(fake_mac)[1].strip().startswith("- **outcome: fully one command**"), "v6: not counted"
     write_friction(fake_mac, V12_HAPPY)
@@ -4970,14 +4972,124 @@ def test_a_step_3_sync_that_stopped_is_worked_with_help(fake_mac: dict[str, Path
     assert summary.strip().splitlines()[0] == (
         "- **outcome: worked with help** (computed: install.sh exit 0; step 3 logged 1 error)"
     ), summary
-    assert "- agent friction: 0 deviation, 0 prompt, 1 error (F" in summary, summary
-    items = summary.split("Items that were not one command (attempt 1):", 1)[1]
-    assert "· step 3 · error · agentsync sync exited 1: a state file this account could not open" in items, (
-        items
-    )
+    # B13 round 24 B78, B97: the error is the outcome's reason, so it is an Items line, never under the
+    # heading that says its lines do not change the outcome, and the friction line says so
+    friction = _line(summary, "- agent friction: ")
+    assert friction.endswith("1 error (F4); F4 is one of the outcome's reasons (see Items)"), friction
+    assert "none of these changes" not in summary and "Agent friction (" not in summary, summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1].split(
+        setup_report.RUN_METADATA_HEADING, 1
+    )[0]
+    assert (
+        "- F4 · step 3 · error · agentsync sync exited 1: a state file this account could not open" in items
+    ), items
     write_friction(fake_mac, V6_HAPPY.replace("Prompt: v6", "Prompt: v31"))
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert section(text, "Summary").strip().startswith("- **outcome: fully one command**")
+
+    # beside a deviation, the heading stays for it alone, and the line says the others change nothing
+    deviated = "2026-09-29T10:00:30Z | step 3 | deviation | ran the sync in the background | -\n"
+    write_friction(
+        fake_mac,
+        V6_HAPPY.replace("Prompt: v6", "Prompt: v31").replace(
+            "2026-09-29T10:01:10Z", deviated + stopped + "2026-09-29T10:01:10Z", 1
+        ),
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert _line(summary, "- agent friction: ").endswith(
+        "1 deviation, 0 prompt, 1 error (F4, F5); F5 is one of the outcome's reasons (see Items); the others "
+        "do not change it by themselves"
+    ), summary
+    agent_side = summary.split("Agent friction (attempt 1; it does not change the outcome by itself):", 1)[1]
+    assert re.findall(r"^- F(\d+) · ", agent_side, flags=re.MULTILINE) == ["4"], agent_side
+
+    # in a failed run no error is a reason: it stays the agent's line, with the "none of these" tail
+    v6_install_log(fake_mac, rc=1)
+    write_friction(
+        fake_mac,
+        V6_HAPPY.replace("Prompt: v6", "Prompt: v31").replace(
+            "2026-09-29T10:01:10Z", stopped + "2026-09-29T10:01:10Z", 1
+        ),
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert summary.strip().startswith("- **outcome: failed at step 2**"), summary
+    assert _line(summary, "- agent friction: ").endswith(
+        "1 error (F4); none of these changes the outcome by itself"
+    ), summary
+
+
+def _two_records(fake_mac: dict[str, Path], errors: str, stops: str) -> str:
+    """B13 round 24 ruling 9: a v12 attempt with step 3 ``errors`` before its end line, ``stops`` in
+    sync-stops.log, and a later sync the manifest records as ok; the Summary."""
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", errors, V12_HAPPY))
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stops, encoding="utf-8")
+    return summary_of(fake_mac)[1]
+
+
+_CHMOD_ERROR = (
+    "2026-09-29T10:00:55Z | step 3 | error | agentsync sync exited 1 on the lock file; ran the chmod 600 its "
+    "[FAIL] line named, the next sync ended 0 | -\n"
+)
+_LOCK_SKIP = "2026-09-29T10:00:58Z | step 3 | error | agentsync sync said skipped: lock held, twice | -\n"
+_LOCK_STOP = "2026-09-29T10:00:50Z sync-stop file=lock rc=1 owner=agent\n"
+_LOCK_STOP_ITEM = (
+    "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; it "
+    "ended 0 after the agent's chmod"
+)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason(fake_mac: dict[str, Path]) -> None:
+    """B13 round 24 ruling 9 (B2, B23, B78, B97): agentsync records a step 3 sync stop in sync-stops.log,
+    and the prompt still has the agent log it as a step 3 error, so one stop gave two outcome reasons, an
+    Items line, an F-line under the heading that says it changes nothing, and a friction line ending "none
+    of these changes the outcome by itself". The stop claims the agent's line, one to one by order: one
+    reason, one Items line naming the F-line, and a friction line that says what feeds the outcome."""
+    summary = _two_records(fake_mac, _CHMOD_ERROR, _LOCK_STOP)
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 sync at step 3 exited 1 on "
+        "agentsync's lock file, and it ended 0 after the agent's chmod)"
+    ), summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1]
+    items = items.split(setup_report.RUN_METADATA_HEADING, 1)[0]
+    assert [ln for ln in items.splitlines() if ln.startswith("- ")] == [
+        _LOCK_STOP_ITEM + " (F4: the agent's account of it)"
+    ], items
+    assert _line(summary, "- agent friction: ") == (
+        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); 1 step-3 sync stop agentsync logged itself, "
+        "one of the outcome's reasons (see Items; F4 is the agent's account of it)"
+    ), summary
+    assert "none of these changes" not in summary and "Agent friction (" not in summary, summary
+
+    # a second error, a "skipped: lock held" that leaves no sync-stops.log line, is claimed by no stop: it
+    # is a reason and an Items line of its own
+    summary = _two_records(fake_mac, _CHMOD_ERROR + _LOCK_SKIP, _LOCK_STOP)
+    assert summary.strip().splitlines()[0].endswith("the agent's chmod; step 3 logged 1 error)"), summary
+    assert "(F4: the agent's account of it)" in summary
+    assert (
+        "- F5 · step 3 · error · agentsync sync said skipped: lock held"
+        in summary.split("Agent friction (", 1)[0]
+    ), summary
+    assert _line(summary, "- agent friction: ").endswith(
+        "(see Items; F4 is the agent's account of it); F5 is one of the outcome's reasons (see Items)"
+    ), summary
+
+    # an error logged before the stop is never its account, by order, whatever the time between them
+    early = _CHMOD_ERROR.replace("10:00:55Z", "10:00:45Z")
+    summary = _two_records(fake_mac, early, _LOCK_STOP)
+    assert summary.strip().splitlines()[0].endswith("the agent's chmod; step 3 logged 1 error)"), summary
+    assert _LOCK_STOP_ITEM + "\n" in summary and "agent's account of it" not in summary, summary
+
+    # each of two stops claims the first error after it and before the next stop: one each
+    second = "2026-09-29T10:00:56Z sync-stop file=heartbeat rc=1 owner=agent\n"
+    summary = _two_records(fake_mac, _CHMOD_ERROR + _LOCK_SKIP, _LOCK_STOP + second)
+    assert "step 3 logged" not in summary.strip().splitlines()[0], summary
+    assert summary.count("the agent's account of it)") == 2, summary
+    assert "(see Items; F4 and F5 are the agent's accounts of them)" in summary, summary
 
 
 @pytest.mark.usefixtures("clean_doctor")

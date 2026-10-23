@@ -2698,6 +2698,54 @@ def _sync_stop_reason(stops: Sequence[_SyncStop]) -> str | None:
     return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}, and {each} ended 0 after {who}"
 
 
+def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_SyncStop, FrictionEvent]]:
+    """Each step-3 sync stop :func:`_sync_stop_reason` counts, paired with the agent's error line for it (B13
+    round 24 ruling 9; B2, B23, B78, B97). The prompt has the agent log a sync that stopped as an error of the
+    report step, and agentsync records the same stop in sync-stops.log, so one stop has two records. One to
+    one, by order, never by a time window: in time order, each recorded stop whose later sync ended 0 claims
+    the first unclaimed report-step error at or after it and before the next recorded stop (any stop, counted
+    or not). An error left unclaimed (a second "skipped: lock held", which writes no sync-stops.log line, or
+    one logged before the stop) stays the agent's own line, as does an error with no time."""
+    errors = [
+        e
+        for e in _run_events(attempt)
+        if e.kind == "error" and e.step == attempt.layout.report_step and e.at is not None
+    ]
+    ordered = sorted(stops, key=lambda s: s.at)
+    claimed: set[int] = set()
+    pairs: list[tuple[_SyncStop, FrictionEvent]] = []
+    for i, stop in enumerate(ordered):
+        if stop.ended_ok is None:
+            continue
+        nxt = ordered[i + 1].at if i + 1 < len(ordered) else None
+        error = next(
+            (
+                e
+                for e in errors
+                if e.line not in claimed
+                and e.at is not None
+                and e.at >= stop.at
+                and (nxt is None or e.at < nxt)
+            ),
+            None,
+        )
+        if error is not None:
+            claimed.add(error.line)
+            pairs.append((stop, error))
+    return pairs
+
+
+def _unpaired_errors(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[FrictionEvent]:
+    """The attempt's report-step errors no sync-stops.log line claims (:func:`_stop_pairs`): each is a turn
+    of its own, an outcome reason when the last install run ended 0 (B13 round 23 A36)."""
+    paired = {e.line for _stop, e in _stop_pairs(attempt, stops)}
+    return [
+        e
+        for e in _run_events(attempt)
+        if e.kind == "error" and e.step == attempt.layout.report_step and e.line not in paired
+    ]
+
+
 _WAIT_OK_KINDS = ("question", "click", "approval", "prompt")
 """The kinds a step 1 that stopped for the folder answer may also log (B13 round 7 H40): the prompt asks the
 agent to log an approval its tool asked for and a go-ahead as a question, and a ``prompt`` line is feedback.
@@ -2733,7 +2781,9 @@ def compute_outcome(
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
     never change the outcome by themselves, except an error that stopped the run, and an error of the report
-    step, a sync that stopped on its way (B13 round 23 A36), which makes it "worked with help".
+    step, a sync that stopped on its way (B13 round 23 A36), which makes it "worked with help"; one a
+    ``sync_stops`` stop claims (:func:`_stop_pairs`) is that stop's own record, counted once (B13 round 24
+    ruling 9).
     ``config_cause``: what the last install run's failed config step met, read from its install.out block by
     the caller
     (:func:`_outcome_cause`, no bracket in it), so a stop on the state folder says it and whose it is (B13
@@ -2804,11 +2854,13 @@ def compute_outcome(
                     f"the folder question: step 1's list could not read the {_plural(unread, 'folder')} this "
                     "Mac already syncs"
                 )
-            # B13 round 23 A36: a sync of the report step that stopped (on a chmod the agent then ran, or a
-            # second "skipped: lock held") leaves no record the report reads, so the prompt has the agent log
-            # it as an error of that step; stopping_error never reads that step, so it was "fully one
-            # command" beside an Items line naming the error. It is a turn: worked with help, never failed
-            reported = [e for e in _run_events(attempt) if e.kind == "error" and e.step == layout.report_step]
+            # B13 round 23 A36: the prompt has the agent log a sync of the report step that stopped as an
+            # error of that step; stopping_error never reads that step, so it was "fully one command" beside
+            # an Items line naming the error. It is a turn: worked with help, never failed. A stop on a state
+            # file this account could not open also leaves a sync-stops.log line (A9), already a reason above:
+            # its error is paired with it and counted once; a second "skipped: lock held" leaves no line, and
+            # its error counts here (B13 round 24 ruling 9)
+            reported = _unpaired_errors(attempt, sync_stops)
             if reported:
                 why.append(f"step {layout.report_step} logged {_plural(len(reported), 'error')}")
         sorted_fails = [(f, None) if isinstance(f, str) else f for f in doctor_fails]
@@ -9462,9 +9514,11 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     return _read_sync_stops(r.install_log, lo, hi, starts, beat)
 
 
-def _sync_stop_line(stop: _SyncStop) -> str:
+def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> str:
     """The Items line of one step-3 sync stop (B13 round 23 A9): the stop, whose fix it was, and whether a
-    later sync ended 0."""
+    later sync ended 0; ``account``, the agent's error line it claims (:func:`_stop_pairs`), named on it, so
+    one stop is one line (B13 round 24 ruling 9)."""
+    told = f" (F{account.line}: the agent's account of it)" if account is not None else ""
     whose = "the agent's chmod" if stop.owner == "agent" else "the person's fix"
     if not stop.measured:
         then = (
@@ -9474,7 +9528,8 @@ def _sync_stop_line(stop: _SyncStop) -> str:
         then = f"it ended 0 after {whose}"
     else:
         then = f"no sync ended 0 after it by this report ({whose})"
-    return f"- agentsync sync · step 3 · exited 1 on {stop.what}, which this account could not open; {then}"
+    head = f"- agentsync sync · step 3 · exited 1 on {stop.what}, which this account could not open"
+    return f"{head}; {then}{told}"
 
 
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
@@ -10022,10 +10077,29 @@ def _expected_turns_line(
     return "- expected turns: " + " · ".join(parts)
 
 
-def _agent_friction_line(att: Attempt, stop: FrictionEvent | None, syncs: int = 0) -> str:
+def _ids(events: Sequence[FrictionEvent]) -> str:
+    """``F4``, ``F4 and F6``, ``F4, F6 and F9``: the friction lines named in a sentence."""
+    names = [f"F{e.line}" for e in events]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _agent_friction_line(
+    att: Attempt,
+    stop: FrictionEvent | None,
+    syncs: int = 0,
+    *,
+    paired: Sequence[FrictionEvent] = (),
+    fixed: int = 0,
+    counted: Sequence[FrictionEvent] = (),
+) -> str:
     """The agent-side lines (deviation, prompt, error): counted apart from the outcome; ``syncs``, the step-3
-    sync stops agentsync logged itself (B13 round 23 A9: the prompt asks for no line for one the agent's chmod
-    fixed), said after them, as the Items lines hold them."""
+    sync stops agentsync logged itself (B13 round 23 A9), said after them, as the Items lines hold them.
+
+    B13 round 24 ruling 9 (B2, B23, B78, B97): ``paired``, the agent's error lines a stop claims
+    (:func:`_stop_pairs`), are named as its account of that stop; ``fixed``, the stops that are one of the
+    outcome's reasons, and ``counted``, the report-step errors that are (:func:`_unpaired_errors`), are said
+    to be. "none of these changes the outcome by itself" only when no listed line feeds the outcome; else
+    "the others do not change it by themselves" when other lines remain."""
     counts = att.kinds()
     lines = att.of_kind(*PROBLEM_KINDS)
     ids = f" ({', '.join(f'F{e.line}' for e in lines)})" if lines else ""
@@ -10037,9 +10111,30 @@ def _agent_friction_line(att: Attempt, stop: FrictionEvent | None, syncs: int = 
     if uncounted:
         text += f"; {_plural(uncounted, 'line')} without a prompt kind (untyped or v4), shown, not counted"
     if syncs:
-        text += f"; {_plural(syncs, 'step-3 sync stop')} agentsync logged itself (see Items)"
+        text += f"; {_plural(syncs, 'step-3 sync stop')} agentsync logged itself"
+        if fixed:
+            text += (
+                ", one of the outcome's reasons"
+                if syncs == 1
+                else ", among the outcome's reasons"
+                if fixed == syncs
+                else f", {fixed} of them among the outcome's reasons"
+            )
+        account = ""
+        if paired:
+            are = "is the agent's account of it" if len(paired) == 1 else "are the agent's accounts of them"
+            account = f"; {_ids(paired)} {are}"
+        text += f" (see Items{account})"
     if stop is not None:
         return text + f"; F{stop.line} stopped the run (the outcome says so)"
+    if counted:
+        are = "is one of the outcome's reasons" if len(counted) == 1 else "are among the outcome's reasons"
+        text += f"; {_ids(counted)} {are} (see Items)"
+    if fixed or counted:
+        feeding = {e.line for e in (*paired, *counted)}
+        if uncounted or any(e.line not in feeding for e in lines):
+            text += "; the others do not change it by themselves"
+        return text
     if not lines and not uncounted:
         return text  # three zero counts: there is no line for "none of these" to mean (B13 round 8 J14)
     return text + "; none of these changes the outcome by itself"
@@ -12106,6 +12201,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 "(no Xcode tools, a git failure) and logged nothing is not in it."
             )
     stop = stopping_error(att, runs) if att is not None else None
+    # B13 round 24 ruling 9: a step-3 stop sync-stops.log records and the agent's error line for it are one
+    # Items line; when it worked with help, the report-step errors no stop claims are reasons and Items too
+    pairs = _stop_pairs(att, stops) if att is not None else []
+    account = {id(s): e for s, e in pairs}
+    helped = outcome.kind == "worked with help"
+    told = _unpaired_errors(att, stops) if att is not None and helped else []
     if att is not None:
         synced = synced_before(runs)
         unstarted = fr is not None and _headerless(fr, len(fr.attempts) - 1) and not runs
@@ -12194,7 +12295,16 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"- note: step {att.layout.folder_question_step}'s folder list could not read which folders "
                 f"sources.toml already syncs ({why_unread}){',' if again is None else ';'} {marked}"
             )
-        out.append(_agent_friction_line(att, stop, len(stops)))
+        out.append(
+            _agent_friction_line(
+                att,
+                stop,
+                len(stops),
+                paired=[e for _s, e in pairs],
+                fixed=sum(s.ended_ok is not None for s in stops) if helped else 0,
+                counted=told,
+            )
+        )
         # only when it says more than the agent-friction line: a kind other than the problem kinds and the
         # closing "end | finished" line, or a legacy line (B13 round 11 M34). The end line alone added only
         # "1 finished", on every attempt that reached a report (B13 round 12 N20): a missing one has its own
@@ -12326,7 +12436,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
             "(not logged: the agent logged no line for this stop)"
         )
-    if att is not None and (items or retried or unread or signed_out or install_stop or stops):
+    if att is not None and (items or retried or unread or signed_out or install_stop or stops or told):
         if signed_out:
             out.append(signed_out)
         if install_stop:
@@ -12347,11 +12457,17 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"- install.sh · {_plural(len(retried) - INSTALL_RUNS_SHOWN, 'more such run')} (see "
                 "Installer)"
             )
-        out += [_sync_stop_line(stop) for stop in stops]  # B13 round 23 A9
-        out += [_item_line(r, att, e) for e in items]
+        out += [_sync_stop_line(s, account.get(id(s))) for s in stops]  # B13 round 23 A9; round 24 ruling 9
+        out += [_item_line(r, att, e) for e in (*told, *items)]
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
-    agent_side = [e for e in att.of_kind(*PROBLEM_KINDS) if e is not stop] if att is not None else []
+    # what feeds the outcome is in Items, so this list's heading is true (B13 round 24 ruling 9)
+    shown = {e.line for e in (*account.values(), *told)}
+    agent_side = (
+        [e for e in att.of_kind(*PROBLEM_KINDS) if e is not stop and e.line not in shown]
+        if att is not None
+        else []
+    )
     agent_side = sorted(agent_side, key=lambda e: (PROBLEM_KINDS.index(e.kind), e.line))
     if att is not None and (agent_side or att.untyped):
         out += ["", f"Agent friction (attempt {att.number}; it does not change the outcome by itself):", ""]
