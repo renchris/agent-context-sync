@@ -7647,19 +7647,45 @@ def _acl_deny(path: Path) -> None:
 STATE_NOTFILE_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or "
     "something else that is not a file (not damage of its contents): fixing that is the person's (keeping a "
-    "copy, they put the file back or move the folder aside), and ~/.local/bin/agentsync status prints it on "
-    "its state_dir.manifest line"
+    "copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync "
+    "starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
-"""Step 1's tail for a folder where manifest.sqlite belongs (B13 round 22 Z11)."""
+"""Step 1's tail for a folder where manifest.sqlite belongs (B13 round 22 Z11), in doctor.MANIFEST_FIX's
+words: the folder goes aside with heartbeat.json, or the next run stops on a lost manifest (round 24 ruling
+8: B7, B21, B86)."""
 
 STATE_NOTFILE_NEXT = (
     "NEXT: agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the "
     "error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
-    "line): fixing it is the person's (keeping a copy, they put the file back or move the folder aside), not "
-    "a step for the agent, so show them the error and go on to the report; once it is fixed, the next run "
-    "is: {rerun}"
+    "line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and "
+    "heartbeat.json with it, so the next sync starts a new manifest), not a step for the agent, so show them "
+    "the error and go on to the report; once it is fixed, the next run is: {rerun}"
 )
-"""Step 2's NEXT for it, at the config step init stops on (B13 round 22 Z11)."""
+"""Step 2's NEXT for it, at the config step init stops on (B13 round 22 Z11; round 24 ruling 8)."""
+
+LOST_FIX = (
+    "fixing {it} the person's (they restore the file from a copy they trust, or move heartbeat.json aside, "
+    "keeping a copy, so the next sync starts a new manifest)"
+)
+"""The person's fix for a manifest lost from a Mac that has synced, in round 24 ruling 7's words."""
+
+STATE_LOST_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though "
+    "heartbeat.json beside it records earlier passes (not damage, not a mode): "
+    + LOST_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for a lost manifest (round 24 ruling 7: B3, B24, B33, B41, B48, B69, B83, B85)."""
+
+STATE_LOST_NEXT = (
+    "NEXT: agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records "
+    "earlier passes (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its "
+    "state_dir.manifest line): "
+    + LOST_FIX.format(it="it is")
+    + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
+    "next run is: {rerun}"
+)
+"""Step 2's NEXT for it, where fail's generic "fix the error above" read as the agent's step (ruling 7)."""
 
 
 SIDE_STOPS = (
@@ -7737,6 +7763,7 @@ STATE_OPEN_TAIL = {
         "on its state_dir.files line"
     ),
     "state-notfile": STATE_NOTFILE_TAIL,
+    "state-lost": STATE_LOST_TAIL,
     "state-side-refused": (
         f"{SIDE_STOPS}which this account is refused, and a chmod of it does not fix that (an ACL, or a "
         "volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and "
@@ -7769,6 +7796,11 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "NR-mode",
         "NR-link",
         "NR-loop",
+        "LM",
+        "LM-older",
+        "LM-wal",
+        "LM-new",
+        "LM-none",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7801,7 +7833,14 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     (NR-link) or a link loop (NR-loop) is no file either, and init stops on it as on a folder.
 
     Round 23 A78: a -wal or -shm this account cannot read (an ACL that denies it, PM-shm-acl) stops init as
-    the manifest does, since SQLite cannot open the manifest past it: it takes the config step's words."""
+    the manifest does, since SQLite cannot open the manifest past it: it takes the config step's words.
+
+    Round 24 ruling 7 (B3, B24, B33, B41, B48, B69, B83, B85; probe LM): with the manifest gone while
+    heartbeat.json beside it records a pass, every init step 2 reinstalls stops (round 23 A29), and step 1
+    said "(none is needed)". It says the person's stop, by manifest_lost's rule inlined, so an installed build
+    without it says the same (LM-older); a heartbeat that records no pass (LM-new) or none at all (LM-none) is
+    a first sync, with nothing said. The lane's review: a stale -wal at 0000 beside it got `state-access`, a
+    chmod that ended nothing, as init stops on the lost manifest before it opens anything (LM-wal)."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7819,6 +7858,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "NR-mode": "state-notfile",
         "NR-link": "state-notfile",
         "NR-loop": "state-notfile",
+        "LM": "state-lost",
+        "LM-older": "state-lost",
+        "LM-wal": "state-lost",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
@@ -7827,6 +7869,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             _tool_python_read_only(env, wal)
         elif state.startswith("PM-ro"):
             _tool_python_read_only(env, db.parent)
+        elif state == "LM-older":
+            _tool_python_without(env, "agentsync.manifest", "manifest_lost")
         elif state.endswith("-older"):
             _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
         else:
@@ -7860,6 +7904,17 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             elsewhere = db.with_name("elsewhere")
             elsewhere.mkdir(0o700)
             db.symlink_to(elsewhere if state == "NR-link" else db)
+        elif state.startswith("LM"):  # round 24 ruling 7: the manifest gone, a heartbeat beside it
+            for f in (db, wal, shm):
+                f.unlink(missing_ok=True)
+            passed = {"run_id": 3, "last_success_at": "2026-10-20T09:00:00Z"}
+            entry = {"run_id": 0} if state == "LM-new" else passed
+            if state != "LM-none":
+                heartbeat = db.parent / "heartbeat.json"
+                heartbeat.write_text(json.dumps({"project-alpha": entry}), encoding="utf-8")
+            if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
+                wal.write_bytes(b"")
+                wal.chmod(0)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
@@ -7877,7 +7932,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if state == "PM-fixed":
+    if state in ("PM-fixed", "LM-new", "LM-none"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
@@ -9149,15 +9204,23 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+@pytest.mark.parametrize("follow", ["as-said", "folder-alone"])
 def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2(
-    real_env: dict[str, str], wheel: Path
+    real_env: dict[str, str], wheel: Path, follow: str
 ) -> None:
     """B13 round 22 Z11 (probe NR), with the real agentsync: manifest.sqlite moved aside and a 0700 folder in
     its place. Step 1 said nothing (the folder passes stat, owner and access) and step 2 stopped at its config
     step on "cannot be opened: Is a directory" with "fix the error above", while status gives the person's
     fix. Step 1's tail names it, logged config_err=state-notfile; step 2 exits 1 with the person's NEXT.
     Round 23 A61: install.sh's comment quoted "cannot be opened: Is a directory", which init no longer prints
-    since Z51; it quotes the words init prints."""
+    since Z51; it quotes the words init prints.
+
+    Round 24 ruling 8 (B7, B21, B86), by following the words: they said "move the folder aside", and moved
+    alone, the next run stopped on round 23 A29's lost-manifest guard with fail's generic "fix the error
+    above" (B3, B31). The words move heartbeat.json with it, as doctor.MANIFEST_FIX does, and step 2 then
+    ends 0 (as-said). Moved alone (folder-alone), step 1 names the lost manifest as the person's
+    (config_err=state-lost) and step 2's NEXT is the person's (ruling 7); moving heartbeat.json aside, as
+    that NEXT says, ends it."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -9181,6 +9244,26 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     comments = " ".join(ln.strip().lstrip("#").strip() for ln in script.splitlines())
     quoted = re.search(r'init and add-source exit 1 on it \("<db> ([^"]+)", since round 22 Z51', comments)
     assert quoted and f"{db} {quoted[1]}" in cp.stderr, (quoted, cp.stderr)
+    heartbeat = db.with_name("heartbeat.json")
+    assert heartbeat.is_file(), "the first install's sync recorded a pass"
+    db.rename(db.with_name("manifest.sqlite.folder-aside"))  # "move the folder aside"
+    if follow == "as-said":  # "... and heartbeat.json with it"
+        heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))
+        again = install_sh(env, str(wheel))
+        assert again.returncode == 0, again.stdout + again.stderr
+        return
+    listed = install_sh(env, "--list-folders")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_LOST_TAIL), last_line(listed)
+    assert install_log(env)[-2].endswith(" config_err=state-lost"), install_log(env)[-2]
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert f"{db} is missing, but heartbeat.json records earlier passes" in lost.stderr, lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(lost)
+    assert heartbeat.is_file() and not db.exists(), "the NEXT moves nothing: the choice is the person's"
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
 
 
 @pytest.mark.parametrize(

@@ -6284,6 +6284,9 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # (MANIFEST_FIX), so it is the person's (round 22 Z11). "state-notdir", judged first and alone, when something
 # that is not a folder sits where the state folder or a folder above it belongs (stat follows a symlink, so one to
 # a real folder passes): the access probe gave the agent a chmod of that file (round 23 A2, A6, A21, A32, A80).
+# "state-lost" when no manifest is there while heartbeat.json beside it records a pass (manifest.manifest_lost,
+# inlined, as the installed build may predate it): every init step 2 reinstalls stops on it, and the choice
+# is the person's (round 24 ruling 7: B3, B24, B33, B41, B48, B69, B83, B85; step 1 said "(none is needed)").
 # "state-file-owner", "state-file-access" or "state-file-refused" for the lock, the heartbeat, governance/ or its
 # holds.json or purge queue, the files status checks by name, when nothing above is said (A17, A83). Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
@@ -6293,7 +6296,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # this runs in is imported.
 config_errors() { # PYTHON
 	with_timeout 5 "$1" -I -c '
-import errno, os, sqlite3, stat, sys
+import errno, json, os, sqlite3, stat, sys
 from pathlib import Path
 from agentsync.config import ConfigError, load_config
 from agentsync.paths import expand
@@ -6359,6 +6362,32 @@ try:
     notfile = not_a_file(db)
 except OSError:
     notfile = False
+
+
+def lost(p):
+    """manifest.manifest_lost, inlined, since the installed build that runs this may predate it (round 24
+    ruling 7): no manifest, in a folder this account can use, while heartbeat.json beside it records a pass."""
+    try:
+        p.lstat()
+        return False
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return False
+    if not os.access(p.parent, os.R_OK | os.W_OK | os.X_OK):
+        return False  # a folder this account cannot use: its own word comes first
+    try:
+        data = json.loads((p.parent / "heartbeat.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return any(
+        isinstance(e, dict) and (bool(e.get("last_success_at")) or (type(e.get("run_id")) is int and e["run_id"] >= 1))
+        for e in data.values()
+    )
+
+
 # something that is not a folder (a file, a symlink to one, a fifo) where the state folder or a folder above it
 # belongs: stat follows a symlink, so a symlink to a real folder passes; it is no mode, owner or ACL to fix,
 # and every build stops on it, so it is judged first and alone (round 23 A2, A6, A21, A32, A80)
@@ -6441,6 +6470,8 @@ if access == "state-side-access" and checked in ("state-file-owner", "state-file
     access = None  # the stop of the person is the one to say: the chmods of the agent alone would not end it
 if notdir:
     words.append("state-notdir")
+elif lost(db):  # step 2 reinstalls this checkout, whose init stops on it before any other open (ruling 7):
+    words.append("state-lost")  # a shut -wal left beside it would get a chmod that ends nothing (the review)
 elif access:
     words.append(access)
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
@@ -6597,7 +6628,7 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-notfile|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 			fi
 		fi
@@ -6731,7 +6762,10 @@ list_folders() {
 		# plural, once each (A37). One no chmod of it fixes says so, not "though its mode allows it": a read-only
 		# volume refuses whatever the mode (A75). Something that is not a folder where the state folder or a
 		# folder above it belongs is no mode, owner or ACL: moving it aside is the person's, and its case comes
-		# last (round 23 ruling 4: A2, A6, A21, A32, A80).
+		# last (round 23 ruling 4: A2, A6, A21, A32, A80). A folder where the manifest belongs goes aside with
+		# heartbeat.json, as doctor.MANIFEST_FIX says: moved alone, the next run stops on a lost manifest (round
+		# 24 ruling 8: B7, B21, B86). That lost manifest, "state-lost", stops the config step of the build step 2
+		# installs (round 23 A29), and keeping or starting over is the person's (ruling 7: B3, B24, B33, B83).
 		stail=""
 		case ",$cerr," in *",state-file-owner,"*) stail="; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines" ;; esac
 		case ",$cerr," in *",state-file-access,"*) stail="; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines" ;; esac
@@ -6742,7 +6776,8 @@ list_folders() {
 		case ",$cerr," in *",state-side-owner,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmods that fix it are the agent's to run, once each, when step 2 stops on them, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused, and a chmod of it does not fix that (an ACL, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
-		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back or move the folder aside), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
+		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
+		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
@@ -7625,6 +7660,42 @@ except OSError as exc:  # a symlink loop where the folder belongs is no folder e
 	fi
 	[ "$n" = 1 ]
 }
+# Whether the manifest is lost from a Mac that has synced (manifest.manifest_lost, round 23 A29): none at the
+# config's state path, in a folder this account can use, while heartbeat.json beside it records a pass. init
+# and add-source exit 1 on it ("<db> is missing, but heartbeat.json records earlier passes"), and fail's "fix the
+# error above" read as the agent's step, while restoring it or starting a new manifest, which forgets the
+# deletions, is the person's choice (round 24 ruling 7: B3, B24, B31, B41, B48, B69, B83, B85). The rule is
+# inlined, as step 1's probe has it, so a build without the function still answers. Keyed on the filesystem,
+# never on the error's words (round 23 A61). False when it cannot say. -I: nothing from the folder this runs
+# in is imported.
+state_lost() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import json, os, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+try:
+    db.lstat()
+    print(0)
+    sys.exit(0)
+except FileNotFoundError:
+    pass
+if not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
+    print(0)
+    sys.exit(0)
+data = json.loads((db.parent / "heartbeat.json").read_text(encoding="utf-8"))
+print(int(isinstance(data, dict) and any(
+    isinstance(e, dict) and (bool(e.get("last_success_at")) or (type(e.get("run_id")) is int and e["run_id"] >= 1))
+    for e in data.values()
+)))
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	[ "$n" = 1 ]
+}
 # A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
 # fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
 # exit 2, which keeps fail's "fix the error above". So the NEXT names the owner and leads with what the agent
@@ -7654,7 +7725,10 @@ except OSError as exc:  # a symlink loop where the folder belongs is no folder e
 # (state_not_a_folder; round 23 ruling 4, A2, A6, A21, A32, A80). A chmod NEXT says to log a re-run that names
 # the same chmod as a step 2 error, as the prompt does, since the prompt's "a failed run whose NEXT: you follow
 # is not logged" read as covering it (A26). The person's for a refusal no chmod of the path fixes says so, not
-# "though its mode allows it": a read-only volume refuses whatever its mode (A75).
+# "though its mode allows it": a read-only volume refuses whatever its mode (A75). A manifest lost from a Mac
+# that has synced (state_lost) is the person's, ahead of the owner's chown, which would not end its stop
+# (round 24 ruling 7), and a folder where the manifest belongs goes aside with heartbeat.json, or the next
+# run stops on that lost manifest (ruling 8: B7, B21, B86).
 # Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
@@ -7672,10 +7746,12 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	fi
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_lost; then
+		FAIL_NEXT="agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier passes (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && state_owned_elsewhere; then
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then
-		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back or move the folder aside), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ]; then
 		local fix
 		fix="$(state_open_fix)"

@@ -27529,6 +27529,9 @@ no file, so it is `state-notfile` at any mode (case NR-mode). The init error's o
 lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
+Amended 2026-10-23, §16.173 B7, B21, B86: the tail's and the NEXT's parenthesis reads `(keeping a copy, they put the file
+back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest)`, as
+doctor.MANIFEST_FIX words it: the folder moved alone stopped the next run on the lost-manifest guard (round 23 A29).
 
 Amended 2026-10-22, §16.166 A46: a symlink where manifest.sqlite belongs counts by what it points to: a link to a folder, or a
 link loop, is no file (`state-notfile`, the person's NEXT); a dangling link is no manifest yet.
@@ -28381,6 +28384,8 @@ the -shm belongs.
 Not built: none. Seam left for lane B (A29, not this lane's): once lane B's lost-manifest refusal lands, init exits 1
 on a missing manifest beside a heartbeat that records passes, and step 2's config step gives fail's generic NEXT
 (no `config_failed` branch reads that case yet).
+Amended 2026-10-23, §16.173 B3, B24, B31: built in install.sh, `state-lost` at step 1 and `state_lost`'s person's NEXT at
+step 2.
 
 ### 16.167 Round 23: a state folder that is not a folder, the heartbeat and the purge queue in cli and doctor (2026-10-22, wave B13 round 23 lane B)
 
@@ -28781,7 +28786,43 @@ Reserved for round 24 lane RB of B13.
 
 ### 16.173 Round 24: setup prompt v33, a lost manifest and a folder at the manifest in install.sh (2026-10-22, wave B13 round 24 lane P)
 
-Reserved for round 24 lane P of B13.
+Round 24's lane P items (`docs/plans/bring-back-ocr.md`, "B13 round 24"; specs `round24/items/B<n>.md`, each the
+verifier's corrected fix), built to the lead's rulings 7 to 9 (`lanes/COMMON23.md`).
+
+**A lost manifest is the person's at step 1 and step 2** (B3, B24, B31, B33, B41, B48, B69, B83, B85, one build;
+amends §16.166 A29). Round 23's A29 made init, add-source and the sync refuse a missing manifest.sqlite while
+heartbeat.json beside it records an earlier pass (`manifest.manifest_lost`), and install.sh had no half: step 1 said
+`(none is needed)` and step 2's config step ended on fail's `fix the error above`, which read as the agent's step,
+while the fix (restore the file, or move heartbeat.json aside so a new manifest starts, forgetting the deletions) is
+the person's choice (ruling 7). `config_errors` writes `state-lost` right after `state-notdir` and ahead of the access
+words (init stops on it before it opens anything, so a stale -wal it cannot open beside it would get a chmod that
+ends nothing: the lane's review, case LM-wal; `manifest_lost` is false over a folder this account cannot use, whose
+own word stays), by `manifest_lost`'s rule inlined, as the probe runs on the installed build, which may predate it; the word is
+in the line-6600 allowlist. Its tail, after `state-notfile`'s: `; step 2 stops at its config step on agentsync's
+state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not
+a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside,
+keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its
+state_dir.manifest line`, with no reinstall hedge (step 2 reinstalls this checkout, whose init stops on it).
+`config_failed`, for exit 1 with no NEXT yet, asks `state_lost` (the same rule inlined, keyed on the filesystem,
+never on the error's words) right after `state_not_a_folder` and ahead of the owner's chown, which would not end
+this stop, and sets `agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records
+earlier passes (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its
+state_dir.manifest line): fixing it is the person's (they restore the file from a copy they trust, or move
+heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), not a step for the agent, so show them
+the error and go on to the report; once it is fixed, the next run is: <install.sh ...>`. Its words are ruling 7's, as
+lane B's doctor.LOST_MANIFEST_FIX gives them; the NEXT moves nothing itself. Tests: the LM, LM-older (an installed
+build without `manifest_lost`), LM-new (a heartbeat with no pass) and LM-none cases of
+`test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`, and the folder-alone case below.
+
+**A folder where manifest.sqlite belongs goes aside with heartbeat.json** (B7, B21, B86, the two turns; amends
+§16.160 Z11). Its step 1 tail and step 2 NEXT said `(keeping a copy, they put the file back or move the folder
+aside)`, while the error's doctor.MANIFEST_FIX says to move it aside with heartbeat.json; on a Mac that has synced,
+the folder moved alone left a lost manifest, and the next run stopped again (ruling 8). Both now say `(keeping a copy,
+they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new
+manifest)`. Tested by following the words, with the real agentsync:
+`test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2[as-said]` moves both and step 2 ends
+0; `[folder-alone]` moves the folder only, and step 1 logs `config_err=state-lost`, step 2 stops with the lost
+manifest's person's NEXT, and moving heartbeat.json aside as it says ends 0.
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 

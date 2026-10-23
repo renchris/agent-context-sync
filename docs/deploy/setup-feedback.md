@@ -658,12 +658,23 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. A folder (or a socket or a fifo) where
   `manifest.sqlite` belongs passes every probe above, and every build's init stops on it: `state-notfile`, `; step 2
   stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is
-  not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back or
-  move the folder aside), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, with no
+  not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or
+  move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), and
+  ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, with no
   reinstall hedge, and step 2's config step its own `NEXT:` (`agentsync's state file, manifest.sqlite, is a folder
   or something else that is not a file (...): fixing it is the person's (...), not a step for the agent, so show them
   the error and go on to the report; ...`), where it said `fix the error above` (round 22 Z11); since round 23 A46 a
-  symlink there counts by what it points to, so a link to a folder or a link loop is no file either. Something that
+  symlink there counts by what it points to, so a link to a folder or a link loop is no file either. The folder goes
+  aside with heartbeat.json, as doctor's fix says: moved alone, the next run stopped on the lost manifest below
+  (round 24 ruling 8). No manifest at all while heartbeat.json beside it records an earlier pass is a manifest lost
+  from a Mac that has synced, which every init step 2 reinstalls stops on (round 23 A29): `state-lost`, `; step 2
+  stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside
+  it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy
+  they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and
+  ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, and step 2's config step its own
+  `NEXT:` (`agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier
+  passes (...): fixing it is the person's (...), not a step for the agent, so show them the error and go on to the
+  report; ...`), where it said `fix the error above` (round 24 ruling 7). Something that
   is not a folder (a file, a symlink to one, a fifo) where the state folder or a folder above it belongs is the
   person's too, judged before every probe above (round 23 ruling 4, A2, A6, A21, A32, A80: the access probe gave
   the agent a chmod of that file, then the re-run blamed an ACL): `state-notdir`, `; step 2 stops at its config step
@@ -694,7 +705,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
-  `state-side-refused`, `state-notfile`, `state-notdir`, `state-file-access`, `state-file-owner` and
+  `state-side-refused`, `state-notfile`, `state-lost`, `state-notdir`, `state-file-access`, `state-file-owner` and
   `state-file-refused`, never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
