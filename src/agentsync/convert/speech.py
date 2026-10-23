@@ -114,6 +114,12 @@ so in doctor's ``speech`` warn: doctor gives that warn its fix, and the setup re
 words (B13 round 18 V5, V28). The time covers the FluidAudio fetch as well as the compile, so the words name
 no cause."""
 _TIMED_OUT = f"{BUILD_TIMED_OUT}{HELPER_RETRY_CLAUSE}"  # by its path (V68), the text doctor drops (Y54)
+_RESOLVE = "swift package resolve"
+_FAILED = " failed (exit "  # a build step that exited non-zero: "<what> failed (exit <code>): <its line>"
+RESOLVE_FAILED = f"{_RESOLVE}{_FAILED}"
+"""How the reason of a build whose ``swift package resolve`` (the FluidAudio fetch) exited non-zero starts, in
+``<helper>.failed`` and so in doctor's ``speech`` warn: doctor gives that warn the re-run as its fix by these
+words (B13 round 24 B42), which :func:`_step` writes."""
 _clock = time.monotonic
 
 
@@ -582,7 +588,7 @@ def _step(
     if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)
         raise SpeechError(ocr._signal_reason(f"{what} was ", cp.returncode, cp.stderr))
     if cp.returncode != 0:
-        raise SpeechError(f"{what} failed (exit {cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")
+        raise SpeechError(f"{what}{_FAILED}{cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")
     return cp.stdout.decode("utf-8", errors="replace").strip()
 
 
@@ -740,7 +746,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
             [swift, "package", *places, "resolve"],
             cwd=tree,
             deadline=deadline,
-            what="swift package resolve",
+            what=_RESOLVE,
             env=spm_env,
         )
         checkout = tree / ".build" / "checkouts" / "FluidAudio"

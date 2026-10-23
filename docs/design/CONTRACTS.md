@@ -24615,6 +24615,9 @@ under install.sh the fix starts `run <install.sh> again (it keeps the folders al
 which builds nothing)`.
 Amended 2026-10-21, §16.155 Y20: under install.sh the fix starts `run <install.sh> again without --report-only,
 which builds nothing; a plain run keeps the folders already synced`, no bracket inside the line's `(fix: ...)`.
+Amended 2026-10-22, §16.175 B42: "any other failed build keeps no fix" now has one exception, a build whose
+`swift package resolve` (the FluidAudio fetch) failed: its fix is the re-run and where to look if it fails again
+(§16.175).
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -28792,6 +28795,24 @@ the closing quote of the span around it": at the first apostrophe, which leaks t
 An unquoted URL (`Failed to clone repository https://...`) still runs to the end of the line. Tests: three cases in
 `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (a fetch, a folder with an apostrophe
 beside a quoted URL, SwiftPM 6.2's own `cannot change to '<path>'` shape), each scrubbed again unchanged.
+
+**A speech build whose FluidAudio fetch failed has the re-run as its fix (B42; `agentsync.convert.speech`,
+`agentsync.ops.doctor`; dated line at §16.137 V5).** Doctor's `[warn] speech` for a `.failed` marker reading
+`swift package resolve failed (exit N): ...` had no fix (V5: "any other failed build keeps no fix"), though each
+install.sh run builds the helper again (`ocr._build` retries whatever marker exists) and a plain re-run built it in
+all three homes of the v32 rehearsal where it had failed. `speech.RESOLVE_FAILED` (`swift package resolve failed
+(exit `) is the head `speech._step` writes for that step, and doctor keys on it (the Y54 drift rule, as
+`BUILD_TIMED_OUT`): `doctor._resolve_again_fix` gives `run <install.sh> again; it fetches FluidAudio from github.com
+again, and if this line comes back, check that this Mac reaches github.com (behind a proxy: HTTPS_PROXY set in the
+shell)`, the run named under install.sh as `_helper_again_fix` names it (`AGAIN_UNDER_INSTALL_SH`). Not the
+finder's "when the Mac and the network are idle": this is no time-out, and a blocked host or a proxy only git lacks
+fails every time, so the fix names no time limit and no "less busy", and says where to look. A `swift build`
+failure, the FluidAudio floor or pin refusal and a failed `git merge-base` keep no fix, and missing developer
+tools keep theirs. The setup report's bucket stays keyed on `BUILD_TIMED_OUT` alone: a resolve failure is still
+`unexpected` there, now with a step on its warn. Tests:
+`test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix`, and
+`test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`, whose
+no-fix case is a `swift build` failure now.
 
 ### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
 

@@ -3639,10 +3639,51 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
     r = by_name(run_checks(sample_config))["speech"]
     assert r.fix == doctor._OCR_DEVTOOLS_FIX and r.detail == f"speech: failed ({speech._TIMED_OUT})", r
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
-    marker.write_text("swift package resolve failed (exit 1): could not reach github.com", encoding="utf-8")
+    marker.write_text("swift build failed (exit 1): error: no such module 'FluidAudio'", encoding="utf-8")
     assert not speech.build_timed_out(sample_config.cache_dir)
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.severity, r.fix) == (Severity.WARN, None), r
+
+
+def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 24 B42: a speech build that failed at ``swift package resolve`` (the FluidAudio fetch) left a
+    warn with no fix, though a plain install.sh run built the helper in every home of the v32 rehearsal. Its
+    fix is the re-run, named as a time-out's is, and where to look if it fails again; no time limit, no "less
+    busy". Any other failed build, and the developer tools' case, keep theirs."""
+    _real_speech(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    marker = ocr._marker(ocr._helper_path(sample_config.cache_dir, speech.SPEECH))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    reason = (
+        "swift package resolve failed (exit 1): error: Git command '<command>' failed: Could not resolve host"
+    )
+    assert reason.startswith(speech.RESOLVE_FAILED)
+    marker.write_text(reason, encoding="utf-8")
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({reason})"), r
+    assert r.fix == (
+        f"run {INSTALL_SH} again; it fetches FluidAudio from github.com again, and if this line comes back, "
+        "check that this Mac reaches github.com (behind a proxy: HTTPS_PROXY set in the shell)"
+    ), r.fix
+    assert "less busy" not in r.fix and "minutes" not in r.fix
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    r = by_name(run_checks(sample_config))["speech"]
+    assert r.fix is not None and r.fix.startswith(
+        f"{doctor.AGAIN_UNDER_INSTALL_SH}; it fetches FluidAudio"
+    ), r
+    for other in (
+        "swift build failed (exit 1): error: no such module 'FluidAudio'",
+        speech._PIN_REFUSAL,
+        "git merge-base failed (exit 128): fatal: not a git repository",
+    ):
+        marker.write_text(other, encoding="utf-8")
+        assert by_name(run_checks(sample_config))["speech"].fix is None, other
+    marker.write_text(reason, encoding="utf-8")
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    assert by_name(run_checks(sample_config))["speech"].fix == doctor._OCR_DEVTOOLS_FIX
 
 
 @pytest.mark.parametrize("module", ["ocr", "media", "speech"])

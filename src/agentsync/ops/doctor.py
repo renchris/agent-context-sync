@@ -843,8 +843,8 @@ def _check_speech(config: Config) -> list[CheckResult]:
     same way, one ``speech: <state> (<detail>)`` line: ok when ready or off (whatever switches the media
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
     built; WARN with the reason when it failed, a helper built from a FluidAudio commit other than the
-    pinned one among them, with a fix only for missing developer tools or a build that ran out of time.  The
-    probe takes no model digest and never compiles.  Never a FAIL."""
+    pinned one among them, with a fix only for missing developer tools, a build that ran out of time or a
+    FluidAudio fetch that failed.  The probe takes no model digest and never compiles.  Never a FAIL."""
     try:
         state, detail = _speech_status(config)
     except Exception as exc:
@@ -855,7 +855,10 @@ def _check_speech(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
-    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "speech")
+    if _devtools_missing():
+        fix: str | None = _OCR_DEVTOOLS_FIX
+    else:
+        fix = _helper_again_fix(detail, "speech") or _resolve_again_fix(detail)
     detail = _helper_detail(detail, fix)
     return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
 
@@ -899,6 +902,24 @@ def _helper_again_fix(detail: str, helper: str) -> str | None:
     busy = "the Mac and the network are" if helper == "speech" else "the Mac is"
     stops = f"the build stops after {minutes} minutes, and if it stops again, run it when {busy} less busy"
     return f"{again}; {stops}"
+
+
+def _resolve_again_fix(detail: str) -> str | None:
+    """The fix of a speech build whose ``swift package resolve`` failed (its reason starts with
+    ``speech.RESOLVE_FAILED``): install.sh again, named as :func:`_helper_again_fix` names it, as each run
+    fetches FluidAudio again and a dropped connection is the common cause (a plain re-run built it in every
+    home of the v32 rehearsal); and, as a blocked host fails every time, where to look when it fails again.
+    No time limit and no "less busy": this is no time-out (B13 round 24 B42)."""
+    if not detail.startswith(speech.RESOLVE_FAILED):
+        return None
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        again = AGAIN_UNDER_INSTALL_SH
+    else:
+        again = f"run {INSTALL_SH} again"
+    return (
+        f"{again}; it fetches FluidAudio from github.com again, and if this line comes back, check that this "
+        "Mac reaches github.com (behind a proxy: HTTPS_PROXY set in the shell)"
+    )
 
 
 def helper_timed_out_words(helper: str) -> tuple[str, int]:
