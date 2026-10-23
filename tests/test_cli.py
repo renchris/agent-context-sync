@@ -6546,6 +6546,40 @@ def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sy
     assert cli.HEARTBEAT_REFUSED_STEP not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("where", ["the state folder", "a folder above it"])
+def test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_say_syncs_words(
+    initialised: Config, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 24 B88, B89: with a file where the state folder (or a folder above it) belongs, ``curate``
+    exited 0 with a "cannot read the loop state ... fix or remove it by hand" WARNING and "(see NEXT)" with no
+    NEXT, and ``hold --list`` named a holds.json that does not exist. Each says sync's line, state_dir's words
+    and the person's move, with sync's NEXT, and exits 1; an ENOTDIR under a healthy state folder keeps its
+    own words."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    args = cli.build_parser().parse_args(["hold", "--list", "--config", cfg])
+    elsewhere = governance.GovernanceError("x: unreadable")
+    elsewhere.__cause__ = NotADirectoryError(errno.ENOTDIR, "Not a directory", str(root.parent / "y" / "z"))
+    assert cli._non_folder_said(args, elsewhere) is None  # the control: the state folder is a folder
+    file = root if where == "the state folder" else root.parent
+    file.rename(file.with_name(file.name + ".kept"))
+    file.write_text("not a folder\n", encoding="utf-8")
+    for argv in (["curate"], ["hold", "--list"]):
+        capsys.readouterr()
+        rc = cli.main([*argv, "--config", cfg])
+        said = capsys.readouterr()
+        text = said.out + said.err
+        assert rc == cli.EXIT_FAILED, (argv, text)
+        (line,) = [ln for ln in said.err.splitlines() if ln.strip()]
+        assert line.startswith("error: state: ") and "is a file, not a folder" in line, line
+        assert "(fix: the person moves " in line, line
+        assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+            f"NEXT: {cli.STATE_MISPLACED_STEP}"
+        ], (argv, said.out)
+        assert "fix or remove it by hand" not in text and "(see NEXT)" not in text, (argv, text)
+        assert "holds.json" not in text and "Errno" not in text, (argv, text)
+
+
 @pytest.mark.parametrize("body", ["{not json", "[]"])
 def test_status_over_a_corrupt_heartbeat_keeps_every_line_and_names_no_python_class(
     initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, body: str

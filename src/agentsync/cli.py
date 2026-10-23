@@ -2671,6 +2671,15 @@ def _cmd_curate(args: argparse.Namespace) -> int:
     work."""
     config = _config(args)
     layout = config.layout
+    if doctor.state_root_not_folder(config) is not None:
+        # a state folder, or a folder above it, that is not a folder: sync's line and NEXT, exit 1, never
+        # the loop's "cannot read the loop state" WARNING and a "(see NEXT)" with no NEXT (B13 round 24 B89)
+        root = str(expand(config.state_paths.root))
+        said = _misplaced(args, NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), root))
+        if said is not None:
+            _err(said)
+            _misplaced_next(args, said)
+            return EXIT_FAILED
     findings = _curate_findings(config)
     for f in findings:
         _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
@@ -3227,6 +3236,32 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
     return next((r for r in results if r.name == name and not r.ok), None)
 
 
+def _non_folder_said(args: argparse.Namespace, exc: BaseException) -> str | None:
+    """The ``error: state:`` line of :func:`_misplaced` when ``exc`` (or the error it wraps: a
+    GovernanceError keeps its cause) is an ENOTDIR or ELOOP under a state folder, or a folder above it, that
+    is not a folder, by the stat of those folders (``doctor._under_the_non_folder``), never by the errno
+    alone, which would hide unrelated faults; else None (B13 round 24 B88, B89)."""
+    try:
+        config = _config(args)
+        if not doctor._under_the_non_folder(config, exc):
+            return None
+        root = str(expand(config.state_paths.root))
+    except Exception:  # the error path: never a second error over the first
+        return None
+    return _misplaced(args, NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), root))
+
+
+def _misplaced_next(args: argparse.Namespace, said: str) -> None:
+    """The NEXT a sync prints after :func:`_misplaced`'s line (:data:`STATE_MISPLACED_STEP`), for any
+    command: a sync's also records the stop (:func:`_state_next`); curate and the governance commands printed
+    none, so curate's "(see NEXT)" pointed at nothing (B13 round 24 B89). None under install.sh, which names
+    its own."""
+    if getattr(args, "command", None) == "sync":
+        _state_next(args, STATE_MISPLACED_STEP, said=said, path=_state_root(args))
+    elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+        _out(loop.NEXT_PREFIX + STATE_MISPLACED_STEP)
+
+
 def _misplaced(args: argparse.Namespace, exc: OSError) -> str | None:
     """The ``error: state:`` line of a state path that is not where or what it should be, in the words and
     with the fix of the status line that FAILs it (:func:`_misplaced_check`: ``<db> is a folder, not the
@@ -3475,6 +3510,14 @@ def _main(argv: Sequence[str] | None) -> int:
         _state_next(args, said=said, path=exc.filename)
         return EXIT_FAILED
     except AgentSyncError as exc:
+        said = _non_folder_said(args, exc)
+        if said is not None:
+            # a governance file under a state folder (or a folder above it) that is not a folder: state_dir's
+            # words and the person's fix, as sync says them, never "holds.json: unreadable ([Errno 20] ...);
+            # fix or remove it by hand" over a path that does not exist (B13 round 24 B88, B89)
+            _err(said)
+            _misplaced_next(args, said)
+            return EXIT_FAILED
         # a governance file in the state folder this account cannot open (holds.json): the same line
         said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
         _err(said or f"error: {exc}")
