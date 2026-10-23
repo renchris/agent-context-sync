@@ -28775,7 +28775,23 @@ Reserved for round 24 lane B of B13.
 
 ### 16.175 Round 24: the speech helper's reason, the timing marker and the waiting stubs (2026-10-22, wave B13 round 24 lane E)
 
-Reserved for round 24 lane E of B13.
+Round 24's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 24"; specs `round24/items/B<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-22, §16.175 B<n>`.
+
+**The speech helper's failure reason keeps SwiftPM's cause (B39; `agentsync.convert.ocr`).** `ocr._plain` cut a
+`swift package resolve` failure to `error: Git command 'git -C <path>`: SwiftPM puts the command in quotes but the
+path inside them starts no quoted path (the quote is followed by `git`, not `/`), so the unquoted part took the rest
+of the line, the cause with it. That stub was the whole `.failed` marker (72 characters and a newline) and every
+reader's "why": install.sh's `speech:` line, doctor's `[warn] speech`, the report's Installer row. The command, up
+to the line's LAST `' failed:` (a folder such as `Contoso's Drive` holds an apostrophe, and the first one would let
+the rest of its path through), is now `<command>`: `git -C` and SwiftPM's cache say nothing the person needs. A
+quoted URL (`unable to access 'https://github.com/x/y.git/'`, the likely transient cause) is `'<url>'` to its own
+closing quote, so the words after it stay; the lookbehind that keeps a slash after `https:` from reading as no
+path is unchanged, as widening it would let a `file:///Users/...` path through. Not the finder's "end the path at
+the closing quote of the span around it": at the first apostrophe, which leaks the rest of such a folder's name.
+An unquoted URL (`Failed to clone repository https://...`) still runs to the end of the line. Tests: three cases in
+`test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (a fetch, a folder with an apostrophe
+beside a quoted URL, SwiftPM 6.2's own `cannot change to '<path>'` shape), each scrubbed again unchanged.
 
 ### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
 

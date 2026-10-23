@@ -454,6 +454,22 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "error: an I/O error, and/or 3/4 of nothing",
         "error: an I/O error, and/or 3/4 of nothing",
     ),
+    "SwiftPM's git command loses its path and keeps its cause": (
+        "error: Git command 'git -C /x/y fetch' failed: Could not resolve host: github.com",
+        "error: Git command '<command>' failed: Could not resolve host: github.com",
+    ),
+    "an apostrophe in the command's path, and a quoted URL in the cause": (
+        "error: Git command 'git -C HOME/Contoso's Drive/r fetch' failed: fatal: unable to access "
+        "'https://github.com/x/y.git/': Could not resolve host: github.com",
+        "error: Git command '<command>' failed: fatal: unable to access '<url>': "
+        "Could not resolve host: github.com",
+    ),
+    "SwiftPM 6.2's own shape: a quoted path in the cause": (
+        "error: Git command 'git -C HOME/Library/Caches/org.swift.swiftpm/repositories/y-8056ed04 "
+        "config --get remote.origin.url' failed: fatal: cannot change to "
+        "'HOME/Library/Caches/org.swift.swiftpm/repositories/y-8056ed04': No such file or directory",
+        "error: Git command '<command>' failed: fatal: cannot change to '<path>': No such file or directory",
+    ),
 }
 
 

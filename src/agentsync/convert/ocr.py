@@ -94,9 +94,11 @@ _ERRORS = frozenset(
 )
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
 _PATH_RE = re.compile(
-    r"(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
+    r"(?P<uq>['\"])[A-Za-z][\w+.-]*://[^'\"\s]*(?P=uq)"  # a quoted URL: to its own closing quote (B39)
+    r"|(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
     r"|(?<![\w.<])~?/\S.*?(?=:\d+:\d+: |$)"  # an unquoted one: to a compiler's line:column, else to the end
 )
+_GIT_COMMAND_RE = re.compile(r"(Git command ').*(' failed:)")
 _clock = time.monotonic
 
 
@@ -188,16 +190,25 @@ def _plain(text: str | bytes) -> str:
     installer's (``skill.INSTALL_SH``).
 
     A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
-    but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote."""
+    but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote, and a
+    quoted URL through its own.  SwiftPM's ``Git command '...' failed: <cause>`` keeps its cause: the
+    command (``git -C`` and SwiftPM's cache), up to the line's last ``' failed:`` as a path may hold an
+    apostrophe, is ``<command>`` (B13 round 24 B39)."""
     s = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")
     line = line.replace(str(Path.home()), "~")
+    line = _GIT_COMMAND_RE.sub(r"\1<command>\2", line)
 
     # The installer's path names no one and is the fix a build failure's own text gives (a signal's, read back
     # from the .failed marker): kept, where any other path goes (B13 round 18 V68)
     def cut(part: str) -> str:
-        return _PATH_RE.sub(lambda m: f"{m['quote'] or ''}<path>{m['quote'] or ''}", part)
+        def scrubbed(m: re.Match[str]) -> str:
+            if m["uq"]:
+                return f"{m['uq']}<url>{m['uq']}"
+            return f"{m['quote'] or ''}<path>{m['quote'] or ''}"
+
+        return _PATH_RE.sub(scrubbed, part)
 
     return INSTALL_SH.join(cut(part) for part in line.split(INSTALL_SH))[:_REASON_ROOM]
 
