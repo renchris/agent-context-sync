@@ -145,6 +145,14 @@ LISTING_STATE_UNREADABLE_NOTE = (
     "as of its last walk: the state file cannot be read, so no sync lists it again until it can; the "
     "state_dir.manifest [FAIL] line says what to do first"
 )
+# The same note beside a manifest lost from a Mac that has synced (``manifest.manifest_lost``): the file is
+# missing, not unreadable, and what lists the source again is the person's restore or their move of
+# heartbeat.json aside (LOST_MANIFEST_FIX), never the file becoming readable (B13 round 24 B36: the note said
+# "the state file cannot be read ... until it can"). No parentheses, as the notes above.
+LISTING_STATE_LOST_NOTE = (
+    "as of its last walk: the state file is missing, so no sync lists it again until the person restores it "
+    "or confirms a new start; the state_dir.manifest [FAIL] line says what to do first"
+)
 # The same note for a state file this account cannot open (its mode, its owner): the state_dir lines, not
 # state_dir.manifest, say why (B13 round 20 X15: W11 keyed only a damaged file, so the warn kept pointing at
 # WAITING ON YOU lines a status that cannot read the state never prints).

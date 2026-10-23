@@ -100,7 +100,7 @@ from agentsync.errors import (
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
-from agentsync.manifest import ACCESS_ERRNOS, Manifest, manifest_lost
+from agentsync.manifest import ACCESS_ERRNOS, LOST_MANIFEST, Manifest, manifest_lost
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
@@ -1739,7 +1739,12 @@ def _listings_unread(
     ``doctor.LISTING_STATE_SHUT_NOTE`` (B13 round 20 X15), keyed on that read's error, never on the
     state_dir.files check, which also FAILs a loose mode the loop reads past."""
     read = isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
-    if read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
+    lost = any(  # missing after earlier passes, not unreadable: its own note (B13 round 24 B36)
+        r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST) for r in checks
+    )
+    if lost or isinstance(exc, ManifestLostError):
+        note = doctor.LISTING_STATE_LOST_NOTE
+    elif read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
         note = doctor.LISTING_STATE_UNREADABLE_NOTE
     elif doctor.state_unopenable(exc, state_root):
         note = doctor.LISTING_STATE_SHUT_NOTE

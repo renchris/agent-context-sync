@@ -6479,6 +6479,32 @@ def test_a_sync_stop_on_a_state_folder_that_is_a_file_is_recorded_as_misplaced_n
     assert (read.file, read.owner, read.kind) == ("state-folder", "person", "misplaced")
 
 
+def test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B36 (ruling 7): beside a manifest lost from a Mac that has synced, the incomplete-listing
+    warn said "the state file cannot be read, so no sync lists it again until it can", a damaged manifest's
+    note: the file is missing, and what lists it again is the person's restore or new start. Its own note,
+    with no parentheses inside the warn's one bracket; a damaged manifest keeps "cannot be read"."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    beats = expand(initialised.state_paths.heartbeat)
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(initialised)
+    data[sid]["consecutive_incomplete"] = 5
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    for side in ("", "-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED, out
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_LOST_NOTE})"), warn
+    assert "the state file is missing" in warn and "cannot be read" not in warn, warn
+    assert "(" not in doctor.LISTING_STATE_LOST_NOTE and ")" not in doctor.LISTING_STATE_LOST_NOTE
+    assert "cannot be read" in doctor.LISTING_STATE_UNREADABLE_NOTE
+
+
 def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
