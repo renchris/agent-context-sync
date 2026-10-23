@@ -683,21 +683,26 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   ~/.local/bin/agentsync status prints it on its state_dir line`, and step 2's `NEXT:` is the person's, with no
   chmod (`agentsync's state folder is not a folder (...): fixing it is the person's (they move it aside, keeping a
   copy), not a step for the agent, ...`). When none of those is said, the files status checks by name, the lock,
-  the heartbeat, governance/ and its holds.json and purge queue (never audit.jsonl, which no check reads), are read
-  the same way, since step 2 stops on them at its status step (round 23 A17, A83: the list said `(none is needed)`
-  over them): `state-file-owner`, `; step 2 stops at its status step on a file or folder agentsync's status checks
-  in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which another account
-  owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no
-  sudo), and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines`;
-  `state-file-access`, `; step 2 stops at its status step on a file or folder agentsync's status checks in its
-  state folder (the lock, the heartbeat, or the governance folder or a file in it), which this account cannot open
-  (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and
-  ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines`; or `state-file-refused`, `;
-  step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the
-  heartbeat, or the governance folder or a file in it), which this account is refused, and a chmod of it does not
-  fix that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode;
-  not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or
-  governance lines`. When step 2 would
+  the heartbeat, governance/ and its holds.json, purge queue, suppressed.json and audit.jsonl, are read the same way,
+  each by the access the step that uses it needs (the lock read and write, governance/ read, write and search,
+  audit.jsonl write, which status opens to append, and the others read, since each writer replaces its file through
+  the folder; round 24 B10, B54, B59, B81: a 0400 heartbeat was said to stop step 2, which ended 0, and a shut
+  audit.jsonl was not, since it was taken for read by no check), and another account's file this one can use as
+  its step needs stops nothing (B105), since step 2 stops on them at its status step (round 23 A17, A83: the list
+  said `(none is needed)` over them). `<file>` names the first one it stopped on, in fixed words (`agentsync's lock
+  file`, `agentsync's heartbeat file`, `agentsync's governance folder`, or `agentsync's governance file
+  holds.json`, `purge-queue.json`, `suppressed.json` or `audit.jsonl`; round 24 B13: it named the class):
+  `state-file-owner`, `; step 2 stops at its status step on <file>, which another account owns, so this one cannot
+  open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
+  ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot
+  open, on its lock, heartbeat or governance lines`; `state-file-access`, `; step 2 stops at its status step on
+  <file>, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once
+  each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it
+  checks there that this account cannot open, on its lock, heartbeat or governance lines`; or `state-file-refused`,
+  `; step 2 stops at its status step on <file>, which this account is refused, and a chmod of it does not fix that
+  (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not
+  damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it, and any other of the files
+  it checks there that this account cannot open, on its lock, heartbeat or governance lines`. When step 2 would
   reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it

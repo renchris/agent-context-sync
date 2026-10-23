@@ -7713,29 +7713,47 @@ STATE_NOTDIR_NEXT = (
 )
 """Step 2's NEXT for it, at the config step init stops on (round 23 ruling 4)."""
 
-FILE_STOPS = (
-    "; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder "
-    "(the lock, the heartbeat, or the governance folder or a file in it), "
-)
-"""Step 1's words for the lock, the heartbeat or governance/ and its files (B13 round 23 A17, A83)."""
+FILE_NOUNS = {
+    "lock": "agentsync's lock file",
+    "heartbeat": "agentsync's heartbeat file",
+    "governance": "agentsync's governance folder",
+    "holds": "agentsync's governance file holds.json",
+    "queue": "agentsync's governance file purge-queue.json",
+    "suppressed": "agentsync's governance file suppressed.json",
+    "audit": "agentsync's governance file audit.jsonl",
+}
+"""The file step 1's status-step tail names, in fixed words (round 24 B13: it named a class of files, "the
+lock, the heartbeat, or the governance folder or a file in it", which the agent could not name)."""
 
-STATE_OPEN_TAIL = {
+FILE_STATUS = (
+    "~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account "
+    "cannot open, on its lock, heartbeat or governance lines"
+)
+
+FILE_TAILS = {
     "state-file-owner": (
-        f"{FILE_STOPS}which another account owns, so this one cannot open it (not damage): fixing that is "
-        "the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it "
-        "on its lock, heartbeat or governance lines"
+        "which another account owns, so this one cannot open it (not damage): fixing that is the person's (a "
+        f"sudo chown; the agent runs no sudo), and {FILE_STATUS}"
     ),
     "state-file-access": (
-        f"{FILE_STOPS}which this account cannot open (a mode, not damage): the chmods that fix it are the "
-        "agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints "
-        "it on its lock, heartbeat or governance lines"
+        "which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, "
+        f"once each, as step 2's NEXT names them, and {FILE_STATUS}"
     ),
     "state-file-refused": (
-        f"{FILE_STOPS}which this account is refused, and a chmod of it does not fix that (an ACL, a folder "
-        "above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): "
-        "fixing that is the person's, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or "
-        "governance lines"
+        "which this account is refused, and a chmod of it does not fix that (an ACL, a folder above it this "
+        "account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that "
+        f"is the person's, and {FILE_STATUS}"
     ),
+}
+
+
+def file_tail(word: str, role: str) -> str:
+    """Step 1's tail for the lock, the heartbeat or governance/ and its files (B13 round 23 A17, A83), naming
+    the one the probe stopped on (round 24 B13)."""
+    return f"; step 2 stops at its status step on {FILE_NOUNS[role]}, {FILE_TAILS[word]}"
+
+
+STATE_OPEN_TAIL = {
     "state-notdir": STATE_NOTDIR_TAIL,
     "state-access": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
@@ -9189,7 +9207,7 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
         cp = install_sh(env, str(wheel))
     finally:
         target.chmod(0o600)
-    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-file-access"]), last_line(listed)
+    assert last_line(listed).endswith(file_tail("state-file-access", shut)), last_line(listed)
     assert cp.returncode == 1, cp.stdout + cp.stderr
     failed = [ln for ln in cp.stdout.splitlines() if ln.startswith(f"[FAIL] {shut} ")]
     fix = f"chmod 600 ~/'Library/Application Support/agentsync/{target.name}'"
@@ -9390,13 +9408,20 @@ def test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agen
         "holds",
         "governance",
         "queue",
+        "suppressed",
+        "audit",
         "acl",
         "ro",
         "missing",
-        "audit",
         "manifest-too",
         "gov-file",
         "acl-and-wal",
+        "lock-0400",
+        "governance-0500",
+        "read-alone",
+        "two-shut",
+        "foreign-heartbeat",
+        "foreign-lock",
     ],
 )
 def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file(
@@ -9407,10 +9432,21 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     account cannot open, which step 2's status then stops on. Step 1 now reads the files status checks by name
     (the lock, the heartbeat, governance/, its holds.json and purge queue) by the same owners: this account's
     own at a mode that refuses it, the agent's chmods; an ACL or a read-only volume, the person's. A file that
-    is missing, or audit.jsonl, which no check reads, says nothing; a shut manifest beside a shut lock keeps
-    the config step's tail, which stops first. The lane's review: a file where governance/ belongs is no mode
-    to fix (nothing is said), and an ACL on the heartbeat beside a 0400 -wal is the person's stop to say, not
-    the -wal's chmod alone."""
+    is missing says nothing; a shut manifest beside a shut lock keeps the config step's tail, which stops
+    first. The lane's review: a file where governance/ belongs is no mode to fix (nothing is said), and an ACL
+    on the heartbeat beside a 0400 -wal is the person's stop to say, not the -wal's chmod alone.
+
+    Round 24: each file is judged by the access the step that uses it needs, as setup_report._refused_files
+    reads them (B10, B54, B59, B81). audit.jsonl, left out as read by no check, is opened to append by status
+    since round 23 A79, and suppressed.json is read: each at 0000 stops it (audit, suppressed). The heartbeat,
+    holds.json, the purge queue and suppressed.json at 0400 and audit.jsonl at 0200 stop nothing, as each
+    writer replaces its file through the folder (read-alone: step 1 said step 2 stops on a 0400 heartbeat, and
+    step 2 ended 0); a 0400 lock, which the sync opens to write, and a 0500 governance folder, where a hold is
+    written, do (lane B's B58 and B61 FAIL them in status). The read-only volume is the lock's case now: a
+    0600 heartbeat there is read, never written in place. B105: another account's file this one can use as
+    its step needs stops nothing (foreign-heartbeat, a root-owned 0644 file); one it cannot (foreign-lock) is
+    the person's chown. B13: the tail names the file the probe stopped on, the first of them (two-shut), and
+    says status prints any other."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     root = db.parent
@@ -9425,24 +9461,47 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         root / "heartbeat.json": b"{}",
         gov / "holds.json": b"{}",
         gov / "purge-queue.json": b"[]",
+        gov / "suppressed.json": b"{}",
         gov / "audit.jsonl": b"",
     }
     if case not in ("missing", "gov-file"):
         for path, data in made.items():
             path.write_bytes(data)
             path.chmod(0o600)
+    if case.startswith("foreign-"):  # a root-owned 0644 file, linked in on the same volume (B105)
+        target = root / ("heartbeat.json" if case == "foreign-heartbeat" else "agentsync.lock")
+        target.unlink()
+        try:
+            os.link("/private/etc/hosts", target)
+        except OSError:
+            pytest.skip("no root-owned file to link here")
+        if target.stat().st_uid == os.getuid() or not os.access(target, os.R_OK):
+            pytest.skip("the linked file is not another account's readable one")
     shut = {
-        "lock": root / "agentsync.lock",
-        "heartbeat": root / "heartbeat.json",
-        "holds": gov / "holds.json",
-        "governance": gov,
-        "queue": gov / "purge-queue.json",
-        "audit": gov / "audit.jsonl",
-        "manifest-too": root / "agentsync.lock",
-    }.get(case)
+        "lock": [root / "agentsync.lock"],
+        "heartbeat": [root / "heartbeat.json"],
+        "holds": [gov / "holds.json"],
+        "governance": [gov],
+        "queue": [gov / "purge-queue.json"],
+        "suppressed": [gov / "suppressed.json"],
+        "audit": [gov / "audit.jsonl"],
+        "manifest-too": [root / "agentsync.lock"],
+        "two-shut": [gov / "holds.json", gov / "purge-queue.json"],
+    }.get(case, [])
+    modes = {
+        "lock-0400": {root / "agentsync.lock": 0o400},
+        "governance-0500": {gov: 0o500},
+        "read-alone": {
+            root / "heartbeat.json": 0o400,
+            gov / "holds.json": 0o400,
+            gov / "purge-queue.json": 0o400,
+            gov / "suppressed.json": 0o400,
+            gov / "audit.jsonl": 0o200,
+        },
+    }.get(case, {})
     wal = db.with_name(db.name + "-wal")
     if case == "ro":
-        _tool_python_read_only(env, root / "heartbeat.json")
+        _tool_python_read_only(env, root / "agentsync.lock")
     else:
         _tool_python(env)
     try:
@@ -9451,8 +9510,10 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         if case == "acl-and-wal":
             wal.write_bytes(b"")
             wal.chmod(0o400)
-        if shut is not None:
-            shut.chmod(0)
+        for path in shut:
+            path.chmod(0)
+        for path, mode in modes.items():
+            path.chmod(mode)
         if case == "manifest-too":
             db.chmod(0)
         cp = install_sh(env, "--list-folders")
@@ -9462,12 +9523,12 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         if wal.exists():
             wal.chmod(0o600)
         for path in made:
-            if path.exists():
+            if path.exists() and path.stat().st_uid == os.getuid():
                 subprocess.run(["/bin/chmod", "-N", str(path)], capture_output=True, check=False)
                 path.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if case in ("missing", "audit", "gov-file"):
+    if case in ("missing", "gov-file", "read-alone", "foreign-heartbeat"):
         assert last_line(cp).endswith("(none is needed)"), last_line(cp)
         assert "config_err" not in logged, logged
         return
@@ -9476,9 +9537,21 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "acl-and-wal": "state-file-refused",
         "ro": "state-file-refused",
         "manifest-too": "state-access",
+        "foreign-lock": "state-file-owner",
     }.get(case, "state-file-access")
-    assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
+    role = {
+        "acl": "heartbeat",
+        "acl-and-wal": "heartbeat",
+        "ro": "lock",
+        "lock-0400": "lock",
+        "governance-0500": "governance",
+        "two-shut": "holds",
+        "foreign-lock": "lock",
+    }.get(case, case)
+    tail = STATE_OPEN_TAIL[word] if word == "state-access" else file_tail(word, role)
+    assert last_line(cp).endswith(tail), last_line(cp)
     assert logged.endswith(f" config_err={word}"), logged
+    assert "role-" not in logged, logged
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])

@@ -6288,7 +6288,9 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # inlined, as the installed build may predate it): every init step 2 reinstalls stops on it, and the choice
 # is the person's (round 24 ruling 7: B3, B24, B33, B41, B48, B69, B83, B85; step 1 said "(none is needed)").
 # "state-file-owner", "state-file-access" or "state-file-refused" for the lock, the heartbeat, governance/ or its
-# holds.json or purge queue, the files status checks by name, when nothing above is said (A17, A83). Fixed words only,
+# holds.json, purge queue, suppressed.json or audit.jsonl, the files status checks by name, each by the access
+# its step needs, when nothing above is said (A17, A83; round 24 B10, B54, B59, B81, B105), with a
+# "role-<which>" line the list reads apart, to name it (B13). Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
 # its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
@@ -6428,44 +6430,57 @@ for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.wi
             fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
         access = word + ("access" if fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
         break
-# the files status checks by name (the lock, the heartbeat, governance/ and its holds.json and purge queue;
-# never audit.jsonl, which no check reads), judged as above: step 2 stops on them at its status step, past the
-# config step, so only when nothing above stops it first (round 23 A17, A83)
-checked = None
+# the files status checks by name, judged as above: step 2 stops on them at its status step, past the config
+# step, so only when nothing above stops it first (round 23 A17, A83). Each by the access the step that uses
+# it needs, as setup_report._refused_files reads them (round 24 B10, B54, B59, B81): the lock read and write
+# (the sync opens it so, and status FAILs one it cannot: B58, lane B), the heartbeat, holds.json, the purge
+# queue and suppressed.json read alone (each writer replaces its file through the folder: a 0400 one stopped
+# nothing, while step 1 said step 2 stops on it), governance/ read, write and search (status FAILs a hold it
+# cannot write there, B61), and audit.jsonl write alone (status opens it to append, round 23 A79: it was left
+# out as read by no check). Access is judged before the owner: a file of another account that this one can
+# use as it needs stops nothing (B105). want: the bits of the owner a chmod would give, so a mode of its own
+# that already has them is an ACL or a volume mounted read-only, for the person. role: which one, in fixed
+# words (B13)
+checked = role = None
 if not (notdir or notfile) and (access is None or access.startswith("state-side-")):
     sp = config.state_paths
     gov = db.parent / "governance"
-    for p, want in (
-        (expand(sp.lock), 0o600),
-        (expand(sp.heartbeat), 0o600),
-        (gov, 0o700),
-        (gov / "holds.json", 0o600),
-        (gov / "purge-queue.json", 0o600),
+    rw, r = os.R_OK | os.W_OK, os.R_OK
+    for p, need, want, name in (
+        (expand(sp.lock), rw, 0o600, "lock"),
+        (expand(sp.heartbeat), r, 0o400, "heartbeat"),
+        (gov, rw | os.X_OK, 0o700, "governance"),
+        (gov / "holds.json", r, 0o400, "holds"),
+        (gov / "purge-queue.json", r, 0o400, "queue"),
+        (gov / "suppressed.json", r, 0o400, "suppressed"),
+        (gov / "audit.jsonl", os.W_OK, 0o200, "audit"),
     ):
         try:
             st = p.stat()
         except PermissionError:
-            checked = "state-file-refused"
+            checked, role = "state-file-refused", name
             break
         except OSError:
             continue
         if not (stat.S_ISDIR if want == 0o700 else stat.S_ISREG)(st.st_mode):  # no mode fixes the wrong kind
             continue
+        if os.access(p, need):
+            continue
+        role = name
         if st.st_uid != os.getuid():
             checked = "state-file-owner"
             break
-        if not os.access(p, os.R_OK | os.W_OK | (os.X_OK if want == 0o700 else 0)):
-            try:
-                ro = bool(os.statvfs(p).f_flag & os.ST_RDONLY)
-            except (OSError, AttributeError):
-                ro = False
-            if ro or st.st_mode & want == want:
-                fix = ""
-            else:
-                fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
-            ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
-            checked = "state-file-" + ("access" if ok else "refused")
-            break
+        try:
+            ro = bool(os.statvfs(p).f_flag & os.ST_RDONLY)
+        except (OSError, AttributeError):
+            ro = False
+        if ro or st.st_mode & want == want:
+            fix = ""
+        else:
+            fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
+        ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
+        checked = "state-file-" + ("access" if ok else "refused")
+        break
 if access == "state-side-access" and checked in ("state-file-owner", "state-file-refused"):
     access = None  # the stop of the person is the one to say: the chmods of the agent alone would not end it
 if notdir:
@@ -6521,6 +6536,7 @@ elif db.is_file():
             pass
 if checked:
     words.append(checked)
+    words.append("role-" + role)  # read apart from the words: step 1 names the file (B13)
 sys.stdout.write("".join(w + "\n" for w in words))
 ' "$CONFIG"
 }
@@ -6532,7 +6548,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" fnoun=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -6630,6 +6646,7 @@ list_folders() {
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
 				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
+				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 			fi
 		fi
 	fi
@@ -6766,10 +6783,23 @@ list_folders() {
 		# heartbeat.json, as doctor.MANIFEST_FIX says: moved alone, the next run stops on a lost manifest (round
 		# 24 ruling 8: B7, B21, B86). That lost manifest, "state-lost", stops the config step of the build step 2
 		# installs (round 23 A29), and keeping or starting over is the person's (ruling 7: B3, B24, B33, B83).
+		# The file the probe stopped on, in fixed words: "a file or folder agentsync's status checks" could not
+		# be named when the prompt asks the agent to say what the tail names (round 24 B13). The probe stops at
+		# the first, so the status line's clause covers the others.
+		case "$crole" in
+		role-lock) fnoun="agentsync's lock file" ;;
+		role-heartbeat) fnoun="agentsync's heartbeat file" ;;
+		role-governance) fnoun="agentsync's governance folder" ;;
+		role-holds) fnoun="agentsync's governance file holds.json" ;;
+		role-queue) fnoun="agentsync's governance file purge-queue.json" ;;
+		role-suppressed) fnoun="agentsync's governance file suppressed.json" ;;
+		role-audit) fnoun="agentsync's governance file audit.jsonl" ;;
+		*) fnoun="a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it)" ;;
+		esac
 		stail=""
-		case ",$cerr," in *",state-file-owner,"*) stail="; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines" ;; esac
-		case ",$cerr," in *",state-file-access,"*) stail="; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines" ;; esac
-		case ",$cerr," in *",state-file-refused,"*) stail="; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which this account is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines" ;; esac
+		case ",$cerr," in *",state-file-owner,"*) stail="; step 2 stops at its status step on $fnoun, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
+		case ",$cerr," in *",state-file-access,"*) stail="; step 2 stops at its status step on $fnoun, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
+		case ",$cerr," in *",state-file-refused,"*) stail="; step 2 stops at its status step on $fnoun, which this account is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
 		case ",$cerr," in *",state-owner,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-access,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-refused,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac

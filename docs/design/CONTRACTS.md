@@ -28294,6 +28294,9 @@ audit.jsonl say nothing; a shut manifest beside a shut lock keeps the config ste
 agentsync, `test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod` (step 1's tail, then the
 status step's chmod). A file another account owns while the state folder is this account's is not tested: the
 stubbed uid makes the folder another account's too, which `state-owner` reports first.
+Amended 2026-10-23, §16.173 B10, B13, B54, B59, B81, B105: each file is judged by the access its step needs, audit.jsonl and
+suppressed.json among them (status reads them since round 23 A79), access before the owner, and the tail names the
+file it stopped on in place of the class.
 
 **A -wal or -shm this account cannot read stops step 2 at its config step, on the agent's chmod** (A78; amends
 §16.154 Y57). At 0000, empty or not, a side file stops init (measured: SQLite cannot open the manifest past a -shm
@@ -28823,6 +28826,30 @@ manifest)`. Tested by following the words, with the real agentsync:
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2[as-said]` moves both and step 2 ends
 0; `[folder-alone]` moves the folder only, and step 1 logs `config_err=state-lost`, step 2 stops with the lost
 manifest's person's NEXT, and moving heartbeat.json aside as it says ends 0.
+
+**Step 1 judges each status-step file by the access its step needs, and names it** (B10, B13, B54, B59, B81, B105;
+amends §16.166 A17). The probe asked read and write of the lock, the heartbeat, holds.json and the purge queue,
+search too of governance/, and read nothing else. Measured: a 0400 heartbeat was said to stop step 2, which ended 0
+(the sync replaces it through the folder, B10); audit.jsonl, left out as "read by no check", and suppressed.json stop
+status at 0000 since round 23 A79 while step 1 said `(none is needed)` (B54, B81); and another account's 0644
+heartbeat, which the sync reads and replaces, was said to stop it, by its owner alone (B105). Each file now carries
+the access `setup_report._refused_files` reads it by: the lock read and write (the sync opens it so; lane B's B58
+FAILs it in status), governance/ read, write and search (a hold is written there; lane B's B61), audit.jsonl write
+(opened to append), and the heartbeat, holds.json, the purge queue and suppressed.json read; the mode test uses the
+owner's bits of that access (`want`), so an ACL that refuses what the mode allows is still the person's. Access is
+judged first: a file another account owns that this one can use as its step needs is skipped, and only one it cannot
+is `state-file-owner`. The word stays one of the three; a `role-<lock|heartbeat|governance|holds|queue|suppressed|
+audit>` line, read apart from the words (never logged), names the file in fixed words (`agentsync's lock file`,
+`agentsync's heartbeat file`, `agentsync's governance folder`, `agentsync's governance file holds.json` and so on),
+and since the probe stops at the first, the status clause reads `status prints it, and any other of the files it
+checks there that this account cannot open, on its lock, heartbeat or governance lines` (B13: the prompt asks the
+agent to say what the tail names, and it named a class). B59's shared table in doctor is not built: the probe runs
+on the installed build, so it would need this list as its fallback anyway, and lane B's B58 and B61 make status FAIL
+the lock and governance/ by the same access. Tests: the suppressed, audit, read-alone (0400 heartbeat, holds.json,
+queue and suppressed.json, 0200 audit.jsonl: nothing said), lock-0400, governance-0500, two-shut (names holds.json),
+foreign-heartbeat and foreign-lock (a root-owned 0644 file hard-linked in) cases of
+`test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file`; its read-only volume case is
+the lock's, as a heartbeat there is read, never written in place.
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 

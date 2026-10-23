@@ -6324,7 +6324,7 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-notdir",  # B13 round 23 ruling 4: no folder where the state folder belongs
     ]
     for word, said in opened:
-        assert f"`{word}`, `{said}`" in section, word
+        assert f"`{word}`, `{said.replace('$fnoun', '<file>')}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
