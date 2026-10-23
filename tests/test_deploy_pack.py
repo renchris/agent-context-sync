@@ -8075,6 +8075,18 @@ def test_the_value_row_names_both_reports_that_cut_a_holds_reason() -> None:
     # B13 round 24 B55: neither report's cut counts a `<value>` (setup_report._cut_holds counts nothing)
     assert "count" not in cut and "neither report counts such a cut as a `<value>`" in row
     assert "each counted as a `<value>`" not in row
+    # B13 round 25 D61: §16.176's B84 record says the row keeps that clause; the dated line after it says B55
+    # took it out
+    record = _contracts_section(
+        "**The `<value>` row names both reports that cut a hold** (B84;",
+        "**CI's time is the time of round 23's",
+    )
+    b84, dated = (" ".join(part.split()) for part in record.split("\n\n")[:2])
+    assert 'keeps "each counted as a `<value>`" to the agentsync report' in b84
+    assert dated.startswith(
+        "Amended 2026-10-23, §16.182 D61 (by §16.171 B55): the row no longer keeps"
+        ' "each counted as a `<value>`"; neither report counts a cut hold as a `<value>`'
+    )
 
 
 def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error() -> None:

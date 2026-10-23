@@ -29437,6 +29437,10 @@ report unchanged; the row says the fallback report cuts it line by line since B5
 `cli.PERSONS_KINDS`, landed as §16.172's B68 (lane RB, a11cbcd2), the same change; this lane's copy was dropped at
 the rebase. Test: `test_the_value_row_names_both_reports_that_cut_a_holds_reason`.
 
+Amended 2026-10-23, §16.182 D61 (by §16.171 B55): the row no longer keeps "each counted as a `<value>`"; neither
+report counts a cut hold as a `<value>` (`_cut_holds` counts nothing, as `hold_cut` counts nothing), while a line of
+a reason or owner of several lines still is one (`_hold_values`); the row says so.
+
 **CI's time is the time of round 23's jobs** (B98). Round 23's thirteen ci jobs (ed901cd3 to b1f4a087, read with
 `gh run view --json jobs`, all on attempt 1) took 24:34 to 32:18, four past 30 and the red one (run 39809607845 on 38727270: one
 lock-wait test and two empty-url rows, fixed by 46880b9e and 193c4e5d) the slowest; five runs waited for a macOS
@@ -29632,3 +29636,9 @@ landing date) was the wrong way round: at 3ec66a92, 926 of the file's 1,034 date
 §16.92 to §16.97 and round 21's 30 in §16.153 to §16.156), five of them quoted by tests; they stay as written, and
 the rule is held from §16.157 on. Test:
 `test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date`.
+
+**§16.176's B84 record follows B55** (D61; dated line at §16.176 B84). §16.176 says the `<value>` row keeps "each
+counted as a `<value>`" to the agentsync report; §16.171's B55 (5c7d7a9c, landed after both B84 commits) made
+`_cut_holds` count nothing and took that clause out of the row. A dated line after the B84 paragraph says so, and
+that a line of a reason or owner of several lines is still a `<value>` (`_hold_values`); B84's sentence stays.
+Test: `test_the_value_row_names_both_reports_that_cut_a_holds_reason`.
