@@ -1640,6 +1640,10 @@ def _unread_words(
             return f"{said}; the state_dir lines say why"
         # no access matter: the line that FAILs the path, by its errno, none for a full disk (Z51)
         check = _misplaced_check(config, exc) if config is not None else None
+        if check is not None and check.name == "state_dir.manifest":
+            # a folder where the manifest belongs (EISDIR on it), as a file where the state folder belongs
+            # is worded: "a file cannot be opened: Is a directory" was the system's (B13 round 24 B11)
+            return "the state file is not a file; the state_dir.manifest line says why"
         return f"{said}; the {check.name} [FAIL] line says why" if check is not None else said
     if isinstance(exc, OSError):
         said = f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"

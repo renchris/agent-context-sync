@@ -4327,10 +4327,11 @@ def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_
     db.mkdir(mode=0o700)
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
+    # B13 round 24 B11: the person's words, as for a file where the state folder belongs, not the system's
     assert (
-        "status: cannot read the state: a file cannot be opened: Is a directory; the state_dir.manifest "
-        "[FAIL] line says why"
+        "status: cannot read the state: the state file is not a file; the state_dir.manifest line says why"
     ) in out, out
+    assert not any("Is a directory" in ln for ln in out), out
     for argv in (["sync"], ["sync", "--mode", "poll"], ["curate"]):
         assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
         said = capsys.readouterr()
