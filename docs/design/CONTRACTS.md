@@ -29092,4 +29092,61 @@ Reserved for round 24 lane D of B13.
 
 ### 16.177 Round 24: the test suite's remaining script execs (2026-10-22, wave B13 round 24 lane K)
 
-Reserved for round 24 lane K of B13.
+Lane K's items B91, B92, B93 and B103 (round 24's harvest, lead note 2). §16.170's count held for its subset, and
+the whole suite still ran 4,762 `#!` execs (the harvest's 4,735 was a lower bound: test_setup_report.py ran 171 of
+its 639 items). Counted the same root-free way as §16.170 (the reporting `sandbox-exec` profile and `/usr/bin/log
+show`), but over every test file alone, four at a time, the four largest as four node-id shards each, so every item
+runs: 4,762 before, 315 after (at c93fcd96 and at the commit that landed these items). Before: agentsync's installed
+stand-in 1,487 and `agentsync-stub` 16 (B93), the fakes (fake-media 870, fake-ocr 740, fake-speech 85) and `script`
+tools (xcrun 142, git 130, swift 82, xcode-select 78, swiftc 23, curl 13) (B92), the tool's Python 649 (B93),
+`launcher/build.sh` 14 (B103), `old-pandoc`, `fussy-pandoc` and `broken-pandoc` 30 and gh 12 (B91). The same two
+tests failed both times, under the sandbox only (a pid test whose `/bin/ps` the profile refuses, and a timing test).
+
+**agentsync's stand-ins are Mach-O stubs** (B93; `tests/exec_stub.py`, `tests/test_install_oneshot.py`,
+`tests/test_launcher.py`). §16.170 kept a stub named `agentsync...` a `#!` file, since macOS kills a Mach-O copied in
+place over one that ran. A copy written as a new file is never killed, so every copier now unlinks first: the stub uv's
+`rm -f` before its `cp` (both `STUB_UV`s), `exec_stub.copy` (unlink, then `shutil.copy`) for the 20 copies onto
+`~/.local/bin/agentsync`, and `STUB_UV_REAL` copies, after `rm -f`, two Mach-O stubs the `real_env` fixture writes once
+(the tool's Python, `exec "<python>" "$@"`, and `agentsync`, `exec "<python>" -m agentsync "$@"`) in place of the
+`#!` files its printf wrote; install.sh finds the tool's Python at a fixed path and reads no `#!` line. Measured with
+two stand-ins copied in turn onto one path and run after each copy: copied in place, 93 of 100 killed in one run and 0
+of 300 in each of the next three (so a pass proves nothing); unlinked first, by `rm -f` and `cp` or by unlink and
+`shutil.copy`, 0 in every run. The `agentsync` name exemption is gone. Tests:
+`test_the_harness_helpers_write_mach_o_stubs` (agentsync's stand-in is a Mach-O),
+`test_agentsyncs_stand_in_copied_onto_one_that_ran_still_runs` (200 copies, by `rm -f` and `cp` and by
+`exec_stub.copy`, each run) and `test_the_real_agentsyncs_tool_stubs_are_mach_o` (the stub uv's install twice, its
+copies Mach-O and run).
+
+**The convert kits' fakes name their own path** (B92; `tests/test_ocr.py`, `tests/media_kit.py`,
+`tests/speech_kit.py`). The OCR, media and speech fakes read `sys.argv[0]` and test_ocr's `script` tools `$0` only
+to find their call log; the trampoline makes those the body's path, which kept them `#!` files. Each writer now puts
+its own final path in the text (`{self!r}` in the Python fakes; `self=<quoted path>` at the top of `script`, whose
+callers' bodies say `$self` where they said `$0`) and writes through `exec_stub.write(path, text, 0o700)`. The kits
+take a `name` so a fake is written at a helper's name (`ocr._helper_path`) instead of renamed onto it, since a
+renamed fake would log under its old name; the verifier measured that rename turning test_speech red.
+`exec_stub.write` gives the body the stub's mode, not 0755: a helper's body under a cache_dir
+(`<cache>/.speech-real/`) is inside what doctor's `docs_repo.permissions` walks. test_voice_naming's tree scan that
+lets only the fake helper hold the made-up vector lets its body hold it too, and two test_convert_formats listings
+of a tmp folder leave out the body's folder. `write_fake` takes a `hook` run before the rest: test_convert_builders'
+`shade_engine` and test_convert_image's `sinking` spliced theirs into the file's text, which is now a Mach-O (60
+tests ran red that way before the hook). A body text meant for another file keeps its `$0` and stays a `#!` file
+(test_speech's helper that logs its own environment), as do the traced tools of the `no_compiler` fixtures, which
+run only when a test fails, and the fake compilers' output, whose body would sit in the build folder production
+removes. Test: `test_the_convert_kits_fakes_are_mach_o_and_log_their_calls`.
+
+**test_ship_land's gh and test_convert_formats' pandoc wrapper** (B91): `STUB_GH` goes through `_with_gh`, and
+`_pandoc_that` through `exec_stub.write` (production runs `pandoc_path` and reads nothing of it). Test:
+`test_the_harness_helpers_write_mach_o_stubs`.
+
+**install.sh runs `launcher/build.sh` through `/bin/bash`** (B103; `scripts/install.sh`, `tests/test_launcher.py`),
+as do test_launcher's five calls: `--print-source-sha256` and the build, and the dry run prints the command a real run
+runs. build.sh is unchanged, so its source hash is the same (`ALLOWED_PROGRAM=/usr/bin/python3 ...
+--print-source-sha256` printed `ec14c716ac2a41d8...` both ways), no launcher is rebuilt and no one approves access
+again. Test: `test_install_sh_runs_build_sh_through_bin_bash` (a stand-in build.sh whose `#!` names no interpreter
+runs only through `/bin/bash`).
+
+What still runs as `#!`, on purpose: pytest's entry point (76), the commands as they are typed (install.sh 52 in
+test_deploy_pack, `scripts/ship-land.sh` 28 and its `gate.sh` 13 in test_ship_land), the fake compilers' output
+(`agentsync-<kind>-<hash>`, 71: its body would sit in the build folder production removes), `launcher/build.sh`'s own
+`shasum` (14: §16.170), the doctor and pandoc stand-ins §16.170 keeps, and one-offs under 10 each (test_gate_journal's
+uv, test_deploy_pack's tool Python, gitleaks, git's fsmonitor hook).
