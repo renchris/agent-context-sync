@@ -29047,7 +29047,8 @@ and compiles each body (11 in install.sh), with a self-test of the plural-posses
 ### 16.173 Round 24: setup prompt v33, a lost manifest and a folder at the manifest in install.sh (2026-10-22, wave B13 round 24 lane P)
 
 Round 24's lane P items (`docs/plans/bring-back-ocr.md`, "B13 round 24"; specs `round24/items/B<n>.md`, each the
-verifier's corrected fix), built to the lead's rulings 7 to 9 (`lanes/COMMON23.md`).
+verifier's corrected fix), built to the lead's rulings 7 to 9 (`docs/lanes/COMMON.md` at c93fcd96, its "ROUND 24
+RULINGS" (7) to (9)).
 
 **A lost manifest is the person's at step 1 and step 2** (B3, B24, B31, B33, B41, B48, B69, B83, B85, one build;
 amends §16.166 A29). Round 23's A29 made init, add-source and the sync refuse a missing manifest.sqlite while
@@ -29058,7 +29059,7 @@ the person's choice (ruling 7). `config_errors` writes `state-lost` right after 
 words (init stops on it before it opens anything, so a stale -wal it cannot open beside it would get a chmod that
 ends nothing: the lane's review, case LM-wal; `manifest_lost` is false over a folder this account cannot use, whose
 own word stays), by `manifest_lost`'s rule inlined, as the probe runs on the installed build, which may predate it; the word is
-in the line-6600 allowlist. Its tail, after `state-notfile`'s: `; step 2 stops at its config step on agentsync's
+in step 1's config-error allowlist (the `cerr=` grep in scripts/install.sh that lists `state-lost`). Its tail, after `state-notfile`'s: `; step 2 stops at its config step on agentsync's
 state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not
 a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside,
 keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its
@@ -29126,8 +29127,10 @@ moves it aside. Measured with the real agentsync: at 0000 init exits 1 (`unable 
 init passes and status FAILs. `config_errors` now judges each side file with `not_a_file` before its access, in the
 loop's order (the folder and the manifest first), and writes `state-side-notfile`, tail `; step 2 stops on the -wal
 or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage), at its
-config step when this account cannot read it and at its status step when it can: fixing that is the person's
-(keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line`;
+config step when it is the -wal or this account cannot read it, and at its status step otherwise: fixing that is the
+person's (keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files
+line` (the review's words; the first build's read "when this account cannot read it and at its status step when it
+can");
 `config_failed` asks `state_side_not_a_file` (lstat, a link judged by its target) after `state_not_a_file` and sets
 `the -wal or -shm of agentsync's state file is a folder or something else that is not a file (~/.local/bin/agentsync
 status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it
@@ -29642,3 +29645,19 @@ counted as a `<value>`" to the agentsync report; §16.171's B55 (5c7d7a9c, lande
 `_cut_holds` count nothing and took that clause out of the row. A dated line after the B84 paragraph says so, and
 that a line of a reason or owner of several lines is still a `<value>` (`_hold_values`); B84's sentence stays.
 Test: `test_the_value_row_names_both_reports_that_cut_a_holds_reason`.
+
+**§16.173 quotes the side-notfile tail install.sh prints** (D62). §16.173's B52 paragraph quoted
+`state-side-notfile`'s first tail (`at its config step when this account cannot read it and at its status step when
+it can`); the lane's review (7b3bda87, case SN-wal, recorded further down the section) changed it, so the section
+quoted two tails for one word. The main quote is round 24's landed one, `at its config step when it is the -wal or
+this account cannot read it, and at its status step otherwise` (scripts/install.sh at 3ec66a92), marked as the
+review's words, with the first build's words marked as such; a later change to the tail is its own round's record
+(lane RB's round 25 tail adds a clause inside the parenthesis, sent to RB). Test:
+`test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints`.
+
+**§16.173 cites the tracked brief and names the allowlist by its grep** (D63). For rulings 7 to 9 it cited round
+24's brief by its path in the bring-back cache, not the repo (§16.171 cites the tracked `docs/lanes/COMMON.md`,
+which each round rewrites); it cites that file at c93fcd96, its "ROUND 24 RULINGS" (7) to (9). The allowlist's line
+number, 6600, was stale when written (6631 in a37be5dd, the commit that added `state-lost`; 6917 at 3ec66a92); it
+is step 1's config-error allowlist, the `cerr=` grep that lists `state-lost`, named with no line number. Test:
+`test_the_contract_cites_no_cached_brief_and_no_install_sh_line_number`.

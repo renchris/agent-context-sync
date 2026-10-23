@@ -6120,6 +6120,42 @@ def test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date() -> 
     assert b97 < b80 and k10.endswith("words: B97's line above).")
 
 
+def test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints() -> None:
+    """B13 round 25 D62: §16.173's B52 paragraph quoted `state-side-notfile`'s first tail ("at its config step
+    when this account cannot read it and at its status step when it can"), which the lane's review changed
+    (case SN-wal, recorded further down the same section): the main quote read as the contract, a tail the
+    installer no longer prints. It quotes round 24's landed tail (scripts/install.sh at 3ec66a92) as the
+    review's words, and marks the first build's words as such."""
+    b52 = " ".join(_contracts_section("(B52, B12; amends §16.166 A78). B52:", "\n\n").split())
+    landed = (
+        "at its config step when it is the -wal or this account cannot read it,"
+        " and at its status step otherwise"
+    )
+    assert f"(not damage), {landed}: fixing that is the person's (keeping a copy, they move it aside)" in b52
+    first = "when this account cannot read it and at its status step when it can"
+    assert b52.count(first) == 1 and f'the first build\'s read "{first}")' in b52
+
+
+def test_the_contract_cites_no_cached_brief_and_no_install_sh_line_number() -> None:
+    """B13 round 25 D63: §16.173 cited `lanes/COMMON23.md`, a brief in the bring-back cache, not the repo, and
+    "the line-6600 allowlist", a line number already stale when it was written (the allowlist sat at 6631 in
+    the commit that added `state-lost`). It cites the tracked `docs/lanes/COMMON.md` at a sha, and names the
+    allowlist by its grep."""
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert re.findall(r"`lanes/COMMON\d+\.md`", text) == [] and re.findall(r"\bline-\d{3,}\b", text) == []
+    p = " ".join(_contracts_section("### 16.173 Round 24: setup prompt v33", "\n\n**").split())
+    assert '(`docs/lanes/COMMON.md` at c93fcd96, its "ROUND 24 RULINGS" (7) to (9))' in p
+    lost = " ".join(
+        _contracts_section("**A lost manifest is the person's at step 1 and step 2**", "\n\n").split()
+    )
+    assert (
+        "in step 1's config-error allowlist (the `cerr=` grep in scripts/install.sh that lists `state-lost`)"
+        in lost
+    )
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert re.search(r"cerr=\"\$\(LC_ALL=C grep -E '\^\([^)]*\|state-lost\|", install)
+
+
 def test_k02s_dated_line_follows_its_own_text() -> None:
     """B13 round 14 Q68: §16.106 O11, O30's dated line sat in the middle of §16.14's K02 paragraph, so K02's
     own sentences after it (2026-10-05: the exit 2 run with no folder, the exit 0 run, `UV_TOOL_BIN_DIR`) read
