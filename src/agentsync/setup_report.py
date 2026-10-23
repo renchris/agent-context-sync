@@ -2715,17 +2715,40 @@ def _sync_stop_reason(stops: Sequence[_SyncStop]) -> str | None:
     return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}, and {each} ended 0 after {who}"
 
 
-def _open_stop_reasons(stops: Sequence[_SyncStop], paired: Collection[int]) -> list[str]:
+def _after_chmod(stops: Sequence[_SyncStop], paired: Collection[int]) -> set[int]:
+    """The ``id``s of the agent-owned stops an earlier stop on the same file claimed a line before (B13 round
+    26 E67): a paired agent-owned stop's line names a chmod (:func:`_claims`), so the later stop came after
+    the agent's chmod for the earlier, v33's "a chmod you already ran". Only that claimed line is evidence: a
+    second stop alone is no proof the chmod ran."""
+    return {
+        id(s)
+        for s in stops
+        if s.owner == "agent" and any(t.file == s.file and t.at < s.at and id(t) in paired for t in stops)
+    }
+
+
+def _open_stop_reasons(
+    stops: Sequence[_SyncStop], paired: Collection[int], after_chmod: Collection[int] = ()
+) -> list[str]:
     """B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D58, D69): the outcome's reasons for the step-3
     sync stops no later sync ended 0 after that claim the agent's error line (``paired``, their ``id``s,
     :func:`_stop_pairs`), one for the measured ones and one for those not measured: the claimed line is no
     reason of its own any more, so the stop is, or a stop that never recovered read "fully one command". A
-    stop with neither a later sync that ended 0 nor a claimed line is an Items line and no reason."""
+    stop with neither a later sync that ended 0 nor a claimed line is an Items line and no reason.
+    B13 round 26 E67: the agent-owned ones on a file a stop came back on after the agent's chmod
+    (``after_chmod``, :func:`_after_chmod`) are a reason of their own whose fix is no longer that chmod."""
     out: list[str] = []
     for measured in (True, False):
         open_ = [s for s in stops if s.ended_ok is None and id(s) in paired and s.measured is measured]
         if not open_:
             continue
+        ran = {s.file for s in stops if id(s) in after_chmod and s.ended_ok is None}
+        again = [s for s in open_ if s.owner == "agent" and s.file in ran]
+        if again:
+            out.append(_again_reason(again, measured))
+            open_ = [s for s in open_ if all(s is not t for t in again)]
+            if not open_:
+                continue
         whats = " and ".join(dict.fromkeys(s.what for s in open_))
         it = "it" if len(open_) == 1 else "them"
         then = (
@@ -2744,6 +2767,25 @@ def _open_stop_reasons(stops: Sequence[_SyncStop], paired: Collection[int]) -> l
             f"{_plural(len(open_), 'sync')} at step 3 exited 1 on {whats}, and {then}: the fix is {whose}"
         )
     return out
+
+
+def _again_reason(again: Sequence[_SyncStop], measured: bool) -> str:
+    """:func:`_open_stop_reasons`' reason for agent-owned stops that came back after the agent's chmod (B13
+    round 26 E67), in computed facts only: what was shown to the person is not measured here."""
+    whats = " and ".join(dict.fromkeys(s.what for s in again))
+    if len(again) == 1:
+        head, it = f"a sync at step 3 exited 1 on {whats} and came back after the agent's chmod", "it"
+    else:
+        later = "the later" if len(again) == 2 else "the later ones"
+        head = f"{len(again)} syncs at step 3 exited 1 on {whats}, {later} after the agent's chmod for the"
+        head += " earlier"
+        it = "them"
+    then = (
+        f"no sync ended 0 after {it} by this report"
+        if measured
+        else f"whether a sync ended 0 after {it} was not measured"
+    )
+    return f"{head}, and {then}: the fix is no longer the agent's chmod, as v33 sends it to the person"
 
 
 def _open_persons_stop(stops: Sequence[_SyncStop], persons_fails: Sequence[str] = ()) -> _SyncStop | None:
@@ -3005,7 +3047,8 @@ def compute_outcome(
             if stopped_sync is not None:  # B13 round 23 A9
                 why.append(stopped_sync)
             # B13 round 25 ruling 11: a stop that claims the agent's line is a reason, fixed or not
-            why += _open_stop_reasons(sync_stops, {id(s) for s, _e in _stop_pairs(attempt, sync_stops)})
+            paired = {id(s) for s, _e in _stop_pairs(attempt, sync_stops)}
+            why += _open_stop_reasons(sync_stops, paired, _after_chmod(sync_stops, paired))
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):

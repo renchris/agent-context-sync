@@ -5417,8 +5417,18 @@ def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason
     summary = summary_of(fake_mac)[1]
     assert summary.strip().splitlines()[0] == (
         "- **outcome: worked with help** (computed: install.sh exit 0; 2 syncs at step 3 exited 1 on "
-        "agentsync's lock file, and no sync ended 0 after them by this report: the fix is the agent's chmod)"
+        "agentsync's lock file, the later after the agent's chmod for the earlier, and no sync ended 0 after "
+        "them by this report: the fix is no longer the agent's chmod, as v33 sends it to the person)"
     ), summary
+    # E67's guard: a second stop alone is no proof the chmod ran; with the first stop's line unlogged, the
+    # second claims the only chmod line and the reason keeps the agent's chmod
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    first, second = (setup_report._SyncStop(at.replace(second=x), "lock", "agent", None) for x in (50, 56))
+    for paired, fix in (({id(first), id(second)}, "no longer"), ({id(second)}, "the agent's chmod")):
+        [reason] = setup_report._open_stop_reasons(
+            [first, second], paired, setup_report._after_chmod([first, second], paired)
+        )
+        assert reason.endswith(fix) or f"the fix is {fix}" in reason, (paired, reason)
     assert [ln.rsplit(" (F", 1)[1] for ln in _items_of(summary)] == [
         "4: the agent's account of it)",
         "5: the agent's account of it)",
