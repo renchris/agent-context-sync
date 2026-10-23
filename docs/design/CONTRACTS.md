@@ -1054,6 +1054,7 @@ class CycleReport:
     legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
     legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
+    new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -28034,6 +28035,10 @@ it ended 0 after the agent's chmod`), a count on the agent-friction line, and th
 changes no outcome; with no runs table to read, `not measured`. Test:
 `test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
 
+Amended 2026-10-23, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
+ending ` kind=<refused|misplaced|lost>` (a line with none is a refusal), a lost manifest's on `file=manifest`; the
+report words each kind (lane RA, §16.171).
+
 **A symlinked manifest's pointer is true** (A46). The verifier's fix is doctor's (lane B: a symlink loop or a link
 to a folder at manifest.sqlite gets the state_dir.manifest FAIL) and install.sh's `state_not_a_file` (lane P); the
 report's `_STATE_NOT_FILE` pointer needs no change. Lane B's doctor half and lane P's install.sh half (5d8e8c36) are the build; the report is
@@ -28589,6 +28594,10 @@ form the install.log reader takes for an install run; a failed write is never a 
 runs are in install.log already. Tests: `test_cli.py::test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log`
 and the heartbeat test above.
 
+Amended 2026-10-23, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
+ending ` kind=<refused|misplaced|lost>` (a line with none is a refusal), a lost manifest's on `file=manifest`; the
+report words each kind (lane RA, §16.171).
+
 **A29: a manifest lost from a Mac that has synced is the person's, and no command starts a new one over that
 history (`agentsync.manifest`, `agentsync.ops.doctor`, `agentsync.cli`, `agentsync.setup_report`; amends §16.125
 T12).** With manifest.sqlite gone and heartbeat.json recording passes, status said `no manifest yet` and `no sync
@@ -29000,7 +29009,113 @@ together.
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 
-Reserved for round 24 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but B17, whose fix
+is the setup prompt's (lane P). Round 24 ruling 7: a lost manifest (manifest.sqlite missing while heartbeat.json
+records an earlier pass, round 23 A29) is the person's and its own kind. Status, doctor and the sync kept A29's
+words: `[FAIL] state_dir.manifest — <db> is missing, but heartbeat.json records earlier passes (fix:
+doctor.LOST_MANIFEST_FIX)`, `manifest: missing (earlier syncs recorded; the person decides: see
+state_dir.manifest)` and `error: state: <db> is missing, but heartbeat.json records earlier passes (fix: ...)` with
+`cli.STATE_MISPLACED_STEP`. The words below were sent to lanes P and RA before the rest was built; lane P lands the
+new person's kind, "a state file that is damaged, missing after earlier syncs, another account's or not a file", in
+every PERSONS_KINDS copy (ruling 6).
+
+**B27, B62, B82, B100: a sync stop records its kind, and a lost manifest's is the manifest's (`agentsync.cli`;
+amends §16.164 A9 and §16.167 A9).** One defect from four finders: ManifestLostError has no filename by design,
+so the stop fell back to the state root and wrote `file=state-folder`, which the report read as "agentsync's state
+folder, which this account could not open". The misplaced arm passes `_state_db(args)` for it, as `_misplaced_check`
+does, and every line ends ` kind=<refused|misplaced|lost>`: `refused` for a state file or folder this account
+cannot open (the heartbeat's too), `misplaced` for `STATE_MISPLACED_STEP`, `lost` for ManifestLostError. A lost
+manifest writes `file=manifest rc=1 owner=person kind=lost`, a file where the state folder belongs
+`file=state-folder rc=1 owner=person kind=misplaced`. A stop whose line says its folder refuses (`: its folder
+refuses this account`, `: a folder above it refuses this account a search`) records the folder's role, not the
+file's (lane RA's B16 writer half). `setup_report._SYNC_STOP_RE` takes the optional `kind=` (none: refused) into
+`_SyncStop.kind`; the Items words for each kind are lane RA's (§16.171). Tests:
+`test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over`,
+`test_a_sync_stop_on_a_state_folder_that_is_a_file_is_recorded_as_misplaced_not_refused`,
+`test_a_sync_stop_its_folder_refused_is_recorded_on_the_folder_not_the_file`.
+
+**B66: the sync-stops writer and reader are pinned together.** `cli.SYNC_STOPS_LOG` is
+`setup_report._SYNC_STOPS_NAME`, and the A9 test feeds the line cli wrote through `_read_sync_stops`, so a renamed
+file, a timestamp, role or owner word the reader does not take turns it red. The writer's docstring no longer says
+the opposite of what it means. Test: `test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log`.
+
+**B36: an incomplete listing beside a lost manifest says the file is missing.** The heartbeat warn took the damaged
+manifest's note. `doctor.LISTING_STATE_LOST_NOTE`, "as of its last walk: the state file is missing, so no sync lists
+it again until the person restores it or confirms a new start; the state_dir.manifest [FAIL] line says what to do
+first", no parentheses, is chosen in `cli._listings_unread` by the lost-manifest FAIL's detail; a damaged manifest
+keeps "cannot be read". Test: `test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing`.
+
+**B37: the person's new start says one plain note.** After heartbeat.json is moved aside, recovery removed every
+mirror page as an orphan and wrote it back, one WARNING each plus four. On a new manifest (no runs, no tree) over a
+HEAD with a tree, `recover`, `gitops.restore_generated`, `_repair_outputs` and `run`'s `recovery:` line log at DEBUG,
+the removed pages are counted onto `CycleReport.new_manifest_pages`, and the sync prints `note: a new manifest was
+started over <N> existing mirror pages; every file is converted again` on its own line before the summary, never on
+the `converted N` line install.sh sums. An existing manifest whose tree disagrees with HEAD keeps its WARNINGs.
+Tests: the A29 test above and `test_cycle.py::test_head_moved_by_hand_resets_generated_paths_and_republishes`.
+
+**B11: a folder where the manifest belongs reads "the state file is not a file".** Status's unread line said "a file
+cannot be opened: Is a directory"; keyed on the check that FAILs it (state_dir.manifest, EISDIR on the db), it says
+"the state file is not a file; the state_dir.manifest line says why". Test:
+`test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_and_next`.
+
+**B28: disk.state names the folder that holds a file where a folder belongs.** It stays measured (the same volume;
+round 23 ruling 4), and its detail reads `<free> free at <folder>, the folder that holds <file>, which is not a folder
+(see state_dir)`; disk.docs the same, pointing at docs_repo.git. `_nearest_existing` is unchanged, since
+docs_repo.git needs the file back. Test: `test_disk_state_over_a_file_where_a_folder_belongs_names_the_folder_that_holds_it`.
+
+**B43: a sync over a heartbeat it cannot open prints the waits its alarm points at.** After `HEARTBEAT_REFUSED_STEP`
+the sync prints the loop's `WAITING ON YOU:` lines (quiet, no second NEXT, no notes). Test:
+`test_exclude_empty.py::test_a_sync_over_a_heartbeat_it_cannot_open_still_prints_the_waits_its_alarm_points_at`.
+
+**B58: a lock this account can read but not write fails status.** `doctor._check_lock` makes the sync's own open
+(`O_RDWR|O_NOFOLLOW`, no create, no flock) and FAILs a refusal through `refused_state_path`: chmod 600 for this
+account's mode, the person's chown for another account's, the volume fix for a read-only one; another account's
+lock this one can write passes. `setup_report._refused_files` tests the lock for read and write and, for the lock
+and the heartbeat, no longer by the owner alone (lane P's B105 report half). Test:
+`test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sync_names`.
+
+**B61: a governance folder this account cannot write into fails governance.hold.** A hold, its release and a queued
+purge write a temporary file in governance/. Status FAILs `governance.hold` with "<gov> refuses this account a write:
+a hold, its release and a queued purge each stop there" and `doctor.state_path_fix`'s fix, keeps the hold lines it
+can read, and says nothing for a missing folder or one that is not a folder; `_refused_files` tests the folder.
+Test: `test_a_governance_folder_this_account_cannot_write_into_fails_status_with_its_chmod`.
+
+**B63: a fifo at audit.jsonl neither hangs status nor a hold.** Status checks the kind first and opens with
+O_NONBLOCK (ENXIO or a non-regular fstat is `<path> is a fifo, not the state file`, the person's move);
+`governance._open_audit` does the same before a hold, its release or a queued purge writes. Test:
+`test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang`.
+
+**B64, B65: a dangling manifest link, and a 0400 file on a read-only volume.** A symlink to a missing file is judged
+by what a sync does through it (`doctor.dangling_target`), never as an ACL: into a folder the sync can write, no FAIL;
+into a missing or unwritable folder, the person's ("points the link at an existing file or removes it");
+after earlier passes, a lost manifest, and `manifest.manifest_lost` counts the link as missing, so no sync starts
+over through it. In `_check_state_dir` a read-only volume is tested before the mode, so a 0400 file there joins
+A85's one volume line. Tests: `test_ops_doctor.py::test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl`,
+`test_ops_doctor.py::test_a_state_file_without_read_or_write_on_a_read_only_volume_joins_the_volume_line`.
+
+**B67: cli imports graph.auth once, as a module.** The two function-level imports delayed nothing (cli imports
+graph.auth at its top); both sites use `graph_auth`, so the fake_auth fixture's patch of `MsalAuth` holds. Test:
+`test_cli_imports_graph_auth_once_as_a_module_never_lazily`.
+
+**B70: the log-rotation warning says the path once.** It takes `exc.strerror`, not the whole OSError. Test:
+`test_review_fixes.py::test_a_log_folder_under_a_folder_this_account_cannot_search_is_a_warning_not_a_raise`.
+
+**B71: a refused heartbeat is said when no source writes one.** With every source paused, retired or unselected,
+`Cycle._after` reads heartbeat.json and records a PermissionError as the write's refusal is recorded: an interactive
+sync says it once and exits 1, a `--mode` run logs one WARNING with the fix. `source_statuses` takes
+`refused_said`. Test: `test_a_heartbeat_this_account_cannot_open_is_said_when_no_source_writes_one`.
+
+**B88, B89, B90: curate, the governance commands and status over the state's other faults.** B88's two residuals
+are B89 and B90, built once. With a file where the state folder or a folder above it belongs, `curate` and the
+governance commands (`hold --list`) print sync's `error: state:` line, state_dir's words and the person's move,
+`STATE_MISPLACED_STEP`, and exit 1, keyed on `doctor._under_the_non_folder` (the stat, never the errno alone).
+Status's own heartbeat read is guarded: a corrupt heartbeat keeps every line, and a row's last success reads
+"unknown (heartbeat.json is not valid; the heartbeat line says why)". Tests:
+`test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_say_syncs_words`,
+`test_status_over_a_corrupt_heartbeat_keeps_every_line_and_names_no_python_class`.
+
+**B17: status's NEXT for a person's FAIL is unchanged.** Its verifier measured the finder's fix as worse: status's
+NEXT serves every work session, where no report exists. The step 3 routing is prompt words, lane P's (§16.173).
 
 ### 16.175 Round 24: the speech helper's reason, the timing marker and the waiting stubs (2026-10-22, wave B13 round 24 lane E)
 
