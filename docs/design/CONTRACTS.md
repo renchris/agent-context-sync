@@ -28942,8 +28942,9 @@ a failed or quarantined `conversion failed: converter unavailable` row), and A63
 stubs were `which that run left waiting for a converter` and `a file left waiting is read again ...`: a reader
 took them for the same files, or for Quarantine's "conversion failed" class, while they are REFUSED stubs of class
 "no converter", which no row is both. They read `which that run refused with no converter for its type` and `a file
-refused for want of a converter is read again by the first run with a converter for its type (the OCR engine for an
-image), so an old conversion error can show in that run`, the CLI note's verb ("is refused until a converter for
+refused for want of a converter is read again by the first run with a converter for its type (an engine built, or
+[convert] ocr or recordings turned back on), so an old conversion error can show in that run` (lane E's B75: a
+switch turned back on reads it too), the CLI note's verb ("is refused until a converter for
 its type is ready", unchanged); no "engine" in the label, which is not only for images.
 docs/deploy/setup-feedback.md's Repeat conversions row and the pins move with it. Tests:
 `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` and test_deploy_pack's row test.
@@ -28963,6 +28964,14 @@ on purpose (no developer tools, no shim dialog), so its half is lane RB's to wor
 `test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_claims_no_rewrite` (the older git's
 answer faked: this Mac's Apple Git 2.50 clears the list) and
 `test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed`.
+
+**The lane's review** (B16, B20, B74, B101). A `kind=` this build has no words for is still read (any lowercase
+word; its Items line takes the refusal's words) rather than dropping the stop and leaving the agent's error
+unpaired; a folder where the manifest belongs (`file=manifest kind=misplaced`) says `not measured (the state file
+is not a file)`; the stopped-copy branch takes the installer's own `_PROMPT_STOP_RE` line, so its step and its
+words agree; `_rewritten_url` reads `git config -z`, so a rewrite base that holds a space is read; and the
+refused files' wait clause names lane E's B75 switches: `(an engine built, or [convert] ocr or recordings turned
+back on)`. Tests: the B16, ruling 9 (a failed install keeps "none of these"), B74 and B101 tests above.
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 

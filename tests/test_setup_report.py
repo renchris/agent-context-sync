@@ -3204,6 +3204,14 @@ def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Pat
     )
     read = setup_report._read_sync_stops(stops.with_name("install.log"), at, None)
     assert [s.kind for s in read] == ["lost", "refused"]
+    # a kind this build has no words for is still a stop (a refusal's words), never a dropped line; a folder
+    # where the manifest belongs (lane B's file=manifest kind=misplaced) is not a file (a review of B16)
+    stops.write_text("2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person kind=damaged\n", "utf-8")
+    [odd] = setup_report._read_sync_stops(stops.with_name("install.log"), at, None)
+    assert setup_report._sync_stop_line(odd).startswith(
+        "- agentsync sync · step 3 · exited 1 on agentsync's state file, which this account could not open;"
+    )
+    assert "not measured (the state file is not a file)" in line("manifest", "person", "misplaced")
 
 
 def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path]) -> None:
@@ -5112,11 +5120,11 @@ def test_a_step_3_sync_that_stopped_is_worked_with_help(fake_mac: dict[str, Path
     ), summary
 
 
-def _two_records(fake_mac: dict[str, Path], errors: str, stops: str) -> str:
+def _two_records(fake_mac: dict[str, Path], errors: str, stops: str, rc: int = 0) -> str:
     """B13 round 24 ruling 9: a v12 attempt with step 3 ``errors`` before its end line, ``stops`` in
-    sync-stops.log, and a later sync the manifest records as ok; the Summary."""
+    sync-stops.log, and a later sync the manifest records as ok; the Summary (``rc``: the install run's)."""
     assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
-    v6_install_log(fake_mac)
+    v6_install_log(fake_mac, rc=rc)
     write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", errors, V12_HAPPY))
     (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stops, encoding="utf-8")
     return summary_of(fake_mac)[1]
@@ -5182,6 +5190,16 @@ def test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason(fake_mac: di
     assert "step 3 logged" not in summary.strip().splitlines()[0], summary
     assert summary.count("the agent's account of it)") == 2, summary
     assert "(see Items; F4 and F5 are the agent's accounts of them)" in summary, summary
+
+    # an install that failed: the stop is no outcome reason, its line still carries the agent's account, and
+    # nothing listed feeds the outcome
+    summary = _two_records(fake_mac, _CHMOD_ERROR, _LOCK_STOP, rc=1)
+    assert summary.strip().startswith("- **outcome: failed at step 2**"), summary
+    assert _LOCK_STOP_ITEM + " (F4: the agent's account of it)" in summary, summary
+    assert _line(summary, "- agent friction: ").endswith(
+        "logged itself (see Items; F4 is the agent's account of it); none of these changes the outcome by "
+        "itself"
+    ), summary
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -10044,6 +10062,13 @@ def test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_clai
     assert (
         " · origin: other (redacted) (2 url keys, git fetches from the first; a URL rewrite sends it "
         in facts
+    )
+    # a rewrite base may hold a space (git config -z): the longest value that prefixes the url wins
+    git(
+        "config", "url.https://git.contoso.example/a b/.insteadOf", "https://git.contoso.example/mirror/agent"
+    )
+    assert (
+        setup_report._rewritten_url(run, repo, mirror) == "https://git.contoso.example/a b/-context-sync.git"
     )
 
 

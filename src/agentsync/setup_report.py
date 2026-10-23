@@ -2621,7 +2621,7 @@ line with no ``kind=`` (written before B13 round 24 B82) is a refusal. No ``run=
 reader of any build takes it for an install run."""
 _SYNC_STOP_RE = re.compile(
     r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
-    r"(?: kind=(?P<kind>refused|misplaced|lost))?$"
+    r"(?: kind=(?P<kind>[a-z]+(?:-[a-z]+)*))?$"
 )
 _SYNC_STOP_FILES = {
     "manifest": "agentsync's state file",
@@ -2803,7 +2803,15 @@ def compute_outcome(
     late_installs = install_runs_only(_stopped_split(attempt, runs)[1]) if attempt is not None else []
     if attempt is not None and late_installs and late_installs[-1].rc != 0:
         inside = _stopped_split(attempt, runs)[0]
-        copy_stop = stopping_error(attempt, inside) or _unresolved_error(attempt)
+        # the installer's own stop line, so the step and the words below agree (a review of B20)
+        copy_stop = next(
+            (
+                e
+                for e in attempt.events
+                if e.kind == "error" and e.step == 1 and _PROMPT_STOP_RE.match(e.what)
+            ),
+            None,
+        )
         if copy_stop is not None and not install_runs_only(inside):
             late_rc = late_installs[-1].rc
             ended = "which has no end line" if late_rc is None else f"which ended rc {late_rc}"
@@ -4712,12 +4720,12 @@ def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
 def _rewritten_url(r: _Run, directory: Path, url: str) -> str | None:
     """``url`` as git's URL rewrites send it (``url.<base>.insteadOf``, the longest value that prefixes it, as
     git picks), None when none does or git's config cannot be read (B13 round 24 B101)."""
-    rc, out = _git_ro(r, directory, "config", "--get-regexp", r"^url\..*\.insteadof$")
+    rc, out = _git_ro(r, directory, "config", "-z", "--get-regexp", r"^url\..*\.insteadof$")
     if rc != 0:
         return None
     best: tuple[str, str] | None = None
-    for line in out.decode("utf-8", "replace").splitlines():
-        key, _, value = line.partition(" ")
+    for entry in out.decode("utf-8", "replace").split("\0"):
+        key, _, value = entry.partition("\n")  # -z: a base may hold a space
         base = key[len("url.") : -len(".insteadof")] if key.lower().endswith(".insteadof") else ""
         if base and value and url.startswith(value) and (best is None or len(value) > len(best[1])):
             best = (base, value)
@@ -8732,7 +8740,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         wait = (
             "; a file refused for want of a converter is read again by the first run with a converter for "
-            "its type (the OCR engine for an image), so an old conversion error can show in that run"
+            "its type (an engine built, or [convert] ocr or recordings turned back on), so an old conversion "
+            "error can show in that run"
         )
         out += [
             "",
@@ -9695,6 +9704,8 @@ def _stop_unread_why(stop: _SyncStop) -> str:
     state-folder stop, never "the state file" (B13 round 24 B16), and a lost manifest's (ruling 7)."""
     if stop.kind == "lost":
         return "the state file is missing"
+    if stop.kind == "misplaced" and stop.file != "state-folder":  # a folder where the file belongs
+        return "the state file is not a file"
     if stop.file == "state-folder":
         return (
             "the state folder is not a folder"
