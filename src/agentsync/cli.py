@@ -461,10 +461,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N are UNREADABLE stubs
     (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were read (R: a label rule,
     a .msg whose label cannot be read; B13 round 6 G35, which also prints the split for F or R alone; an inbox
-    duplicate is quarantined, never in R: round 7 H49), with ``, K of them withheld by the label rule`` after
-    R when K of the R have a stub that says so (a binary .msg on this Mac, read and then refused: B13 round 10
-    L33), as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side
-    (B13 round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
+    duplicate is quarantined, never in R: round 7 H49), with ``, K of them withheld: its label cannot be
+    read`` (``their labels`` for more than one) after R when K of the R have a stub that says so (a binary
+    .msg on this Mac, read and then refused: B13 round 10 L33; "withheld by the label rule" read as if the
+    other R were refused for another cause, while the label rule refused them too: B13 round 25 D25), as
+    ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side (B13 round 5
+    F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
     [policy] or secret-rule re-screen converts a file again for that rule change, so it is in N, and counted
     again in S (F35): the bytes its pages were made from, or a stub a label rule withheld by its name that a
     [policy] change queued, this run's or an earlier one's, for which it may be the first read of its bytes
@@ -607,7 +609,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         split = f"of the converted: {unreadable} unreadable, {failed} failed, {refused} refused"
         # no bracket of its own, so the split stays one parenthesis (B13 round 10 L33)
         if withheld_read := sum(s.withheld_read for s in report.sources):
-            split += f", {withheld_read} of them withheld by the label rule"
+            whose = "its label cannot" if withheld_read == 1 else "their labels cannot"
+            split += f", {withheld_read} of them withheld: {whose} be read"
         of_them = f"; {split}" if report.read_again and report.read_first else f" ({split})"
     # No bare "converted", "deferred" or "read again" in it: install.sh's awk adds the number after each.
     rescreened = (

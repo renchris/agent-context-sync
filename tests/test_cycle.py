@@ -2874,7 +2874,7 @@ def test_the_sync_line_counts_every_stub_the_label_rule_withheld(
     capsys.readouterr()
     cli._print_report(report)
     line = capsys.readouterr().out.splitlines()[-1]
-    assert "1 refused, 1 of them withheld by the label rule" in line, line
+    assert "1 refused, 1 of them withheld: its label cannot be read" in line, line
     assert "; 1 withheld unread by the label rule (" in line and "a binary .msg" not in line, line
 
 
@@ -4797,7 +4797,8 @@ def test_a_file_refused_after_its_read_is_named_in_the_sync_lines_split(
     assert last.startswith(f"converted {rep.converted}, deferred 0 online-only")
     # B13 round 10 L33: its stub says a label rule withheld it, and the split says so of the one refused
     assert (
-        "(of the converted: 0 unreadable, 0 failed, 1 refused, 1 of them withheld by the label rule)" in last
+        "(of the converted: 0 unreadable, 0 failed, 1 refused, 1 of them withheld: its label cannot be read)"
+        in last
     )
 
 

@@ -1041,9 +1041,12 @@ _FIRST_READ_RE = re.compile(
 )
 # and since B13 round 6 G35 ", R refused" after it (a sync line that prints it is named "the
 # unreadable/failed/refused split" in its source tag since round 7 H46)
-_SPLIT_RE = re.compile(  # K, of the refused, withheld by the label rule: the CLI prints it after R (M82)
+_SPLIT_RE = re.compile(  # K, of the refused, withheld: the CLI prints it after R (M82)
     r"\bof the converted: (\d+) unreadable, (\d+) failed\b"
-    r"(?:, (\d+) refused\b(?:, (\d+) of them withheld by the label rule\b)?)?"
+    # since B13 round 25 D25 "withheld: its label cannot be read" (their labels, for more); an older build's
+    # install.out says "withheld by the label rule"
+    r"(?:, (\d+) refused\b(?:, (\d+) of them withheld(?: by the label rule\b|: (?:its label|their labels) "
+    r"cannot be read\b))?)?"
 )
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
 # J39); "without a read" is required, so the split's "R refused)" never matches
@@ -11773,7 +11776,10 @@ def _sync_line_end(
             if (
                 split[3] and split[4]
             ):  # K of the R pages say withheld, as on the CLI's line (B13 round 11 M82)
-                refused += f", {split[4]} of them withheld by the label rule"
+                whose = (
+                    "its label cannot" if split[4] == 1 else "their labels cannot"
+                )  # the CLI's words (D25)
+                refused += f", {split[4]} of them withheld: {whose} be read"
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             # the tag names refused only when its count was printed (B13 round 7 H46)
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")

@@ -5648,14 +5648,24 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused "
             "(install.log; the unreadable/failed/refused split: install.out)",
         ),
-        (  # B13 round 11 M82: K of the R refused say withheld, as on the CLI's line (K + W say withheld)
+        (  # B13 round 11 M82: K of the R refused say withheld, as on the CLI's line (K + W say withheld);
+            # an older build's words, read as the new ones are (B13 round 25 D25)
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 "
             "refused, 1 of them withheld by the label rule); 1 withheld unread by the label rule (a file "
             "whose label cannot be read: an image, or a .msg not on this Mac)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 1 refused, 1 of "
-            "them withheld by the label rule; 1 withheld unread by the label rule (install.log; the "
+            "them withheld: its label cannot be read; 1 withheld unread by the label rule (install.log; the "
             "unreadable/failed/refused split and the withheld-unread count: install.out)",
+        ),
+        (  # B13 round 25 D25: the CLI's words since, which name K's cause without claiming the rule is K's
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 4 "
+            "refused, 2 of them withheld: their labels cannot be read); 1 withheld unread by the label rule "
+            "(a file whose label cannot be read: an image, or a .msg not on this Mac)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 4 refused, 2 of "
+            "them withheld: their labels cannot be read; 1 withheld unread by the label rule (install.log; "
+            "the unreadable/failed/refused split and the withheld-unread count: install.out)",
         ),
         (  # B13 round 8 J39: the files refused without a read, after the split as on the CLI's line
             "note=converted-4-deferred-0",
@@ -17199,7 +17209,7 @@ def test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side(
         (
             "converted 3, deferred 1 online-only, read again 3 (1 of them a first read: a stub whose bytes "
             "had never been read, so also counted as converted) (of the converted: 0 unreadable, 1 failed, 2 "
-            "refused, 2 of them withheld by the label rule)",
+            "refused, 2 of them withheld: their labels cannot be read)",
             "converted-3-deferred-1-reread-3-first-1",
         ),
         ("converted 2, deferred 0 online-only, read again 2", "converted-2-deferred-0-reread-2"),
