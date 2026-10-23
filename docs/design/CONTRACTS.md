@@ -14893,6 +14893,10 @@ measures its linear-time bound in CPU time, so its hostile-input checks run on e
 against a one-minute bound; `tests/test_setup_report.py::test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_the_copy`
 and `tests/test_setup_report.py::test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli` take
 `roomy_budget` (with the report budget starved to 0.3 s, both fail without it).
+Amended 2026-10-22, §16.175 B72: the marker also holds a test whose limit is no part of what it
+checks, a real helper or system tool run under a limit the load decides (round 23's media helper tests, 11bf13c5,
+and codesign's read, 38727270); `pyproject.toml` and conftest's hook say both kinds now, and the skip reason keeps
+its words (§16.175).
 
 **The IT request names the release the speech build fetches (Q60).**
 `tests/test_deploy_pack.py::test_a_weekly_check_follows_the_download_hosts_the_it_request_names` requires the
@@ -28813,6 +28817,18 @@ tools keep theirs. The setup report's bucket stays keyed on `BUILD_TIMED_OUT` al
 `test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix`, and
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`, whose
 no-fix case is a `swift build` failure now.
+
+**The timing marker names both kinds of test it holds (B72; `pyproject.toml`, `tests/conftest.py`; dated line at
+§16.54 Q59).** The registered `timing` marker and conftest's hook said a timing test "asserts a time bound that is
+the contract"; round 23 marked three tests whose limit is no part of what they check (the real media helper's two,
+11bf13c5, and codesign's read, 38727270: a real helper or system tool under a limit the load decides). Both now say
+a timing test's result depends on how fast this Mac runs, either kind. Not the finder's wider skip reason or a
+marker of its own: `load N per core: a time bound cannot be judged` is parsed (`scripts/gate.sh`'s
+`skipped_timing=` count, `tests/_gate_journal.py`'s `_TIMING_SKIP` for lane runs, pinned by
+`test_perf.py::test_a_timing_test_reads_the_load_when_it_starts`), so new words would drop those skips from
+gate-verdicts.log's count unless every parser changed too; the reason stays word for word. Test:
+`test_perf.py::test_the_timing_marker_names_both_kinds_of_test_it_holds` (reads the registered marker, the line
+`pytest --markers` prints).
 
 ### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
 

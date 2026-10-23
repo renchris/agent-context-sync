@@ -129,3 +129,14 @@ def test_a_timing_test_reads_the_load_when_it_starts(monkeypatch: pytest.MonkeyP
         return
     with pytest.raises(pytest.skip.Exception, match="load 34 per core: a time bound cannot be judged"):
         conftest.pytest_runtest_setup(timed)
+
+
+def test_the_timing_marker_names_both_kinds_of_test_it_holds(request: pytest.FixtureRequest) -> None:
+    """B13 round 24 B72: the registered ``timing`` marker said its tests assert a time bound that is the
+    contract, but round 23 marked three that run a real helper or system tool under a limit the load decides
+    and that is no part of what they check (the media helper's two, codesign's read). The marker names both
+    kinds; the skip reason keeps its words, which gate.sh and the gate journal count."""
+    [timing] = [m for m in request.config.getini("markers") if m.startswith("timing:")]
+    assert "a time bound that is the contract" in timing, timing
+    assert "a real helper or system tool run under a limit the load decides" in timing, timing
+    assert "above 4 per core skips it (AGENTSYNC_TIMING=1 runs it anyway)" in timing, timing

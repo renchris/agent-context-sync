@@ -203,11 +203,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Skip a ``timing`` test when the Mac is too busy for its time bound to mean anything.
 
-    A ``timing`` test asserts a time bound (wall clock or CPU) that is the contract (the report's time
-    budget). On a Mac whose load is many runnable processes per core, that time says nothing about the code:
-    such a run skips them, and says why; CI's runners and an idle Mac run them. AGENTSYNC_TIMING=1 runs them
-    anyway. The load is read when each timing test starts, not once at collection: under ``-n auto`` each
-    worker collects at startup, and a long run whose load rose later still ran them (B13 round 7 H78)."""
+    A ``timing`` test's result depends on how fast this Mac runs: it asserts a time bound (wall clock or CPU)
+    that is the contract (the report's time budget), or it runs a real helper or system tool (the media
+    helper, codesign) under a limit the load decides and that is no part of what it checks (B13 round 24
+    B72). On a Mac whose load is many runnable processes per core, that time says nothing about the code:
+    such a run skips them, and says why (gate.sh counts the skips by those words); CI's runners and an idle
+    Mac run them. AGENTSYNC_TIMING=1 runs them anyway. The load is read when each timing test starts, not
+    once at collection: under ``-n auto`` each worker collects at startup, and a long run whose load rose
+    later still ran them (B13 round 7 H78)."""
     if item.get_closest_marker("timing") is None or os.environ.get("AGENTSYNC_TIMING") == "1":
         return
     per_core = os.getloadavg()[0] / (os.cpu_count() or 1)
