@@ -29602,6 +29602,12 @@ says `(the state file is missing)`, from the report's own read (D4), whatever it
 `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed` (two rows: lane B's -wal line, an older
 build's -shm fifo), `test_a_stop_not_measured_because_the_manifest_is_gone_says_so`.
 
+**A step 3 stop is listed when the config does not load** (D39). `_step3_stops` returned nothing with no config,
+while the shell report (B95), which reads sync-stops.log alone, listed the attempt's stops. The stops are read from
+beside install.log whatever the config, and with none each is not measured, `(the config does not load)`
+(`_SyncStop.unread`), as the config is needed only for the runs table and the heartbeat; an unpaired unmeasured
+stop is still no reason. Test: `test_a_step_3_stop_is_listed_when_the_config_does_not_load`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

@@ -9792,9 +9792,12 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     """Attempt ``index``'s step-3 sync stops (:func:`_read_sync_stops`): from its begin to its end line, else
     to the next attempt's begin, each paired with the first later sync the manifest's ``runs`` table records
     as ended ``ok`` (B13 round 23 A9). The table is read only when a stop is in the window; a manifest that
-    cannot be read pairs none. Empty with no friction log, no attempt time or no config."""
+    cannot be read pairs none. Empty with no friction log or no attempt time. With a config that does not
+    load, the stops are still read, from beside install.log, each not measured (B13 round 25 D39: the shell
+    report listed them and this one did not), as the config is needed only for the runs table and the
+    heartbeat."""
     fr = r.friction
-    if fr is None or not 0 <= index < len(fr.attempts) or r.config is None:
+    if fr is None or not 0 <= index < len(fr.attempts):
         return []
     att = fr.attempts[index]
     lo = att.begin
@@ -9811,6 +9814,8 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     stops = _read_sync_stops(r.install_log, lo, hi)
     if not stops:
         return []
+    if r.config is None:  # B13 round 25 D39
+        return [dataclasses.replace(s, measured=False, unread="the config does not load") for s in stops]
     starts: list[datetime] | None = None
     with contextlib.suppress(sqlite3.Error, OSError):
         conn = _open_manifest_ro(expand(r.config.state_paths.db), 0.5)

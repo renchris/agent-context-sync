@@ -13816,6 +13816,21 @@ def test_a_stop_not_measured_because_the_manifest_is_gone_says_so(fake_mac: dict
     assert len(items) == 2 and all("not measured (the state file is missing)" in ln for ln in items), items
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_step_3_stop_is_listed_when_the_config_does_not_load(fake_mac: dict[str, Path]) -> None:
+    """B13 round 25 D39: with a config that does not load at report time, the report listed no step 3 stop
+    (the runs table needs the config), while the shell report, which reads sync-stops.log alone, listed it.
+    The stop is read from beside install.log, not measured for that cause; the outcome is as with no stop."""
+    _two_records(fake_mac, "", _stop_line("50", "lock"))
+    fake_mac["config"].write_text("[agentsync\nnot toml\n", encoding="utf-8")
+    summary = summary_of(fake_mac)[1]
+    assert _items_of(summary) == [
+        "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
+        "whether a later sync ended 0: not measured (the config does not load); the fix is the agent's chmod"
+    ], summary
+    assert "1 step-3 sync stop agentsync logged itself (see Items)" in _line(summary, "- agent friction: ")
+
+
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
 def test_environment_says_what_the_secret_scan_can_use(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, case: str
