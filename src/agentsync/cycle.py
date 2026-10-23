@@ -5806,7 +5806,9 @@ class _Cycle:
 
     def _statuses(self, sources: Iterable[SourceConfig]) -> list[SourceStatus]:
         # every call is in run(), whose _after records a refused heartbeat, its write's or, when no source
-        # writes one, its read's, so the CLI says it once (B13 round 24 B71)
+        # writes one, its read's, so the CLI says it once (B13 round 24 B71); but when the manifest cannot be
+        # read the cycle re-raises, _after may fail before it records the refusal, and the CLI's manifest
+        # error (exit 65) is what that run says; the next sync says the heartbeat (B13 round 25 D47)
         return source_statuses(
             self.config, self.manifest, now=self.now(), reports=self.accs, refused_said=True
         )
@@ -5887,9 +5889,11 @@ def source_statuses(
     """One SourceStatus per configured source (STATE.md / INDEX.md / ``agentsync status``). ``quiet``
     (status's call, whose heartbeat line names an unreadable heartbeat and its fix): that read's log line is
     debug, not a timestamped WARNING beside it (B13 round 21 Y43). ``refused_said``: the cycle recorded the
-    heartbeat's refusal, which the CLI says once, so a refused read here is debug too; any other refused read
-    is a WARNING, since nothing else says it (B13 round 24 B71: "a cycle's read" was enough, and a cycle that
-    wrote no heartbeat said nothing)."""
+    heartbeat's refusal, which the CLI says once, so a refused read here is debug too (B13 round 24 B71: "a
+    cycle's read" was enough, and a cycle that wrote no heartbeat said nothing). A refused read is a WARNING
+    only for a caller that records no refusal, the default, which no current caller takes (the cycle passes
+    ``refused_said=True``, status ``quiet=True``): kept so a new caller fails loud, never silent (B13 round
+    25 D47)."""
     heartbeat: dict[str, dict[str, object]] = {}
     try:
         heartbeat = {k: dict(v) for k, v in read_heartbeat(config.state_paths.heartbeat).items()}

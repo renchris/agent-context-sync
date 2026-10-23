@@ -391,6 +391,26 @@ def _open_audit(path: Path) -> int:
     return fd
 
 
+def sticky_blocker(state_dir: Path) -> Path | None:
+    """The first file a hold, its release or a queued purge replaces (holds.json, the purge queue, the
+    suppression list) that another account owns in a governance/ folder with the sticky bit set, where no
+    rename replaces another account's file (EPERM) though the folder takes a write; else None. Whose folder it
+    is decides nothing else: another account's folder this account can write works (B13 round 25 D45)."""
+    gov = governance_dir(state_dir)
+    try:
+        if not gov.lstat().st_mode & stat.S_ISVTX:
+            return None
+    except OSError:
+        return None
+    for path in (_holds_file(state_dir), _queue_file(state_dir), _suppress_file(state_dir)):
+        try:
+            if path.lstat().st_uid != os.getuid():
+                return path
+        except OSError:
+            continue
+    return None
+
+
 def append_audit(state_dir: Path, record: Mapping[str, object]) -> None:
     """Append one JSON line (sorted keys) to the audit trail, mode 0600, fsynced."""
     with _audit_appender(state_dir) as write:

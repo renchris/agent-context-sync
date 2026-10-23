@@ -4839,6 +4839,43 @@ def test_a_governance_folder_this_account_cannot_write_into_fails_status_with_it
     assert not any(ln.startswith("[FAIL] governance.") for ln in out), out
 
 
+@pytest.mark.parametrize("sticky", [False, True])
+def test_another_accounts_governance_folder_this_account_can_write_passes_unless_sticky(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, sticky: bool
+) -> None:
+    """B13 round 25 D45: governance.hold FAILed "refuses this account a write" with the person's sudo chown
+    for another account's governance/ folder this account can write (0777), where a hold works. Keyed on what
+    a hold does: a writable folder passes whoever owns it; a sticky one over another account's holds.json,
+    which no rename replaces, FAILs in its own words."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    owner = ["--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(["hold", "source", "--reason", "matter 7", *owner]) == cli.EXIT_OK
+    gov.chmod(0o1777 if sticky else 0o777)
+    try:
+        me = os.getuid()
+        with monkeypatch.context() as other:  # this account is another one: the files are not its own
+            other.setattr(cli.os, "getuid", lambda: me + 1)
+            checks = cli._governance_folder_checks(initialised)
+            whose = setup_report._refused_files(initialised).get("governance.hold")
+        if not sticky:
+            assert cli.main(["hold", "all", "--reason", "matter 8", *owner]) == cli.EXIT_OK
+    finally:
+        gov.chmod(0o700)
+    capsys.readouterr()
+    if sticky:
+        (fail,) = checks
+        holds = governance._holds_file(root).name
+        assert (
+            fail.detail
+            == f"{gov} is a sticky folder and {holds} is another account's: a hold cannot replace it"
+        )
+        assert fail.fix is not None and doctor.is_persons_fix(fail.fix) and whose is not None, (fail, whose)
+    else:
+        assert checks == [] and whose is None, (checks, whose)
+
+
 def test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -5064,6 +5101,36 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix(
             target.chmod(0o600)
 
 
+def test_source_statuses_warns_a_refused_heartbeat_only_for_a_caller_that_records_none(
+    initialised: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 25 D47: no current caller takes the WARNING path (the cycle passes ``refused_said=True``,
+    status ``quiet=True``); it is the default, kept so a new caller that records nothing fails loud. The
+    docstring says so, and the default still warns."""
+    _synced(initialised)
+    beat = expand(initialised.state_paths.heartbeat)
+    doc = cycle_mod.source_statuses.__doc__ or ""
+    assert "which no current caller takes" in " ".join(doc.split()), doc
+    beat.chmod(0)
+    try:
+        with Manifest(initialised.state_paths.db) as manifest, caplog.at_level(logging.DEBUG, "agentsync"):
+            now = datetime.now(UTC)
+            cycle_mod.source_statuses(initialised, manifest, now=now)
+            loud = [r.levelno for r in caplog.records if "heartbeat unreadable" in r.getMessage()]
+            caplog.clear()
+            cycle_mod.source_statuses(initialised, manifest, now=now, refused_said=True)
+            said = [r.levelno for r in caplog.records if "heartbeat unreadable" in r.getMessage()]
+    finally:
+        beat.chmod(0o600)
+    assert loud == [logging.WARNING] and said == [logging.DEBUG], (loud, said)
+
+
+def test_fail_steps_docstring_gives_no_stale_count_of_the_persons_kinds() -> None:
+    """B13 round 25 D48: "the whole list (447 characters)" went stale when v33 made it 476; no count."""
+    assert "447 characters" not in (cli._fail_step.__doc__ or "")
+    assert len(doctor.PERSONS_KINDS) != 447
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root writes a mode-400 file")
 def test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sync_names(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
@@ -5077,6 +5144,7 @@ def test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sy
     root = Path(os.path.realpath(expand(initialised.state_paths.root)))
     lock = expand(initialised.state_paths.lock)
     lock.chmod(0o400)
+    before = (lock.stat().st_ino, lock.stat().st_mtime_ns)
     try:
         capsys.readouterr()
         rc, out = _status(cfg, capsys)
@@ -5097,7 +5165,11 @@ def test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sy
     assert f"(fix: {fix})" in said.err, said.err
     assert whose == setup_report._AGENTS, whose
     assert not theirs.ok and theirs.fix == chown, theirs
-    assert lock.stat().st_size == 0 or SingleWriterLock.is_held(lock) is False  # nothing taken or created
+    # nothing locked, replaced or written: "st_size == 0 or" was always true, as the release empties the lock,
+    # so a status that leaked a flock passed (B13 round 25 D49); an O_CREAT on a lock already there shows
+    # nothing, so none is claimed
+    assert SingleWriterLock.is_held(lock) is False
+    assert (lock.stat().st_ino, lock.stat().st_mtime_ns) == before
     with monkeypatch.context() as other:  # another account's lock that this one can write: sync runs
         me = os.getuid()
         other.setattr(doctor.os, "getuid", lambda me=me: me + 1)

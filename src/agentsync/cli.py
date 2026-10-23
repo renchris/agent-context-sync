@@ -1553,7 +1553,8 @@ def _fail_step(result: doctor.CheckResult) -> str:
     hand-kept list went stale, B13 round 17 U69) is named as theirs, as install.sh's NEXT names it, not as a
     step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17 U2,
     U16, U11). No catalog of the person's kinds: the [FAIL] line right below states the one fix, and the
-    whole list (447 characters) named every kind but that one (B13 round 23 A31). "not a step for the
+    whole list named every kind but that one (B13 round 23 A31; no count, which went stale: B13 round 25
+    D48). "not a step for the
     agent" stays: the setup report counts a person's stop by it."""
     if doctor.is_persons_fix(result.fix):
         return (
@@ -2147,11 +2148,18 @@ def _governance_folder_checks(config: Config) -> list[doctor.CheckResult]:
         return []
     if not stat.S_ISDIR(st.st_mode):
         return []
-    if st.st_uid == os.getuid() and os.access(gov, os.R_OK | os.W_OK | os.X_OK):
+    if not os.access(gov, os.R_OK | os.W_OK | os.X_OK):
+        fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(gov)))
+        detail = f"{gov} refuses this account a write: a hold, its release and a queued purge each stop there"
+        return [_check("governance.hold", False, detail, doctor.Severity.ERROR, fix=fix)]
+    # by what a hold does, never by the owner: another account's folder this account can write works, as
+    # B58's lock does; only a sticky one holding another account's file a hold replaces stops it (B13 round
+    # 25 D45: "refuses this account a write" over a 0777 folder a hold wrote into)
+    theirs = governance.sticky_blocker(root)
+    if theirs is None:
         return []
-    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(gov)))
-    detail = f"{gov} refuses this account a write: a hold, its release and a queued purge each stop there"
-    return [_check("governance.hold", False, detail, doctor.Severity.ERROR, fix=fix)]
+    detail = f"{gov} is a sticky folder and {theirs.name} is another account's: a hold cannot replace it"
+    return [_check("governance.hold", False, detail, doctor.Severity.ERROR, fix=doctor._persons_chown(root))]
 
 
 def _audit_checks(config: Config) -> list[doctor.CheckResult]:
