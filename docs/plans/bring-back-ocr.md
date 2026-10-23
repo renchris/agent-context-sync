@@ -1569,6 +1569,43 @@ three round 22 worktrees removed; its test-helper part is lane RB's) and A39 (th
 `~/.cache/agentsync-bring-back/fixtures/v1/` with a checksum manifest; round 24's rehearsals copy and check it and
 never write to it).
 
+### B13 round 23 landed (2026-10-22)
+
+All seven lanes landed; CI green on `9b8471d4` (ci `39865991577`, diagrams `39865991687`; prompt v32 in `a29ff3b3`).
+Notes `lanes/r23-<lane>.md`, lead notes `round23/lead-notes.md`. All 94 items (93 confirmed plus A97) are built or
+carry a measured reason: A27 has no copy in the agentsync report to change, A46's report side is unchanged (its
+verifier; lane B landed its test rows in `8269ab2b`, its install.sh half is P's `5d8e8c36`), and A97 leaves
+`launcher/build.sh` on shasum (an edit changes the launcher's source hash, which costs a privacy re-approval), finds
+no test that runs the console script by path, and refutes the launchctl poll premise (18 getenv and 2 print calls a
+run, not polls). A24, A25 and A27 were split RA and RB; A8's shell half is RB's `88d99e17`, at RA's request.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `95ddf881..4395a7e9`, 2 commits |
+| P | `5d8e8c36..7c8dd2fe`, 6 commits (v32) |
+| E | `99d9aa96..97c8b6b3`, 7 commits |
+| RA | `3cf85b11..01600571`, 24 commits, and `64406b25` |
+| RB | `c58daebe..88d99e17`, 11 commits (with RA's `96134549`), and `193c4e5d` (the red run below) |
+| B | `46880b9e` (the red run below) and `75cccb68..8269ab2b`, 15 commits and RA's A46 rows |
+| K | `eb0938ee..9b8471d4`, 6 commits; the tests' #! execs for its subset 5,309 before, 141 after |
+| Lead | `1031e03e`, `cb50a3af` (in RA's land), `38727270` (in RB's), `11bf13c5` |
+
+Learnings: every round 23 brief named round 22's CONTRACTS section (the briefs tool's section map was not moved on;
+lane B caught it, the lead sent the right map mid-round); round 24's tool maps §16.171 on. `ship-land.sh` printed
+"CI green" after reading back only the diagrams run, which gh can list before ci (lane P): it now waits for the ci run
+(`1031e03e`). The Mac ran at a load of 15 to 25 per core all day, and five land gates in a row went red on tests whose
+time limit is not what they check: the real media helper tests and the real codesign read are now timing tests
+(`11bf13c5`, `38727270`), and at the time `codesign --verify /bin/ls` hung with no CPU for 180 s, which no test change
+fixes. Trunk went red once (ci `39809607845` on `38727270`): CI's macOS git keeps a url list an empty `url =` clears
+on this Mac (`193c4e5d`), and the lock-wait test raced a holder's release (`46880b9e`). Lane K's session died at 03:17
+mid-run and kitty's remote control stopped answering from about 04:30, so no pane could open: the lead resumed K's
+session headless (`claude -p --resume`, same account and worktree) and it landed. Each land took about 40 minutes, and
+the land lock is not first come, first served.
+
+Round 24: the round 23 workflow with prompt v32 on this section's landed tip, BASE `ed901cd3` (ids B<n>, outputs
+`round24/`); scenario C plays the v31 and v30 blocks. Its harvest carries lane B's seams for lane P (install.sh's
+config_failed NEXT for a lost manifest, its manifest-is-a-folder words) and lane K's #! census.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
