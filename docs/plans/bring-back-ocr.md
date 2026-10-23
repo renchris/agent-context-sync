@@ -1730,6 +1730,37 @@ could not be read back from its input box), so it led this round in the same con
 Round 26: the round 25 workflow with prompt v33 on this section's landed tip, BASE `b4c61127` (ids E<n>, unused in
 §16 lines; outputs `round26/`); the prompt did not change, so scenario C still plays the v32 and v31 blocks.
 
+### B13 round 26: v33 rehearsal, cross-lane review, harvest (2026-10-23)
+
+Run `wf_06180c62-224` on `dd5639cb` (92 agents, 0 errors, 72 minutes). All six scenarios pass their EXPECTED, and
+scenario F found nothing at all; no name leaks; round 25's rulings hold on real output where the rehearsals played
+them (a person's step 3 stop reads "failed at step 3" and is one Items line; following the -wal and manifest fixes
+leads to no second stop). 81 findings, 77 confirmed (0 turns, 19 wrong, 58 small), 4 refused (E13, E64, E73, E80).
+None needs prompt text: v33 stays the prompt to paste.
+The wrongs sit on round 25's own new paths: a person's step 3 stop still pairs only when the agent's line has the
+words the pairing looks for ("no chmod was run" and the person's own chmod quoted do not pair); state files that are
+not files beyond the manifest's side files (a folder or fifo at the lock passes status as free while every sync
+tracebacks; a folder at heartbeat.json is a warn that promises a rewrite no pass can make); and the lost manifest's
+new start, where `purge --queue` still runs with no manifest and erases current pages (E25, data integrity), its
+orphan-page removals are in no count, and the report's D26 half never fired. Lead rulings for round 26 (in
+`lanes/COMMON25.md`), all code-only: (11, refined again) a person's stop claims the next step 3 line that is not a
+lock-held skip, whatever its chmod words; (13) anything not a regular file where any state file belongs is the
+person's in every reader, never "free", never a block on a fifo, never a traceback; (14) with the manifest lost, no
+command deletes or rewrites a mirror page (lane B builds E25 first), and the new start's removals are counted.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77 over rounds 2 and 4 to 26; turns 0 for seven rounds, then 1, 2, 0, 0, 2, 0, 0; wrongs 23, 15, 20, 15, 15, 12, 10,
+11, 17, 14, 20, 17, 10, 22, 25, 24, 8, 21, 15, 29, 25, 31, 19, 19. Two rounds now with no turn and no prompt item;
+each round's wrongs are the edges of the last round's new stops.
+
+Lanes (`--account auto`, CONTRACTS §16.183 to §16.187, brief `lanes/COMMON25.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r26-land.lock`; scratch under `round26/`; back-channel
+pane 134): RA 25 (ruling 11's pairing, the new start's pages, the side files' report words, its other words), B 22
+(ruling 14 first, ruling 13 in status, doctor and every command, the new start's counts, round 25's seams), RB 14 (all
+of install.sh: its inlined lost-manifest copies, tails and the shell report's pairing and stops), E 5 (the speech fix
+for an old toolchain, the OCR URL cut), D 10 (guides, CONTRACTS records, deploy-pack tests). Lead: E71 (the cache
+brief's stale CI line; round 26's brief is built from the repo copy, which carries lane D's).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

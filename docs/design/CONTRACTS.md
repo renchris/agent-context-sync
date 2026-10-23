@@ -30139,3 +30139,23 @@ engine or media helper, the report's own words for the converter (`an engine bui
 turned back on`), and the download case as settled, as no sync downloads one; it does not say such a file is never
 read (the OS may download it). Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads
 the converter words from the report and the download case from `_stub_settled`'s docstring.
+
+### 16.183 Round 26: setup report: pairing every person's stop, the new start's pages, state files that are not files (2026-10-23, wave B13 round 26 lane RA)
+
+Reserved for round 26 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 26").
+
+### 16.184 Round 26: the installer and the shell report (2026-10-23, wave B13 round 26 lane RB)
+
+Reserved for round 26 lane RB of B13.
+
+### 16.185 Round 26: a state file that is not a file, purge over a lost manifest and the new start (2026-10-23, wave B13 round 26 lane B)
+
+Reserved for round 26 lane B of B13.
+
+### 16.186 Round 26: the speech fix for an old toolchain and the OCR URL cut (2026-10-23, wave B13 round 26 lane E)
+
+Reserved for round 26 lane E of B13.
+
+### 16.187 Round 26: deploy docs, CONTRACTS records and the deploy-pack tests (2026-10-23, wave B13 round 26 lane D)
+
+Reserved for round 26 lane D of B13.
