@@ -3438,7 +3438,7 @@ fallback_sync_stops() {
 			if (edge) hi = last
 		}
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
-		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+)?$/) { next }
+		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
 		{ at = substr($0, 1, 20) }
 		at < lo || (edge ? secs(at) > secs(hi) : at >= hi) { next }
 		{

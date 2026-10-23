@@ -5336,8 +5336,15 @@ _STOP_LOCK = (
             "2026-10-14T10:04:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n",
             2,
         ),
+        # round 25 D38, D66: a kind= with a hyphen, which _SYNC_STOP_RE reads (an unknown kind is a refusal),
+        # was dropped whole by the shell's pattern
+        (
+            "2026-10-14T10:03:00Z sync-stop file=lock rc=1 owner=agent\n"
+            "2026-10-14T10:04:00Z sync-stop file=manifest rc=1 owner=agent kind=not-found\n",
+            2,
+        ),
     ],
-    ids=["inside", "after-end", "before-begin", "no-file", "past-200-lines", "two-kinds"],
+    ids=["inside", "after-end", "before-begin", "no-file", "past-200-lines", "two-kinds", "hyphen-kind"],
 )
 def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
     env: dict[str, str], stops: str | None, counted: int
@@ -5378,7 +5385,15 @@ def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
     installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
     listed = [ln for ln in installer.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
     assert listed[0] == _STOP_LOCK, installer
-    if counted == 2:  # lane B's round 24 kind= token, the person's fix
+    if "kind=not-found" in (stops or ""):  # what the agentsync report reads of it: a refusal
+        [stop] = [m for ln in stops.splitlines() if (m := setup_report._SYNC_STOP_RE.match(ln)) and m["kind"]]
+        assert stop["kind"] == "not-found"
+        assert listed[1] == (
+            "- agentsync sync · step 3 · exited 1 on agentsync's state file, which this account could not "
+            "open; whether a later sync ended 0: not read by this shell fallback; the fix is the agent's "
+            "chmod"
+        ), installer
+    elif counted == 2:  # lane B's round 24 kind= token, the person's fix
         assert listed[1] == (
             "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
             "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's"
