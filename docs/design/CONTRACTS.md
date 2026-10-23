@@ -29625,6 +29625,16 @@ a link into a folder that is missing or refuses a write (1 check): <check> FAIL 
 earlier passes, comes first, and a link into a writable folder FAILs nothing. Test:
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`.
 
+**The lost manifest's fix is the person's in step 2's own report** (D74). In a run with no NEXT yet (the one writing
+the report), `instruction_counts` counted only `doctor.MANIFEST_FIX` as the person's, so step 2's init over a lost
+manifest gave `1 other instruction-like line (1 fix:)` where the later reports say `1 line whose fix: is the
+person's`. `_manifest_fix_line` also takes `doctor.LOST_MANIFEST_FIX` (read through `getattr` for an older build),
+either fix after a first step of the person's (lane B's round 25: `the person runs chmod 700 <p> first, ...; then
+...` for a 0000 folder at the manifest), and, the verifier's extension, any person's fix (`doctor.is_persons_fix`)
+on the state's own `error: state:` line (the not-a-folder and side-file move aside), whose stop every install.sh
+NEXT for it gives the person; a chmod there stays `fix:`, and a run whose NEXT says something else keeps `fix:`.
+Test: `test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

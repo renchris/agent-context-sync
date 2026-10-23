@@ -4184,6 +4184,24 @@ def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_run
     assert "1 line whose fix: is the person's (" in words, words
     other = setup_report.instruction_counts([*state, "NEXT: fix the error above, then re-run: x"])
     assert other == {"fix:": 1, "NEXT:": 1}, other
+    # B13 round 25 D74: the lost manifest's fix (step 2's init over a lost manifest) is the person's too, and
+    # so is a person's move aside on the state's error line; a chmod there stays a fix: line
+    lost = f"error: state: <db>{setup_report._state_lost()} (fix: {doctor.LOST_MANIFEST_FIX})"
+    for line in (
+        lost,
+        "error: state: <root> is a file, not a folder (fix: the person moves <root> aside, keeping a copy)",
+        f"error: state: <db> is a folder, not the state file (fix: the person runs chmod 700 <db> first, "
+        f"which is reversible; then {doctor.MANIFEST_FIX.removeprefix('the person ')})",
+    ):
+        assert setup_report.instruction_counts([head, "first sync: running", line]) == {
+            setup_report.PERSONS_FIX: 1
+        }, line
+    other = setup_report.instruction_counts(
+        [head, "first sync: running", lost, "NEXT: fix the error above, then re-run: x"]
+    )
+    assert other == {"fix:": 1, "NEXT:": 1}, other
+    chmod = "error: state: <db> cannot be opened: Permission denied (fix: chmod 600 <db>)"
+    assert setup_report.instruction_counts([head, "first sync: running", chmod]) == {"fix:": 1}
     told = setup_report.instruction_counts(
         [
             *state,

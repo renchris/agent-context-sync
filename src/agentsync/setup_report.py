@@ -5459,7 +5459,9 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     counts those lines' ``fix:`` as :data:`PERSONS_FIX`: that run's NEXT tells the agent they are not its
     step. A run whose NEXT says fixing its error is the person's (:data:`_PERSONS_STEP`) counts a person's
     fix on any of its lines so too, as the state file's error line, which is no [FAIL] line (round 17 U6);
-    so does a run with no NEXT yet for the state file's own fix, ``doctor.MANIFEST_FIX`` (round 18 V87).
+    so does a run with no NEXT yet for the state file's own fix, ``doctor.MANIFEST_FIX`` (round 18 V87), and
+    for the lost manifest's and every person's fix on the state's error line (:func:`_manifest_fix_line`, B13
+    round 25 D74).
     A fix whose command the run's NEXT gives the agent is :data:`_NEXT_FIX` (B13 round 23 A35). A mixed run's
     fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on any other
     line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
@@ -5518,13 +5520,23 @@ def _persons_told(run: Sequence[str]) -> bool:
 
 
 def _manifest_fix_line(line: str) -> bool:
-    """Whether a line's ``(fix: X)`` is doctor's ``MANIFEST_FIX``, the state file's (False when doctor does
-    not import)."""
+    """Whether a line's ``(fix: X)`` is the person's fix of the state, in a run with no NEXT yet: doctor's
+    ``MANIFEST_FIX``, the state file's, or ``LOST_MANIFEST_FIX``, a lost manifest's (B13 round 25 D74: step
+    2's own report counted it "1 fix:" while the later reports said the person's), either one after a first
+    step of the person's (lane B's round 25: a 0000 folder at the manifest takes "the person runs chmod 700
+    <p> first, ...; then" before it); or any person's fix (``doctor.is_persons_fix``) on the state's own
+    error line (``error: state:``, the not-a-folder and side-file move aside among them), whose stop every
+    install.sh NEXT for it gives the person. False when doctor does not import."""
     try:
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
     except Exception:
         return False
-    return _fix_of(line) == doctor.MANIFEST_FIX
+    fix = _fix_of(line) or ""
+    for known in (doctor.MANIFEST_FIX, getattr(doctor, "LOST_MANIFEST_FIX", doctor.MANIFEST_FIX)):
+        tail = known.removeprefix("the person ")
+        if fix == known or (fix.startswith("the person ") and tail != known and fix.endswith(tail)):
+            return True
+    return line.lstrip().startswith(("error: state:", "state:")) and doctor.is_persons_fix(fix)
 
 
 def _persons_line(line: str) -> bool:
