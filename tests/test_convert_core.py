@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import stat
 import unicodedata
 from pathlib import Path
@@ -548,11 +549,32 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
     assert reg.for_name("Contoso thread.msg").converter_id == "msg-mime"  # type: ignore[union-attr]
     assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
-    assert len(reg.converters()) == 12, "the ten, pandoc-gfm a second time and msg-mime: no image converter"
+    assert len(reg.converters()) == 12, "the ten every default registry holds, pandoc-gfm again and msg-mime"
     # B13 round 23 A65: without an engine a rule still gives 11, msg-mime in msg-olefile's place (§16.42)
     assert len(Registry.default(ConvertConfig(), policy=rule).converters()) == 11
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
+
+
+def test_the_ten_converters_every_default_registry_holds_are_named_in_the_contract() -> None:
+    """B13 round 24 B77: §16.42's A65 line counts 12 converters under a label rule with an engine as "the
+    ten, pandoc-gfm a second time and msg-mime", and nothing in §16.42 said which ten. A dated line names
+    them; they are the converters every option set of ``Registry.default`` holds, read here."""
+    sets = [
+        {c.converter_id for c in Registry.default(ConvertConfig(), policy=policy, ocr=ocr).converters()}
+        for policy in (None, *LABEL_RULES.values())
+        for ocr in (None, _engine())
+    ]
+    ten = set.intersection(*sets)
+    assert len(ten) == 10
+    contracts = Path(__file__).resolve().parents[1] / "docs" / "design" / "CONTRACTS.md"
+    text = contracts.read_text(encoding="utf-8")
+    [line] = [
+        " ".join(b.split()) for b in text.split("\nAmended ") if b.startswith("2026-10-22, §16.176 B77: ")
+    ]
+    named = line.split(": ", 1)[1].split(". ", 1)[0]
+    assert set(re.findall(r"[a-z]+(?:-[a-z0-9]+)+", named)) == ten
+    assert "msg-olefile, or msg-mime under a label rule, makes them 11" in line
 
 
 def test_with_a_media_engine_every_other_converter_keeps_its_version_and_options() -> None:

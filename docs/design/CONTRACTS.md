@@ -12772,6 +12772,10 @@ Amended 2026-10-22, §16.168 A65 (by §16.54 Q78): with an engine a label rule g
 pandoc-gfm a second time and msg-mime; no image converter), as
 `test_convert_core.py::test_a_label_rule_keeps_the_image_converter_out_of_the_registry` asserts; without an engine
 a label rule gives 11, msg-mime in msg-olefile's place.
+Amended 2026-10-22, §16.176 B77: "the ten" are the converters every `Registry.default` holds whatever its options:
+pandoc-gfm, xlsx-openpyxl, pptx-python-pptx, pdf-pypdfium2, markdown-passthrough, text-plain, vtt-turns,
+eml-stdlib, teams-month and diagram-stdlib. msg-olefile, or msg-mime under a label rule, makes them 11; an engine
+adds pandoc-gfm a second time (with no OCR) and, with no label rule, image-ocr.
 
 #### The speech line says the helper is built (`convert/speech.py`) (H13)
 

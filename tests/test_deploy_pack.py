@@ -5922,6 +5922,11 @@ _ROUND_24_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.175 B73"
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: B73's in §16.28's `legacy_waiting` row (a recording only a download would
 read is settled too)."""
 
+_ROUND_24_D_PARAGRAPH_AMENDS = (("16.42", "(the route set and the counts: 11 converters,", "§16.176 B77"),)
+"""Round 24 lane D's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: B77's at §16.42's diagram Tests paragraph, naming the ten converters A65's
+line counts."""
+
 _ROUND_23_B_PARAGRAPH_AMENDS = (
     ("16.29", "Every one is a path a sync makes owner-only", "§16.167 A94"),
     ("16.32", "Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without", "§16.167 A94"),
@@ -6022,6 +6027,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS)) == len(_ROUND_21_B_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_23_K_PARAGRAPH_AMENDS)) == len(_ROUND_23_K_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_24_E_PARAGRAPH_AMENDS)) == len(_ROUND_24_E_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -6054,6 +6060,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_23_B_PARAGRAPH_AMENDS,
         *_ROUND_23_K_PARAGRAPH_AMENDS,
         *_ROUND_24_E_PARAGRAPH_AMENDS,
+        *_ROUND_24_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
