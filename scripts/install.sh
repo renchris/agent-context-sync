@@ -3421,9 +3421,10 @@ attempt_ran_no_install() {
 # D35, D57, D58, D69, D75; lane RB's shell half): every stop, fixed or not, in time order, claims the first
 # unclaimed step 3 error of the attempt (before its closing end line) at or after it, in the same second
 # included, and before the stop after next, whose what and fix columns _claims accepts: never a "skipped: lock
-# held" line; an agent's stop a line naming chmod, and when it names modes, one its file takes (700 the state
-# folder, 600 or 700 a governance file, 600 any other); a person's stop a line naming a non-zero exit ("exited 1",
-# "rc=1", "exited with code 1") and no chmod. Only the "date -u +%FT%TZ" stamps the prompt writes are read (Python also reads a fraction or an
+# held" line; an agent's stop a line naming chmod, past the person's chmods ("chmod -N", "chmod u+rwx", "the
+# person runs chmod 700 <p>"), and when it names modes, one its file takes (700 the state folder, 600 or 700 a
+# governance file, 600 any other); a person's stop any other line, whatever its chmod words (round 26 ruling 11
+# refined again: E66, E77). Only the "date -u +%FT%TZ" stamps the prompt writes are read (Python also reads a fraction or an
 # offset).
 fallback_sync_stops() {
 	local f s w v mt
@@ -3457,8 +3458,13 @@ fallback_sync_stops() {
 		# setup_report._claims: may the error line (its what and fix columns, lower case) be the account of the stop
 		function claims(owner, file, t,    s, m, fit, any, ok) {
 			if (word(t, "skipped: lock held")) return 0
-			if (owner != "agent")
-				return word(t, "(exited|exit code|exit status|exit|rc)( with( exit)? (code|status))?[ \t]*[=:]?[ \t]*[1-9][0-9]*") && !word(t, "chmod")
+			# a stop of the person: any other line, whatever its chmod words (round 26 ruling 11 refined again: the
+			# v33 line names no chmod, the one the person runs, or only the exit)
+			if (owner != "agent") return 1
+			# the chmods of the person (chmod -N of an ACL, chmod u+rwx of a shut folder, "the person runs chmod
+			# 700 <p>") are no chmod the agent ran
+			gsub("(^|[^a-z0-9_])chmod[ \t]+(-r[ \t]+)?(-r?n|u[+]rwx)[ \t]+[^ \t]+", " ", t)
+			gsub("(^|[^a-z0-9_])the person runs chmod[ \t]+0?[0-7][0-7][0-7][ \t]+[^ \t]+", " ", t)
 			if (!word(t, "chmod")) return 0
 			fit = file == "state-folder" ? " 700 " : file == "governance" ? " 600 700 " : " 600 "
 			s = t; any = 0; ok = 0

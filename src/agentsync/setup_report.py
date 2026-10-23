@@ -2775,24 +2775,29 @@ def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str]) -> str:
 _SKIPPED_RE = re.compile(r"\bskipped: lock held\b", re.IGNORECASE)
 _CHMOD_RE = re.compile(r"\bchmod\b", re.IGNORECASE)
 _CHMOD_MODE_RE = re.compile(r"\bchmod\s+(?:-[A-Za-z]+\s+)*0?([0-7]{3})\b", re.IGNORECASE)
-_EXIT_RE = re.compile(
-    r"\b(?:exited|exit(?: code| status)?|rc)(?: with(?: exit)? (?:code|status))?\s*[=:]?\s*([1-9]\d*)\b",
-    re.IGNORECASE,
+_PERSONS_CHMOD_RE = re.compile(
+    r"\bchmod\s+(?:-R\s+)?(?:-R?N|u\+rwx)\s+\S+|\bthe person runs chmod\s+0?[0-7]{3}\s+\S+", re.IGNORECASE
 )
+"""The chmods doctor gives the person, never the agent (B13 round 26 E33, E53): an ACL's ``chmod -N <path>``
+(``_search_fix``, ``_parent_fix``), a folder above's ``chmod u+rwx <above>`` and "the person runs chmod 700
+<p> first". Bounded to the command and its path, so "...; ran chmod 600 x" after it is still the agent's."""
 
 
 def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
     """Whether the agent's report-step ``error`` can be its account of ``stop`` (B13 round 25 ruling 11, as
-    the lead refined it): v33 has the agent log a stop it fixed "with its exit code and the chmod you ran",
-    and one whose fix is the person's "with its exit code", where no chmod runs. So an agent-owned stop claims
-    only a line that names a chmod (one that names a mode names its file's: 700 for the state folder, 600 for
-    a file, either for a governance one: D57), a person-owned stop only a line that names the sync's non-zero
-    exit and no chmod, and a "skipped: lock held" line, which writes no sync-stops.log line, neither."""
+    the lead refined it in round 26): v33 has the agent log a stop it fixed "with its exit code and the chmod
+    you ran", and one whose fix is the person's "with its exit code", where no chmod runs. So an agent-owned
+    stop claims only a line that names a chmod of its own (one that names a mode names its file's: 700 for the
+    state folder, 600 for a file, either for a governance one: D57; a chmod doctor gives the person,
+    :data:`_PERSONS_CHMOD_RE`, is none: E33, E53), a person-owned stop any line whatever its chmod words ("no
+    chmod was run", the person's own chmod quoted, "agentsync sync returned 1": E8, E33, E53, E68), and a
+    "skipped: lock held" line, which writes no sync-stops.log line, neither."""
     text = f"{error.what} {error.fix}"
     if _SKIPPED_RE.search(text):
         return False
     if stop.owner != "agent":
-        return _EXIT_RE.search(text) is not None and _CHMOD_RE.search(text) is None
+        return True
+    text = _PERSONS_CHMOD_RE.sub(" ", text)
     if _CHMOD_RE.search(text) is None:
         return False
     modes = set(_CHMOD_MODE_RE.findall(text))

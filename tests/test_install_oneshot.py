@@ -5568,8 +5568,29 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["10:01:05 | step 3 | error | agentsync sync exited with code 1 | the person restores it"],
             ["F4"],
         ),
-        # a person's stop never claims a chmod line, an agent's never a line with no chmod
-        (["10:01:00 manifest person lost"], ["10:01:05 | step 3 | error | rc=1 | chmod 600 <db>"], ["-"]),
+        # round 26 ruling 11 refined again (E66, E77): a person's stop claims a line whatever its chmod words,
+        # and one with no exit; an agent's stop never a line with no chmod, nor one with only the person's
+        (["10:01:00 manifest person lost"], ["10:01:05 | step 3 | error | rc=1 | chmod 600 <db>"], ["F4"]),
+        (
+            ["10:01:00 manifest person lost"],
+            ["10:01:05 | step 3 | error | no manifest | no chmod was run"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["10:01:05 | step 3 | error | exited 1 | the person removes the ACL: chmod -N <p>"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:05 | step 3 | error | exited 1 | the person removes the ACL: chmod -N <p>"],
+            ["-"],
+        ),
+        (
+            ["10:01:00 state-folder agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | the person runs chmod 700 <dir> first"],
+            ["-"],
+        ),
         (["10:01:00 lock agent refused"], ["10:01:05 | step 3 | error | the sync exited 1 | -"], ["-"]),
         # a chmod of a mode its file does not take: the state folder takes 700, a file 600
         (["10:01:00 lock agent refused"], ["10:01:05 | step 3 | error | rc 1 | chmod 700 <lock>"], ["-"]),
@@ -5625,6 +5646,10 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "persons-exit",
         "persons-exit-with-code",
         "persons-chmod",
+        "persons-no-exit",
+        "persons-acl",
+        "agents-persons-acl",
+        "agents-persons-chmod-700",
         "agents-no-chmod",
         "lock-700",
         "folder-700",

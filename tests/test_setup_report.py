@@ -5339,15 +5339,47 @@ def test_every_step_3_stop_claims_the_agents_line_that_names_its_fix(fake_mac: d
     assert _items_of(summary)[:2] == [_FOLDER_ITEM, _LOCK_ITEM_54 + " (F4: the agent's account of it)"], (
         summary
     )
-    # the review: "exited with code 1" names the exit too, for a person's stop
-    person = setup_report._SyncStop(datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "manifest", "person", None)
-    for what, claimed in (
-        ("agentsync sync exited with code 1: its state file is missing", True),
-        ("agentsync sync failed with exit status 1", True),
-        ("agentsync sync exited 1; ran chmod 600 x", False),
+    # round 26 ruling 11, refined again (E8, E33, E53, E68): a person's stop claims its line whatever its
+    # chmod words; an agent's stop claims only a chmod of its own, never one doctor gives the person
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    person = setup_report._SyncStop(at, "manifest", "person", None)
+    folder_p = setup_report._SyncStop(at, "state-folder", "person", None)
+    lock = setup_report._SyncStop(at, "lock", "agent", None)
+    folder_a = setup_report._SyncStop(at, "state-folder", "agent", None)
+    manifest_a = setup_report._SyncStop(at, "manifest", "agent", None)
+    acl = ("agentsync sync exited 1 on the state folder", "the person removes the ACL: chmod -N <p>")
+    first = ("agentsync sync exited 1 on the state folder", "the person runs chmod 700 <p> first")
+    for stop, (what, fix), claimed in (
+        (person, ("agentsync sync exited with code 1: its state file is missing", "-"), True),
+        (person, ("agentsync sync failed with exit status 1", "-"), True),
+        (person, ("agentsync sync returned 1: its state file is missing", "-"), True),
+        (person, ("agentsync sync failed with code 1", "-"), True),
+        (person, ("agentsync sync exited 1; ran chmod 600 x", "-"), True),
+        (
+            folder_p,
+            (
+                "agentsync sync exited 1: an ACL refuses this account agentsync's state folder",
+                ("status names the fix as the person's, so no chmod was run"),
+            ),
+            True,
+        ),
+        (folder_p, ("rc 1", "chmod 700 <dir> was not run"), True),
+        (folder_p, ("exited 1", "the owner runs chmod -N <dir>"), True),
+        (folder_p, acl, True),
+        (folder_p, first, True),
+        (person, ("2026-09-29 skipped: lock held", "-"), False),
+        (lock, acl, False),
+        (manifest_a, acl, False),
+        (folder_a, first, False),
+        (
+            lock,
+            ("agentsync sync exited 1; ran chmod 600 <lock>; the person removes the ACL: chmod -N <p>", "-"),
+            True,
+        ),
+        (lock, ("agentsync sync exited 1", "ran chmod 600 <lock>"), True),
     ):
-        event = setup_report.FrictionEvent(9, None, 3, "error", what, "-")
-        assert setup_report._claims(person, event) is claimed, what
+        event = setup_report.FrictionEvent(9, None, 3, "error", what, fix)
+        assert setup_report._claims(stop, event) is claimed, (stop.file, stop.owner, what, fix)
     # D75: a line in the second the next stop was recorded in, or seconds after it, is the earlier stop's
     for first, second in (("41", "43"), ("45", "50")):
         errors = _step3_error(first, _LOCK_LINE) + _step3_error(second, _LOCK_LINE)
