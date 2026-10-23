@@ -1606,6 +1606,41 @@ Round 24: the round 23 workflow with prompt v32 on this section's landed tip, BA
 `round24/`); scenario C plays the v31 and v30 blocks. Its harvest carries lane B's seams for lane P (install.sh's
 config_failed NEXT for a lost manifest, its manifest-is-a-folder words) and lane K's #! census.
 
+### B13 round 24: v32 rehearsal, cross-lane review, harvest (2026-10-22)
+
+Run `wf_b7fb09c0-c69` on `b1f4a087` (116 agents, 0 errors, 89 minutes). All six scenarios pass their EXPECTED: the
+new Mac and the field Mac are "fully one command", every v31 and v30 copy is refused in step 1 with exit 2, and the
+git stop, the reinstall during a sync, the converters and the empty-folder alarm run as the prompt says; no name
+leaks. Every round 23 fix a rehearsal re-checked holds on real output. 105 findings, none merged, 102 confirmed (2
+turns, 31 wrong, 69 small), 3 refused (B29: the local-work tail counts what it describes; B46: four real installs at
+a load of 146, not a product defect; B94: the A9 outcome ruling holds). Seven need prompt text (one build), so the
+next prompt is v33.
+Both turns and most wrongs sit on round 23's A29 lost-manifest refusal, which landed in cli and doctor with no
+installer or report half: a folder where manifest.sqlite belongs is moved aside as install.sh says, and the next run
+stops again on the lost-manifest guard (B7, B21), whose step 2 NEXT is the generic "fix the error above" and which the
+report files as unexpected. The rest: v32's step 3 says no record of a sync stop is kept, while round 23's A9 keeps
+one, so the report counts one stop twice (B1 and seven duplicates); and the rehearsal brief's fixture check ran from
+the wrong folder (B6 and five duplicates; the lead's, fixed in `round24/round24-workflow.js`). Lead rulings for round
+24 (in `lanes/COMMON23.md`): (7) a lost manifest is the person's (restore it, or move heartbeat.json aside so the next
+sync starts a new manifest) in every reader, its own kind, never "unexpected"; (8) a folder where manifest.sqlite
+belongs is moved aside together with heartbeat.json, in doctor.MANIFEST_FIX's words, so following the words leads to
+no second stop; (9) a step 3 stop is recorded by agentsync and still logged by the agent, and the report pairs the two
+one to one by order, counting it once.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102 over
+rounds 2 and 4 to 24; turns 0 for seven rounds, then 1, 2, 0, 0, 2; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20,
+17, 10, 22, 25, 24, 8, 21, 15, 29, 25, 31. The turns again come from a round's new stop whose words no other reader
+had yet (A29), which ruling 8's test (follow the words and see where they lead) is meant to catch before a land.
+
+Lanes (`--account auto`, CONTRACTS §16.171 to §16.177, brief `lanes/COMMON23.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r24-land.lock`; scratch under `round24/`; back-channel
+pane 16): P 30 (prompt v33, the lost manifest and a folder at the manifest in install.sh, its other state tails), RA
+24 (the report's lost-manifest words, one step 3 stop counted once, its other words), B 22 (the lost manifest's kind
+in status, doctor and the sync, round 23's seams), RB 6 (the shell report's hold reason and sync-stops.log, harness
+guards), E 5 (the speech helper's reason, the timing marker, the waiting stubs), D 5 (guides, CONTRACTS, CLAUDE.md's
+CI time), K 4 (the suite's remaining #! execs: 4,735 by the harvest's census). Lead: B6, B19, B30, B38, B47, B87 (the
+fixture check runs from `<root>/fixture`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

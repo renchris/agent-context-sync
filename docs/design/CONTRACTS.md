@@ -28756,3 +28756,31 @@ TCC subject (build.sh's header): the person would approve access again, for one 
 Tests: `test_install_sh_hashes_with_sha256sum_and_falls_back_to_shasum`, which breaks each tool's path in turn and
 gets the same 12 digits from stdin and from a file, and the pin in
 `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`.
+
+### 16.171 Round 24: setup report: the lost manifest's words and one step 3 stop counted once (2026-10-22, wave B13 round 24 lane RA)
+
+Reserved for round 24 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 24").
+
+### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
+
+Reserved for round 24 lane RB of B13.
+
+### 16.173 Round 24: setup prompt v33, a lost manifest and a folder at the manifest in install.sh (2026-10-22, wave B13 round 24 lane P)
+
+Reserved for round 24 lane P of B13.
+
+### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
+
+Reserved for round 24 lane B of B13.
+
+### 16.175 Round 24: the speech helper's reason, the timing marker and the waiting stubs (2026-10-22, wave B13 round 24 lane E)
+
+Reserved for round 24 lane E of B13.
+
+### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
+
+Reserved for round 24 lane D of B13.
+
+### 16.177 Round 24: the test suite's remaining script execs (2026-10-22, wave B13 round 24 lane K)
+
+Reserved for round 24 lane K of B13.
