@@ -3400,6 +3400,9 @@ class _Facts:
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
     evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
+    # lines of the evidence parts that say the manifest is missing though earlier syncs recorded (B13 round 24
+    # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
+    evidence_lost: int = 0
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
     evidence_damage_failed: bool = (
         False  # Doctor has a state_dir.manifest FAIL only the evidence read gave (X80)
@@ -4705,6 +4708,11 @@ def _last_rescreen(r: _Run) -> str:
     try:
         db.stat()
     except FileNotFoundError:
+        if _manifest_lost_at(r.config):  # B13 round 24 ruling 7 (B4, B34, B49): lost, not a first sync
+            return (
+                "not read (the manifest is missing though earlier syncs recorded; the person decides: see "
+                "Doctor's state_dir.manifest line)"
+            )
         return "none recorded (no manifest yet)"
     except OSError as exc:
         if isinstance(exc, PermissionError):  # B13 round 22 Z15: the folder's words when it is the folder
@@ -7087,6 +7095,14 @@ def _os_why(exc: BaseException) -> str:
     return _why_not_read(exc)
 
 
+_LOST_MANIFEST_LINE = (
+    "- manifest: missing (earlier syncs recorded; the person decides: see Doctor's state_dir.manifest line)"
+)
+"""An evidence part's line for a lost manifest (B13 round 23 A29): status's own words for it (lane B's), not
+measured (:func:`_evidence_line` counts it as such, B13 round 24 ruling 7)."""
+_NO_MANIFEST_LINE = "- no manifest yet (no sync has run)"
+
+
 def _lines(fn: Callable[[], list[str]]) -> list[str]:
     """``fn()``, or the one line that says why it was not measured. Never an exception's message: it can
     hold a path."""
@@ -7095,10 +7111,9 @@ def _lines(fn: Callable[[], list[str]]) -> list[str]:
     except _OutOfTimeError:
         return [f"- {NOT_MEASURED}"]
     except _LostManifestError:
-        lost = "earlier syncs recorded; the person decides: see Doctor's state_dir.manifest line"
-        return [f"- manifest: missing ({lost})"]
+        return [_LOST_MANIFEST_LINE]
     except _NoManifestError:
-        return ["- no manifest yet (no sync has run)"]
+        return [_NO_MANIFEST_LINE]
     except Exception as exc:
         return [f"- not measured ({_why_not_read(exc)})"]
 
@@ -7860,11 +7875,13 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     if r.config is not None:  # best effort: a page not read goes by the probe (no manifest yet, time up)
         with contextlib.suppress(Exception):
             m.read_image_pages(r.config.docs_repo)
-    lines = [
-        *helper,
-        *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
-        *_lines(lambda: _ocr_time(r, m)),
-    ]
+    files = _lines(lambda: _ocr_files(r, m, labels, state, label_rule))
+    time_ = _lines(lambda: _ocr_time(r, m))
+    # B13 round 24 ruling 7 (B18, B26, B35): both read the manifest, so one cause the whole state has (lost,
+    # none yet, not a file, unreadable) is said once; two parts each out of time stay two lines
+    if len(files) == 1 and time_ == files and _state_wide(files[0]):
+        time_ = []
+    lines = [*helper, *files, *time_]
     # the term is said once, where the part first uses it (B13 round 7 H5). Where a bracket of its own
     # follows the term (a document cell's "(1 online-only)", the re-read table's "(fourth column)") the
     # gloss goes inside it, so two brackets never sit side by side (B13 round 8 J41)
@@ -8705,6 +8722,7 @@ def _evidence(r: _Run) -> list[str]:
         mirror.close()
     unmeasured = [line for line in out if "not measured" in line]
     r.facts.evidence = len(unmeasured)
+    r.facts.evidence_lost = out.count(_LOST_MANIFEST_LINE)  # B13 round 24 ruling 7
     for line in unmeasured:
         m = _NOT_MEASURED_WHY_RE.search(line)
         r.facts.evidence_why[m.group(1) if m is not None else "time limit"] += 1
@@ -8718,6 +8736,26 @@ _RETRY_WHYS = frozenset({"time limit", "it did not finish in time", _BUSY_WHY})
 file too: waiting frees it)."""
 
 
+def _state_wide(line: str) -> bool:
+    """Whether an evidence part's one fallback line (:func:`_lines`) names a cause the whole state has, which
+    every reader of the manifest meets alike: lost, none yet, or a "not measured" cause no wait clears (B13
+    round 24 B18, B35). Not the time limit's or a busy file's, which each part meets on its own."""
+    if line in (_LOST_MANIFEST_LINE, _NO_MANIFEST_LINE):
+        return True
+    m = re.fullmatch(r"- not measured \(([^()]*)\)", line)
+    return m is not None and m.group(1) not in _RETRY_WHYS
+
+
+_STATE_LOST_EVIDENCE = (
+    "not measured, as the state file is missing though heartbeat.json records earlier passes: a report "
+    "written after the person restores it, or moves heartbeat.json aside so the next sync starts a new "
+    "manifest, measures them (see Doctor's state_dir.manifest line)"
+)
+"""The evidence line's clause for :data:`_LOST_MANIFEST_LINE` lines (B13 round 24 ruling 7; B4, B9, B25, B49):
+they were not measured, the person's, in ``doctor.LOST_MANIFEST_FIX``'s two moves, with no advice to write the
+report again when idle, which cannot bring a manifest back."""
+
+
 def _evidence_line(r: _Run) -> str:
     """The Summary's line about the evidence parts: whether every one was measured. The person sends one
     report, so a part that ran out of time is said where it is seen first. A line not measured for a cause
@@ -8727,10 +8765,19 @@ def _evidence_line(r: _Run) -> str:
     count = r.facts.evidence
     if count is None:
         return "- evidence: not read (the Status section's parts need a config that loads)"
+    lost = r.facts.evidence_lost
+    # B13 round 24 ruling 7: the parts a lost manifest kept from being read were not measured, said first
+    said_lost = (
+        f'{_plural(lost, "line")} at the end of Status {"says" if lost == 1 else "say"} "manifest: missing": '
+        + _STATE_LOST_EVIDENCE
+    )
     if count == 0:
+        if lost:
+            return f"- evidence: {said_lost}"
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
     say = "says" if count == 1 else "say"
-    head = f'- evidence: {_plural(count, "line")} at the end of Status {say} "not measured"'
+    first = f"{said_lost}; " if lost else ""
+    head = f'- evidence: {first}{_plural(count, "line")} at the end of Status {say} "not measured"'
     why = r.facts.evidence_why
     retry = sum(n for w, n in why.items() if w in _RETRY_WHYS)
     # B13 round 21 Y15, Y37: install.sh's NEXT says the Summary gives which, and why; a state file a sync held
@@ -8771,8 +8818,9 @@ def _evidence_line(r: _Run) -> str:
         ),
         (
             notfile,
-            "the state file is not a file: a report written after it is put back measures them (see Doctor's "
-            "state_dir.manifest line)",
+            # B13 round 24 B14: its fix is restore it or move it aside with heartbeat.json, never "put back"
+            "the state file is not a file: a report written after the person fixes it measures them (see "
+            "Doctor's state_dir.manifest line)",
         ),
         (
             notfolder,
@@ -10252,6 +10300,23 @@ folder, not checked (:data:`_NOT_FOLDER_UNCHECKED`), keyed on the report's own s
 (:func:`_not_a_folder_at`), never on doctor's words: an older doctor FAILs heartbeat and governance there
 too."""
 _NOT_FOLDER_UNCHECKED = " (not checked: the state folder is not a folder)"
+_STATE_LOST_WORDS = "from the state file that is missing though heartbeat.json records earlier passes"
+"""The Doctor line's bucket for a lost manifest (B13 round 24 ruling 7; B4, B9, B25, B32, B44, B49, B99):
+manifest.sqlite missing while heartbeat.json beside it records an earlier pass (lane B's round 23 A29 FAIL,
+``manifest.LOST_MANIFEST``), the person's (``doctor.LOST_MANIFEST_FIX``: restore it, or move heartbeat.json
+aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doctor's words. Not
+:data:`_STATE_UNREAD_WORDS`: the file is missing, not damaged, and its fix differs."""
+
+
+def _manifest_lost_at(c: Config) -> bool:
+    """Whether the manifest is lost (``manifest.manifest_lost``, the test doctor FAILs it on), read lazily as
+    the evidence read does; False when the installed build has no such test, or the read fails."""
+    try:
+        from agentsync.manifest import manifest_lost  # noqa: PLC0415 - lazy, as _ManifestReader's
+
+        return bool(manifest_lost(expand(c.state_paths.db)))
+    except Exception:
+        return False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -10276,6 +10341,7 @@ class _DoctorSort:
     shut_words: str = _STATE_SHUT_WORDS  # B13 round 22 Z31: _STATE_SHUT_FOLDER_WORDS for a shut folder
     from_loose: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A49
     from_notfolder: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A23
+    from_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 24 ruling 7
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -10532,7 +10598,20 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says;
     # only its own FAIL, by the name doctor's line gives it: a shut manifest beside it keeps its own owner
     sidecars = [] if notfolder or r.config is None else _sidecars_not_files(r.config)
-    shut = "" if notfolder or unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
+    # B13 round 24 ruling 7: missing though heartbeat.json records earlier passes, the person's (A29)
+    lost = (
+        not notfolder
+        and not unreadable
+        and not notfile
+        and r.config is not None
+        and _manifest_lost_at(r.config)
+    )
+    from_lost: list[str] = []
+    shut = (
+        ""
+        if notfolder or unreadable or notfile or lost or r.config is None
+        else _state_shut(r.config, read_error)
+    )
     shut_words = _STATE_SHUT_FOLDER_WORDS if shut == "folder" else _STATE_SHUT_WORDS
     whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
@@ -10581,6 +10660,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
             continue
+        if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
+            from_lost.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _STATE_LOST_WORDS))
+            continue
         if (
             tag == "FAIL"
             and name == "state_dir.files"
@@ -10622,14 +10705,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             tag == "FAIL"
             and name in loose
             and not shut
-            and not (unreadable or notfile)
+            and not (unreadable or notfile or lost)
             and not _root_foreign(cast(Config, r.config))
         ):
             from_loose.append(f"{name} FAIL{_AGENTS}")
             fails.append((name, _STATE_LOOSE_WORDS))
             continue
         if (
-            (unreadable or notfile or shut)
+            (unreadable or notfile or shut or lost)
             and tag == "warn"
             and name.startswith("heartbeat.")
             and detail.startswith(_LISTING_INCOMPLETE)
@@ -10639,6 +10722,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
             if unreadable or notfile:
                 from_state.append(f"{name} warn (not judged: the state file cannot be read)")
+            elif lost:  # B13 round 24 ruling 7: missing, not unreadable
+                from_lost.append(f"{name} warn (not judged: the state file is missing)")
             elif shut != "folder":
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
             else:  # B13 round 22 Z31: the folder's words for a shut folder
@@ -10683,6 +10768,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         shut_words,
         from_loose,
         from_notfolder,
+        from_lost,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -10758,6 +10844,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if from_state:
         parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
+    if sort.from_lost:  # B13 round 24 ruling 7
+        parts.append(
+            f"{_STATE_LOST_WORDS} ({_plural(len(sort.from_lost), 'check')}): " + ", ".join(sort.from_lost)
+        )
     if from_shut:  # B13 round 20 X28
         parts.append(f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
     if sort.from_notfolder:  # B13 round 23 A23

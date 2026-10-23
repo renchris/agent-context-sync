@@ -10152,6 +10152,8 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
     for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
         assert parts[title].strip() == "- no manifest yet (no sync has run)", title
     assert "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- no manifest yet" in parts["OCR"]
+    # B13 round 24 B18, B35: its two manifest readers meet the one cause: said once
+    assert parts["OCR"].count("- no manifest yet") == 1, parts["OCR"]
     assert not db.exists(), "reading made no manifest"
 
 
@@ -13051,7 +13053,13 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     assert "1 purge queued" in purge, purge
     summary = section(text, "Summary")
     evidence = _line(summary, "- evidence: ")
-    assert "because the state file is not a file: a report written after it is put back" in evidence, evidence
+    # B13 round 24 B14: its fix is restore it or move it aside with heartbeat.json, so never "put back"
+    assert "because the state file is not a file: a report written after the person fixes it measures" in (
+        evidence
+    ), evidence
+    assert "put back" not in evidence, evidence
+    ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
+    assert ocr.count(f"- not measured ({setup_report._STATE_NOT_FILE})") == 1, ocr  # B13 round 24 B18
     assert "another cause" not in evidence and "were measured" not in evidence, evidence
     line = _line(summary, "- doctor: ")
     assert "state_dir.manifest FAIL (the person's; see Doctor)" in line and line.endswith("unexpected 0"), (
@@ -13087,6 +13095,83 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
         db.unlink()
         there.rmdir()
     assert f"- not measured ({setup_report._STATE_NOT_FILE})" in section(text, "Status")
+
+
+def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 24 ruling 7 (B4, B9, B18, B25, B26, B32, B34, B35, B44, B49, B99): with manifest.sqlite gone
+    and heartbeat.json recording passes (lane B's A29 refusal, the person's), the report said "unexpected 2:
+    state_dir.manifest FAIL, heartbeat.<id> warn" and "1 unexpected doctor FAIL" under an outcome calling it
+    the person's, "the 6 parts at the end of Status were measured" above six "manifest: missing" lines, the
+    OCR part's line twice, and "last re-screen: none recorded (no manifest yet)". The FAIL is the person's in
+    a bucket of its own words (missing, never "cannot be read"), the listing warn beside it not judged, the
+    parts not measured with the person's two moves, the OCR line once, and the re-screen not read. With
+    heartbeat.json moved aside, no sync has run: "no manifest yet", and no bucket."""
+    real = cli._status_checks
+    listing = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)",
+        doctor.Severity.WARN,
+    )
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        kept = [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        return [*kept, listing]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    assert manifest_mod.manifest_lost(db)
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from the state file that is missing though heartbeat.json records earlier passes (2 checks): "
+        "state_dir.manifest FAIL (the person's; see Doctor), heartbeat.x warn (not judged: the state file is "
+        "missing) · unexpected 0"
+    ) in line, line
+    assert "cannot be read" not in line, line
+    outcome = _line(summary, "- **outcome: ")
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert (
+        "1 doctor FAIL with a known cause, from the state file that is missing though heartbeat.json records "
+        "earlier passes: state_dir.manifest"
+    ) in outcome, outcome
+    status = section(text, "Status")
+    lost = status.count(setup_report._LOST_MANIFEST_LINE)
+    assert lost >= 4, status
+    evidence = _line(summary, "- evidence: ")
+    assert evidence == (
+        f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
+        "file is missing though heartbeat.json records earlier passes: a report written after the person "
+        "restores it, or moves heartbeat.json aside so the next sync starts a new manifest, measures them "
+        "(see Doctor's state_dir.manifest line)"
+    ), evidence
+    ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
+    assert ocr.count(setup_report._LOST_MANIFEST_LINE) == 1, ocr
+    assert "no manifest yet" not in text, [ln for ln in text.splitlines() if "no manifest yet" in ln]
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        "last re-screen: not read (the manifest is missing though earlier syncs recorded; the person "
+        "decides: see Doctor's state_dir.manifest line)"
+    ), section(text, "Environment")
+
+    heartbeat = expand(load_config(cfg).state_paths.heartbeat)
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))
+    assert not manifest_mod.manifest_lost(db)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "from the state file that is missing" not in text and "manifest: missing" not in text, text
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        "last re-screen: none recorded (no manifest yet)"
+    )
+    ocr = section(text, "Status").split("### OCR", 1)[1].split("###", 1)[0]
+    assert ocr.count("- no manifest yet (no sync has run)") == 1, ocr
 
 
 def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(

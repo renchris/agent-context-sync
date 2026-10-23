@@ -28838,6 +28838,31 @@ feeds it (a failed run, where no such reason is added, keeps it). An error logge
 `test_a_step_3_sync_that_stopped_is_worked_with_help` (its Items slice now ends at Run metadata, so the F-line is
 checked where it is, not under Agent friction).
 
+**A lost manifest is the person's in the report** (B4, B9, B14, B18, B25, B26, B32, B34, B35, B44, B49, B99;
+ruling 7, in lane B's round 23 A29 words). With manifest.sqlite missing while heartbeat.json beside it records an
+earlier pass, the outcome already called the fix the person's, while the doctor line said `unexpected 2:
+state_dir.manifest FAIL, heartbeat.<id> warn` (and the outcome `1 unexpected doctor FAIL` when install.sh ended
+0), the evidence line said every part was measured above six `manifest: missing` lines, the OCR part printed that
+line twice, and Environment said `last re-screen: none recorded (no manifest yet)`. Now, keyed on the report's
+own read (`_manifest_lost_at`: `manifest.manifest_lost`, imported lazily, False on any error or an older build),
+never on doctor's words: the Doctor line has a bucket `from the state file that is missing though heartbeat.json
+records earlier passes (N checks): state_dir.manifest FAIL (the person's; see Doctor)` (`_STATE_LOST_WORDS`, not
+"cannot be read": the file is missing, not damaged), with a heartbeat listing warn beside it `(not judged: the
+state file is missing)`, and the outcome reads `1 doctor FAIL with a known cause, from the state file that is
+missing ...`. The evidence parts keep status's own line (`_LOST_MANIFEST_LINE`), counted apart
+(`facts.evidence_lost`), and the evidence line says `N lines at the end of Status say "manifest: missing": not
+measured, as the state file is missing though heartbeat.json records earlier passes: a report written after the
+person restores it, or moves heartbeat.json aside so the next sync starts a new manifest, measures them (see
+Doctor's state_dir.manifest line)`, with no advice to write the report again when idle. The OCR part's two
+manifest readers say a cause the whole state has (lost, none yet, not a file, unreadable; `_state_wide`) once;
+two parts each out of time stay two lines. `_last_rescreen` says `not read (the manifest is missing though
+earlier syncs recorded; the person decides: see Doctor's state_dir.manifest line)`. B14: the not-a-file clause
+says `a report written after the person fixes it measures them`, not "after it is put back" (its fix is restore
+it, or move it aside with heartbeat.json). With heartbeat.json moved aside nothing changes: "no manifest yet".
+Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
+`test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons` and
+`test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced` (the OCR line once).
+
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
 Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four
