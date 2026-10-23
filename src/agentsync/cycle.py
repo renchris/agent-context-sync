@@ -1510,9 +1510,10 @@ def recover(config: Config, manifest: Manifest, *, orphaned: list[str] | None = 
 
     A new manifest (no runs, no tree) over a HEAD with a tree is the person's new start, once
     heartbeat.json is aside (``doctor.LOST_MANIFEST_FIX``): its reset says each line at DEBUG, and the orphan
-    pages it removes (every existing one, each written back by the same run) go in ``orphaned`` for the CLI's
-    one plain note; an existing manifest whose tree disagrees with HEAD keeps its WARNINGs (B13 round 24 B37:
-    28 WARNING lines, 24 of them pages the same run wrote back, and no plain line).
+    pages it removes (every existing one) go in ``orphaned`` for the CLI's one plain note; the run says each
+    it did not write back as a WARNING (B13 round 25 D40: not every one comes back). An existing manifest
+    whose tree disagrees with HEAD keeps its WARNINGs (B13 round 24 B37: 28 WARNING lines, 24 of them pages
+    the same run wrote back, and no plain line).
     """
     repo = config.docs_repo
     runs = manifest.last_runs(1)
@@ -1852,6 +1853,9 @@ class _Cycle:
         self.findings: list[LintFinding] = []
         self.heartbeat_refused: PermissionError | None = None  # said once, by the CLI (A1, A34, A84)
         self.new_manifest_pages = 0  # the mirror pages a new manifest started over (B13 round 24 B37)
+        self._fresh_orphans: list[
+            str
+        ] = []  # those pages, each said at DEBUG: any not written back is a WARNING
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
         self.retention_lines: list[str] = []  # STATE.md "## Retention" (compaction ran / held / failed)
@@ -1918,6 +1922,7 @@ class _Cycle:
         if recovery is not RecoveryAction.NONE:
             log.log(logging.DEBUG if fresh else logging.WARNING, "recovery: %s", recovery.value)
         self.new_manifest_pages = len(orphaned) if fresh else 0
+        self._fresh_orphans = orphaned if fresh else []
         self._refuse_vanished_sources()
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
         if crashed is not None:
@@ -2036,11 +2041,22 @@ class _Cycle:
             status = "partial"
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
+        self._say_orphans_not_written_back()
         if self.new_manifest_pages:
             report = dataclasses.replace(report, new_manifest_pages=self.new_manifest_pages)
         if self.heartbeat_refused is not None:
             return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
         return report
+
+    def _say_orphans_not_written_back(self) -> None:
+        """A WARNING for each page a new manifest's reset removed (at DEBUG, B37) that this run did not write
+        back: its file gone, a source waiting for sign-in, an online-only file deferred, a run that failed or
+        blocked first, or a page whose path changed. B37's quiet reset assumed every one came back, so a
+        deleted page was committed with no line above DEBUG (B13 round 25 D40). No cause is named: the same
+        state has each of those."""
+        for rel in self._fresh_orphans:
+            if not (self.repo / rel).is_file():
+                log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
 
     def _session_topic_pages(self) -> tuple[str | None, set[str]]:
         """KISS K06: the pre-run HEAD and the topic pages a session left dirty (uncommitted or untracked),

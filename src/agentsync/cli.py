@@ -2744,6 +2744,18 @@ def _cmd_curate(args: argparse.Namespace) -> int:
             _err(said)
             _misplaced_next(args, said)
             return EXIT_FAILED
+    db = expand(config.state_paths.db)
+    if manifest_lost(db):
+        # a manifest lost from a Mac that has synced: sync's line and the person's fix, exit 1, never "0
+        # findings" and a NEXT to run sync again, which stops on it (B13 round 25 D77); curate opens no
+        # manifest, so its guard is here, as B89's is
+        said = _misplaced(
+            args, ManifestLostError(f"{db} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
+        )
+        if said is not None:
+            _err(said)
+            _misplaced_next(args, said)
+            return EXIT_FAILED
     findings = _curate_findings(config)
     for f in findings:
         _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")

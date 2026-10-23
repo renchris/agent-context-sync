@@ -51,7 +51,7 @@ from agentsync.graph import discover
 from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
-from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
+from agentsync.manifest import LOST_MANIFEST, MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import (
     CycleMode,
     CycleReport,
@@ -7145,6 +7145,63 @@ def test_a_manifest_link_status_fails_stops_the_sync_on_its_line_and_status_name
             words
             == "the state file's link points into a missing folder; the state_dir.manifest line says why"
         )
+
+
+def test_a_new_manifest_names_each_page_it_removed_and_did_not_write_back(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 25 D40: B37's quiet reset logged each orphan page at DEBUG, assuming the run wrote every one
+    back; a page whose source file had gone was deleted and committed with no line above DEBUG. Each page
+    not written back is a WARNING that names it; the note and the rebuild of the rest stay as B37 made
+    them."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    mirror = initialised.layout.mirror
+    before = {
+        p.relative_to(initialised.docs_repo).as_posix() for p in mirror.rglob("*.md") if p.name != "CLAUDE.md"
+    }
+    gone = sorted(p for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("."))[0]
+    gone.unlink()
+    db = expand(sp.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    expand(sp.heartbeat).rename(expand(sp.heartbeat).with_name("heartbeat.kept.json"))
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    rebuilt = capsys.readouterr()
+    after = {
+        p.relative_to(initialised.docs_repo).as_posix() for p in mirror.rglob("*.md") if p.name != "CLAUDE.md"
+    }
+    removed = sorted(before - after)
+    assert removed, (before, after)
+    warned = [ln for ln in rebuilt.err.splitlines() if " WARNING " in ln]
+    assert len(warned) == len(removed), rebuilt.err
+    for rel in removed:
+        assert any(
+            f"removed orphan mirror page {rel} (not written back by this run)" in ln for ln in warned
+        ), warned
+
+
+def test_curate_over_a_lost_manifest_says_syncs_line_and_never_to_sync_again(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 25 D77: with the manifest lost after earlier syncs, curate exited 0 with "0 findings" and
+    "NEXT: 2 sources not fully listed or converted yet ...: run sync again", whose sync stops on the lost
+    manifest. Curate gives sync's line with the person's fix, one NEXT, exit 1, and starts no manifest."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr()
+    assert out.err.splitlines() == [
+        f"error: state: {db} {LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})"
+    ], out
+    assert [ln for ln in out.out.splitlines() if ln.startswith("NEXT")] == [
+        f"NEXT: {cli.STATE_MISPLACED_COMMAND_STEP}"
+    ], out.out
+    assert "sync` again" not in out.out and not db.exists(), out.out
 
 
 def test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing(
