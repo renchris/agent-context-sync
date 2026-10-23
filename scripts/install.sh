@@ -6489,7 +6489,8 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
             continue
         if not (stat.S_ISDIR if want == 0o700 else stat.S_ISREG)(st.st_mode):  # no mode fixes the wrong kind
             continue
-        if os.access(p, need):
+        # governance/ is judged by its owner first: status FAILs one of another account even when usable (B61)
+        if os.access(p, need) and (name != "governance" or st.st_uid == os.getuid()):
             continue
         role = name
         if st.st_uid != os.getuid():
@@ -6506,7 +6507,7 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
         ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
         checked = "state-file-" + ("access" if ok else "refused")
         break
-if access == "state-side-access" and checked in ("state-file-owner", "state-file-refused"):
+if access in ("state-side-access", "state-dir-write") and checked in ("state-file-owner", "state-file-refused"):
     access = None  # the stop of the person is the one to say: the chmods of the agent alone would not end it
 if notdir:
     words.append("state-notdir")
@@ -6804,7 +6805,10 @@ list_folders() {
 		# plural, once each (A37). One no chmod of it fixes says so, not "though its mode allows it": a read-only
 		# volume refuses whatever the mode (A75). It says "no change of its mode", naming whose: "a chmod of it"
 		# read as false under an error whose fix is "chmod -N" (an ACL) or a chmod of a folder above it, which is
-		# the person's too (round 24 B5, B15). Something that is not a folder where the state folder or a
+		# the person's too (round 24 B5, B15). A status-step file "cannot be used as its step needs", not "cannot
+		# be opened": a 0400 lock or a 0500 governance/ opens, but cannot be written (the lane's review of B10).
+		# A folder at the -wal stops init at any mode, one at the -shm only when unreadable (measured, the
+		# review of B52). Something that is not a folder where the state folder or a
 		# folder above it belongs is no mode, owner or ACL: moving it aside is the person's, and its case comes
 		# last (round 23 ruling 4: A2, A6, A21, A32, A80). A folder where the manifest belongs goes aside with
 		# heartbeat.json, as doctor.MANIFEST_FIX says: moved alone, the next run stops on a lost manifest (round
@@ -6824,8 +6828,8 @@ list_folders() {
 		*) fnoun="a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it)" ;;
 		esac
 		stail=""
-		case ",$cerr," in *",state-file-owner,"*) stail="; step 2 stops at its status step on $fnoun, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
-		case ",$cerr," in *",state-file-access,"*) stail="; step 2 stops at its status step on $fnoun, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
+		case ",$cerr," in *",state-file-owner,"*) stail="; step 2 stops at its status step on $fnoun, which another account owns, so this one cannot use it as its step needs (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
+		case ",$cerr," in *",state-file-access,"*) stail="; step 2 stops at its status step on $fnoun, which this account cannot use as its step needs (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
 		case ",$cerr," in *",state-file-refused,"*) stail="; step 2 stops at its status step on $fnoun, which this account is refused, and no change of its mode fixes that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot open, on its lock, heartbeat or governance lines" ;; esac
 		case ",$cerr," in *",state-owner,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-access,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
@@ -6834,7 +6838,7 @@ list_folders() {
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmods that fix it are the agent's to run, once each, when step 2 stops on them, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused, and no change of its mode fixes that (an ACL, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-dir-write,"*) stail="; step 2 stops at its status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod 700 that fixes it is the agent's to run, once, as step 2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
-		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage), at its config step when this account cannot read it and at its status step when it can: fixing that is the person's (keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage), at its config step when it is the -wal or this account cannot read it, and at its status step otherwise: fixing that is the person's (keeping a copy, they move it aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac

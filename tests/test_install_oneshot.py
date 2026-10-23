@@ -7732,12 +7732,12 @@ FILE_STATUS = (
 
 FILE_TAILS = {
     "state-file-owner": (
-        "which another account owns, so this one cannot open it (not damage): fixing that is the person's (a "
-        f"sudo chown; the agent runs no sudo), and {FILE_STATUS}"
+        "which another account owns, so this one cannot use it as its step needs (not damage): fixing that "
+        f"is the person's (a sudo chown; the agent runs no sudo), and {FILE_STATUS}"
     ),
     "state-file-access": (
-        "which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, "
-        f"once each, as step 2's NEXT names them, and {FILE_STATUS}"
+        "which this account cannot use as its step needs (a mode, not damage): the chmods that fix it are "
+        f"the agent's to run, once each, as step 2's NEXT names them, and {FILE_STATUS}"
     ),
     "state-file-refused": (
         "which this account is refused, and no change of its mode fixes that (an ACL, a folder above it this "
@@ -7784,9 +7784,9 @@ STATE_OPEN_TAIL = {
     "state-lost": STATE_LOST_TAIL,
     "state-side-notfile": (
         "; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or something else "
-        "that is not a file (not damage), at its config step when this account cannot read it and at its "
-        "status step when it can: fixing that is the person's (keeping a copy, they move it aside), and "
-        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+        "that is not a file (not damage), at its config step when it is the -wal or this account cannot read "
+        "it, and at its status step otherwise: fixing that is the person's (keeping a copy, they move it "
+        "aside), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
     "state-dir-write": (
         "; step 2 stops at its status step on agentsync's state folder, which this account can open but not "
@@ -7834,6 +7834,7 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "SN-shm-shut",
         "SN-shm-0500",
         "SN-wal-link",
+        "SN-wal",
         "SW",
         "SW-bare",
         "SW-wal",
@@ -7907,6 +7908,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
         "SN-wal-link": "state-side-notfile",
+        "SN-wal": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
@@ -7965,7 +7967,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         elif state.startswith("SN-"):  # round 24 B52: a folder where a -wal or -shm belongs
             for f in (wal, shm):
                 f.unlink(missing_ok=True)
-            if state == "SN-wal-link":
+            if state == "SN-wal":
+                wal.mkdir(0o755)
+            elif state == "SN-wal-link":
                 elsewhere = db.with_name("elsewhere")
                 elsewhere.mkdir(0o700)
                 wal.symlink_to(elsewhere)
@@ -7991,6 +7995,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             db.rmdir()
         if wal.is_symlink():
             wal.unlink()
+        if wal.is_dir():
+            wal.rmdir()
         if shm.is_dir():
             shm.chmod(0o700)
             shm.rmdir()
@@ -9517,6 +9523,7 @@ def test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agen
         "two-shut",
         "foreign-heartbeat",
         "foreign-lock",
+        "dir-write-acl",
     ],
 )
 def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file(
@@ -9602,6 +9609,12 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     try:
         if case in ("acl", "acl-and-wal"):
             _acl_deny(root / "heartbeat.json")
+        if case == "dir-write-acl":  # the review: the chmod 700 alone would not end the person's ACL stop
+            for side in (wal, db.with_name(db.name + "-shm")):
+                side.write_bytes(b"")
+                side.chmod(0o600)
+            _acl_deny(root / "agentsync.lock")
+            root.chmod(0o500)
         if case == "acl-and-wal":
             wal.write_bytes(b"")
             wal.chmod(0o400)
@@ -9613,6 +9626,7 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
             db.chmod(0)
         cp = install_sh(env, "--list-folders")
     finally:
+        root.chmod(0o700)
         db.chmod(0o600)
         gov.chmod(0o700 if gov.is_dir() else 0o600)
         if wal.exists():
@@ -9633,6 +9647,7 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "ro": "state-file-refused",
         "manifest-too": "state-access",
         "foreign-lock": "state-file-owner",
+        "dir-write-acl": "state-file-refused",
     }.get(case, "state-file-access")
     role = {
         "acl": "heartbeat",
@@ -9642,6 +9657,7 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "governance-0500": "governance",
         "two-shut": "holds",
         "foreign-lock": "lock",
+        "dir-write-acl": "lock",
     }.get(case, case)
     tail = STATE_OPEN_TAIL[word] if word == "state-access" else file_tail(word, role)
     assert last_line(cp).endswith(tail), last_line(cp)

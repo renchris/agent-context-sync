@@ -677,8 +677,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   report; ...`), where it said `fix the error above` (round 24 ruling 7). A folder (or a link to one) where the -wal or
   -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod words,
   or none): `state-side-notfile`, `; step 2 stops on the -wal or -shm of agentsync's state file, which is a folder or
-  something else that is not a file (not damage), at its config step when this account cannot read it and at its
-  status step when it can: fixing that is the person's (keeping a copy, they move it aside), and
+  something else that is not a file (not damage), at its config step when it is the -wal or this account cannot
+  read it, and at its status step otherwise: fixing that is the person's (keeping a copy, they move it aside), and
   ~/.local/bin/agentsync status prints it on its state_dir.files line`, and step 2's config step its own `NEXT:`
   (`the -wal or -shm of agentsync's state file is a folder or something else that is not a file (...): fixing it is
   the person's (keeping a copy, they move it aside), not a step for the agent, ...`). A state folder of this
@@ -705,10 +705,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   file`, `agentsync's heartbeat file`, `agentsync's governance folder`, or `agentsync's governance file
   holds.json`, `purge-queue.json`, `suppressed.json` or `audit.jsonl`; round 24 B13: it named the class):
   `state-file-owner`, `; step 2 stops at its status step on <file>, which another account owns, so this one cannot
-  open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
+  use it as its step needs (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
   ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot
   open, on its lock, heartbeat or governance lines`; `state-file-access`, `; step 2 stops at its status step on
-  <file>, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once
+  <file>, which this account cannot use as its step needs (a mode, not damage): the chmods that fix it are the agent's to run, once
   each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it
   checks there that this account cannot open, on its lock, heartbeat or governance lines`; or `state-file-refused`,
   `; step 2 stops at its status step on <file>, which this account is refused, and no change of its mode fixes that

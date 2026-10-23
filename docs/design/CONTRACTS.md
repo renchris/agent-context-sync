@@ -28848,8 +28848,8 @@ search too of governance/, and read nothing else. Measured: a 0400 heartbeat was
 (the sync replaces it through the folder, B10); audit.jsonl, left out as "read by no check", and suppressed.json stop
 status at 0000 since round 23 A79 while step 1 said `(none is needed)` (B54, B81); and another account's 0644
 heartbeat, which the sync reads and replaces, was said to stop it, by its owner alone (B105). Each file now carries
-the access `setup_report._refused_files` reads it by: the lock read and write (the sync opens it so; lane B's B58
-FAILs it in status), governance/ read, write and search (a hold is written there; lane B's B61), audit.jsonl write
+the access its step needs (as `setup_report._refused_files` reads it once lane B's B58 lands): the lock read and
+write (the sync opens it so; lane B's B58 FAILs it in status), governance/ read, write and search (a hold is written there; lane B's B61), audit.jsonl write
 (opened to append), and the heartbeat, holds.json, the purge queue and suppressed.json read; the mode test uses the
 owner's bits of that access (`want`), so an ACL that refuses what the mode allows is still the person's. Access is
 judged first: a file another account owns that this one can use as its step needs is skipped, and only one it cannot
@@ -28901,6 +28901,21 @@ with no side file or only one, init stops on creating it, and `state-access` sta
 SN-shm-0500, SN-wal-link, SW, SW-bare and SW-wal cases of
 `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`, and, with the real agentsync,
 `test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it`.
+
+**The lane's review** (a fresh reviewer over the branch, with a scratch harness running the probe, the real init
+and the real status; each finding fixed or recorded). A stale 0000 -wal beside a lost manifest got `state-access`,
+a chmod that ends nothing, while init stops on the lost manifest first: `state-lost` is judged right after
+`state-notdir` (case LM-wal). `state-dir-write` beside another account's or an ACL-refused status-step file named
+only the agent's chmod 700, as a later case: it is demoted like `state-side-access`, so the person's stop is said
+(case dir-write-acl). governance/ owned by another account but usable said nothing, while lane B's B61 FAILs it:
+governance/ is judged by its owner first. A readable folder at the -wal stops init (measured: `unable to open
+database file`), so `state-side-notfile`'s tail says `at its config step when it is the -wal or this account
+cannot read it, and at its status step otherwise` (case SN-wal). The status-step tails said `cannot open` over a
+0400 lock or a 0500 governance/, which open but cannot be written: they say `cannot use as its step needs`. The
+lock's and governance/'s masks agree with status only once lane B's B58 and B61 land (on this branch status passed a
+0400 lock and a 0500 governance/); recorded, not changed. Not built: `docs_remotes_refused` keys on the filesystem
+ahead of a lost manifest, so a Mac with both gets the remote's NEXT first and the lost manifest's on the next run:
+both the person's, one extra run, an order that predates this round.
 
 **Setup prompt v33** (B1, B8, B22, B40, B50, B60, B79, B96 and B17; ruling 9, one build, and lane B's words for
 B17; amends §16.166 A36 and §16.160 Z38). Version 33 everywhere the bump list names it (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`,
