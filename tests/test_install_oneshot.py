@@ -22,6 +22,7 @@ import base64
 import calendar
 import contextlib
 import dataclasses
+import errno
 import fcntl
 import hashlib
 import itertools
@@ -43,7 +44,7 @@ import time
 import types
 import unicodedata
 import urllib.parse
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -66,7 +67,7 @@ from agentsync.convert import pandoc as pandoc_converter
 from agentsync.cycle import VANISHED_ADVICE, VANISHED_FIX
 from agentsync.cycle import vanished_add_back_tail as cycle_vanished_add_back_tail
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
-from agentsync.manifest import Manifest
+from agentsync.manifest import Manifest, manifest_lost
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
 from agentsync.paths import expand
@@ -8097,6 +8098,8 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "LM-wal",
         "LM-new",
         "LM-none",
+        "LM-link",
+        "LM-link-live",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -8171,6 +8174,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM": "state-lost",
         "LM-older": "state-lost",
         "LM-wal": "state-lost",
+        "LM-link": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -8221,6 +8225,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             elsewhere.mkdir(0o700)
             db.symlink_to(elsewhere if state == "NR-link" else db)
         elif state.startswith("LM"):  # round 24 ruling 7: the manifest gone, a heartbeat beside it
+            moved = db.read_bytes()
             for f in (db, wal, shm):
                 f.unlink(missing_ok=True)
             passed = {"run_id": 3, "last_success_at": "2026-10-20T09:00:00Z"}
@@ -8231,6 +8236,13 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
                 wal.write_bytes(b"")
                 wal.chmod(0)
+            # round 25 D33: a symlink to a missing file is a lost manifest, as manifest_lost reads it since
+            # round 24 B64; one to the manifest moved elsewhere is not
+            if state == "LM-link":
+                db.symlink_to(db.with_name("gone.sqlite"))
+            elif state == "LM-link-live":
+                db.with_name("moved.sqlite").write_bytes(moved)
+                db.symlink_to(db.with_name("moved.sqlite"))
         elif state.startswith("SN-"):  # round 24 B52: a folder where a -wal or -shm belongs
             for f in (wal, shm):
                 f.unlink(missing_ok=True)
@@ -8273,7 +8285,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if state in ("PM-fixed", "LM-new", "LM-none"):
+    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
@@ -9617,6 +9629,87 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_steps_1_and_2(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 25 D33 (D-L1c), with the real agentsync: since round 24 B64 manifest_lost reads a symlink to
+    a missing file as a missing manifest, and init stops on it as lost, but install.sh's two inlined copies
+    (step 1's lost(), step 2's state_lost) did `lstat(); return False`. So step 1 said "(none is needed)" and
+    step 2's NEXT took the state_open_fix branch: an ACL, a folder above it or a read-only volume, the
+    person's for a cause that is not there. Both copies read the link as manifest_lost does now; the person's
+    choice the NEXT words (heartbeat.json aside) ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    db.symlink_to(db.with_name("gone.sqlite"))
+    heartbeat = db.with_name("heartbeat.json")
+    assert heartbeat.is_file(), "the first install's sync recorded a pass"
+    listed = install_sh(env, "--list-folders")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_LOST_TAIL), last_line(listed)
+    assert install_log(env)[-2].endswith(" config_err=state-lost"), install_log(env)[-2]
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert f"{db} is missing, but heartbeat.json records earlier passes" in lost.stderr, lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(lost)
+    assert "an ACL" not in last_line(lost), last_line(lost)
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def _inlined_lost() -> Callable[[Path], bool]:
+    """Step 1's lost(), the copy of manifest.manifest_lost that config_errors' probe runs, from install.sh."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [body] = re.findall(r"(?ms)^(def lost\(p\):\n.*?)\n\n\n", script)
+    scope: dict[str, object] = {"errno": errno, "json": json, "os": os, "stat": stat}
+    exec(body, scope)  # install.sh's own text: the copy under test
+    found = scope["lost"]
+    assert callable(found)
+    return lambda p: bool(found(p))
+
+
+def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_path: Path) -> None:
+    """B13 round 25 D33: install.sh carries manifest.manifest_lost inlined twice (step 1's lost(), step 2's
+    state_lost), since the installed build that runs them may predate it, and both missed round 24 B64's
+    dangling link. Each copy answers as manifest_lost does over a missing file, a dangling link, a link to a
+    live file, a link loop, a regular file, a folder and a missing heartbeat, so they cannot drift apart
+    again unseen. state_lost is read as text: its probe loads a config, which this test has none of."""
+    lost = _inlined_lost()
+    state = tmp_path / "state"
+    state.mkdir()
+    db = state / "manifest.sqlite"
+    heartbeat = state / "heartbeat.json"
+    cases = {
+        "missing": lambda: None,
+        "dangling": lambda: db.symlink_to(state / "gone.sqlite"),
+        "dangling-dir": lambda: db.symlink_to(tmp_path / "gone" / "manifest.sqlite"),
+        "live-link": lambda: (state / "live.sqlite").write_bytes(b"") or db.symlink_to(state / "live.sqlite"),
+        "loop": lambda: db.symlink_to(db),
+        "file": lambda: db.write_bytes(b""),
+        "folder": db.mkdir,
+    }
+    for beat in (True, False):
+        for name, make in cases.items():
+            for f in state.iterdir():
+                f.rmdir() if f.is_dir() and not f.is_symlink() else f.unlink()
+            if beat:
+                heartbeat.write_text(json.dumps({"alpha": {"run_id": 3}}), encoding="utf-8")
+            make()
+            want = manifest_lost(db)
+            assert lost(db) is want, (name, beat)
+            assert want is (beat and name in ("missing", "dangling", "dangling-dir")), (name, beat)
+    [probe] = re.findall(r"(?ms)^state_lost\(\) \{\n(.*?)^\}$", INSTALL_SH.read_text(encoding="utf-8"))
+    assert "if not stat.S_ISLNK(db.lstat().st_mode):" in probe and "    db.stat()\n" in probe, probe
+    assert "except OSError:\n    print(0)" in probe, probe
 
 
 SIDE_NOTFILE_NEXT = (

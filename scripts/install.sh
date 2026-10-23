@@ -6619,9 +6619,13 @@ except OSError:
 
 def lost(p):
     """manifest.manifest_lost, inlined, since the installed build that runs this may predate it (round 24
-    ruling 7): no manifest, in a folder this account can use, while heartbeat.json beside it records a pass."""
+    ruling 7): no manifest, in a folder this account can use, while heartbeat.json beside it records a pass. A
+    symlink to a missing file is a missing manifest, as manifest_lost reads it since round 24 B64 (round 25 D33:
+    this copy predated it, so step 1 predicted no stop for a dangling link)."""
     try:
-        p.lstat()
+        if not stat.S_ISLNK(p.lstat().st_mode):
+            return False
+        p.stat()
         return False
     except FileNotFoundError:
         pass
@@ -8004,7 +8008,7 @@ print(n)
 	[ "$n" = 1 ]
 }
 # Whether the manifest is lost from a Mac that has synced (manifest.manifest_lost, round 23 A29): none at the
-# config's state path, in a folder this account can use, while heartbeat.json beside it records a pass. init
+# config's state path (or a symlink there to a missing file, round 24 B64, round 25 D33), in a folder this account can use, while heartbeat.json beside it records a pass. init
 # and add-source exit 1 on it ("<db> is missing, but heartbeat.json records earlier passes"), and fail's "fix the
 # error above" read as the agent's step, while restoring it or starting a new manifest, which forgets the
 # deletions, is the person's choice (round 24 ruling 7: B3, B24, B31, B41, B48, B69, B83, B85). The rule is
@@ -8015,18 +8019,25 @@ state_lost() {
 	local n=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import json, os, sys
+import json, os, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
 try:
-    db.lstat()
+    # a symlink to a missing file is a missing manifest, as manifest_lost reads it (round 25 D33)
+    if not stat.S_ISLNK(db.lstat().st_mode):
+        print(0)
+        sys.exit(0)
+    db.stat()
     print(0)
     sys.exit(0)
 except FileNotFoundError:
     pass
+except OSError:
+    print(0)
+    sys.exit(0)
 if not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
     print(0)
     sys.exit(0)

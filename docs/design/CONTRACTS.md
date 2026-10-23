@@ -29728,6 +29728,19 @@ after `- <value>: `; `_VALUE_GOVERNANCE` is gone. The guide's `<value>` row says
 `test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_report`, which reads the legend line
 beside the body's hold `<value>`s.
 
+**install.sh reads a dangling manifest link as lost** (D33, D-L1c's install.sh half). Round 24 B64 made
+`manifest.manifest_lost` read a symlink to a missing file as a missing manifest, so init stops on it as lost, but
+install.sh's two inlined copies of the rule (step 1's `lost()` in `config_errors`, step 2's `state_lost`; inlined so
+an older installed build answers) predated it: `lstat(); return False`. Step 1 said `(none is needed)` and step 2's
+NEXT took `state_open_fix`'s `refused` branch, an ACL, a folder above it or a read-only volume. Both copies now run
+manifest_lost's own `lstat`/`stat` block (a link loop or a link whose target folder refuses a search is an
+`OSError`, not lost, as before), so step 1 logs `config_err=state-lost` and step 2 gives ruling 7's NEXT. Tests:
+`test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_steps_1_and_2` (the real agentsync;
+heartbeat.json aside, as the NEXT words it, ends 0), the step 1 table's `LM-link` and `LM-link-live`, and
+`test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`, which runs step 1's copy beside
+manifest_lost over a missing file, a dangling link, one into a missing folder, a live link, a loop, a file and a
+folder, with and without a heartbeat, so the copies cannot drift apart unseen again.
+
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one
