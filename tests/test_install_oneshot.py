@@ -2441,17 +2441,23 @@ def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_
         check=True,
     )
     plain = label.split(" (2 url keys", 1)[0]
-    if "\turl =\n" in remote and setup_report.origin_label(fetched.stdout.strip()) != plain:
-        pytest.skip("this git keeps an empty url as a key: it predates the reset")
-    assert setup_report.origin_label(fetched.stdout.strip()) == plain, "git fetches from the url expected"
+    older = "\turl =\n" in remote and setup_report.origin_label(fetched.stdout.strip()) != plain
+    assert older or setup_report.origin_label(fetched.stdout.strip()) == plain, "git fetches from that url"
     if rewrite:  # in the checkout's own config, which both reports read
         with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
             fh.write('[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n')
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
     text = report_path(env).read_text(encoding="utf-8")
-    assert f"- install source: checkout ~/src/agent-context-sync · origin: {label}\n" in text, text
+    # B13 round 24 B101: the shell cannot know which list its git keeps, so after an empty url that follows a
+    # non-empty one it keeps the label and says an older git fetches from an earlier key
+    shown = label + (
+        " (an empty url key: an older git fetches from an earlier one)" if "\turl =\n" in remote else ""
+    )
+    assert f"- install source: checkout ~/src/agent-context-sync · origin: {shown}\n" in text, text
     assert "contoso-mirror" not in text
+    if older:  # the agentsync report asks its own git which list it keeps: lane RA's half of B101
+        pytest.skip("this git keeps an empty url as a key: it predates the reset")
     monkeypatch.setenv("HOME", env["HOME"])
     run = setup_report._Run(Path(env["HOME"]) / "none.toml", setup_report.ReportHooks(), 12.0)
     facts = setup_report._checkout_facts(run, repo)

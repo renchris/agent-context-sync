@@ -3685,21 +3685,24 @@ origin_label() { # URL
 # --get-all remote.origin.url` (V70): the first url key, the one git fetches from, after the last empty one (an
 # empty `url =` clears the list), and the number of keys from there when there is more than one (B13 round 23
 # A24: the last key read won, so a second url with no rewrite anywhere read as the origin). No git process:
-# without the developer tools /usr/bin/git offers to install them.
+# without the developer tools /usr/bin/git offers to install them. An older git keeps the list an empty url
+# clears and fetches from its first non-empty key, which this shell cannot know without running git: when an
+# empty url follows a non-empty one, the line says so and keeps the label (B13 round 24 B101, the shell half;
+# the agentsync report asks its own git).
 fallback_install_source_line() {
-	local dir="$HOME/src/agent-context-sync" g v url="" keys=0
+	local dir="$HOME/src/agent-context-sync" g v url="" keys=0 had=0 cleared=0
 	if [ ! -e "$dir/.git" ]; then
 		say "- install source: no checkout at ~/src/agent-context-sync"
 		return 0
 	fi
 	while IFS= read -r g; do
 		[ -f "$g" ] || continue
-		v="$(OR_FIRST="$url" LC_ALL=C awk -v n="$keys" '
+		v="$(OR_FIRST="$url" LC_ALL=C awk -v n="$keys" -v had="$had" -v cleared="$cleared" '
 			BEGIN { first = ENVIRON["OR_FIRST"] } # not -v, which would read a backslash in the URL as an escape
 			function key(line,    u) { # a url key of [remote "origin"]: the first one after the last empty one
 				if (tolower(line) !~ /^[ \t]*url[ \t]*=/) return
 				u = line; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u)
-				if (u == "") { first = ""; n = 0 } else { n++; if (first == "") first = u }
+				if (u == "") { first = ""; n = 0; if (had) cleared = 1 } else { n++; had = 1; if (first == "") first = u }
 			}
 			# [remote "origin"] url = <url> on one line, which git applies, is read after the matched header, as
 			# git_remote_entries reads it (B13 round 22 Z1, Z25); so is the older [remote.origin], whose name git
@@ -3710,9 +3713,13 @@ fallback_install_source_line() {
 				next
 			}
 			o { key($0) }
-			END { print (n + 0) "\t" first }
+			END { print (n + 0) "\t" (had + 0) "\t" (cleared + 0) "\t" first }
 		' "$g" 2>/dev/null || true)"
-		[ -z "$v" ] || { keys="${v%%$'\t'*}" url="${v#*$'\t'}"; }
+		[ -z "$v" ] || {
+			keys="${v%%$'\t'*}" v="${v#*$'\t'}"
+			had="${v%%$'\t'*}" v="${v#*$'\t'}"
+			cleared="${v%%$'\t'*}" url="${v#*$'\t'}"
+		}
 	done < <(checkout_git_configs "$dir")
 	# a URL rewrite is said beside the label, as setup_report._checkout_facts says it, never its host: git's
 	# longest insteadOf value that starts the URL, case-sensitive, and only when the rewritten URL's label
@@ -3720,6 +3727,7 @@ fallback_install_source_line() {
 	local label best="" base="" iv b said="" found=""
 	label="$(origin_label "$url")"
 	[ "$keys" -le 1 ] || said="$keys url keys, git fetches from the first"
+	[ "$cleared" -eq 0 ] || said="${said:+$said; }an empty url key: an older git fetches from an earlier one"
 	if [ "$label" != none ]; then
 		while IFS=$'\t' read -r iv b; do
 			iv="${iv#x}" # an empty value matches every URL, as in git

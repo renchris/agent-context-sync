@@ -28802,7 +28802,8 @@ Reserved for round 24 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
-Lane RB's six items: the shell fallback report's half of round 23's A8 and A9, and four guards and wordings.
+Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four
+guards and wordings.
 
 **The shell report cuts a hold's reason and owner of several lines** (B51). A `[governance]` hold_reason or
 hold_owner keeps its inner newlines, which `Hold.describe()` prints, so the first line of a reason of two lines has
@@ -28840,6 +28841,15 @@ were fixed and ended 0` read as if the modes ended 0. It reads `... was run agai
 outcome reason's own order. The other half of the finding (install.sh's `status prints it`) is not a slip: each
 `it` is the file or folder that stopped step 2, as in its 11 sibling tails. Test:
 `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**An empty url key after a non-empty one is named in the shell's install source line** (B101, the shell half;
+lane RA builds the agentsync report's). A git older than the one that clears the url list on an empty `url =`
+keeps the list and fetches from its first non-empty key (CI's macos-15 `/usr/bin/git`), so both reports could
+label a url that git does not fetch from. The shell runs no git process (without the developer tools
+`/usr/bin/git` offers to install them), so it keeps the label and adds `an empty url key: an older git fetches
+from an earlier one` whenever an empty url follows a non-empty one, across the config files it reads; its rewrite
+claim was already right. Test: `test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports`
+(`empty-reset`; on an older git only the agentsync report's half is skipped).
 
 **Guards** (B57, B68, B104). The shell hold parity test's `hasattr(setup_report, "_HOLD_SET_RE")` guard waited for
 round 23's lane RA half and was always true; it is gone (B57). `cli.PERSONS_KINDS`, an alias only tests read, is
