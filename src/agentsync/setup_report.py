@@ -9565,19 +9565,44 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
 def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> str:
     """The Items line of one step-3 sync stop (B13 round 23 A9): the stop, whose fix it was, and whether a
     later sync ended 0; ``account``, the agent's error line it claims (:func:`_stop_pairs`), named on it, so
-    one stop is one line (B13 round 24 ruling 9)."""
+    one stop is one line (B13 round 24 ruling 9). What stopped it in lane B's words by ``kind`` (B13 round 24
+    B82); a state-folder stop (one its folder refused, lane B's writer since round 24) named as the folder,
+    and "the fix is the person's", never "the person's fix" after "the fix is" (B16)."""
     told = f" (F{account.line}: the agent's account of it)" if account is not None else ""
-    whose = "the agent's chmod" if stop.owner == "agent" else "the person's fix"
+    agents = stop.owner == "agent"
+    after = "the agent's chmod" if agents else "the person's fix"
     if not stop.measured:
-        then = (
-            f"whether a later sync ended 0: not measured (the state file cannot be read); the fix is {whose}"
-        )
+        why = _stop_unread_why(stop)
+        whose = "the agent's chmod" if agents else "the person's"
+        then = f"whether a later sync ended 0: not measured ({why}); the fix is {whose}"
     elif stop.ended_ok is not None:
-        then = f"it ended 0 after {whose}"
+        then = f"it ended 0 after {after}"
     else:
-        then = f"no sync ended 0 after it by this report ({whose})"
-    head = f"- agentsync sync · step 3 · exited 1 on {stop.what}, which this account could not open"
-    return f"{head}; {then}{told}"
+        then = f"no sync ended 0 after it by this report ({after})"
+    which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    return f"- agentsync sync · step 3 · exited 1 on {stop.what}, {which}; {then}{told}"
+
+
+_SYNC_STOP_KINDS = {
+    "refused": "which this account could not open",
+    "misplaced": "which was not where or what it should be",
+    "lost": "which was missing after earlier syncs",
+}
+"""What stopped a step-3 sync, by its sync-stops.log ``kind=``: lane B's words (B13 round 24 B82)."""
+
+
+def _stop_unread_why(stop: _SyncStop) -> str:
+    """Why whether a later sync ended 0 was not read (the runs table was not): the state folder's words for a
+    state-folder stop, never "the state file" (B13 round 24 B16), and a lost manifest's (ruling 7)."""
+    if stop.kind == "lost":
+        return "the state file is missing"
+    if stop.file == "state-folder":
+        return (
+            "the state folder is not a folder"
+            if stop.kind == "misplaced"
+            else "the state folder cannot be opened"
+        )
+    return "the state file cannot be read"
 
 
 def _attempt_outcome(r: _Run, index: int) -> Outcome:

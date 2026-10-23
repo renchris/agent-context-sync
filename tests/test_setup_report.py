@@ -3152,6 +3152,49 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
     finally:
         db.chmod(0o600)
     assert "whether a later sync ended 0: not measured (the state file cannot be read)" in summary, summary
+    # B13 round 24 B16: "the fix is the person's", never "the fix is the person's fix"
+    assert "the fix is the person's fix" not in summary and "; the fix is the person's\n" in summary, summary
+
+
+def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Path) -> None:
+    """B13 round 24 B16: a sync stopped by an ACL on the state folder (lane B's writer now records
+    ``file=state-folder``) read "exited 1 on agentsync's state file ... not measured (the state file cannot
+    be read); the fix is the person's fix". The folder's words, the folder's not-measured cause and "the
+    fix is the person's"; with lane B's ``kind=`` (B82; ruling 7), a lost manifest and a misplaced state
+    folder are said as what they are, and a line with no kind is a refusal."""
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+
+    def line(file: str, owner: str, kind: str = "refused", measured: bool = False) -> str:
+        return setup_report._sync_stop_line(setup_report._SyncStop(at, file, owner, None, measured, kind))
+
+    assert line("state-folder", "person") == (
+        "- agentsync sync · step 3 · exited 1 on agentsync's state folder, which this account could not "
+        "open; whether a later sync ended 0: not measured (the state folder cannot be opened); the fix is "
+        "the person's"
+    )
+    assert line("state-folder", "agent").endswith(
+        "not measured (the state folder cannot be opened); the fix is the agent's chmod"
+    )
+    assert line("manifest", "person", "lost") == (
+        "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+        "syncs; whether a later sync ended 0: not measured (the state file is missing); the fix is the "
+        "person's"
+    )
+    assert line("state-folder", "person", "misplaced").startswith(
+        "- agentsync sync · step 3 · exited 1 on agentsync's state folder, which was not where or what it "
+        "should be; whether a later sync ended 0: not measured (the state folder is not a folder)"
+    )
+    assert line("manifest", "person", measured=True).endswith(
+        "no sync ended 0 after it by this report (the person's fix)"
+    )
+    stops = tmp_path / setup_report._SYNC_STOPS_NAME
+    stops.write_text(
+        "2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T10:00:51Z sync-stop file=lock rc=1 owner=agent\n",
+        encoding="utf-8",
+    )
+    read = setup_report._read_sync_stops(stops.with_name("install.log"), at, None)
+    assert [s.kind for s in read] == ["lost", "refused"]
 
 
 def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path]) -> None:

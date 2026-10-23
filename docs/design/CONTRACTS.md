@@ -28875,6 +28875,20 @@ is built from `manifest.LOST_MANIFEST` and `doctor.LOST_MANIFEST_FIX`, and its A
 `test_a_state_folder_at_0500_names_the_folders_fix_and_a_next_not_sqlites_bare_line`), so a change to cli's
 words runs through `_STATE_OPEN_RE` in the report's test. No output changes.
 
+**A step 3 stop on the state folder, and each kind, in its own words** (B16; with lane B's B82 writer). A sync
+stopped by an ACL on the state folder read `exited 1 on agentsync's state file ... not measured (the state file
+cannot be read); the fix is the person's fix`. Lane B's writer (its round 24 commit "a sync stop records its
+kind") now records a refusal its folder made as `file=state-folder`, and every line carries `kind=refused`,
+`misplaced` or `lost` (no `kind=`: refused); the reader takes the optional group (`_SyncStop.kind`, the same hunk
+as lane B's). `_sync_stop_line` says what stopped it in lane B's words (`which this account could not open`,
+`which was not where or what it should be`, `which was missing after earlier syncs`), why whether a later sync
+ended 0 was not read by the stop's file and kind (`_stop_unread_why`: `the state folder cannot be opened`, `the
+state folder is not a folder`, `the state file is missing`, else `the state file cannot be read`), and `the fix
+is the person's` or `the fix is the agent's chmod`; "after the person's fix" stays where "after" reads it. The
+cause (an ACL, a privacy setting) is not named: the log does not record it. Tests:
+`test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind` and
+`test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
+
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
 Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four
