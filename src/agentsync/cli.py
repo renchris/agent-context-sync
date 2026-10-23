@@ -98,6 +98,7 @@ from agentsync.errors import (
     ManifestPathError,
     ManifestSchemaError,
 )
+from agentsync.graph import auth as graph_auth  # the module, so a patch of MsalAuth holds (B67, as A91)
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -2024,9 +2025,7 @@ def _broker_check(config: Config) -> list[doctor.CheckResult]:
         return []
     if not config.graph.broker:
         return [_check("graph.broker", False, "disabled by [graph] broker = false", doctor.Severity.INFO)]
-    from agentsync.graph import auth  # noqa: PLC0415 - imports pymsalruntime only when Graph is configured
-
-    reason = auth.broker_unavailable_reason()
+    reason = graph_auth.broker_unavailable_reason()  # the call loads pymsalruntime, not the import
     if reason is None:
         return [_check("graph.broker", True, "macOS broker available (sign-in rung 1)", doctor.Severity.INFO)]
     return [
@@ -2740,10 +2739,8 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
 
 
 def _cmd_graph(args: argparse.Namespace) -> int:
-    from agentsync.graph.auth import MsalAuth, settings_from_config  # noqa: PLC0415 - msal only when used
-
     config = _config(args)
-    auth = MsalAuth(settings_from_config(config))
+    auth = graph_auth.MsalAuth(graph_auth.settings_from_config(config))
     action: str = args.action
     if action == "login":
         status = auth.login_device_code(_out) if args.device_code else auth.login(_out)

@@ -6724,3 +6724,26 @@ def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_s
     assert lines[lines.index(noted[0]) + 1].startswith("run "), rebuilt.out
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert "note: a new manifest" not in capsys.readouterr().out
+
+
+def test_cli_imports_graph_auth_once_as_a_module_never_lazily() -> None:
+    """B13 round 24 B67 (A91's class, which doctor fixed): cli imports agentsync.graph.auth, and so msal, at
+    its top, yet kept two function-level imports of it whose stated reasons ("msal only when used", "imports
+    pymsalruntime only when Graph is configured") were false. One module import serves both, so a test's patch
+    of ``graph_auth.MsalAuth`` still takes effect; no name of it is bound at import time but TokenProvider."""
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    lazy = [
+        node.lineno
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef)
+        for node in ast.walk(fn)
+        if isinstance(node, ast.ImportFrom)
+        and (
+            node.module == "agentsync.graph.auth"
+            or (node.module == "agentsync.graph" and node.names[0].name == "auth")
+        )
+    ]
+    assert lazy == [], lazy
+    assert cli.graph_auth is graph_auth
