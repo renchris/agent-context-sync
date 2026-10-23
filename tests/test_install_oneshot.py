@@ -2457,12 +2457,16 @@ def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_
     )
     assert f"- install source: checkout ~/src/agent-context-sync · origin: {shown}\n" in text, text
     assert "contoso-mirror" not in text
-    if older:  # the agentsync report asks its own git which list it keeps: lane RA's half of B101
-        pytest.skip("this git keeps an empty url as a key: it predates the reset")
     monkeypatch.setenv("HOME", env["HOME"])
     run = setup_report._Run(Path(env["HOME"]) / "none.toml", setup_report.ReportHooks(), 12.0)
     facts = setup_report._checkout_facts(run, repo)
-    assert facts.split(" · origin: ", 1)[1].split(" · ", 1)[0] == label, "the agentsync report's line"
+    origin = facts.split(" · origin: ", 1)[1].split(" · ", 1)[0]
+    # lane RA's half of B101: the agentsync report asks its own git which list it keeps, so on a git older
+    # than the reset it labels the url that git fetches from, on every git, never skipped
+    if "\turl =\n" in remote and setup_report._git_keeps_empty_url(run, repo):
+        assert origin.startswith(setup_report.origin_label(fetched.stdout.strip())), facts
+    else:
+        assert origin == label, "the agentsync report's line"
     assert rewrite or "a URL rewrite" not in facts, facts
 
 

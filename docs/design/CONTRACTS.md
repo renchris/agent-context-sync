@@ -28076,6 +28076,9 @@ not `config --get`'s last; ` (N url keys, git fetches from the first)` is said f
 claimed only when an insteadOf changes that first URL's label. Landed in lane RB's land (96134549), with RB's
 install.sh half and the `first-wins` row of the shared test, since neither report can change alone (§16.165). See
 the dated line there. Test: `test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed`.
+Amended 2026-10-23, §16.171 B101: on a git that keeps an empty `url =` as a key (CI's macos-15 `/usr/bin/git`)
+the label is the first non-empty key, as that git fetches, by a probe of the report's own git, and the rewrite is
+claimed from `url.<base>.insteadOf` itself, no longer from `remote get-url`; the empty row is checked on every git.
 
 **The `<proxy-N>` legend names a git remote's path** (A25). Built by lane RB in both reports at once
 (`setup_report._LEGEND['proxy']` and install.sh's legend are pinned to each other); the verifier's fix is the
@@ -28944,6 +28947,22 @@ image), so an old conversion error can show in that run`, the CLI note's verb ("
 its type is ready", unchanged); no "engine" in the label, which is not only for images.
 docs/deploy/setup-feedback.md's Repeat conversions row and the pins move with it. Tests:
 `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` and test_deploy_pack's row test.
+
+**An older git's url list, and no rewrite it did not make** (B101; amends §16.164 A24). On a git that keeps an
+empty `url =` as a key (older than the reset; CI's macos-15 `/usr/bin/git`), `remote get-url` gives the first
+key, so an origin of `[mirror, "", github]` with no insteadOf read `origin: github.com/<slug> (a URL rewrite sends
+it elsewhere)` while git fetched from the mirror: a wrong label and a rewrite that does not exist. The report asks
+its own git which list it uses (`_git_keeps_empty_url`: `git -c remote.zprobe.url=probe-a:x -c
+remote.zprobe.url= -c remote.zprobe.url=probe-b:x ls-remote --get-url zprobe` prints `probe-a:x` on such a git and
+`probe-b:x` on one that clears the list, with no repository needed); on the older git the url list is the
+non-empty keys in order, else A24's slice after the last empty key, and the url-keys note counts the same list. A
+rewrite is claimed only when an `url.<base>.insteadOf` value (`git config --get-regexp`, the longest that prefixes
+it, as git picks) changes that first URL's label (`_rewritten_url`); `remote get-url` is no longer read. The A24
+test's empty row now asserts on every git, its expected label taken from the probe. The shell report runs no git
+on purpose (no developer tools, no shim dialog), so its half is lane RB's to word, never a probe. Tests:
+`test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_claims_no_rewrite` (the older git's
+answer faked: this Mac's Apple Git 2.50 clears the list) and
+`test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed`.
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 

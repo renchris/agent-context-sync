@@ -9981,18 +9981,70 @@ def test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_
         git("update-ref", "refs/remotes/origin/main", "HEAD")
         if rewrite is not None:
             git("config", f"url.{rewrite[0]}.insteadOf", rewrite[1])
-        if "" in keys:  # the report's own git: one that predates the reset keeps an empty url as a key
-            got = subprocess.run(
-                [str(gitops.usr_bin_git()), "-C", str(repo), "remote", "get-url", "origin"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            if setup_report.origin_label(got) != said:
-                continue  # CI's macos-15 /usr/bin/git: the report reads the list as a newer git does
+        # B13 round 24 B101: on every git, as the report's own git reads the list (an older one, CI's macos-15
+        # /usr/bin/git, keeps an empty url as a key and fetches from the first), never skipped
+        older = "" in keys and setup_report._git_keeps_empty_url(run, repo)
+        expect = "other (redacted) (2 url keys, git fetches from the first)" if older else said
         facts = setup_report._checkout_facts(run, repo)
-        assert f" · origin: {said} · " in facts, (keys, rewrite, facts)
+        assert f" · origin: {expect} · " in facts, (keys, rewrite, facts)
         assert "contoso" not in facts
+
+
+def test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_claims_no_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 24 B101 (A24's known limit): on a git that keeps an empty ``url =`` as a key, ``remote
+    get-url`` gives the first key, so an origin of [mirror, "", github] with no insteadOf read "origin:
+    github.com/<slug> (a URL rewrite sends it elsewhere)" while git fetched from the mirror. The report asks
+    its own git which list it uses, labels the URL that git fetches from, and claims a rewrite only when an
+    insteadOf changes that URL. This Mac's git clears the list, so the older git's answer is faked."""
+    github = "https://github.com/renchris/agent-context-sync.git"
+    mirror = "https://git.contoso.example/mirror/agent-context-sync.git"
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    probe = [
+        "-c",
+        "remote.p.url=a:x",
+        "-c",
+        "remote.p.url=",
+        "-c",
+        "remote.p.url=b:x",
+        "ls-remote",
+        "--get-url",
+    ]
+    got = subprocess.run(
+        [str(gitops.usr_bin_git()), *probe, "p"], capture_output=True, text=True, cwd=tmp_path, check=False
+    )
+    assert got.returncode == 0, "the probe needs no repository"
+    assert setup_report._git_keeps_empty_url(run, tmp_path) is (got.stdout.strip() == "a:x")
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-q", "-m", "one")
+    for key in (mirror, "", github):
+        git("config", "--add", "remote.origin.url", key)
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    monkeypatch.setattr(setup_report, "_git_keeps_empty_url", lambda _r, _d: True)
+    facts = setup_report._checkout_facts(run, repo)
+    assert " · origin: other (redacted) (2 url keys, git fetches from the first) · " in facts, facts
+    # an insteadOf that rewrites only the second key changes nothing git fetches from
+    git("config", "url.https://git.contoso.example/other/.insteadOf", "https://github.com/renchris/")
+    facts = setup_report._checkout_facts(run, repo)
+    assert "a URL rewrite" not in facts and "contoso" not in facts, facts
+    # one that rewrites the first is said, by label
+    git("config", "url.https://github.com/renchris/.insteadOf", "https://git.contoso.example/mirror/")
+    facts = setup_report._checkout_facts(run, repo)
+    assert (
+        " · origin: other (redacted) (2 url keys, git fetches from the first; a URL rewrite sends it "
+        in facts
+    )
 
 
 def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:

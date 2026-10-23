@@ -4660,12 +4660,19 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     # (B13 round 23 A24, A50, A90)
     rc, out = _git_ro(r, directory, "config", "--get-all", "remote.origin.url")
     keys = out.decode("utf-8", "replace").split("\n")[:-1] if rc == 0 else []
-    urls = keys[len(keys) - keys[::-1].index("") :] if "" in keys else keys
+    # B13 round 24 B101: an older git (CI's macos-15 /usr/bin/git) keeps an empty url as a key and fetches
+    # from the first: the report's own git says which, by a probe that needs no repository
+    if "" in keys and _git_keeps_empty_url(r, directory):
+        urls = [key for key in keys if key]
+    else:
+        urls = keys[len(keys) - keys[::-1].index("") :] if "" in keys else keys
     label = origin_label(urls[0]) if urls else "none"
     text += f" · origin: {label}"
     notes = [f"{len(urls)} url keys, git fetches from the first"] if len(urls) > 1 else []
-    rc, url = _git_ro(r, directory, "remote", "get-url", "origin")
-    if rc == 0 and label != "none" and origin_label(url.decode("utf-8", "replace")) != label:
+    # a rewrite only when an insteadOf changes that first URL (B13 round 24 B101): ``remote get-url`` gives
+    # an older git's first key, before an empty one, which no rewrite sent anywhere
+    rewritten = _rewritten_url(r, directory, urls[0]) if urls else None
+    if rewritten is not None and label != "none" and origin_label(rewritten) != label:
         notes.append("a URL rewrite sends it elsewhere")
     text += f" ({'; '.join(notes)})" if notes else ""
     rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
@@ -4679,6 +4686,42 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
             if extra:
                 on_main += ", " + ", ".join(extra)
     return text + f" · on origin/main: {on_main} ({_last_fetch(r, directory)})"
+
+
+def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
+    """Whether the report's git keeps an empty ``url =`` as a key, as one older than the reset does, and so
+    fetches from the first non-empty key: ``ls-remote --get-url`` of a remote given on the command line as
+    ``probe-a``, an empty url and ``probe-b`` prints ``probe-a`` there and ``probe-b`` on a git that clears
+    the list (B13 round 24 B101). Needs no repository; False when git cannot say."""
+    rc, out = _git_ro(
+        r,
+        directory,
+        "-c",
+        "remote.zprobe.url=probe-a:x",
+        "-c",
+        "remote.zprobe.url=",
+        "-c",
+        "remote.zprobe.url=probe-b:x",
+        "ls-remote",
+        "--get-url",
+        "zprobe",
+    )
+    return rc == 0 and out.decode("utf-8", "replace").strip() == "probe-a:x"
+
+
+def _rewritten_url(r: _Run, directory: Path, url: str) -> str | None:
+    """``url`` as git's URL rewrites send it (``url.<base>.insteadOf``, the longest value that prefixes it, as
+    git picks), None when none does or git's config cannot be read (B13 round 24 B101)."""
+    rc, out = _git_ro(r, directory, "config", "--get-regexp", r"^url\..*\.insteadof$")
+    if rc != 0:
+        return None
+    best: tuple[str, str] | None = None
+    for line in out.decode("utf-8", "replace").splitlines():
+        key, _, value = line.partition(" ")
+        base = key[len("url.") : -len(".insteadof")] if key.lower().endswith(".insteadof") else ""
+        if base and value and url.startswith(value) and (best is None or len(value) > len(best[1])):
+            best = (base, value)
+    return None if best is None else best[0] + url[len(best[1]) :]
 
 
 def _last_fetch(r: _Run, directory: Path) -> str:
