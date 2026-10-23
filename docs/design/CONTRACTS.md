@@ -29207,7 +29207,41 @@ engine reads the image).
 
 ### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
 
-Reserved for round 24 lane D of B13.
+Lane D's round 24 items (`docs/plans/bring-back-ocr.md`, "B13 round 24"; specs `round24/items/B<n>.md`, the
+verifier's corrected fix built): B76, B77, B84 and B98. None makes things worse.
+
+**The guide's waiting stub was never read** (B76; `docs/deploy/setup-feedback.md`). The Repeat conversions row
+called a `no converter` stub "an image that run read with no OCR engine", and the first run with a converter one
+that reads it "again"; `_no_converter` decides that stub from the file's name, and no byte of it is read
+(§16.168 A63 says "an image with no OCR engine"). The row says the run had no OCR engine for it and stubbed it by its
+name, and that the first run with a converter reads it if the file is on this Mac by then: an online-only or Graph
+image keeps its stub, as `_no_converter` says. The spec said no test pinned the phrase; one did, and it
+reads the docstring's `no byte is read for it` now. Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`.
+
+**§16.42 names the ten converters** (B77; dated line at §16.42). §16.168 A65's line counts a label rule with an
+engine as "the ten, pandoc-gfm a second time and msg-mime", and §16.42 never said which ten: the ten every
+`Registry.default` holds, whatever its policy and engine (`Registry([])` holds none, so not "every registry"). A
+dated line after A65's names them and how 11, 12 and 13 follow. Test:
+`test_convert_core.py::test_the_ten_converters_every_default_registry_holds_are_named_in_the_contract`, which reads
+the ten from the registry under no rule, each label rule, and with and without an engine.
+
+**The `<value>` row names both reports that cut a hold** (B84; `docs/deploy/setup-feedback.md`). Since §16.165 A8
+install.sh's `hold_cut` cuts a hold's reason and owner in the fallback report in the agentsync report's words; the
+row named only the agentsync report. It names both. `hold_cut` reads one line at a time, so until §16.172 B51 (lane
+RB, which this lane's measurement on a copy of the function reported) a reason of several lines passed the shell
+report unchanged; the row says the fallback report cuts it line by line since B51, and keeps "each counted as a
+`<value>`" to the agentsync report (`hold_cut` counts nothing). The spec's second half, removing the dead alias
+`cli.PERSONS_KINDS`, landed as §16.172's B68 (lane RB, a11cbcd2), the same change; this lane's copy was dropped at
+the rebase. Test: `test_the_value_row_names_both_reports_that_cut_a_holds_reason`.
+
+**CI's time is the time of round 23's jobs** (B98). Round 23's thirteen ci jobs (ed901cd3 to b1f4a087, read with
+`gh run view --json jobs`, all on attempt 1) took 24:34 to 32:18, four past 30 and the red one (run 39809607845 on 38727270: one
+lock-wait test and two empty-url rows, fixed by 46880b9e and 193c4e5d) the slowest; five runs waited for a macOS
+runner, from the run appearing to its job starting: 47:54, 46:20, 34:01, 30:09 and 10:50, against the 21 and 17
+CLAUDE.md gave. CLAUDE.md gives `about 18 to 33 minutes` with the thirteen beside round 22's and the waits measured,
+`docs/lanes/COMMON.md` says the same, and ci.yml's note adds a sentence after round 22's. The limit stays 45, 12
+minutes above 33; a wait does not count against `timeout-minutes`. §16.169's record stays. Test:
+`test_claude_md_gives_cis_time_and_its_limit`.
 
 ### 16.177 Round 24: the test suite's remaining script execs (2026-10-22, wave B13 round 24 lane K)
 
