@@ -6120,6 +6120,35 @@ def test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date() -> 
     assert b97 < b80 and k10.endswith("words: B97's line above).")
 
 
+def test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case() -> None:
+    """B13 round 25 D59: round 24's B105 clause went in between "are read the same way" and its "since step 2
+    stops on them at its status step", so the guide said another account's usable file stops nothing because
+    step 2 stops on it. The "since" clause is back on "the same way", and B105's rule is a sentence of its
+    own. governance/ was judged by its owner first (round 24 B61); lane B's round 25 D45 keys status on what
+    a hold does, and install.sh follows it: another account's usable governance/ stops nothing, and only a
+    hold file another account owns in a sticky governance/ not this account's is `state-file-owner`. Once
+    install.sh's owner-first skip is gone, its skip holds that sticky case."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    if 'name != "governance" or st.st_uid == os.getuid()' not in install:
+        assert 'theirs = sticky and name in ("holds", "queue", "suppressed") and p.lstat().st_uid' in install
+        assert "if os.access(p, need) and not theirs:" in install
+    page = " ".join(_feedback_page().split())
+    assert (
+        "audit.jsonl, are read the same way, since step 2 stops on them at its status step (round 23 A17,"
+        " A83: the list said `(none is needed)` over them), each by the access the step that uses it needs"
+    ) in page
+    assert (
+        "taken for read by no check). Another account's file that this one can use as its step needs stops"
+        " nothing (B105), governance/ included (round 25 D45: status judges that folder by what a hold does,"
+        " not by its owner), except holds.json, the purge queue or suppressed.json when another account owns"
+        " it in a sticky governance/ that is not this account's, where no rename replaces it: that one is"
+        " `state-file-owner`."
+    ) in page
+    assert "stops nothing (B105), since step 2 stops on them" not in page and "by its owner first" not in page
+    b105 = " ".join(_contracts_section("**Step 1 judges each status-step file by the access", "\n\n").split())
+    assert "Amended 2026-10-23, §16.182 D59: access is judged first except for governance/" in b105
+
+
 def test_the_reports_lost_manifest_line_is_status_with_its_pointer_turned() -> None:
     """B13 round 25 D67: §16.171 and `_LOST_MANIFEST_LINE`'s docstring called the report's line status's
     own, while it ends `see Doctor's state_dir.manifest line` where status says `see state_dir.manifest`: the

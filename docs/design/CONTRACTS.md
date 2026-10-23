@@ -29107,7 +29107,12 @@ the lock and governance/ by the same access. Tests: the suppressed, audit, read-
 queue and suppressed.json, 0200 audit.jsonl: nothing said), lock-0400, governance-0500, two-shut (names holds.json),
 foreign-heartbeat and foreign-lock (a root-owned 0644 file hard-linked in) cases of
 `test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file`; its read-only volume case is
-the lock's, as a heartbeat there is read, never written in place.
+the lock's, as a heartbeat there is read, never written in place. Amended 2026-10-23, §16.182 D59: access is judged
+first except for governance/, which the lane's review judged by its owner first (status then FAILed another
+account's governance/ even when usable, §16.174 B61); round 25 judges it by access too (lane B's D45 keys status on
+what a hold does; lane RB's install.sh follows), and only holds.json, the purge queue or suppressed.json that another
+account owns in a sticky governance/ that is not this account's is `state-file-owner` though usable;
+docs/deploy/setup-feedback.md says so.
 
 **A refusal says no change of its mode fixes it** (B5, B15; amends §16.154 Y24 and §16.166 A75). The person's NEXT
 and the `state-refused`, `state-side-refused` and `state-file-refused` tails said `and a chmod of it does not fix
@@ -29674,3 +29679,16 @@ runs as `#!` in test_deploy_pack; lane K's census gave it 48 and left 4 with no 
 traces (python3.11 runs /bin/bash, which runs install.sh) is followed by test_install_oneshot's basetemp paths
 alone. The record reads `install.sh 52: 48 in test_deploy_pack and 4 in test_install_oneshot`. Test:
 `test_the_exec_census_gives_install_shs_execs_to_both_test_files`.
+
+**The guide's B105 rule is a sentence of its own** (D59; `docs/deploy/setup-feedback.md`; dated line at §16.173
+B105). Round 24's B105 clause went in between "are read the same way" and its "since step 2 stops on them at its
+status step" (1fdcd3bb), so the guide said another account's usable file stops nothing because step 2 stops on it.
+The "since" clause is back on "the same way", and B105's rule is its own sentence. The spec added governance/'s
+exception (install.sh judged it by its owner first, as status FAILed another account's usable governance/, B61);
+the fresh review found lane B's round 25 D45 keys status on what a hold does instead, and lane RB's install.sh
+follows it (sent to both): access is judged first for governance/ too, and only holds.json, the purge queue or
+suppressed.json that another account owns in a sticky governance/ that is not this account's, where no rename
+replaces it, is
+`state-file-owner`. The guide and the dated line at §16.173 say that form. The test reads install.sh: once its
+owner-first skip is gone it must hold the sticky case. Test:
+`test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case`.

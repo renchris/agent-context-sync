@@ -720,14 +720,17 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   chmod (`agentsync's state folder is not a folder (...): fixing it is the person's (they move it aside, keeping a
   copy), not a step for the agent, ...`). When none of those is said, the files status checks by name, the lock,
   the heartbeat, governance/ and its holds.json, purge queue, suppressed.json and audit.jsonl, are read the same way,
+  since step 2 stops on them at its status step (round 23 A17, A83: the list said `(none is needed)` over them),
   each by the access the step that uses it needs (the lock read and write, governance/ read, write and search,
   audit.jsonl write, which status opens to append, and the others read, since each writer replaces its file through
   the folder; round 24 B10, B54, B59, B81: a 0400 heartbeat was said to stop step 2, which ended 0, and a shut
-  audit.jsonl was not, since it was taken for read by no check), and another account's file this one can use as
-  its step needs stops nothing (B105), since step 2 stops on them at its status step (round 23 A17, A83: the list
-  said `(none is needed)` over them). `<file>` names the first one it stopped on, in fixed words (`agentsync's lock
-  file`, `agentsync's heartbeat file`, `agentsync's governance folder`, or `agentsync's governance file
-  holds.json`, `purge-queue.json`, `suppressed.json` or `audit.jsonl`; round 24 B13: it named the class):
+  audit.jsonl was not, since it was taken for read by no check). Another account's file that this one can use as
+  its step needs stops nothing (B105), governance/ included (round 25 D45: status judges that folder by what a hold
+  does, not by its owner), except holds.json, the purge queue or suppressed.json when another account owns it in a
+  sticky governance/ that is not this account's, where no rename replaces it: that one is `state-file-owner`.
+  `<file>` names the first one it stopped on, in fixed words (`agentsync's lock file`, `agentsync's heartbeat
+  file`, `agentsync's governance folder`, or `agentsync's governance file holds.json`, `purge-queue.json`,
+  `suppressed.json` or `audit.jsonl`; round 24 B13: it named the class):
   `state-file-owner`, `; step 2 stops at its status step on <file>, which another account owns, so this one cannot
   use it as its step needs (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
   ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot
