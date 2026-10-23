@@ -1744,6 +1744,104 @@ agentsync_dir_values() {
 			if (ok && out != "" && !(k in seen)) { seen[k] = 1; print k "\t" out }
 		}' "$CONFIG" 2>/dev/null || true
 }
+# Each legal or records hold's reason and owner as agentsync reads them, as setup_report._hold_values gives them
+# (B13 round 24 B51, the shell twin of round 23 A8): [governance] hold_reason and hold_owner of the config, in
+# any of TOML's four string forms (a multi-line """...""" or \'\'\'...\'\'\' keeps its inner newlines, which
+# Hold.describe() prints, so no line of it carries the " — set by " hold_cut anchors on), and the reason and
+# owner of each hold in the state folder's governance/holds.json (JSON escapes). Each value stripped, then each
+# of its lines stripped, and each part of a line a TAB splits (a pair holds no TAB); one a line. Not the
+# fallbacks Hold.describe() prints for a missing value ("hold = true", "sources.toml"), which Python does not
+# register either. Every read fails quietly.
+hold_values() {
+	local k v state="" json
+	local -a files=()
+	if [ -f "$CONFIG" ]; then
+		files+=("$CONFIG")
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	json="$state/governance/holds.json"
+	[ ! -f "$json" ] || files+=("$json")
+	[ "${#files[@]}" -gt 0 ] || return 0
+	HOLDS_JSON="$json" LC_ALL=C awk '
+		function hex(h,    i, v) {
+			v = 0; h = tolower(h)
+			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+			return v
+		}
+		function utf8(c) {
+			if (c < 128) return sprintf("%c", c)
+			if (c < 2048) return sprintf("%c%c", 192 + int(c / 64), 128 + c % 64)
+			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
+			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
+		}
+		# a TOML basic string (toml: 1) or a JSON one, its escapes undone; a TOML line-ending backslash drops the
+		# blanks and newlines after it
+		function unesc(s, toml,    out, c, e, x, n) {
+			out = ""; x = "[0-9A-Fa-f]"
+			while (s != "") {
+				c = substr(s, 1, 1); s = substr(s, 2)
+				if (c != "\\") { out = out c; continue }
+				e = substr(s, 1, 1); s = substr(s, 2)
+				if (e == "n" || e == "r") out = out "\n"
+				else if (e == "t") out = out "\t"
+				else if (e == "b") out = out "\b"
+				else if (e == "f") out = out "\f"
+				else if (toml && (e == " " || e == "\t" || e == "\n")) sub(/^[ \t\n]+/, "", s)
+				else if (e == "u" && match(s, "^" x x x x) || toml && e == "U" && match(s, "^" x x x x x x x x)) {
+					n = hex(substr(s, 1, RLENGTH)); s = substr(s, RLENGTH + 1)
+					# a JSON surrogate pair is one code point
+					if (!toml && n >= 55296 && n < 56320 && match(s, "^\\\\u[dD][c-fC-F]" x x)) {
+						n = 65536 + (n - 55296) * 1024 + hex(substr(s, 3, 4)) - 56320; s = substr(s, 7)
+					}
+					out = out utf8(n)
+				} else out = out e
+			}
+			return out
+		}
+		function closer(s, q,    i, k, n) { # where the closing quote q starts in s; 0 when it is not in it
+			n = length(q)
+			for (i = 1; i <= length(s); i++) {
+				if (substr(q, 1, 1) == "\"" && substr(s, i, 1) == "\\") { i++; continue }
+				if (substr(s, i, n) != q) continue
+				for (k = 0; n == 3 && k < 2 && substr(s, i + 3, 1) == substr(q, 1, 1); k++) i++ # """" ends in "
+				return i
+			}
+			return 0
+		}
+		function emit(v,    n, a, i) {
+			n = split(v, a, "\n")
+			for (i = 1; i <= n; i++) print a[i]
+		}
+		{ sub(/\r$/, "") }
+		FILENAME == ENVIRON["HOLDS_JSON"] { text = text $0 "\n"; next }
+		q != "" {
+			buf = fresh ? $0 : buf "\n" $0; fresh = 0
+			if ((i = closer(buf, q))) { emit(q ~ /^"/ ? unesc(substr(buf, 1, i - 1), 1) : substr(buf, 1, i - 1)); q = "" }
+			next
+		}
+		/^[[:space:]]*\[/ { t = $0 ~ /^[[:space:]]*\[[[:space:]]*governance[[:space:]]*\][[:space:]]*(#.*)?$/; next }
+		t && match($0, /^[[:space:]]*hold_(reason|owner)[[:space:]]*=[[:space:]]*/) {
+			v = substr($0, RLENGTH + 1)
+			q = substr(v, 1, 3)
+			if (q != "\"\"\"" && q != "\047\047\047") q = substr(v, 1, 1)
+			if (q != "\"" && q != "\047" && length(q) != 3) { q = ""; next }
+			buf = substr(v, length(q) + 1); fresh = length(q) == 3 && buf == ""
+			if (!fresh && (i = closer(buf, q))) { emit(q ~ /^"/ ? unesc(substr(buf, 1, i - 1), 1) : substr(buf, 1, i - 1)); q = "" }
+			else if (length(q) == 1) q = "" # a one-line string with no closing quote: no value
+		}
+		END {
+			s = text
+			while (match(s, /"(reason|owner)"[[:space:]]*:[[:space:]]*"/)) {
+				s = substr(s, RSTART + RLENGTH)
+				for (i = 1; i <= length(s) && substr(s, i, 1) != "\""; i++) if (substr(s, i, 1) == "\\") i++
+				emit(unesc(substr(s, 1, i - 1), 0)); s = substr(s, i + 1)
+			}
+		}' "${files[@]}" 2>/dev/null || true
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
@@ -2571,6 +2669,31 @@ redaction_pairs() {
 pacv=\1/p' || true
 		} 2>/dev/null
 	)
+	# Each hold's reason and owner (hold_values) is <value>, matched in any case as a whole word (flag i), as
+	# setup_report registers each with ignore_case (B13 round 24 B51: hold_cut works a line at a time, so the
+	# lines of a reason of several lines printed in clear). Last, as Python registers them, so a value another
+	# pair holds keeps that pair's placeholder. A value under 2 characters, and a one-word one the report prints
+	# (report_word, output_word: "legal"), is left out, which would cut that word from every line; the word is
+	# tested without its accents, as Python tests _norm ("Détail" is "detail"). A value holding a TAB, which a
+	# pair cannot hold, also gives each of its parts of 3 characters or more: a shorter one would cut a common
+	# word ("it") from every line.
+	while IFS= read -r v; do
+		w="$v"
+		case "$v" in *$'\t'*) w="$v"$'\n'"$(printf '%s\n' "$v" | LC_ALL=C tr '\t' '\n' | LC_ALL=C awk '{ s = $0; gsub(/^[ ]+|[ ]+$/, "", s); if (length(s) >= 3) print s }' || true)" ;; esac
+		while IFS= read -r v; do
+			v="${v#"${v%%[![:space:]]*}"}"
+			v="${v%"${v##*[![:space:]]}"}"
+			[ "${#v}" -ge 2 ] || continue
+			low="$(printf '%s' "$v" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null |
+				LC_ALL=C sed "s/$(printf '\314')[$(printf '\200')-$(printf '\277')]//g;s/$(printf '\315')[$(printf '\200')-$(printf '\257')]//g" |
+				LC_ALL=C tr '[:upper:]' '[:lower:]')" || low=""
+			case "${low:-$v}" in *[!A-Za-z]*) ;; *)
+				if report_word "$low" || output_word "$low"; then continue; fi
+				;;
+			esac
+			add_forms "$v" "<value>" i
+		done <<<"$w"
+	done < <(hold_values)
 }
 # The values a governance or policy error quotes, as setup_report.Redactor matches them by pattern (B13 round 16
 # T3, round 17 U93): the remote URL in "remote <name> (<url>) exists but [governance] allow_remote", "... is not

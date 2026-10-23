@@ -40,6 +40,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import unicodedata
 import urllib.parse
 from collections.abc import Iterable, Sequence
@@ -50,7 +51,7 @@ from unittest.mock import patch
 import pytest
 
 import exec_stub
-from agentsync import cli, gitops, lints, net, paths, setup_report
+from agentsync import cli, gitops, governance, lints, net, paths, setup_report
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -2602,6 +2603,126 @@ def test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
     ), text
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         assert "Jane Roe" not in path.read_text(encoding="utf-8") and "2026-114" not in path.read_text(), path
+
+
+# B13 round 24 B51: a config hold whose reason has two lines (lane D's), and the refusal that prints it
+_HOLD_TOML = (
+    '[governance]\nhold = true\nhold_reason = """\nMatter Contoso v.\nJane Roe"""\n'
+    "hold_owner = 'Pat Doe'\n\n"
+)
+_HOLD_SAID = (
+    "ERROR: refused: hold all (config): Matter Contoso v.",
+    "Jane Roe — set by Pat Doe since 2026-10-20T10:00:00Z. Release it first (records owner).",
+)
+
+
+def test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 24 B51, A8's shell twin: hold_cut works a line at a time and anchors on " — set by ", which
+    the first line of a reason of several lines lacks, and redaction_pairs registered no hold value, so the
+    matter, the person in the reason and the owner were in clear in the shell fallback report. Each value is a
+    <value> pair now, whole and line by line, as setup_report._hold_values registers it."""
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(_HOLD_TOML)
+    e = {**env, "STUB_DOCTOR_OUT": "\n".join(_HOLD_SAID), "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    assert "ERROR: refused: hold all (config): <value>" in text, text
+    assert "<value> — set by <value> since 2026-10-20T10:00:00Z. Release it first (records owner)." in text
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        shown = path.read_text(encoding="utf-8")
+        for word in ("Matter", "Jane", "Roe", "Pat Doe"):
+            assert word not in shown, (path, [ln for ln in shown.splitlines() if word in ln])
+
+
+def _shell_hold_redact(tmp_path: Path, holds: list[dict[str, str]], said: Sequence[str]) -> list[str]:
+    """``said``'s lines through the real redact_stream (hold_values, redaction_pairs, hold_cut) for a home
+    whose config is :data:`_HOLD_TOML` and whose holds.json holds ``holds``."""
+    home = tmp_path / "home"
+    state = home / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True, exist_ok=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(_HOLD_TOML)
+    (state / "governance" / "holds.json").write_text(json.dumps({"holds": holds}, indent=1))
+    text = INSTALL_SH.read_text()
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    words = re.compile(r"(?ms)^(?:joined_word|report_word|output_word)\(\) \{\n.*?^\}$")
+    helpers += "\n" + "\n".join(m.group(0) for m in words.finditer(text))
+    said_file = tmp_path / "said.txt"
+    said_file.write_text("".join(f"{ln}\n" for ln in said))
+    harness = "\n".join(
+        [
+            "with_timeout() { return 0; }",
+            "repo_slug() { echo contoso/agentsync; }",
+            'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
+            f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
+            helpers,
+            funcs,
+            f"redact_stream <{said_file}",
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.returncode == 0, cp.stderr
+    return cp.stdout.splitlines()
+
+
+def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tmp_path: Path) -> None:
+    """B13 round 24 B51: redact_stream and setup_report's Redactor give the same lines for a config hold of
+    several lines (TOML's multi-line and literal forms) and a hand-edited holds.json reason with a newline
+    and a JSON escape in it, each read by hold_values as _hold_values reads it: the values whole and line by
+    line, in any case, never a one-word value the report prints ("Legal")."""
+    hold = {"owner": "Legal", "reason": "Fabrikam \u00e9 review\nper Quinn Avery", "scope": "alpha"}
+    hold["set_at"] = "2026-10-21T09:00:00Z"  # written as \n and \u00e9: JSON escapes
+    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True)
+    (state / "governance" / "holds.json").write_text(json.dumps({"holds": [hold]}, indent=1))
+    cfg = tmp_path / "home" / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(_HOLD_TOML)
+    gov = governance.load_governance(cfg)
+    said = [
+        *_HOLD_SAID,
+        *(f"HOLD: {h.describe()}" for h in (*governance.config_holds(gov), *governance.state_holds(state))),
+        "the legal team keeps the matter list; MATTER CONTOSO V. stays a word",
+    ]
+    lines = [ln for s in said for ln in s.splitlines()]
+    paths_ = types.SimpleNamespace(root=str(state))
+    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
+    red = setup_report.Redactor()
+    for value in setup_report._hold_values(run):  # as _build_redactor registers them
+        red.add("value", value, ignore_case=True)
+    shown = _shell_hold_redact(tmp_path, [hold], lines)
+    assert shown == [red.redact(ln) for ln in lines], shown
+    for word in ("Matter", "Jane", "Pat", "Fabrikam", "Quinn"):
+        assert word not in "\n".join(shown), shown
+
+
+def test_a_hold_value_never_cuts_a_short_or_report_word_from_the_shell_report(tmp_path: Path) -> None:
+    """B13 round 24 B51 review: a pair holds no TAB, so a value with one also gives its parts, each of 3
+    characters or more: the 2-letter part of "Wingtip<TAB>IT" cut every "it" of the report. And the one-word
+    test reads the value without its accents, as Python's _norm does: "Földer" is the report word "folder",
+    which the bare form a pair adds would have cut from every line."""
+    hold = {
+        "owner": "Wingtip\tIT",
+        "reason": "F\u00f6lder",
+        "scope": "alpha",
+        "set_at": "2026-10-21T09:00:00Z",
+    }
+    shown = _shell_hold_redact(
+        tmp_path, [hold], ["set by Wingtip\tIT", "the folder list and it stay", "the F\u00f6lder list"]
+    )
+    assert shown == ["set by <value>\tIT", "the folder list and it stay", "the F\u00f6lder list"], shown
 
 
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
@@ -14671,7 +14792,9 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 # ---- the shell report's MDM host has its own placeholder (N39) ---------------------------------------------
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
-SHELL_REDACTION_FNS = re.compile(r"(?ms)^(?:redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$")
+SHELL_REDACTION_FNS = re.compile(
+    r"(?ms)^(?:hold_values|redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$"
+)
 
 
 @pytest.mark.parametrize(
@@ -14683,7 +14806,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
     `/usr/bin/profiles` is an absolute path no PATH stub reaches, so the real redaction_pairs and
     redact_stream run with with_timeout answering for it, and id answering for the login and full name."""
     funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(INSTALL_SH.read_text()))
-    assert funcs.startswith("redaction_pairs() {") and "\nredact_stream() {" in funcs
+    assert funcs.startswith("hold_values() {") and "\nredact_stream() {" in funcs
     harness = "\n".join(
         [
             "with_timeout() {",
