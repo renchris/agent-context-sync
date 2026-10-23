@@ -2737,6 +2737,36 @@ def _print_changes_since_checkpoint(layout: DocsLayout) -> None:
     )
 
 
+def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
+    """Print sync's ``error: state:`` line, the person's fix and the NEXT, and return True, when the state
+    folder (or a folder above it) is not a folder or the manifest is lost from a Mac that has synced; else
+    False. Curate's guard (B13 round 24 B89, round 25 D77), shared with ``purge`` and ``compact-history``:
+    over a lost manifest the queue cannot tell a current page from a gone one, and a purge run blind erased
+    current pages and their history (B13 round 26 E25; ruling 14)."""
+    if doctor.state_root_not_folder(config) is not None:
+        # a state folder, or a folder above it, that is not a folder: sync's line and NEXT, exit 1, never
+        # the loop's "cannot read the loop state" WARNING and a "(see NEXT)" with no NEXT (B13 round 24 B89)
+        root = str(expand(config.state_paths.root))
+        said = _misplaced(args, NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), root))
+        if said is not None:
+            _err(said)
+            _misplaced_next(args, said)
+            return True
+    db = expand(config.state_paths.db)
+    if manifest_lost(db):
+        # a manifest lost from a Mac that has synced: sync's line and the person's fix, exit 1, never "0
+        # findings" and a NEXT to run sync again, which stops on it (B13 round 25 D77); curate opens no
+        # manifest, so its guard is here, as B89's is
+        said = _misplaced(
+            args, ManifestLostError(f"{db} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
+        )
+        if said is not None:
+            _err(said)
+            _misplaced_next(args, said)
+            return True
+    return False
+
+
 def _curate_findings(config: Config) -> list[LintFinding]:
     """Every whole-repo land-gate lint, TOPIC-BUDGET and the meeting citation lint's CITE-* (the curation
     findings that stay warnings), then the checkpoint blockers from the base the next sync checks
@@ -2762,27 +2792,8 @@ def _cmd_curate(args: argparse.Namespace) -> int:
     work."""
     config = _config(args)
     layout = config.layout
-    if doctor.state_root_not_folder(config) is not None:
-        # a state folder, or a folder above it, that is not a folder: sync's line and NEXT, exit 1, never
-        # the loop's "cannot read the loop state" WARNING and a "(see NEXT)" with no NEXT (B13 round 24 B89)
-        root = str(expand(config.state_paths.root))
-        said = _misplaced(args, NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), root))
-        if said is not None:
-            _err(said)
-            _misplaced_next(args, said)
-            return EXIT_FAILED
-    db = expand(config.state_paths.db)
-    if manifest_lost(db):
-        # a manifest lost from a Mac that has synced: sync's line and the person's fix, exit 1, never "0
-        # findings" and a NEXT to run sync again, which stops on it (B13 round 25 D77); curate opens no
-        # manifest, so its guard is here, as B89's is
-        said = _misplaced(
-            args, ManifestLostError(f"{db} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
-        )
-        if said is not None:
-            _err(said)
-            _misplaced_next(args, said)
-            return EXIT_FAILED
+    if _lost_state_stop(args, config):
+        return EXIT_FAILED
     findings = _curate_findings(config)
     for f in findings:
         _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
@@ -3004,10 +3015,12 @@ def _print_purge(rep: governance.PurgeReport) -> None:
 
 def _cmd_purge(args: argparse.Namespace) -> int:
     config = _config(args)
+    if args.queue and args.selector:
+        _err("purge: pass SELECTOR or --queue, not both")
+        return EXIT_USAGE
+    if (args.queue or args.selector) and _lost_state_stop(args, config):
+        return EXIT_FAILED  # dry run included: it would plan erasing pages no manifest read (ruling 14)
     if args.queue:
-        if args.selector:
-            _err("purge: pass SELECTOR or --queue, not both")
-            return EXIT_USAGE
         dry_run = bool(args.dry_run)
         reports = governance.run_purge_queue(config, dry_run=dry_run)
         for rep in reports:
@@ -3020,7 +3033,11 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
         stuck, kept = governance.partition_purges(config.state_paths, left)
-        if left and not stuck:
+        if kept and all(why == governance.UNJUDGED_NOTE for _q, why in kept):
+            # kept for the state file, not for a listed file: no manifest read judged them (E25)
+            blind = "while the state file cannot be read"
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {blind}")
+        elif left and not stuck:
             _out(
                 f"{plural(ran, 'queued purge')} run; {len(kept)} "
                 + (
@@ -3054,6 +3071,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
 
 def _cmd_compact(args: argparse.Namespace) -> int:
     config = _config(args)
+    if _lost_state_stop(args, config):
+        return EXIT_FAILED  # its squash would strand the restored manifest's recovery hints (ruling 14)
     rep = governance.compact_history(config, args.keep_days, dry_run=bool(args.dry_run))
     state = "dry run" if rep.dry_run else ("VERIFIED" if rep.verified else "NOT VERIFIED")
     _out(

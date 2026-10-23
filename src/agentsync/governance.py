@@ -58,7 +58,7 @@ from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.manifest import Manifest, migration_backups
+from agentsync.manifest import Manifest, manifest_lost, migration_backups
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock, read_regular_text
@@ -2604,16 +2604,60 @@ KEPT_REASONS = (PurgeReason.UPSTREAM_DELETED, PurgeReason.LABEL_ESCALATION)
 """The reasons :func:`_kept_why` judges: the cycle queues both for a file that may be listed again later."""
 
 
-def _kept_queued(db: Path, q: QueuedPurge) -> str:
-    """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest)."""
-    if q.reason not in KEPT_REASONS or not db.exists():
-        return ""
-    Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
-    conn = _connect(db)
+UNJUDGED_NOTE = (
+    "not judged: agentsync's state file is missing or unreadable, so nothing says whether its file is listed "
+    "or published again; it stays queued until the state_dir.manifest [FAIL] line is fixed"
+)
+"""Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry while the manifest cannot be read
+(:func:`_unjudged`): run blind, it erased a current page and its history (B13 round 26 E25; ruling 14)."""
+
+UNJUDGED_PURGES = (
+    "queued purge(s) wait on agentsync's state file: the state_dir.manifest [FAIL] line says what to do "
+    f"first; `{AGENTSYNC_BIN} purge --queue` refuses until then"
+)
+"""The note after the count of :data:`UNJUDGED_NOTE` entries in the loop, status, doctor and STATE.md: no
+wait and no invitation to ``purge --queue``, which refuses over a lost manifest (ruling 14), and never
+:data:`KEPT_ESCALATIONS`' words, which claim a label policy no read confirmed."""
+
+
+def _unjudged(db: Path) -> bool:
+    """Whether no queued ``upstream-deleted`` or ``label-escalation`` entry can be judged because the manifest
+    is lost from a Mac that has synced (``manifest.manifest_lost``), or something other than a regular file
+    is there (a folder, a fifo, a socket, a link to nothing, a link loop or through a file), judged by stat so
+    nothing opens a fifo. A plain missing manifest with no heartbeat record (a first sync, or the person's new
+    start) is no read to wait for, as before (B13 round 26 E25; ruling 14)."""
+    if manifest_lost(db):
+        return True
     try:
-        return _kept_why(conn, _read_manifest(conn), q)
-    finally:
-        conn.close()
+        st = db.stat()
+    except FileNotFoundError:
+        return os.path.lexists(db)  # a link to nothing; a plain missing file is a first start
+    except OSError:  # a loop, a link through a file, a folder above it this account cannot search
+        return True
+    return not stat.S_ISREG(st.st_mode)
+
+
+def _kept_queued(db: Path, q: QueuedPurge) -> str:
+    """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest);
+    :data:`UNJUDGED_NOTE` when the manifest is lost, not a file or unreadable, never "", which ran the entry
+    blind (B13 round 26 E25)."""
+    if q.reason not in KEPT_REASONS:
+        return ""
+    db = expand(db)
+    if _unjudged(db):
+        return UNJUDGED_NOTE
+    if not db.exists():
+        return ""
+    try:
+        Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
+        conn = _connect(db)
+        try:
+            return _kept_why(conn, _read_manifest(conn), q)
+        finally:
+            conn.close()
+    except (AgentSyncError, sqlite3.Error) as exc:
+        log.warning("governance: cannot judge queued purge %s: %s", q.selector, exc)
+        return UNJUDGED_NOTE
 
 
 def _kept_why(
@@ -2686,11 +2730,19 @@ def partition_purges(
     keeps queued with why: an upstream deletion of a file the manifest lists again, or a label escalation of a
     file the policy publishes again (:func:`_kept_why`, the rule the run itself applies).  Read-only, the
     manifest is read once, and an entry the cycle queues (a source + id selector) is judged by lookup, so the
-    cost is rows + entries, not their product.  A manifest this build cannot read leaves every entry
-    runnable, as before the kept ones were told apart."""
+    cost is rows + entries, not their product.  A manifest that is lost, not a file or unreadable keeps those
+    entries with :data:`UNJUDGED_NOTE`, never runnable (B13 round 26 E25: run blind, one erased a current
+    page and its history); and with the manifest lost ``purge`` refuses outright, so every other entry is kept
+    with that note too and nothing invites the run (ruling 14)."""
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
-    db = state_paths.db
-    if not db.exists() or all(q.reason not in KEPT_REASONS for q in entries):
+    db = expand(state_paths.db)
+    if entries and manifest_lost(db):
+        return [], [(q, UNJUDGED_NOTE) for q in entries]
+    if all(q.reason not in KEPT_REASONS for q in entries):
+        return entries, []
+    if _unjudged(db):
+        return _unjudged_split(entries)
+    if not db.exists():
         return entries, []
     try:
         Manifest(db).close()
@@ -2714,7 +2766,7 @@ def partition_purges(
             conn.close()
     except (AgentSyncError, sqlite3.Error) as exc:
         log.warning("governance: cannot tell which queued purges stay queued: %s", exc)
-        return entries, []
+        return _unjudged_split(entries)
     return [q for q, why in zip(entries, whys, strict=True) if not why], [
         (q, why) for q, why in zip(entries, whys, strict=True) if why
     ]
@@ -2738,14 +2790,28 @@ KEPT_ESCALATIONS = (
 gone, so the upstream wording would tell the reader the wrong thing."""
 
 
+def _unjudged_split(
+    entries: Sequence[QueuedPurge],
+) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
+    """:func:`partition_purges` when the manifest cannot be read: DLP, erasure and operator entries stay
+    runnable, the ones it judges are kept with :data:`UNJUDGED_NOTE` (B13 round 26 E25)."""
+    return [q for q in entries if q.reason not in KEPT_REASONS], [
+        (q, UNJUDGED_NOTE) for q in entries if q.reason in KEPT_REASONS
+    ]
+
+
 def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
     """The kept entries of :func:`partition_purges` as one ``<count> <note>`` per reason: the upstream
-    deletions (:data:`KEPT_PURGES`) apart from the label escalations (:data:`KEPT_ESCALATIONS`)."""
-    escalations = sum(1 for q, _why in kept if q.reason is PurgeReason.LABEL_ESCALATION)
-    upstream = len(kept) - escalations
+    deletions (:data:`KEPT_PURGES`) apart from the label escalations (:data:`KEPT_ESCALATIONS`), and the ones
+    no manifest read judged (:data:`UNJUDGED_PURGES`) apart from both (B13 round 26 E25)."""
+    unjudged = sum(1 for _q, why in kept if why == UNJUDGED_NOTE)
+    judged = [(q, why) for q, why in kept if why != UNJUDGED_NOTE]
+    escalations = sum(1 for q, _why in judged if q.reason is PurgeReason.LABEL_ESCALATION)
+    upstream = len(judged) - escalations
     return [
         *([f"{upstream} {KEPT_PURGES}"] if upstream else []),
         *([f"{escalations} {KEPT_ESCALATIONS}"] if escalations else []),
+        *([f"{unjudged} {UNJUDGED_PURGES}"] if unjudged else []),
     ]
 
 

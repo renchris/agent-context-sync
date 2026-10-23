@@ -661,6 +661,92 @@ def test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_fi
     assert len(queue) == 1 and not kept
 
 
+def test_over_a_lost_manifest_no_queued_purge_is_invited_or_run(
+    tmp_path: Path, fixture_files: dict[str, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 26 E25 (ruling 14): with the manifest lost after earlier syncs, partition_purges read every
+    entry as runnable, status and the sync invited `purge --queue`, and the run erased a current page and its
+    whole history. No entry is judged without a manifest read: the loop invites nothing, the governance run
+    keeps the escalation, and `purge` (the queue, its dry run and a selector) stops on sync's own line with
+    the person's fix and writes nothing. Restored, the entry reads "stays queued" again; a DLP entry still
+    runs over a readable manifest; and a first start (no manifest, no heartbeat) is judged as before."""
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{OTHER_LABEL}"]\n')
+    labelled_docx(
+        fixture_files["sample.docx"], src / "hr-review.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0"))
+    )
+    assert run(config).exit_code == 0
+    text = config.config_path.read_text(encoding="utf-8").replace(
+        f'["{OTHER_LABEL}"]', f'["{OTHER_LABEL}", "{LABEL}"]'
+    )
+    assert run(write_config(tmp_path, text)).exit_code == 0
+    loosened = write_config(tmp_path, text.replace(f', "{LABEL}"]', "]"))
+    run(loosened)
+    run(loosened)
+    page = "mirror/src/hr-review.docx.md"
+    assert page_fm(loosened, page)["status"] == "current"
+    root = loosened.state_paths.root
+    dlp = governance.PurgeSelector.parse("docs=mirror/src/README.txt.md", source_id=None)
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION, now=NOW)
+    runnable, kept = governance.partition_purges(loosened.state_paths)
+    assert [q.reason for q in runnable] == [governance.PurgeReason.DLP_REMEDIATION], "a DLP entry runs"
+    assert kept[0][1].startswith("stays queued: the label policy no longer refuses the file"), kept
+    db = loosened.state_paths.db
+    aside = tmp_path / "aside"
+    aside.mkdir()
+    for name in ("", "-wal", "-shm"):
+        side = db.with_name(db.name + name)
+        if side.exists():
+            side.rename(aside / side.name)
+    assert manifest_mod.manifest_lost(db), "heartbeat.json records the earlier passes"
+    repo = loosened.docs_repo
+    qfile = governance._queue_file(root)
+
+    def snapshot() -> tuple[bytes, str, str]:
+        return (
+            qfile.read_bytes(),
+            git(repo, "rev-parse", "HEAD^{tree}"),
+            git(repo, "log", "--all", "--", page),
+        )
+
+    before = snapshot()
+    assert before[2], "the page has history to keep"
+    runnable, kept = governance.partition_purges(loosened.state_paths)
+    assert not runnable and {why for _q, why in kept} == {governance.UNJUDGED_NOTE}, kept
+    step = loop.next_step(loosened)
+    assert not [w for w in step.waits if "purge" in w], step.waits
+    assert f"2 {governance.UNJUDGED_PURGES}" in step.notes, step.notes
+    assert governance.KEPT_ESCALATIONS not in " ".join(step.notes), "no label policy was read"
+    reps = governance.run_purge_queue(loosened, dry_run=True, now=NOW)
+    assert [r.not_run for r in reps if r.reason is governance.PurgeReason.LABEL_ESCALATION] == [
+        governance.UNJUDGED_NOTE
+    ], "the governance run itself never judges the escalation blind"
+    cfg = str(loosened.config_path)
+    line = f"error: state: {db} {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})"
+    for argv in (
+        ["purge", "--queue"],
+        ["purge", "--queue", "--dry-run"],
+        ["purge", "docs=mirror/src/hr-review.docx.md", "--dry-run"],
+        ["compact-history", "--dry-run"],
+    ):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        out = capsys.readouterr()
+        assert out.err.splitlines() == [line], (argv, out)
+        assert [ln for ln in out.out.splitlines() if ln.startswith("NEXT")] == [
+            f"NEXT: {cli.STATE_MISPLACED_COMMAND_STEP}"
+        ], (argv, out.out)
+        assert snapshot() == before, argv
+        assert not db.exists(), "no new manifest started"
+    for p in aside.iterdir():
+        p.rename(db.with_name(p.name))
+    runnable, kept = governance.partition_purges(loosened.state_paths)
+    assert [q.reason for q in runnable] == [governance.PurgeReason.DLP_REMEDIATION]
+    assert kept[0][1].startswith("stays queued: the label policy no longer refuses the file"), kept
+    # a first start: no manifest and no heartbeat record judges as before (nothing to wait for)
+    first = governance._unjudged(tmp_path / "nowhere" / "manifest.sqlite")
+    assert first is False
+
+
 def test_a_policy_rescreen_is_counted_apart_on_the_sync_line(
     tmp_path: Path, fixture_files: dict[str, Path], capsys: pytest.CaptureFixture[str]
 ) -> None:
