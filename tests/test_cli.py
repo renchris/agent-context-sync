@@ -4809,6 +4809,46 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix(
             target.chmod(0o600)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes a mode-400 file")
+def test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sync_names(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 24 B58: agentsync.lock at 0400 passed status ("lock — free", exit 0), whose reads open it
+    read-only, while every sync's read-write open stopped on it and its NEXT sent the agent to a [FAIL] line
+    status never printed. Status makes the sync's open (no create, no flock) and FAILs it with the fix sync's
+    error: state: line names; another account's lock this account can write still passes."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = Path(os.path.realpath(expand(initialised.state_paths.root)))
+    lock = expand(initialised.state_paths.lock)
+    lock.chmod(0o400)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        said = capsys.readouterr()
+        whose = setup_report._refused_files(initialised).get("lock")  # not an "unexpected" FAIL in the report
+        with monkeypatch.context() as other:  # another account's (a sudo sync's): the person's chown
+            me = os.getuid()
+            other.setattr(doctor.os, "getuid", lambda me=me: me + 1)
+            theirs = {r.name: r for r in doctor._check_lock(initialised)}["lock"]
+            chown = doctor._persons_chown(root)
+    finally:
+        lock.chmod(0o600)
+    fix = f"chmod 600 {doctor._shell_path(lock)}"
+    assert rc == cli.EXIT_FAILED, out
+    (line,) = [ln for ln in out if ln.startswith("[FAIL] lock ")]
+    assert line.endswith(f"cannot be opened: Permission denied (fix: {fix})"), line
+    assert f"(fix: {fix})" in said.err, said.err
+    assert whose == setup_report._AGENTS, whose
+    assert not theirs.ok and theirs.fix == chown, theirs
+    assert lock.stat().st_size == 0 or SingleWriterLock.is_held(lock) is False  # nothing taken or created
+    with monkeypatch.context() as other:  # another account's lock that this one can write: sync runs
+        me = os.getuid()
+        other.setattr(doctor.os, "getuid", lambda me=me: me + 1)
+        assert {r.name: r for r in doctor._check_lock(initialised)}["lock"].ok
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check(
     initialised: Config, capsys: pytest.CaptureFixture[str]

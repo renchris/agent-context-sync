@@ -2716,6 +2716,14 @@ def _check_lock(config: Config) -> list[CheckResult]:
     try:
         if not path.exists():
             return [_ok("lock", "no lock file yet")]
+        try:
+            # the open a sync's acquire makes, less O_CREAT and the flock, so status creates and locks
+            # nothing: a lock this account can read but not write passed, while every sync stopped on it
+            # (B13 round 24 B58). Keyed on that open, not the owner: another account's writable lock runs
+            os.close(os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW))
+        except OSError as exc:
+            if (refused := refused_state_path(config, "lock", exc)) is not None:
+                return [refused]  # its mode, its owner or a read-only volume, as sync's error: state: line
         held = SingleWriterLock.is_held(path)
         body = SingleWriterLock.read_body(path).strip()
         desc = SingleWriterLock.describe(path)

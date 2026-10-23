@@ -10211,7 +10211,8 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
 
 
 def _refused_files(c: Config) -> dict[str, str]:
-    """``{check: whose}`` for each state file a doctor check reads by name, the lock, the heartbeat,
+    """``{check: whose}`` for each state file a doctor check reads by name, the lock (read and written: B13
+    round 24 B58), the heartbeat,
     holds.json, the purge queue, the suppression list and the audit trail (written: B13 round 23 A79), that
     exists and this account cannot read (``os.access``; the audit trail, write) or another
     account owns (B13 round 21 Y45: their FAILs were "unexpected"): :data:`_PERSONS` when doctor's fix for it
@@ -10226,7 +10227,8 @@ def _refused_files(c: Config) -> dict[str, str]:
     sp = c.state_paths
     root = expand(sp.root)
     for name, path, access in (
-        ("lock", expand(sp.lock), os.R_OK),
+        # opened read-write by every sync, so status tests it so (B13 round 24 B58)
+        ("lock", expand(sp.lock), os.R_OK | os.W_OK),
         ("heartbeat", expand(sp.heartbeat), os.R_OK),
         ("governance.hold", governance._holds_file(root), os.R_OK),
         ("governance.purge_queue", governance._queue_file(root), os.R_OK),
