@@ -1740,6 +1740,22 @@ def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
     return [loop.NEXT_PREFIX + fixes[0], *_docs_waits(config)] if fixes else []
 
 
+def _manifest_first(checks: Sequence[doctor.CheckResult]) -> str | None:
+    """The NEXT step of the first state_dir.manifest FAIL (:func:`_fail_step`), or None: that FAIL leads,
+    never another FAIL's fix sorted ahead of it (an agent's "then run sync", which stops on the manifest) nor
+    the loop's skill or sign-in step (B13 round 25 D43, lane B's reviewer)."""
+    fail = next((r for r in checks if r.name == "state_dir.manifest" and not r.ok), None)
+    return None if fail is None else _fail_step(fail)
+
+
+def _manifest_first_lines(config: Config, step: loop.NextStep | None, first: str) -> list[str]:
+    """:func:`_manifest_first`'s NEXT with the loop's waits and notes when it read the state (a lost or
+    recorded-unreadable manifest: a queued purge, a breaker, a held listing stay), else the docs repo's."""
+    if step is not None:
+        return dataclasses.replace(step, step=first, rule=1).lines()
+    return [loop.NEXT_PREFIX + first, *_docs_waits(config)]
+
+
 def _docs_waits(config: Config) -> list[str]:
     """The WAITING ON YOU lines that read the docs repo alone (``loop.docs_waits``: the baseline draft), for
     a NEXT the state could not build; never one that reads the state (the purge queue), whose read is the
@@ -1872,11 +1888,11 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
     if not hint_off:
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
-        elif fixes and any(r.name == "state_dir.manifest" and not r.ok for r in checks):
-            # the person's FAIL first, as when the loop cannot read the state: a link to nothing or a loop at
-            # the manifest let the loop read past it, so its "run sync" NEXT sent them to the sync that stops
-            # on it (B13 round 25 D43); the docs repo's waits follow
-            next_lines = [loop.NEXT_PREFIX + fixes[0], *_docs_waits(config)]
+        elif (first := _manifest_first(checks)) is not None:
+            # the person's state_dir.manifest FAIL first: a link to nothing, a loop or a lost manifest let the
+            # loop read past it, so its "run sync" NEXT sent them to the sync that stops on it (B13 round 25
+            # D43); the loop's own waits stay when it read the state, else the docs repo's
+            next_lines = _manifest_first_lines(config, step, first)
         else:
             next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes), config=config)
             if next_lines and next_lines[0].startswith("NEXT: cannot read the state"):
@@ -2534,6 +2550,7 @@ def _report_hooks() -> setup_report.ReportHooks:
     ``loop_checks``: the heartbeat check's report path is the one without them (B13 round 9 K75, round 10
     L49), so a read that succeeds changes no line."""
     fixes: list[str] = []
+    manifest_first: list[str] = []  # the state_dir.manifest FAIL's step, as status leads with it (D43)
     read: list[tuple[loop.NextStep | None, Exception | None]] = []
     seen: list[str] = []  # the check groups doctor started, the last the one a cut-off doctor was in (Y22)
 
@@ -2546,6 +2563,8 @@ def _report_hooks() -> setup_report.ReportHooks:
         results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root))
         fixes[:] = _fail_steps(results)
+        first = _manifest_first(results)
+        manifest_first[:] = [] if first is None else [first]
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
         results = [
@@ -2563,6 +2582,14 @@ def _report_hooks() -> setup_report.ReportHooks:
         read is that step: it is not read twice."""
         if read and read[0][0] is not None and not fixes:
             return read[0][0]
+        if manifest_first:  # status's NEXT for a state_dir.manifest FAIL (B13 round 25 D43)
+            try:
+                step: loop.NextStep | None = loop.next_step(config, fixes=fixes, count_queue=False)
+            except Exception:
+                step = None
+            if step is not None:
+                return dataclasses.replace(step, step=manifest_first[0], rule=1)
+            return _manifest_first_lines(config, None, manifest_first[0])
         try:
             return loop.next_step(config, fixes=fixes, count_queue=False)
         except Exception as exc:

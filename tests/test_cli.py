@@ -4378,7 +4378,9 @@ def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
-@pytest.mark.parametrize("state", ["manifest folder", "state folder file", "state folder 0000", "readable"])
+@pytest.mark.parametrize(
+    "state", ["manifest folder", "state folder file", "state folder 0000", "readable", "lost manifest"]
+)
 def test_status_keeps_the_baseline_wait_when_it_cannot_read_the_state(
     initialised: Config, capsys: pytest.CaptureFixture[str], state: str
 ) -> None:
@@ -4405,6 +4407,9 @@ def test_status_keeps_the_baseline_wait_when_it_cannot_read_the_state(
         root.write_text("not a folder\n", encoding="utf-8")
     elif state == "state folder 0000":
         root.chmod(0)
+    elif state == "lost manifest":  # the loop reads past it: the FAIL leads, the loop's own waits stay (D43)
+        for name in ("", "-wal", "-shm"):
+            db.with_name(db.name + name).unlink(missing_ok=True)
     else:
         (evals / "answers.md").chmod(0o644)  # a FAIL (docs_repo.permissions) over a state that reads
     try:
@@ -4852,13 +4857,18 @@ def test_another_accounts_governance_folder_this_account_can_write_passes_unless
     gov = governance.governance_dir(root)
     owner = ["--owner", "Contoso Legal", "--config", cfg]
     assert cli.main(["hold", "source", "--reason", "matter 7", *owner]) == cli.EXIT_OK
+    queue = governance._queue_file(root)
+    if not queue.exists():
+        queue.write_text("{}\n", encoding="utf-8")
     gov.chmod(0o1777 if sticky else 0o777)
     try:
         me = os.getuid()
         with monkeypatch.context() as other:  # this account is another one: the files are not its own
             other.setattr(cli.os, "getuid", lambda: me + 1)
             checks = cli._governance_folder_checks(initialised)
-            whose = setup_report._refused_files(initialised).get("governance.hold")
+            refused = setup_report._refused_files(initialised)
+            whose = refused.get("governance.hold")
+            queued = refused.get("governance.purge_queue")
         if not sticky:
             assert cli.main(["hold", "all", "--reason", "matter 8", *owner]) == cli.EXIT_OK
     finally:
@@ -4873,7 +4883,17 @@ def test_another_accounts_governance_folder_this_account_can_write_passes_unless
         )
         assert fail.fix is not None and doctor.is_persons_fix(fail.fix) and whose is not None, (fail, whose)
     else:
-        assert checks == [] and whose is None, (checks, whose)
+        assert checks == [] and whose is None and queued is None, (checks, whose, queued)
+    # a sticky folder this account owns: its owner replaces any file in it, another account's included
+    gov.chmod(0o1777)
+    try:
+        with monkeypatch.context() as other:
+            other.setattr(governance, "_holds_file", lambda _root: Path("/etc/hosts"))  # root's file
+            assert governance.sticky_blocker(root) is None
+            other.setattr(governance.os, "getuid", lambda: Path("/etc/hosts").stat().st_uid + 1)
+            assert governance.sticky_blocker(root) is not None  # another account's sticky folder
+    finally:
+        gov.chmod(0o700)
 
 
 def test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang(
@@ -7135,6 +7155,22 @@ def test_a_manifest_link_status_fails_stops_the_sync_on_its_line_and_status_name
     assert re.fullmatch(r"\S+ sync-stop file=manifest rc=1 owner=person kind=misplaced", line), line
     rc, lines = _status(cfg, capsys)
     assert rc == cli.EXIT_FAILED and lines[0].startswith("NEXT: the state_dir.manifest check failed"), lines
+    report = setup_report.default_setup_log().parent / "r.md"
+    assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+    (loop_line,) = [ln for ln in report.read_text(encoding="utf-8").splitlines() if ln.startswith("- Loop: ")]
+    assert "NEXT: the state_dir.manifest check failed" in loop_line, (
+        loop_line
+    )  # status's NEXT, the report's too
+    capsys.readouterr()
+    agent = doctor.CheckResult(
+        name="skill", ok=False, detail="x", severity=doctor.Severity.ERROR, fix="chmod 700 y"
+    )
+    (manifest,) = [
+        r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.manifest" and not r.ok
+    ]
+    assert cli._manifest_first([agent, manifest]) == cli._fail_step(
+        manifest
+    )  # never the agent's fix sorted first
     exc = ManifestPathError(f"{db} cannot be opened", errno.ELOOP if link == "a loop" else errno.ENOENT)
     exc.filename = str(db)
     words = cli._unread_words(exc, config=initialised)  # a link to nothing is no "not a file"

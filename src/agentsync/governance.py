@@ -393,14 +393,17 @@ def _open_audit(path: Path) -> int:
 
 def sticky_blocker(state_dir: Path) -> Path | None:
     """The first file a hold, its release or a queued purge replaces (holds.json, the purge queue, the
-    suppression list) that another account owns in a governance/ folder with the sticky bit set, where no
-    rename replaces another account's file (EPERM) though the folder takes a write; else None. Whose folder it
-    is decides nothing else: another account's folder this account can write works (B13 round 25 D45)."""
+    suppression list) that another account owns in a governance/ folder with the sticky bit set that another
+    account owns too, where no rename replaces it (EPERM) though the folder takes a write; else None. The
+    sticky folder's own owner may replace any file in it, and whose folder it is decides nothing else:
+    another account's folder this account can write works (B13 round 25 D45). Through a link, as a hold
+    writes."""
     gov = governance_dir(state_dir)
     try:
-        if not gov.lstat().st_mode & stat.S_ISVTX:
-            return None
+        st = gov.stat()
     except OSError:
+        return None
+    if not st.st_mode & stat.S_ISVTX or st.st_uid == os.getuid():
         return None
     for path in (_holds_file(state_dir), _queue_file(state_dir), _suppress_file(state_dir)):
         try:

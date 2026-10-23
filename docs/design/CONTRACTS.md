@@ -29722,8 +29722,9 @@ lanes RA and RB before they built their halves.
 `agentsync.ops.doctor`).** One defect from four finders: a folder, a socket or a fifo at the -wal or -shm (or a link
 to nothing whose folder is missing) gave sqlite's CANTOPEN, READONLY or, for a fifo at the -shm, IOERR, and the
 shared `except sqlite3.DatabaseError` arm printed `error: OperationalError: unable to open database file` with no
-fix, no NEXT and no sync-stops.log line, while status FAILed it. `doctor.side_not_a_file_at(db)` finds the side by
-its stat, never by sqlite's code, and `doctor.side_not_a_file(config)` returns it with status's own state_dir.files
+fix, no NEXT and no sync-stops.log line, while status FAILed it. For any code a side can give
+(`doctor.side_may_explain`: CANTOPEN, READONLY, PERM, IOERR), `doctor.side_not_a_file_at(db)` finds the side by its
+stat, never by sqlite's code, and `doctor.side_not_a_file(config)` returns it with status's own state_dir.files
 FAIL; the arm prints `error: state: <detail> (fix: <fix>)`, exits 1 (never 65, so install.sh's `config_failed`
 keeps its `state_side_not_a_file` NEXT), and a foreground sync prints `cli.STATE_MISPLACED_STEP` and records
 `file=manifest-wal|manifest-shm rc=1 owner=person kind=misplaced`; `--mode` and NO_NEXT_HINT runs print the line
@@ -29736,7 +29737,7 @@ with nothing to write end 0 (the pipe takes the write), so it has no stop to wor
 `test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so`.
 
 **D6, D22, D10: a side file is named by its role, its move aside keeps a copy, and it is one line.** The detail is
-`<path> is <kind>, not a file (the state file's write-ahead log)` (`shared-memory file` for the -shm, `the token
+`<path> is <kind>, not a file (the state file's write-ahead log)` (`doctor.SIDE_ROLES`) (`shared-memory file` for the -shm, `the token
 cache` for msal_token_cache.bin), never "not the state file", which the report's outcome read as the manifest; the
 manifest keeps `<db> is <kind>, not the state file` and MANIFEST_FIX. The fix is `the person moves <path> aside,
 keeping a copy`, as install.sh's step 1 and step 2 say it. A non-file side is one state_dir.files FAIL with no ok
@@ -29761,7 +29762,9 @@ stop on the lost-manifest guard. Test: `test_manifest_fix_says_to_move_heartbeat
 folder (B64) or a symlink loop there gave the sync `error: <db> cannot be opened: No such file or directory` (or
 `Too many levels of symbolic links`), no fix and no NEXT. `_misplaced_check` maps ENOENT or ELOOP on the manifest
 to status's state_dir.manifest FAIL (a loop above it still to state_dir), so the sync prints status's line, the
-misplaced NEXT and a stop, and a state_dir.manifest FAIL leads status's NEXT, never the loop's "run sync". Over
+misplaced NEXT and a stop, and the first state_dir.manifest FAIL's step leads status's NEXT and the setup report's
+Loop line, never the loop's "run sync" nor another FAIL's fix sorted ahead of it; when the loop read the state (a
+lost manifest), its waits and notes stay. Over
 earlier passes, a link into a missing or unwritable folder is one FAIL, `<db> is a symlink to <target>, whose
 folder does not exist or refuses a write, and is missing, but heartbeat.json records earlier passes`, fixed by
 `the person removes the link first: rm <db>; then decides: ...` (LOST_MANIFEST_FIX's moves), with no second lost
@@ -29774,7 +29777,7 @@ state file's link points into a missing folder". Tests:
 **D41, D46: nothing that is not a file hangs or crashes a state read.** At the audit trail a folder (EISDIR), a
 socket (EOPNOTSUPP), a loop or a link to a folder ended a hold on a traceback; each is classified as status does,
 and status and the hold say `<audit> is <kind>, not a file (the audit trail) (fix: the person moves <path> aside,
-keeping a copy)`; a link to a regular file still appends. `ops.lock.read_regular_bytes` opens O_NONBLOCK, judges the
+keeping a copy)` (`governance.audit_not_a_file`); a link to a regular file still appends. `ops.lock.read_regular_bytes` (and `read_regular_text`, its UTF-8) opens O_NONBLOCK, judges the
 open file by fstat and raises ValueError for anything not regular; read_heartbeat, manifest_lost, holds.json, the
 lock's body and its holder sidecar, and the unreadable record read through it, and `is_held` takes no flock on a
 non-regular lock, so a fifo there no longer hangs status or, under the lock, every later sync. Tests:
@@ -29816,7 +29819,9 @@ sync again". Tests: `test_curate_and_the_governance_commands_over_a_state_folder
 **D45: another account's governance folder this account can write passes.** Keyed on what a hold does: a folder
 that refuses a write FAILs as before; a writable one passes whoever owns it; a sticky one over another account's
 holds.json, purge queue or suppression list FAILs, `<gov> is a sticky folder and <file> is another account's: a
-hold cannot replace it` (`governance.sticky_blocker`). The report's twin agrees. Test:
+hold cannot replace it` (`governance.sticky_blocker`), unless this account owns the sticky folder, whose owner
+replaces any file in it. The report's twin judges governance.hold, the purge queue and the suppression list by
+access and that sticky case, as status does. Test:
 `test_another_accounts_governance_folder_this_account_can_write_passes_unless_sticky`.
 
 **D47, D48, D49: round 24's seams.** source_statuses' WARNING for a refused heartbeat is the default for a caller

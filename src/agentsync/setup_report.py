@@ -10897,11 +10897,17 @@ def _refused_files(c: Config) -> dict[str, str]:
     ):
         # the lock and the heartbeat by the open a sync makes alone: another account's 0644 heartbeat is read
         # and replaced through the folder, so no status line FAILs it (lane P's B105, B13 round 24)
-        # nor governance.hold's folder and holds.json: a hold writes into another account's folder it can
-        # write and reads another account's holds.json, and only a sticky folder over another account's file
-        # stops it, as status says (B13 round 25 D45, lane B's)
+        # nor the governance files a hold reads and replaces, nor their folder: a hold writes into another
+        # account's folder it can write and replaces another account's file through it; only another
+        # account's sticky folder over another account's file stops it, as status says (B13 round 25 D45)
         folder = path == governance.governance_dir(root)
-        owned = name not in ("lock", "heartbeat", "governance.hold")
+        owned = name not in (
+            "lock",
+            "heartbeat",
+            "governance.hold",
+            "governance.purge_queue",
+            "governance.suppressed",
+        )
         try:
             try:
                 theirs = owned and path.stat().st_uid != os.getuid()
