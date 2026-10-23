@@ -1631,7 +1631,7 @@ def _unread_words(
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
         return "the state file is busy: another agentsync run holds it; try again when it ends"
     side = doctor.side_not_a_file_at(expand(config.state_paths.db)) if config is not None else None
-    if isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc) and side is not None:
+    if isinstance(exc, sqlite3.Error) and doctor.side_may_explain(exc) and side is not None:
         # a -wal or -shm that is not a file: no account's access, "cannot be opened" read as one, beside the
         # state_dir.files FAIL that names the person's move aside (B13 round 25 D8)
         role = doctor.SIDE_ROLES[side.name.removeprefix(config.state_paths.db.name)]  # type: ignore[union-attr]
@@ -1668,6 +1668,10 @@ def _unread_words(
         said = f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
         # this account's access, which the line that judges the path names (B13 round 19 W64; round 21 Y43)
         why = _says_why(config, exc.filename) if exc.errno in (errno.EACCES, errno.EPERM) else None
+        if why and exc.filename is not None:
+            # a state file a check names (the lock, the heartbeat) by its name, as a governance file's is
+            # below (Y45): "a file cannot be opened" beside a state file that reads (B13 round 25 D12)
+            said = f"{Path(os.fsdecode(exc.filename)).name} cannot be opened: {exc.strerror or exc}"
         return f"{said}; {why}" if why else said
     cause = exc.__cause__
     if isinstance(exc, AgentSyncError) and isinstance(cause, PermissionError):
@@ -1708,7 +1712,21 @@ def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
         if not fixes:
             raise
         lines = []
-    return lines or ([loop.NEXT_PREFIX + fixes[0]] if fixes else [])
+    if lines:
+        return lines  # the step's own lines, which carry its waits
+    return [loop.NEXT_PREFIX + fixes[0], *_docs_waits(config)] if fixes else []
+
+
+def _docs_waits(config: Config) -> list[str]:
+    """The WAITING ON YOU lines that read the docs repo alone (``loop.docs_waits``: the baseline draft), for
+    a NEXT the state could not build; never one that reads the state (the purge queue), whose read is the
+    one that failed. A docs repo that cannot be read costs the wait, never the NEXT (B13 round 25 D11, D29:
+    a manifest or state folder that is not one dropped the baseline wait from status, the report's Loop line
+    and its finish)."""
+    try:
+        return [loop.WAIT_PREFIX + w for w in loop.docs_waits(config)]
+    except Exception:
+        return []
 
 
 def _status_checks(
@@ -1770,13 +1788,14 @@ def _listings_unread(
     lost = any(  # missing after earlier passes, not unreadable: its own note (B13 round 24 B36)
         r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST) for r in checks
     )
+    db = Path(state_root) / "manifest.sqlite" if state_root is not None else None
     if lost or isinstance(exc, ManifestLostError):
         note = doctor.LISTING_STATE_LOST_NOTE
+    elif db is not None and doctor.state_file_kind(db) is not None:
+        note = doctor.LISTING_STATE_NOT_FILE_NOTE  # a folder there: not "cannot be read" (D23)
     elif read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
         note = doctor.LISTING_STATE_UNREADABLE_NOTE
-    elif (
-        state_root is not None and doctor.side_not_a_file_at(Path(state_root) / "manifest.sqlite") is not None
-    ):
+    elif db is not None and doctor.side_not_a_file_at(db) is not None:
         note = doctor.LISTING_STATE_SIDE_NOTE  # the person's move aside, not this account's access (D8)
     elif doctor.state_unopenable(exc, state_root):
         note = doctor.LISTING_STATE_SHUT_NOTE
@@ -1832,6 +1851,8 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
             next_lines = step.lines()
         else:
             next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes), config=config)
+            if next_lines and next_lines[0].startswith("NEXT: cannot read the state"):
+                next_lines += _docs_waits(config)  # no FAIL to name: the wait still follows (D11)
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)
@@ -3269,13 +3290,14 @@ def _side_said(args: argparse.Namespace) -> tuple[str, Path] | None:
     result and fix (``doctor.side_not_a_file``), and that side's path; None when none is, or on any error
     (round 25 ruling 12: sync, curate and init print what status prints)."""
     try:
-        result = doctor.side_not_a_file(_config(args))
+        found = doctor.side_not_a_file(_config(args))
     except Exception:  # the error path: never a second error over the first
         return None
-    if result is None:
+    if found is None:
         return None
+    side, result = found
     fix = f" (fix: {result.fix})" if result.fix else ""
-    return f"error: state: {result.detail}{fix}", Path(result.detail.partition(" is ")[0])
+    return f"error: state: {result.detail}{fix}", side
 
 
 def _misplaced_next(args: argparse.Namespace, said: str, path: Path | None = None) -> None:
@@ -3565,7 +3587,7 @@ def _main(argv: Sequence[str] | None) -> int:
             doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
-        side = _side_said(args) if doctor.cannot_open(exc) else None
+        side = _side_said(args) if doctor.side_may_explain(exc) else None
         if side is not None:
             # a -wal or -shm that is not a file (a folder, a socket, a link to nothing): "OperationalError:
             # unable to open database file", no fix, no NEXT and no stop record, while status FAILed it with

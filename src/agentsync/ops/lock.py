@@ -483,7 +483,7 @@ class SingleWriterLock:
     def read_holder(path: Path) -> Mapping[str, object] | None:
         """Return the holder sidecar of the lock at ``path`` (None if absent or unreadable)."""
         try:
-            data = json.loads(_holder_path(path).read_text(encoding="utf-8"))
+            data = json.loads(read_regular_text(_holder_path(path)) or "null")  # never waits on a fifo (D46)
         except (OSError, ValueError):
             return None
         return data if isinstance(data, dict) else None
@@ -623,8 +623,10 @@ def read_regular_bytes(path: Path) -> bytes | None:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
         return None
-    except IsADirectoryError:
-        raise ValueError(f"{path}: not a regular file") from None
+    except OSError as exc:  # a folder (EISDIR), a socket (EOPNOTSUPP on macOS, ENXIO on Linux)
+        if exc.errno in (errno.EISDIR, errno.EOPNOTSUPP, errno.ENXIO):
+            raise ValueError(f"{path}: not a regular file") from None
+        raise
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise ValueError(f"{path}: not a regular file")

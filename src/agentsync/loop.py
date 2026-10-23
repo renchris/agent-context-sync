@@ -1374,17 +1374,7 @@ def next_step(
     questions = _eval_status(eval_dir / "questions.md")
     answers = _eval_status(eval_dir / "answers.md")
     confirmed = questions == "confirmed" and answers == "confirmed"
-    if questions is not None and not confirmed:
-        # Where the two files are, not only their names: whoever confirms them did not write them (v9
-        # rehearsal, 2026-10-07).
-        waits.append(
-            # "up to", "all of them if there are fewer": the skill drafts fewer than 10 for a small mirror,
-            # and the file holds what is left after the operator's cuts, not what was drafted (B13 round 5
-            # F1, F47). No count is read: the operator edits the file by hand.
-            f"the baseline questions are a draft: in {_shown(eval_dir)}, keep up to about 10 in "
-            "questions.md (all of them if there are fewer), correct the answers in answers.md, and change "
-            "both files to status: confirmed"
-        )
+    waits += docs_waits(config)  # the baseline draft's, also status's when the state cannot be read (D11)
     if skill_state(docs) != "current":
         return done(
             f"the agentsync-docs skill is missing or out of date: run `{BIN} sync` (it writes the skill; "
@@ -1469,6 +1459,28 @@ def next_step(
             9,
         )
     return done("nothing to do: session done", 10)
+
+
+def docs_waits(config: Config) -> list[str]:
+    """The WAITING ON YOU lines that read the docs repo alone, never the state: the baseline questions'
+    draft. :func:`next_step` gives them in its order, and status gives them after the NEXT of a FAIL when the
+    state cannot be read, so a broken state folder or manifest no longer drops the operator's reminder (B13
+    round 25 D11, D29: the loop's line said "baseline draft" while no WAITING ON YOU line did)."""
+    eval_dir = expand(config.docs_repo) / _EVAL_DIR
+    questions = _eval_status(eval_dir / "questions.md")
+    answers = _eval_status(eval_dir / "answers.md")
+    confirmed = questions == "confirmed" and answers == "confirmed"
+    if questions is None or confirmed:
+        return []
+    # Where the two files are, not only their names: whoever confirms them did not write them (v9 rehearsal,
+    # 2026-10-07). "up to", "all of them if there are fewer": the skill drafts fewer than 10 for a small
+    # mirror, and the file holds what is left after the operator's cuts, not what was drafted (B13 round 5
+    # F1, F47). No count is read: the operator edits the file by hand.
+    return [
+        f"the baseline questions are a draft: in {_shown(eval_dir)}, keep up to about 10 in "
+        "questions.md (all of them if there are fewer), correct the answers in answers.md, and change "
+        "both files to status: confirmed"
+    ]
 
 
 def next_lines(

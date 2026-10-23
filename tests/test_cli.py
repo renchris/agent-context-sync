@@ -63,6 +63,7 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops import doctor, launchd
+from agentsync.ops import lock as lock_mod
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.paths import expand
 from agentsync.text import plural
@@ -4374,6 +4375,50 @@ def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_
     ]
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+@pytest.mark.parametrize("state", ["manifest folder", "state folder file", "state folder 0000", "readable"])
+def test_status_keeps_the_baseline_wait_when_it_cannot_read_the_state(
+    initialised: Config, capsys: pytest.CaptureFixture[str], state: str
+) -> None:
+    """B13 round 25 D11, D29 (one defect): with the baseline questions a draft, a folder where the manifest
+    belongs, a file where the state folder belongs or a state folder this account cannot search dropped
+    status's WAITING ON YOU line (the loop built it only after its first state read), while the loop's line
+    still said "baseline draft"; the setup report's Loop line lost it with it. The wait reads the docs repo
+    alone: it follows the NEXT, once; a readable state with a FAIL prints it once too."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    root, db = expand(sp.root), expand(sp.db)
+    evals = expand(initialised.docs_repo) / "_eval"
+    evals.mkdir(exist_ok=True)
+    for name in ("questions.md", "answers.md"):
+        (evals / name).write_text("---\nstatus: draft\n---\n", encoding="utf-8")
+        (evals / name).chmod(0o600)
+    (want,) = loop.docs_waits(initialised)
+    if state == "manifest folder":
+        for name in ("", "-wal", "-shm"):
+            db.with_name(db.name + name).unlink(missing_ok=True)
+        db.mkdir(mode=0o700)
+    elif state == "state folder file":
+        root.rename(root.with_name(root.name + ".kept"))
+        root.write_text("not a folder\n", encoding="utf-8")
+    elif state == "state folder 0000":
+        root.chmod(0)
+    else:
+        (evals / "answers.md").chmod(0o644)  # a FAIL (docs_repo.permissions) over a state that reads
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+    finally:
+        if state == "state folder 0000":
+            root.chmod(0o700)
+    assert rc == cli.EXIT_FAILED, out
+    assert out[0].startswith("NEXT: "), out
+    waits = [ln for ln in out if ln.startswith("WAITING ON YOU: ")]
+    assert waits == [loop.WAIT_PREFIX + want], out
+    if state != "readable":
+        assert out[1] == loop.WAIT_PREFIX + want, out
+
+
 @pytest.mark.parametrize("where", ["the state folder", "a folder above it"])
 def test_a_file_where_the_state_folder_or_a_folder_above_it_belongs_is_one_fail_the_persons(
     initialised: Config, capsys: pytest.CaptureFixture[str], where: str
@@ -4899,7 +4944,7 @@ def test_a_link_to_a_file_at_the_audit_trail_still_appends(
     capsys.readouterr()
 
 
-@pytest.mark.parametrize("where", ["heartbeat", "lock", "holds", "heartbeat, no manifest"])
+@pytest.mark.parametrize("where", ["heartbeat", "lock", "holds", "heartbeat, no manifest", "lock holder"])
 def test_a_fifo_at_a_state_file_status_reads_never_hangs_it(
     initialised: Config, capsys: pytest.CaptureFixture[str], where: str
 ) -> None:
@@ -4917,6 +4962,7 @@ def test_a_fifo_at_a_state_file_status_reads_never_hangs_it(
         "heartbeat, no manifest": expand(sp.heartbeat),
         "lock": expand(sp.lock),
         "holds": governance._holds_file(root),
+        "lock holder": lock_mod._holder_path(expand(sp.lock)),
     }[where]
     if where == "heartbeat, no manifest":
         db = expand(sp.db)
@@ -5009,6 +5055,9 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix(
                 assert state_fails or not any("state_dir lines say why" in ln for ln in out), out
                 said = [ln for ln in out if "cannot read the state" in ln]
                 assert said and all(f"the {name} [FAIL] line says why" in ln for ln in said), out
+                # B13 round 25 D12: the file by its name, never "a file", beside a state file that reads
+                named = f"{target.name} cannot be opened: Permission denied; the {name} [FAIL] line says why"
+                assert all(ln.endswith(named) and "a file cannot be opened" not in ln for ln in said), said
         finally:
             target.chmod(0o600)
 
@@ -6847,9 +6896,14 @@ def test_a_sync_stop_on_a_state_folder_that_is_a_file_is_recorded_as_misplaced_n
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a folder of any mode")
-@pytest.mark.parametrize(("side", "mode"), [("-wal", 0o700), ("-shm", 0o700), ("-shm", 0o000)])
+@pytest.mark.parametrize(
+    # a fifo at the -shm: sqlite's IOERR_LOCK; at the -wal a sync with nothing to write ends 0 (the pipe takes
+    # its write), while status FAILs it: no stop to word there
+    ("side", "mode"),
+    [("-wal", 0o700), ("-shm", 0o700), ("-shm", 0o000), ("-shm", None)],
+)
 def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next(
-    initialised: Config, capsys: pytest.CaptureFixture[str], side: str, mode: int
+    initialised: Config, capsys: pytest.CaptureFixture[str], side: str, mode: int | None
 ) -> None:
     """B13 round 25 D2, D8, D21, D70 (ruling 12): a folder at the manifest's -wal or -shm made sync, poll,
     curate and init print "error: OperationalError: unable to open database file" (or "attempt to write a
@@ -6863,11 +6917,15 @@ def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_th
     stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
     stops.parent.mkdir(parents=True, exist_ok=True)
     there.unlink(missing_ok=True)
-    there.mkdir(mode=mode)
+    if mode is None:  # a fifo: sqlite's IOERR, not CANTOPEN (lane B's reviewer)
+        os.mkfifo(there)
+    else:
+        there.mkdir(mode=mode)
     (want,) = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files" and not r.ok]
     said = f"error: state: {want.detail} (fix: {want.fix})"
     role = doctor.SIDE_ROLES[side]
-    assert want.detail == f"{there} is a folder, not a file ({role})", want
+    kind = "a fifo" if mode is None else "a folder"
+    assert want.detail == f"{there} is {kind}, not a file ({role})", want
     assert want.fix is not None and want.fix.endswith(
         f"moves {doctor._shell_path(there)} aside, keeping a copy"
     )
@@ -6891,9 +6949,7 @@ def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_th
         for command in ("init", "curate"):
             rc = cli.main([command, "--config", cfg])
             out = capsys.readouterr()
-            if (
-                rc == cli.EXIT_OK
-            ):  # a read of the state that needs no -shm write gets past a 0700 folder there
+            if rc == cli.EXIT_OK:  # a read of the state that needs no write gets past what is there
                 assert (side, mode) == ("-shm", 0o700), (command, side, mode)
                 continue
             assert rc == cli.EXIT_FAILED and said in out.err.splitlines(), (command, out)
@@ -6901,12 +6957,13 @@ def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_th
             assert "OperationalError" not in out.err + out.out, (command, out)
         assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
         status = capsys.readouterr().out
-        if (side, mode) != ("-shm", 0o700):  # a 0700 -shm: status's read-only open still reads the state
+        if (side, mode) != ("-shm", 0o700):  # status's read-only open reads past a 0700 folder there
             assert f"cannot read the state: {role} is not a file; the state_dir.files line says why" in status
         assert "this account cannot open the state file" not in status, status
         assert "the state file cannot be opened" not in status, status
     finally:
-        there.chmod(0o700)
+        if mode is not None:
+            there.chmod(0o700)
 
 
 def test_a_dangling_manifest_link_followed_by_its_fix_ends_in_a_clean_sync(
@@ -6942,6 +6999,35 @@ def test_a_dangling_manifest_link_followed_by_its_fix_ends_in_a_clean_sync(
     assert re.fullmatch(r"\S+ sync-stop file=manifest rc=1 owner=person kind=misplaced", line), line
     db.unlink()  # and the link removed, as the fix says
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+@pytest.mark.parametrize("where", ["manifest", "-wal"])
+def test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so(
+    initialised: Config, where: str
+) -> None:
+    """B13 round 25 D23 (lane RA's item, this file) and D8: beside a folder where the manifest belongs the
+    incomplete-listing warn said "the state file cannot be read", and beside a folder at the -wal "this
+    account cannot open the state file", while every other line says it is not a file. Each gets its own
+    note, the person's, with the line that says what to do."""
+    cfg = _synced(initialised)
+    assert cfg
+    db = expand(initialised.state_paths.db)
+    for name in ("-wal", "-shm") if where == "-wal" else ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.with_name(db.name + ("" if where == "manifest" else where)).mkdir(mode=0o700)
+    warn = doctor.CheckResult(
+        name="heartbeat.contoso",
+        ok=False,
+        detail=doctor.LISTING_INCOMPLETE + "3 passes",
+        severity=doctor.Severity.WARN,
+        fix="sync again",
+    )
+    exc = sqlite3.OperationalError("unable to open database file")
+    exc.sqlite_errorcode = sqlite3.SQLITE_CANTOPEN  # type: ignore[attr-defined]
+    (out,) = cli._listings_unread([warn], exc, db.parent)
+    note = doctor.LISTING_STATE_NOT_FILE_NOTE if where == "manifest" else doctor.LISTING_STATE_SIDE_NOTE
+    assert out.note == note and out.fix is None, out
+    assert "cannot be read" not in note and "cannot open" not in note
 
 
 def test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing(

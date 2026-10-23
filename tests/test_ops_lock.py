@@ -711,3 +711,28 @@ def test_a_cycle_records_who_started_it_from_the_environment_not_its_mode(
         dataclasses.replace(sample_config, launchd_label_prefix="org.contoso"), mode=CycleMode.POLL
     )
     assert seen == [STARTED_BY_OTHER, STARTED_BY_LAUNCHD, STARTED_BY_LAUNCHD]
+
+
+def test_a_socket_or_folder_at_a_state_file_reads_as_not_a_regular_file(tmp_path: Path) -> None:
+    """B13 round 25 D46 (lane B's reviewer): a socket's open fails with EOPNOTSUPP on macOS (ENXIO on Linux)
+    and a folder's with EISDIR; both read as ValueError, which a heartbeat's readers take as a corrupt file,
+    never a raw OSError."""
+    import socket  # noqa: PLC0415
+
+    folder = tmp_path / "heartbeat.json"
+    folder.mkdir()
+    with pytest.raises(ValueError, match="not a regular file"):
+        lockmod.read_heartbeat(folder)
+    here = Path.cwd()
+    os.chdir(tmp_path)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.bind("s.json")  # relative: a tmp path is longer than AF_UNIX takes
+    finally:
+        os.chdir(here)
+    try:
+        with pytest.raises(ValueError, match="not a regular file"):
+            lockmod.read_regular_bytes(tmp_path / "s.json")
+    finally:
+        sock.close()
+    assert lockmod.read_regular_bytes(tmp_path / "missing.json") is None

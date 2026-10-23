@@ -52,7 +52,7 @@ from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folder
 from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
-from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
+from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat, read_regular_text
 from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
 from agentsync.skill import HELPER_RETRY_CLAUSE
 from agentsync.text import plural
@@ -161,6 +161,13 @@ LISTING_STATE_SHUT_NOTE = (
     "the state_dir [FAIL] lines say what to do first"
 )
 
+# The same note for something other than a file where the state file belongs (a folder): not "cannot be
+# read", beside a state_dir.manifest line that says "is a folder, not the state file" (B13 round 25 D23, lane
+# RA's item, lane B's file; the report's words for its warn say the same).
+LISTING_STATE_NOT_FILE_NOTE = (
+    "as of its last walk: the state file is not a file, so no sync lists it again until the person fixes it; "
+    "the state_dir.manifest [FAIL] line says what to do first"
+)
 # The same note for a side file of the state file (its -wal or -shm) that is not a file: no account's access,
 # so not the shut note's "cannot open", but the person's move aside that state_dir.files names (B13 round 25
 # D8: a folder at the -wal read "this account cannot open the state file").
@@ -1556,10 +1563,10 @@ def side_not_a_file_at(db: Path) -> Path | None:
     return None
 
 
-def side_not_a_file(config: Config) -> CheckResult | None:
-    """Status's own state_dir.files FAIL of a -wal or -shm that is not a file (:func:`side_not_a_file_at`),
-    for the sync's, curate's and init's error line, which print it as status does (round 25 ruling 12); None
-    when every side is a file or status's check raises (the error path never raises a second error)."""
+def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
+    """That side (:func:`side_not_a_file_at`) and status's own state_dir.files FAIL of it, for the sync's,
+    curate's and init's error line, which print it as status does (round 25 ruling 12); None when every side
+    is a file or status's check raises (the error path never raises a second error)."""
     try:
         side = side_not_a_file_at(expand(config.state_paths.db))
         if side is None:
@@ -1568,9 +1575,9 @@ def side_not_a_file(config: Config) -> CheckResult | None:
     except Exception:
         return None
     named = f"{side} is "
-    return next(
-        (r for r in results if r.name == "state_dir.files" and not r.ok and r.detail.startswith(named)), None
-    )
+    found = (r for r in results if r.name == "state_dir.files" and not r.ok and r.detail.startswith(named))
+    result = next(found, None)
+    return None if result is None else (side, result)
 
 
 def _check_state_dir(config: Config) -> list[CheckResult]:
@@ -1839,6 +1846,14 @@ def cannot_open(exc: BaseException) -> bool:
     return _code(exc) in CANNOT_OPEN_CODES
 
 
+def side_may_explain(exc: BaseException) -> bool:
+    """Whether a sqlite ``exc`` is one a side file that is not a file gives: CANTOPEN or READONLY (a folder,
+    a socket, a link to nothing), or IOERR (a fifo: IOERR_LOCK at the -shm, IOERR_WRITE at the -wal,
+    measured by lane B's reviewer), so the stat (:func:`side_not_a_file_at`), never the code, decides (B13
+    round 25 D2)."""
+    return cannot_open(exc) or _code(exc) == sqlite3.SQLITE_IOERR
+
+
 def _sql_name(name: object) -> str:
     """``name`` as a quoted SQL identifier, ``"`` doubled."""
     return '"' + str(name).replace('"', '""') + '"'
@@ -1921,7 +1936,7 @@ def _recorded(db: Path) -> tuple[str, str | None] | None:
     """The error and the command :func:`record_unreadable` kept for the manifest at ``db`` while it is still
     the same file, else None; a record from an older build has no command."""
     try:
-        record = json.loads(db.with_name(_UNREADABLE_RECORD).read_text(encoding="utf-8"))
+        record = json.loads(read_regular_text(db.with_name(_UNREADABLE_RECORD)) or "null")  # no fifo wait
         same = isinstance(record, dict) and record.get("key") == _manifest_key(db)
     except (OSError, ValueError):
         return None
