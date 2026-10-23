@@ -2649,6 +2649,7 @@ class _SyncStop:
     ended_ok: datetime | None
     measured: bool = True  # False when the runs table could not be read: whether one ended 0 is not known
     kind: str = "refused"  # why it stopped: refused, misplaced or lost (B13 round 24 B82; ruling 7)
+    unread: str = ""  # why the runs table was not read, when the report's own read knows (B13 round 25 D4)
 
     @property
     def what(self) -> str:
@@ -3053,6 +3054,8 @@ def compute_outcome(
             detail += "the prompt calls running it again safe"
         elif failing and failing[0] == "config" and config_cause:
             detail = f"install.sh exited {last.rc} at its config step{config_cause}"
+        elif not failing and config_cause and " on the state file's -" in config_cause:  # ruling 12 (D9)
+            detail = f"install.sh exited {last.rc} at its status step{config_cause}"
         else:
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
@@ -4911,6 +4914,9 @@ def _last_rescreen(r: _Run) -> str:
         not db.is_file()
     ):  # a folder where it belongs: sqlite's IOERR fell to the generic words (B13 round 21 Y47)
         return f"not read ({_STATE_NOT_FILE})"
+    side = _side_breaking_read(db)  # B13 round 25 ruling 12 (D20): the -wal is not a file, not access
+    if side is not None:
+        return f"not read ({_why_not_read(_StateSideNotFileError(side))})"
     try:
         conn = _open_manifest_ro(db, 1.0)
         if conn is None:  # its -wal is there and its -shm is not: an open would create one (Y70)
@@ -6900,6 +6906,25 @@ class _StateFolderNotFolderError(_NoStateError):
         self.above = above
 
 
+class _StateSideNotFileError(_NoStateError):
+    """Something other than a file sits where the manifest's -wal belongs (``side``), and sqlite's read-only
+    open of the manifest fails on it (CANTOPEN), while the manifest and its folder open: the person's to move
+    aside, keeping a copy, as Doctor's state_dir.files FAIL says (B13 round 25 ruling 12, D20), never "this
+    account cannot open the state file", which points at a chmod (:func:`_side_breaking_read`)."""
+
+    def __init__(self, side: Path) -> None:
+        super().__init__()
+        self.side = side
+
+    @property
+    def words(self) -> str:
+        """``the state file's -wal is not a file: see Doctor's state_dir.files line``."""
+        return f"the state file's -{self.side.name.rsplit('-', 1)[-1]} is not a file: {_SIDE_SEE}"
+
+
+_SIDE_SEE = "see Doctor's state_dir.files line"
+
+
 def _not_file_error(db: Path) -> _NoStateError:
     """The error for no file where the manifest ``db`` belongs: :class:`_StateFolderNotFolderError` when the
     state folder, or a folder above it, is not a folder (:func:`_not_a_folder_at`), else
@@ -7009,6 +7034,9 @@ class _Mirror:
                     raise _not_file_error(self.db) from None
                 if not stat.S_ISREG(st.st_mode):
                     raise _StateNotFileError
+                side = _side_breaking_read(self.db)  # B13 round 25 ruling 12 (D20): the -wal's, not access
+                if side is not None:
+                    raise _StateSideNotFileError(side)
                 opened = _open_manifest_ro(self.db, 0.5)
             except OSError as exc:
                 if exc.errno in (errno.EACCES, errno.EPERM):
@@ -7264,6 +7292,8 @@ def _why_not_read(exc: BaseException) -> str:
         return _STATE_SHUT
     if isinstance(exc, _StateFolderShutError):
         return _STATE_FOLDER_SHUT
+    if isinstance(exc, _StateSideNotFileError):  # B13 round 25 ruling 12 (D20)
+        return exc.words
     if isinstance(exc, _StateNotFileError):
         return _STATE_NOT_FILE
     if isinstance(exc, _StateGovernanceShutError):  # B13 round 23 A87
@@ -9011,6 +9041,8 @@ def _evidence_line(r: _Run) -> str:
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
     notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
+    # B13 round 25 ruling 12 (D20): the -wal is not a file, the person's move aside, never access
+    side = sum(n for w, n in why.items() if w.startswith("the state file's -") and _SIDE_SEE in w)
     notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
     above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
     gov = sum(n for w, n in why.items() if w.startswith("a file in the state folder cannot be opened"))  # A87
@@ -9038,6 +9070,11 @@ def _evidence_line(r: _Run) -> str:
             "Doctor's state_dir.manifest line)",
         ),
         (
+            side,
+            "a side file of the state file is not a file: a report written after the person moves it aside "
+            "measures them (see Doctor's state_dir.files line)",
+        ),
+        (
             notfolder,
             "the state folder is not a folder: a report written after it is moved aside measures them (see "
             "Doctor's state_dir line)",
@@ -9057,7 +9094,7 @@ def _evidence_line(r: _Run) -> str:
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
         (
-            count - retry - state - shut - folder - notfile - notfolder - above - gov - config,
+            count - retry - state - shut - folder - notfile - side - notfolder - above - gov - config,
             "of another cause: see those lines",
         ),
     ]
@@ -9790,7 +9827,12 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         hb = expand(r.config.state_paths.heartbeat)
         if os.access(hb, os.R_OK | os.W_OK):
             beat = datetime.fromtimestamp(hb.stat().st_mtime, UTC)
-    return _read_sync_stops(r.install_log, lo, hi, starts, beat)
+    stops = _read_sync_stops(r.install_log, lo, hi, starts, beat)
+    if starts is None:  # B13 round 25 D4: the report's own read says why, when the manifest is missing now
+        with contextlib.suppress(OSError):
+            if not os.path.lexists(expand(r.config.state_paths.db)):
+                stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
+    return stops
 
 
 def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> str:
@@ -9823,10 +9865,16 @@ _SYNC_STOP_KINDS = {
 
 
 def _stop_unread_why(stop: _SyncStop) -> str:
-    """Why whether a later sync ended 0 was not read (the runs table was not): the state folder's words for a
-    state-folder stop, never "the state file" (B13 round 24 B16), and a lost manifest's (ruling 7)."""
+    """Why whether a later sync ended 0 was not read (the runs table was not): the report's own read's cause
+    when it knows one (``stop.unread``: a manifest missing now, B13 round 25 D4), the state folder's words for
+    a state-folder stop, never "the state file" (B13 round 24 B16), a lost manifest's (ruling 7), and the
+    -wal's or -shm's for a side file that is not a file (B13 round 25 ruling 12)."""
+    if stop.unread:
+        return stop.unread
     if stop.kind == "lost":
         return "the state file is missing"
+    if stop.kind == "misplaced" and stop.file in ("manifest-wal", "manifest-shm"):
+        return f"{stop.what} is not a file"
     if stop.kind == "misplaced" and stop.file != "state-folder":  # a folder where the file belongs
         return "the state file is not a file"
     if stop.file == "state-folder":
@@ -10559,6 +10607,16 @@ folder, not checked (:data:`_NOT_FOLDER_UNCHECKED`), keyed on the report's own s
 (:func:`_not_a_folder_at`), never on doctor's words: an older doctor FAILs heartbeat and governance there
 too."""
 _NOT_FOLDER_UNCHECKED = " (not checked: the state folder is not a folder)"
+_STATE_NOT_FILE_WORDS = "from the state file that is not a file"
+"""The Doctor line's bucket for something other than a file where the manifest belongs (B13 round 22 Z12; B13
+round 25 ruling 12, D23, D78): the person's, as Doctor's state_dir.manifest FAIL and the report's other lines
+say, never :data:`_STATE_UNREAD_WORDS`, a damaged file's words, keyed on the report's own stat
+(:func:`_state_not_file`)."""
+_SIDE_NOT_FILE_WORDS = "from a side file of the state file that is not a file"
+"""The Doctor line's bucket for the -wal or -shm where something other than a file sits (B13 round 23 A44;
+B13 round 25 ruling 12, D4, D9, D20, D78), in lane B's words for it ("a side file of the state file is not a
+file"): the person's move aside, keeping a copy, never "the state file that cannot be read" (the manifest
+reads, or fails only on its -wal) nor "this account cannot open" (no access fails)."""
 _STATE_LOST_WORDS = "from the state file that is missing though heartbeat.json records earlier passes"
 """The Doctor line's bucket for a lost manifest (B13 round 24 ruling 7; B4, B9, B25, B32, B44, B49, B99):
 manifest.sqlite missing while heartbeat.json beside it records an earlier pass (lane B's round 23 A29 FAIL,
@@ -10601,6 +10659,8 @@ class _DoctorSort:
     from_loose: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A49
     from_notfolder: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A23
     from_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 24 ruling 7
+    from_notfile: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D23, D78)
+    from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -10618,6 +10678,11 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
         db = expand(c.state_paths.db)
         if _state_folder_shut(db):  # B13 round 22 Z40, Z61, Z74: a folder above it that refuses a search too
             return "folder"
+        # B13 round 25 ruling 12 (D20): a -wal that is not a file fails every read with CANTOPEN while each
+        # state file opens: the side file's, the person's move aside, never this account's access; a refused
+        # file beside it keeps its own (A44's review)
+        if _side_breaking_read(db) is not None and not doctor.refused_state_files(c):
+            return ""
         # B13 round 23 A44: doctor's one list (a regular file only), never a twin of the report's own
         if (
             isinstance(read_error, ManifestOpenError)
@@ -10688,7 +10753,39 @@ def _sidecars_not_files(c: Config) -> list[Path]:
     ``state_file_kind`` reads it: doctor FAILs state_dir.files for each with the person's move aside (B13
     round 23 A44: a folder at -shm at 0500 read as the agent's chmod, at 0700 as unexpected). A dangling link
     or nothing there is none; a stat that fails says none."""
-    db = expand(c.state_paths.db)
+    return _sides_not_files_at(expand(c.state_paths.db))
+
+
+def _side_breaking_read(db: Path) -> Path | None:
+    """The manifest's -wal (or -shm) where something other than a file sits, when it is what makes the
+    report's own read-only open of the manifest fail (sqlite's CANTOPEN), B13 round 25 ruling 12 (D20): the
+    manifest is a file this account can read and write in a folder it can search, so the failure is the side
+    file's, never access. Keyed on both facts, as a folder at -shm leaves the read whole (its parts are
+    measured): never on a side file being there alone. None otherwise, and when any test fails."""
+    sides = _sides_not_files_at(db)
+    if not sides:
+        return None
+    try:
+        if _state_folder_shut(db) or not db.is_file() or not os.access(db, os.R_OK | os.W_OK):
+            return None
+        conn = _open_manifest_ro(db, 0.5)
+        if conn is None:
+            return None
+        try:
+            conn.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        if not _cannot_open(exc):
+            return None
+        return next((p for p in sides if p.name.endswith("-wal")), sides[0])
+    except OSError:
+        return None
+    return None
+
+
+def _sides_not_files_at(db: Path) -> list[Path]:
+    """:func:`_sidecars_not_files` for the manifest at ``db``."""
     out: list[Path] = []
     for p in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
@@ -10857,6 +10954,16 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says;
     # only its own FAIL, by the name doctor's line gives it: a shut manifest beside it keeps its own owner
     sidecars = [] if notfolder or r.config is None else _sidecars_not_files(r.config)
+    # B13 round 25 ruling 12 (D20): a -wal that is not a file is why the loop's read failed: the listing warn
+    # beside it is not judged, in the side file's words (a folder at -shm leaves the read whole)
+    side_read = (
+        not notfile
+        and r.config is not None
+        and bool(sidecars)
+        and _side_breaking_read(expand(r.config.state_paths.db)) is not None
+    )
+    from_notfile: list[str] = []
+    from_side: list[str] = []
     # B13 round 24 ruling 7: missing though heartbeat.json records earlier passes, the person's (A29)
     lost = (
         not notfolder
@@ -10914,22 +11021,33 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         # (MANIFEST_FIX); the listing warn beside it cannot be judged, as the loop that says whose it is
         # cannot read the state. Keyed on the report's own read of the file: a locked one is not it, and
         # with a readable state a Loop hook that fails still leaves that warn unexpected
-        # B13 round 22 Z12: a folder where the file belongs is the person's as well (doctor's own fix)
-        if (unreadable or notfile) and tag == "FAIL" and name == "state_dir.manifest":
+        # B13 round 22 Z12: a folder where the file belongs is the person's as well (doctor's own fix), in
+        # its own words (B13 round 25 ruling 12, D23, D78)
+        if unreadable and tag == "FAIL" and name == "state_dir.manifest":
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
+            continue
+        if notfile and tag == "FAIL" and name == "state_dir.manifest":
+            from_notfile.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _STATE_NOT_FILE_WORDS))
             continue
         if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
             from_lost.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_LOST_WORDS))
             continue
+        # B13 round 23 A44: doctor's move aside; B13 round 25 ruling 12 (D4, D9, D78): in the side file's
+        # own bucket, matched on the report's own stat and the file's name in doctor's line, in either build's
+        # words (", not the state file" before lane B's round 25 D6, ", not a file (" after it)
         if (
             tag == "FAIL"
             and name == "state_dir.files"
-            and any(f"{p.name} is " in detail and ", not the state file" in detail for p in sidecars)
-        ):  # B13 round 23 A44: doctor's move aside
-            from_state.append(f"{name} FAIL{_PERSONS}")
-            fails.append((name, _STATE_UNREAD_WORDS))
+            and any(
+                f"{p.name} is " in detail and (", not the state file" in detail or ", not a file" in detail)
+                for p in sidecars
+            )
+        ):
+            from_side.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _SIDE_NOT_FILE_WORDS))
             continue
         # B13 round 20 X28: one this account cannot open (its owner, its mode or its folder's) is no damage,
         # and doctor FAILs state_dir.files (or state_dir, for a folder it cannot search) for it, read from the
@@ -10971,7 +11089,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             fails.append((name, _STATE_LOOSE_WORDS))
             continue
         if (
-            (unreadable or notfile or shut or lost)
+            (unreadable or notfile or shut or lost or side_read)
             and tag == "warn"
             and name.startswith("heartbeat.")
             and detail.startswith(_LISTING_INCOMPLETE)
@@ -10979,8 +11097,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         ):
             # not "the loop cannot read the state": a record-only FAIL leaves the loop's read whole, and a
             # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
-            if unreadable or notfile:
+            if unreadable:
                 from_state.append(f"{name} warn (not judged: the state file cannot be read)")
+            elif notfile:  # B13 round 25 ruling 12 (D23, D78): not a file, not unreadable
+                from_notfile.append(f"{name} warn (not judged: the state file is not a file)")
+            elif side_read and not shut:  # B13 round 25 ruling 12 (D20)
+                from_side.append(f"{name} warn (not judged: a side file of the state file is not a file)")
             elif lost:  # B13 round 24 ruling 7: missing, not unreadable
                 from_lost.append(f"{name} warn (not judged: the state file is missing)")
             elif shut != "folder":
@@ -11028,6 +11150,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_loose,
         from_notfolder,
         from_lost,
+        from_notfile,
+        from_side,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -11103,6 +11227,15 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if from_state:
         parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
+    if sort.from_notfile:  # B13 round 25 ruling 12 (D23, D78)
+        parts.append(
+            f"{_STATE_NOT_FILE_WORDS} ({_plural(len(sort.from_notfile), 'check')}): "
+            + ", ".join(sort.from_notfile)
+        )
+    if sort.from_side:  # B13 round 25 ruling 12 (D4, D9, D20, D78)
+        parts.append(
+            f"{_SIDE_NOT_FILE_WORDS} ({_plural(len(sort.from_side), 'check')}): " + ", ".join(sort.from_side)
+        )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
             f"{_STATE_LOST_WORDS} ({_plural(len(sort.from_lost), 'check')}): " + ", ".join(sort.from_lost)
@@ -12169,6 +12302,13 @@ state folder <root> cannot be written by this account (fix: <fix>)``, B13 round 
 path holds the home folder."""
 
 
+_STATE_SIDE_NOT_FILE_RE = re.compile(
+    r"error: state: .*-(?P<role>wal|shm) is (?P<kind>[^,]+), not (?:a|the state) file\b"
+)
+"""The line sync, curate and init print for something not a file where the manifest's -wal or -shm belongs
+(lane B's B13 round 25 ruling 12, D2, D21: status's state_dir.files detail, ``<db>-wal is a folder, not a file
+(the state file's write-ahead log)``), read before :data:`_STATE_NOT_FILE_RE`, which an older doctor's words
+for it would also match."""
 _STATE_NOT_FILE_RE = re.compile(r"error: state: .* is (?P<kind>[^,]+), not the state file\b")
 """The sync's line for something not a file where manifest.sqlite belongs (``cli._misplaced``: doctor's
 ``_not_a_file`` kinds, and lane B's symlink to a folder and symlink loop, B13 round 23 A46), which holds no
@@ -12233,6 +12373,9 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
     # aside (doctor's MANIFEST_FIX, state_dir's move-aside): the outcome named no cause, as the line holds no
     # "cannot be opened"
     for ln in block:
+        side = _STATE_SIDE_NOT_FILE_RE.search(ln.strip())  # B13 round 25 ruling 12 (D9)
+        if side is not None:
+            return _side_words(side.group("role"), side.group("kind")), "after it was moved aside"
         kind = _STATE_NOT_FILE_RE.search(ln.strip())
         if kind is not None:
             what = kind.group("kind")
@@ -12396,15 +12539,34 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun]) -> str | None:
     """What the last install run's config step met, when it failed there on the state
     (:func:`_state_open_words` with no bracket), for :func:`compute_outcome` (B13 round 22 Z6: it said only
     "its config step failed with rc 1" while install.sh named the cause and that the fix is the person's).
-    None otherwise."""
+    B13 round 25 ruling 12 (D9): a run whose status step reported [FAIL] lines while the manifest's -wal or
+    -shm is not a file (a folder at -shm lets init run) met that side file, by the report's own stat. None
+    otherwise."""
     installs = install_runs_only(runs)
     if not installs or installs[-1].rc in (0, None):
         return None
     try:
         words = _state_open_words(r, installs[-1], bracket=False)
+        if (
+            words is None
+            and r.config is not None
+            and _status_fail_words(installs[-1]).startswith(": its status step reported")
+        ):
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+            for side in _sidecars_not_files(r.config):
+                kind = doctor.state_file_kind(side) or "not a regular file"
+                return _side_words(side.name.rsplit("-", 1)[-1], kind)
     except Exception:  # a cause the report cannot read leaves the step's own words
         return None
     return words[0] if words is not None else None
+
+
+def _side_words(role: str, kind: str) -> str:
+    """The outcome's clause for the manifest's -``role`` (wal or shm) where ``kind`` sits (``a folder``), the
+    person's to move aside, keeping a copy (B13 round 25 ruling 12, D9), with no bracket inside."""
+    what = kind if kind == "not a regular file" else f"{kind}, not a file"
+    return f" on the state file's -{role}, which is {what}: the person's to fix"
 
 
 def _state_folder_named(r: _Run, fix: str) -> str:

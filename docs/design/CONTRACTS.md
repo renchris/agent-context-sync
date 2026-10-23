@@ -27312,6 +27312,8 @@ state_dir.manifest line`, with an evidence clause of its own; both share `_NoSta
 lookups catch, so queued purges still list. The Doctor line files `state_dir.manifest FAIL (the person's; see
 Doctor)` in the cannot-be-read bucket by the report's own stat (`_state_not_file`), never by widening
 `doctor.manifest_unreadable`. Test: `test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons`.
+Amended 2026-10-23, §16.178 D23, D78: the FAIL and the listing warn beside it are in a bucket of their own,
+`from the state file that is not a file`, never the damaged file's cannot-be-read words (ruling 12).
 
 Amended 2026-10-22, §16.164 A23: a file where a folder on its way belongs is `_StateFolderNotFolderError` when
 that folder is the state folder or one above it, worded `the state folder is not a folder: see Doctor's
@@ -28035,6 +28037,9 @@ list" docstring is true. A folder, fifo, socket, symlink loop or link to a non-f
 file's name in doctor's line; a shut manifest beside it keeps `(the agent's; see Doctor)`. Before, a folder at
 -shm read as the agent's chmod at 0500 and as unexpected at 0700. Test:
 `test_a_folder_where_the_wal_or_shm_belongs_is_the_persons`.
+Amended 2026-10-23, §16.178 D4, D9, D20, D78: that FAIL is in a bucket of its own, `from a side file of the state
+file that is not a file`, matched in either build's words (`, not the state file` or lane B's `, not a file`), and a
+-wal that makes the read fail is no shut state file (ruling 12).
 
 **A governance file this account cannot open points at Doctor's governance lines** (A87). `_purge_part` maps a
 GovernanceError whose OSError `doctor.state_unopenable` places in the state folder to `_StateGovernanceShutError`,
@@ -29565,6 +29570,37 @@ line's count of stops among the outcome's reasons takes these in. Shell twin: la
 `test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`,
 `test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason` (two stops now claim two chmod lines; a skip line
 stays a reason), and the guide's `test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error`.
+
+**A side file or a manifest that is not a file, in their own words** (D4, D9, D20, D23, D78, ruling 12's report
+side, in lane B's words; amends §16.158 Z12 and §16.164 A44). A folder where manifest.sqlite belongs was filed in
+the damaged file's bucket, `from the state file that cannot be read`, while every other line said "not a file";
+a folder at its -wal or -shm too, while the manifest read and Status said every part was measured; and a folder at
+the -wal, which makes sqlite's read-only open fail with CANTOPEN, read as "this account cannot open the state file"
+in a second bucket, the evidence, the parts and the re-screen, pointing at a chmod. Now the Doctor line has
+`from the state file that is not a file (N checks): state_dir.manifest FAIL (the person's; see Doctor),
+heartbeat.<id> warn (not judged: the state file is not a file)` (`_STATE_NOT_FILE_WORDS`) and `from a side file of
+the state file that is not a file (N checks): state_dir.files FAIL (the person's; see Doctor)`
+(`_SIDE_NOT_FILE_WORDS`, lane B's "a side file of the state file is not a file"), the side FAIL matched on the
+report's own stat and the file's name in doctor's line, in either build's words; the outcome's "with a known
+cause" reasons follow. `_side_breaking_read` keys the -wal's case on both facts (a side file not a file, and the
+report's own read-only open failing with CANTOPEN while the manifest is a file this account can read and write in
+a folder it can search): `_state_shut` then says no shut file (a refused file beside it keeps its own),
+`_Mirror._open` and `_last_rescreen` say `the state file's -wal is not a file: see Doctor's state_dir.files line`
+(`_StateSideNotFileError`), the evidence line has the clause `a side file of the state file is not a file: a report
+written after the person moves it aside measures them (see Doctor's state_dir.files line)`, and the listing warn is
+`(not judged: a side file of the state file is not a file)`; a folder at the -shm leaves the read whole, so its
+parts stay measured and its warn judged. The outcome names the side file: a config step that stopped on lane B's
+`error: state: <db>-wal is a folder, not a file (...)` line (`_STATE_SIDE_NOT_FILE_RE`, read before
+`_STATE_NOT_FILE_RE`, which an older doctor's words also match), and a run whose status step reported [FAIL] lines
+while the -wal or -shm is not a file, read `install.sh exited 1 at its config|status step on the state file's -shm,
+which is a folder, not a file: the person's to fix`. A step 3 stop recorded on `file=manifest-wal|manifest-shm`
+says `not measured (the state file's -wal is not a file)`, and a stop not measured while the manifest is missing now
+says `(the state file is missing)`, from the report's own read (D4), whatever its own kind. Tests:
+`test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access`,
+`test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons`,
+`test_a_folder_where_the_wal_or_shm_belongs_is_the_persons`,
+`test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed` (two rows: lane B's -wal line, an older
+build's -shm fifo), `test_a_stop_not_measured_because_the_manifest_is_gone_says_so`.
 
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 

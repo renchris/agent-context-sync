@@ -9727,6 +9727,18 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "on agentsync's state folder, which is not a folder: the person's to fix",
             "it was moved aside",
         ),
+        (  # B13 round 25 ruling 12 (D9): lane B's line for a folder at the -wal (D2, D21), and an older
+            # doctor's words for a fifo at the -shm, each the side file's, never "the state file"
+            f"error: state: {db}-wal is a folder, not a file (the state file's write-ahead log) (fix: the "
+            f"person moves {db}-wal aside, keeping a copy)",
+            "on the state file's -wal, which is a folder, not a file: the person's to fix",
+            "it was moved aside",
+        ),
+        (
+            f"error: state: {db}-shm is a fifo, not the state file (fix: the person moves {db}-shm aside)",
+            "on the state file's -shm, which is a fifo, not a file: the person's to fix",
+            "it was moved aside",
+        ),
         (  # lane B's lost manifest (B13 round 23 A29): no new one over earlier passes, the person decides;
             # its words from their source, as the sync prints them (B13 round 24 B56, B102)
             f"error: state: {db} {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})",
@@ -13408,13 +13420,21 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     manifest yet (no sync has run)", the evidence line said every part was measured, and doctor's
     state_dir.manifest FAIL, the person's, was "unexpected". Each part now says the state file is not a file,
     the evidence line counts them with a clause of their own, the FAIL has the person's bucket, and the purge
-    queue still lists."""
+    queue still lists. B13 round 25 ruling 12 (D23, D78): that bucket, the listing warn beside it and the
+    outcome say "not a file", never the damaged file's "cannot be read"."""
     from agentsync import governance  # noqa: PLC0415
 
     real = cli._status_checks
+    listing = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)",
+        doctor.Severity.WARN,
+    )
 
     def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
-        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        kept = [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        return kept if expand(config.state_paths.db).is_file() else [*kept, listing]
 
     monkeypatch.setattr(cli, "_status_checks", these)
     cfg = fake_mac["config"]
@@ -13448,6 +13468,15 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     assert "state_dir.manifest FAIL (the person's; see Doctor)" in line and line.endswith("unexpected 0"), (
         line
     )
+    assert (
+        " · from the state file that is not a file (2 checks): state_dir.manifest FAIL (the person's; see "
+        "Doctor), heartbeat.x warn (not judged: the state file is not a file) · unexpected 0"
+    ) in line, line
+    outcome = _line(summary, "- **outcome: ")
+    assert "1 doctor FAIL with a known cause, from the state file that is not a file: state_dir.manifest" in (
+        outcome
+    ), outcome
+    assert "cannot be read" not in line and "cannot be read" not in outcome, (line, outcome)
     db.rmdir()
     _rc, text, _ = report(tmp_path, cfg)
     # a plain missing manifest with heartbeat.json recording passes is lost (B13 round 23 A29); without it,
@@ -13648,6 +13677,12 @@ def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
             assert "state_dir.files FAIL (the person's; see Doctor)" in line, (suffix, mode, line)
             assert "the agent's" not in line and line.endswith(" · unexpected 0"), (suffix, mode, line)
             assert setup_report._STATE_SHUT_WORDS not in line, (suffix, mode, line)
+            # B13 round 25 ruling 12 (D4, D9, D78): the side file's own bucket, never "cannot be read"
+            assert (
+                " · from a side file of the state file that is not a file (1 check): state_dir.files FAIL "
+                "(the person's; see Doctor) · "
+            ) in line, (suffix, mode, line)
+            assert "cannot be read" not in line, (suffix, mode, line)
     shm = db.with_name(db.name + "-shm")
     shm.write_bytes(b"")
     shm.chmod(0)
@@ -13669,6 +13704,116 @@ def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
     line = _line(section(text, "Summary"), "- doctor: ")
     assert "state_dir.files FAIL (the person's; see Doctor)" in line, line
     assert "state_dir.files FAIL (the agent's; see Doctor)" in line, line
+
+
+def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 25 ruling 12 (D20, D9, D4): with a folder at the manifest's -wal (modes fine), sqlite's
+    read-only open fails with CANTOPEN, and the report said "this account cannot open the state file" in a
+    second doctor bucket, the evidence, the parts and the re-screen, pointing at a chmod, while the FAIL sat
+    in "the state file that cannot be read". One bucket in lane B's words, the listing warn beside it not
+    judged in them, and every not-measured line names the -wal; a folder at the -shm leaves the read whole
+    (its parts measured, its warn judged). A run whose status step FAILed on it names the side file in the
+    outcome."""
+    real = cli._status_checks
+    listing = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)",
+        doctor.Severity.WARN,
+    )
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        kept = [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        db = expand(config.state_paths.db)
+        return [*kept, listing] if db.with_name(db.name + "-wal").is_dir() else kept
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    wal = db.with_name(db.name + "-wal")
+    wal.mkdir(mode=0o700)
+    try:
+        assert setup_report._side_breaking_read(db) == wal
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        wal.rmdir()
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from a side file of the state file that is not a file (2 checks): state_dir.files FAIL (the "
+        "person's; see Doctor), heartbeat.x warn (not judged: a side file of the state file is not a file) · "
+        "unexpected 0"
+    ) in line, line
+    assert "cannot open" not in line and "cannot be opened by this account" not in text, line
+    words = "the state file's -wal is not a file: see Doctor's state_dir.files line"
+    assert section(text, "Status").count(f"- not measured ({words})") >= 4, section(text, "Status")
+    assert (
+        "because a side file of the state file is not a file: a report written after the person moves it "
+        in (_line(summary, "- evidence: "))
+    ), _line(summary, "- evidence: ")
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        f"last re-screen: not read ({words})"
+    )
+    outcome = _line(summary, "- **outcome: ")
+    assert "from a side file of the state file that is not a file: state_dir.files" in outcome, outcome
+    # a folder at the -shm: the read is whole, so the parts are measured and the warn is judged
+    shm = db.with_name(db.name + "-shm")
+    shm.mkdir(mode=0o700)
+    try:
+        assert setup_report._side_breaking_read(db) is None
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        shm.rmdir()
+    summary = section(text, "Summary")
+    assert "were measured" in _line(summary, "- evidence: "), _line(summary, "- evidence: ")
+    assert "from a side file of the state file that is not a file (1 check): state_dir.files FAIL" in _line(
+        summary, "- doctor: "
+    )
+    # the install run's status step FAILed on it (a folder at -shm lets init run): the outcome names it
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(log.read_text(encoding="utf-8").replace(" end rc=0 ", " end rc=1 "), encoding="utf-8")
+    shm.mkdir(mode=0o700)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        shm.rmdir()
+    outcome = _line(section(text, "Summary"), "- **outcome: ")
+    assert outcome.endswith(
+        "(computed: install.sh exited 1 at its status step on the state file's -shm, which is a folder, "
+        "not a file: the person's to fix)"
+    ), outcome
+    _rc, text, _ = report(tmp_path, cfg)  # with no side file there, the status step's own words
+    assert "its status step reported [FAIL] lines (rc 1)" in _line(section(text, "Summary"), "- **outcome: ")
+    # a sync that stopped on it (lane B's record) says the side file's words when not measured
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    stop = setup_report._SyncStop(at, "manifest-wal", "person", None, False, "misplaced")
+    assert setup_report._sync_stop_line(stop) == (
+        "- agentsync sync · step 3 · exited 1 on the state file's -wal, which was not where or what it "
+        "should be; whether a later sync ended 0: not measured (the state file's -wal is not a file); the "
+        "fix is the person's"
+    )
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_stop_not_measured_because_the_manifest_is_gone_says_so(fake_mac: dict[str, Path]) -> None:
+    """B13 round 25 D4: with the manifest gone, a heartbeat stop's line said "not measured (the state file
+    cannot be read)" beside the lost manifest's own stop line saying "(the state file is missing)". The
+    report's own read says why: missing, for every stop; a manifest that is there but cannot be opened keeps
+    "cannot be read"."""
+    stops = _stop_line("45", "heartbeat") + _stop_line("50", "manifest", "person", "lost")
+    _two_records(fake_mac, "", stops)
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        side.unlink(missing_ok=True)
+    summary = summary_of(fake_mac)[1]
+    items = _items_of(summary)
+    assert len(items) == 2 and all("not measured (the state file is missing)" in ln for ln in items), items
 
 
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
