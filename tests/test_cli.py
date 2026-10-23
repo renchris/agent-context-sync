@@ -6546,6 +6546,30 @@ def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sy
     assert cli.HEARTBEAT_REFUSED_STEP not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("body", ["{not json", "[]"])
+def test_status_over_a_corrupt_heartbeat_keeps_every_line_and_names_no_python_class(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, body: str
+) -> None:
+    """B13 round 24 B88, B90: over a heartbeat.json that is not valid JSON (or not an object) status printed
+    "status: cannot read the state: ValueError: ..." in place of its config, docs repo, lock, last runs and
+    per-source lines: its own second read had no guard. The [warn] heartbeat line says why; every line stays,
+    and a row's last success is unknown, never "never", over a file that cannot be parsed."""
+    cfg = _synced(initialised)
+    expand(initialised.state_paths.heartbeat).write_text(body, encoding="utf-8")
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK, out
+    assert not any("ValueError" in ln or "cannot read the state" in ln for ln in out), out
+    assert any(ln.startswith("lock: ") for ln in out) and any(ln.startswith("last runs: ") for ln in out), out
+    rows = [ln for ln in out for s in initialised.sources if ln.startswith(f"  {s.id} (")]
+    assert len(rows) == len(initialised.sources), out
+    assert all("last success unknown (heartbeat.json is not valid" in ln for ln in rows), rows
+    report = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+    written = report.read_text(encoding="utf-8")
+    assert "ValueError" not in written and "last success unknown (heartbeat.json is not valid" in written
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_heartbeat_this_account_cannot_open_is_said_when_no_source_writes_one(
     initialised: Config, capsys: pytest.CaptureFixture[str]

@@ -1454,7 +1454,12 @@ def _status_lines(config: Config) -> list[str]:
         )
         statuses = source_statuses(config, manifest, now=datetime.now(UTC), quiet=True)
         absent = manifest.absent_counts()  # not in SourceStatus: that feeds the committed snapshot
-    heartbeat = read_heartbeat(config.state_paths.heartbeat)
+    try:
+        heartbeat = read_heartbeat(config.state_paths.heartbeat)
+        never = "never"
+    except ValueError:  # corrupt: the [warn] heartbeat line says why; the next completed pass rewrites it.
+        # Never "cannot read the state: ValueError" in place of every line here (B13 round 24 B88, B90)
+        heartbeat, never = {}, "unknown (heartbeat.json is not valid; the heartbeat line says why)"
     for st in statuses:
         hb = heartbeat.get(st.source_id, {})
         waiting = absent.get(st.source_id, 0) if st.breaker == "ok" else 0  # tripped: nothing is removed
@@ -1464,7 +1469,7 @@ def _status_lines(config: Config) -> list[str]:
             f"{'yes' if st.enumeration_complete else 'no'} · live {st.live} (dataless {st.dataless}) · "
             f"quarantined {st.quarantined} · refused {st.refused} · deferred {st.deferred} · "
             f"breaker {st.breaker} · auth {st.auth} · "
-            f"last success {hb.get('last_success_at', 'never')}"
+            f"last success {hb.get('last_success_at', never)}"
             + (
                 f" · absent {plural(waiting, 'file')} ({'its' if waiting == 1 else 'their'} page(s) become "
                 "deletion notice(s) on a later complete pass if still missing)"
