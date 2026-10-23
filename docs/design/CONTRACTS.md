@@ -28802,7 +28802,52 @@ Reserved for round 24 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
-Reserved for round 24 lane RB of B13.
+Lane RB's six items: the shell fallback report's half of round 23's A8 and A9, and four guards and wordings.
+
+**The shell report cuts a hold's reason and owner of several lines** (B51). A `[governance]` hold_reason or
+hold_owner keeps its inner newlines, which `Hold.describe()` prints, so the first line of a reason of two lines has
+no ` — set by ` for `hold_cut` (one line at a time) to anchor on, and `redaction_pairs` registered no hold value:
+the matter, a person named in the reason and the owner printed in clear in the shell fallback report, which the
+agentsync report cuts (`setup_report._hold_values`). `hold_values` reads the config's hold_reason and hold_owner in
+any of TOML's four string forms (escapes, `\uXXXX`, a line-ending backslash, the newline after an opening `"""`
+dropped) and the reason and owner of each hold in `<state_dir>/governance/holds.json` (JSON escapes, a surrogate
+pair); `redaction_pairs` registers each value line by line as `<value>`, in any case and as a whole word (flag
+`i`), last, as Python registers them, leaving out a value under 2 characters and a one-word one the report prints
+(tested without its accents, as `_norm`). A pair holds no TAB, so a value with one also gives each part of 3
+characters or more.
+`hold_cut` is unchanged. Tests: `test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_report`,
+`test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does` (the same lines as the Python
+`Redactor` for one config and holds.json), `test_a_hold_value_never_cuts_a_short_or_report_word_from_the_shell_report`.
+
+**The shell report reads sync-stops.log** (B95; round 24 ruling 9). The shell fallback had no reader of the file
+round 23's A9 writes, so an attempt whose install run ended 0 and whose step 3 sync stopped said to choose the
+Outcome from the Installer section, where exit 0 reads as "fully one command" while the agentsync report says
+"worked with help". `fallback_sync_stops` counts the latest attempt's stops in the window `_step3_stops` uses: at
+or after its begin (`friction_attempt_bounds`, which `friction_attempt_begin` now reads), before its end line, else
+before the later of its last timed line and the friction log's last write (rounded up to its next second) plus
+1 s, never open-ended; only the file's last 200 lines, as `_read_sync_stops`; none before a v7 prompt. A line with lane B's `kind=` token reads by kind; one without it is a refused one. With N stops the
+uncomputed outcome says `agentsync logged N step-3 sync stop(s) in sync-stops.log beside install.log (the Installer
+section lists them)`, then `so an install run's exit 0 alone is not the Outcome` where the attempt has no step line,
+or `a step 3 error line there may be the agent's account of the same stop` where it has; the Installer section lists
+each as `- agentsync sync · step 3 · exited <rc> on <file>, <kind clause>; whether a later sync ended 0: not read
+by this shell fallback; the fix is <the agent's chmod|the person's>`. The shell reads no manifest, so it pairs none.
+Tests: `test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged`,
+`test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write`.
+
+**A retried run's item says `and ended 0` before what came first** (B45; amends §16.152 Y5). `_retry_line` put
+` and ended 0` after the after-clause, so `... after the folder's mode, and any mode in it that status then named,
+were fixed and ended 0` read as if the modes ended 0. It reads `... was run again and ended 0 after ...` now, the
+outcome reason's own order. The other half of the finding (install.sh's `status prints it`) is not a slip: each
+`it` is the file or folder that stopped step 2, as in its 11 sibling tails. Test:
+`test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**Guards** (B57, B68, B104). The shell hold parity test's `hasattr(setup_report, "_HOLD_SET_RE")` guard waited for
+round 23's lane RA half and was always true; it is gone (B57). `cli.PERSONS_KINDS`, an alias only tests read, is
+removed and the tests read `doctor.PERSONS_KINDS`; `_fail_step` gives the list's measured 447 characters (B68). An
+apostrophe inside a multi-line single-quoted `python -c '...'` snippet ends the shell quote: bash -n catches an odd
+count and shellcheck's SC1011 a contraction, but a plural possessive's even count passes both and python runs only
+the code before it, so `test_no_apostrophe_inside_a_single_quoted_python_snippet` refuses one in every shell script
+and compiles each body (11 in install.sh), with a self-test of the plural-possessive shape (B104).
 
 ### 16.173 Round 24: setup prompt v33, a lost manifest and a folder at the manifest in install.sh (2026-10-22, wave B13 round 24 lane P)
 
