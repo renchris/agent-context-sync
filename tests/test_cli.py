@@ -6542,6 +6542,42 @@ def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sy
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_heartbeat_this_account_cannot_open_is_said_when_no_source_writes_one(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B71: with every source paused no heartbeat write is tried, so a heartbeat.json at 0000
+    went unsaid: the sync exited 0 with an empty stderr (its read was logged at DEBUG, on the word that the
+    CLI says it), while status FAILed it. The cycle's read is the test then: an interactive sync says it once
+    and exits 1, as when a write is refused; a --mode run exits 0 with one WARNING ending in the fix."""
+    cfg = _synced(initialised)
+    path = initialised.config_path
+    text = path.read_text(encoding="utf-8")
+    for kind in ('kind = "local"', 'kind = "inbox"'):
+        text = text.replace(kind, f'{kind}\nstate = "paused"')
+    path.write_text(text, encoding="utf-8")
+    hb = expand(initialised.state_paths.heartbeat)
+    fix = f"(fix: chmod 600 {doctor._shell_path(hb)})"
+    capsys.readouterr()
+    hb.chmod(0)
+    try:
+        rc = cli.main(["sync", "--config", cfg])
+        said = capsys.readouterr()
+        polled = cli.main(["sync", "--mode", "poll", "--config", cfg])
+        background = capsys.readouterr()
+    finally:
+        hb.chmod(0o600)
+    assert rc == cli.EXIT_FAILED, said
+    (line,) = [ln for ln in said.err.splitlines() if ln.strip()]
+    assert line == f"error: state: {hb} cannot be opened: Permission denied {fix}", line
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.HEARTBEAT_REFUSED_STEP}"
+    ]
+    assert polled == cli.EXIT_OK and "NEXT: " not in background.out, background
+    warned = [ln for ln in background.err.splitlines() if "heartbeat" in ln]
+    assert len(warned) == 1 and warned[0].endswith(fix) and " WARNING " in warned[0], background.err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

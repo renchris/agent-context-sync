@@ -2916,6 +2916,7 @@ class _Cycle:
         now_iso = _iso(self.now())
         hb = self.config.state_paths.heartbeat
         selected = {src.id for src in self.selected}
+        attempted = False  # a heartbeat write was tried this cycle
         for acc in self.accs.values():
             ok = ok_cycle and not acc.failed and not acc.auth_required and acc.pass_kind is not None
             if ok:
@@ -2933,6 +2934,7 @@ class _Cycle:
             listed = acc.enumeration_complete or (acc.src.kind.is_graph and acc.pass_kind is PassKind.DELTA)
             if self.heartbeat_refused is not None:
                 continue  # one refusal, not one per source (A84)
+            attempted = True
             try:
                 write_heartbeat(
                     hb,
@@ -2952,6 +2954,17 @@ class _Cycle:
                 self.heartbeat_refused = exc
             except (OSError, ValueError) as exc:
                 log.warning("heartbeat for %s not written: %s", acc.src.id, exc)
+        if self.heartbeat_refused is None and not attempted:
+            # no source wrote one (every one paused, retired or unselected): its read is the only test, and a
+            # refused read is a refused write (write_heartbeat reads first), said once by the CLI as when a
+            # write is refused (B13 round 24 B71: the sync exited 0 and said nothing, status FAILed it). A
+            # corrupt file or another error keeps the statuses' WARNING
+            try:
+                read_heartbeat(hb)
+            except PermissionError as exc:
+                self.heartbeat_refused = exc
+            except (OSError, ValueError):
+                pass
         counts = Counter(c.op.value for c in self.changes)
         if retried := self._tally[
             "legacy_retried"
@@ -5778,7 +5791,11 @@ class _Cycle:
         curate.apply_retired_banners(layout, rows, retired)
 
     def _statuses(self, sources: Iterable[SourceConfig]) -> list[SourceStatus]:
-        return source_statuses(self.config, self.manifest, now=self.now(), reports=self.accs)
+        # every call is in run(), whose _after records a refused heartbeat, its write's or, when no source
+        # writes one, its read's, so the CLI says it once (B13 round 24 B71)
+        return source_statuses(
+            self.config, self.manifest, now=self.now(), reports=self.accs, refused_said=True
+        )
 
 
 def _dedup_key(name: str) -> str:
@@ -5851,17 +5868,21 @@ def source_statuses(
     now: datetime,
     reports: dict[str, _SourceAcc] | None = None,
     quiet: bool = False,
+    refused_said: bool = False,
 ) -> list[SourceStatus]:
     """One SourceStatus per configured source (STATE.md / INDEX.md / ``agentsync status``). ``quiet``
     (status's call, whose heartbeat line names an unreadable heartbeat and its fix): that read's log line is
-    debug, not a timestamped WARNING beside it (B13 round 21 Y43)."""
+    debug, not a timestamped WARNING beside it (B13 round 21 Y43). ``refused_said``: the cycle recorded the
+    heartbeat's refusal, which the CLI says once, so a refused read here is debug too; any other refused read
+    is a WARNING, since nothing else says it (B13 round 24 B71: "a cycle's read" was enough, and a cycle that
+    wrote no heartbeat said nothing)."""
     heartbeat: dict[str, dict[str, object]] = {}
     try:
         heartbeat = {k: dict(v) for k, v in read_heartbeat(config.state_paths.heartbeat).items()}
     except (OSError, ValueError) as exc:
-        # a heartbeat this account cannot open, read in a cycle (``reports``): its write is refused too, and
-        # the CLI says that once (B13 round 23 A84: two more WARNING lines per run)
-        refused = isinstance(exc, PermissionError) and reports is not None
+        # a heartbeat this account cannot open whose refusal the cycle recorded: the CLI says that once (B13
+        # round 23 A84: two more WARNING lines per run)
+        refused = isinstance(exc, PermissionError) and refused_said
         log.log(logging.DEBUG if quiet or refused else logging.WARNING, "heartbeat unreadable: %s", exc)
     out: list[SourceStatus] = []
     for src in config.sources:
