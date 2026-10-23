@@ -8661,14 +8661,15 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             cleared = min(x.n("legacy_cleared"), retried)
             settled = min(x.n("legacy_settled"), retried - cleared)  # Z55's: no retry left, no retry words
             # B13 round 23 A63: a stub the first run with a converter for it reads again, neither settled
-            # nor retried
+            # nor retried; round 24 B74: "refused", the words the CLI note uses, as it is a "no converter"
+            # stub, not one of the files the bullet above says that run left waiting for its converter
             waiting = min(x.n("legacy_waiting"), retried - cleared - settled)
             done = [
                 f"{n} that run {verb}"
                 for n, verb in (
                     (cleared, "converted"),
                     (settled, "settled with no try left"),
-                    (waiting, "left waiting for a converter"),
+                    (waiting, "refused with no converter for its type"),
                 )
                 if n
             ]
@@ -8687,8 +8688,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "an old conversion error can show in those runs"
         )
         wait = (
-            "; a file left waiting is read again by the first run with a converter for its type (the OCR "
-            "engine for an image), so an old conversion error can show in that run"
+            "; a file refused for want of a converter is read again by the first run with a converter for "
+            "its type (the OCR engine for an image), so an old conversion error can show in that run"
         )
         out += [
             "",

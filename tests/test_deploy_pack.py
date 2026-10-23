@@ -5944,6 +5944,10 @@ _ROUND_23_K_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: A97's at §16.30's two bullets that name install.sh's patch hash, now
 `/sbin/sha256sum` where it exists."""
 
+_ROUND_24_RA_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.171 B74"),)
+"""Round 24 lane RA's dated line at a section its claim names with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: B74's words in §16.28's `legacy_waiting` row."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -6028,6 +6032,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_23_K_PARAGRAPH_AMENDS)) == len(_ROUND_23_K_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_24_E_PARAGRAPH_AMENDS)) == len(_ROUND_24_E_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_24_RA_PARAGRAPH_AMENDS)) == len(_ROUND_24_RA_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -6061,6 +6066,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_23_K_PARAGRAPH_AMENDS,
         *_ROUND_24_E_PARAGRAPH_AMENDS,
         *_ROUND_24_D_PARAGRAPH_AMENDS,
+        *_ROUND_24_RA_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -8139,7 +8145,7 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     tried = inspect.getsource(setup_report._repeat_part)
     done = re.search(
         r'\(cleared, "(converted)"\),\s*\(settled, "(settled with no try left)"\),\s*'
-        r'\(waiting, "(left waiting for a converter)"\),',
+        r'\(waiting, "(refused with no converter for its type)"\),',
         tried,
     )
     assert done is not None and 'f"{n} that run {verb}"' in tried
@@ -8160,11 +8166,11 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     assert no_byte is not None and "no byte is read for it" in no_byte
     assert "Only an image already on this Mac is read." in " ".join(no_byte.split())
     assert (
-        "The files it left waiting for a converter (a `no converter` stub, such as an image that run had no"
-        " OCR engine for, stubbed by its name with no byte read: `that run"
+        "The files it refused for want of a converter (a `no converter` stub, such as an image that run had"
+        " no OCR engine for, stubbed by its name with no byte read: `that run"
         f" {done.group(3)}`) are read by the first run with a converter for their type, if the file is on"
         " this Mac by then (an online-only or Graph image keeps its stub: OCR never downloads one), so an old"
-        " conversion error can show in that run (CONTRACTS §16.168, A63)."
+        " conversion error can show in that run (CONTRACTS §16.168, A63; §16.171, B74)."
     ) in row
     assert "that run read with no OCR engine" not in row and "are read again by the first run" not in row
     # the note sits beside the other notes, before the Quarantine sentence

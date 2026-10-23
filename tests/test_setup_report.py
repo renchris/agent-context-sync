@@ -11431,16 +11431,19 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         assert ("an old conversion error can show in those runs" in part) == retry, part
     # B13 round 23 A63: a stub left for its converter, which the first run with one reads again, is neither
     # settled with no try left nor given the retry words
-    waits = "a file left waiting is read again by the first run with a converter for its type"
+    waits = (
+        "a file refused for want of a converter is read again by the first run with a converter for its type"
+    )
     for counts, want, retry in (
         (
             {"legacy_retried": 1, "legacy_waiting": 1},
-            "run 4, 1 file, which that run left waiting for a converter.",
+            "run 4, 1 file, which that run refused with no converter for its type.",
             False,
         ),
         (
             {"legacy_retried": 3, "legacy_settled": 1, "legacy_waiting": 1},
-            "run 4, 3 files (1 that run settled with no try left, 1 that run left waiting for a converter).",
+            "run 4, 3 files (1 that run settled with no try left, 1 that run refused with no converter for "
+            "its type).",
             True,
         ),
     ):

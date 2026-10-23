@@ -8113,7 +8113,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
-| `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read |
+| `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-23, §16.171 B74:** it says `that run refused with no converter for its type` |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -27358,6 +27358,9 @@ Amended 2026-10-22, §16.168 A63: a third count, `legacy_waiting`, reads `N that
 and the bullet adds `a file left waiting is read again by the first run with a converter for its type (the OCR
 engine for an image), so an old conversion error can show in that run`; neither the settled words nor the retry
 words.
+Amended 2026-10-23, §16.171 B74: they read `N that run refused with no converter for its type` and `a file refused
+for want of a converter is read again by the first run with a converter for its type ...`, apart from the files the
+bullet above says that run left waiting for a converter that could not start.
 
 Amended 2026-10-22, §16.164 A30: the bullet says `An older build had given up on that file's conversion` when
 its runs hold one file, `these conversions` otherwise.
@@ -28671,6 +28674,8 @@ Amended 2026-10-22, §16.175 B75: "says no later sync on this config reads it" r
 whatever converter it has". An image stubbed under `[convert] ocr = false` or `AGENTSYNC_OCR=0` (a recording under
 `recordings = false`) is waiting too: no sync reads it while the switch is off, and the first one after it is
 turned back on does.
+Amended 2026-10-23, §16.171 B74: the report's words are `that run refused with no converter for its type` and `a
+file refused for want of a converter is read again ...`, the CLI note's "refused", not "left waiting".
 
 **§16.162 Z55's "no run-record count" has its dated line (A64, A68, A95; dated lines at §16.162 Z55 and §16.158
 Z35).** Z55 says `CycleReport.legacy_settled` carries the settled count "(no run-record count, as for
@@ -28927,6 +28932,18 @@ shell's `<value>` comes only from a [governance] error, so its legend line keeps
 `<value>` row says so. Tests: `test_a_holds_reason_and_owner_are_cut_by_the_fixed_words`,
 `test_a_holds_reason_and_owner_are_in_no_part_of_the_report` and
 `test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report`.
+
+**A63's files are "refused", not "left waiting"** (B74; amends §16.168 A63, §16.158 Z35 and §16.28). Repeat
+conversions' heading names the files a run left waiting for a converter that could not start (`converter_waiting`:
+a failed or quarantined `conversion failed: converter unavailable` row), and A63's bullet said its `no converter`
+stubs were `which that run left waiting for a converter` and `a file left waiting is read again ...`: a reader
+took them for the same files, or for Quarantine's "conversion failed" class, while they are REFUSED stubs of class
+"no converter", which no row is both. They read `which that run refused with no converter for its type` and `a file
+refused for want of a converter is read again by the first run with a converter for its type (the OCR engine for an
+image), so an old conversion error can show in that run`, the CLI note's verb ("is refused until a converter for
+its type is ready", unchanged); no "engine" in the label, which is not only for images.
+docs/deploy/setup-feedback.md's Repeat conversions row and the pins move with it. Tests:
+`test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` and test_deploy_pack's row test.
 
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
