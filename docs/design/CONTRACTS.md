@@ -29752,6 +29752,15 @@ same, uses the remote's words only when `state_stop_holds` (those six) is false,
 adding it` otherwise. Test: `test_a_refused_remote_beside_a_lost_manifest_gives_the_lost_manifests_next_first`
 (init and add-source, the real agentsync): the lost manifest's NEXT first, then, the file restored, the remote's.
 
+**install.sh shows the new-manifest note** (D42). Round 24 B37 made a new manifest's recovery lines DEBUG and printed
+one stdout note in their place, `note: a new manifest was started over N existing mirror pages; every file is
+converted again`, but `show_first_sync` shows only the summary lines (and round 19 W18's retry note) of a sync that
+exits 0, so under install.sh the one sign was dropped, on the very run ruling 8's words lead to (heartbeat.json
+aside, then install.sh again). It is shown before the summary, in the CLI's order, with the step's label, and stays
+out of install.log's note (the awk that sums the summary never reads it). Kept on stdout, not moved to stderr: the
+CLI's stream is pinned (`tests/test_cli.py`'s B37 test) and stderr would print apart from its run. Test:
+`test_the_first_sync_shows_the_new_manifest_note`.
+
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one

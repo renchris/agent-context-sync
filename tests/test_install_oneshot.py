@@ -1171,6 +1171,25 @@ def test_the_first_sync_shows_the_upgrades_retry_note(env: dict[str, str], folde
     assert ("first-sync", "done", "0", "converted-1-deferred-0") in steps(install_log(env))
 
 
+def test_the_first_sync_shows_the_new_manifest_note(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """B13 round 25 D42: round 24 B37 made a new manifest's recovery lines DEBUG and printed one stdout note
+    instead, "note: a new manifest was started over N existing mirror pages; every file is converted again",
+    but show_first_sync shows only the summary lines (and the W18 retry note) on exit 0, so under install.sh
+    the note was dropped. Ruling 8's words (move heartbeat.json aside, then re-run install.sh) lead to just
+    that run. It is shown before the summary, in the CLI's order, and stays out of install.log's note."""
+    note = "note: a new manifest was started over 2 existing mirror pages; every file is converted again"
+    src = (REPO / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
+    assert 'f"note: a new manifest was started over {pages}; every file is converted again"' in src
+    e = {**env, "STUB_SYNC_OUT": f"{note}\nrun 1 · mode once\n  alpha: converted 2, deferred 0 online-only"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    shown = "first sync: " + note
+    assert out.count(shown) == 1, cp.stdout
+    assert out.index(shown) < out.index("first sync: alpha: converted 2, deferred 0 online-only"), cp.stdout
+    assert ("first-sync", "done", "0", "converted-2-deferred-0") in steps(install_log(env))
+
+
 def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder: Path, wheel: Path) -> None:
     cp = install_sh(
         {**env, "STUB_SYNC_RC": "75"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"

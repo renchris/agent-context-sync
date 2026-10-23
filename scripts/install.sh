@@ -8576,6 +8576,12 @@ show_first_sync() { # RC
 	local summary
 	summary="$(grep -E "$SYNC_SUMMARY_RE" "$SYNC_OUT" 2>/dev/null || true)"
 	if [ "$1" -eq 0 ] && [ -n "$summary" ]; then
+		# the note a sync that starts a new manifest prints before its run line (cli, B13 round 24 B37, which made
+		# the recovery WARNINGs on stderr DEBUG lines, so the note is the one sign): shown before the summary, in
+		# the CLI's order, and never fed to the awk below (B13 round 25 D42: the re-run ruling 8's words lead to
+		# starts that manifest at this step, and the note was dropped)
+		LC_ALL=C grep -E '^[[:space:]]*note: a new manifest was started over ' "$SYNC_OUT" 2>/dev/null |
+			LC_ALL=C sed "s/^[[:space:]]*/$SYNC_LABEL: /" || true
 		printf '%s\n' "$summary" | sed "s/^[[:space:]]*/$SYNC_LABEL: /"
 		[ -n "$FIRST_SYNC_NOTE" ] || FIRST_SYNC_NOTE="$(printf '%s\n' "$summary" | awk '
 			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1)
