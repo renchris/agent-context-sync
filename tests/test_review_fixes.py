@@ -1646,7 +1646,10 @@ def test_a_log_folder_under_a_folder_this_account_cannot_search_is_a_warning_not
             assert launchd.rotate_logs(above / "agentsync") == []
     finally:
         above.chmod(0o700)
-    assert any("log rotation skipped" in r.getMessage() for r in caplog.records), caplog.text
+    (said,) = [r.getMessage() for r in caplog.records if "log rotation skipped" in r.getMessage()]
+    # B13 round 24 B70: the path once and the system's words, never the raw "[Errno 13] ...: '<path>'"
+    assert "[Errno" not in said and said.count(str(above / "agentsync")) == 1, said
+    assert said.endswith("cannot be read: Permission denied"), said
 
 
 # ---------------------------------------------------------------------------------------------------------

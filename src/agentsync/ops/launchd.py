@@ -164,7 +164,8 @@ def rotate_logs(
         if not log_dir.is_dir():
             return rotated
     except OSError as exc:  # a folder above it this account cannot search: Python 3.11 raises EACCES here
-        log.warning("log rotation skipped: %s cannot be read: %s", log_dir, exc)
+        # the system's words alone: the whole OSError said the path twice and "[Errno 13]" (B13 round 24 B70)
+        log.warning("log rotation skipped: %s cannot be read: %s", log_dir, exc.strerror or exc)
         return rotated
     for path in sorted(log_dir.glob("*.log")):
         try:
