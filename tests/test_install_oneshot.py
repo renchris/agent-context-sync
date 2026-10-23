@@ -7740,7 +7740,7 @@ FILE_TAILS = {
         f"once each, as step 2's NEXT names them, and {FILE_STATUS}"
     ),
     "state-file-refused": (
-        "which this account is refused, and a chmod of it does not fix that (an ACL, a folder above it this "
+        "which this account is refused, and no change of its mode fixes that (an ACL, a folder above it this "
         "account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing that "
         f"is the person's, and {FILE_STATUS}"
     ),
@@ -7767,9 +7767,9 @@ STATE_OPEN_TAIL = {
     ),
     "state-refused": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
-        "is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot "
-        "search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, "
-        "and ~/.local/bin/agentsync status prints it on its state_dir lines"
+        "is refused, and no change of that folder's or file's mode fixes that (an ACL, a folder above it "
+        "this account cannot search, or a volume mounted read-only, whatever its mode; not damage): fixing "
+        "that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines"
     ),
     "state-side-owner": (
         f"{SIDE_STOPS}which another account owns (not damage): fixing that is the person's (a sudo chown; "
@@ -7783,7 +7783,7 @@ STATE_OPEN_TAIL = {
     "state-notfile": STATE_NOTFILE_TAIL,
     "state-lost": STATE_LOST_TAIL,
     "state-side-refused": (
-        f"{SIDE_STOPS}which this account is refused, and a chmod of it does not fix that (an ACL, or a "
+        f"{SIDE_STOPS}which this account is refused, and no change of its mode fixes that (an ACL, or a "
         "volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and "
         "~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
@@ -8740,11 +8740,12 @@ def test_a_state_file_another_account_owns_is_the_persons_to_fix(
 
 
 STATE_REFUSED_NEXT = (
-    "NEXT: this account is refused agentsync's state folder or a file in it, and a chmod of it does not fix "
-    "that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its "
-    "mode; not damage; the error above names it, and ~/.local/bin/agentsync status prints the fix on its "
-    "state_dir lines): fixing that is the person's, not a step for the agent, so show them the error and go "
-    "on to the report; once it is fixed, the next run is: "
+    "NEXT: this account is refused agentsync's state folder or a file in it, and no change of that folder's "
+    "or file's mode fixes that (an ACL, a folder above it this account cannot search, or a volume mounted "
+    "read-only, whatever its mode; not damage; the error above names it, and ~/.local/bin/agentsync status "
+    "prints the fix on its state_dir lines; a fix it names for a folder above it, even a chmod, is the "
+    "person's): fixing that is the person's, not a step for the agent, so show them the error and go on to "
+    "the report; once it is fixed, the next run is: "
 )
 """Step 2's NEXT for a state folder or file no chmod of it fixes (B13 round 21 Y24; round 23 A75: it said
 "though its mode allows it", false for a read-only volume, which refuses whatever the mode)."""

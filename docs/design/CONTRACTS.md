@@ -26847,6 +26847,8 @@ logs `state-notfile` with the person's tail, and step 2's config step the person
 for a path in that folder. Amended 2026-10-22, §16.166 A75: the refused NEXT and the `state-refused` and `state-side-refused` tails say
 `which this account is refused, and a chmod of it does not fix that (..., whatever its mode; not damage)`, not
 `though its mode allows it`, false for a read-only volume, which refuses whatever the mode.
+Amended 2026-10-23, §16.173 B5, B15: they say `and no change of that folder's or file's mode fixes that` (`no change of its mode` for a named
+file, a -wal or a -shm), and the NEXT adds `a fix it names for a folder above it, even a chmod, is the person's`.
 
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
 amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
@@ -28319,6 +28321,9 @@ refused, and a chmod of it does not fix that (an ACL, a folder above it this acc
 mounted read-only, whatever its mode; not damage)`: `though its mode allows it` was false for a read-only volume,
 and `no chmod fixes it` would be false for a folder above it, whose fix can be `chmod u+rwx` of that folder (Z14).
 setup-feedback quotes the new words. Tests: the `STATE_OPEN_TAIL` and `STATE_REFUSED_NEXT` pins.
+Amended 2026-10-23, §16.173 B5, B15: `a chmod of it does not fix that` read as false beside an error whose fix is a
+chmod (of a folder above it) or `chmod -N` (an ACL): the words are `no change of that folder's or file's mode fixes
+that`, or `no change of its mode` for one named file.
 
 **Every chmod NEXT says to log a repeated chmod** (A26; amends §16.160 Z8 and Z81). The config step's two chmod
 NEXTs end `if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on
@@ -28850,6 +28855,16 @@ queue and suppressed.json, 0200 audit.jsonl: nothing said), lock-0400, governanc
 foreign-heartbeat and foreign-lock (a root-owned 0644 file hard-linked in) cases of
 `test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file`; its read-only volume case is
 the lock's, as a heartbeat there is read, never written in place.
+
+**A refusal says no change of its mode fixes it** (B5, B15; amends §16.154 Y24 and §16.166 A75). The person's NEXT
+and the `state-refused`, `state-side-refused` and `state-file-refused` tails said `and a chmod of it does not fix
+that`, read as false beside the error line above it: under a folder above the state folder that refuses a search,
+the error's fix is `chmod u+rwx` of that folder (B5), and under an ACL it is `chmod -N <folder>` (B15). They now say
+`and no change of that folder's or file's mode fixes that` for the state folder or a file in it, and `and no change of
+its mode fixes that` for a named status-step file, a -wal or a -shm; the NEXT adds `a fix it names for a folder above
+it, even a chmod, is the person's`, so the agent runs neither. doctor's `chmod -N` fix is unchanged: it is the
+person's. Tests: the STATE_REFUSED_NEXT, state-refused, state-side-refused and file-tail literals in
+`tests/test_install_oneshot.py` (PM-parent, PM-acl and the ACL cases at steps 1 and 2).
 
 ### 16.174 Round 24: the lost manifest's kind in status, doctor and the sync, and round 23's seams (2026-10-22, wave B13 round 24 lane B)
 

@@ -618,7 +618,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   NEXT names them, and ~/.local/bin/agentsync status prints it on its state_dir lines` (plural since round 23 A37: a
   shut folder and the file in it take a chmod each); for one no chmod fixes,
   `state-refused`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
-  account is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or
+  account is refused, and no change of that folder's or file's mode fixes that (an ACL, a folder above it this account cannot search, or
   a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and
   ~/.local/bin/agentsync status prints it on its state_dir lines` (round 23 A75: it said "though its mode allows
   it", false for a read-only volume, which refuses whatever the mode); and for
@@ -632,7 +632,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   leaves no stop once the manifest is opened; until round 22 Z36 it read "step 2's status may fail on", not the
   "step 2 stops on" the prompt relays), or, when an ACL refuses one its mode allows, `state-side-refused`, `; step 2
   stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in
-  use (an empty one may not stop it), which this account is refused, and a chmod of it does not fix that (an ACL, or
+  use (an empty one may not stop it), which this account is refused, and no change of its mode fixes that (an ACL, or
   a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and
   ~/.local/bin/agentsync status prints it on its state_dir.files line`. Those -wal and -shm words are for one this
   account can read but not write; one it cannot read stops init as the manifest does, empty or not, so it takes
@@ -699,7 +699,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   <file>, which this account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once
   each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints it, and any other of the files it
   checks there that this account cannot open, on its lock, heartbeat or governance lines`; or `state-file-refused`,
-  `; step 2 stops at its status step on <file>, which this account is refused, and a chmod of it does not fix that
+  `; step 2 stops at its status step on <file>, which this account is refused, and no change of its mode fixes that
   (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not
   damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it, and any other of the files
   it checks there that this account cannot open, on its lock, heartbeat or governance lines`. When step 2 would
