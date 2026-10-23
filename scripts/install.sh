@@ -145,8 +145,10 @@
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
 #      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
 #      "media helper: ..." line; [convert] recordings = false builds nothing), then the speech helper (python
-#      -I -m agentsync.convert.speech, one "speech: ..." line; it fetches FluidAudio from github.com and may
-#      take up to 20 minutes; the model folders are placed by hand, see the README)
+#      -I -m agentsync.convert.speech, one "speech: ..." line; it fetches FluidAudio from github.com (or the
+#      SwiftPM mirror the Mac uses) and the 87 MB library FluidAudio links from
+#      release-assets.githubusercontent.com, and may take up to 20 minutes; the model folders are placed by
+#      hand, see the README)
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes

@@ -64,6 +64,7 @@ from agentsync.config import (
     local_source_table,
 )
 from agentsync.convert import pandoc as pandoc_converter
+from agentsync.convert import speech
 from agentsync.cycle import VANISHED_ADVICE, VANISHED_FIX
 from agentsync.cycle import vanished_add_back_tail as cycle_vanished_add_back_tail
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
@@ -15175,6 +15176,18 @@ def test_helpers_step_builds_the_speech_helper_after_media_and_a_failure_is_only
         assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
         out = cp.stdout.splitlines()
         assert out.index(line) == next(i for i, ln in enumerate(out) if "media helper" in ln) + 1
+
+
+def test_the_installer_header_names_every_host_the_speech_build_fetches_from() -> None:
+    """B13 round 26 E79: the header said the speech build "fetches FluidAudio from github.com", while since
+    round 25 D53, D65 it also fetches the library FluidAudio links from a second host (speech.FETCH_HOSTS),
+    and a SwiftPM mirror may route the clone. An IT allowlist request reads exact hosts, so the header names
+    each, as the README and doctor's resolve fix do."""
+    header = INSTALL_SH.read_text(encoding="utf-8").split("\nset -", 1)[0]
+    said = " ".join(ln.lstrip("#").strip() for ln in header.splitlines())
+    step = said.split('one "speech: ..." line;', 1)[1].split(" see the README)", 1)[0]
+    assert all(host in step for host in speech.FETCH_HOSTS), step
+    assert "SwiftPM mirror" in step, step
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
