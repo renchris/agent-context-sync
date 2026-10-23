@@ -3719,7 +3719,9 @@ fallback_outcome_line() {
 # The commit as the Summary shows it: COMMIT and its tree; where COMMIT is "-", which install.log's commit= field
 # and the install stamp keep as their machine word, why there is none (B13 round 9 K17, K29): a wheel, a copy
 # with no .git (the --report-only checkout, or a real run's SOURCE), or a .git git could not read, as --version
-# says "unknown". "-" as before when no read was tried (a run stopped before it).
+# says "unknown"; and when no read was tried (a run stopped before it, as a usage error stops one), that it was
+# not read, as setup_report._install_source says, never a bare "-" (B13 round 26 E21). COMMIT stays "-", the
+# machine word, and no git runs here.
 commit_shown() {
 	local d="$repo"
 	if [ "$COMMIT" != "-" ]; then
@@ -3735,7 +3737,7 @@ commit_shown() {
 	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
 		printf 'unknown (%s)' "$(unread_reason "$d")"
 	else
-		printf '%s' "$COMMIT"
+		printf 'not read (this run stopped before it read the commit)'
 	fi
 }
 fallback_install_line() { # RC

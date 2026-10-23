@@ -6518,6 +6518,37 @@ def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> 
     assert refused in run(STUB_UV_INSTALL_RC="2", GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
 
 
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+def test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit(env: dict[str, str]) -> None:
+    """B13 round 26 E21: a run of a git checkout that a usage error stopped (a --source-local folder that is
+    not there) stops before it reads the commit, and the Summary said "source commit -", which a reader cannot
+    tell from an unknown commit; the agentsync report says that run read none. It says so; install.log's
+    commit= field, the machine word, stays "-", and nothing runs git for it."""
+    src = Path(env["HOME"]) / "src" / "contoso-copy"
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    (src / "pyproject.toml").write_text("[project]\nname = 'agentsync'\n")
+    _git_checkout(src)
+    cp = subprocess.run(
+        [BASH32, str(src / "scripts" / "install.sh"), "--source-local", str(src / "not-there")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        timeout=120,
+    )
+    assert cp.returncode == 2 and "--source-local is not an existing folder" in cp.stderr, cp.stderr
+    [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+    assert line == (
+        f"- install.sh: setup-prompt-compat {COMPAT}, source commit not read (this run stopped before it "
+        "read the commit), exit 2 (usage error)"
+    ), line
+    assert "source commit -," not in line
+    [start] = [ln for ln in install_log(env) if " start install.sh " in ln]
+    assert " commit=- kind=checkout " in start, start
+
+
 def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], tmp_path: Path) -> None:
     """--report-only stops before the run reads its SOURCE, so the shell fallback's Summary said
     "source commit -" (B12 held, H16). It names this installer's checkout, as --version does."""
