@@ -25665,7 +25665,8 @@ gate. Other files that drive recordings through `fake_media` keep the field's li
 `test_convert_recording.py::test_a_recording_test_reads_under_the_wide_limit_unless_its_subject_is_the_limit`,
 `test_convert_recording.py::test_a_test_marked_real_limit_keeps_the_fields_limit`. **Amended 2026-10-20, §16.157
 Y68:** the bound is now well under the ci job's 45 minutes, `timeout-minutes` in ci.yml, raised from 40 after one
-job took 33:53.
+job took 33:53. **Amended 2026-10-23, §16.182 D83:** the bound is now well under the ci job's 50 minutes,
+`timeout-minutes` in ci.yml, raised from 45 after round 24's slowest job took 36:24.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -29608,4 +29609,15 @@ document's prose (§16.54 and later) is not pinned. Test:
 
 ### 16.182 Round 25: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-23, wave B13 round 25 lane D)
 
-Reserved for round 25 lane D of B13.
+Lane D's round 25 items (`docs/plans/bring-back-ocr.md`, "B13 round 25"; specs `round25/items/D<n>.md`, the
+verifier's corrected fix built): D59, D60, D61, D62, D63, D64, D67, D68 and D83.
+
+**CI's time is the time of round 24's jobs, and the limit is 50** (D83; dated line at §16.144 W70). Round 24's ten
+ci jobs (c93fcd96 to 3ec66a92, read with `gh run view --json jobs`, all green on attempt 1) took 30:06 to 36:24,
+every one past 30 and three past CLAUDE.md's 33 (pytest's step 35:46 at 5685 tests on the slowest, 58183bb5); the
+limit of 45 was 8:36 above the slowest, which rose each round (31:21, 32:18, 36:24). CLAUDE.md gives `about 18 to 37
+minutes` with the ten beside round 23's thirteen, `docs/lanes/COMMON.md` says the same, and `timeout-minutes` is 50,
+13 minutes above the range, as round 21 Y68 raised it when a job came within 6 minutes. ci.yml's note adds a
+sentence after round 23's; the older sentences keep the 45 they measured against. The recording tests' bound
+(`_wide_limit`'s docstring and the dated line at W70) names 50. A wait for a runner still does not count against
+the limit. Test: `test_claude_md_gives_cis_time_and_its_limit`.
