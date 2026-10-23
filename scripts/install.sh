@@ -3414,9 +3414,17 @@ attempt_ran_no_install() {
 # log's last write, whichever is later, plus 1 s. Never open-ended: a sync run by hand days after the setup must
 # not change it. None when the attempt has no begin time or its Prompt: names a version before v7, whose steps
 # differ (retried_runs' guards). Only the file's last 200 lines, as _read_sync_stops reads them. One
-# "<rc> <file> <owner> <kind>" line each, in the file's order; a line with no
+# "<rc> <file> <owner> <kind> <F>" line each, in the file's order; a line with no
 # kind= (a build before round 24) is a refused one. This shell cannot read the manifest, so it pairs none with a
-# later sync that ended 0.
+# later sync that ended 0. <F> is the friction log's line number of the agent's step 3 error line the stop
+# claims, "-" for none, as setup_report._stop_pairs pairs them since round 25 ruling 11 (D1, D7, D18, D24, D28,
+# D35, D57, D58, D69, D75; lane RB's shell half): every stop, fixed or not, in time order, claims the first
+# unclaimed step 3 error of the attempt (before its closing end line) at or after it, in the same second
+# included, and before the stop after next, whose what and fix columns _claims accepts: never a "skipped: lock
+# held" line; an agent's stop a line naming chmod, and when it names modes, one its file takes (700 the state
+# folder, 600 or 700 a governance file, 600 any other); a person's stop a line naming a non-zero exit ("exited 1",
+# "rc=1", "exited with code 1") and no chmod. Only the "date -u +%FT%TZ" stamps the prompt writes are read (Python also reads a fraction or an
+# offset).
 fallback_sync_stops() {
 	local f s w v mt
 	f="$(friction_file)"
@@ -3436,12 +3444,56 @@ fallback_sync_stops() {
 	# fractional mtime + 1 s
 	mt="$(/usr/bin/stat -f %Fm "$f" 2>/dev/null | LC_ALL=C awk '/^[0-9]+(\.[0-9]*)?$/ { s = int($1); if ($1 + 0 > s) s++; print s }' || true)"
 	[ -z "$mt" ] || mt="$(utc_stamp "$(date -u -r "$mt" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)")"
-	LC_ALL=C awk -v w="$w" -v mt="$mt" "$FRICTION_AWK"'
+	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" "$FRICTION_AWK"'
 		BEGIN {
 			split(w, a, " "); lo = a[1]; last = a[3] != "-" && a[3] > lo ? a[3] : lo
 			if (mt != "" && mt > last) last = mt
 			hi = a[2]; edge = hi == "-"
 			if (edge) hi = last
+			stamp = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z"
+		}
+		function trim(t) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", t); return t }
+		function word(t, re) { return match(t, "(^|[^a-z0-9_])" re "([^a-z0-9_]|$)") }
+		# setup_report._claims: may the error line (its what and fix columns, lower case) be the account of the stop
+		function claims(owner, file, t,    s, m, fit, any, ok) {
+			if (word(t, "skipped: lock held")) return 0
+			if (owner != "agent")
+				return word(t, "(exited|exit code|exit status|exit|rc)( with( exit)? (code|status))?[ \t]*[=:]?[ \t]*[1-9][0-9]*") && !word(t, "chmod")
+			if (!word(t, "chmod")) return 0
+			fit = file == "state-folder" ? " 700 " : file == "governance" ? " 600 700 " : " 600 "
+			s = t; any = 0; ok = 0
+			while (match(s, "(^|[^a-z0-9_])chmod[ \t]+(-[a-z]+[ \t]+)*0?[0-7][0-7][0-7]([^a-z0-9_]|$)")) {
+				m = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH - 1)
+				sub(/[^0-7]*$/, "", m); m = substr(m, length(m) - 2)
+				any = 1; if (index(fit, " " m " ")) ok = 1
+			}
+			return !any || ok
+		}
+		# the friction log first: the step 3 error lines of the attempt, up to its closing end line
+		FILENAME == fr {
+			t = $0; sub(/\r$/, "", t)
+			if (!match(t, "^[ \t]*([-*][ \t]+)?`?" stamp "`?[ \t]*[|]")) next
+			if (done) next
+			at = substr(t, RSTART, RLENGTH); sub(/^[^0-9]*/, "", at); at = substr(at, 1, 20)
+			rest = substr(t, RSTART + RLENGTH)
+			n = index(rest, "|"); head = tolower(trim(n ? substr(rest, 1, n - 1) : rest))
+			if (head == "end" || head == "finished") { # the closing line parse_friction reads: "end | finished", or none
+				if (head == "end") { rest = n ? substr(rest, n + 1) : ""; n = index(rest, "|"); head = tolower(trim(n ? substr(rest, 1, n - 1) : rest)) }
+				if ((head == "" || head == "finished" || index(head, "finish") == 1) && at >= lo) done = 1
+				next
+			}
+			if (at < lo || !match(head, /^(step[ \t]*)?[0-9]+$/)) next
+			sub(/^step[ \t]*/, "", head)
+			if (head + 0 != 3 || !n) next
+			rest = substr(rest, n + 1); n = index(rest, "|")
+			if (!n || tolower(trim(substr(rest, 1, n - 1))) != "error") next
+			rest = substr(rest, n + 1)
+			if (match(rest, /[|][^|]*$/)) {
+				fix = trim(substr(rest, RSTART + 1)); rest = substr(rest, 1, RSTART - 1)
+				if (fix == "-") fix = ""
+			} else fix = ""
+			ne++; eat[ne] = at; eline[ne] = FNR; etext[ne] = tolower(trim(rest) " " fix)
+			next
 		}
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
 		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
@@ -3450,13 +3502,28 @@ fallback_sync_stops() {
 		{
 			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
 			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
-			if (rc + 0 != 0) print rc + 0, file, owner, kind
-		}' < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
+			if (rc + 0 != 0) { ns++; sat[ns] = at; srow[ns] = rc + 0 " " file " " owner " " kind; sown[ns] = owner; sfile[ns] = file }
+		}
+		END {
+			# in time order (the file is, but a stable sort keeps a hand-edited one right), each claims one
+			for (i = 1; i <= ns; i++) ord[i] = i
+			for (i = 2; i <= ns; i++) { x = ord[i]; for (j = i - 1; j > 0 && sat[ord[j]] > sat[x]; j--) ord[j + 1] = ord[j]; ord[j + 1] = x }
+			for (i = 1; i <= ns; i++) {
+				k = ord[i]; bound = i + 2 <= ns ? sat[ord[i + 2]] : ""
+				for (e = 1; e <= ne; e++) {
+					if ((e in used) || eat[e] < sat[k] || (bound != "" && eat[e] >= bound)) continue
+					if (!claims(sown[k], sfile[k], etext[e])) continue
+					used[e] = 1; fl[k] = "F" eline[e]; break
+				}
+			}
+			for (k = 1; k <= ns; k++) print srow[k], (k in fl ? fl[k] : "-")
+		}' "$f" - < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
 }
 # The words of one of those stops, as setup_report._sync_stop_line gives a stop it could not pair: the file by
 # its role (_SYNC_STOP_FILES; an unknown one is a state file), what met it by its kind, then that whether a
-# later sync ended 0 is not read here, and whose fix it is.
-fallback_sync_stop_line() { # RC FILE OWNER KIND
+# later sync ended 0 is not read here, and whose fix it is; and the agent's error line it claims, as
+# _sync_stop_line names it, so one stop is one line (B13 round 25 ruling 11, lane RB's shell half).
+fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	local what why whose="the person's"
 	case "$2" in
 	manifest) what="agentsync's state file" ;;
@@ -3475,7 +3542,9 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND
 	*) why="which this account could not open" ;;
 	esac
 	[ "$3" != agent ] || whose="the agent's chmod"
-	say "- agentsync sync · step 3 · exited $1 on $what, $why; whether a later sync ended 0: not read by this shell fallback; the fix is $whose"
+	local told=""
+	case "${5:-}" in F[0-9]*) told=" ($5: the agent's account of it)" ;; esac
+	say "- agentsync sync · step 3 · exited $1 on $what, $why; whether a later sync ended 0: not read by this shell fallback; the fix is $whose$told"
 }
 # The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
 # case the line says that it is not, so "copy the five values from the Summary" (setup-feedback.md) finds a
@@ -3547,7 +3616,7 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note="" agent hdr=0 choose why bracket stops k
+	local stated="" n note="" agent hdr=0 choose why bracket stops k paired
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
@@ -3589,7 +3658,11 @@ fallback_outcome_line() {
 		# and the step-3 sync stops agentsync logged itself, which install.log does not hold: an install run's exit
 		# 0 alone read as "fully one command" where the agentsync report says "worked with help" (B13 round 24
 		# B95); a step 3 error line the agent logged may be its own account of one of them (round 24 ruling 9)
-		k="$(fallback_sync_stops | LC_ALL=C awk 'END { print NR }')"
+		k="$(fallback_sync_stops)"
+		# the agent's error lines the stops claim (ruling 11), by their friction line: each is its stop's account
+		paired="$(printf '%s\n' "$k" | LC_ALL=C awk '$5 ~ /^F[0-9]+$/ { f[++n] = $5 }
+			END { for (i = 1; i <= n; i++) printf "%s%s", (i == 1 ? "" : i == n ? " and " : ", "), f[i]; if (n) printf "\t%d", n }')"
+		k="$(printf '%s' "$k" | LC_ALL=C awk 'END { print NR }')"
 		stops=""
 		case "${k:-0}" in
 		0) ;;
@@ -3598,7 +3671,13 @@ fallback_outcome_line() {
 		esac
 		if friction_latest_has_step; then
 			choose="; the Outcome is yours to choose from the friction log's step lines"
-			[ -z "$stops" ] || choose="$choose; $stops; a step 3 error line there may be the agent's account of the same stop"
+			case "$paired" in
+			"") ;;
+			*$'\t'1) paired="; the step 3 error line ${paired%$'\t'*} there is the agent's account of one of them" ;;
+			*) paired="; the step 3 error lines ${paired%$'\t'*} there are the agent's account of ${paired##*$'\t'} of them" ;;
+			esac
+			[ "$k" != 1 ] || paired="${paired/ of one of them/ of it}"
+			[ -z "$stops" ] || choose="$choose; $stops$paired"
 		elif ! attempt_ran_no_install; then
 			if [ -n "$stops" ]; then
 				choose=", and the friction log has no step line for it; $stops, so an install run's exit 0 alone is not the Outcome"
@@ -4042,8 +4121,8 @@ fallback_body() {
 		say ""
 		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
 		say ""
-		while read -r n p v o; do
-			fallback_sync_stop_line "$n" "$p" "$v" "$o"
+		while read -r n p v o fl; do
+			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
 		done <<<"$k"
 	fi
 	say ""

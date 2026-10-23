@@ -5511,12 +5511,162 @@ def test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_wri
         elif want:
             assert (
                 "; agentsync logged 1 step-3 sync stop in sync-stops.log beside install.log (the Installer "
-                "section lists it); a step 3 error line there may be the agent's account of the same stop; "
-            ) in outcome, outcome
+                "section lists it); the link fills "
+            ) in outcome, outcome  # round 25 ruling 11: "the sync exited 1" names no chmod, so no pair
             assert "exited 1 on agentsync's heartbeat file" in text, text
             assert "agentsync's lock file" not in text, text
         else:
             assert outcome == NOT_COMPUTED and "sync-stops.log" not in text, outcome
+
+
+_PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n"
+"""Lines 1 to 3 of the pairing cases' friction log: its first event line is F4."""
+
+
+@pytest.mark.parametrize(
+    ("stops", "events", "told"),
+    [
+        # an agent's lock stop and the chmod line logged after its re-sync, a second later
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:01 | step 3 | error | sync exited 1 on the lock | ran chmod 600 on it, then sync again"],
+            ["F4"],
+        ),
+        # the same second is at or after it
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:00 | step 3 | error | exit code 1 | chmod 600 <lock>"],
+            ["F4"],
+        ),
+        # a person's stop claims a line with the exit and no chmod (v33: log it, go to the report)
+        (
+            ["10:01:00 manifest person lost"],
+            ["10:01:05 | step 3 | error | agentsync sync exited 1: no manifest | the person restores it"],
+            ["F4"],
+        ),
+        # "exited with code N" is an exit too (lane RA's ca0d3dd9)
+        (
+            ["10:01:00 manifest person lost"],
+            ["10:01:05 | step 3 | error | agentsync sync exited with code 1 | the person restores it"],
+            ["F4"],
+        ),
+        # a person's stop never claims a chmod line, an agent's never a line with no chmod
+        (["10:01:00 manifest person lost"], ["10:01:05 | step 3 | error | rc=1 | chmod 600 <db>"], ["-"]),
+        (["10:01:00 lock agent refused"], ["10:01:05 | step 3 | error | the sync exited 1 | -"], ["-"]),
+        # a chmod of a mode its file does not take: the state folder takes 700, a file 600
+        (["10:01:00 lock agent refused"], ["10:01:05 | step 3 | error | rc 1 | chmod 700 <lock>"], ["-"]),
+        (
+            ["10:01:00 state-folder agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod 700 <dir>"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 governance agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod 0600 <g>"],
+            ["F4"],
+        ),
+        # a skipped sync writes no stop: its line is never claimed, and a line before the stop is not its
+        (
+            ["10:01:00 lock agent refused"],
+            [
+                "10:00:30 | step 3 | error | chmod 600 <lock> before the stop | -",
+                "10:01:02 | step 3 | error | skipped: lock held; chmod 600 <lock> | -",
+                "10:01:03 | step 2 | error | chmod 600 <lock> | -",
+            ],
+            ["-"],
+        ),
+        # each stop up to the stop after next: stop 1 cannot reach past stop 3's time, stop 2 can
+        (
+            [
+                "10:01:00 lock agent refused",
+                "10:02:00 lock agent refused",
+                "10:03:00 heartbeat agent refused",
+            ],
+            [
+                "10:03:30 | step 3 | error | chmod 600 <lock> | -",
+                "10:03:40 | step 3 | error | chmod 600 <hb> | -",
+            ],
+            ["-", "F4", "F5"],
+        ),
+        # a line after the attempt's closing line is no event of its run, and a bare "end" closes it too
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:30 | end", "10:01:40 | step 3 | error | chmod 600 <lock> | -"],
+            ["-"],
+        ),
+        # one to one: a second stop finds the first line taken
+        (
+            ["10:01:00 lock agent refused", "10:01:10 lock agent refused"],
+            ["10:01:20 | step 3 | error | chmod 600 <lock> | -"],
+            ["F4", "-"],
+        ),
+    ],
+    ids=[
+        "chmod-after",
+        "same-second",
+        "persons-exit",
+        "persons-exit-with-code",
+        "persons-chmod",
+        "agents-no-chmod",
+        "lock-700",
+        "folder-700",
+        "governance-0600",
+        "skipped-before-step2",
+        "stop-after-next",
+        "bare-end",
+        "one-to-one",
+    ],
+)
+def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does(
+    env: dict[str, str], stops: list[str], events: list[str], told: list[str]
+) -> None:
+    """B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D57, D58, D69, D75), the shell half: the shell
+    report listed every stop unpaired and said a step 3 error line "may be" the agent's account of one,
+    since pairing needed a later sync that ended 0, which this shell cannot read. Every stop pairs now, fixed
+    or not, as setup_report._stop_pairs pairs it: in time order, the first unclaimed step 3 error of the
+    attempt at or after it (the same second included) and before the stop after next, whose what and fix
+    columns _claims accepts. The stop's line names it, as the agentsync report's Items line does, and the
+    outcome names the lines that are the agent's account of a stop."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    log = [f"2026-10-14T{e}" for e in events] + ["2026-10-14T10:05:00Z | end | finished"]
+    log = [ln.replace(" | ", "Z | ", 1) if not ln.endswith("finished") else ln for ln in log]
+    friction_path(env).write_text(_PAIR_HEAD + "".join(f"{ln}\n" for ln in log))
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "".join(
+            f"2026-10-14T{at}Z sync-stop file={file} rc=1 owner={owner} kind={kind}\n"
+            for at, file, owner, kind in (stop.split() for stop in stops)
+        )
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    listed = [ln for ln in installer.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    assert len(listed) == len(stops), installer
+    for line, f in zip(listed, told, strict=True):
+        tail = f" ({f}: the agent's account of it)"
+        assert line.endswith(tail) is (f != "-"), (line, f)
+        assert ": the agent's account of it)" in line or f == "-", line
+    outcome = _summary(text)[2]
+    paired = [f for f in told if f != "-"]
+    assert ("there is the agent's account" in outcome or "there are the agent's account" in outcome) is bool(
+        paired
+    ), outcome
+    if len(paired) == 1:
+        one = "it" if len(stops) == 1 else "one of them"
+        assert f"; the step 3 error line {paired[0]} there is the agent's account of {one}; " in outcome, (
+            outcome
+        )
+    elif paired:
+        assert (
+            f"; the step 3 error lines {' and '.join(paired)} there are the agent's account of 2 of them"
+            in (outcome)
+        ), outcome
+    assert "may be the agent's account" not in text, outcome
 
 
 def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report(

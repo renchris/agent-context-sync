@@ -29039,6 +29039,9 @@ each as `- agentsync sync · step 3 · exited <rc> on <file>, <kind clause>; whe
 by this shell fallback; the fix is <the agent's chmod|the person's>`. The shell reads no manifest, so it pairs none.
 Tests: `test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged`,
 `test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write`.
+Amended 2026-10-23, §16.179 D79: since round 25 ruling 11 pairing needs no later sync, so the shell pairs each stop
+with the agent's step 3 line as `_stop_pairs` does, names it on the stop's line `(F<n>: the agent's account of
+it)`, and the outcome names those lines in place of `a step 3 error line there may be ...`.
 
 **A retried run's item says `and ended 0` before what came first** (B45; amends §16.152 Y5). `_retry_line` put
 ` and ended 0` after the after-clause, so `... after the folder's mode, and any mode in it that status then named,
@@ -29799,6 +29802,25 @@ them. Tests: `test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_a
 agentsync: the link removed and heartbeat.json aside, as the words say, ends 0), the step 1 table's `LM-link-gone`,
 and the not-a-file tests through `SHUT_OPEN` (`STATE_NOTFILE_TAIL`, `STATE_NOTFILE_NEXT`, `SIDE_NOTFILE_NEXT`,
 `STATE_OPEN_TAIL["state-side-notfile"]`).
+
+**The shell report pairs each step 3 stop as the agentsync report does** (D79's D-L1a and ruling 11, the shell
+half; amends §16.172 B95). Ruling 11 pairs every recorded stop, fixed or not, so pairing no longer needs the manifest's runs, and the
+shell can do what lane RA's `_stop_pairs` does: `fallback_sync_stops` reads the friction log first (the step 3
+`error` lines of the attempt, at or after its begin and before its closing end line), and in time order each stop
+claims the first unclaimed one at or after it, the same second included, before the stop after next, whose what and
+fix columns `_claims` accepts: never a `skipped: lock held` line; an agent's stop a line naming `chmod`, and when it
+names modes one its file takes (700 the state folder, 600 or 700 a governance file, 600 any other); a person's stop
+a line naming a non-zero exit (`exited`, `exit`, `exit code`, `exit status` or `rc`, with an optional `with code`
+or `with exit status`, then the number, as lane RA's `_EXIT_RE` reads it) and no `chmod`. Each stop line gains a fifth field, the claimed line's `F<n>` (its friction log line number, as the report
+numbers it) or `-`. The Installer section's stop line ends `(F<n>: the agent's account of it)`, as the Items line
+does, and the uncomputed outcome says `the step 3 error line F<n> there is the agent's account of it` (`of one of
+them`, or `the step 3 error lines F<a> and F<b> there are the agent's account of 2 of them`) where it said a line
+"may be" one; with none paired it says nothing of them, since each error is then a turn of its own. The shell reads
+only the `date -u +%FT%TZ` stamps the prompt writes; Python's parser also reads a fraction or an offset, so a
+hand-written stamp of that kind pairs there only. Test:
+`test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does` (eleven cases: the
+chmod after the re-sync, the same second, a person's exit line, the wrong owner's line, a mode its file does not
+take, a skipped or earlier or step 2 line, the stop after next, one to one).
 
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
