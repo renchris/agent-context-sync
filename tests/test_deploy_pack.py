@@ -207,27 +207,38 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     a reader timing the read-back by "21 to 26" would think a healthy 28-minute job stuck: the range is 18
     to 29, and ci.yml's note adds those times after round 20's, which it keeps. B13 round 23 A74, A93 (one
     defect): round 22's nine jobs (fcafd734 to 7a54f938) took 19:29 to 31:21, one past 29: the range is 18 to
-    32, with those nine beside round 21's, and the limit keeps 13 minutes above it."""
+    32, with those nine beside round 21's, and the limit keeps 13 minutes above it. B13 round 24 B98: round
+    23's thirteen jobs (ed901cd3 to b1f4a087) took 24:34 to 32:18, the slowest past 32, and runs waited 46
+    and 48 minutes for a macOS runner, against the 21 and 17 given: a reader would take a run still queued at
+    minute 40 for a stuck one. The range is 18 to 33, the waits are the measured ones, and the limit keeps 12
+    minutes above the range."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
     assert "about 6 minutes" not in guide and "about 15 to 20 minutes" not in guide
     assert "about 19 to 24 minutes" not in guide and "23.5" not in guide
     assert "about 21 to 25 minutes" not in guide and "about 21 to 26 minutes" not in guide
-    assert "about 18 to 29 minutes" not in guide
+    assert "about 18 to 29 minutes" not in guide and "about 18 to 32 minutes" not in guide
+    assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 32 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
+        "`ci` takes about 18 to 33 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
         " the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs from eaed1034 to"
-        " fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to 31:21; one run took"
-        " 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner (one waited 21 minutes,"
-        f" another 17); the job's limit is {limit} minutes (`timeout-minutes` in ci.yml)."
+        " fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to 31:21; the thirteen"
+        " from ed901cd3 to b1f4a087 took 24:34 to 32:18; one run took 34 on a runner loaded 5 to 8 per core),"
+        " plus any wait for a macOS runner, counted from the run appearing to its job starting (one waited 48"
+        f" minutes, another 46); the job's limit is {limit} minutes (`timeout-minutes` in ci.yml), and a wait"
+        " does not count against it."
     ) in guide
-    assert int(limit) - 32 >= 10 and int(limit) - 34 >= 10
+    assert int(limit) - 33 >= 10 and int(limit) - 34 >= 10
     lanes = _page("docs/lanes/COMMON.md")
-    assert "CI takes 18 to 32 minutes a run (one ran 34 on a loaded runner); its limit is 45" in lanes
+    assert (
+        "CI takes 18 to 33 minutes a run (one ran 34 on a loaded runner), and a run can wait up to about 48"
+        f" minutes for a macOS runner first; its limit is {limit} "
+    ) in lanes
     assert (
         "21 to 26 minutes" not in lanes
         and "18 to 29 minutes" not in lanes
+        and "18 to 32 minutes" not in lanes
         and f"its limit is {limit} " in lanes
     )
     # the workflow's own note gives the job's times, and pytest's step only as such
@@ -239,6 +250,9 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert f"so {limit} stays {int(limit) - 29} minutes above them (B13 round 22 Z67, Z88)" in note
     assert "Round 22's nine jobs (fcafd734 to 7a54f938) took 19:29 to 31:21, all on attempt 1" in note
     assert f"so {limit} stays {int(limit) - 32} minutes above them (B13 round 23 A74, A93)" in note
+    assert "Round 23's thirteen jobs (ed901cd3 to b1f4a087) took 24:34 to 32:18, all on attempt 1" in note
+    assert f"so {limit} stays {int(limit) - 33} minutes above them (B13 round 24 B98)" in note
+    assert "Waits for a macOS runner reached 48 minutes" in note
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:

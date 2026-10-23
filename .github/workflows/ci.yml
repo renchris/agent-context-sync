@@ -25,7 +25,10 @@ name: ci
 # Round 21's seven jobs and round 22's first (eaed1034 to fcafd734) took 18:05 to 28:34, all green on attempt 1, so
 # 45 stays 16 minutes above them (B13 round 22 Z67, Z88). Round 22's nine jobs (fcafd734 to 7a54f938) took 19:29
 # to 31:21, all on attempt 1 (one red test, fixed by a96dfc7b), so 45 stays 13 minutes above them (B13 round 23
-# A74, A93).
+# A74, A93). Round 23's thirteen jobs (ed901cd3 to b1f4a087) took 24:34 to 32:18, all on attempt 1 (one red run,
+# 39809607845 on 38727270, fixed by 46880b9e and 193c4e5d), so 45 stays 12 minutes above them (B13 round 24
+# B98). Waits for a macOS runner reached 48 minutes (193c4e5d) and 46 (38727270); a wait is not counted against
+# timeout-minutes.
 on:
   workflow_dispatch:
   push:
