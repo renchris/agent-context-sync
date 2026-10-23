@@ -8323,7 +8323,9 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     old error. It names both, read from the report. B13 round 23 A63: and the files that run left waiting for
     a converter, which the first run with one reads again, so their old error can show then. B13 round 24 B76:
     the row said that run "read" such an image; a `no converter` stub is decided from the name, no byte read
-    (``Cycle._no_converter``), so the first run with a converter is the first to read it."""
+    (``Cycle._no_converter``), so the first run with a converter is the first to read it. B13 round 25 D60:
+    the row put a Graph or online-only image among the refused files, which ``_stub_settled`` (B73) counts as
+    settled, and named no converter that reads them; it says both as the report does."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -8369,13 +8371,25 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     no_byte = inspect.getdoc(cycle._Cycle._no_converter)
     assert no_byte is not None and "no byte is read for it" in no_byte
     assert "Only an image already on this Mac is read." in " ".join(no_byte.split())
+    # B13 round 25 D60: a stub only a download would read is settled (B73), never refused, and the converter
+    # that reads the refused ones is named in the report's words
+    settled = " ".join((inspect.getdoc(cycle._Cycle._stub_settled) or "").split())
+    download = "an image or a recording that reading means a download for (a Graph item, an online-only file)"
+    assert download in settled
+    wait = re.search(
+        r"its type \((an engine built, or \[convert\] ocr or recordings turned back on)\)", source
+    )
+    assert wait is not None
     assert (
-        "The files it refused for want of a converter (a `no converter` stub, such as an image that run had"
-        " no OCR engine for, stubbed by its name with no byte read: `that run"
-        f" {done.group(3)}`) are read by the first run with a converter for their type, if the file is on"
-        " this Mac by then (an online-only or Graph image keeps its stub: OCR never downloads one), so an old"
-        " conversion error can show in that run (CONTRACTS §16.168, A63; §16.171, B74)."
+        "The files it refused for want of a converter (a `no converter` stub, such as an image or recording"
+        " that run had no OCR engine or media helper for, stubbed by its name with no byte read: `that run"
+        f" {done.group(3)}`) are read by the first run with a converter for their type"
+        f" (`{wait.group(1)}`), if the file is still on this Mac then, so an old conversion error can show in"
+        " that run. An image or recording that only a download would read (a Graph source's, or one"
+        f" online-only when that run counted it) is counted `that run {done.group(2)}`, as no sync downloads"
+        " one (CONTRACTS §16.168, A63; §16.171, B74; §16.175, B73)."
     ) in row
+    assert "an online-only or Graph image keeps its stub" not in row
     assert "that run read with no OCR engine" not in row and "are read again by the first run" not in row
     # the note sits beside the other notes, before the Quarantine sentence
     assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")

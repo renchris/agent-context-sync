@@ -29692,3 +29692,13 @@ replaces it, is
 `state-file-owner`. The guide and the dated line at §16.173 say that form. The test reads install.sh: once its
 owner-first skip is gone it must hold the sticky case. Test:
 `test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case`.
+
+**The guide's refused stubs leave out what a download would read** (D60; `docs/deploy/setup-feedback.md`). The Repeat
+conversions row put an online-only or Graph image inside its `that run refused with no converter for its type`
+sentence, while §16.175's B73 (`_Cycle._stub_settled`) counts an image or recording stub only a download would read
+(a Graph source's, or one dataless when that run counted it) as `that run settled with no try left`; and it named
+only an image with no OCR engine and no converter that reads them. The row names an image or recording with no OCR
+engine or media helper, the report's own words for the converter (`an engine built, or [convert] ocr or recordings
+turned back on`), and the download case as settled, as no sync downloads one; it does not say such a file is never
+read (the OS may download it). Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads
+the converter words from the report and the download case from `_stub_settled`'s docstring.
