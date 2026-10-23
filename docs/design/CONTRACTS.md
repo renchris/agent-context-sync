@@ -29713,7 +29713,127 @@ Reserved for round 25 lane RB of B13.
 
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
-Reserved for round 25 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one
+fix is the setup report's (lane RA). Round 25 ruling 12: anything that is not a file where manifest.sqlite-wal or
+-shm belongs, and a 0000 folder or a dangling link at the manifest, is the person's. The words below were sent to
+lanes RA and RB before they built their halves.
+
+**D2, D8, D21, D70: a side file that is not a file stops sync, curate and init on status's line (`agentsync.cli`,
+`agentsync.ops.doctor`).** One defect from four finders: a folder, a socket or a fifo at the -wal or -shm (or a link
+to nothing whose folder is missing) gave sqlite's CANTOPEN, READONLY or, for a fifo at the -shm, IOERR, and the
+shared `except sqlite3.DatabaseError` arm printed `error: OperationalError: unable to open database file` with no
+fix, no NEXT and no sync-stops.log line, while status FAILed it. `doctor.side_not_a_file_at(db)` finds the side by
+its stat, never by sqlite's code, and `doctor.side_not_a_file(config)` returns it with status's own state_dir.files
+FAIL; the arm prints `error: state: <detail> (fix: <fix>)`, exits 1 (never 65, so install.sh's `config_failed`
+keeps its `state_side_not_a_file` NEXT), and a foreground sync prints `cli.STATE_MISPLACED_STEP` and records
+`file=manifest-wal|manifest-shm rc=1 owner=person kind=misplaced`; `--mode` and NO_NEXT_HINT runs print the line
+alone. Errors no check explains keep the one-line `error: <Type>: <message>` (V59). A fifo at the -wal lets a sync
+with nothing to write end 0 (the pipe takes the write), so it has no stop to word; status still FAILs it. Status's
+`cannot read the state:` words for it are `<role> is not a file; the state_dir.files line says why`,
+`doctor.state_unopenable` is False for it, and the incomplete-listing warn takes
+`doctor.LISTING_STATE_SIDE_NOTE`. Tests:
+`test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next`,
+`test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so`.
+
+**D6, D22, D10: a side file is named by its role, its move aside keeps a copy, and it is one line.** The detail is
+`<path> is <kind>, not a file (the state file's write-ahead log)` (`shared-memory file` for the -shm, `the token
+cache` for msal_token_cache.bin), never "not the state file", which the report's outcome read as the manifest; the
+manifest keeps `<db> is <kind>, not the state file` and MANIFEST_FIX. The fix is `the person moves <path> aside,
+keeping a copy`, as install.sh's step 1 and step 2 say it. A non-file side is one state_dir.files FAIL with no ok
+line beside it under the same name; a FAIL with another owner's fix (the chmod 600 of a loose file) stays its own
+line. The setup report's A44 matcher reads `, not a file (`. Tests:
+`test_a_side_file_that_is_not_a_file_is_one_fail_named_by_its_role_with_a_copy_kept`,
+`test_a_side_that_is_a_folder_beside_a_loose_manifest_keeps_both_fails_and_no_ok`.
+
+**D72: a folder shut to this account is opened first.** Measured on this Mac: macOS renames a folder only with
+write on the folder itself (a 0000 or 0500 folder refuses `mv`) and copies it only with read and search (a 0300
+one refuses `cp -R`); a link to a shut folder moves aside, so a link gets no such words. For a folder at a state
+file this account cannot read, write and search, the fix starts `the person runs chmod 700 <path> first, which is
+reversible, as a folder shut to this account can be neither copied nor moved; then ` (another account's: `runs
+sudo chown -R <uid> <path> first (the agent runs no sudo), as ...`), then the move aside, or MANIFEST_FIX's
+decision for the manifest. Test: `test_a_folder_shut_to_this_account_at_a_state_file_names_its_chmod_700_first`.
+
+**D73: MANIFEST_FIX moves heartbeat.json in install.sh's words.** "or move it aside, with heartbeat.json beside
+it" read as where the file is; it reads "or move it aside and heartbeat.json with it", so the next sync does not
+stop on the lost-manifest guard. Test: `test_manifest_fix_says_to_move_heartbeat_json_aside_in_install_shs_words`.
+
+**D71, D43: a manifest link status FAILs stops the sync on its line.** A link at manifest.sqlite into a missing
+folder (B64) or a symlink loop there gave the sync `error: <db> cannot be opened: No such file or directory` (or
+`Too many levels of symbolic links`), no fix and no NEXT. `_misplaced_check` maps ENOENT or ELOOP on the manifest
+to status's state_dir.manifest FAIL (a loop above it still to state_dir), so the sync prints status's line, the
+misplaced NEXT and a stop, and a state_dir.manifest FAIL leads status's NEXT, never the loop's "run sync". Over
+earlier passes, a link into a missing or unwritable folder is one FAIL, `<db> is a symlink to <target>, whose
+folder does not exist or refuses a write, and is missing, but heartbeat.json records earlier passes`, fixed by
+`the person removes the link first: rm <db>; then decides: ...` (LOST_MANIFEST_FIX's moves), with no second lost
+line; a link into a writable folder keeps LOST_MANIFEST_FIX. Status's unread words for a link to nothing are "the
+state file's link points into a missing folder". Tests:
+`test_a_dangling_manifest_link_followed_by_its_fix_ends_in_a_clean_sync`,
+`test_a_manifest_link_status_fails_stops_the_sync_on_its_line_and_status_names_it_first`,
+`test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl`.
+
+**D41, D46: nothing that is not a file hangs or crashes a state read.** At the audit trail a folder (EISDIR), a
+socket (EOPNOTSUPP), a loop or a link to a folder ended a hold on a traceback; each is classified as status does,
+and status and the hold say `<audit> is <kind>, not a file (the audit trail) (fix: the person moves <path> aside,
+keeping a copy)`; a link to a regular file still appends. `ops.lock.read_regular_bytes` opens O_NONBLOCK, judges the
+open file by fstat and raises ValueError for anything not regular; read_heartbeat, manifest_lost, holds.json, the
+lock's body and its holder sidecar, and the unreadable record read through it, and `is_held` takes no flock on a
+non-regular lock, so a fifo there no longer hangs status or, under the lock, every later sync. Tests:
+`test_anything_not_a_file_at_the_audit_trail_stops_a_hold_with_statuss_line_not_a_traceback`,
+`test_a_fifo_at_a_state_file_status_reads_never_hangs_it`,
+`test_a_socket_or_folder_at_a_state_file_reads_as_not_a_regular_file`.
+
+**D11, D29: status keeps the baseline wait when it cannot read the state.** One defect from two finders.
+`loop.docs_waits` gives the WAITING ON YOU lines that read the docs repo alone (the baseline draft); `next_step`
+gives it in its place, and status's fallback NEXT (and its "cannot read the state" NEXT) is followed by it once, so
+the setup report's Loop line keeps it. Test: `test_status_keeps_the_baseline_wait_when_it_cannot_read_the_state`.
+
+**D12: a lock or heartbeat this account cannot open is named.** `status: cannot read the state: agentsync.lock
+cannot be opened: Permission denied; the lock [FAIL] line says why`, as a governance file's line names it. Test:
+`test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix`.
+
+**D25: the refused clause names K's cause.** `, K of them withheld: its label cannot be read` (`their labels` for
+more), not `withheld by the label rule`, which read as if the other refused files had another cause. The report's
+`_SPLIT_RE` reads both, and its Summary and the setup-feedback guide say the new words. Test:
+`test_the_sync_line_counts_every_stub_the_label_rule_withheld`.
+
+**D26: after the person's new start, no "no sync has run" over the mirror.** With heartbeat.json aside and pages
+left, status says `manifest: none yet (the next sync starts a new one over N existing mirror pages; every file is
+converted again)` and doctor `no manifest yet (the next sync starts one, 0600, over N existing mirror pages)`, by
+`cycle.unowned_mirror_pages`, the count the repair uses. The report's evidence line is lane RA's. Test:
+`test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over`.
+
+**D40: a new manifest names each page it did not write back.** After a run that started a new manifest, each
+orphan page the reset removed that is not back in the mirror is a WARNING, `repair: removed orphan mirror page
+<path> (not written back by this run)`; no cause is claimed. Test:
+`test_a_new_manifest_names_each_page_it_removed_and_did_not_write_back`.
+
+**D44, D77: curate and the other commands.** Any command but sync gets `cli.STATE_MISPLACED_COMMAND_STEP` ("so this
+command did not run"); curate, hold and accept-deletions over a folder at the manifest now get it too. Curate over
+a lost manifest prints sync's line with LOST_MANIFEST_FIX and that NEXT and exits 1, never "0 findings" and "run
+sync again". Tests: `test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_say_syncs_words`,
+`test_curate_over_a_lost_manifest_says_syncs_line_and_never_to_sync_again`.
+
+**D45: another account's governance folder this account can write passes.** Keyed on what a hold does: a folder
+that refuses a write FAILs as before; a writable one passes whoever owns it; a sticky one over another account's
+holds.json, purge queue or suppression list FAILs, `<gov> is a sticky folder and <file> is another account's: a
+hold cannot replace it` (`governance.sticky_blocker`). The report's twin agrees. Test:
+`test_another_accounts_governance_folder_this_account_can_write_passes_unless_sticky`.
+
+**D47, D48, D49: round 24's seams.** source_statuses' WARNING for a refused heartbeat is the default for a caller
+that records none, which no current caller takes; it stays, so a new caller fails loud. `_fail_step` gives no
+count of the person's kinds (447 went stale at v33's 476; §16.172's B68 figure is round 23's). The B58 test asserts
+no lock held and the same inode and mtime, not `st_size == 0 or ...`, which was always true. Tests:
+`test_source_statuses_warns_a_refused_heartbeat_only_for_a_caller_that_records_none`,
+`test_fail_steps_docstring_gives_no_stale_count_of_the_persons_kinds`,
+`test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sync_names`.
+
+**D81: no build of lane B's.** B17's measured reason holds: every guide's procedure repeats "do what the NEXT: line
+says", so a status NEXT to the report would send later work sessions to one that does not exist. Its residual, an
+open person's stop that does not claim its step 3 error, is the setup report's pairing (ruling 11, lane RA,
+§16.178).
+
+Lane RA's D23 arm is in this lane's file: a folder at manifest.sqlite gives the listing warn
+`doctor.LISTING_STATE_NOT_FILE_NOTE`, not "the state file cannot be read".
 
 ### 16.181 Round 25: the speech and OCR reasons and the timing pin (2026-10-23, wave B13 round 25 lane E)
 
