@@ -5234,7 +5234,38 @@ _NEXT_FIX = "next-fix"
 step NEXT names, not a separate hint, and never the person's (B13 round 23 A35)."""
 
 _AGENT_FIX_RE = re.compile(r"the fix is the agent's: run (.+?) once,")
-"""The command install.sh's state-mode ``FAIL_NEXT`` gives the agent (A35)."""
+"""The command install.sh's state-mode ``FAIL_NEXT`` gives the agent (A35), or its status-step NEXT
+(``STATE_CHMODS``: one ``chmod MODE <paths>`` per mode, joined by `` && ``)."""
+
+
+def _chmods(command: str) -> list[tuple[str, frozenset[str]]]:
+    """Each ``chmod MODE p1 p2`` of a NEXT's command (``chmod 700 d && chmod 600 f``) as ``(mode, paths)``,
+    the paths as the shell reads them; empty when it does not parse (B13 round 24 B53)."""
+    out: list[tuple[str, frozenset[str]]] = []
+    try:
+        for part in command.split(" && "):
+            words = shlex.split(part)
+            if len(words) >= 3 and words[0] == "chmod":
+                out.append((words[1], frozenset(words[2:])))
+    except ValueError:
+        return []
+    return out
+
+
+def _next_gives(fix: str, named: Collection[str]) -> bool:
+    """Whether a [FAIL] line's ``fix`` (cut at its first ``;``: the manifest's ends "; the file itself is not
+    damaged") is a command the run's NEXT gives the agent (``named``): the same words (A35), or a chmod of the
+    same mode whose paths that NEXT's chmod of that mode all names (B13 round 24 B53: install.sh's
+    status-step NEXT merges every [FAIL]'s paths into one chmod per mode). A fix that does not parse keeps
+    the exact test."""
+    fix = fix.split(";", 1)[0].strip()
+    if fix in named:
+        return True
+    mine = _chmods(fix)
+    if len(mine) != 1:
+        return False
+    mode, paths = mine[0]
+    return any(m == mode and paths <= given for command in named for m, given in _chmods(command))
 
 _PERSONS_STEP = "not a step for the agent"
 """The words every install.sh NEXT that gives the run's stop to the person carries: ``PERSONS_FAILS``, the
@@ -5289,8 +5320,8 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
                 )
             ):
                 kind = PERSONS_FIX
-            elif kind == "fix:" and named and (_fix_of(line) or "").split(";", 1)[0].strip() in named:
-                kind = _NEXT_FIX  # the manifest's fix ends "; the file itself is not damaged" (A35)
+            elif kind == "fix:" and named and _next_gives(_fix_of(line) or "", named):
+                kind = _NEXT_FIX  # A35; B13 round 24 B53: a chmod the status-step NEXT merged with others
             if kind is not None:
                 counts[kind] += 1
 

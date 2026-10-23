@@ -4181,9 +4181,47 @@ def _agents_chmod_next(fix: str) -> str:
     return (
         "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not "
         f"damage; the error above names it): the fix is the agent's: run {fix} once, then re-run: "
-        "~/x/install.sh; if the re-run names the same chmod again, show the person the error and go on to "
-        "the report"
+        "~/x/install.sh; if the re-run names the same chmod again, show the person the error, log it as a "
+        "step 2 error and go on to the report"
     )
+
+
+def _state_chmods_next(chmods: str) -> str:
+    """install.sh's status-step NEXT for state modes (its ``STATE_CHMODS`` words, read from install.sh, and
+    ``$chmods``: one chmod per mode, every blocking [FAIL]'s paths merged, joined by `` && ``)."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    found = re.search(r'^STATE_CHMODS="([^"]*)"$', script, flags=re.MULTILINE)
+    assert found is not None, "install.sh's STATE_CHMODS"
+    return (
+        f"NEXT: {found.group(1)} {chmods} once, then re-run: ~/x/install.sh; if the re-run names the same "
+        "chmod again, show the person those lines, log it as a step 2 error and go on to the report"
+    )
+
+
+def test_a_chmod_the_status_steps_next_merged_is_no_other_instruction() -> None:
+    """B13 round 24 B53: install.sh's status-step NEXT merges every blocking [FAIL]'s paths into one
+    ``chmod MODE p1 p2`` per mode, joined by `` && ``, and A35's exemption matched a [FAIL] line's fix only as
+    that whole string, so the lock's and the heartbeat's FAILs under ``chmod 600 <lock> <heartbeat>`` were "2
+    other instruction-like lines (2 fix:)". A fix whose mode and paths that NEXT's chmod names is the NEXT's
+    step; another path or another mode stays a fix:."""
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh"
+    root = "~/'Contoso Data/agentsync'"
+    lock, beat = f"{root[:-1]}/sync.lock'", f"{root[:-1]}/heartbeat.json'"
+    fails = [
+        f"[FAIL] state_dir.files — {lock} has mode 0644 (fix: chmod 600 {lock})",
+        f"[FAIL] heartbeat — {beat} has mode 0000 (fix: chmod 600 {beat})",
+    ]
+    counts = setup_report.instruction_counts([head, *fails, _state_chmods_next(f"chmod 600 {lock} {beat}")])
+    assert counts == {"NEXT:": 1, setup_report._NEXT_FIX: 2}, counts
+    folder = f"[FAIL] state_dir — {root} has mode 0755 (fix: chmod 700 {root})"
+    both = _state_chmods_next(f"chmod 700 {root} && chmod 600 {lock}")
+    counts = setup_report.instruction_counts([head, folder, fails[0], both])
+    assert counts == {"NEXT:": 1, setup_report._NEXT_FIX: 2}, counts
+    # a path the NEXT does not name, or a mode it does not give that path, stays a fix:
+    counts = setup_report.instruction_counts([head, *fails, _state_chmods_next(f"chmod 600 {lock}")])
+    assert counts == {"NEXT:": 1, setup_report._NEXT_FIX: 1, "fix:": 1}, counts
+    counts = setup_report.instruction_counts([head, fails[0], _state_chmods_next(f"chmod 700 {lock}")])
+    assert counts == {"NEXT:": 1, "fix:": 1}, counts
 
 
 @pytest.mark.parametrize(

@@ -28904,6 +28904,18 @@ copy at step 1, and the install.sh run after its end line, which ended rc N (or:
 stand-alone run that does not change it` ("the last of N install.sh runs" for several). A late run that ended 0
 keeps Y19's words. Test: `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome`.
 
+**A chmod the status step's NEXT merged with others is that NEXT's step** (B53). Round 23's A35 counts a [FAIL]
+line's fix as `_NEXT_FIX`, not a separate hint, when the run's NEXT gives it to the agent, but it compared the fix
+with the NEXT's whole command, and install.sh's status-step NEXT (`STATE_CHMODS`) merges every blocking [FAIL]'s
+paths into one `chmod MODE p1 p2` per mode, joined by ` && `: the lock's and the heartbeat's FAILs under `chmod
+600 <lock> <heartbeat>`, or a 0755 state folder and a file under `chmod 700 <dir> && chmod 600 <file>`, were "2
+other instruction-like lines (2 fix:)". `_next_gives` keeps the exact test and adds one: a fix (cut at its first
+`;`) that is one `chmod MODE <paths>` counts when the NEXT has a chmod of the same mode naming all those paths
+(`_chmods`, `shlex` words; a command that does not parse matches nothing new). Another path or another mode stays
+a fix:. Test: `test_a_chmod_the_status_steps_next_merged_is_no_other_instruction`, whose NEXT is built from
+install.sh's own `STATE_CHMODS` words; `_agents_chmod_next` ends as install.sh's FAIL_NEXT does now ("show the
+person the error, log it as a step 2 error and go on to the report").
+
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
 Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four
