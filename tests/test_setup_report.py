@@ -13675,12 +13675,12 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     db.rmdir()
     _rc, text, _ = report(tmp_path, cfg)
     # a plain missing manifest with heartbeat.json recording passes is lost (B13 round 23 A29); without it,
-    # no sync has run
+    # a new one starts over the mirror page the sync wrote (B13 round 26 E1)
     assert "- manifest: missing (earlier syncs recorded" in text and "no sync has run" not in text
     heartbeat = expand(load_config(cfg).state_paths.heartbeat)
     heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))
     _rc, text, _ = report(tmp_path, cfg)
-    assert "- no manifest yet (no sync has run)" in text
+    assert "- no manifest yet (the next sync starts a new one over 1 existing mirror page;" in text
     heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
     db.symlink_to(db.name)  # a link to itself: no file either, as is_file read it (review)
     try:
@@ -13778,37 +13778,48 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
         "last re-screen: none recorded (no manifest yet)"
     )
     ocr = section(text, "Status").split("### OCR", 1)[1].split("###", 1)[0]
-    assert ocr.count("- no manifest yet (no sync has run)") == 1, ocr
+    # B13 round 26 E1: the sync's mirror page is still there, so a new manifest starts over it
+    assert ocr.count("- no manifest yet (the next sync starts a new one over 1 existing mirror page;") == 1, ocr
 
 
 def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
-    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Lane B's B13 round 25 D26, its report half: after the person's new start (the manifest and
     heartbeat.json moved aside, the mirror pages left), status says the next sync starts a new manifest over
     them, while the report's parts said "no manifest yet (no sync has run)". They say status's words, once in
-    the OCR part, and "no sync has run" stays for an empty mirror and an installed build without the count."""
+    the OCR part, and "no sync has run" stays for an empty mirror and an installed build without the count.
+    B13 round 26 E1, E24, E27: the count read ``int()`` of lane B's list, which failed into 0, so the parts
+    said "no sync has run" over real pages while this test patched an int in; it reads the real pages now."""
     from agentsync import cycle  # noqa: PLC0415
 
     cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    (fake_mac["one"] / "plan.txt").write_text("plan\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(cfg)]) == 0
     paths = load_config(cfg).state_paths
     db = expand(paths.db)
     for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"), expand(paths.heartbeat)):
         side.unlink(missing_ok=True)
-    monkeypatch.setattr(cycle, "unowned_mirror_pages", lambda c: 24, raising=False)
+    pages = cycle.unowned_mirror_pages(load_config(cfg))
+    assert len(pages) >= 1, pages
     status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
-    words = (
-        "- no manifest yet (the next sync starts a new one over 24 existing mirror pages; every file is "
-        "converted again)"
-    )
+    over = setup_report._plural(len(pages), "existing mirror page")
+    words = f"- no manifest yet (the next sync starts a new one over {over}; every file is converted again)"
     assert status.count(words) >= 4 and "no sync has run" not in status, status
     ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
     assert ocr.count(words) == 1, ocr
-    monkeypatch.setattr(cycle, "unowned_mirror_pages", lambda c: 0, raising=False)
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    assert f"the next sync starts a new one over {over}" in capsys.readouterr().out  # status's own N
+    for page in pages:  # an empty mirror: no page to start over
+        (load_config(cfg).docs_repo / page).unlink()
+    assert cycle.unowned_mirror_pages(load_config(cfg)) == []
     status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
     assert "- no manifest yet (no sync has run)" in status and "existing mirror page" not in status, status
+    monkeypatch.delattr(cycle, "unowned_mirror_pages")  # an installed build without the count
+    status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
+    assert "- no manifest yet (no sync has run)" in status, status
 
 
 def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(

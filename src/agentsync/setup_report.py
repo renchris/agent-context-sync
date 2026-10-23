@@ -9150,14 +9150,19 @@ def _evidence(r: _Run) -> list[str]:
 
 
 def _new_pages(c: Config) -> int:
-    """The mirror pages already in the docs repo that the next sync starts a new manifest over, by lane B's
-    ``cycle.unowned_mirror_pages`` (B13 round 25 D26), read through ``getattr`` so an installed build without
-    it says 0 ("no sync has run", as before); 0 on any failure."""
+    """How many mirror pages already in the docs repo the next sync starts a new manifest over: lane B's
+    ``cycle.unowned_mirror_pages`` (B13 round 25 D26) returns the pages, and this counts them, as status does
+    (B13 round 26 E1, E24, E27: an ``int()`` of that list failed into 0, so the count never showed). Read
+    through ``getattr`` so an installed build without it says 0 ("no sync has run", as before); 0 on any
+    failure, as the report must never die on this optional count."""
     try:
         from agentsync import cycle  # noqa: PLC0415 - lazy, as the evidence reads are
 
         count = getattr(cycle, "unowned_mirror_pages", None)
-        return int(count(c)) if count is not None else 0
+        if count is None:
+            return 0
+        pages = count(c)
+        return pages if isinstance(pages, int) else len(pages)
     except Exception:
         return 0
 
