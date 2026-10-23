@@ -2892,10 +2892,11 @@ def compute_outcome(
     version = layout.version
     # B13 round 24 B20: the installer stopped this copy, and a stand-alone install.sh run after its end line
     # failed (or has no end line): that run's exit is not this attempt's, which ran none and failed at step 1;
-    # it read "failed at step 2" in this attempt's outcome and in every later report's earlier list. A late
-    # run that ended 0 keeps round 21 Y19's words, below
+    # it read "failed at step 2" in this attempt's outcome and in every later report's earlier list. B13 round
+    # 25 D15: a late run that ended 0 gets these words too, as the attempt ran no install.sh ("install.sh exit
+    # 0" opened Y19's for it)
     late_installs = install_runs_only(_stopped_split(attempt, runs)[1]) if attempt is not None else []
-    if attempt is not None and late_installs and late_installs[-1].rc != 0:
+    if attempt is not None and late_installs:
         inside = _stopped_split(attempt, runs)[0]
         # the installer's own stop line, so the step and the words below agree (a review of B20)
         copy_stop = next(
@@ -2939,7 +2940,9 @@ def compute_outcome(
                 )
                 resolution += " and no later step before the report"
                 # B13 round 21 Y19: for the installer's stop of a copy, a run after the end line did end rc 0,
-                # and the Summary's install line names it: the reason says why it does not count
+                # and the Summary's install line names it: the reason says why it does not count. Since B13
+                # round 25 D15 only a copy with an install run inside its attempt reaches it (B20's above
+                # takes every other)
                 if _PROMPT_STOP_RE.match(stop.what) and any(
                     run.rc == 0 for run in _after_end(installs, _attempt_end(attempt), stopped=True)
                 ):

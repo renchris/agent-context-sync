@@ -17383,10 +17383,13 @@ def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tm
         outcome = _x19_outcome(tmp_path, friction, start)
         assert (outcome.kind, outcome.step) == ("failed", 1), (start, outcome)
         assert "no later install.sh run of that step ended rc 0" not in outcome.why[1], outcome
-        assert outcome.why[1].endswith(
-            "the installer stopped this copy at step 1; the install.sh run after its end line, which ended "
-            "rc 0, is a stand-alone run and does not resolve it"
+        # B13 round 25 D15: B20's words, as for any other late exit; the attempt ran no install.sh
+        assert outcome.why == (
+            "no install.sh run during this attempt, and step 1 logged an error (F4)",
+            "the installer stopped this copy at step 1, and the install.sh run after its end line, which "
+            "ended rc 0, is a stand-alone run that does not change it",
         ), outcome
+        assert "install.sh exit 0" not in outcome.why[0], outcome
     head = "Attempt: 2026-10-20T10:00:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
     late = "2026-10-20T10:00:20Z | step 1 | error | install.sh --list-folders exited 1 | -\n"
     ordinary = _x19_outcome(tmp_path, head + late + "2026-10-20T10:30:00Z | end | finished\n", "10:40:00")
@@ -17414,6 +17417,7 @@ def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path
         f"2026-10-20T10:05:00Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
     )
     for rc, ended in (
+        ("0", "which ended rc 0"),  # B13 round 25 D15
         ("2", "which ended rc 2"),
         ("1", "which ended rc 1"),
         ("143", "which ended rc 143"),

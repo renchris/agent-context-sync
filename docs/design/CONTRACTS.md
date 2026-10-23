@@ -26690,6 +26690,8 @@ Amended 2026-10-22, §16.171 B20: the guard held only for an rc 0 run; a stand-a
 failed or has no end line made the copy `failed at step 2`, so whatever its exit the copy is `failed at step 1`, its
 reason `the installer stopped this copy at step 1, and the install.sh run after its end line, which ended rc N, is
 a stand-alone run that does not change it`.
+Amended 2026-10-23, §16.178 D15: a late run that ended 0 gets those words too (`which ended rc 0`); Y19's are left only
+for a stopped copy that also has an install run inside its attempt.
 
 **A run a signal stopped is said to be stopped, not failed** (Y6). install.sh's `on_exit` closes the step a signal
 stopped as failed with the signal's rc, and the outcome read `install.sh exited 143: its config step failed with
@@ -28933,6 +28935,8 @@ its end line (`_stopped_split`) and the last of them did not end 0, the outcome 
 copy at step 1, and the install.sh run after its end line, which ended rc N (or: which has no end line), is a
 stand-alone run that does not change it` ("the last of N install.sh runs" for several). A late run that ended 0
 keeps Y19's words. Test: `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome`.
+Amended 2026-10-23, §16.178 D15: a late run that ended 0 no longer keeps Y19's words: whatever its exit, the reason is
+the one above.
 
 **A chmod the status step's NEXT merged with others is that NEXT's step** (B53). Round 23's A35 counts a [FAIL]
 line's fix as `_NEXT_FIX`, not a separate hint, when the run's NEXT gives it to the agent, but it compared the fix
@@ -29634,6 +29638,15 @@ either fix after a first step of the person's (lane B's round 25: `the person ru
 on the state's own `error: state:` line (the not-a-folder and side-file move aside), whose stop every install.sh
 NEXT for it gives the person; a chmod there stays `fix:`, and a run whose NEXT says something else keeps `fix:`.
 Test: `test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next`.
+
+**A stopped copy's late run is worded one way, whatever its exit** (D15; amends §16.152 Y19 and §16.171 B20). B20
+took a stand-alone run after a stopped copy's end line only when it did not end 0, so an rc 0 one kept Y19's words,
+which open with `install.sh exit 0` for an attempt whose install line says it ran no install.sh. `compute_outcome`'s
+B20 branch now takes every late exit: `no install.sh run during this attempt, and step 1 logged an error (F<n>)`
+and `..., which ended rc 0, is a stand-alone run that does not change it`. Y19's block stays, reached only by a
+stopped copy that also has an install run inside its attempt (the verifier measured that removing it brings back
+Y19's own contradiction there). Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
+`test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` (an rc 0 row).
 
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
