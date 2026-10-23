@@ -4792,6 +4792,46 @@ def test_a_governance_folder_this_account_cannot_write_into_fails_status_with_it
     assert not any(ln.startswith("[FAIL] governance.") for ln in out), out
 
 
+def test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B63: a fifo at governance/audit.jsonl hung status (A79's write-only open waits for a
+    reader that never comes), and ``hold`` with it. Status FAILs governance.audit with the words and the
+    person's fix state_dir.files gives a state file that is not a file; a hold stops at once with one error
+    line and changes nothing."""
+    import signal  # noqa: PLC0415
+
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    audit = governance.audit_path(root)
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    audit.unlink(missing_ok=True)
+    os.mkfifo(audit)
+
+    def hung(*_: object) -> None:
+        raise TimeoutError("hung on the fifo")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(20)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        held = cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg])
+        err = capsys.readouterr().err
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+    assert rc == cli.EXIT_FAILED, out
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.audit ")]
+    moved = f"(fix: the person moves {doctor._shell_path(audit)} aside)"
+    assert f"{audit} is a fifo, not the state file {moved}" in failed, failed
+    assert held == cli.EXIT_FAILED
+    (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+    assert "is a fifo, not a file" in line and "the person moves" in line, line
+    assert governance.state_holds(root) == ()
+    audit.unlink()
+
+
 def test_a_state_path_another_account_owns_gets_the_persons_chown(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:

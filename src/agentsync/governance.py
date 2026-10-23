@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+import errno
 import hashlib
 import json
 import logging
@@ -40,6 +41,7 @@ import posixpath
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import tomllib
 import unicodedata
@@ -326,7 +328,7 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
     hold was released, or set, and the purge queue written, with no audit line, and the command exited 1)."""
     path = audit_path(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    fd = _open_audit(path)
 
     def write(record: Mapping[str, object]) -> None:
         os.write(fd, (json.dumps(dict(record), sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
@@ -336,6 +338,26 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         yield write
     finally:
         os.close(fd)
+
+
+def _open_audit(path: Path) -> int:
+    """The audit trail opened for append, never waiting: O_NONBLOCK, so a fifo where it belongs that nothing
+    reads fails at once (ENXIO) rather than holding a hold, its release and a queued purge forever, and
+    anything there that is not a regular file is refused before a line is written (B13 round 24 B63). The
+    flag changes nothing for a regular file."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NONBLOCK | os.O_CLOEXEC
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as exc:
+        if exc.errno != errno.ENXIO:
+            raise
+        raise GovernanceError(f"{path} is a fifo, not a file (fix: the person moves {path} aside)") from None
+    mode = os.fstat(fd).st_mode
+    if not stat.S_ISREG(mode):
+        os.close(fd)
+        kind = {stat.S_IFIFO: "a fifo", stat.S_IFSOCK: "a socket"}.get(stat.S_IFMT(mode), "a special file")
+        raise GovernanceError(f"{path} is {kind}, not a file (fix: the person moves {path} aside)")
+    return fd
 
 
 def append_audit(state_dir: Path, record: Mapping[str, object]) -> None:

@@ -2102,12 +2102,29 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
     line would make one bad line a crash."""
     root = expand(config.state_paths.root)
     out: list[doctor.CheckResult] = []
-    try:
-        os.close(os.open(governance.audit_path(root), os.O_WRONLY | os.O_APPEND))
-    except FileNotFoundError:
-        pass
-    except OSError as exc:  # a read-only volume (EROFS) or a folder there: its own line, never the group's
-        out.append(doctor.stopped(config, "governance.audit", exc))
+    audit = governance.audit_path(root)
+    kind = doctor.state_file_kind(audit)
+    if kind is None:
+        try:
+            # O_NONBLOCK: a fifo there that nothing reads fails at once (ENXIO), where the open hung status;
+            # the fstat closes the race between the kind's lstat and the open (B13 round 24 B63)
+            fd = os.open(audit, os.O_WRONLY | os.O_APPEND | os.O_NONBLOCK | os.O_CLOEXEC)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:  # a read-only volume (EROFS): its own line, never the group's
+            if exc.errno == errno.ENXIO:
+                kind = "a fifo"
+            else:
+                out.append(doctor.stopped(config, "governance.audit", exc))
+        else:
+            try:
+                kind = doctor._not_a_file(os.fstat(fd).st_mode)
+            finally:
+                os.close(fd)
+    if kind is not None:  # the words and the person's fix state_dir.files gives a state file that is not one
+        fix = f"the person moves {doctor._shell_path(audit)} aside"
+        detail = f"{audit} is {kind}, not the state file"
+        out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
     try:
         governance.load_suppressions(root)
     except AgentSyncError as exc:
