@@ -4752,6 +4752,46 @@ def test_an_audit_trail_this_account_cannot_append_to_stops_a_hold_and_its_relea
     assert governance.state_holds(root) == ()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes a folder of any mode")
+@pytest.mark.parametrize("mode", [0o500, 0o100, 0o000])
+def test_a_governance_folder_this_account_cannot_write_into_fails_status_with_its_chmod(
+    initialised: Config, capsys: pytest.CaptureFixture[str], mode: int
+) -> None:
+    """B13 round 24 B61: governance/ at 0500 refused ``hold all`` and ``hold source --release`` (their temp
+    file), while status read holds.json there and passed with 0 FAIL. Status FAILs governance.hold with the
+    folder's chmod 700, keeps the holds it can read, and the report files it as the agent's; a fixed folder
+    and a missing one say nothing."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    owner = ["--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(["hold", "source", "--reason", "matter 7", *owner]) == cli.EXIT_OK
+    fix = f"(fix: chmod 700 {doctor._shell_path(Path(os.path.realpath(gov)))})"
+    gov.chmod(mode)
+    try:
+        capsys.readouterr()
+        assert cli.main(["hold", "all", "--reason", "matter 8", *owner]) == cli.EXIT_FAILED
+        rc, out = _status(cfg, capsys)
+        whose = setup_report._refused_files(initialised).get("governance.hold")
+    finally:
+        gov.chmod(0o700)
+    assert rc == cli.EXIT_FAILED, out
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]  # its fix said once
+    assert failed.endswith(fix), failed
+    assert "refuses this account a write" in failed or mode == 0o000, failed
+    if mode == 0o500:  # the holds in force stay visible: a 0500 folder still reads
+        assert any(ln.startswith("[ok  ] governance.hold ") and "matter 7" in ln for ln in out), out
+    assert whose == setup_report._AGENTS, whose
+    rc, out = _status(cfg, capsys)
+    assert not any(ln.startswith("[FAIL] governance.hold ") for ln in out), out
+    assert cli.main(["hold", "source", "--release", *owner]) == cli.EXIT_OK
+    for p in sorted(gov.iterdir()):
+        p.unlink()
+    gov.rmdir()
+    rc, out = _status(cfg, capsys)
+    assert not any(ln.startswith("[FAIL] governance.") for ln in out), out
+
+
 def test_a_state_path_another_account_owns_gets_the_persons_chown(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:

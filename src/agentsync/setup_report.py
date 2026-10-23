@@ -10230,6 +10230,8 @@ def _refused_files(c: Config) -> dict[str, str]:
         # opened read-write by every sync, so status tests it so (B13 round 24 B58)
         ("lock", expand(sp.lock), os.R_OK | os.W_OK),
         ("heartbeat", expand(sp.heartbeat), os.R_OK),
+        # the folder a hold, its release and a queued purge write into (B13 round 24 B61)
+        ("governance.hold", governance.governance_dir(root), os.R_OK | os.W_OK | os.X_OK),
         ("governance.hold", governance._holds_file(root), os.R_OK),
         ("governance.purge_queue", governance._queue_file(root), os.R_OK),
         # appended to, never read, by a hold or a queued purge: status tests it for writing (B13 round 23 A79)
@@ -10239,6 +10241,8 @@ def _refused_files(c: Config) -> dict[str, str]:
         try:
             try:
                 refused = path.exists() and (path.stat().st_uid != os.getuid() or not os.access(path, access))
+                if path == governance.governance_dir(root) and not path.is_dir():
+                    refused = False  # not a folder: no mode fixes the wrong kind, and status FAILs none
             except PermissionError:  # a folder on its way refuses a search (governance/ at 0000)
                 refused = True
             if refused:

@@ -37,6 +37,7 @@ import logging
 import os
 import re
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -2071,6 +2072,27 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     return refused
 
 
+def _governance_folder_checks(config: Config) -> list[doctor.CheckResult]:
+    """``governance.hold``'s FAIL for a governance/ folder this account cannot write into, with
+    ``doctor.state_path_fix``'s fix (this account's chmod 700, another account's chown, the person's ACL or
+    volume fix): a hold, its release and a queued purge each write a temporary file there, while a read of
+    holds.json in it still passes (B13 round 24 B61: status passed a 0500 folder every hold stopped on).
+    Nothing for a folder not there yet (a fresh install) or not a folder (no mode fixes the wrong kind)."""
+    root = expand(config.state_paths.root)
+    gov = governance.governance_dir(root)
+    try:
+        st = gov.lstat()
+    except FileNotFoundError:
+        return []
+    if not stat.S_ISDIR(st.st_mode):
+        return []
+    if st.st_uid == os.getuid() and os.access(gov, os.R_OK | os.W_OK | os.X_OK):
+        return []
+    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(gov)))
+    detail = f"{gov} refuses this account a write: a hold, its release and a queued purge each stop there"
+    return [_check("governance.hold", False, detail, doctor.Severity.ERROR, fix=fix)]
+
+
 def _audit_checks(config: Config) -> list[doctor.CheckResult]:
     """``governance.audit`` and ``governance.suppressed``: a FAIL, with the state folder's fix for it, for an
     audit trail this account cannot append to or a suppression list it cannot read; nothing when each opens
@@ -2191,6 +2213,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             out.append(_refused_check(config, "governance.hold", exc))
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
+        said = {r.fix for r in out if not r.ok}  # at 0000, holds.json's refusal names the folder's chmod
+        out += [r for r in _governance_folder_checks(config) if r.fix not in said]
         said = {r.fix for r in out if not r.ok}
         out += [r for r in _audit_checks(config) if r.fix not in said]  # one folder's fix is said once
     if sys.platform == "darwin" and os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") != "0":
