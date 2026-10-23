@@ -29690,6 +29690,15 @@ agentsync logged after attempt N's end line (they do not change the outcome):`, 
 agent's account of it)` and out of Agent friction. No outcome reads them. Test:
 `test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outcome`.
 
+**No manifest over existing mirror pages, in status's words** (lane B's D26, its report half, built here at lane B's
+ask; §16.180). After the person's new start (the manifest and heartbeat.json moved aside, the mirror pages left),
+status says the next sync starts a new manifest over N existing mirror pages, while the evidence parts said `no
+manifest yet (no sync has run)`. `_NoManifestError` carries the count (`_Mirror.new_pages`, from lane B's
+`cycle.unowned_mirror_pages` read through `getattr`, so an installed build without it says 0) and its line reads
+`- no manifest yet (the next sync starts a new one over N existing mirror pages; every file is converted again)`,
+once in the OCR part (`_state_wide` takes it); an empty mirror keeps `no sync has run`. Test:
+`test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

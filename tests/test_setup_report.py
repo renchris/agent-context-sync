@@ -13719,6 +13719,36 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     assert ocr.count("- no manifest yet (no sync has run)") == 1, ocr
 
 
+def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lane B's B13 round 25 D26, its report half: after the person's new start (the manifest and
+    heartbeat.json moved aside, the mirror pages left), status says the next sync starts a new manifest over
+    them, while the report's parts said "no manifest yet (no sync has run)". They say status's words, once in
+    the OCR part, and "no sync has run" stays for an empty mirror and an installed build without the count."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    paths = load_config(cfg).state_paths
+    db = expand(paths.db)
+    for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"), expand(paths.heartbeat)):
+        side.unlink(missing_ok=True)
+    monkeypatch.setattr(cycle, "unowned_mirror_pages", lambda c: 24, raising=False)
+    status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
+    words = (
+        "- no manifest yet (the next sync starts a new one over 24 existing mirror pages; every file is "
+        "converted again)"
+    )
+    assert status.count(words) >= 4 and "no sync has run" not in status, status
+    ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
+    assert ocr.count(words) == 1, ocr
+    monkeypatch.setattr(cycle, "unowned_mirror_pages", lambda c: 0, raising=False)
+    status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
+    assert "- no manifest yet (no sync has run)" in status and "existing mirror page" not in status, status
+
+
 def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

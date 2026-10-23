@@ -6950,7 +6950,23 @@ class _NoStateError(Exception):
 
 
 class _NoManifestError(_NoStateError):
-    """No sync has run: there is no manifest to read."""
+    """No sync has run: there is no manifest to read. ``pages``: the mirror pages already in the docs repo
+    that the next sync starts a new manifest over (lane B's B13 round 25 D26, after the person's new start),
+    which status says too; 0 keeps "no sync has run"."""
+
+    def __init__(self, pages: int = 0) -> None:
+        super().__init__()
+        self.pages = pages
+
+    @property
+    def line(self) -> str:
+        """The evidence part's one line for it, in status's words."""
+        if not self.pages:
+            return _NO_MANIFEST_LINE
+        pages = _plural(self.pages, "existing mirror page")
+        return (
+            f"- no manifest yet (the next sync starts a new one over {pages}; every file is converted again)"
+        )
 
 
 class _LostManifestError(_NoManifestError):
@@ -7065,6 +7081,9 @@ class _Mirror:
         self.unreadable: sqlite3.DatabaseError | None = None  # the first SQLITE_NOTADB or SQLITE_CORRUPT read
         self.kept: dict[str, object] = {}
         self._conn: sqlite3.Connection | None = None
+        self.new_pages = (
+            0  # the mirror pages a new manifest starts over (B13 round 25 D26; :func:`_new_pages`)
+        )
 
     def left(self) -> float:
         return self.deadline - time.monotonic()
@@ -7094,7 +7113,9 @@ class _Mirror:
                 except FileNotFoundError:
                     from agentsync.manifest import manifest_lost  # noqa: PLC0415 - lazy, as the reads above
 
-                    raise (_LostManifestError if manifest_lost(self.db) else _NoManifestError) from None
+                    if manifest_lost(self.db):
+                        raise _LostManifestError from None
+                    raise _NoManifestError(self.new_pages) from None
                 except NotADirectoryError:  # a file where a folder on its way belongs (A23: the folder's)
                     raise _not_file_error(self.db) from None
                 except OSError as exc:
@@ -7424,8 +7445,8 @@ def _lines(fn: Callable[[], list[str]]) -> list[str]:
         return [f"- {NOT_MEASURED}"]
     except _LostManifestError:
         return [_LOST_MANIFEST_LINE]
-    except _NoManifestError:
-        return [_NO_MANIFEST_LINE]
+    except _NoManifestError as exc:
+        return [exc.line]
     except Exception as exc:
         return [f"- not measured ({_why_not_read(exc)})"]
 
@@ -9016,6 +9037,9 @@ def _evidence(r: _Run) -> list[str]:
         latest=r.deadline - _RESERVE_S,
         labels_active=active,
     )
+    with contextlib.suppress(OSError):
+        if not os.path.lexists(expand(r.config.state_paths.db)):
+            mirror.new_pages = _new_pages(r.config)
     labels = _Labels(r.config, r.red)
     parts: tuple[Callable[[_Run, _Mirror, _Labels], list[str]], ...] = (
         _ocr_part,
@@ -9043,6 +9067,19 @@ def _evidence(r: _Run) -> list[str]:
     return out
 
 
+def _new_pages(c: Config) -> int:
+    """The mirror pages already in the docs repo that the next sync starts a new manifest over, by lane B's
+    ``cycle.unowned_mirror_pages`` (B13 round 25 D26), read through ``getattr`` so an installed build without
+    it says 0 ("no sync has run", as before); 0 on any failure."""
+    try:
+        from agentsync import cycle  # noqa: PLC0415 - lazy, as the evidence reads are
+
+        count = getattr(cycle, "unowned_mirror_pages", None)
+        return int(count(c)) if count is not None else 0
+    except Exception:
+        return 0
+
+
 _NOT_MEASURED_WHY_RE = re.compile(r"not measured \(([^()]*)\)")
 _BUSY_WHY = "the state file is busy: a sync holds it"
 _RETRY_WHYS = frozenset({"time limit", "it did not finish in time", _BUSY_WHY})
@@ -9054,7 +9091,7 @@ def _state_wide(line: str) -> bool:
     """Whether an evidence part's one fallback line (:func:`_lines`) names a cause the whole state has, which
     every reader of the manifest meets alike: lost, none yet, or a "not measured" cause no wait clears (B13
     round 24 B18, B35). Not the time limit's or a busy file's, which each part meets on its own."""
-    if line in (_LOST_MANIFEST_LINE, _NO_MANIFEST_LINE):
+    if line in (_LOST_MANIFEST_LINE, _NO_MANIFEST_LINE) or line.startswith("- no manifest yet ("):
         return True
     m = re.fullmatch(r"- not measured \(([^()]*)\)", line)
     return m is not None and m.group(1) not in _RETRY_WHYS
