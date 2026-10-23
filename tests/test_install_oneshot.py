@@ -2741,6 +2741,24 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
         assert word not in "\n".join(shown), shown
 
 
+@pytest.mark.parametrize("owner", ["Early", "Mark", "Page"])
+def test_a_one_word_hold_value_is_cut_alike_by_both_readers(tmp_path: Path, owner: str) -> None:
+    """B13 round 25 D80 (D-L2), both halves: a one-word owner that is a report word in Python's list only
+    (Early), in the shell's only (Mark) or in both (Page), quoted on a line other than the cut hold line, is
+    cut by the shell's redact_stream and by setup_report's Redactor with lane RA's _hold_values alike."""
+    hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    line = f"F4 | step 3 | question | 1 | {owner} said the hold stays on | -"
+    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
+    shown = _shell_hold_redact(tmp_path, [hold], [line])
+    cfg = tmp_path / "home" / "agent-context" / "sources.toml"
+    paths_ = types.SimpleNamespace(root=str(state))
+    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
+    red = setup_report.Redactor()
+    for value in setup_report._hold_values(run):
+        red.add("value", value, ignore_case=True)
+    assert shown == [red.redact(line)] == ["F4 | step 3 | question | 1 | <value> said the hold stays on | -"]
+
+
 def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Path) -> None:
     """B13 round 24 B51 review: a pair holds no TAB, so a value with one also gives its parts, each of 3
     characters or more: the 2-letter part of "Wingtip<TAB>IT" cut every "it" of the report. The one-word
@@ -5667,6 +5685,16 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
             in (outcome)
         ), outcome
     assert "may be the agent's account" not in text, outcome
+    # and the agentsync report pairs the same lines (lane RA's setup_report._stop_pairs)
+    attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
+    recorded = [
+        setup_report._SyncStop(
+            datetime.fromisoformat(f"2026-10-14T{at}+00:00"), file, owner, None, True, kind
+        )
+        for at, file, owner, kind in (stop.split() for stop in stops)
+    ]
+    pairs = {id(stop): f"F{e.line}" for stop, e in setup_report._stop_pairs(attempt, recorded)}
+    assert [pairs.get(id(stop), "-") for stop in recorded] == told
 
 
 def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report(

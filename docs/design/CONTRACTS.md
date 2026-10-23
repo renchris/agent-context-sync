@@ -29782,7 +29782,9 @@ ends with no issue link, as F92 does for a one-word folder; a hold word met only
 is cut from the report's own text too. Tests:
 `test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private` (Mark, Early, Page),
 `test_a_hold_word_the_report_shows_only_on_the_cut_hold_line_keeps_the_report_public`, and B51's review test, now
-`test_a_hold_value_never_cuts_a_short_word_from_the_shell_report` (`Földer` is cut).
+`test_a_hold_value_never_cuts_a_short_word_from_the_shell_report` (`Földer` is cut), and
+`test_a_one_word_hold_value_is_cut_alike_by_both_readers` (Early, Mark, Page: the shell's line and lane RA's
+`Redactor` agree).
 
 **Lead note 1's install.sh residuals** (D79: D-L1c, D-L1d and D-L1h, the install.sh halves; the rest of D-L1a to
 D-L1j is lanes RA's and B's). D-L1h is D76 above, and the step 1 and step 2 probes reading a dangling link as lost
@@ -29820,7 +29822,9 @@ only the `date -u +%FT%TZ` stamps the prompt writes; Python's parser also reads 
 hand-written stamp of that kind pairs there only. Test:
 `test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does` (eleven cases: the
 chmod after the re-sync, the same second, a person's exit line, the wrong owner's line, a mode its file does not
-take, a skipped or earlier or step 2 line, the stop after next, one to one).
+take, a skipped or earlier or step 2 line, the stop after next, one to one), which also runs lane RA's
+`_stop_pairs` over each case and asserts the same pairs. Lane RA's D5 lists a stop logged after the end line apart,
+for display only; the shell's window ends at the end line, as the outcome's does, so it does not.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
