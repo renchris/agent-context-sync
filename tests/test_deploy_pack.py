@@ -8006,6 +8006,27 @@ def _guide_line(name: str) -> str:
     return line
 
 
+def test_the_value_row_names_both_reports_that_cut_a_holds_reason() -> None:
+    """B13 round 24 B84: the `<value>` row said only the agentsync report cuts a legal/records hold's reason
+    and owner, while since round 23 A8 the installer's fallback report does too (install.sh's ``hold_cut``,
+    in the same words): a reader of the shell report would take a hold's free text there for a leak."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    cut = install.split("\nhold_cut() {\n", 1)[1].split("\n}\n", 1)[0]
+    assert '": reason and owner not shown"' in cut and '" released (owner not shown)"' in cut
+    assert "| hold_cut |" in install
+    row = _guide_line("`<value>`")
+    assert (
+        "Since 2026-10-22 the agentsync report and the installer's fallback report (B13 round 23 A8,"
+        " CONTRACTS §16.164 and §16.165) also never show a legal/records hold's reason or owner"
+    ) in row
+    assert "the agentsync report also never shows" not in row
+    # B13 round 24 B51: the shell report registers each hold reason and owner line by line too
+    assert "\nhold_values() {\n" in install and "done < <(hold_values)" in install
+    assert "cut line by line, in the fallback report since B13 round 24 B51, CONTRACTS §16.172)" in row
+    # the shell's cut counts nothing: only the agentsync report counts each cut as a `<value>`
+    assert "count" not in cut and "in the agentsync report each counted as a `<value>`" in row
+
+
 def test_the_agent_named_folders_row_says_the_agents_name_keeps_it() -> None:
     """B13 round 20 X64: the row said a configured agent-named folder is a placeholder, while since round 19
     W17 the agent's name keeps it as written and the report's Configuration line says so beside the counts.
