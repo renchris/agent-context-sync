@@ -904,10 +904,6 @@ _GENERIC_HOME_DIRS = frozenset(
 )
 """Folders below the home folder that name no project (lower-case): :func:`_project_values` skips them."""
 _LISTING_MAX = 2000
-_VALUE_GOVERNANCE = "any other value a [governance] error quotes"
-"""The ``<value>`` legend's words the shell fallback report prints too (its ``<value>`` comes only from a
-[governance] error); the agentsync report's also names a hold's reason or owner of several lines, cut line by
-line to ``<value>`` (:func:`_hold_values`; B13 round 24 B55)."""
 _LEGEND = {
     "home": "~ home folder",
     "user": "<user> login name",
@@ -938,7 +934,10 @@ _LEGEND = {
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL, or a URL prefix, that a [governance] error or check quotes",
-    "value": f"<value> {_VALUE_GOVERNANCE}, or a line of a hold's reason or owner of several lines",
+    "value": (  # the shell fallback report's legend line says the same (B13 round 25 D31)
+        "<value> any other value a [governance] error quotes, or a hold's reason or owner, whole or one line "
+        "of it"
+    ),
 }
 _FIXED_PLACEHOLDERS = frozenset(
     {*(f"<{k}>" for k in _UNNUMBERED), "<path>", "<org>", "<Org>", "<team>", "<TEAMID>"}

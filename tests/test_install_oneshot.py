@@ -2643,6 +2643,8 @@ def test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_repor
     assert "shell fallback" in text, text
     assert "ERROR: refused: hold all (config): <value>" in text, text
     assert "<value> — set by <value> since 2026-10-20T10:00:00Z. Release it first (records owner)." in text
+    # B13 round 25 D31: and the legend says what these <value>s are, not only "a [governance] error"
+    assert f"\n- <value>: {setup_report._LEGEND['value'].removeprefix('<value> ')}\n" in text, text
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         shown = path.read_text(encoding="utf-8")
         for word in ("Matter", "Jane", "Roe", "Pat Doe"):
@@ -16281,7 +16283,7 @@ def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
         shell, python = _fuzzy_report(env, monkeypatch, [folder], said)  # each call adds its folder
         assert shell == python == want, (shell, python)
         report = report_path(env).read_text()
-        assert "\n- <value>: any other value a [governance] error quotes\n" in report
+        assert f"\n- <value>: {setup_report._LEGEND['value'].removeprefix('<value> ')}\n" in report
         assert "Fabrikam" not in report and "Contoso Legal" not in report
     # B13 round 19 W69: the shell cut to " (fix: " or the line's end, so the words after a value (a second
     # refusal, a friction line's " | " fix column) were lost where the Python report keeps them; it now ends a
@@ -16398,10 +16400,9 @@ def test_the_shell_governance_keys_are_the_reports() -> None:
     script = INSTALL_SH.read_text(encoding="utf-8")
     [keys] = re.findall(r'(?m)^GOVERNANCE_TYPED_KEYS="(.*)"$', script)
     assert tuple(keys.split("|")) == setup_report._GOVERNANCE_TYPED_KEYS
-    # B13 round 24 B55: the shell's <value> comes only from a [governance] error, the agentsync report's also
-    # from a hold's reason or owner of several lines: the shell says the governance words
-    assert f'say "- <value>: {setup_report._VALUE_GOVERNANCE}"' in script
-    assert setup_report._LEGEND["value"].startswith(f"<value> {setup_report._VALUE_GOVERNANCE}, ")
+    # B13 round 25 D31: the shell's <value> is a [governance] error's value or a hold's reason or owner (B51's
+    # hold_values), as the agentsync report's is, so both legends say the same
+    assert f'say "- <value>: {setup_report._LEGEND["value"].removeprefix("<value> ")}"' in script
 
 
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(

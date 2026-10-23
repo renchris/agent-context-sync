@@ -28961,6 +28961,9 @@ shell's `<value>` comes only from a [governance] error, so its legend line keeps
 `<value>` row says so. Tests: `test_a_holds_reason_and_owner_are_cut_by_the_fixed_words`,
 `test_a_holds_reason_and_owner_are_in_no_part_of_the_report` and
 `test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report`.
+Amended 2026-10-23, §16.179 D31: the shell's `<value>` is also a hold's reason or owner (B51's `hold_values`, which
+landed before B55), so both legends read `<value> any other value a [governance] error quotes, or a hold's reason or
+owner, whole or one line of it`, the shell's from the same words; `_VALUE_GOVERNANCE` is gone.
 
 **A63's files are "refused", not "left waiting"** (B74; amends §16.168 A63, §16.158 Z35 and §16.28). Repeat
 conversions' heading names the files a run left waiting for a converter that could not start (`converter_waiting`:
@@ -29709,7 +29712,21 @@ with code 1" and "with exit status 1" as a non-zero exit too. Tests: the D4, rul
 
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
-Reserved for round 25 lane RB of B13.
+Lane RB's round 25 items (`docs/plans/bring-back-ocr.md`, "B13 round 25"; specs `round25/items/D<n>.md`, the
+verifier's corrected fix built): D31, D33, D38 with D66 (one build), D42, D76 and D79's install.sh residuals, all in
+`scripts/install.sh` (the whole file is this lane's this round) and `tests/test_install_oneshot.py`.
+
+**The `<value>` legend names a hold's values in both reports** (D31; amends §16.171 B55). B55 kept the shell's
+legend at the [governance] half, "its only source", but B51's `hold_values` (an ancestor of B55) had already made
+each hold's reason and owner a `<value>` pair in the shell report too, so a report whose only `<value>`s were a
+hold's read in its legend as a [governance] error's. And the agentsync report's legend named only "a line of a
+hold's reason or owner of several lines", while `_hold_values` registers each value whole as well, so a one-line
+owner beside a reason of several lines reads `set by <value>`. Both legends say `<value> any other value a
+[governance] error quotes, or a hold's reason or owner, whole or one line of it`, the shell's line the same words
+after `- <value>: `; `_VALUE_GOVERNANCE` is gone. The guide's `<value>` row says so. Tests:
+`test_the_shell_governance_keys_are_the_reports` (equal, not a prefix), and B51's
+`test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_report`, which reads the legend line
+beside the body's hold `<value>`s.
 
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 

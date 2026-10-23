@@ -4313,7 +4313,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
 	case "$used" in *" <label> "*) say "- <label>: a label id or name a policy error quotes" ;; esac
 	case "$used" in *" <remote> "*) say "- <remote>: a remote URL, or a URL prefix, that a [governance] error or check quotes" ;; esac
-	case "$used" in *" <value> "*) say "- <value>: any other value a [governance] error quotes" ;; esac
+	# a hold's reason and owner are <value> here too, whole and line by line (hold_values, B13 round 24 B51; round 25
+	# D31: the line named only the [governance] error)
+	case "$used" in *" <value> "*) say "- <value>: any other value a [governance] error quotes, or a hold's reason or owner, whole or one line of it" ;; esac
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an

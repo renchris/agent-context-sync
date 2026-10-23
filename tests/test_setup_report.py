@@ -1687,7 +1687,8 @@ def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
     # B13 round 24 B55: a line of a reason or owner of several lines is a <value>, and its legend says so
     redaction = section(report_text, "Redaction")
     assert setup_report._LEGEND["value"] in redaction, redaction
-    assert setup_report._LEGEND["value"].endswith("or a line of a hold's reason or owner of several lines")
+    # B13 round 25 D31: whole or one line of it, as both reports register a hold's value
+    assert setup_report._LEGEND["value"].endswith("or a hold's reason or owner, whole or one line of it")
     assert "<value>" in report_text.split("## Redaction", 1)[0]
 
 
