@@ -26698,6 +26698,8 @@ mode was fixed` (`a folder in agentsync's state folder` for one below it); a fol
 and the folder's ACL fix are the person's, in the folder's words. The outcome of a last run that stopped there
 carries the same cause with no bracket (Z6), and a status-step stop on a state file of this account's mode says the
 re-run came `after the file's mode was fixed` (Z19).
+Amended 2026-10-23, §16.172 B45: `ended 0` comes before the after-clause (`... was run again and ended 0 after the
+file's mode was fixed`), so it reads as the command's and never the mode's, in every after-clause.
 
 **A cut-off doctor names the check it was in and the load, and advises a re-run only if this Mac was busy** (Y22;
 amends §16.140 W3). Doctor's cut-off text and the Summary's doctor line said `write the report again when this Mac

@@ -11976,10 +11976,10 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
         state = _state_open_words(r, run) if failing[0] == "config" else None
         if state is not None:  # Y5: the cause, and what the run that ended 0 came after
             at += state[0]
-            again = again.removesuffix(" and ended 0") + f" {state[1]} and ended 0"
+            again = again.removesuffix(" and ended 0") + f" and ended 0 {state[1]}"
         mode = _state_mode_fixed(r, run) if failing[0] in ("status", "doctor") else None
         if mode is not None:  # B13 round 22 Z19: the agent's chmod between the two runs
-            again = again.removesuffix(" and ended 0") + f" {mode} and ended 0"
+            again = again.removesuffix(" and ended 0") + f" and ended 0 {mode}"
     return f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; " + again
 
 

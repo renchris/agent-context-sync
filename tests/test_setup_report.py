@@ -9113,7 +9113,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             encoding="utf-8",
         )
         got = items(run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True), worked)
-        assert got.endswith(f"; the same command was run again{after} and ended 0"), (fails, got)
+        assert got.endswith(f"; the same command was run again and ended 0{after}"), (fails, got)
         assert "at its status step ([FAIL] " in got and "Library" not in got, got
     # A45: a state folder whose name holds an apostrophe, which doctor quotes ~/"Contoso's state"
     cfg_text = fake_mac["config"].read_text(encoding="utf-8")
@@ -9128,7 +9128,8 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         encoding="utf-8",
     )
     got = items(run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True), worked)
-    assert got.endswith("; the same command was run again after the file's mode was fixed and ended 0"), got
+    # B13 round 24 B45: "ended 0" before the after-clause, so it reads as the command's, never the mode's
+    assert got.endswith("; the same command was run again and ended 0 after the file's mode was fixed"), got
     fake_mac["config"].write_text(cfg_text, encoding="utf-8")
 
     # B13 round 21 Y5: a config step that met the sync's line for a state file this account cannot open read
@@ -9213,7 +9214,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         got = items(failed, worked)
         assert got == (
             f"- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step on {what}, {cause}; "
-            f"the same command was run again after {after} and ended 0"
+            f"the same command was run again and ended 0 after {after}"
         ), got
         assert "Library" not in got and "manifest" not in got, got
     # B13 round 23 A5, A13, A38: install.sh's one pass after a folder's chmod 700 (Z81) also runs each chmod
@@ -9245,7 +9246,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             encoding="utf-8",
         )
         got = items(failed, worked)
-        assert got.endswith(f"; the same command was run again after {after} and ended 0"), got
+        assert got.endswith(f"; the same command was run again and ended 0 after {after}"), got
         assert "file's mode" not in got and "files' modes" not in got, got
         could = "write" if line == wrote else "open"
         assert (
@@ -9271,7 +9272,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             encoding="utf-8",
         )
         got = items(failed, worked)
-        assert f"at its config step {words}" in got and got.endswith(f"after {after} and ended 0"), got
+        assert f"at its config step {words}" in got and got.endswith(f"and ended 0 after {after}"), got
     # B13 round 23 A86, A11: something not a file where manifest.sqlite belongs, or not a folder where the
     # state folder belongs (cli._misplaced's line, no "cannot be opened"), names its kind and whose in both
     # the item and the outcome; the kind is the line's own, never "a folder" for a fifo
@@ -9334,7 +9335,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         got = items(failed, worked)
         assert got == (
             f"- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step {words}; the same "
-            f"command was run again after {after} and ended 0"
+            f"command was run again and ended 0 after {after}"
         ), got
         out.write_text(
             f"# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n{line}\n",
@@ -9385,7 +9386,8 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         encoding="utf-8",
     )
     got = items(failed, worked)
-    assert "which another account owns; the same command was run again after the file was given back" in got
+    given = "which another account owns; the same command was run again and ended 0 after the file was given"
+    assert given in got, got
     out.write_text(  # another cause at the config step keeps today's words
         "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
         "configuration error: policy.toml: unknown key\n",
