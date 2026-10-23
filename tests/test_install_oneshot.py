@@ -2570,7 +2570,7 @@ def test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_
     and owner (a matter, a person's name) printed in clear in doctor's governance.hold line, status's HOLD:
     line, a refusal and the release log line, in a report meant to be posted. hold_cut cuts them by
     Hold.describe()'s fixed words, as setup_report._HOLD_SET_RE and _HOLD_RELEASED_RE do, keeping the scope,
-    origin and time; where the installed setup_report has those, both give the same line."""
+    origin and time; both give the same line (B13 round 24 B57: no guard, so a rename cannot skip it)."""
     fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
     assert fn is not None
     cp = subprocess.run(
@@ -2581,9 +2581,8 @@ def test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_
         check=True,
     )
     assert cp.stdout.splitlines() == list(_HOLD_LINES.values())
-    if hasattr(setup_report, "_HOLD_SET_RE"):  # lane RA's half, once both are on trunk
-        red = setup_report.Redactor()
-        assert [red.redact(line) for line in _HOLD_LINES] == list(_HOLD_LINES.values())
+    red = setup_report.Redactor()
+    assert [red.redact(line) for line in _HOLD_LINES] == list(_HOLD_LINES.values())
 
 
 def test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
