@@ -7647,16 +7647,18 @@ elif [ -n "$LAUNCHER_SRC" ]; then
 	fi
 	LAUNCHER_STATE="installed"
 elif [ "$SOURCE_KIND" = "checkout" ] && [ -x "$SOURCE/launcher/build.sh" ] && have_devtools; then
-	want="$(ALLOWED_PROGRAM="$TOOL_PY" "$SOURCE/launcher/build.sh" --print-source-sha256)"
+	# /bin/bash runs build.sh, not its #! line: a #! exec keeps kernel memory on macOS 15.8.1 (B13 round 23 A97);
+	# the source hash covers build.sh's text, not how it is called, so the launcher is not rebuilt (round 24 B103).
+	want="$(ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh" --print-source-sha256)"
 	if [ "$REBUILD" -eq 0 ] && [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST" && [ "$(installed_launcher_sha)" = "$want" ]; then
 		say "launcher: $APP_DEST is up to date (sources $want)"
 		LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="up-to-date"
 	elif [ "$DRY_RUN" -eq 1 ]; then
-		run env OUT_DIR="<tmp>" ALLOWED_PROGRAM="$TOOL_PY" "$SOURCE/launcher/build.sh"
+		run env OUT_DIR="<tmp>" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh"
 		install_app "<tmp>/$APP_NAME"
 	else
 		out="$(mktemp -d)"
-		OUT_DIR="$out" ALLOWED_PROGRAM="$TOOL_PY" "$SOURCE/launcher/build.sh" || fail "launcher/build.sh failed"
+		OUT_DIR="$out" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh" || fail "launcher/build.sh failed"
 		install_app "$out/$APP_NAME"
 		rm -rf "$out"
 	fi

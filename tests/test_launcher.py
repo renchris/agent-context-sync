@@ -62,7 +62,9 @@ def launcher_app(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "SIGN_IDENTITY": "-",
         "ALLOW_ANY_PROGRAM": "1",  # the tests spawn /bin/echo, /bin/sh ...; the pin has its own tests below
     }
-    cp = subprocess.run([str(BUILD_SH)], capture_output=True, text=True, check=False, env=env, timeout=240)
+    cp = subprocess.run(
+        [BASH32, str(BUILD_SH)], capture_output=True, text=True, check=False, env=env, timeout=240
+    )
     assert cp.returncode == 0, cp.stderr
     fields = dict(line.split(": ", 1) for line in cp.stdout.strip().splitlines())
     assert set(fields) == {"app", "source_sha256", "designated_requirement"}
@@ -105,7 +107,7 @@ def test_bundle_signature_identifier_and_info_plist(launcher_app: Path) -> None:
     env = {**os.environ, "ARCHS": os.uname().machine, "SIGN_IDENTITY": "-", "ALLOW_ANY_PROGRAM": "1"}
     assert info["AgentSyncAllowAnyProgram"] is True and info["AgentSyncAllowedProgram"] == ""
     sha = subprocess.run(
-        [str(BUILD_SH), "--print-source-sha256"], capture_output=True, text=True, check=True, env=env
+        [BASH32, str(BUILD_SH), "--print-source-sha256"], capture_output=True, text=True, check=True, env=env
     ).stdout.strip()
     assert info["AgentSyncSourceSHA256"] == sha
     verify = subprocess.run(
@@ -123,7 +125,11 @@ def test_source_hash_is_stable_and_tracks_the_identity() -> None:
     def sha(**env: str) -> str:
         e = {**os.environ, **env}
         return subprocess.run(
-            [str(BUILD_SH), "--print-source-sha256"], capture_output=True, text=True, check=True, env=e
+            [BASH32, str(BUILD_SH), "--print-source-sha256"],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=e,
         ).stdout.strip()
 
     a = sha(SIGN_IDENTITY="-")
@@ -133,9 +139,9 @@ def test_source_hash_is_stable_and_tracks_the_identity() -> None:
 
 
 def test_build_script_usage_errors() -> None:
-    cp = subprocess.run([str(BUILD_SH), "--bogus"], capture_output=True, text=True, check=False)
+    cp = subprocess.run([BASH32, str(BUILD_SH), "--bogus"], capture_output=True, text=True, check=False)
     assert cp.returncode == 64 and "unknown argument" in cp.stderr
-    cp = subprocess.run([str(BUILD_SH), "--help"], capture_output=True, text=True, check=False)
+    cp = subprocess.run([BASH32, str(BUILD_SH), "--help"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0 and "SIGN_IDENTITY" in cp.stdout
 
 
@@ -751,6 +757,27 @@ def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launc
     assert "--confirm-install-agent" in cp.stdout.strip().splitlines()[-1]  # the NEXT line repeats the flags
     text = cfg.read_text()  # every existing byte kept; the flagless init only ensured the inbox (KISS K14)
     assert text.startswith("# existing\n[[source]]\n") and text.count('kind = "inbox"') == 1
+
+
+def test_install_sh_runs_build_sh_through_bin_bash(stubs: dict[str, str], tmp_path: Path) -> None:
+    """install.sh runs launcher/build.sh as ``/bin/bash build.sh``, not by path: a #! exec by path costs
+    kernel memory on macOS 15.8.1 (B13 round 23 A97), and the hash covers build.sh's text, not how it is
+    called (round 24 B103). The stand-in's #! names no interpreter, so only ``/bin/bash`` runs it."""
+    if not _have_devtools():
+        pytest.skip("install.sh builds the launcher only with developer tools")
+    src = tmp_path / "checkout"
+    (src / "launcher").mkdir(parents=True)
+    (src / "pyproject.toml").write_text('[project]\nname = "agentsync"\n')
+    build = src / "launcher" / "build.sh"
+    build.write_text(
+        '#!/nonexistent/bash\necho "build.sh $*" >> "$STUB_LOG"\n'
+        '[ "${1:-}" != --print-source-sha256 ] || echo 0123456789abcdef\n'
+    )
+    build.chmod(0o755)
+    cp = install_sh({**stubs, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(src), "--confirm-install-agent")
+    assert "build.sh --print-source-sha256" in calls(stubs), cp.stderr
+    assert "[dry-run] env OUT_DIR=\\<tmp\\> ALLOWED_PROGRAM=" in cp.stdout
+    assert f" /bin/bash {build}\n" in cp.stdout, "the printed command is the one a real run runs"
 
 
 def test_install_sh_rejects_an_unsigned_launcher(stubs: dict[str, str], tmp_path: Path) -> None:
