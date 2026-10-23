@@ -29741,6 +29741,17 @@ heartbeat.json aside, as the NEXT words it, ends 0), the step 1 table's `LM-link
 manifest_lost over a missing file, a dangling link, one into a missing folder, a live link, a loop, a file and a
 folder, with and without a heartbeat, so the copies cannot drift apart unseen again.
 
+**A refused docs remote comes after the state stops** (D76, D-L1h). `cli._ensure_setup` opens the state folder and
+the manifest before it reads the docs repo's remotes, so beside a lost manifest (or any state stop) init and
+add-source stop on the state and print no `governance:` line. `config_failed` judged the refused remote first, so
+step 2's NEXT named `the governance: line above`, which was not there, and fixing the remote led to a second stop on
+the manifest. The remote's NEXT is judged last now, only when no state branch claimed the NEXT (`[ -z "$FAIL_NEXT"
+]`): state_not_a_folder, state_lost, state_owned_elsewhere, state_not_a_file, state_side_not_a_file and
+state_open_fix's chmods or refusal each come first, the order init stops in. add-source's error line, which said the
+same, uses the remote's words only when `state_stop_holds` (those six) is false, and the generic `failed after
+adding it` otherwise. Test: `test_a_refused_remote_beside_a_lost_manifest_gives_the_lost_manifests_next_first`
+(init and add-source, the real agentsync): the lost manifest's NEXT first, then, the file restored, the remote's.
+
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one

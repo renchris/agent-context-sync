@@ -8086,6 +8086,13 @@ print(int(isinstance(data, dict) and any(
 # Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
+# Whether one of the state stops config_failed judges holds, any of which init and add-source meet before they
+# read the docs repo's remotes (cli._ensure_setup): then the error above is the state's, and no "governance:"
+# line was printed for a remote the policy refuses (B13 round 25 D76).
+state_stop_holds() {
+	state_not_a_folder || state_lost || state_owned_elsewhere || state_not_a_file || state_side_not_a_file ||
+		[ -n "$(state_open_fix)" ]
+}
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
 	if [ "$rc" -eq 78 ]; then
@@ -8094,9 +8101,6 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		elif [ "$CONFIG_STATE" != "created" ]; then
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
-	fi
-	if [ "$rc" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
-		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
 	fi
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
@@ -8122,6 +8126,12 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			FAIL_NEXT="this account is refused agentsync's state folder or a file in it, and no change of that folder's or file's mode fixes that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines; a fix it names for a folder above it, even a chmod, is the person's): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 			;;
 		esac
+	fi
+	# a remote the policy refuses only after the state checks: init opens the state folder and the manifest before
+	# it reads the remotes (cli._ensure_setup), so with both, the error above is the state's and no governance:
+	# line was printed (B13 round 25 D76)
+	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
+		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
 	fi
 	[ "$rc" -ne 65 ] ||
 		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
@@ -8194,7 +8204,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		if [ -s "$MARK" ]; then
 			if [ "$HELD_RC" -eq 78 ]; then
 				WHY="the folder $f was added to $CONFIG, but agentsync refuses the config (the configuration error just above)"
-			elif [ "$HELD_RC" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
+			elif [ "$HELD_RC" -eq 1 ] && ! state_stop_holds && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
 				WHY="the folder $f was added to $CONFIG, but the docs repo has a git remote [governance] does not allow (the governance: line above)"
 			else
 				WHY="the folder $f was added to $CONFIG, but agentsync add-source failed after adding it (see the error above)"

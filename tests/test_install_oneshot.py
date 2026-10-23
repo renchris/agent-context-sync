@@ -9712,6 +9712,56 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
     assert "except OSError:\n    print(0)" in probe, probe
 
 
+@pytest.mark.parametrize("call", ["init", "add-source"])
+def test_a_refused_remote_beside_a_lost_manifest_gives_the_lost_manifests_next_first(
+    real_env: dict[str, str], wheel: Path, call: str
+) -> None:
+    """B13 round 25 D76 (D-L1h), with the real agentsync: init and add-source open the state folder and the
+    manifest before they read the docs repo's remotes (cli._ensure_setup), so beside a lost manifest they stop
+    on it and print no "governance:" line. config_failed judged the refused remote first, so step 2's NEXT
+    (and add-source's error) named "the governance: line above", which was not there, and the person's fix of
+    the remote led to a second stop on the manifest. The state stops come first now, the order init stops in;
+    once the manifest is back, the remote's words return."""
+    env = real_env
+    home = Path(env["HOME"])
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    docs = home / "agent-context" / "docs"
+    subprocess.run(
+        ["git", "-C", str(docs), "remote", "add", "origin", "https://git.contoso.example/kb.git"], check=True
+    )
+    db = _state_db(env)
+    aside = db.with_name("manifest.sqlite.aside")
+    db.rename(aside)
+    for end in ("-wal", "-shm"):
+        db.with_name(db.name + end).unlink(missing_ok=True)
+    args = [str(wheel)]
+    if call == "add-source":
+        other = folder.parent / "Beta"
+        other.mkdir()
+        args += ["--source-local", str(other)]
+    lost = install_sh(env, *args)
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert "governance: remote origin (" not in lost.stderr, lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(lost)
+    assert "the governance: line above" not in lost.stdout + lost.stderr, lost.stdout + lost.stderr
+    if call == "add-source":
+        assert "but agentsync add-source failed after adding it (see the error above)" in lost.stderr, (
+            lost.stderr
+        )
+    aside.rename(db)  # the person restores the file from a copy they trust
+    remote = install_sh(env, str(wheel))
+    assert remote.returncode == 1, remote.stdout + remote.stderr
+    assert "governance: remote origin (" in remote.stderr, remote.stderr
+    assert last_line(remote).startswith(
+        "NEXT: the docs repo has a git remote the [governance] policy does not allow (the governance: line "
+        "above"
+    ), last_line(remote)
+
+
 SIDE_NOTFILE_NEXT = (
     "NEXT: the -wal or -shm of agentsync's state file is a folder or something else that is not a file "
     "(~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the "
