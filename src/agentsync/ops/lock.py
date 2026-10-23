@@ -30,6 +30,7 @@ import logging
 import os
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -491,9 +492,10 @@ class SingleWriterLock:
     def read_body(path: Path) -> str:
         """Return the lock body at ``path`` ('' if absent); never takes the lock."""
         try:
-            return path.read_text(encoding="ascii", errors="replace")
-        except FileNotFoundError:
+            data = read_regular_bytes(path)
+        except ValueError:  # a fifo or a socket there, which a plain read waited on (D46)
             return ""
+        return (data or b"").decode("ascii", errors="replace")
 
     @staticmethod
     def is_held(path: Path) -> bool:
@@ -503,10 +505,13 @@ class SingleWriterLock:
         ("skipped: lock held") and runs at its next interval.
         """
         try:
-            fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+            # O_NONBLOCK: a fifo at the lock that nothing writes hung status (B13 round 25 D46)
+            fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
             return False
         try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return False  # no flock on a fifo or a socket (EOPNOTSUPP): no process holds it
             try:
                 fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -601,11 +606,41 @@ def write_heartbeat(
     _atomic_write(path, _dump_json(current), 0o600)
 
 
-def read_heartbeat(path: Path) -> Mapping[str, Mapping[str, object]]:
-    """Return {source_id: entry}; {} if the file is missing."""
+def read_regular_text(path: Path) -> str | None:
+    """The UTF-8 text of :func:`read_regular_bytes`."""
+    data = read_regular_bytes(path)
+    return None if data is None else data.decode("utf-8")
+
+
+def read_regular_bytes(path: Path) -> bytes | None:
+    """The bytes of the regular file at ``path``, or None when nothing is there; ValueError for anything else
+    (a fifo, a socket, a folder), judged on the open file (``fstat``, so through a link and with no race).
+    Opened O_NONBLOCK: a plain open of a fifo nothing writes waits forever, and a fifo planted at
+    heartbeat.json hung status and, inside the lock, every later sync (B13 round 25 D46). ValueError, not
+    OSError: a heartbeat's readers already take it as a corrupt file, and the next pass writes a regular one
+    over it."""
     try:
-        text = path.read_text(encoding="utf-8")
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
+        return None
+    except IsADirectoryError:
+        raise ValueError(f"{path}: not a regular file") from None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"{path}: not a regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(fd, 1 << 16):
+            chunks.append(chunk)
+    finally:
+        os.close(fd)
+    return b"".join(chunks)
+
+
+def read_heartbeat(path: Path) -> Mapping[str, Mapping[str, object]]:
+    """Return {source_id: entry}; {} if the file is missing; ValueError for one that is not a regular file
+    (:func:`read_regular_text`) or not a JSON object."""
+    text = read_regular_text(path)
+    if text is None:
         return {}
     try:
         data = json.loads(text)

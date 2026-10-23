@@ -1772,6 +1772,126 @@ def test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl(
     (line,) = failed()
     assert line.name == "state_dir.manifest" and line.detail.endswith(LOST_MANIFEST), line
     assert line.fix == doctor.LOST_MANIFEST_FIX
+    # B13 round 25 D71: (d) earlier passes and a link into a missing folder: neither LOST_MANIFEST_FIX move
+    # works through the link, so one FAIL names the link's removal first, then those moves; no second line
+    db.unlink()
+    db.symlink_to(db.parent / "gone" / "manifest.sqlite")
+    assert manifest_lost(db)
+    (line,) = failed()
+    assert line.name == "state_dir.manifest" and line.detail.endswith(f", and {LOST_MANIFEST}"), line
+    assert line.fix == (
+        f"the person removes the link first: rm {doctor._shell_path(db)}; then "
+        + doctor.LOST_MANIFEST_FIX.removeprefix("the person ")
+    )
+    assert doctor.is_persons_fix(line.fix)
+
+
+SIDES = {
+    "-wal": "the state file's write-ahead log",
+    "-shm": "the state file's shared-memory file",
+}
+
+
+@pytest.mark.parametrize("side", ["-wal", "-shm", "token cache"])
+def test_a_side_file_that_is_not_a_file_is_one_fail_named_by_its_role_with_a_copy_kept(
+    sample_config: Config, side: str
+) -> None:
+    """B13 round 25 D6, D22, D10: a folder at the -shm read "is a folder, not the state file" (the
+    manifest's words), its fix "the person moves ... aside" with no "keeping a copy", which install.sh's step
+    1 and step 2 say, and an "[ok] state_dir.files ... are 0600" followed under the same name, one check
+    counted twice. One FAIL, the file named by its role, the person's move aside keeping a copy, and no ok
+    line beside it."""
+    sp = sample_config.state_paths
+    db = expand(sp.db)
+    with Manifest(db):
+        pass
+    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"), sp.token_cache_fallback):
+        if p.exists():
+            p.chmod(0o600)
+    there = expand(sp.token_cache_fallback) if side == "token cache" else db.with_name(db.name + side)
+    there.unlink(missing_ok=True)
+    there.mkdir(mode=0o700)
+    files = [r for r in doctor._check_state_dir(sample_config) if r.name == "state_dir.files"]
+    (line,) = files
+    role = SIDES.get(side, "the token cache")
+    assert not line.ok and line.detail == f"{there} is a folder, not a file ({role})", line
+    assert line.fix == f"the person moves {doctor._shell_path(there)} aside, keeping a copy", line
+    assert doctor.is_persons_fix(line.fix)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+def test_a_side_that_is_a_folder_beside_a_loose_manifest_keeps_both_fails_and_no_ok(
+    sample_config: Config,
+) -> None:
+    """B13 round 25 D10's verifier: only the ok line goes; a folder at -shm beside a 0644 manifest still gives
+    two FAILs, the person's move aside and the agent's chmod 600, never one merged fix."""
+    db = expand(sample_config.state_paths.db)
+    with Manifest(db):
+        pass
+    db.with_name(db.name + "-shm").unlink(missing_ok=True)
+    db.with_name(db.name + "-shm").mkdir(mode=0o700)
+    db.chmod(0o644)
+    files = [r for r in doctor._check_state_dir(sample_config) if r.name == "state_dir.files"]
+    assert [r.ok for r in files] == [False, False], files
+    assert files[0].fix is not None and files[0].fix.endswith("aside, keeping a copy"), files
+    assert files[1].fix is not None and files[1].fix.startswith("chmod 600 "), files
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root renames a folder of any mode")
+@pytest.mark.parametrize("where", ["", "-shm"])
+def test_a_folder_shut_to_this_account_at_a_state_file_names_its_chmod_700_first(
+    sample_config: Config, where: str
+) -> None:
+    """B13 round 25 D72: a 0000 folder at manifest.sqlite or its -shm can be neither copied nor moved (macOS
+    renames a folder only with write on it, and copies it only with read and search), so "keeping a copy, move
+    it aside" failed until a chmod 700. The fix opens it first; a 0700 folder gets no such words, and the fix
+    of a damaged manifest file (MANIFEST_FIX) is unchanged. Following the words ends in a moved folder."""
+    db = expand(sample_config.state_paths.db)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    for side in ("", "-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+    there = db.with_name(db.name + where)
+    there.mkdir(mode=0o700)
+    name = "state_dir.manifest" if where == "" else "state_dir.files"
+
+    def fix() -> str:
+        (line,) = [r for r in doctor._check_state_dir(sample_config) if r.name == name and not r.ok]
+        assert line.fix is not None and doctor.is_persons_fix(line.fix), line
+        return line.fix
+
+    open_fix = fix()
+    assert "chmod" not in open_fix, open_fix
+    there.chmod(0)
+    try:
+        shut_fix = fix()
+    finally:
+        there.chmod(0o700)
+    opens = f"the person runs chmod 700 {doctor._shell_path(there)} first, which is reversible"
+    assert shut_fix.startswith(opens), shut_fix
+    if where == "":
+        assert shut_fix.endswith(doctor.MANIFEST_FIX.removeprefix("the person ")), shut_fix
+    else:
+        assert shut_fix.endswith(f"; then moves {doctor._shell_path(there)} aside, keeping a copy"), shut_fix
+    there.chmod(0)
+    try:  # the words, followed: the chmod, a copy, the move, each exit 0
+        for cmd in (["chmod", "700", str(there)], ["cp", "-R", str(there), str(there) + ".copy"]):
+            assert subprocess.run(cmd, check=False).returncode == 0, cmd
+        there.rename(there.with_name(there.name + ".aside"))
+    finally:
+        if there.exists():
+            there.chmod(0o700)
+    assert not there.exists()
+
+
+def test_manifest_fix_says_to_move_heartbeat_json_aside_in_install_shs_words() -> None:
+    """B13 round 25 D73: "move it aside, with heartbeat.json beside it" read as where the heartbeat is, not
+    as a move, and moving the manifest alone stops the next sync on the lost-manifest guard; install.sh says
+    "move the folder aside and heartbeat.json with it"."""
+    assert (
+        "or move it aside and heartbeat.json with it, so the next sync starts a new one"
+        in doctor.MANIFEST_FIX
+    )
+    assert "beside it" not in doctor.MANIFEST_FIX and doctor.is_persons_fix(doctor.MANIFEST_FIX)
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")

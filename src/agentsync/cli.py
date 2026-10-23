@@ -1630,6 +1630,12 @@ def _unread_words(
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
         return "the state file is busy: another agentsync run holds it; try again when it ends"
+    side = doctor.side_not_a_file_at(expand(config.state_paths.db)) if config is not None else None
+    if isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc) and side is not None:
+        # a -wal or -shm that is not a file: no account's access, "cannot be opened" read as one, beside the
+        # state_dir.files FAIL that names the person's move aside (B13 round 25 D8)
+        role = doctor.SIDE_ROLES[side.name.removeprefix(config.state_paths.db.name)]  # type: ignore[union-attr]
+        return f"{role} is not a file; the state_dir.files line says why"
     if isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc):
         # CANTOPEN, PERM, READONLY: no damage; the file's owner or mode, or its folder's (B13 round 19 W64;
         # round 20 X48: by name, so SQLITE_PERM is 3, not SQLITE_AUTH's 23)
@@ -1768,6 +1774,10 @@ def _listings_unread(
         note = doctor.LISTING_STATE_LOST_NOTE
     elif read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
         note = doctor.LISTING_STATE_UNREADABLE_NOTE
+    elif (
+        state_root is not None and doctor.side_not_a_file_at(Path(state_root) / "manifest.sqlite") is not None
+    ):
+        note = doctor.LISTING_STATE_SIDE_NOTE  # the person's move aside, not this account's access (D8)
     elif doctor.state_unopenable(exc, state_root):
         note = doctor.LISTING_STATE_SHUT_NOTE
     else:
@@ -2124,9 +2134,8 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
                 kind = doctor._not_a_file(os.fstat(fd).st_mode)
             finally:
                 os.close(fd)
-    if kind is not None:  # the words and the person's fix state_dir.files gives a state file that is not one
-        fix = f"the person moves {doctor._shell_path(audit)} aside"
-        detail = f"{audit} is {kind}, not the state file"
+    if kind is not None:  # the words and the person's fix a hold's error gives (B13 round 25 D22, D41)
+        detail, fix = governance.audit_not_a_file(audit, kind)
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
     try:
         governance.load_suppressions(root)
@@ -3222,6 +3231,11 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
         name = "state_dir.manifest"
     elif isinstance(exc, ManifestLostError):
         name = "state_dir.manifest"  # lost from a Mac that has synced: no new one started (B13 round 23 A29)
+    elif exc.errno == errno.ENOENT and doctor.dangling_target(expand(sp.db)) is not None:
+        # a link to nothing at the manifest whose folder is missing: realpath resolves through the link, so
+        # judged by the link itself; "error: <db> cannot be opened: No such file or directory" had no fix and
+        # no NEXT once heartbeat.json was moved aside (B13 round 25 D71); any other ENOENT keeps its line
+        name = "state_dir.manifest"
     elif exc.errno in (errno.ENOTDIR, errno.EEXIST, errno.ELOOP) and (
         path == root or root.is_relative_to(path) or path.is_relative_to(root)
     ):  # the folder, a folder above it, or a path under a folder that is a file (B13 round 23 A58)
@@ -3250,13 +3264,28 @@ def _non_folder_said(args: argparse.Namespace, exc: BaseException) -> str | None
     return _misplaced(args, NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), root))
 
 
-def _misplaced_next(args: argparse.Namespace, said: str) -> None:
+def _side_said(args: argparse.Namespace) -> tuple[str, Path] | None:
+    """The ``error: state:`` line of a manifest side file that is not a file, status's own state_dir.files
+    result and fix (``doctor.side_not_a_file``), and that side's path; None when none is, or on any error
+    (round 25 ruling 12: sync, curate and init print what status prints)."""
+    try:
+        result = doctor.side_not_a_file(_config(args))
+    except Exception:  # the error path: never a second error over the first
+        return None
+    if result is None:
+        return None
+    fix = f" (fix: {result.fix})" if result.fix else ""
+    return f"error: state: {result.detail}{fix}", Path(result.detail.partition(" is ")[0])
+
+
+def _misplaced_next(args: argparse.Namespace, said: str, path: Path | None = None) -> None:
     """The NEXT a sync prints after :func:`_misplaced`'s line (:data:`STATE_MISPLACED_STEP`), for any
-    command: a sync's also records the stop (:func:`_state_next`); curate and the governance commands printed
-    none, so curate's "(see NEXT)" pointed at nothing (B13 round 24 B89). None under install.sh, which names
-    its own."""
+    command: a sync's also records the stop (:func:`_state_next`) for ``path``, by default the state folder
+    (a side file's own path records ``file=manifest-wal`` or ``-shm``: B13 round 25 D2); curate and the
+    governance commands printed none, so curate's "(see NEXT)" pointed at nothing (B13 round 24 B89). None
+    under install.sh, which names its own."""
     if getattr(args, "command", None) == "sync":
-        _state_next(args, STATE_MISPLACED_STEP, said=said, path=_state_root(args))
+        _state_next(args, STATE_MISPLACED_STEP, said=said, path=path or _state_root(args))
     elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
         _out(loop.NEXT_PREFIX + STATE_MISPLACED_STEP)
 
@@ -3536,6 +3565,16 @@ def _main(argv: Sequence[str] | None) -> int:
             doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
+        side = _side_said(args) if doctor.cannot_open(exc) else None
+        if side is not None:
+            # a -wal or -shm that is not a file (a folder, a socket, a link to nothing): "OperationalError:
+            # unable to open database file", no fix, no NEXT and no stop record, while status FAILed it with
+            # the person's move aside; its line, the misplaced NEXT, exit 1 (B13 round 25 D2, D8, D21, D70)
+            said, where = side
+            _log.debug("state: %s", exc, exc_info=True)
+            _err(said)
+            _misplaced_next(args, said, where)
+            return EXIT_FAILED
         said = (_refused_files(args) or _refused_folder(args)) if doctor.cannot_open(exc) else None
         if said is not None:
             # a -wal or -shm (or the manifest) this account cannot write: sqlite's READONLY gave the bare

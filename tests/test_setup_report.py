@@ -7454,7 +7454,7 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     assert depth <= 1, stage_words
     # GV: a home that synced, then a [governance] value that does not load
     db = expand(load_config(fake_mac["config"]).state_paths.db)
-    db.unlink()  # MANIFEST_FIX: with heartbeat.json beside it, or no sync starts a new one (B13 round 23 A29)
+    db.unlink()  # MANIFEST_FIX: heartbeat.json goes aside with it, or no sync starts one (B13 round 23 A29)
     expand(load_config(fake_mac["config"]).state_paths.heartbeat).unlink()
     assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
     cfg = fake_mac["config"]

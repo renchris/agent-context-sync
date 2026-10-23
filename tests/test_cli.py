@@ -63,7 +63,7 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops import doctor, launchd
-from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
+from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.paths import expand
 from agentsync.text import plural
 from conftest import zone
@@ -4823,13 +4823,137 @@ def test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_with
         signal.signal(signal.SIGALRM, old)
     assert rc == cli.EXIT_FAILED, out
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.audit ")]
-    moved = f"(fix: the person moves {doctor._shell_path(audit)} aside)"
-    assert f"{audit} is a fifo, not the state file {moved}" in failed, failed
+    moved = f"(fix: the person moves {doctor._shell_path(audit)} aside, keeping a copy)"
+    assert f"{audit} is a fifo, not a file (the audit trail) {moved}" in failed, failed
     assert held == cli.EXIT_FAILED
     (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
-    assert "is a fifo, not a file" in line and "the person moves" in line, line
+    assert line == f"error: {audit} is a fifo, not a file (the audit trail) {moved}", line  # status's (D41)
     assert governance.state_holds(root) == ()
     audit.unlink()
+
+
+@pytest.mark.parametrize("what", ["a socket", "a folder", "a symlink loop", "a symlink to a folder"])
+def test_anything_not_a_file_at_the_audit_trail_stops_a_hold_with_statuss_line_not_a_traceback(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 25 D41: B63 refused only the fifo's ENXIO, so a folder (EISDIR) or a socket (EOPNOTSUPP) at
+    governance/audit.jsonl ended ``hold`` and its release on a traceback. Each is refused, before holds.json
+    changes, with the line status's governance.audit FAIL gives, word for word."""
+    import socket  # noqa: PLC0415
+
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    audit = governance.audit_path(root)
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    held = governance.state_holds(root)
+    audit.unlink()
+    sock = None
+    if what == "a socket":
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        here = Path.cwd()
+        os.chdir(audit.parent)  # a tmp path is longer than AF_UNIX takes
+        try:
+            sock.bind(audit.name)
+        finally:
+            os.chdir(here)
+    elif what == "a folder":
+        audit.mkdir()
+    elif what == "a symlink loop":
+        audit.symlink_to(audit)
+    else:
+        (root / "elsewhere").mkdir()
+        audit.symlink_to(root / "elsewhere")
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.audit ")]
+        released = cli.main(["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg])
+        err = capsys.readouterr().err
+    finally:
+        if sock is not None:
+            sock.close()
+    moved = f"(fix: the person moves {doctor._shell_path(audit)} aside, keeping a copy)"
+    words = f"{audit} is {what}, not a file (the audit trail) {moved}"
+    assert rc == cli.EXIT_FAILED and failed.endswith(f" — {words}"), failed
+    assert released == cli.EXIT_FAILED and err.splitlines() == [f"error: {words}"], err
+    assert governance.state_holds(root) == held  # nothing changed
+
+
+def test_a_link_to_a_file_at_the_audit_trail_still_appends(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 25 D41's verifier: a symlink at audit.jsonl to a regular file works, and status passes it;
+    refusing it would be a regression."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    audit = governance.audit_path(root)
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    real = root / "audit-real.jsonl"
+    real.write_text("", encoding="utf-8")
+    real.chmod(0o600)
+    audit.unlink(missing_ok=True)
+    audit.symlink_to(real)
+    assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    assert real.read_text(encoding="utf-8").count("\n") >= 1
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("where", ["heartbeat", "lock", "holds", "heartbeat, no manifest"])
+def test_a_fifo_at_a_state_file_status_reads_never_hangs_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 25 D46: B63 hardened only the audit trail; a fifo at heartbeat.json (read by manifest_lost
+    with no manifest, by read_heartbeat with one), at the lock (is_held's probe) or at governance/holds.json
+    hung status on a plain blocking open, and inside the lock every later sync. Status returns, and a
+    completed pass writes a regular heartbeat.json over the fifo."""
+    import signal  # noqa: PLC0415
+
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    root = expand(sp.root)
+    target = {
+        "heartbeat": expand(sp.heartbeat),
+        "heartbeat, no manifest": expand(sp.heartbeat),
+        "lock": expand(sp.lock),
+        "holds": governance._holds_file(root),
+    }[where]
+    if where == "heartbeat, no manifest":
+        db = expand(sp.db)
+        for name in ("", "-wal", "-shm"):
+            db.with_name(db.name + name).unlink(missing_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.unlink(missing_ok=True)
+    os.mkfifo(target)
+
+    def hung(*_: object) -> None:
+        raise TimeoutError(f"hung on the fifo at {where}")
+
+    old = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(30)
+    try:
+        capsys.readouterr()
+        rc = cli.main(["status", "--config", cfg])
+        capsys.readouterr()
+        if where == "heartbeat":
+            with pytest.raises(ValueError, match="not a regular file"):
+                read_heartbeat(target)
+            write_heartbeat(
+                target,
+                "contoso",
+                run_id=9,
+                pass_kind=None,
+                enumeration_complete=True,
+                ok=True,
+                auth_state="ok",
+                now_iso="2026-10-23T00:00:00Z",
+            )
+            assert stat.S_ISREG(target.lstat().st_mode) and read_heartbeat(target)["contoso"]["run_id"] == 9
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+    assert rc in (cli.EXIT_OK, cli.EXIT_FAILED, cli.EXIT_STATE), rc
+    target.unlink(missing_ok=True)
 
 
 def test_a_state_path_another_account_owns_gets_the_persons_chown(
@@ -6720,6 +6844,104 @@ def test_a_sync_stop_on_a_state_folder_that_is_a_file_is_recorded_as_misplaced_n
     since = datetime(2000, 1, 1, tzinfo=UTC)
     (read,) = setup_report._read_sync_stops(stops.parent / "install.log", since, None)
     assert (read.file, read.owner, read.kind) == ("state-folder", "person", "misplaced")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a folder of any mode")
+@pytest.mark.parametrize(("side", "mode"), [("-wal", 0o700), ("-shm", 0o700), ("-shm", 0o000)])
+def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next(
+    initialised: Config, capsys: pytest.CaptureFixture[str], side: str, mode: int
+) -> None:
+    """B13 round 25 D2, D8, D21, D70 (ruling 12): a folder at the manifest's -wal or -shm made sync, poll,
+    curate and init print "error: OperationalError: unable to open database file" (or "attempt to write a
+    readonly database"), exit 1, with no fix, no NEXT and no sync-stops.log line, while status FAILed it with
+    the person's move aside. Each prints status's own state_dir.files line as ``error: state: <detail> (fix:
+    <fix>)`` and exits 1; a foreground sync gives the misplaced NEXT and records ``file=manifest-<side>
+    owner=person kind=misplaced``; poll prints the line alone. Status reads the cause in not-a-file words."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    there = db.with_name(db.name + side)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    there.unlink(missing_ok=True)
+    there.mkdir(mode=mode)
+    (want,) = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files" and not r.ok]
+    said = f"error: state: {want.detail} (fix: {want.fix})"
+    role = doctor.SIDE_ROLES[side]
+    assert want.detail == f"{there} is a folder, not a file ({role})", want
+    assert want.fix is not None and want.fix.endswith(
+        f"moves {doctor._shell_path(there)} aside, keeping a copy"
+    )
+    assert ("chmod 700" in want.fix) == (mode == 0), want.fix  # a shut folder is opened first (D72)
+    capsys.readouterr()
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        out = capsys.readouterr()
+        assert out.err.splitlines() == [said], out.err
+        assert [x for x in out.out.splitlines() if x.startswith("NEXT")] == [
+            f"NEXT: {cli.STATE_MISPLACED_STEP}"
+        ]
+        (line,) = stops.read_text(encoding="utf-8").splitlines()
+        assert re.fullmatch(rf"\S+ sync-stop file=manifest{side} rc=1 owner=person kind=misplaced", line), (
+            line
+        )
+        assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_FAILED
+        out = capsys.readouterr()
+        assert out.err.splitlines() == [said] and "NEXT" not in out.out, out
+        assert len(stops.read_text(encoding="utf-8").splitlines()) == 1
+        for command in ("init", "curate"):
+            rc = cli.main([command, "--config", cfg])
+            out = capsys.readouterr()
+            if (
+                rc == cli.EXIT_OK
+            ):  # a read of the state that needs no -shm write gets past a 0700 folder there
+                assert (side, mode) == ("-shm", 0o700), (command, side, mode)
+                continue
+            assert rc == cli.EXIT_FAILED and said in out.err.splitlines(), (command, out)
+            assert f"NEXT: {cli.STATE_MISPLACED_STEP}" in out.out.splitlines(), (command, out)
+            assert "OperationalError" not in out.err + out.out, (command, out)
+        assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
+        status = capsys.readouterr().out
+        if (side, mode) != ("-shm", 0o700):  # a 0700 -shm: status's read-only open still reads the state
+            assert f"cannot read the state: {role} is not a file; the state_dir.files line says why" in status
+        assert "this account cannot open the state file" not in status, status
+        assert "the state file cannot be opened" not in status, status
+    finally:
+        there.chmod(0o700)
+
+
+def test_a_dangling_manifest_link_followed_by_its_fix_ends_in_a_clean_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 25 D71: a link to nothing at manifest.sqlite, into a folder that does not exist, over earlier
+    passes: with heartbeat.json alone moved aside the sync said only "error: <db> cannot be opened: No such
+    file or directory", no fix and no NEXT. It gives status's state_dir.manifest line, the misplaced NEXT and
+    a stop record; the fix followed (remove the link, move heartbeat.json aside) ends in a sync that exits
+    0."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db, beat = expand(sp.db), expand(sp.heartbeat)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.symlink_to(db.parent / "gone" / "manifest.sqlite")
+    (fail,) = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.manifest" and not r.ok]
+    assert fail.fix is not None and fail.fix.startswith(
+        f"the person removes the link first: rm {doctor._shell_path(db)}"
+    )
+    beat.rename(beat.with_name("heartbeat.kept.json"))  # the lost guard's move alone: the link still stops it
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr()
+    (err,) = out.err.splitlines()
+    assert (
+        err.startswith(f"error: state: {db} is a symlink to ") and "(fix: the person points the link" in err
+    ), err
+    assert f"NEXT: {cli.STATE_MISPLACED_STEP}" in out.out.splitlines(), out
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=manifest rc=1 owner=person kind=misplaced", line), line
+    db.unlink()  # and the link removed, as the fix says
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
 
 
 def test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing(

@@ -55,6 +55,7 @@ from agentsync.model import (
     TreeLookup,
     Verdict,
 )
+from agentsync.ops.lock import read_regular_text
 
 _log = logging.getLogger(__name__)
 
@@ -820,8 +821,8 @@ def manifest_lost(db_path: Path) -> bool:
         return False
     if not os.access(db_path.parent, os.R_OK | os.W_OK | os.X_OK):
         return False  # a folder this account cannot use (a mode, a read-only volume): its refusal comes first
-    try:
-        data = json.loads((db_path.parent / "heartbeat.json").read_text(encoding="utf-8"))
+    try:  # never a plain read: a fifo there hung status (B13 round 25 D46)
+        data = json.loads(read_regular_text(db_path.parent / "heartbeat.json") or "null")
     except (OSError, ValueError):
         return False
     if not isinstance(data, dict):

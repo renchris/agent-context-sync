@@ -53,7 +53,7 @@ from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
-from agentsync.paths import default_cache_dir, default_log_dir, expand, is_cloud_path
+from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
 from agentsync.skill import HELPER_RETRY_CLAUSE
 from agentsync.text import plural
 
@@ -161,6 +161,14 @@ LISTING_STATE_SHUT_NOTE = (
     "the state_dir [FAIL] lines say what to do first"
 )
 
+# The same note for a side file of the state file (its -wal or -shm) that is not a file: no account's access,
+# so not the shut note's "cannot open", but the person's move aside that state_dir.files names (B13 round 25
+# D8: a folder at the -wal read "this account cannot open the state file").
+LISTING_STATE_SIDE_NOTE = (
+    "as of its last walk: a side file of the state file is not a file, so no sync lists it again until the "
+    "person moves it aside; the state_dir.files [FAIL] line says what to do first"
+)
+
 
 def state_unopenable(exc: BaseException | None, state_root: Path | None = None) -> bool:
     """Whether ``exc``, a read of the state, failed because this account cannot open the file (its mode, its
@@ -169,7 +177,9 @@ def state_unopenable(exc: BaseException | None, state_root: Path | None = None) 
     loop cannot search is no state file's; B13 round 20 X15's reviewer). Keyed on the read's own error, never
     on a check's name: state_dir.files also FAILs a file readable by others, which the loop reads normally."""
     if isinstance(exc, sqlite3.Error):
-        return cannot_open(exc)
+        # a side file that is not a file is no account's access: the person moves it aside (B13 round 25 D8)
+        side = state_root is not None and side_not_a_file_at(Path(state_root) / "manifest.sqlite") is not None
+        return cannot_open(exc) and not side
     if isinstance(exc, ManifestOpenError):
         return True
     if not isinstance(exc, OSError) or exc.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
@@ -1481,6 +1491,88 @@ def _behind_the_state_folders_refuser(config: Config, exc: OSError) -> str | Non
     return f"{said}; the state_dir lines say why"
 
 
+SIDE_ROLES = {"-wal": "the state file's write-ahead log", "-shm": "the state file's shared-memory file"}
+"""What each side file of the manifest is, in the words of its state_dir.files FAIL (B13 round 25 D6)."""
+
+
+def _not_a_file_detail(sp: StatePaths, p: Path, kind: str) -> str:
+    """The detail of a state path that is not a file (:func:`state_file_kind`): the manifest's "is <kind>, not
+    the state file"; a side file's and the token cache's name the file by its role, "not a file (the state
+    file's write-ahead log)", since "not the state file" said the -shm was the manifest (B13 round 25 D6, D21:
+    the sync's line, status's and the report's read the same words)."""
+    if p == sp.db:
+        return f"{expand(p)} is {kind}, not the state file"
+    suffix = p.name.removeprefix(sp.db.name) if p.name.startswith(sp.db.name) else ""
+    role = SIDE_ROLES.get(suffix, "the token cache")
+    return f"{expand(p)} is {kind}, not a file ({role})"
+
+
+def _opens_first(path: Path, kind: str) -> str:
+    """The step a folder at a state path needs before it can be copied or moved, when this account cannot
+    read, write and search it: macOS renames a folder only with write on the folder itself, and copies it only
+    with read and search (measured: a 0000 or 0500 folder refuses ``mv``, a 0300 one ``cp -R``). This
+    account's own: a ``chmod 700``, reversible; another account's: the person's sudo chown. "" when the mode
+    already gives access, or for a link, which moves aside whatever its target's mode (B13 round 25 D72)."""
+    if kind != "a folder":
+        return ""
+    try:
+        if os.access(path, os.R_OK | os.W_OK | os.X_OK):
+            return ""
+        own = path.lstat().st_uid == os.getuid()
+    except OSError:
+        return ""
+    shown = _shell_path(path)
+    if own:
+        step = f"runs chmod 700 {shown} first, which is reversible"
+    else:
+        step = f"runs sudo chown -R {os.getuid()} {shown} first (the agent runs no sudo)"
+    return f"{step}, as a folder shut to this account can be neither copied nor moved; then "
+
+
+def _not_a_file_fix(sp: StatePaths, p: Path, kind: str) -> str:
+    """The person's fix of a state path that is not a file: MANIFEST_FIX for the manifest, a move aside,
+    keeping a copy, as install.sh's step 1 and step 2 say it, for a side file or the token cache (B13 round 25
+    D22, ruling 12), each after the step that opens a folder shut to this account (:func:`_opens_first`)."""
+    first = _opens_first(expand(p), kind)
+    if p == sp.db:
+        return "the person " + first + MANIFEST_FIX.removeprefix("the person ") if first else MANIFEST_FIX
+    return f"the person {first}moves {_shell_path(expand(p))} aside, keeping a copy"
+
+
+def side_not_a_file_at(db: Path) -> Path | None:
+    """The manifest's -wal or -shm beside ``db`` that is not a file sqlite can open (the first): a folder, a
+    socket, a fifo, a link to one or a loop (:func:`state_file_kind`), or a link to nothing whose folder is
+    missing or refuses a write (:func:`dangling_target`), as state_dir.files FAILs it; else None. By the stat,
+    never by sqlite's error, which says only CANTOPEN or READONLY (B13 round 25 D2, D8, D70)."""
+    for suffix in SIDE_ROLES:
+        side = db.with_name(db.name + suffix)
+        if state_file_kind(side) is not None:
+            return side
+        target = dangling_target(side)
+        if target is not None and not (
+            target.parent.is_dir() and os.access(target.parent, os.W_OK | os.X_OK)
+        ):
+            return side
+    return None
+
+
+def side_not_a_file(config: Config) -> CheckResult | None:
+    """Status's own state_dir.files FAIL of a -wal or -shm that is not a file (:func:`side_not_a_file_at`),
+    for the sync's, curate's and init's error line, which print it as status does (round 25 ruling 12); None
+    when every side is a file or status's check raises (the error path never raises a second error)."""
+    try:
+        side = side_not_a_file_at(expand(config.state_paths.db))
+        if side is None:
+            return None
+        results = _check_state_dir(config)
+    except Exception:
+        return None
+    named = f"{side} is "
+    return next(
+        (r for r in results if r.name == "state_dir.files" and not r.ok and r.detail.startswith(named)), None
+    )
+
+
 def _check_state_dir(config: Config) -> list[CheckResult]:
     """state_dir exists with mode 0700 (owned by this user); the db and token fallback are 0600."""
     sp = config.state_paths
@@ -1537,6 +1629,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     shut: list[str] = []  # this account's, with no read or no write for it (chmod 000, 0400)
     denied: list[Path] = []  # this account's at a mode that gives it access, or on a read-only volume
     nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
+    lost_link = False  # a dangling manifest link over earlier passes: its own FAIL holds the lost fix (D71)
     for p in (
         sp.db,
         sp.db.with_name(sp.db.name + "-wal"),
@@ -1565,13 +1658,24 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         target = dangling_target(p)
         if target is not None:  # by what a sync does through it, never an ACL (B13 round 24 B64)
             folder = target.parent
-            if p == sp.db and manifest_lost(expand(sp.db)):
-                continue  # earlier passes recorded: the lost manifest's FAIL below, the person's
             if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK):
-                continue  # the first sync creates the file it points at, as with no file there
+                # the first sync creates the file it points at, as with no file there; over earlier passes
+                # the lost manifest's FAIL below, whose moves work through the link
+                continue
             name = "state_dir.manifest" if p == sp.db else "state_dir.files"
             detail = f"{expand(p)} is a symlink to {target}, whose folder does not exist or refuses a write"
             fix = f"the person points the link at an existing file or removes it: rm {_shell_path(expand(p))}"
+            if p == sp.db and manifest_lost(expand(sp.db)):
+                # over earlier passes: one line naming both moves in order, since neither LOST_MANIFEST_FIX
+                # move works through the link (a copy restored follows it into the missing folder, and with
+                # heartbeat.json aside the sync stops on the link) and "rm" alone ends on the lost guard
+                # (B13 round 25 D71); the generic lost line below is not printed beside it
+                detail += f", and {LOST_MANIFEST}"
+                fix = (
+                    f"the person removes the link first: rm {_shell_path(expand(p))}; then "
+                    + LOST_MANIFEST_FIX.removeprefix("the person ")
+                )
+                lost_link = True
             nonfile.append(_bad(name, detail, fix=fix))
             continue
         kind = state_file_kind(p)  # a link by what it points to (A46); a link to a file keeps its mode FAIL
@@ -1580,8 +1684,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             # while every sync stopped on "cannot be opened: Is a directory", so status exited 0 with no
             # NEXT; judged before its owner and mode, and never probed
             name = "state_dir.manifest" if p == sp.db else "state_dir.files"
-            fix = MANIFEST_FIX if p == sp.db else f"the person moves {_shell_path(expand(p))} aside"
-            nonfile.append(_bad(name, f"{expand(p)} is {kind}, not the state file", fix=fix))
+            nonfile.append(_bad(name, _not_a_file_detail(sp, p, kind), fix=_not_a_file_fix(sp, p, kind)))
             continue
         present.append(p.name)
         modes.append(f"{p.name} ({m:04o})")
@@ -1599,6 +1702,10 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         elif m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
     out += nonfile
+    # one state_dir.files line per side: a side that is not a file FAILs, and no ok line under the same name
+    # says the rest are fine beside it (B13 round 25 D10: "[FAIL] ... -shm is a folder" then "[ok] ... are
+    # 0600", one check counted twice); each FAIL keeps its own owner's fix, never merged
+    files_failed = any(r.name == "state_dir.files" for r in nonfile)
     if others:
         out.append(
             _bad(
@@ -1638,13 +1745,15 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(
             _bad("state_dir.files", f"readable by others: {', '.join(loose)}", fix=f"chmod 600 {paths}")
         )
+    elif files_failed:
+        pass  # the side's FAIL above is the line (D10)
     elif present and len(modes) == sum(1 for x in modes if x.endswith("(0600)")):
         out.append(_ok("state_dir.files", f"{', '.join(present)} {_them(present, 'is', 'are')} 0600"))
     elif present:  # "are 0600" only when they are: 0700 is not (W64)
         out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
     elif not nonfile and not manifest_lost(expand(sp.db)):
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
-    if manifest_lost(expand(sp.db)):  # whatever else is there: a stale -wal, the token cache (A29's reviewer)
+    if manifest_lost(expand(sp.db)) and not lost_link:  # whatever else is there: a stale -wal (A29)
         out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {LOST_MANIFEST}", fix=LOST_MANIFEST_FIX))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
@@ -1659,15 +1768,17 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 # locked, busy or unopenable one is not unreadable state, and a sync that holds it must not read as one.
 MANIFEST_UNREADABLE_CODES = frozenset({26, 11})
 MANIFEST_FIX = (
-    "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside, with "
-    "heartbeat.json beside it, so the next sync starts a new one, which converts every file again "
-    "(online-only ones are downloaded again) and forgets the deletions, the deletion breaker's suspended "
-    "removals and the archive it recorded; legal holds are kept, in governance/holds.json"
+    "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside and "
+    "heartbeat.json with it, so the next sync starts a new one, which converts every file again (online-only "
+    "ones are downloaded again) and forgets the deletions, the deletion breaker's suspended removals and the "
+    "archive it recorded; legal holds are kept, in governance/holds.json"
 )
 """The person's fix for a manifest that is no database or a damaged one. "holds" said the manifest held the
 legal holds, which live in governance/holds.json and survive a new manifest; what it loses is the deletion
 breaker's state (B13 round 17 U73). heartbeat.json goes aside with it: no new manifest is started while the
-heartbeat records earlier passes (``manifest.manifest_lost``, B13 round 23 A29)."""
+heartbeat records earlier passes (``manifest.manifest_lost``, B13 round 23 A29), in install.sh's verb phrase
+("move the folder aside and heartbeat.json with it"), since "with heartbeat.json beside it" read as where the
+file is, not as a move (B13 round 25 D73)."""
 
 LOST_MANIFEST_FIX = (
     "the person decides: restore manifest.sqlite from a copy they trust, or move heartbeat.json aside, "

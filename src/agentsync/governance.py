@@ -32,7 +32,6 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
-import errno
 import hashlib
 import json
 import logging
@@ -62,7 +61,7 @@ from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, migration_backups
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
-from agentsync.ops.lock import SingleWriterLock
+from agentsync.ops.lock import SingleWriterLock, read_regular_text
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
 from agentsync.skill import AGENTSYNC_BIN
@@ -303,8 +302,11 @@ def _atomic_write_json(path: Path, obj: object) -> None:
 
 
 def _read_json(path: Path, default: Any) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
+    try:  # never a plain read: a fifo at holds.json hung status and every hold (B13 round 25 D46)
+        text = read_regular_text(path)
+        if text is None:
+            return default
+        return json.loads(text)
     except FileNotFoundError:
         return default
     except (
@@ -340,23 +342,52 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         os.close(fd)
 
 
+def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
+    """The detail and the person's fix of something at the audit trail that is not a file (``kind``, in
+    ``doctor.state_file_kind``'s words): status's governance.audit FAIL and a hold's error line say the same,
+    the file named by what it is, never "not the state file" (the manifest's words), and the move aside
+    keeping a copy, as install.sh and state_dir.files say it (B13 round 25 D22, D41)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    detail = f"{path} is {kind}, not a file (the audit trail)"
+    return detail, f"the person moves {doctor._shell_path(path)} aside, keeping a copy"
+
+
+def _not_a_file_error(path: Path, mode: int | None = None) -> GovernanceError | None:
+    """The error of a hold, its release or a queued purge over an audit trail that is not a file, by what
+    status's check reads there (``doctor.state_file_kind``: a folder, a socket, a fifo, a link to one or a
+    loop), or, from the open file's own mode (``mode``), a special file reached through a link; None for a
+    regular file or a link to one, which appends as before (B13 round 25 D41)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    kind = doctor.state_file_kind(path)
+    if kind is None and mode is not None:
+        kind = doctor._not_a_file(mode)
+    if kind is None:
+        return None
+    detail, fix = audit_not_a_file(path, kind)
+    return GovernanceError(f"{detail} (fix: {fix})")
+
+
 def _open_audit(path: Path) -> int:
     """The audit trail opened for append, never waiting: O_NONBLOCK, so a fifo where it belongs that nothing
-    reads fails at once (ENXIO) rather than holding a hold, its release and a queued purge forever, and
-    anything there that is not a regular file is refused before a line is written (B13 round 24 B63). The
-    flag changes nothing for a regular file."""
+    reads fails at once (ENXIO) rather than holding a hold, its release and a queued purge forever (B13 round
+    24 B63). Anything there that is not a regular file (a folder: EISDIR; a socket: EOPNOTSUPP on macOS,
+    ENXIO on Linux; a symlink loop: ELOOP) is refused with status's words before a line is written, whatever
+    the open's errno, judged by what is there (B13 round 25 D41: only the fifo's ENXIO was, and a folder or a
+    socket ended on a traceback). The flag changes nothing for a regular file."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NONBLOCK | os.O_CLOEXEC
     try:
         fd = os.open(path, flags, 0o600)
-    except OSError as exc:
-        if exc.errno != errno.ENXIO:
+    except OSError:
+        refused = _not_a_file_error(path)
+        if refused is None:  # a read-only volume, a mode: their own handling
             raise
-        raise GovernanceError(f"{path} is a fifo, not a file (fix: the person moves {path} aside)") from None
+        raise refused from None
     mode = os.fstat(fd).st_mode
     if not stat.S_ISREG(mode):
         os.close(fd)
-        kind = {stat.S_IFIFO: "a fifo", stat.S_IFSOCK: "a socket"}.get(stat.S_IFMT(mode), "a special file")
-        raise GovernanceError(f"{path} is {kind}, not a file (fix: the person moves {path} aside)")
+        raise _not_a_file_error(path, mode) or GovernanceError(f"{path} is not a regular file")
     return fd
 
 
