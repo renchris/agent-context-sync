@@ -39,6 +39,7 @@ from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
 from agentsync.paths import expand
+from agentsync.skill import HELPER_RETRY_CLAUSE
 from conftest import config_text, fails_without_a_fix
 from media_kit import fake_media
 from speech_kit import fake_speech, place_models
@@ -3672,7 +3673,8 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
 ) -> None:
     """B13 round 18 V5, V28: a speech helper build that ran out of time left a warn with no fix. Its marker's
     reason (an older build's, without the retry clause, too) now gets install.sh again, worded as
-    ``_again_fix`` is under install.sh, naming no cause; any other failed build keeps no fix."""
+    ``_again_fix`` is under install.sh, naming no cause; any other failed build but a failed FluidAudio fetch
+    (B42) or a step a signal stopped (B13 round 25 D85) keeps no fix."""
     _real_speech(monkeypatch)
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     marker = ocr._marker(ocr._helper_path(sample_config.cache_dir, speech.SPEECH))
@@ -3731,10 +3733,16 @@ def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({reason})"), r
     assert r.fix == (
-        f"run {INSTALL_SH} again; it fetches FluidAudio from github.com again, and if this line comes back, "
-        "check that this Mac reaches github.com (behind a proxy: HTTPS_PROXY set in the shell)"
+        f"run {INSTALL_SH} again; it fetches FluidAudio and the library it links from GitHub again, and if "
+        "this line comes back, check that this Mac reaches github.com, or the SwiftPM mirror it uses for "
+        "FluidAudio, and release-assets.githubusercontent.com (behind a proxy: HTTPS_PROXY set in the shell)"
     ), r.fix
     assert "less busy" not in r.fix and "minutes" not in r.fix
+    # B13 round 25 D53, D65: resolve downloads the library from GitHub's release host too, and the reason's
+    # URL is <url>, so the fix names every host resolve reaches, each one the installer's public hosts hold
+    assert set(speech.FETCH_HOSTS) == {"github.com", "release-assets.githubusercontent.com"}
+    for host in speech.FETCH_HOSTS:
+        assert f" {host}" in r.fix and host in setup_report._PUBLIC_HOSTS, host
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(run_checks(sample_config))["speech"]
     assert r.fix is not None and r.fix.startswith(
@@ -3750,6 +3758,39 @@ def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
     marker.write_text(reason, encoding="utf-8")
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     assert by_name(run_checks(sample_config))["speech"].fix == doctor._OCR_DEVTOOLS_FIX
+
+
+@pytest.mark.parametrize("helper", ["ocr", "media", "speech"])
+def test_a_helper_build_a_signal_stopped_has_the_re_run_as_its_fix(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """B13 round 25 D85: a build step a signal stopped (its reason ends in the retry clause) had no fix,
+    though each install.sh run builds the helper again. Its fix is the plain re-run, said once; no time limit
+    and no "less busy", as a signal is no time-out. The developer tools' fix and a failed build's none
+    stay."""
+    {"ocr": _real_ocr, "media": _real_media, "speech": _real_speech}[helper](monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    kind = {"ocr": ocr._OCR, "media": media.MEDIA, "speech": speech.SPEECH}[helper]
+    marker = ocr._marker(ocr._helper_path(sample_config.cache_dir, kind))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    head = "swift build was " if helper == "speech" else f"swiftc, building the {kind.name}, was "
+    for reason in (ocr._signal_reason(head, -9), ocr._signal_reason(head, -11, b"error: crash")):
+        assert reason.endswith(HELPER_RETRY_CLAUSE), reason
+        marker.write_text(reason, encoding="utf-8")
+        monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+        r = by_name(run_checks(sample_config))[helper]
+        assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, f"run {INSTALL_SH} again"), r
+        assert reason.removesuffix(HELPER_RETRY_CLAUSE) in r.detail, r.detail
+        assert "tries the build again on its next run" not in r.detail, r.detail
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+        r = by_name(run_checks(sample_config))[helper]
+        assert r.fix == doctor.AGAIN_UNDER_INSTALL_SH, r.fix
+        assert "less busy" not in r.fix and "minutes" not in r.fix
+        monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+        assert by_name(run_checks(sample_config))[helper].fix == doctor._OCR_DEVTOOLS_FIX
+        monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    marker.write_text("swift build failed (exit 1): error: no such module 'FluidAudio'", encoding="utf-8")
+    assert by_name(run_checks(sample_config))[helper].fix is None
 
 
 @pytest.mark.parametrize("module", ["ocr", "media", "speech"])

@@ -803,8 +803,9 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     """On-device OCR, which is optional: ok when the helper is ready or OCR is switched off; a not-ok INFO
     line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
     the reason when the last build failed, or the helper is there and may not be run or does not answer,
-    with a fix only when the developer tools are missing or the build ran out of time
-    (:func:`_helper_again_fix`; B13 round 19 W49).  Never a FAIL: a probe that crashes is a WARN too.
+    with a fix only when the developer tools are missing, the build ran out of time or a signal stopped it
+    (:func:`_helper_again_fix`; B13 round 19 W49, round 25 D85).  Never a FAIL: a probe that crashes is a
+    WARN too.
 
     scripts/install.sh builds nothing on a Mac without developer tools and leaves no failure to report, so
     the not-built line says there that the build waits for them.  It stays INFO with no fix."""
@@ -829,8 +830,8 @@ def _check_media(config: Config) -> list[CheckResult]:
     """The media helper that reads recordings, optional as OCR is and checked the same way: ok when ready or
     switched off (``[convert] recordings = false`` among the switches); a not-ok INFO line when it is not
     built (scripts/install.sh builds it; this check never compiles); WARN with the reason when it failed,
-    with a fix only when the developer tools are missing or the build ran out of time (W49).  Never a
-    FAIL."""
+    with a fix only when the developer tools are missing, the build ran out of time (W49) or a signal
+    stopped it (B13 round 25 D85).  Never a FAIL."""
     try:
         state, detail = _media_status(config)
     except Exception as exc:
@@ -852,7 +853,8 @@ def _check_speech(config: Config) -> list[CheckResult]:
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
     built; WARN with the reason when it failed, a helper built from a FluidAudio commit other than the
     pinned one among them, with a fix only for missing developer tools, a build that ran out of time or a
-    FluidAudio fetch that failed.  The probe takes no model digest and never compiles.  Never a FAIL."""
+    signal stopped, or a FluidAudio fetch that failed.  The probe takes no model digest and never compiles.
+    Never a FAIL."""
     try:
         state, detail = _speech_status(config)
     except Exception as exc:
@@ -880,9 +882,10 @@ through ``cycle``, so this is about one copy, not import safety (round 22 Z56)."
 
 
 def _helper_detail(detail: str, fix: str | None) -> str:
-    """``detail`` without :data:`_RETRY_CLAUSE` when ``fix`` is :func:`_helper_again_fix`'s, which says the
-    re-run; an exact suffix, so an older marker without it, other trailing words, or a reason with the
-    developer tools' fix is left whole (B13 round 20 X20)."""
+    """``detail`` without :data:`_RETRY_CLAUSE` when ``fix`` says the re-run (:func:`_helper_again_fix`'s, a
+    time-out's or a signal's, or :func:`_resolve_again_fix`'s, whose reason has no such clause); an exact
+    suffix, so an older marker without it, other trailing words, or a reason with the developer tools' fix is
+    left whole (B13 round 20 X20, round 25 D85)."""
     if fix is None or fix == _OCR_DEVTOOLS_FIX:
         return detail
     return detail.removesuffix(_RETRY_CLAUSE)
@@ -891,22 +894,26 @@ def _helper_detail(detail: str, fix: str | None) -> str:
 def _helper_again_fix(detail: str, helper: str) -> str | None:
     """The fix of a helper build that ran out of time (``ocr``, ``media`` or ``speech``; its reason starts
     with the helper's own time-out words, :func:`helper_timed_out_words`): install.sh again, which builds it
-    again; any other failed build keeps no fix, as its reason is the news (B13 round 18 V5, V28; the OCR and
-    media helpers, B13 round 19 W49). The 20 minutes of the speech build cover the FluidAudio fetch too, so
-    its cause is the Mac and the network; the OCR and media builds fetch nothing, and stop after 5. The
-    re-run is said once, and the minutes are a limit, not a promise (W20). Under install.sh the run is
-    named as :func:`_again_fix` names it, :data:`AGAIN_UNDER_INSTALL_SH` (B13 round 19 W19, W48)."""
+    again; any other failed build gets no fix here, as its reason is the news (B13 round 18 V5, V28; the OCR
+    and media helpers, B13 round 19 W49), but for a build step a signal stopped (its reason ends in
+    :data:`_RETRY_CLAUSE`, ``ocr._signal_reason``'s), whose fix is the plain re-run, with no time limit and no
+    "less busy" (B13 round 25 D85); a speech build whose FluidAudio fetch failed has
+    :func:`_resolve_again_fix`'s re-run instead, which ``_check_speech`` tries next (B13 round 24 B42). The 20
+    minutes of the speech build cover the FluidAudio fetch too, so its cause is the Mac and the network; the
+    OCR and media builds fetch nothing, and stop after 5. The re-run is said once, and the minutes are a
+    limit, not a promise (W20). Under install.sh the run is named as :func:`_again_fix` names it,
+    :data:`AGAIN_UNDER_INSTALL_SH` (B13 round 19 W19, W48)."""
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        again = AGAIN_UNDER_INSTALL_SH
+    else:
+        again = f"run {INSTALL_SH} again"
     try:
         words, minutes = helper_timed_out_words(helper)
     except Exception:  # a runtime error in convert's names or attributes (a renamed constant), never a
         # convert that fails to import: that already fails doctor's import through cycle (B13 round 22 Z56)
         return None
     if not detail.startswith(words):
-        return None
-    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
-        again = AGAIN_UNDER_INSTALL_SH
-    else:
-        again = f"run {INSTALL_SH} again"
+        return again if detail.endswith(_RETRY_CLAUSE) else None
     busy = "the Mac and the network are" if helper == "speech" else "the Mac is"
     stops = f"the build stops after {minutes} minutes, and if it stops again, run it when {busy} less busy"
     return f"{again}; {stops}"
@@ -916,17 +923,21 @@ def _resolve_again_fix(detail: str) -> str | None:
     """The fix of a speech build whose ``swift package resolve`` failed (its reason starts with
     ``speech.RESOLVE_FAILED``): install.sh again, named as :func:`_helper_again_fix` names it, as each run
     fetches FluidAudio again and a dropped connection is the common cause (a plain re-run built it in every
-    home of the v32 rehearsal); and, as a blocked host fails every time, where to look when it fails again.
-    No time limit and no "less busy": this is no time-out (B13 round 24 B42)."""
+    home of the v32 rehearsal); and, as a blocked host fails every time, where to look when it fails again:
+    both hosts of :data:`speech.FETCH_HOSTS`, as resolve downloads the library FluidAudio links from GitHub's
+    release host, and a SwiftPM mirror for FluidAudio's own clone (B13 round 25 D53, D65). No time limit and
+    no "less busy": this is no time-out (B13 round 24 B42)."""
     if not detail.startswith(speech.RESOLVE_FAILED):
         return None
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         again = AGAIN_UNDER_INSTALL_SH
     else:
         again = f"run {INSTALL_SH} again"
+    github, assets = speech.FETCH_HOSTS
     return (
-        f"{again}; it fetches FluidAudio from github.com again, and if this line comes back, check that this "
-        "Mac reaches github.com (behind a proxy: HTTPS_PROXY set in the shell)"
+        f"{again}; it fetches FluidAudio and the library it links from GitHub again, and if this line comes "
+        f"back, check that this Mac reaches {github}, or the SwiftPM mirror it uses for FluidAudio, and "
+        f"{assets} (behind a proxy: HTTPS_PROXY set in the shell)"
     )
 
 
