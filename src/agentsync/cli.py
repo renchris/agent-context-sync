@@ -488,9 +488,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
     if report.commit_sha and not report.changes:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
-    if (
-        report.new_manifest_pages
-    ):  # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
+    # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
+    if report.new_manifest_pages:
         pages = plural(report.new_manifest_pages, "existing mirror page")
         _out(f"note: a new manifest was started over {pages}; every file is converted again")
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
@@ -3492,9 +3491,8 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(said)
         where = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
         lost = isinstance(exc, ManifestLostError)
-        if (
-            lost
-        ):  # no filename by design (errors.py): the stop is the manifest's, as _misplaced_check names it
+        # no filename by design (errors.py): the stop is the manifest's, as _misplaced_check names it
+        if lost:
             where = _state_db(args)
         _state_next(args, STATE_MISPLACED_STEP, said=said, path=where, kind="lost" if lost else None)
         return EXIT_FAILED
