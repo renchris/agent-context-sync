@@ -139,4 +139,8 @@ def test_the_timing_marker_names_both_kinds_of_test_it_holds(request: pytest.Fix
     [timing] = [m for m in request.config.getini("markers") if m.startswith("timing:")]
     assert "a time bound that is the contract" in timing, timing
     assert "a real helper or system tool run under a limit the load decides" in timing, timing
-    assert "above 4 per core skips it (AGENTSYNC_TIMING=1 runs it anyway)" in timing, timing
+    # B13 round 25 D56: the words follow the threshold that applies, so a changed one cannot leave them stale
+    import conftest  # noqa: PLC0415
+
+    limit = f"above {conftest._TIMING_LOAD_PER_CORE:g} per core skips it (AGENTSYNC_TIMING=1 runs it anyway)"
+    assert limit in timing, timing
