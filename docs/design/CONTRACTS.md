@@ -5272,7 +5272,7 @@ Amended 2026-10-16, §16.92 M36: the report's own words spell it "capitalized", 
 Amended 2026-10-20, §16.146 X35: every doctor FAIL still keeps the outcome from "fully one command", but only a
 FAIL in no bucket of the Summary's doctor line is called unexpected; one in a bucket is `N doctor FAIL(s) with a
 known cause: <checks> (<the bucket's words>)`, and both lines read one sort.
-Amended 2026-10-23, §16.171 B97: a report-step error no step-3 sync stop claims is an outcome reason (A36),
+Amended 2026-10-22, §16.171 B97: a report-step error no step-3 sync stop claims is an outcome reason (A36),
 so it is an Items line, and the friction line says `F<n> is one of the outcome's reasons (see Items)`, with
 `the others do not change it by themselves` when other lines remain; "none of these changes the outcome by
 itself" only when no listed line feeds the outcome, so the Agent friction heading is true of its list.
@@ -8121,7 +8121,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
-| `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-23, §16.171 B74:** it says `that run refused with no converter for its type` |
+| `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-22, §16.171 B74:** it says `that run refused with no converter for its type` |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -26686,7 +26686,7 @@ above an install line naming one that did; for such a stop with an rc 0 run afte
 installer stopped this copy at step 1; the install.sh run after its end line, which ended rc 0, is a stand-alone run
 and does not resolve it`. Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
 `test_a_stand_alone_install_run_after_a_stopped_copy_asks_no_folder_question`.
-Amended 2026-10-23, §16.171 B20: the guard held only for an rc 0 run; a stand-alone run after the end line that
+Amended 2026-10-22, §16.171 B20: the guard held only for an rc 0 run; a stand-alone run after the end line that
 failed or has no end line made the copy `failed at step 2`, so whatever its exit the copy is `failed at step 1`, its
 reason `the installer stopped this copy at step 1, and the install.sh run after its end line, which ended rc N, is
 a stand-alone run that does not change it`.
@@ -26723,7 +26723,7 @@ mode was fixed` (`a folder in agentsync's state folder` for one below it); a fol
 and the folder's ACL fix are the person's, in the folder's words. The outcome of a last run that stopped there
 carries the same cause with no bracket (Z6), and a status-step stop on a state file of this account's mode says the
 re-run came `after the file's mode was fixed` (Z19).
-Amended 2026-10-23, §16.172 B45: `ended 0` comes before the after-clause (`... was run again and ended 0 after the
+Amended 2026-10-22, §16.172 B45: `ended 0` comes before the after-clause (`... was run again and ended 0 after the
 file's mode was fixed`), so it reads as the command's and never the mode's, in every after-clause.
 
 **A cut-off doctor names the check it was in and the load, and advises a re-run only if this Mac was busy** (Y22;
@@ -26874,7 +26874,7 @@ logs `state-notfile` with the person's tail, and step 2's config step the person
 for a path in that folder. Amended 2026-10-22, §16.166 A75: the refused NEXT and the `state-refused` and `state-side-refused` tails say
 `which this account is refused, and a chmod of it does not fix that (..., whatever its mode; not damage)`, not
 `though its mode allows it`, false for a read-only volume, which refuses whatever the mode.
-Amended 2026-10-23, §16.173 B5, B15: they say `and no change of that folder's or file's mode fixes that` (`no change of its mode` for a named
+Amended 2026-10-22, §16.173 B5, B15: they say `and no change of that folder's or file's mode fixes that` (`no change of its mode` for a named
 file, a -wal or a -shm), and the NEXT adds `a fix it names for a folder above it, even a chmod, is the person's`.
 
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
@@ -27370,7 +27370,7 @@ Amended 2026-10-22, §16.168 A63: a third count, `legacy_waiting`, reads `N that
 and the bullet adds `a file left waiting is read again by the first run with a converter for its type (the OCR
 engine for an image), so an old conversion error can show in that run`; neither the settled words nor the retry
 words.
-Amended 2026-10-23, §16.171 B74: they read `N that run refused with no converter for its type` and `a file refused
+Amended 2026-10-22, §16.171 B74: they read `N that run refused with no converter for its type` and `a file refused
 for want of a converter is read again by the first run with a converter for its type ...`, apart from the files the
 bullet above says that run left waiting for a converter that could not start.
 
@@ -27561,7 +27561,7 @@ no file, so it is `state-notfile` at any mode (case NR-mode). The init error's o
 lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
-Amended 2026-10-23, §16.173 B7, B21, B86: the tail's and the NEXT's parenthesis reads `(keeping a copy, they put the file
+Amended 2026-10-22, §16.173 B7, B21, B86: the tail's and the NEXT's parenthesis reads `(keeping a copy, they put the file
 back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest)`, as
 doctor.MANIFEST_FIX words it: the folder moved alone stopped the next run on the lost-manifest guard (round 23 A29).
 
@@ -27617,7 +27617,7 @@ Z65's; lane B's new `STATE_REFUSED_STEP` and fix words are not quoted by the pro
   ~/src/agent-context-sync/scripts/install.sh --report-only again, and that either way I review the file and copy it
   back; name no branch; do not add the patches or run the report again yourself;`; and the file's parenthesis adds
   `or a note of the commits it could not carry`.
-Amended 2026-10-23, §16.173 B17: v33's step 3 says whose a status [FAIL] fix is by its NEXT and what then: `a [FAIL] fix that is
+Amended 2026-10-22, §16.173 B17: v33's step 3 says whose a status [FAIL] fix is by its NEXT and what then: `a [FAIL] fix that is
 mine (its NEXT: says it is not a step for the agent) stays mine: as in step 2, log the sync that stopped as a step 3
 error with its exit code, show me that [FAIL] line and go to the report; do not run the sync again.` (lane B's words).
 Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state`
@@ -28062,7 +28062,7 @@ it ended 0 after the agent's chmod`), a count on the agent-friction line, and th
 changes no outcome; with no runs table to read, `not measured`. Test:
 `test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
 
-Amended 2026-10-23, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
+Amended 2026-10-22, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
 ending ` kind=<refused|misplaced|lost>` (a line with none is a refusal), a lost manifest's on `file=manifest`; the
 report words each kind (lane RA, §16.171).
 
@@ -28088,7 +28088,7 @@ not `config --get`'s last; ` (N url keys, git fetches from the first)` is said f
 claimed only when an insteadOf changes that first URL's label. Landed in lane RB's land (96134549), with RB's
 install.sh half and the `first-wins` row of the shared test, since neither report can change alone (§16.165). See
 the dated line there. Test: `test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed`.
-Amended 2026-10-23, §16.171 B101: on a git that keeps an empty `url =` as a key (CI's macos-15 `/usr/bin/git`)
+Amended 2026-10-22, §16.171 B101: on a git that keeps an empty `url =` as a key (CI's macos-15 `/usr/bin/git`)
 the label is the first non-empty key, as that git fetches, by a probe of the report's own git, and the rewrite is
 claimed from `url.<base>.insteadOf` itself, no longer from `remote get-url`; the empty row is checked on every git.
 
@@ -28336,7 +28336,7 @@ audit.jsonl say nothing; a shut manifest beside a shut lock keeps the config ste
 agentsync, `test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod` (step 1's tail, then the
 status step's chmod). A file another account owns while the state folder is this account's is not tested: the
 stubbed uid makes the folder another account's too, which `state-owner` reports first.
-Amended 2026-10-23, §16.173 B10, B13, B54, B59, B81, B105: each file is judged by the access its step needs, audit.jsonl and
+Amended 2026-10-22, §16.173 B10, B13, B54, B59, B81, B105: each file is judged by the access its step needs, audit.jsonl and
 suppressed.json among them (status reads them since round 23 A79), access before the owner, and the tail names the
 file it stopped on in place of the class.
 
@@ -28351,7 +28351,7 @@ mode refuses this account (`refused` for an ACL or a read-only volume), so `conf
 NEXT. Tests: `test_a_side_file_this_account_cannot_read_stops_step_2_at_its_config_step_on_the_agents_chmod` (an
 empty -wal, a -shm, a -wal with frames, both: the chmod as written, then a pass) and the PM-shm-acl case, now
 `state-refused`.
-Amended 2026-10-23, §16.173 B12, B52: a folder where a side file belongs is `state-side-notfile`, the person's, and a 0500
+Amended 2026-10-22, §16.173 B12, B52: a folder where a side file belongs is `state-side-notfile`, the person's, and a 0500
 state folder holding the manifest and both side files is `state-dir-write`, a status-step stop.
 
 **Step 1's chmods are plural** (A37; amends §16.154 Y14). `state-access` ends `the chmods that fix it are the
@@ -28363,7 +28363,7 @@ refused, and a chmod of it does not fix that (an ACL, a folder above it this acc
 mounted read-only, whatever its mode; not damage)`: `though its mode allows it` was false for a read-only volume,
 and `no chmod fixes it` would be false for a folder above it, whose fix can be `chmod u+rwx` of that folder (Z14).
 setup-feedback quotes the new words. Tests: the `STATE_OPEN_TAIL` and `STATE_REFUSED_NEXT` pins.
-Amended 2026-10-23, §16.173 B5, B15: `a chmod of it does not fix that` read as false beside an error whose fix is a
+Amended 2026-10-22, §16.173 B5, B15: `a chmod of it does not fix that` read as false beside an error whose fix is a
 chmod (of a folder above it) or `chmod -N` (an ACL): the words are `no change of that folder's or file's mode fixes
 that`, or `no change of its mode` for one named file.
 
@@ -28402,7 +28402,7 @@ the sentence alone would promise an Items line nothing writes, so `compute_outco
 as a reason, `step 3 logged 1 error`: worked with help, never failed (`stopping_error` still skips that step; the next
 sync ended 0). Tests: `test_readme_step3_gives_the_agent_the_same_chmod` (`STEP3_STATE_CHMOD_IS_YOURS`),
 `test_the_prompt_text_changes_only_with_its_version` and `test_a_step_3_sync_that_stopped_is_worked_with_help`.
-Amended 2026-10-23, §16.173 B1, B8, B22, B40, B50, B60, B79, B96: v33 keeps the sentence and corrects its reason: `(agentsync
+Amended 2026-10-22, §16.173 B1, B8, B22, B40, B50, B60, B79, B96: v33 keeps the sentence and corrects its reason: `(agentsync
 records a sync that stopped on its state file, but not the chmod you ran or every stop; the report pairs your line
 with its record)`, since round 23's A9 keeps sync-stops.log.
 
@@ -28412,7 +28412,7 @@ state file or folder that an ACL, a privacy setting, a folder above it or a read
 words, in one commit in `doctor.PERSONS_KINDS`, `setup_report._PERSONS_KINDS_COPY`, install.sh's `PERSONS_FAILS`
 and its header list, the prompt's step 2 list and the test literals (tests/test_cli.py's included), which the
 equality pins hold together.
-Amended 2026-10-23, §16.173 B3: the kinds read `a state file that is damaged, missing after earlier syncs, another account's
+Amended 2026-10-22, §16.173 B3: the kinds read `a state file that is damaged, missing after earlier syncs, another account's
 or not a file, ...` (round 24 ruling 7, lane B's words).
 
 **Comment and test hygiene** (A61, A51). `state_not_a_file`'s comment quoted `cannot be opened: Is a directory`,
@@ -28439,7 +28439,7 @@ the -shm belongs.
 Not built: none. Seam left for lane B (A29, not this lane's): once lane B's lost-manifest refusal lands, init exits 1
 on a missing manifest beside a heartbeat that records passes, and step 2's config step gives fail's generic NEXT
 (no `config_failed` branch reads that case yet).
-Amended 2026-10-23, §16.173 B3, B24, B31: built in install.sh, `state-lost` at step 1 and `state_lost`'s person's NEXT at
+Amended 2026-10-22, §16.173 B3, B24, B31: built in install.sh, `state-lost` at step 1 and `state_lost`'s person's NEXT at
 step 2.
 
 ### 16.167 Round 23: a state folder that is not a folder, the heartbeat and the purge queue in cli and doctor (2026-10-22, wave B13 round 23 lane B)
@@ -28624,7 +28624,7 @@ form the install.log reader takes for an install run; a failed write is never a 
 runs are in install.log already. Tests: `test_cli.py::test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log`
 and the heartbeat test above.
 
-Amended 2026-10-23, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
+Amended 2026-10-22, §16.174 B82: every `error: state:` stop is recorded, refused, misplaced or lost, each line
 ending ` kind=<refused|misplaced|lost>` (a line with none is a refusal), a lost manifest's on `file=manifest`; the
 report words each kind (lane RA, §16.171).
 
@@ -28689,7 +28689,7 @@ Amended 2026-10-22, §16.175 B75: "says no later sync on this config reads it" r
 whatever converter it has". An image stubbed under `[convert] ocr = false` or `AGENTSYNC_OCR=0` (a recording under
 `recordings = false`) is waiting too: no sync reads it while the switch is off, and the first one after it is
 turned back on does.
-Amended 2026-10-23, §16.171 B74: the report's words are `that run refused with no converter for its type` and `a
+Amended 2026-10-22, §16.171 B74: the report's words are `that run refused with no converter for its type` and `a
 file refused for want of a converter is read again ...`, the CLI note's "refused", not "left waiting".
 
 **§16.162 Z55's "no run-record count" has its dated line (A64, A68, A95; dated lines at §16.162 Z55 and §16.158
@@ -29621,3 +29621,14 @@ minutes` with the ten beside round 23's thirteen, `docs/lanes/COMMON.md` says th
 sentence after round 23's; the older sentences keep the 45 they measured against. The recording tests' bound
 (`_wide_limit`'s docstring and the dated line at W70) names 50. A wait for a runner still does not count against
 the limit. Test: `test_claude_md_gives_cis_time_and_its_limit`.
+
+**Round 24's dated lines take their sections' heading date** (D64). Round 24's lanes E and D dated their lines
+2026-10-22, their sections' heading date, and lanes RA, RB, P and B 2026-10-23, the day they landed; at §16.14's
+K10 the two B80 lines dated a day before the B97 line above them point to it. The finder's fix (every line the
+landing date) was the wrong way round: at 3ec66a92, 926 of the file's 1,034 dated lines (each `Amended <date>,
+§16.N`) carried their home section's heading date, and `test_convert_core.py` finds the B77 line by its
+2026-10-22. The 18 lines homed in §16.171 to §16.174 read 2026-10-22 now, so K10 reads in order. The verifier's
+"every earlier round" does not hold: the other 90 took the day after their headings (§16.45's 22, round 11's 38 in
+§16.92 to §16.97 and round 21's 30 in §16.153 to §16.156), five of them quoted by tests; they stay as written, and
+the rule is held from §16.157 on. Test:
+`test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date`.

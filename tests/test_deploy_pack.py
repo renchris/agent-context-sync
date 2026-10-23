@@ -6102,6 +6102,24 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         )
 
 
+def test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date() -> None:
+    """B13 round 25 D64: round 24's dated lines took two dates, lanes E and D their sections' heading date
+    (2026-10-22) and lanes RA, RB, P and B the day they landed (2026-10-23), so at §16.14's K10 two B80 lines
+    dated a day before the B97 line above them pointed to it. A dated line takes its home section's heading
+    date, as 926 of the file's 1,034 did; every `Amended <date>, §16.N` with a home of §16.157 or later
+    carries §16.N's. The 90 older drifts (§16.45, round 11's §16.92 to §16.97 and round 21's §16.153 to
+    §16.156, dated the day after their headings) stay as written."""
+    text = CONTRACTS.read_text(encoding="utf-8")
+    heads = dict(re.findall(r"^### (16\.\d+) .*?\((\d{4}-\d\d-\d\d)", text, re.M))
+    dated = re.findall(r"Amended\s+(\d{4}-\d\d-\d\d),\s+§(16\.\d+)\b", text)
+    later = [(date, home) for date, home in dated if int(home[3:]) >= 157]
+    assert len(later) >= 120, "the scan is broken"
+    assert [f"{date} §{home}" for date, home in later if heads[home] != date] == []
+    k10 = " ".join(_contracts_section("**Summary lines (K10).**", "\n\n").split())
+    b97, b80 = k10.index("Amended 2026-10-22, §16.171 B97:"), k10.index("Amended 2026-10-22, §16.176 B80")
+    assert b97 < b80 and k10.endswith("words: B97's line above).")
+
+
 def test_k02s_dated_line_follows_its_own_text() -> None:
     """B13 round 14 Q68: §16.106 O11, O30's dated line sat in the middle of §16.14's K02 paragraph, so K02's
     own sentences after it (2026-10-05: the exit 2 run with no folder, the exit 0 run, `UV_TOOL_BIN_DIR`) read
