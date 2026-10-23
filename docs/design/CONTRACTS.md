@@ -28916,6 +28916,18 @@ a fix:. Test: `test_a_chmod_the_status_steps_next_merged_is_no_other_instruction
 install.sh's own `STATE_CHMODS` words; `_agents_chmod_next` ends as install.sh's FAIL_NEXT does now ("show the
 person the error, log it as a step 2 error and go on to the report").
 
+**A cut hold is no `<value>`** (B55). Round 23's A8 cuts a hold's reason and owner by the fixed words (`reason and
+owner not shown`) and counted each cut as a `<value>` replacement, so the Redaction section read `value 1` and
+its legend described a `<value>` placeholder the body did not hold. `_cut_holds` counts nothing now, as the shell
+report's `hold_cut` counts nothing: the line says what it does not show. A line of a reason or owner of several
+lines is still registered and replaced by `<value>` (`_hold_values`), so the `<value>` legend reads `<value> any
+other value a [governance] error quotes, or a line of a hold's reason or owner of several lines`; the
+shell's `<value>` comes only from a [governance] error, so its legend line keeps the first half
+(`_VALUE_GOVERNANCE`, pinned by `test_the_shell_governance_keys_are_the_reports`). docs/deploy/setup-feedback.md's
+`<value>` row says so. Tests: `test_a_holds_reason_and_owner_are_cut_by_the_fixed_words`,
+`test_a_holds_reason_and_owner_are_in_no_part_of_the_report` and
+`test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report`.
+
 ### 16.172 Round 24: the shell report: a hold's reason, sync-stops.log and the install.sh harness (2026-10-22, wave B13 round 24 lane RB)
 
 Lane RB's six items, and B101's shell half: the shell fallback report's half of round 23's A8 and A9, and four

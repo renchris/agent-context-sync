@@ -549,16 +549,16 @@ _HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
 """The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
 
 
-def _cut_holds(text: str, cut: Callable[[], None]) -> str:
-    """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut,
-    ``cut()`` called once per hold. A line joining several (a refusal) reads ``hold <scope> (<origin>) and N
-    more holds: reasons and owners not shown``, with no time. Before :func:`_scrub_item_paths` too: a path in
-    a reason would cut the line there, the anchor with it (B13 round 23 A8)."""
+def _cut_holds(text: str) -> str:
+    """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut. A
+    line joining several (a refusal) reads ``hold <scope> (<origin>) and N more holds: reasons and owners not
+    shown``, with no time. Before :func:`_scrub_item_paths` too: a path in a reason would cut the line there,
+    the anchor with it (B13 round 23 A8). No replacement is counted: the line says what it does not show, and
+    no ``<value>`` stands in it, so the legend names none (B13 round 24 B55), as the shell report's
+    ``hold_cut`` counts none."""
 
     def held(m: re.Match[str]) -> str:
         more = len(_HOLD_MORE_RE.findall(m.group(0)))
-        for _ in range(more + 1):
-            cut()
         head = f"hold {m['scope']} ({m['origin']})"
         end = m["end"] or ""
         if more:
@@ -566,7 +566,6 @@ def _cut_holds(text: str, cut: Callable[[], None]) -> str:
         return f"{head}{m['when'] or ''}: reason and owner not shown{end}"
 
     def released(m: re.Match[str]) -> str:
-        cut()
         return f"hold {m['scope']} released (owner not shown)"
 
     if "hold " not in text:
@@ -905,6 +904,10 @@ _GENERIC_HOME_DIRS = frozenset(
 )
 """Folders below the home folder that name no project (lower-case): :func:`_project_values` skips them."""
 _LISTING_MAX = 2000
+_VALUE_GOVERNANCE = "any other value a [governance] error quotes"
+"""The ``<value>`` legend's words the shell fallback report prints too (its ``<value>`` comes only from a
+[governance] error); the agentsync report's also names a hold's reason or owner of several lines, cut line by
+line to ``<value>`` (:func:`_hold_values`; B13 round 24 B55)."""
 _LEGEND = {
     "home": "~ home folder",
     "user": "<user> login name",
@@ -935,7 +938,7 @@ _LEGEND = {
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL, or a URL prefix, that a [governance] error or check quotes",
-    "value": "<value> any other value a [governance] error quotes",
+    "value": f"<value> {_VALUE_GOVERNANCE}, or a line of a hold's reason or owner of several lines",
 }
 _FIXED_PLACEHOLDERS = frozenset(
     {*(f"<{k}>" for k in _UNNUMBERED), "<path>", "<org>", "<Org>", "<team>", "<TEAMID>"}
@@ -1586,7 +1589,7 @@ class Redactor:
         """``text`` with every registered value and every email address, GUID and long hex string replaced."""
         if not self.enabled or not text:
             return text
-        text = _cut_holds(text, functools.partial(self.note, "value"))  # by pattern, first (B13 round 23 A8)
+        text = _cut_holds(text)  # by pattern, first (B13 round 23 A8)
         return self._compile().sub(self._replace, text)
 
     def note(self, kind: str) -> None:
@@ -5267,6 +5270,7 @@ def _next_gives(fix: str, named: Collection[str]) -> bool:
     mode, paths = mine[0]
     return any(m == mode and paths <= given for command in named for m, given in _chmods(command))
 
+
 _PERSONS_STEP = "not a step for the agent"
 """The words every install.sh NEXT that gives the run's stop to the person carries: ``PERSONS_FAILS``, the
 config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no-[FAIL] status NEXT."""
@@ -5605,14 +5609,7 @@ def _installer_output(r: _Run) -> list[str]:
         "",
         f"<details><summary>{_the_last(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
-        *_fence(
-            _utc_log_times(
-                _scrub_item_paths(_cut_holds(ln, functools.partial(r.red.note, "value")))
-                if _own_line(ln)
-                else ln
-                for ln in shown
-            )
-        ),
+        *_fence(_utc_log_times(_scrub_item_paths(_cut_holds(ln)) if _own_line(ln) else ln for ln in shown)),
         "",
         "</details>",
     ]
@@ -9455,8 +9452,8 @@ def _recent_errors(r: _Run) -> list[str]:
         # name are one entry, and two sources' lines stay apart. Scrubbed with the file name in front, as
         # shown, so a path in a line's first segment is covered.
         cut = len(path.name) + 2
-        held = functools.partial(r.red.note, "value")  # a hold before the scrub, which cuts at a path (A8)
-        shown = _utc_log_times(_scrub_item_paths(f"{path.name}: {_cut_holds(ln, held)}")[cut:] for ln in own)
+        # a hold before the scrub, which cuts at a path (A8)
+        shown = _utc_log_times(_scrub_item_paths(f"{path.name}: {_cut_holds(ln)}")[cut:] for ln in own)
         hits += [f"{path.name}: {ln}{note}" for ln, note in _merge_repeats(shown)]
     merged = (
         f" ({lines} as logged: lines in a row that read the same here are shown once, with their count"

@@ -8030,8 +8030,9 @@ def test_the_value_row_names_both_reports_that_cut_a_holds_reason() -> None:
     # B13 round 24 B51: the shell report registers each hold reason and owner line by line too
     assert "\nhold_values() {\n" in install and "done < <(hold_values)" in install
     assert "cut line by line, in the fallback report since B13 round 24 B51, CONTRACTS §16.172)" in row
-    # the shell's cut counts nothing: only the agentsync report counts each cut as a `<value>`
-    assert "count" not in cut and "in the agentsync report each counted as a `<value>`" in row
+    # B13 round 24 B55: neither report's cut counts a `<value>` (setup_report._cut_holds counts nothing)
+    assert "count" not in cut and "neither report counts such a cut as a `<value>`" in row
+    assert "each counted as a `<value>`" not in row
 
 
 def test_the_agent_named_folders_row_says_the_agents_name_keeps_it() -> None:

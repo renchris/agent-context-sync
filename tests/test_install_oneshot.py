@@ -16379,7 +16379,10 @@ def test_the_shell_governance_keys_are_the_reports() -> None:
     script = INSTALL_SH.read_text(encoding="utf-8")
     [keys] = re.findall(r'(?m)^GOVERNANCE_TYPED_KEYS="(.*)"$', script)
     assert tuple(keys.split("|")) == setup_report._GOVERNANCE_TYPED_KEYS
-    assert f'say "- <value>: {setup_report._LEGEND["value"].removeprefix("<value> ")}"' in script
+    # B13 round 24 B55: the shell's <value> comes only from a [governance] error, the agentsync report's also
+    # from a hold's reason or owner of several lines: the shell says the governance words
+    assert f'say "- <value>: {setup_report._VALUE_GOVERNANCE}"' in script
+    assert setup_report._LEGEND["value"].startswith(f"<value> {setup_report._VALUE_GOVERNANCE}, ")
 
 
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(

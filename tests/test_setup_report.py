@@ -1501,8 +1501,9 @@ def test_the_reports_governance_value_keys_are_governances() -> None:
 
 def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
     """B13 round 23 A8: the three forms a hold prints in (describe(), a refusal joining two, the release log
-    line) keep the scope, origin and time and lose the reason and owner, each cut counted as a <value>. A
-    refusal joining two names the first only, and no time (A8 review: fail-safe)."""
+    line) keep the scope, origin and time and lose the reason and owner. A refusal joining two names the
+    first only, and no time (A8 review: fail-safe). B13 round 24 B55: a cut is no ``<value>`` replacement (it
+    counted 1 each, so the legend described a ``<value>`` the report did not hold)."""
     red = setup_report.Redactor()
     when = " since 2026-10-22T05:32:56Z"
     held, cut = (
@@ -1525,7 +1526,7 @@ def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
     }
     for line, want in lines.items():
         assert red.redact(line) == want, red.redact(line)
-    assert red.counts["value"] == 5, red.counts
+    assert not red.counts and red.total == 0 and red.kinds_used() == [], red.counts
     kept = "hold all (config): no set-by words here"
     assert red.redact(kept) == kept
     # A8 review: a stop phrase inside an owner or reason hides more, never less
@@ -1590,6 +1591,9 @@ def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
     assert any("hold all (config): reason and owner not shown" in ln for ln in holds), holds
     assert "governance.hold, governance.hold," in section(report_text, "Doctor")  # both still counted ok
     assert "released (owner not shown)" in section(report_text, "Recent errors")
+    # B13 round 24 B55: a one-line reason and owner are cut by the fixed words, no <value> stands in for them,
+    # and the legend names none
+    assert "<value>" not in report_text, section(report_text, "Redaction")
 
 
 def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
@@ -1639,6 +1643,11 @@ def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
     ):
         assert secret not in report_text, [ln for ln in report_text.splitlines() if secret in ln]
     assert "(state) since " in section(report_text, "Recent errors"), section(report_text, "Recent errors")
+    # B13 round 24 B55: a line of a reason or owner of several lines is a <value>, and its legend says so
+    redaction = section(report_text, "Redaction")
+    assert setup_report._LEGEND["value"] in redaction, redaction
+    assert setup_report._LEGEND["value"].endswith("or a line of a hold's reason or owner of several lines")
+    assert "<value>" in report_text.split("## Redaction", 1)[0]
 
 
 @pytest.mark.parametrize(
