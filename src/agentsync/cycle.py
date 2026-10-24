@@ -933,6 +933,36 @@ def _highest_recorded_run(config: Config) -> int:
     return high
 
 
+_INDEX_RUN = re.compile(r"^- \d{4}-\d{2}-\d{2} · run (\d+) · ", re.MULTILINE)
+
+
+def _recorded_run_hint(config: Config) -> int:
+    """The larger of two cheap reads of the run the docs repo last recorded: the newest ``Agentsync-Run``
+    trailer (:func:`_newest_run_trailer`) and the run on CHANGELOG.md's first index line; 0 when neither has
+    one. A manifest whose last run is below it was restored from an older copy, and continues
+    after :func:`_highest_recorded_run`, never reusing a number the repo records (B13 round 27 P137)."""
+    try:
+        text = config.layout.changelog_md.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    m = _INDEX_RUN.search(text)
+    return max(_newest_run_trailer(config.docs_repo), int(m.group(1)) if m else 0)
+
+
+def _newest_run_trailer(repo: Path) -> int:
+    """The ``Agentsync-Run`` trailer of the newest commit that has one (a curated commit over a run that
+    wrote no CHANGELOG section hides it from HEAD's); 0 when none does, or git cannot say (P137)."""
+    try:
+        if gitops.head_sha(repo) is None:
+            return 0
+        out = gitops.run_git(
+            repo, "log", "-1", "--grep=^Agentsync-Run: ", "--format=%(trailers:key=Agentsync-Run,valueonly)"
+        ).stdout
+    except AgentSyncError:
+        return 0
+    return max((int(v) for v in out.split() if v.isdigit()), default=0)
+
+
 def _pages_intact(repo: Path, outputs: Sequence[OutputRow]) -> bool:
     """True when the item has live pages and every one exists and hashes to its ``outputs`` row."""
     live = [o for o in outputs if o.status is not OutputStatus.TOMBSTONE]
@@ -1956,7 +1986,9 @@ class _Cycle:
         self.new_manifest_pages = len(orphaned) if fresh else 0
         self._fresh_orphans = orphaned if fresh else []
         self._refuse_vanished_sources()
-        if not last:  # a new manifest over a repo that names runs continues their numbers (E9)
+        # a new manifest over a repo that names runs continues their numbers (E9), and so does one restored
+        # from an older copy (P137); seed_run_sequence never lowers the sequence
+        if not last or _recorded_run_hint(self.config) > last[0][0]:
             self.manifest.seed_run_sequence(_highest_recorded_run(self.config))
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
         if crashed is not None:
@@ -3336,8 +3368,11 @@ class _Cycle:
     # ---- dry run ------------------------------------------------------------------------------------------
     def _run_dry(self) -> CycleReport:
         runs = self.manifest.last_runs(1)
-        # the number the real run takes: a new manifest continues the repo's (E9)
-        self.run_id = (runs[0][0] if runs else _highest_recorded_run(self.config)) + 1
+        # the number the real run takes: a new manifest continues the repo's (E9), a restored one too (P137)
+        last = runs[0][0] if runs else 0
+        if not runs or _recorded_run_hint(self.config) > last:
+            last = max(last, _highest_recorded_run(self.config))
+        self.run_id = last + 1
         arms = build_arms(self.config, self.manifest, self.client, persist_page_links=False)
         for src in self.selected:
             acc = self._acc(src)

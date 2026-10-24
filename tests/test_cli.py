@@ -7941,6 +7941,54 @@ def test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers(
         assert f"- D `{rel}`" in section, section
 
 
+def test_a_manifest_restored_from_an_older_copy_continues_the_run_numbers_the_repo_records(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 27 P137: the lost manifest's first fix restores manifest.sqlite from a copy. A copy taken
+    after run 1, put back after runs 2 and 3 had committed, numbered the next runs 2 and 3 again: their
+    commits repeated the old Agentsync-Run trailers and append_changelog found the old headings of the same
+    day and wrote no line. The restored manifest continues after the highest run the repo records, and the
+    dry run previews the same number. The hint reads the newest commit with a trailer, so a curated commit at
+    HEAD over a run with no CHANGELOG section hides nothing."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    db = expand(initialised.state_paths.db)
+    copy = db.with_name("manifest.copy.sqlite")
+    with sqlite3.connect(db) as src, sqlite3.connect(copy) as dst:
+        src.backup(dst)
+    for n in (2, 3):
+        (local_source_dir / f"contoso-run-{n}.txt").write_text(f"Contoso run {n}\n", encoding="utf-8")
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    index = initialised.layout.changelog_md
+    aside = index.with_name("CHANGELOG.aside.md")
+    index.rename(aside)  # with no index line, the hint reads the newest trailer past a commit that has none
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "curated"], check=True)
+    assert cycle_mod._recorded_run_hint(initialised) == 3
+    aside.rename(index)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    copy.rename(db)
+    (local_source_dir / "contoso-restored.txt").write_text("Contoso after the restore\n", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--mode", "dry_run", "--config", cfg]) == cli.EXIT_OK
+    assert "run 4 · " in capsys.readouterr().out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "run 4 · mode " in capsys.readouterr().out
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout
+
+    trailers = git("log", "--format=%(trailers:key=Agentsync-Run,valueonly)").split()
+    assert trailers[0] == "4" and len(trailers) == len(set(trailers)), trailers
+    today = datetime.now(UTC).date().isoformat()
+    index = initialised.layout.changelog_md.read_text(encoding="utf-8")
+    assert f"- {today} · run 4 · " in index, index
+    month = initialised.layout.changelog_dir / f"{today[:7]}.md"
+    assert f"\n## {today} · run 4 · " in month.read_text(encoding="utf-8")
+
+
 def test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_once(
     initialised: Config,
     local_source_dir: Path,

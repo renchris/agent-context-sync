@@ -30938,7 +30938,23 @@ no bracket of its own. Test: `test_ops_doctor.py` (`RUN_AGAIN_INSTALL`).
 
 ### 16.191 Round 27: the new start's counts, restored run numbers, the speech docstrings and the OCR URL cut (2026-10-24, wave B13 round 27 lane E)
 
-Reserved for round 27 lane E of B13.
+Round 27's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-24, §16.191 P<n>`.
+
+**A manifest restored from an older copy continues the run numbers the repo records (P137; `agentsync.cycle`).** The
+lost manifest's first fix restores `manifest.sqlite` from a copy (ruling 7). A copy taken after run 1, put back
+after runs 2 and 3 had committed, numbered the next runs 2 and 3 again: E9 seeded the run sequence only for a
+manifest with no runs, so sqlite's AUTOINCREMENT carried on from the copy's run 1, the new commits repeated the old
+`Agentsync-Run` trailers, and `append_changelog` found the old `## <date> · run N ·` headings of the same day and
+wrote no line for either content commit. `Cycle.run` now seeds the sequence from `_highest_recorded_run` also when
+`_recorded_run_hint` (the larger of the newest commit's `Agentsync-Run` trailer, read past a curated commit that has
+none, and the run on CHANGELOG.md's first index line, two cheap reads; HEAD's trailer alone misses a run with no
+CHANGELOG section under a curated commit) is above the manifest's last run, so the full log and month-file scan runs
+only in that case or E9's; `seed_run_sequence` never lowers the sequence. The dry run previews the same number by
+the same rule. Test:
+`test_cli.py::test_a_manifest_restored_from_an_older_copy_continues_the_run_numbers_the_repo_records` (the dry run
+and the sync say run 4, no trailer repeats, run 4's index line and month heading are written; with the index aside
+and a curated commit at HEAD the hint still reads run 3).
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 
