@@ -5807,6 +5807,32 @@ _LATE_HEAD = (
 )
 
 
+def test_a_stop_in_a_fractional_end_lines_second_is_the_attempts(env: dict[str, str]) -> None:
+    """B13 round 26 E77's review: an end line stamped 10:05:00.5Z, read at its whole second, cut a stop logged
+    at 10:05:00 out of the attempt, into the late block, while setup_report, reading the fraction, keeps it
+    inside (before the end line) and counts it. It is the attempt's stop, counted, and in no late block."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD + "2026-10-14T10:05:00.5Z | end | finished\n"
+        "2026-10-14T10:05:40Z | step 3 | error | agentsync sync exited 1 | -\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:05:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "agentsync logged 1 step-3 sync stop in sync-stops.log" in _summary(text)[2], _summary(text)[2]
+    assert "during this attempt:" in text and _LATE_HEAD not in text, text
+    attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
+    end = setup_report._attempt_end(attempt)
+    assert end is not None and datetime.fromisoformat("2026-10-14T10:05:00+00:00") < end, end
+
+
 def test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart(env: dict[str, str]) -> None:
     """B13 round 26 E76, the shell half of round 25 D5: the stop window ends at the attempt's end line, so a
     stop logged after it had no line in the shell report, while the agent's line for it stayed in the

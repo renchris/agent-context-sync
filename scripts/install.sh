@@ -868,8 +868,10 @@ FRICTION_AWK='
 		# the first rule of every reader: an event stamp with a fraction of a second, which setup_report reads
 		# too (_ISO_TIME), is read at its whole second, so each reader here takes the line (B13 round 26 E77);
 		# exact against the whole-second stops agentsync writes. An offset is still not read
+		# (FRAC says the line had one: an end line so cut ends its attempt after its whole second)
+		{ FRAC = 0 }
 		match($0, /^[ \t]*([-*][ \t]+)?`?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9]+Z`?[ \t]*[|]/) {
-			if (match($0, /:[0-9][0-9][.][0-9]+Z/)) $0 = substr($0, 1, RSTART + 2) substr($0, RSTART + RLENGTH - 1)
+			if (match($0, /:[0-9][0-9][.][0-9]+Z/)) { $0 = substr($0, 1, RSTART + 2) substr($0, RSTART + RLENGTH - 1); FRAC = 1 }
 		}
 '
 # The clause every not-a-file fix ends with (round 25 D79's D-L1d): macOS refuses to copy or rename a folder this
@@ -3291,8 +3293,9 @@ friction_attempt_begin() {
 }
 # "<begin> <end> <last>" of the friction log's latest attempt, "-" for one it has not: its begin (above), the
 # time of its latest end line (setup_report._attempt_end) and of its latest timed line, the unbroken run of step
-# 1 lines an opening line takes from the attempt before counted in it (B13 round 24 B95). Nothing when there is
-# no friction log.
+# 1 lines an opening line takes from the attempt before counted in it (B13 round 24 B95); then "f" when that end
+# line's stamp had a fraction of a second, read at its whole second (B13 round 26 E77), else "-". Nothing when
+# there is no friction log.
 friction_attempt_bounds() {
 	local f
 	f="$(friction_file)"
@@ -3318,8 +3321,11 @@ friction_attempt_bounds() {
 				if (late == "") { late = substr($0, 1, 20); lhi = late } else lhi = mx(lhi, substr($0, 1, 20))
 			} else late = ""
 		}
-		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = ""; fin = mx(fin, ended) }
-		END { print (b != "" ? b : "-") " " (fin != "" ? fin : "-") " " (hi != "" ? hi : "-") }' "$f" 2>/dev/null || true
+		/\| end \| finished[[:space:]]*$/ {
+			ended = substr($0, 1, 20); late = ""
+			if (ended > fin) { fin = ended; ff = FRAC } else if (ended == fin) ff = ff || FRAC
+		}
+		END { print (b != "" ? b : "-") " " (fin != "" ? fin : "-") " " (hi != "" ? hi : "-") " " (ff ? "f" : "-") }' "$f" 2>/dev/null || true
 }
 # The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when every timed
 # line of the friction log's latest attempt (friction_attempt_begin's) but its end line is a step 1 line, the
@@ -3487,6 +3493,9 @@ fallback_sync_stops() { # [late]
 			if (mt != "" && mt > last) last = mt
 			hi = a[2]; edge = hi == "-"
 			if (edge) hi = last
+			# an end line with a fraction of a second, read at its whole second (E77): a stop in that second is
+			# before it, as setup_report reads the fraction
+			ef = a[4] == "f"
 			# the late window: from the end line, in its own second, to the last timed line after it
 			if (late != "") { if (a[2] == "-" || a[3] == "-" || a[3] <= a[2]) exit; slo = a[2]; shi = a[3] }
 			stamp = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z"
@@ -3542,8 +3551,8 @@ fallback_sync_stops() { # [late]
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
 		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
 		{ at = substr($0, 1, 20) }
-		late == "" && (at < lo || (edge ? secs(at) > secs(hi) : at >= hi)) { next }
-		late != "" && (at < slo || secs(at) > secs(shi)) { next }
+		late == "" && (at < lo || (edge ? secs(at) > secs(hi) : ef ? at > hi : at >= hi)) { next }
+		late != "" && (at < slo || (ef && at == slo) || secs(at) > secs(shi)) { next }
 		{
 			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
 			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
