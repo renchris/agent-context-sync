@@ -5677,6 +5677,72 @@ def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
     ), failed
 
 
+def test_a_step_3_stop_on_a_lost_manifest_link_names_the_link(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P127, P19: a step 3 stop on a lost manifest said only "which was missing after earlier
+    syncs" in the outcome and Items, while the same report's bucket and evidence named the link the person
+    removes or re-points first. The stop record stays ``kind=lost``; the report's own read of the link now
+    words the latest attempt's open stop: a link into a folder that does not exist (the link first), a link
+    to a file that does not exist (the plain fix), and plain words once the link is gone."""
+    real = cli._status_checks
+
+    def state_fails_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("state_dir")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", state_fails_only)
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", _LOST_LINE), V12_HAPPY)
+    )
+    stop = _stop_line("50", "manifest", "person", "lost")
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stop, encoding="utf-8")
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        side.unlink(missing_ok=True)
+    gone = tmp_path / "contoso-gone"
+    db.symlink_to(gone / db.name)
+    head = (
+        "- **outcome: failed at step 3** (computed: install.sh exit 0; a sync at step 3 exited 1 on "
+        "agentsync's "
+    )
+    for case, which, fix in (
+        (
+            "unusable",
+            "a link into a folder that does not exist or refuses a write",
+            ", removing or re-pointing the link first",
+        ),
+        ("dangling", "a link to a file that does not exist", ""),
+    ):
+        if case == "dangling":
+            gone.mkdir(mode=0o700)
+        summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+        assert summary.strip().splitlines()[0] == (
+            f"{head}state file, which was missing after earlier syncs and is {which}, and doctor's "
+            f"state_dir.manifest FAIL still stands: the person's to fix{fix})"
+        ), (case, summary)
+        assert _items_of(summary) == [
+            "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after "
+            f"earlier syncs and is {which}; whether a later sync ended 0: not measured (the state file is "
+            f"missing); the fix is the person's{fix} (F4: the agent's account of it)"
+        ], (case, summary)
+        assert "contoso-gone" not in summary, summary
+    # the link removed: a plain missing manifest, the plain words
+    db.unlink()
+    summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    assert summary.strip().splitlines()[0] == (
+        f"{head}state file, which was missing after earlier syncs, and doctor's state_dir.manifest FAIL "
+        "still stands: the person's to fix)"
+    ), summary
+    assert "link" not in _items_of(summary)[0], summary
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)
@@ -14036,10 +14102,62 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
         "them (see Doctor's state_dir.manifest line)"
     ), summary
     assert "contoso-gone" not in summary, summary
-    # a link into a folder that exists: the plain lost words (doctor's B64 FAILs no such link)
+    # a link into a folder that exists (doctor's B64 FAILs no such link): a link to a file that does not
+    # exist, as status names it (B13 round 26 E19), with the plain fix, whose moves work through the link
+    # (B13 round 27 P19)
     gone.mkdir(mode=0o700)
     _rc, text, _ = report(tmp_path, cfg)
-    assert "link into a folder" not in section(text, "Summary"), section(text, "Summary")
+    summary = section(text, "Summary")
+    assert "link into a folder" not in summary, summary
+    dangling = (
+        "from the state file that is missing though heartbeat.json records earlier passes, and is a link to "
+        "a file that does not exist"
+    )
+    assert f" · {dangling} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
+        summary, "- doctor: "
+    ), summary
+    assert f"1 doctor FAIL with a known cause, {dangling}: state_dir.manifest" in _line(
+        summary, "- **outcome: "
+    ), summary
+    assert _line(summary, "- evidence: ") == (
+        f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
+        "file is missing though heartbeat.json records earlier passes, and is a link to a file that does not "
+        "exist: a report written after the person restores it, or moves heartbeat.json aside so the next "
+        "sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
+    ), summary
+    assert "contoso-gone" not in summary and "re-point" not in summary, summary
+    # B13 round 27 P58: step 2's own line for it (E19's, as init prints it) gives the outcome the same case
+    # as the bucket in the same report: no missing folder, no link step
+    log, out = fake_mac["setup"] / "install.log", fake_mac["setup"] / "install.out"
+    friction = write_friction(fake_mac, retry_friction())
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1).replace(
+            "step=config seconds=1 rc=0 result=done note=add-source",
+            "step=config seconds=1 rc=1 result=failed",
+        ),
+        encoding="utf-8",
+    )
+    out.write_text(
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"error: state: {db} is a symlink to {gone / db.name}, which does not exist; the manifest "
+        f"{manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert outcome.split("(computed: ", 1)[1].startswith(
+        "install.sh exited 1 at its config step on agentsync's state file, which is missing though "
+        "heartbeat.json records earlier passes, and is a link to a file that does not exist: the person's "
+        "to fix"
+    ), outcome
+    assert f" · {dangling} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
+        summary, "- doctor: "
+    ), summary
+    assert "folder that" not in outcome and "re-point" not in outcome and "contoso-gone" not in summary
+    for made in (log, out, friction):
+        made.unlink()
     db.unlink()
     gone.rmdir()
 

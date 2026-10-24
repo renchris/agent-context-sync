@@ -30290,6 +30290,8 @@ Amended 2026-10-24, §16.188 P58: the outcome's key is D71's `whose folder does 
 Amended 2026-10-24, §16.188 P103, P121, P129: the outcome, bucket and evidence say the file's fact first and the
 folder in doctor's words, `which is missing though heartbeat.json records earlier passes, and is a link into a
 folder that does not exist or refuses a write`.
+Amended 2026-10-24, §16.188 P19: a link into a folder that exists no longer keeps the plain words: its bucket and
+evidence say `..., and is a link to a file that does not exist`, with the plain fix, as status names it (§16.184 E19).
 
 **A fifo at the -shm is the side file's** (E11, E28). sqlite's read-only open fails with IOERR_LOCK on a fifo at the
 -shm, not CANTOPEN, so `_side_breaking_read` returned nothing and the report called the state file damaged, pointing
@@ -30745,9 +30747,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121 and P129, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`,
-with the hunks of other lanes' files the items need (named below). Items that describe one defect are built once:
-P33 and P58; P103, P121 and P129.
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19 and P127, in `src/agentsync/setup_report.py` and
+`tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
+one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30780,6 +30782,28 @@ link before the file (lane RB's file, routed to RB). Tests: the config-step word
 `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons` and
 `test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status`.
+
+**A step 3 stop and the bucket name the lost manifest's link** (P19, P127; amends §16.183 E3). A step 3 stop on a
+lost manifest said only `which was missing after earlier syncs` in the outcome and Items while the same report's
+bucket and evidence named the link (E3's case), and a link to nothing in a folder a sync can write (round 26 E19,
+which status, step 1 and step 2 name) was plain `missing` everywhere in the report. The stop record stays `kind=lost`
+(a new kind reads as `refused` to an older reader); `_step3_stops` sets `_SyncStop.link` from the report's own read
+(`_lost_link_kind`: `unusable` by `_lost_link`, `dangling` by the new `_lost_dangling`, a link to nothing not in
+`_dangling_state`) on the latest attempt's person-owned `manifest` `lost` stop no sync ended 0 after, never on an
+earlier attempt's. `_stop_which` adds `and is a link into a folder that does not exist or refuses a write` or `and is
+a link to a file that does not exist` to the kind's words in the outcome (`_persons_stop_reason`) and Items
+(`_sync_stop_line`), and for the first the outcome ends `the person's to fix, removing or re-pointing the link first`
+and the Items line `the fix is the person's, removing or re-pointing the link first`; a link gone by report time
+gives the plain words. The not-measured bracket keeps `the state file is missing`, as the line already names the link
+once (P127's verifier asked for the link there too; said twice in one line, it is the doubling P103 removed). For the
+dangling case the Doctor bucket is `_STATE_LOST_DANGLING_WORDS` (`from the state file that is missing though
+heartbeat.json records earlier passes, and is a link to a file that does not exist`) and the evidence
+`_STATE_LOST_DANGLING_EVIDENCE`, with the plain fix's two moves, which work through such a link; §16.183 E3's plain
+words for a link into a folder that exists no longer hold. No word holds the link's target. `install.sh`'s shell
+report words this line too (`fallback_sync_stop_line`, `which was missing after earlier syncs` for `lost`); that half
+is lane RB's file and is not changed here (routed to RB). Tests:
+`test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
+`test_a_lost_manifest_is_the_persons_and_its_parts_not_measured` (the writable-folder sub-case).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

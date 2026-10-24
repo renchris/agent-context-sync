@@ -2687,6 +2687,7 @@ class _SyncStop:
     measured: bool = True  # False when the runs table could not be read: whether one ended 0 is not known
     kind: str = "refused"  # why it stopped: refused, misplaced or lost (B13 round 24 B82; ruling 7)
     unread: str = ""  # why the runs table was not read, when the report's own read knows (B13 round 25 D4)
+    link: str = ""  # a lost manifest's link now, by the report's own read (B13 round 27 P127): _STOP_LINKS
 
     @property
     def what(self) -> str:
@@ -2829,13 +2830,14 @@ def _open_persons_stop(stops: Sequence[_SyncStop], persons_fails: Sequence[str] 
 def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str]) -> str:
     """The outcome's reason for :func:`_open_persons_stop`'s stop: what stopped it in its kind's words and
     that its fix is the person's, with no bracket or second "; " inside (B13 round 21 Y32)."""
-    which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    which = _stop_which(stop)
     if stop.measured:
         then = "no later sync ended 0"
     else:
         names = ", ".join(dict.fromkeys(persons_fails))
         then = f"doctor's {names} FAIL still stands"
-    return f"a sync at step 3 exited 1 on {stop.what}, {which}, and {then}: the person's to fix"
+    first = _LINK_FIRST if stop.link == "unusable" else ""
+    return f"a sync at step 3 exited 1 on {stop.what}, {which}, and {then}: the person's to fix{first}"
 
 
 _SKIPPED_RE = re.compile(r"\bskipped: lock held\b", re.IGNORECASE)
@@ -3653,6 +3655,8 @@ class _Facts:
     # the lost manifest is a link into a folder that does not exist or refuses a write, by the report's own
     # read (B13 round 26 E3, E14): its fix removes or re-points the link first
     lost_link: bool = False
+    # the lost manifest is a link to nothing in a folder a sync can write (B13 round 26 E19; round 27 P19)
+    lost_dangling: bool = False
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
     evidence_damage_failed: bool = (
         False  # Doctor has a state_dir.manifest FAIL only the evidence read gave (X80)
@@ -9191,6 +9195,7 @@ def _evidence(r: _Run) -> list[str]:
     r.facts.evidence = len(unmeasured)
     r.facts.evidence_lost = out.count(_LOST_MANIFEST_LINE)  # B13 round 24 ruling 7
     r.facts.lost_link = bool(r.facts.evidence_lost) and _lost_link(r.config)  # B13 round 26 E3, E14
+    r.facts.lost_dangling = bool(r.facts.evidence_lost) and _lost_dangling(r.config)  # B13 round 27 P19
     for line in unmeasured:
         m = _NOT_MEASURED_WHY_RE.search(line)
         r.facts.evidence_why[m.group(1) if m is not None else "time limit"] += 1
@@ -9232,6 +9237,19 @@ def _state_wide(line: str) -> bool:
     return m is not None and m.group(1) not in _RETRY_WHYS
 
 
+_LINK_UNUSABLE = "a link into a folder that does not exist or refuses a write"
+"""A lost manifest's link into a folder no sync can use, in doctor's words for the folder (B13 round 26 E3,
+E14; round 27 P103): the bucket, the evidence, the outcome and Items say it after the file's own fact."""
+_LINK_DANGLING = "a link to a file that does not exist"
+"""A lost manifest's link to nothing in a folder a sync can write (B13 round 26 E19; round 27 P19): the plain
+fix's two moves work through it, so no word asks to remove it."""
+_LINK_FIRST = ", removing or re-pointing the link first"
+"""After "the person's to fix" for :data:`_LINK_UNUSABLE`: doctor's fix removes the link first (B13 round 25
+D71)."""
+_STOP_LINKS = {"unusable": _LINK_UNUSABLE, "dangling": _LINK_DANGLING}
+"""``_SyncStop.link``'s words (B13 round 27 P127, P19)."""
+
+
 _STATE_LOST_EVIDENCE = (
     "not measured, as the state file is missing though heartbeat.json records earlier passes: a report "
     "written after the person restores it, or moves heartbeat.json aside so the next sync starts a new "
@@ -9241,16 +9259,24 @@ _STATE_LOST_EVIDENCE = (
 they were not measured, the person's, in ``doctor.LOST_MANIFEST_FIX``'s two moves, with no advice to write the
 report again when idle, which cannot bring a manifest back."""
 _STATE_LOST_LINK_EVIDENCE = (
-    "not measured, as the state file is missing though heartbeat.json records earlier passes, and is a link "
-    "into a folder that does not exist or refuses a write: a report written after the person removes or "
-    "re-points the link, then restores the file or moves heartbeat.json aside so the next sync starts a new "
-    "manifest, measures them (see Doctor's state_dir.manifest line)"
+    f"not measured, as the state file is missing though heartbeat.json records earlier passes, and is "
+    f"{_LINK_UNUSABLE}: a report written after the person removes or re-points the link, then restores the "
+    "file or moves heartbeat.json aside so the next sync starts a new manifest, measures them (see Doctor's "
+    "state_dir.manifest line)"
 )
 """:data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link into a folder that does not exist or
 refuses a write (B13 round 26 E3, E14; ``r.facts.lost_link``): neither move works through the link, so
 doctor's fix (B13 round 25 D71) removes it first, or a link pointed at a folder that exists works again. Never
 the link's target: it is a path. The file's fact first, as :data:`_STATE_LOST_LINK_WORDS` (B13 round 27 P103,
 P121, P129)."""
+_STATE_LOST_DANGLING_EVIDENCE = (
+    f"not measured, as the state file is missing though heartbeat.json records earlier passes, and is "
+    f"{_LINK_DANGLING}: a report written after the person restores it, or moves heartbeat.json aside so the "
+    "next sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
+)
+""":data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link to nothing in a folder a sync can write
+(B13 round 26 E19; round 27 P19; ``r.facts.lost_dangling``): the same two moves, which work through such a
+link, and the link named as status names it. Never the link's target."""
 
 
 def _evidence_line(r: _Run) -> str:
@@ -9266,7 +9292,13 @@ def _evidence_line(r: _Run) -> str:
     # B13 round 24 ruling 7: the parts a lost manifest kept from being read were not measured, said first
     said_lost = (
         f'{_plural(lost, "line")} at the end of Status {"says" if lost == 1 else "say"} "manifest: missing": '
-        + (_STATE_LOST_LINK_EVIDENCE if r.facts.lost_link else _STATE_LOST_EVIDENCE)
+        + (
+            _STATE_LOST_LINK_EVIDENCE
+            if r.facts.lost_link
+            else _STATE_LOST_DANGLING_EVIDENCE
+            if r.facts.lost_dangling
+            else _STATE_LOST_EVIDENCE
+        )
     )
     if count == 0:
         if lost:
@@ -10067,7 +10099,17 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         with contextlib.suppress(OSError):
             last = max(last, datetime.fromtimestamp(r.friction_path.stat().st_mtime, UTC))
     hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
-    return _measured_stops(r, lo, hi)
+    stops = _measured_stops(r, lo, hi)
+    # B13 round 27 P127, P19: the latest attempt's open stop on a lost manifest, by the report's own read of
+    # the link now (never the stop record: an older reader takes a new kind for "refused"); an earlier
+    # attempt's, or one a sync ended 0 after, is of a time the read says nothing of
+    link = _lost_link_kind(r.config) if nxt is None and stops else ""
+    return [
+        dataclasses.replace(s, link=link)
+        if link and s.file == "manifest" and s.kind == "lost" and s.owner == "person" and s.ended_ok is None
+        else s
+        for s in stops
+    ]
 
 
 def _measured_stops(r: _Run, lo: datetime, hi: datetime) -> list[_SyncStop]:
@@ -10152,6 +10194,8 @@ def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> st
     agents = stop.owner == "agent"
     after = "the agent's chmod" if agents else "the person's fix"
     whose = "the agent's chmod" if agents else "the person's"
+    if stop.link == "unusable":  # B13 round 27 P127: the link first, as doctor's fix
+        whose += _LINK_FIRST
     if not stop.measured:
         why = _stop_unread_why(stop)
         then = f"whether a later sync ended 0: not measured ({why}); the fix is {whose}"
@@ -10159,8 +10203,7 @@ def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> st
         then = f"it ended 0 after {after}"
     else:
         then = f"no sync ended 0 after it by this report; the fix is {whose}"
-    which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
-    return f"- agentsync sync · step 3 · exited 1 on {stop.what}, {which}; {then}{told}"
+    return f"- agentsync sync · step 3 · exited 1 on {stop.what}, {_stop_which(stop)}; {then}{told}"
 
 
 _SYNC_STOP_KINDS = {
@@ -10169,6 +10212,15 @@ _SYNC_STOP_KINDS = {
     "lost": "which was missing after earlier syncs",
 }
 """What stopped a step-3 sync, by its sync-stops.log ``kind=``: lane B's words (B13 round 24 B82)."""
+
+
+def _stop_which(stop: _SyncStop) -> str:
+    """:data:`_SYNC_STOP_KINDS`' words for ``stop``, and the link a lost manifest is now (``stop.link``, B13
+    round 27 P127, P19): the outcome and Items say what the bucket and evidence say. Never the link's
+    target."""
+    which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    link = _STOP_LINKS.get(stop.link)
+    return f"{which} and is {link}" if link else which
 
 
 def _stop_unread_why(stop: _SyncStop) -> str:
@@ -11039,13 +11091,14 @@ aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doc
 :data:`_STATE_UNREAD_WORDS`: the file is missing, not damaged, and its fix differs."""
 
 
-_STATE_LOST_LINK_WORDS = (
-    _STATE_LOST_WORDS + ", and is a link into a folder that does not exist or refuses a write"
-)
+_STATE_LOST_LINK_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_UNUSABLE}"
 """:data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a folder that does not exist or refuses a
 write (B13 round 26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the
 bucket keeps the lost manifest's decision and names the link its fix removes first. The file's fact first, so
 "missing" is said once and of the file, and the folder in doctor's words (B13 round 27 P103, P121, P129)."""
+_STATE_LOST_DANGLING_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_DANGLING}"
+""":data:`_STATE_LOST_WORDS` for a lost manifest that is a link to nothing in a folder a sync can write (B13
+round 26 E19; round 27 P19; :func:`_lost_dangling`): status names the link, so the bucket does too."""
 
 
 def _lost_link(c: Config | None) -> bool:
@@ -11058,6 +11111,29 @@ def _lost_link(c: Config | None) -> bool:
         return _manifest_lost_at(c) and expand(c.state_paths.db) in _dangling_state(c)
     except Exception:
         return False
+
+
+def _lost_dangling(c: Config | None) -> bool:
+    """Whether the manifest is lost and a link to nothing in a folder a sync can write (``doctor.
+    dangling_target``, not :func:`_dangling_state`): doctor's E19 line names it (B13 round 26 E19), and its
+    plain fix works through it (B13 round 27 P19). The report's own read; False when the read fails."""
+    if c is None:
+        return False
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        db = expand(c.state_paths.db)
+        return (
+            _manifest_lost_at(c) and doctor.dangling_target(db) is not None and db not in _dangling_state(c)
+        )
+    except Exception:
+        return False
+
+
+def _lost_link_kind(c: Config | None) -> str:
+    """``"unusable"`` (:func:`_lost_link`), ``"dangling"`` (:func:`_lost_dangling`) or ``""``: which link a
+    lost manifest is now, the key of :data:`_STOP_LINKS` (B13 round 27 P127, P19)."""
+    return "unusable" if _lost_link(c) else "dangling" if _lost_dangling(c) else ""
 
 
 def _manifest_lost_at(c: Config) -> bool:
@@ -11484,10 +11560,9 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         and _manifest_lost_at(r.config)
     )
     from_lost: list[str] = []
-    lost_words = (
-        _STATE_LOST_LINK_WORDS
-        if lost and r.config is not None and _lost_link(r.config)
-        else _STATE_LOST_WORDS
+    link = _lost_link_kind(r.config) if lost else ""
+    lost_words = {"unusable": _STATE_LOST_LINK_WORDS, "dangling": _STATE_LOST_DANGLING_WORDS}.get(
+        link, _STATE_LOST_WORDS
     )
     shut = (
         ""
