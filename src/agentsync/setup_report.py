@@ -12938,6 +12938,22 @@ def _state_lost() -> str:
     return " " + str(getattr(manifest, "LOST_MANIFEST", _STATE_LOST_COPY.strip()))
 
 
+_DANGLING_UNUSABLE_COPY = "whose folder does not exist or refuses a write"
+"""Doctor's words for a link to nothing no sync can create the file through (``doctor.DANGLING_UNUSABLE``,
+B13 round 25 D71's lost-manifest line among them): the report's copy for an installed build without the name,
+which a test keeps equal to the source (B13 round 27 P33, P58)."""
+
+
+def _dangling_unusable() -> str:
+    """``doctor.DANGLING_UNUSABLE``, or :data:`_DANGLING_UNUSABLE_COPY` when doctor does not import or has no
+    such name, as :func:`_state_lost` reads lane B's words."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _DANGLING_UNUSABLE_COPY
+    return str(getattr(doctor, "DANGLING_UNUSABLE", _DANGLING_UNUSABLE_COPY))
+
+
 _FOLDER_ACL_FIX_HEADS = (
     "the person gives this account read, write and search access to the folder ",
     "the person gives this account read-attributes, read, write and search access to the folder ",
@@ -12989,13 +13005,22 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "after it was moved aside or the state file put back"
             )
         if ln.startswith("error: state: ") and _state_lost() in ln:  # B13 round 23 A29: the person decides
-            if " is a symlink to " in ln:  # B13 round 26 E3, E14: the run's own line, the link fixed by now
+            # B13 round 26 E3, E14: the run's own line, the link fixed by now; keyed on doctor's words for a
+            # folder no sync can use (B13 round 25 D71), as a link to nothing in a folder a sync can write
+            # (B13 round 26 E19) is a link too, with no step for it (B13 round 27 P33, P58)
+            if " is a symlink to " in ln and _dangling_unusable() in ln:
                 return (
                     " on agentsync's state file, a link into a folder that is missing or refuses a write, "
                     "which is missing though heartbeat.json records earlier passes: the person's to fix, "
                     "removing or re-pointing the link first",
                     "after the link was removed or pointed at a folder that exists, and the file restored "
                     "or heartbeat.json moved aside",
+                )
+            if " is a symlink to " in ln:  # E19's: both moves of the plain fix work through the link
+                return (
+                    " on agentsync's state file, which is missing though heartbeat.json records earlier "
+                    "passes and is a link to a file that does not exist: the person's to fix",
+                    "after the file was restored or heartbeat.json moved aside",
                 )
             return (
                 " on agentsync's state file, which is missing though heartbeat.json records earlier passes: "

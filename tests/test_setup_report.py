@@ -4427,6 +4427,9 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS
     # B13 round 24 B56, B102: the lost manifest's words, matched in the sync's line, are lane B's own
     assert setup_report._STATE_LOST_COPY == f" {manifest_mod.LOST_MANIFEST}" == setup_report._state_lost()
+    # B13 round 27 P33, P58: doctor's words for a link into a folder no sync can use, the lost link's key
+    copy = setup_report._DANGLING_UNUSABLE_COPY
+    assert copy == doctor.DANGLING_UNUSABLE == setup_report._dangling_unusable()
     head = "# run=20261019T100000Z-4242 2026-10-19T10:00:00Z install.sh"
     run = [
         head,
@@ -10056,6 +10059,14 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "re-pointing the link first",
             "the link was removed or pointed at a folder that exists, and the file restored or "
             "heartbeat.json moved aside",
+        ),
+        (  # B13 round 27 P33, P58: doctor's line for a link to nothing in a folder a sync can write (B13
+            # round 26 E19) is no link into a missing folder, and its fix has no step for the link
+            f"error: state: {db} is a symlink to /Users/x/agentsync/gone.sqlite, which does not exist; the "
+            f"manifest {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})",
+            "on agentsync's state file, which is missing though heartbeat.json records earlier passes and "
+            "is a link to a file that does not exist: the person's to fix",
+            "the file was restored or heartbeat.json moved aside",
         ),
         # lane B's words (round 23 ruling 4, A46): the kind of a symlink, and a folder above the state folder
         (

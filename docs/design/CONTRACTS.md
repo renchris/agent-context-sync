@@ -30283,6 +30283,8 @@ folder that exists, and the file restored or heartbeat.json moved aside`. The Do
 `evidence_lost` count) is unchanged. Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured` (the
 link sub-case, and a link into a folder that exists keeping the plain words), the config-step words table, and
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`.
+Amended 2026-10-24, §16.188 P58: the outcome's key is D71's `whose folder does not exist or refuses a write`
+(`doctor.DANGLING_UNUSABLE`), not ` is a symlink to `, which E19's line (§16.184) carries too.
 
 **A fifo at the -shm is the side file's** (E11, E28). sqlite's read-only open fails with IOERR_LOCK on a fifo at the
 -shm, not CANTOPEN, so `_side_breaking_read` returned nothing and the report called the state file damaged, pointing
@@ -30476,6 +30478,8 @@ exist`; ruling 7's fix stays, since both its moves work through such a link. Tes
 `test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl` (doctor),
 `test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_steps_1_and_2` and the step 1 table's
 `LM-link`.
+Amended 2026-10-24, §16.188 P58: the setup report's outcome reads this line as its own case, a link to a file that
+does not exist with the plain fix, not §16.183 E3's link into a gone folder.
 
 **The inlined lost-manifest copies never block on a fifo** (E31, E56). Step 1's `lost()` and step 2's `state_lost`
 read heartbeat.json with a blocking open, so a fifo there held step 1's config probe until `with_timeout 5` killed
@@ -30735,7 +30739,25 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
-Reserved for round 27 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 27").
+Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
+verifier's corrected fix built): P33 and P58, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`,
+with the hunks of other lanes' files the items need (named below). Items that describe one defect are built once:
+P33 and P58.
+
+**A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
+§16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
+round 26 E19's `error: state:` line (`<db> is a symlink to <target>, which does not exist; the manifest is missing,
+...`) read as a link into a folder that is missing or refuses a write, and the person was told to remove or re-point
+a link the plain fix works through. The key is three-way on the run's own line: D71's words
+(`doctor.DANGLING_UNUSABLE`, `whose folder does not exist or refuses a write`, read lazily with the copy
+`_DANGLING_UNUSABLE_COPY` a test keeps equal) keep E3's link words; any other ` is a symlink to ` line, E19's, says
+`which is missing though heartbeat.json records earlier passes and is a link to a file that does not exist: the
+person's to fix`, after-words `after the file was restored or heartbeat.json moved aside`; anything else keeps the
+plain lost words. The words are not keyed on the report's own `_dangling_state`, which is empty once the person fixes
+the link. Other file: `src/agentsync/ops/ doctor.py` names D71's phrase `DANGLING_UNUSABLE` and builds its detail
+from it (same words). Tests: the config-step words table's E19 row in
+`test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`, and
+`test_the_persons_clause_names_every_kind_the_rule_reads` (the copy).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

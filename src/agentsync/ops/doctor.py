@@ -1412,6 +1412,12 @@ def dangling_target(path: Path) -> Path | None:
         return None
 
 
+DANGLING_UNUSABLE = "whose folder does not exist or refuses a write"
+"""Status's words for where a link to nothing points when no sync can create the file through it
+(:func:`dangling_into_unusable`; B13 round 24 B64), after ``<path> is a symlink to <target>, ``: the setup
+report keys a lost manifest's link words on them (B13 round 27 P33, P58)."""
+
+
 def dangling_into_unusable(path: Path) -> Path | None:
     """Where ``path`` points when it is a symlink to nothing (:func:`dangling_target`) whose folder is not a
     folder this account can write and search, so no sync can create the file through it (B13 round 24 B64,
@@ -1957,7 +1963,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 # the lost manifest's FAIL below, whose moves work through the link
                 continue
             name = "state_dir.manifest" if p == sp.db else "state_dir.files"
-            detail = f"{expand(p)} is a symlink to {target}, whose folder does not exist or refuses a write"
+            detail = f"{expand(p)} is a symlink to {target}, {DANGLING_UNUSABLE}"
             fix = f"the person points the link at an existing file or removes it: rm {_shell_path(expand(p))}"
             if p == sp.db and manifest_lost(expand(sp.db)):
                 # over earlier passes: one line naming both moves in order, since neither LOST_MANIFEST_FIX
