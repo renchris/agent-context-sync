@@ -5170,8 +5170,8 @@ def test_a_step_3_sync_that_stopped_is_worked_with_help(fake_mac: dict[str, Path
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     summary = section(text, "Summary")
     assert _line(summary, "- agent friction: ").endswith(
-        "1 deviation, 0 prompt, 1 error (F4, F5); F5 is one of the outcome's reasons (see Items); the others "
-        "do not change it by themselves"
+        "1 deviation, 0 prompt, 1 error (F4, F5); F5 is one of the outcome's reasons (see Items); the other "
+        "does not change it by itself"  # B13 round 26 E7: one line left
     ), summary
     agent_side = summary.split("Agent friction (attempt 1; it does not change the outcome by itself):", 1)[1]
     assert re.findall(r"^- F(\d+) · ", agent_side, flags=re.MULTILINE) == ["4"], agent_side
@@ -5500,6 +5500,48 @@ def test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outco
     stops.write_text(lost.replace("10:01:30", "10:02:00"), encoding="utf-8")
     summary = summary_of(fake_mac)[1]
     assert "after attempt 1's end line" not in summary and "- F5 · step 3 · error" in summary, summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_friction_line_counts_a_stop_logged_after_the_end_line(fake_mac: dict[str, Path]) -> None:
+    """B13 round 26 E7: with a stop logged after the end line, the friction line counted the 2 stops in the
+    attempt while 3 were shown, and called the late stop's own line one of "the others". It says the late
+    stop and names its account; one remaining line is "the other"."""
+    beat = _step3_error("58", "agentsync sync exited 1 on the heartbeat; ran chmod 600")
+    stops = _LOCK_STOP + "2026-09-29T10:00:56Z sync-stop file=heartbeat rc=1 owner=agent\n"
+    lost = "2026-09-29T10:01:30Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    late = "2026-09-29T10:01:40Z | step 3 | error | agentsync sync exited 1: its state file is missing | -\n"
+    _two_records(fake_mac, "", "")
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _CHMOD_ERROR + beat, V12_HAPPY) + late
+    )
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stops + lost, encoding="utf-8")
+    summary = summary_of(fake_mac)[1]
+    line = _line(summary, "- agent friction: ")
+    assert line.endswith(
+        "2 step-3 sync stops agentsync logged itself, among the outcome's reasons (see Items; F4 and F5 are "
+        "the agent's accounts of them); 1 more logged after the end line (listed after Items; F7 is the "
+        "agent's account of it)"
+    ), line
+    assert "the other" not in line, line
+    # one in-window stop and one more line that feeds nothing: "the other", singular
+    other = "2026-09-29T10:01:00Z | step 3 | deviation | ran the sync once more | -\n"
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _CHMOD_ERROR + other, V12_HAPPY) + late
+    )
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(_LOCK_STOP + lost, encoding="utf-8")
+    line = _line(summary_of(fake_mac)[1], "- agent friction: ")
+    assert line.endswith("; the other does not change it by itself"), line
+    assert "; 1 more logged after the end line (listed after Items; F7 is the agent's account of it)" in line
+    # no stop in the window: the late one is counted on its own, with no "more"
+    write_friction(fake_mac, V12_HAPPY + late)
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(lost, encoding="utf-8")
+    line = _line(summary_of(fake_mac)[1], "- agent friction: ")
+    assert (
+        "; 1 step-3 sync stop agentsync logged after the end line (listed after Items; F5 is the agent's "
+        in (line)
+    ), line
+    assert " more " not in line, line
 
 
 @pytest.mark.usefixtures("clean_doctor")

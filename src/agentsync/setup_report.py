@@ -10732,6 +10732,8 @@ def _agent_friction_line(
     paired: Sequence[FrictionEvent] = (),
     fixed: int = 0,
     counted: Sequence[FrictionEvent] = (),
+    late: Sequence[FrictionEvent] = (),
+    late_count: int = 0,
 ) -> str:
     """The agent-side lines (deviation, prompt, error): counted apart from the outcome; ``syncs``, the step-3
     sync stops agentsync logged itself (B13 round 23 A9), said after them, as the Items lines hold them.
@@ -10740,7 +10742,11 @@ def _agent_friction_line(
     (:func:`_stop_pairs`), are named as its account of that stop; ``fixed``, the stops that are one of the
     outcome's reasons, and ``counted``, the report-step errors that are (:func:`_unpaired_errors`), are said
     to be. "none of these changes the outcome by itself" only when no listed line feeds the outcome; else
-    "the others do not change it by themselves" when other lines remain."""
+    "the others do not change it by themselves" when other lines remain ("the other does not change it by
+    itself" for one).
+
+    B13 round 26 E7: ``late_count``, the stops logged after the end line (:func:`_late_stops`), are said too,
+    and ``late``, the agent's lines they claim, are named as their account and are none of "the others"."""
     counts = att.kinds()
     lines = att.of_kind(*PROBLEM_KINDS)
     ids = f" ({', '.join(f'F{e.line}' for e in lines)})" if lines else ""
@@ -10766,14 +10772,28 @@ def _agent_friction_line(
             are = "is the agent's account of it" if len(paired) == 1 else "are the agent's accounts of them"
             account = f"; {_ids(paired)} {are}"
         text += f" (see Items{account})"
+    if late_count:
+        text += (
+            f"; {late_count} more logged after the end line"
+            if syncs
+            else f"; {_plural(late_count, 'step-3 sync stop')} agentsync logged after the end line"
+        )
+        if late:
+            are = "is the agent's account of it" if len(late) == 1 else "are the agent's accounts of them"
+            text += f" (listed after Items; {_ids(late)} {are})"
+        else:
+            text += " (listed after Items)"
     if stop is not None:
         return text + f"; F{stop.line} stopped the run (the outcome says so)"
     if counted:
         are = "is one of the outcome's reasons" if len(counted) == 1 else "are among the outcome's reasons"
         text += f"; {_ids(counted)} {are} (see Items)"
     if fixed or counted:
-        feeding = {e.line for e in (*paired, *counted)}
-        if uncounted or any(e.line not in feeding for e in lines):
+        feeding = {e.line for e in (*paired, *counted, *late)}
+        others = uncounted + sum(1 for e in lines if e.line not in feeding)
+        if others == 1:
+            text += "; the other does not change it by itself"
+        elif others:
             text += "; the others do not change it by themselves"
         return text
     if not lines and not uncounted:
@@ -13060,6 +13080,8 @@ def _latest_runs(r: _Run) -> list[InstallRun]:
 def _summary(r: _Run, *, header: list[str]) -> list[str]:
     fr = r.friction
     att = fr.latest if fr is not None else None
+    # B13 round 25 D5: the stops logged after the end line; B13 round 26 E7: the friction line counts them
+    late_stops = _late_stops(r, len(fr.attempts) - 1) if fr is not None and att is not None else []
     runs = _latest_runs(r)
     stops = _step3_stops(r, len(fr.attempts) - 1) if fr is not None else []  # B13 round 23 A9
     persons_fails = _persons_fails(r, runs)
@@ -13277,6 +13299,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 paired=[e for _s, e in pairs],
                 fixed=reason_stops,
                 counted=told,
+                late=[e for _s, e in late_stops if e is not None],
+                late_count=len(late_stops),
             )
         )
         # only when it says more than the agent-friction line: a kind other than the problem kinds and the
@@ -13438,7 +13462,6 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
     # B13 round 25 D5: a stop logged after the end line, with the agent's line for it, in a block of its own
-    late_stops = _late_stops(r, len(fr.attempts) - 1) if fr is not None and att is not None else []
     if att is not None and late_stops:
         out += [
             "",
