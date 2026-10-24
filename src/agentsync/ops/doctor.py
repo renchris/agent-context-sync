@@ -1277,7 +1277,7 @@ def refused_state_files(config: Config) -> list[Path]:
     folder that refuses a search) is not listed: the state_dir lines say that."""
     db = expand(config.state_paths.db)
     out: list[Path] = []
-    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    for p in (db, *manifest_sides(db)):
         try:
             st = p.lstat()
             if stat.S_ISLNK(st.st_mode):
@@ -1609,6 +1609,32 @@ SIDE_ROLES = {"-wal": "the state file's write-ahead log", "-shm": "the state fil
 """What each side file of the manifest is, in the words of its state_dir.files FAIL (B13 round 25 D6)."""
 
 
+def manifest_sides(db: Path) -> tuple[Path, ...]:
+    """The manifest's -wal and -shm where sqlite keeps them: beside ``db``, or, when ``db`` is a symlink,
+    beside its target (a link to nothing: beside the file its first sync creates there); none for a link
+    loop, whose own state_dir.manifest FAIL covers it. One helper for status, doctor, the error lines, the
+    refused-file list and the setup report: beside a linked manifest a folder at the target's -shm passed
+    status while every sync stopped on it, and a harmless leftover beside the link blocked curate (B13 round
+    27 P42; ruling 18). Never raises."""
+    try:
+        linked = stat.S_ISLNK(db.lstat().st_mode)
+    except OSError:
+        linked = False
+    if linked:
+        try:
+            db = Path(os.path.realpath(db, strict=True))
+        except FileNotFoundError:
+            db = Path(os.path.realpath(db))
+        except OSError:  # a loop, or a link through a file: the manifest's own FAIL
+            return ()
+    return tuple(db.with_name(db.name + suffix) for suffix in SIDE_ROLES)
+
+
+def side_suffix(side: Path) -> str:
+    """``-wal`` or ``-shm`` for a side :func:`manifest_sides` names, by its own name, else ""."""
+    return next((suffix for suffix in SIDE_ROLES if side.name.endswith(suffix)), "")
+
+
 def _not_a_file_detail(sp: StatePaths, p: Path, kind: str) -> str:
     """The detail of a state path that is not a file (:func:`state_file_kind`): the manifest's "is <kind>, not
     the state file"; a side file's, the lock's, the heartbeat's and the token cache's name the file by its
@@ -1618,7 +1644,8 @@ def _not_a_file_detail(sp: StatePaths, p: Path, kind: str) -> str:
     brackets back to back (B13 round 26 E18); the report's readers key on ", not a file", either way."""
     if p == sp.db:
         return f"{expand(p)} is {kind}, not the state file"
-    suffix = p.name.removeprefix(sp.db.name) if p.name.startswith(sp.db.name) else ""
+    # by its suffix: beside a linked manifest the side is the target's, real.sqlite-shm (P42)
+    suffix = side_suffix(p) if p not in (sp.lock, sp.heartbeat) else ""
     role = SIDE_ROLES.get(suffix) or {sp.lock: "the lock", sp.heartbeat: "the heartbeat"}.get(
         p, "the token cache"
     )
@@ -1664,19 +1691,11 @@ def side_not_a_file_at(db: Path) -> Path | None:
     never by sqlite's error, which says only CANTOPEN or READONLY (B13 round 25 D2, D8, D70). Beside a
     manifest that is no link, any link at a side is one: sqlite opens a side only where it is, never
     through a link, so a link to nothing in a writable folder or to a regular file stopped every sync on
-    "unable to open database file" while status passed it; beside a manifest that is a link, sqlite keeps
-    its sides beside the target, and a link here is none of its business (B13 round 26 E62)."""
-    try:  # never Path.is_symlink, which raises in a folder this account cannot search
-        db_link = stat.S_ISLNK(db.lstat().st_mode)
-    except OSError:
-        db_link = False
-    for suffix in SIDE_ROLES:
-        side = db.with_name(db.name + suffix)
-        if link_kind(side) is not None:
-            if db_link:
-                continue
-            return side
-        if state_file_kind(side) is not None:
+    "unable to open database file" while status passed it (B13 round 26 E62); beside a manifest that is a
+    link, sqlite keeps its sides beside the target, so those are judged and nothing beside the link is
+    (:func:`manifest_sides`; B13 round 27 P42)."""
+    for side in manifest_sides(db):  # beside a linked manifest's target, where sqlite keeps them (P42)
+        if link_kind(side) is not None or state_file_kind(side) is not None:
             return side
     return None
 
@@ -1730,7 +1749,9 @@ def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, Ch
         if (
             manifest
             and os.path.lexists(db)
-            and (state_file_kind(db) is not None or dangling_target(db) is not None)
+            # a link to nothing in a usable folder is a missing manifest, lost or a first start, never a
+            # file that is not a file: hold and release are not refused over it (B13 round 27 P41)
+            and (state_file_kind(db) is not None or dangling_into_unusable(db) is not None)
         ):
             named = f"{db} is "
             for r in _check_state_dir(config):
@@ -1826,19 +1847,24 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
     lost_link = False  # a dangling manifest link over earlier passes: its own FAIL holds the lost fix (D71)
     other_link: Path | None = None  # another account's file reached through a link (E63)
-    for p in (
-        sp.db,
-        sp.db.with_name(sp.db.name + "-wal"),
-        sp.db.with_name(sp.db.name + "-shm"),
-        sp.token_cache_fallback,
-    ):
+    shut_paths: list[Path] = []  # the files of ``shut``, by their own path: a side may sit by a link's target
+    loose_paths: list[Path] = []  # and of ``loose``
+    sides = manifest_sides(expand(sp.db))  # where sqlite keeps them: beside a linked manifest's target (P42)
+    unsearched: set[Path] = set()  # a target's folder outside the state folder that refuses a look inside
+    for p in (sp.db, *sides, sp.token_cache_fallback):
         try:
             fst = p.lstat()
         except FileNotFoundError:
             continue
-        except (
-            PermissionError
-        ) as exc:  # no search of the folder: no file in it can be judged (B13 round 20 X73)
+        except PermissionError as exc:
+            if p in sides and Path(os.path.realpath(p.parent)) != Path(os.path.realpath(root)):
+                # the linked manifest's folder, not the state folder: its own line, and the rest still read
+                if p.parent not in unsearched:
+                    unsearched.add(p.parent)
+                    detail = f"cannot look inside {p.parent}: {exc.strerror or exc}"
+                    nonfile.append(_bad("state_dir.files", detail, fix=state_folder_fix(p.parent)))
+                continue
+            # no search of the folder: no file in it can be judged (B13 round 20 X73)
             # a folder this account owns whose mode gives it access that still refuses it: an ACL, a sandbox;
             # at 0755 too, beside its chmod 700 line, which would leave it refused (B13 round 22 Z64)
             if st.st_uid == os.getuid() and mode & 0o700 == 0o700:
@@ -1851,13 +1877,11 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
-        if p not in (sp.db, sp.token_cache_fallback) and stat.S_ISLNK(fst.st_mode):
+        if p in sides and stat.S_ISLNK(fst.st_mode):
             # a -wal or -shm link: sqlite never opens a side through a link, so a link to nothing in a
             # writable folder or to a file stopped every sync while this line passed it, and a link's own
-            # 0755 got a chmod 600 that follows the link and never clears; beside a manifest that is a link,
-            # sqlite keeps its sides by the target and this link is harmless (B13 round 26 E62, E46)
-            if sp.db.is_symlink():
-                continue
+            # 0755 got a chmod 600 that follows the link and never clears (B13 round 26 E62, E46); beside a
+            # manifest that is a link the sides are its target's, and nothing beside the link is judged (P42)
             link = link_kind(p) or "a symlink"
             nonfile.append(
                 _bad("state_dir.files", _not_a_file_detail(sp, p, link), fix=_not_a_file_fix(sp, p, link))
@@ -1917,8 +1941,10 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 denied.append(expand(p))  # an ACL, or a read-only volume (its own words below)
             else:
                 shut.append(f"{p.name} ({m:04o})")
+                shut_paths.append(expand(p))
         elif m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
+            loose_paths.append(expand(p))
     out += nonfile
     # one state_dir.files line per side: a side that is not a file FAILs, and no ok line under the same name
     # says the rest are fine beside it (B13 round 25 D10: "[FAIL] ... -shm is a folder" then "[ok] ... are
@@ -1936,7 +1962,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             )
         )
     elif shut:
-        paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in shut)
+        paths = " ".join(_shell_path(x) for x in shut_paths)  # a target's side by its own folder (P42)
         out.append(
             _bad(
                 "state_dir.files",
@@ -1961,7 +1987,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     if others or shut or denied:
         pass  # the lines above are the answer, with their fixes
     elif loose:
-        paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in loose)
+        paths = " ".join(_shell_path(x) for x in loose_paths)
         out.append(
             _bad("state_dir.files", f"readable by others: {', '.join(loose)}", fix=f"chmod 600 {paths}")
         )

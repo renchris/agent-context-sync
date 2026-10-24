@@ -7681,6 +7681,17 @@ def test_a_side_link_beside_a_manifest_link_is_harmless_and_a_linked_manifest_re
     (loose,) = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files"]
     assert not loose.ok and "(0644)" in loose.detail and loose.fix == f"chmod 600 {doctor._shell_path(db)}"
     db.chmod(0o600)  # what the fix runs: chmod follows the link
+    # status's read-only probe of the 0644 target made its -shm 0644 too (X78), by the target, where sqlite
+    # keeps it: judged there since B13 round 27 P42, and its own chmod clears it
+    sides = doctor.manifest_sides(db)
+    named = {doctor._shell_path(x) for x in sides}
+    for r in doctor._check_state_dir(initialised):
+        if r.name == "state_dir.files" and not r.ok:
+            assert r.fix is not None and r.fix.startswith("chmod 600 ~/"), r
+            assert all(f"{x}" in r.fix for x in named if x.split("/")[-1].rstrip("'") in r.detail), r
+            for x in sides:
+                if x.exists():
+                    x.chmod(0o600)
     assert [r.ok for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files"] == [True]
 
 
@@ -8362,3 +8373,105 @@ def test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass(
     hb.write_bytes(b"{not json")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert isinstance(json.loads(hb.read_text(encoding="utf-8")), dict)
+
+
+# ---- B13 round 27 ruling 18: a linked manifest's sides are its target's (P42); P41 ----
+
+
+def _link_the_manifest(config: Config) -> tuple[Path, Path]:
+    """manifest.sqlite moved to real.sqlite in the state folder, sides with it, and a link in its place."""
+    root = expand(config.state_paths.root)
+    db = expand(config.state_paths.db)
+    real = root / "real.sqlite"
+    for name in ("", "-wal", "-shm"):
+        here = db.with_name(db.name + name)
+        if here.exists():
+            here.rename(real.with_name(real.name + name))
+    db.symlink_to(real)
+    return db, real
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm"])
+def test_beside_a_linked_manifest_a_folder_at_its_targets_side_is_the_persons_not_one_beside_the_link(
+    initialised: Config, capsys: pytest.CaptureFixture[str], suffix: str
+) -> None:
+    """B13 round 27 P42 (ruling 18): sqlite keeps a linked manifest's -wal and -shm by the target. A folder
+    at real.sqlite-shm passed status while every sync stopped on "attempt to write a readonly database", and
+    a harmless folder at manifest.sqlite-shm beside the link FAILed status and blocked curate. The target's
+    side is judged (status FAILs it, sync stops on that line, following the fix ends in a clean sync); the
+    one beside the link is not."""
+    cfg = _synced(initialised)
+    db, real = _link_the_manifest(initialised)
+    beside = db.with_name(db.name + suffix)
+    beside.mkdir()  # a leftover beside the link: none of sqlite's business
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] state_dir")], out
+    for argv in (["sync"], ["curate"]):
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, (argv, capsys.readouterr())
+    side = real.with_name(real.name + suffix)
+    side.unlink(missing_ok=True)
+    side.mkdir()
+    assert doctor.manifest_sides(db) == (real.with_name("real.sqlite-wal"), real.with_name("real.sqlite-shm"))
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    role = doctor.SIDE_ROLES[suffix]
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.files ")]
+    assert rc == cli.EXIT_FAILED and f"{side} is a folder, not a file: {role} belongs there" in failed, out
+    assert "aside, keeping a copy" in failed, failed
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert capsys.readouterr().err.splitlines() == ["error: state: " + failed.split(" — ", 1)[1]]
+    side.rename(side.with_name(side.name + ".kept"))  # the fix, followed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_linked_manifests_side_this_account_cannot_open_is_named_by_its_own_folder(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P42's verifier: the refused-file list and status's chmod name the target's side, by its own path."""
+    _synced(initialised)
+    _db, real = _link_the_manifest(initialised)
+    wal = real.with_name("real.sqlite-wal")
+    wal.write_bytes(b"")
+    wal.chmod(0o000)
+    try:
+        assert wal in doctor.refused_state_files(initialised)
+        shut = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files" and not r.ok]
+        assert any(r.fix == f"chmod 600 {doctor._shell_path(wal)}" for r in shut), shut
+    finally:
+        wal.chmod(0o600)
+
+
+def test_a_hold_over_a_lost_manifest_link_to_nothing_in_a_usable_folder_is_not_refused(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 27 P41: with heartbeat.json recording passes and manifest.sqlite a link to nothing in a
+    usable folder, hold and its release were refused as a file that is not a file, while over a plain lost
+    manifest they are not (E25: they change no page, and a hold blocks purges). Both run; curate and purge
+    still stop on the lost line; nothing is created through the link; a link into a missing folder still
+    refuses the hold."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    root = expand(initialised.state_paths.root)
+    for name in ("", "-wal", "-shm"):
+        here = db.with_name(db.name + name)
+        if here.exists():
+            here.rename(tmp_path / here.name)
+    db.symlink_to(root / "gone.sqlite")
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    capsys.readouterr()
+    assert cli.main(hold) == cli.EXIT_OK, capsys.readouterr()
+    assert governance.state_holds(root)
+    assert cli.main(["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg]) == cli.EXIT_OK
+    for argv in (["curate"], ["purge", "--queue"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        assert manifest_mod.LOST_MANIFEST in capsys.readouterr().err, argv
+    assert not (root / "gone.sqlite").exists()
+    db.unlink()
+    db.symlink_to(root / "missing" / "gone.sqlite")
+    capsys.readouterr()
+    assert cli.main(hold) == cli.EXIT_FAILED
+    assert "whose folder does not exist or refuses a write" in capsys.readouterr().err

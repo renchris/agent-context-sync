@@ -1654,7 +1654,7 @@ def _says_why(config: Config | None, filename: object) -> str | None:
     root, path = real(sp.root), Path(os.path.realpath(os.fsdecode(filename)))
     if not (path == root or path.is_relative_to(root)):
         return None
-    files = {real(sp.db.with_name(sp.db.name + side)) for side in ("", "-wal", "-shm")}
+    files = {real(sp.db), *(real(side) for side in doctor.manifest_sides(expand(sp.db)))}  # P42
     if path == root or path in files | {real(sp.token_cache_fallback)} or doctor.state_folder_shut(config):
         return "the state_dir lines say why"
     checks = {
@@ -1706,7 +1706,7 @@ def _unread_words(
     if isinstance(exc, sqlite3.Error) and doctor.side_may_explain(exc) and side is not None:
         # a -wal or -shm that is not a file: no account's access, "cannot be opened" read as one, beside the
         # state_dir.files FAIL that names the person's move aside (B13 round 25 D8)
-        role = doctor.SIDE_ROLES[side.name.removeprefix(config.state_paths.db.name)]  # type: ignore[union-attr]
+        role = doctor.SIDE_ROLES[doctor.side_suffix(side)]  # a linked manifest's side by its suffix (P42)
         return f"{role} is not a file; the state_dir.files line says why"
     if isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc):
         # CANTOPEN, PERM, READONLY: no damage; the file's owner or mode, or its folder's (B13 round 19 W64;
@@ -3476,8 +3476,9 @@ def _stop_role(config: Config, path: object) -> str:
     root = real(sp.root)
     roles = {
         real(sp.db): "manifest",
-        real(sp.db.with_name(sp.db.name + "-wal")): "manifest-wal",
-        real(sp.db.with_name(sp.db.name + "-shm")): "manifest-shm",
+        **{
+            real(side): f"manifest{doctor.side_suffix(side)}" for side in doctor.manifest_sides(expand(sp.db))
+        },
         real(sp.lock): "lock",
         real(sp.heartbeat): "heartbeat",
         real(governance._holds_file(root)): "holds",
