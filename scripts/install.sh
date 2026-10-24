@@ -1561,6 +1561,18 @@ output_word() {
 	esac
 	return 1
 }
+# WORD (lower case, two letters): a two-letter word either report prints, in any case, which report_word never
+# sees (three letters or more): setup_report._TWO_LETTER_WORDS (a test keeps them equal, and fails when either
+# report prints one that is not here). A hold's reason or owner of two letters that is one ("IT") is cut where
+# the report says it ("it"), so the report is private only (B13 round 26 E72); "HR" is no such word.
+two_letter_word() {
+	case "$1" in
+	ad | ai | an | as | at | be | bf | bv | by | bz | cd | cf | cr | cs | db | dd | df | do | ds | dt | en | eq | fa | fc | ff | fm | gh | go | gp | gz) return 0 ;;
+	id | if | im | in | is | it | js | kt | lc | ls | mb | md | ml | mp | ms | mv | my | nf | no | nr | oe | of | ok | on | or | os | ps | py | rb | rc) return 0 ;;
+	rd | re | ro | rw | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | xm | xz | ya | za) return 0 ;;
+	esac
+	return 1
+}
 # WORD (lower case): a generic word a one-word organisation is registered for only in each entry's own name and
 # its domains, never in the report's sentences: setup_report._CONTEXT_ORG_WORDS (a test keeps them equal). Any
 # other one-word organisation, a report word or not, is replaced everywhere; a report word then makes the report
@@ -2692,7 +2704,7 @@ pacv=\1/p' || true
 				LC_ALL=C tr '[:upper:]' '[:lower:]')" || low=""
 			fl=i
 			case "${low:-$v}" in *[!A-Za-z]*) ;; *)
-				if report_word "$low" || output_word "$low"; then fl=h; fi
+				if report_word "$low" || output_word "$low" || { [ "${#low}" -eq 2 ] && two_letter_word "$low"; }; then fl=h; fi
 				;;
 			esac
 			add_forms "$v" "<value>" "$fl"

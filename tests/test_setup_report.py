@@ -1639,6 +1639,71 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
     assert "Private only:" not in text and setup_report.issue_link(text) is not None
 
 
+def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: dict[str, Path]) -> None:
+    """B13 round 26 E72: a two-letter hold owner ("IT") cut every "it" of the report, while neither report
+    went private, as report_words reads three letters or more. A two-letter value that is a word either
+    report prints (_TWO_LETTER_WORDS, install.sh's two_letter_word) makes the report private only; one that
+    is not ("HR") stays public."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "note: the owner said the hold stays on\n",
+        encoding="utf-8",
+    )
+    for owner, private in (("IT", True), ("HR", False)):
+        cfg.write_text(
+            f'[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "{owner}"\n\n' + plain,
+            encoding="utf-8",
+        )
+        text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        assert red.private_only is private, (owner, section(text, "Redaction"))
+        assert (setup_report.issue_link(text) is None) is private, owner
+        if private:
+            assert "never as a public issue: it would show that word." in text, section(text, "Redaction")
+
+
+def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -> None:
+    """B13 round 26 E72: install.sh's two_letter_word holds setup_report._TWO_LETTER_WORDS, and a two-letter
+    word either reader prints that the list lacks fails here (add it to both): report_words never sees one."""
+    root = Path(__file__).parents[1]
+    shell = (root / "scripts" / "install.sh").read_text(encoding="utf-8")
+    body = re.search(r"(?ms)^two_letter_word\(\) \{\n(.*?)^\}$", shell)
+    assert body is not None
+    listed = set(re.findall(r"(?<![a-z])[a-z]{2}(?=[ )|])", body.group(1)))
+    assert listed == set(setup_report._TWO_LETTER_WORDS)
+    two = re.compile(r"(?<![A-Za-z])[A-Za-z]{2}(?![A-Za-z])")
+    url = re.compile(r"https?://\S+")
+    tree = ast.parse((root / "src" / "agentsync" / "setup_report.py").read_text(encoding="utf-8"))
+    loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+    lists = (
+        "_SIGN_IN_APPS",
+        "_TERMINAL_APPS",
+        "_OUTPUT_WORDS",
+        "_SHORT_WORDS",
+        "_SHORT_CAPS",
+        "_TWO_LETTER_WORDS",
+    )
+    loose |= {
+        id(leaf)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id in lists for t in node.targets)
+        for leaf in ast.walk(node.value)
+    }
+    printed: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
+            printed |= {w.lower() for w in two.findall(url.sub(" ", node.value))}
+    for line in shell.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        for quoted in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
+            text = re.sub(r"\$\([^)]*\)|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*", " ", quoted)
+            printed |= {w.lower() for w in two.findall(url.sub(" ", text))}
+    assert printed <= setup_report._TWO_LETTER_WORDS, sorted(printed - setup_report._TWO_LETTER_WORDS)
+
+
 def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
     fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

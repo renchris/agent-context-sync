@@ -2778,7 +2778,7 @@ def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Pa
     assert shown == ["set by <value>\tIT", "the <value> list and it stay", "the <value> list"], shown
 
 
-@pytest.mark.parametrize("owner", ["Mark", "Early", "Page"])
+@pytest.mark.parametrize("owner", ["Mark", "Early", "Page", "IT"])  # IT: lane RA's round 26 E72
 def test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private(
     env: dict[str, str], folder: Path, wheel: Path, owner: str
 ) -> None:

@@ -643,6 +643,22 @@ _SHORT_CAPS = frozenset(
 ("AI", "OS", the doctor line's "subject.OU", a suffix "II"). A two-letter part of the full name that is one of
 them ("Ai", "Ip", "Ou") is registered in its written form, not in its upper-case one. install.sh's
 ``short_name`` holds the same list."""
+_TWO_LETTER_WORDS = frozenset(
+    {
+        *("ad", "ai", "an", "as", "at", "be", "bf", "bv", "by", "bz", "cd", "cf", "cr", "cs", "db", "dd"),
+        *("df", "do", "ds", "dt", "en", "eq", "fa", "fc", "ff", "fm", "gh", "go", "gp", "gz", "id", "if"),
+        *("im", "in", "is", "it", "js", "kt", "lc", "ls", "mb", "md", "ml", "mp", "ms", "mv", "my", "nf"),
+        *("no", "nr", "oe", "of", "ok", "on", "or", "os", "ps", "py", "rb", "rc", "rd", "re", "ro", "rw"),
+        *("sh", "sm", "so", "sw", "sz", "ta", "to", "tr", "ts", "tz", "up", "us", "uv", "vb", "vn", "wc"),
+        *("we", "xm", "xz", "ya", "za"),
+    }
+)
+"""Every two-letter word either report prints, lower-case, in any case (B13 round 26 E72): what a scan of
+setup_report's and install.sh's printed literals finds, which :func:`report_words` never sees (it reads
+three letters or more, lower case only, so "IT" is none). A hold's reason or owner of two letters that is one
+of them ("IT") is cut wherever the report says it ("it"), so the report is private only, as for a one-word
+value (B13 round 25 D80); one that is not ("HR") stays public. install.sh's ``two_letter_word`` holds the
+same list, and a test fails when either reader prints a two-letter word that is not in it."""
 _JOINED_WORD_LIST = """
     above added adds after again agent alias allow alone alpha also back bare before below beyond budget
     build built bytes canary cannot case change check class click clicks client cloud code column commit
@@ -1362,6 +1378,10 @@ class Redactor:
             return
         word = len(_tokens(value)) == 1 and _norm(value) in report_words()
         printed = word or (len(_tokens(value)) == 1 and _norm(value) in _OUTPUT_WORDS)  # V86: private only
+        if (
+            kind == "value" and len(_norm(value)) == 2 and _norm(value) in _TWO_LETTER_WORDS
+        ):  # B13 round 26 E72
+            printed = True
         context = word and fuzzy and kind == "org" and _norm(value) in _CONTEXT_ORG_WORDS  # B13 round 6 G46
         if context and _norm(value) in self._context:
             return
