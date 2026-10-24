@@ -748,14 +748,16 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `NEXT:` (`agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier
   passes (...): fixing it is the person's (...), not a step for the agent, so show them the error and go on to the
   report; ...`), where it said `fix the error above` (round 24 ruling 7). When manifest.sqlite is a symlink into a folder
-  that does not exist or refuses a write, the tail names the link (`... manifest.sqlite, a symlink into a folder that
-  does not exist or refuses a write, which is missing though heartbeat.json beside it records earlier passes ...`) and
+  that does not exist or refuses a write, the tail names the link (`... manifest.sqlite, which is missing though
+  heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or refuses a
+  write ...`, the file's own fact first since B13 round 27 P121) and
   its fix starts `they remove the link first; then they restore the file ...`, and so does step 2's `NEXT:` (`... is a
   symlink into a folder that does not exist or refuses a write, and is missing, though heartbeat.json ...`), since
   neither move works through the link (B13 round 25 D79, CONTRACTS §16.179, as doctor's state_dir.manifest fix names
   `rm` first; round 26 E58). When manifest.sqlite is a symlink to a file that does not exist, in a folder a sync can
-  write, the tail names the link too (`... manifest.sqlite, a symlink to a file that does not exist, which is missing
-  though heartbeat.json beside it records earlier passes ...`) and ruling 7's fix stays, with no `rm` first, as it
+  write, the tail names the link too (`... manifest.sqlite, which is missing though heartbeat.json beside it records
+  earlier passes and is a symlink to a file that does not exist ...`, the file's own fact first since B13 round 27
+  P121) and ruling 7's fix stays, with no `rm` first, as it
   works through a link into a folder a sync can write (round 25 D79); step 2's `NEXT:` reads `... is a symlink to a file that does not
   exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). A folder, a fifo, a socket or a link where the -wal
   or -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod

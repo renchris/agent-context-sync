@@ -3681,6 +3681,27 @@ fallback_sync_stops() { # [late]
 # its role (_SYNC_STOP_FILES; an unknown one is a state file), what met it by its kind, then that whether a
 # later sync ended 0 is not read here, and whose fix it is; and the agent's error line it claims, as
 # _sync_stop_line names it, so one stop is one line (B13 round 25 ruling 11, lane RB's shell half).
+# The lost manifest's link now, by this shell's own read, as setup_report._lost_link_kind reads it (B13 round 27
+# P127, P19; lane RA): "unusable" for a symlink into a folder that does not exist or refuses a write, whose link
+# goes first, "dangling" for one to nothing in a folder a sync can write; empty for no link. The state folder as
+# hold_values finds it. Never the link's target.
+lost_link_now() {
+	local k v state="" db t
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	db="$state/manifest.sqlite"
+	[ -L "$db" ] && [ ! -e "$db" ] || return 0
+	t="$(readlink "$db" 2>/dev/null)" || return 0
+	case "$t" in /*) ;; *) t="$state/$t" ;; esac
+	t="${t%/*}"
+	if [ -d "$t" ] && [ -w "$t" ] && [ -x "$t" ]; then printf dangling; else printf unusable; fi
+}
+STOP_LINK="" # lost_link_now, for the attempt's own stops only: the read says nothing of a time after it
 fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	local what why whose="the person's"
 	case "$2" in
@@ -3700,6 +3721,13 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	*) why="which this account could not open" ;;
 	esac
 	[ "$3" != agent ] || whose="the agent's chmod"
+	# a person's stop on a lost manifest that is a link now, named as the agentsync report names it (P127)
+	if [ "$2/$3/$4" = manifest/person/lost ]; then
+		case "$STOP_LINK" in
+		unusable) why="$why and is a link into a folder that does not exist or refuses a write" whose="$whose, removing or re-pointing the link first" ;;
+		dangling) why="$why and is a link to a file that does not exist" ;;
+		esac
+	fi
 	local told=""
 	# the line's id and its stamp as written, which a reader searches for in the log the report copies, not a
 	# number to count lines up to (B13 round 27 P106: the fence stays raw, as the issue link, the redaction and
@@ -4313,9 +4341,11 @@ fallback_body() {
 		say ""
 		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
 		say ""
+		STOP_LINK="$(lost_link_now)"
 		while read -r n p v o fl; do
 			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
 		done <<<"$k"
+		STOP_LINK=""
 	fi
 	# and those logged after the attempt's end line, in a block of their own, as the agentsync report's D5
 	# block (B13 round 26 E76): a line logged after the finish cannot have stopped the run, so no outcome reads
@@ -7565,8 +7595,8 @@ list_folders() {
 		# whose moves both work through it (round 26 E19; doctor names it so)
 		# heartbeat.json beside it there but unreadable: still lost, as lane B words it (round 27 P111, ruling 17)
 		case ",$cerr,/$clink" in *",state-lost,"*/lost-unread) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
-		case ",$cerr,/$clink" in *",state-lost,"*/lost-dangling) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink to a file that does not exist, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
-		case ",$cerr,/$clink" in *",state-lost,"*/lost-link) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink into a folder that does not exist or refuses a write, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they remove the link first; then they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
+		case ",$cerr,/$clink" in *",state-lost,"*/lost-dangling) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes and is a symlink to a file that does not exist (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
+		case ",$cerr,/$clink" in *",state-lost,"*/lost-link) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or refuses a write (not damage, not a mode): fixing that is the person's (they remove the link first; then they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then

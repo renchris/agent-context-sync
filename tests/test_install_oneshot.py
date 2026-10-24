@@ -5960,6 +5960,48 @@ def _late_stop_report(env: dict[str, str], stop_at: str) -> str:
     return report_path(env).read_text()
 
 
+@pytest.mark.parametrize("link", ["unusable", "dangling", "none"])
+def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str, str], link: str) -> None:
+    """B13 round 27 P127, the shell half of lane RA's report words: a step 3 stop on a lost manifest said only
+    "which was missing after earlier syncs", while the manifest is a link into a folder that does not exist
+    (whose link the person removes first) or a link to nothing. By this shell's own read of the link now, the
+    attempt's stop names it as the agentsync report does; a manifest that is no link keeps the plain words."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    db = state / "manifest.sqlite"
+    if link == "unusable":
+        db.symlink_to(Path(env["HOME"]) / "gone" / "manifest.sqlite")
+    elif link == "dangling":
+        db.symlink_to(state / "gone.sqlite")
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD + "2026-10-14T10:01:05Z | step 3 | error | agentsync sync exited 1 | -\n"
+        "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:01:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    [line] = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    named = {
+        "unusable": " and is a link into a folder that does not exist or refuses a write",
+        "dangling": " and is a link to a file that does not exist",
+    }.get(link, "")
+    first = ", removing or re-pointing the link first" if link == "unusable" else ""
+    assert line.startswith(
+        f"- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+        f"syncs{named}; whether a later sync ended 0: not read by this shell fallback; the fix is the "
+        f"person's{first} (F4, "
+    ), line
+    assert "gone" not in line, "never the link's target"
+
+
 _LATE_HEAD = (
     "Step-3 sync stops agentsync logged in sync-stops.log beside install.log after this attempt's end line "
     "(they do not change the outcome):"
@@ -8649,9 +8691,9 @@ write, as status's (lane B's round 25 D71): heartbeat.json aside alone leaves a 
 manifest through (B13 round 25 D79: D-L1c)."""
 
 STATE_LOST_LINK_TAIL = (
-    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink into a folder "
-    "that does not exist or refuses a write, which is missing though heartbeat.json beside it records "
-    "earlier passes (not damage, not a mode): "
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though "
+    "heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or "
+    "refuses a write (not damage, not a mode): "
     + LOST_LINK_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8668,9 +8710,9 @@ STATE_LOST_LINK_NEXT = (
 """Step 2's NEXT for it (D79)."""
 
 STATE_LOST_DANGLING_TAIL = (
-    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink to a file that "
-    "does not exist, which is missing though heartbeat.json beside it records earlier passes (not damage, "
-    "not a mode): "
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though "
+    "heartbeat.json beside it records earlier passes and is a symlink to a file that does not exist (not "
+    "damage, not a mode): "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )

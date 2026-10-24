@@ -6390,9 +6390,9 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     pages = setup_report._NoManifestError(7).line.replace("over 7 ", "over N ")
     assert pages.startswith("- no manifest yet (the next sync") and f"`{pages}`" in page
     assert setup_report._NoManifestError(0).line == "- no manifest yet (no sync has run)"
-    link = (
-        "a symlink into a folder that does not exist or refuses a write,"
-        " which is missing though heartbeat.json"
+    link = (  # B13 round 27 P121: the file's own fact first, "missing" said once, of the file
+        "which is missing though heartbeat.json beside it records earlier passes and is a symlink into a "
+        "folder that does not exist or refuses a write"
     )
     fix = "they remove the link first; then they restore the file"
     assert link in install and fix in install and link in page and f"`{fix} ...`" in page
@@ -6409,9 +6409,9 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
 
     page = " ".join(_feedback_page().split())
     install = " ".join((ROOT / "scripts" / "install.sh").read_text(encoding="utf-8").split())
-    tail = (
-        "manifest.sqlite, a symlink to a file that does not exist, which is missing though heartbeat.json"
-        " beside it records earlier passes"
+    tail = (  # B13 round 27 P121: the file's own fact first, as the lost link's tail gives it
+        "manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes and is a"
+        " symlink to a file that does not exist"
     )
     nxt = "is a symlink to a file that does not exist, and is missing, though heartbeat.json"
     assert tail in install and nxt in install

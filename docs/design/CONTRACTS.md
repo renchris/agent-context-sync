@@ -30817,6 +30817,18 @@ first. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest
 folder, an array, a loop and a link to nothing), the step 1 table's `LM-damaged` and `LM-fifo` rows, and
 `test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read` with the real agentsync.
 
+**The lost link's words, install.sh's halves** (P121 part 4 and P127's shell half, lane RA's items, built here at
+RA's seam note since install.sh is this lane's). Step 1's lost-link and lost-dangling tails give the file's own
+fact first, so "missing" is said once, of the file: `on agentsync's state file, manifest.sqlite, which is missing
+though heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or
+refuses a write (not damage, not a mode): ...` (and `... and is a symlink to a file that does not exist`). The shell
+report's line for a person's step 3 stop on a lost manifest names the link as the agentsync report does, by this
+shell's own read of the manifest now (`lost_link_now`, never the link's target), for the attempt's own stops only:
+`which was missing after earlier syncs and is a link into a folder that does not exist or refuses a write; ...; the
+fix is the person's, removing or re-pointing the link first`, or `... and is a link to a file that does not
+exist`. Tests: the step 1 table's `LM-link` and `LM-link-gone` rows and
+`test_the_shell_report_names_a_lost_manifests_link_on_its_stop` (unusable, dangling, no link).
+
 **A closing status a signal stopped is said** (P14). `loop_next` ran `with_progress "status" loop_status_run ||
 true`, so a status killed by SIGKILL or SIGTERM ended the run 0 on the fallback NEXT with nothing said. It keeps
 the rc and, at 128 or more (never on an empty `LOOP_OUT`: a status left running can still write it), says `note:
