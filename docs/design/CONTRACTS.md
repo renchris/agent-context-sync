@@ -30581,6 +30581,8 @@ Tests: `test_a_state_file_links_target_outside_home_is_redacted_in_the_report_an
 `test_the_reports_loop_keeps_the_baseline_wait_when_a_busy_state_has_no_fail`.
 Amended 2026-10-24, §16.192 P61: the guide's `<path>` row gives this link target (the agentsync report only), and
 its count sentence lists every unnumbered kind, `<path>` counted only for a replaced link target.
+Amended 2026-10-24, §16.188 P34: a target the run's own text names (install.out, the friction log, the log folder)
+is `<path>` too, so a link removed since prints no target whole.
 
 **E42: the misplaced NEXT says the command stopped before it finished (`agentsync.cli`; amends §16.180 D44).**
 "so this command did not run" was false after add-source and init, which add the source or write the config
@@ -30752,7 +30754,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52; P123 and P101.
 
@@ -30857,6 +30859,19 @@ agree once install.sh's `claims()` turns every other character `[^\S\n]` covers 
 not the verifier's narrower eight, which leaves a thin space splitting the reports), lane RB's file, not changed here;
 at this commit it has none. Test:
 `test_a_chmod_joined_to_its_mode_by_another_space_pairs_as_with_an_ascii_one`.
+
+**A link's target the run's own text names is redacted, on disk or not** (P34; amends §16.185's E2). `_link_targets`
+registers the targets of the links on disk now, so once the person removed the link, as its fix says, install.out's
+`error: state: <db> is a symlink to <target>, whose folder ...` line, and a background log's line, printed the old
+target whole (a volume or folder name can name the company), with no private-only line and the issue link offered.
+`_build_redactor` now also registers `_said_link_targets(_run_text_lines(r))`: every `is a symlink to (/...)` that
+install.out, the friction log (v33 has the agent log the sync's error itself, ruling 9, and the report prints its
+lines whole in Items and the friction block) and the log folder's files name (their last `_TAIL_BYTES`, as Recent
+errors reads them), in doctor's three
+forms (`, whose folder `, `, which does not exist`, the docs repo's bare form; `_SAID_LINK_RE`), as written and
+normalized, outside this home, and only two parts deep or more, so `/` or `/x` never cuts every path; one sorted list
+with the on-disk targets, longest first. The clause is kept, as the bucket and outcome readers match on its words.
+Test: `test_a_link_target_only_the_runs_own_text_names_is_redacted`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

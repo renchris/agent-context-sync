@@ -14704,6 +14704,56 @@ def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_wh
     )
 
 
+def test_a_link_target_only_the_runs_own_text_names_is_redacted(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 27 P34: the report registered only the targets of the links on disk now, so once the person
+    removed the link (as its fix says), install.out's ``error: state:`` line and a background log's line
+    printed the old target whole, a path that can name the company, with the issue link offered. The targets
+    the run's own text names are registered too, in each of doctor's three forms; "/" or "/x" never is."""
+    cfg = fake_mac["config"]
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    v6_install_log(fake_mac)
+    db = expand(load_config(cfg).state_paths.db)
+    gone = "/Volumes/Fabrikam Drive/agentsync/manifest.sqlite"
+    old = "/opt/Fabrikam Share/m.sqlite"
+    repo = "/Volumes/Fabrikam Docs/agent-context"
+    (fake_mac["setup"] / "install.out").write_text(
+        f"error: state: {db} is a symlink to {gone}, whose folder does not exist or refuses a write (fix: "
+        "the person removes or re-points the link)\n"
+        f"error: state: {db} is a symlink to {old}, which does not exist; the manifest is missing\n",
+        encoding="utf-8",
+    )
+    with (fake_mac["logs"] / "com.agentsync.poll.err.log").open("a", encoding="utf-8") as fh:
+        fh.write(f"2026-09-29 10:05:04,000 ERROR agentsync.cycle: the docs repo is a symlink to {repo}\n")
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "Fabrikam Drive" not in text and "Fabrikam Share" not in text and "Fabrikam Docs" not in text, text
+    assert "is a symlink to <path>, whose folder" in text, text
+    # the link on disk points somewhere new: its target and the one install.out names are both cut
+    new = "/Volumes/Fabrikam Spare/agentsync/manifest.sqlite"
+    db.unlink()
+    db.symlink_to(new)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "Fabrikam Drive" not in text and "Fabrikam Spare" not in text, text
+    # the link gone, and the target only in the agent's own step 3 line (v33 logs the sync's error itself)
+    db.unlink()
+    (fake_mac["setup"] / "install.out").write_text("", encoding="utf-8")
+    vault = "/Volumes/Fabrikam Vault/agentsync/manifest.sqlite"
+    said = (
+        f"agentsync sync exited 1: error: state: {db} is a symlink to {vault}, whose folder does not exist "
+        "or refuses a write; no chmod was run"
+    )
+    friction = _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY)
+    write_friction(fake_mac, friction)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "is a symlink to <path>, whose folder" in text, text
+    assert "Fabrikam Vault" not in text, text
+    # a target too short to be a path of its own registers nothing
+    for said in ("/", "/x", "/x/"):
+        assert setup_report._said_link_targets([f"error: state: {db} is a symlink to {said}"]) == []
+    assert setup_report._said_link_targets([f"{db} is a symlink to {old} (fix: x)"]) == [old]
+
+
 def test_the_side_files_have_doctors_names_in_every_reader(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -4747,9 +4747,14 @@ def _build_redactor(r: _Run) -> Redactor:
     # Last: where a state file's link (or the docs repo's) points, outside this home, which doctor's FAIL and
     # the init error print whole, as the person repairs by it: a volume's or a folder's name can name the
     # company ("/Volumes/Contoso Drive"); exact values, longest first, so a path with spaces is one (E2)
+    # B13 round 27 P34: and where the run's own text says one pointed, which a link removed since leaves
+    targets: list[str] = []
     with contextlib.suppress(Exception):
-        for target in _link_targets(r):
-            red.add("path", target)
+        targets += _link_targets(r)
+    with contextlib.suppress(Exception):
+        targets += _said_link_targets(_run_text_lines(r))
+    for target in sorted(set(targets), key=len, reverse=True):
+        red.add("path", target)
     return red
 
 
@@ -4773,6 +4778,40 @@ def _link_targets(r: _Run) -> list[str]:
             if value.startswith("/") and not _under_home(value):
                 found.add(value)
     return sorted(found, key=len, reverse=True)
+
+
+_SAID_LINK_RE = re.compile(r"is a symlink to (/.+?)(?=, whose folder |, which does not exist|\s*\(fix:|$)")
+"""A link's target in doctor's three forms (B13 round 27 P34): ``... whose folder does not exist or refuses a
+write`` (``DANGLING_UNUSABLE``), ``..., which does not exist; the manifest ...`` and the docs repo's bare
+``<repo> is a symlink to <target>``."""
+
+
+def _said_link_targets(lines: Iterable[str]) -> list[str]:
+    """The targets outside this home that ``lines`` name a link pointing to (:data:`_SAID_LINK_RE`), as
+    written and normalized, longest first, as :func:`_link_targets` gives the links on disk (B13 round 27
+    P34). Only a path two parts deep or more: "/" or "/x" as a redaction value would cut every path."""
+    found: set[str] = set()
+    for line in lines:
+        for m in _SAID_LINK_RE.finditer(line):
+            for value in (m.group(1), os.path.normpath(m.group(1))):
+                parts = [p for p in value.split("/") if p]
+                if value.startswith("/") and len(parts) >= 2 and not _under_home(value):
+                    found.add(value)
+    return sorted(found, key=len, reverse=True)
+
+
+def _run_text_lines(r: _Run) -> list[str]:
+    """The lines of the run's own text the report embeds that can name a link's target: install.out, the
+    friction log (v33 has the agent log the sync's error itself, ruling 9) and the log folder's files, each
+    its last :data:`_TAIL_BYTES` (as Recent errors reads them); each read fails quietly (B13 round 27 P34)."""
+    paths = [install_out_path(r.install_log), r.friction_path]
+    with contextlib.suppress(OSError):
+        paths += sorted(p for p in r.log_dir().iterdir() if p.is_file())
+    lines: list[str] = []
+    for path in paths:
+        with contextlib.suppress(OSError):
+            lines += _tail_cut(path)[0]
+    return lines
 
 
 def _hold_values(r: _Run) -> list[str]:
