@@ -17637,6 +17637,8 @@ binary .msg or a .msg not on this Mac)`; K54: W and Q are disjoint, and R + W + 
 Amended 2026-10-14, §16.89 L33, L50: `(a file whose label cannot be read: an image or a .msg not on this Mac)`;
 a binary .msg on this Mac is read and counted in R, named by the split's `, K of them withheld by the label rule`.
 Amended 2026-10-17, §16.107 O34: `(a file whose label cannot be read: an image, or a .msg not on this Mac)`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D25): the split reads `, K of them withheld: its label cannot be
+read` (`their labels` for more than one), not `withheld by the label rule`; the report's `_SPLIT_RE` reads both.
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
@@ -18270,6 +18272,8 @@ test_the_sync_line_does_not_say_a_local_image_needs_the_file_for_its_label`, and
 Amended 2026-10-14, §16.89 L33, L50: the parenthesis reads `(a file whose label cannot be read: an image or a
 .msg not on this Mac)`; a binary .msg on this Mac is read, so it is in R, and the split names it (`, K of them
 withheld by the label rule`).
+Amended 2026-10-23, §16.187 E57 (by §16.180 D25): the split reads `, K of them withheld: its label cannot be
+read` (`their labels` for more than one), not `withheld by the label rule`; the report's `_SPLIT_RE` reads both.
 
 **K34: the first-read bracket after `read again R` no longer says both things of one file (`agentsync.cli`,
 `agentsync.setup_report`).** With F = R (round 9 step 2: two stubs that had no converter) the line read `read again
@@ -19122,6 +19126,8 @@ Amended 2026-10-15, §16.92 M82: `_SPLIT_RE` now reads K too, and the setup repo
 withheld by the label rule` after R.
 Amended 2026-10-17, §16.107 O34: the parenthesis reads `(a file whose label cannot be read: an image, or a .msg not
 on this Mac)`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D25): the split reads `, K of them withheld: its label cannot be
+read` (`their labels` for more than one), not `withheld by the label rule`; the report's `_SPLIT_RE` reads both.
 
 **L34: when every file read again was a first read, the head says so (`agentsync.cli`, `agentsync.setup_report`,
 scripts/install.sh; amends §16.37 and §16.83 K34).** `read again 2 (2 of them a first read: ...)` still said
@@ -19360,6 +19366,8 @@ another sync to end · config 1s)`; the Installer table keeps one bracket.
 Amended 2026-10-16, §16.98 N35: install.sh logs `-first-F` after `-reread-R` when F of the R were first reads, and
 the row reads them as the Summary does (`first read R: ...`, `read again R: F of them a first read ...`); R stays
 the sum, and a note with no `-first-` keeps the neutral words.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D25): the split reads `, K of them withheld: its label cannot be
+read` (`their labels` for more than one), not `withheld by the label rule`; the report's `_SPLIT_RE` reads both.
 
 **The local-work line in a checkout whose `.git` is a file, and which branches are empty** (M49, M70, M54, M71;
 dated lines at §16.86 L58 and §16.80 K30). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers
@@ -27568,6 +27576,8 @@ lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_
 Amended 2026-10-22, §16.173 B7, B21, B86: the tail's and the NEXT's parenthesis reads `(keeping a copy, they put the file
 back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest)`, as
 doctor.MANIFEST_FIX words it: the folder moved alone stopped the next run on the lost-manifest guard (round 23 A29).
+Amended 2026-10-23, §16.187 E57 (by §16.179 D79): D79 added `; they first open a folder shut to this account, as
+status names it` at the end of both parentheses.
 
 Amended 2026-10-22, §16.166 A46: a symlink where manifest.sqlite belongs counts by what it points to: a link to a folder, or a
 link loop, is no file (`state-notfile`, the person's NEXT); a dangling link is no manifest yet.
@@ -29174,6 +29184,10 @@ with no side file or only one, init stops on creating it, and `state-access` sta
 SN-shm-0500, SN-wal-link, SW, SW-bare and SW-wal cases of
 `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`, and, with the real agentsync,
 `test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D72 and §16.179 D79): doctor's fix for a folder shut to this account
+starts with `chmod 700 <path>` first (another account's: `sudo chown -R`), not only "moves it aside", and D79
+added `; they first open a folder shut to this account, as status names it` at the end of the parenthesis of
+install.sh's not-a-file tails and NEXTs.
 
 **The lane's review** (a fresh reviewer over the branch, with a scratch harness running the probe, the real init
 and the real status; each finding fixed or recorded). A stale 0000 -wal beside a lost manifest got `state-access`,
@@ -29189,6 +29203,9 @@ lock's and governance/'s masks agree with status only once lane B's B58 and B61 
 0400 lock and a 0500 governance/); recorded, not changed. Not built: `docs_remotes_refused` keys on the filesystem
 ahead of a lost manifest, so a Mac with both gets the remote's NEXT first and the lost manifest's on the next run:
 both the person's, one extra run, an order that predates this round.
+Amended 2026-10-23, §16.187 E57 (by §16.179 D76): built; install.sh judges the refused remote's NEXT last, only
+when no state stop claimed the NEXT, the order init stops in, so beside a lost manifest the manifest's NEXT comes
+first.
 
 **Setup prompt v33** (B1, B8, B22, B40, B50, B60, B79, B96 and B17; ruling 9, one build, and lane B's words for
 B17; amends §16.166 A36 and §16.160 Z38). Version 33 everywhere the bump list names it (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`,
@@ -29291,6 +29308,9 @@ Test: `test_a_governance_folder_this_account_cannot_write_into_fails_status_with
 O_NONBLOCK (ENXIO or a non-regular fstat is `<path> is a fifo, not the state file`, the person's move);
 `governance._open_audit` does the same before a hold, its release or a queued purge writes. Test:
 `test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D41, D22): the detail reads `<audit> is <kind>, not a file (the audit
+trail)` (`governance.audit_not_a_file`), never "not the state file", and its fix `the person moves <path> aside,
+keeping a copy`.
 
 **B64, B65: a dangling manifest link, and a 0400 file on a read-only volume.** A symlink to a missing file is judged
 by what a sync does through it (`doctor.dangling_target`), never as an ACL: into a folder the sync can write, no FAIL;
@@ -29299,6 +29319,9 @@ after earlier passes, a lost manifest, and `manifest.manifest_lost` counts the l
 over through it. In `_check_state_dir` a read-only volume is tested before the mode, so a 0400 file there joins
 A85's one volume line. Tests: `test_ops_doctor.py::test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl`,
 `test_ops_doctor.py::test_a_state_file_without_read_or_write_on_a_read_only_volume_joins_the_volume_line`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D71): over earlier passes a link into a missing or unwritable folder is
+one state_dir.manifest FAIL whose fix is `the person removes the link first: rm <db>; then ...`, with no second
+lost line; with no earlier pass B64's "points the link at an existing file or removes it" stands.
 
 **B67: cli imports graph.auth once, as a module.** The two function-level imports delayed nothing (cli imports
 graph.auth at its top); both sites use `graph_auth`, so the fake_auth fixture's patch of `MsalAuth` holds. Test:
@@ -29825,6 +29848,10 @@ chmod after the re-sync, the same second, a person's exit line, the wrong owner'
 take, a skipped or earlier or step 2 line, the stop after next, one to one), which also runs lane RA's
 `_stop_pairs` over each case and asserts the same pairs. Lane RA's D5 lists a stop logged after the end line apart,
 for display only; the shell's window ends at the end line, as the outcome's does, so it does not.
+Amended 2026-10-23, §16.187 E60: thirteen cases, not eleven (the test has had 13 ids since b4725c13 added it): a
+person's exit line with or without `with code`, the modes the state folder (700) and a governance
+file (0600) do take beside one its file does not, and a line after the end line (a bare `end` included) are
+cases too.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -29863,6 +29890,11 @@ with nothing to write end 0 (the pipe takes the write), so it has no stop to wor
 `doctor.LISTING_STATE_SIDE_NOTE`. Tests:
 `test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next`,
 `test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so`.
+Amended 2026-10-23, §16.187 E55: a fifo at the -wal stops nothing, and through the CLI status does not FAIL it
+either: init, status and a sync each open the manifest first, and sqlite removes the -wal when that connection
+closes, so status prints `state_dir.files` ok and exits 0 with the fifo gone (measured at 081db13b); only
+`doctor._check_state_dir` called with no open before it sees the FAIL. Status's `<role> is not a file` words above
+apply only when something puts a fifo back there during the run.
 
 **D6, D22, D10: a side file is named by its role, its move aside keeps a copy, and it is one line.** The detail is
 `<path> is <kind>, not a file (the state file's write-ahead log)` (`doctor.SIDE_ROLES`) (`shared-memory file` for the -shm, `the token
@@ -30115,7 +30147,9 @@ quoted two tails for one word. The main quote is round 24's landed one, `at its 
 this account cannot read it, and at its status step otherwise` (scripts/install.sh at 3ec66a92), marked as the
 review's words, with the first build's words marked as such; a later change to the tail is its own round's record
 (lane RB's round 25 tail adds a clause inside the parenthesis, sent to RB). Test:
-`test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints`.
+`test_b52s_record_quotes_round_24s_side_notfile_tail`.
+Amended 2026-10-23, §16.187 E61: the test was named for "the side-notfile tail install.sh prints"; round 25's D79
+added its clause to that tail, so the record quotes round 24's tail, as the test's name says now.
 
 **§16.173 cites the tracked brief and names the allowlist by its grep** (D63). For rulings 7 to 9 it cited round
 24's brief by its path in the bring-back cache, not the repo (§16.171 cites the tracked `docs/lanes/COMMON.md`,
@@ -30149,6 +30183,8 @@ replaces it, is
 `state-file-owner`. The guide and the dated line at §16.173 say that form. The test reads install.sh: once its
 owner-first skip is gone it must hold the sticky case. Test:
 `test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case`.
+Amended 2026-10-23, §16.187 E81: the skip is gone (lane RB, b9889a04); the test asserts that, and the sticky case,
+with no guard, since a guard on the skip's absence would have skipped the check, not failed it, had it come back.
 
 **The guide's refused stubs leave out what a download would read** (D60; `docs/deploy/setup-feedback.md`). The Repeat
 conversions row put an online-only or Graph image inside its `that run refused with no converter for its type`
@@ -30249,3 +30285,40 @@ sentences, and the five test quotes of them move with them. The test reads every
 `Amended <date> (§16.N` and `Amended <date> by §16.N` forms (34, all already right) and each section's own
 sentence. The finder's one older-form line under a 2026-10-15 heading is not there: the 11 of that form all read
 2026-10-12 under 2026-10-12 headings. Test: `test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date`.
+
+**Records round 25 changed point to the change** (E57; dated lines at §16.173 B52, §16.160 Z11, §16.174 B63, B64,
+§16.77 J29, §16.83 K33, §16.89 L33 and §16.92 M82). Round 25 changed what older records quote and left no line at
+them; §16.180 uses no `(...; amends §X)` heading, so the dated-line scan never asked. Each line's `(by §16.180
+D72)` or the like names the round 25 item that made the change: §16.173's B52 paragraph
+(D72's `chmod 700` first and D79's `; they first open a folder shut to this account, as status names it`), its
+review paragraph's "Not built" `docs_remotes_refused` order (built by D76), §16.160's B7, B21, B86 line (D79's
+clause), §16.174's B63 audit words (D41, D22: `<audit> is <kind>, not a file (the audit trail)`), B64's link (D71:
+over earlier passes one FAIL whose fix removes the link first; with no earlier pass B64's quote stands, so the line
+says only that), and the four records quoting `, K of them withheld by the label rule` (D25: `withheld: its label
+cannot be read`); the verifier's 18272 and 19122 are §16.83's K33 and §16.89's M82 line inside L33. The review
+paragraph's line is pinned (`_ROUND_26_D_PARAGRAPH_AMENDS`), since that paragraph names no item. Tests:
+`test_every_dated_line_from_round_11_on_is_held_by_a_test`, `test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.
+
+**The D59 test asserts the skip is gone, and the D62 test is named for round 24's tail** (E61, E81; dated lines at
+§16.182 D62, D59). The D59 test checked install.sh's sticky governance case only `if` the owner-first skip was
+absent; lane RB's b9889a04 removed it, so the guard was always true and could only hide that skip coming back.
+The three asserts hold with no guard, the skip's absence among them. The D62 test, named for "the side-notfile tail
+install.sh prints", reads only §16.173, which quotes round 24's tail on purpose, while install.sh prints it with
+round 25 D79's clause: it is `test_b52s_record_quotes_round_24s_side_notfile_tail`, cited so in §16.182, and also
+asserts §16.179's "quotes the round 24 `state-side-notfile` tail, before this clause" and the B52 paragraph's E57
+line that points to it. Tests: `test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case`,
+`test_b52s_record_quotes_round_24s_side_notfile_tail`.
+
+**§16.179 gives the shell pairing test's case count** (E60; dated line at §16.179 D79). It said `eleven cases` and
+listed eight kinds; the test has had 13 ids since b4725c13 added it. The dated line gives thirteen and the kinds the
+list left out: a person's exit line with or without `with code` (persons-exit-with-code), the modes the state
+folder (700) and a governance file (0600) do take (folder-700, governance-0600) beside one its file does not
+(lock-700), and a line after the end line (bare-end). The test reads the parametrize's ids and the record's last
+count, so a case added later needs its own dated count. Test: `test_the_shell_pairing_records_case_count_is_the_tests`.
+
+**A fifo at the -wal stops nothing** (E55; dated line at §16.180 D2). §16.180 said status still FAILs it. Measured
+at 081db13b in a fresh home with the real CLI: init, then `mkfifo manifest.sqlite-wal`, then status exits 0 with
+`state_dir.files` ok, and the fifo is gone, since status's own manifest read opens and closes the database first
+and sqlite removes the -wal on close; init over a new fifo exits 0 and removes it too. Only `doctor._check_state_dir`
+called alone sees it. The dated line says so; install.sh's step 1 prediction for it is lane RB's (E15, §16.184).
+A folder, a socket or a link loop at the -wal, and anything not a file at the -shm, still stop. Test: `test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says`.

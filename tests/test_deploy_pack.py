@@ -5968,6 +5968,17 @@ _ROUND_24_RA_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.171 B74
 """Round 24 lane RA's dated line at a section its claim names with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: B74's words in §16.28's `legacy_waiting` row."""
 
+_ROUND_26_D_PARAGRAPH_AMENDS = (
+    (
+        "16.173",
+        "**The lane's review** (a fresh reviewer over the branch, with a scratch harness running the probe",
+        "§16.187 E57 (by §16.179 D76)",
+    ),
+)
+"""Round 26 lane D's dated line at a paragraph its claim cannot name by an item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: E57's at §16.173's review paragraph, whose "Not built" remote order round
+25 D76 built."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -6030,7 +6041,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     under §9's exit-code list and Y60's at §16.28's Configuration paragraph, and §16.155 (lane B) two:
     Y49's at §16.12's governance paragraph and Y20's at §16.32's `<run again>` table. Round 23's §16.170
     (lane K) two: A97's at §16.30's two patch-hash bullets. Round 24's §16.175 (lane E) one: B73's at §16.28's
-    `legacy_waiting` row.
+    `legacy_waiting` row. Round 26's §16.187 (lane D) one: E57's at §16.173's review paragraph.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -6053,6 +6064,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_24_E_PARAGRAPH_AMENDS)) == len(_ROUND_24_E_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_24_RA_PARAGRAPH_AMENDS)) == len(_ROUND_24_RA_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_26_D_PARAGRAPH_AMENDS)) == len(_ROUND_26_D_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -6087,6 +6099,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_24_E_PARAGRAPH_AMENDS,
         *_ROUND_24_D_PARAGRAPH_AMENDS,
         *_ROUND_24_RA_PARAGRAPH_AMENDS,
+        *_ROUND_26_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -6138,12 +6151,14 @@ def test_the_guide_gives_b105s_rule_its_own_sentence_and_governances_sticky_case
     step 2 stops on it. The "since" clause is back on "the same way", and B105's rule is a sentence of its
     own. governance/ was judged by its owner first (round 24 B61); lane B's round 25 D45 keys status on what
     a hold does, and install.sh follows it: another account's usable governance/ stops nothing, and only a
-    hold file another account owns in a sticky governance/ not this account's is `state-file-owner`. Once
-    install.sh's owner-first skip is gone, its skip holds that sticky case."""
+    hold file another account owns in a sticky governance/ not this account's is `state-file-owner`.
+    install.sh's owner-first skip is gone (lane RB, b9889a04), and its access skip holds that sticky case;
+    round 26 E61, E81: the check of that was guarded by the owner-first skip's absence, so the skip coming
+    back would have skipped it, not failed it."""
     install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    if 'name != "governance" or st.st_uid == os.getuid()' not in install:
-        assert 'theirs = sticky and name in ("holds", "queue", "suppressed") and p.lstat().st_uid' in install
-        assert "if os.access(p, need) and not theirs:" in install
+    assert 'name != "governance" or st.st_uid == os.getuid()' not in install
+    assert 'theirs = sticky and name in ("holds", "queue", "suppressed") and p.lstat().st_uid' in install
+    assert "if os.access(p, need) and not theirs:" in install
     page = " ".join(_feedback_page().split())
     assert (
         "audit.jsonl, are read the same way, since step 2 stops on them at its status step (round 23 A17,"
@@ -6194,12 +6209,15 @@ def test_the_exec_census_gives_install_shs_execs_to_both_test_files() -> None:
     assert "install.sh 52 in test_deploy_pack" not in k
 
 
-def test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints() -> None:
+def test_b52s_record_quotes_round_24s_side_notfile_tail() -> None:
     """B13 round 25 D62: §16.173's B52 paragraph quoted `state-side-notfile`'s first tail ("at its config step
     when this account cannot read it and at its status step when it can"), which the lane's review changed
     (case SN-wal, recorded further down the same section): the main quote read as the contract, a tail the
     installer no longer prints. It quotes round 24's landed tail (scripts/install.sh at 3ec66a92) as the
-    review's words, and marks the first build's words as such."""
+    review's words, and marks the first build's words as such. Round 26 E61: round 25's D79 added a clause to
+    that tail, so the record is round 24's on purpose, not the tail install.sh prints (this test was named
+    so); §16.179 says the B52 paragraph quotes the tail before the clause, and the B52 paragraph points to
+    it."""
     b52 = " ".join(_contracts_section("(B52, B12; amends §16.166 A78). B52:", "\n\n").split())
     landed = (
         "at its config step when it is the -wal or this account cannot read it,"
@@ -6208,6 +6226,64 @@ def test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints() -> None:
     assert f"(not damage), {landed}: fixing that is the person's (keeping a copy, they move it aside)" in b52
     first = "when this account cannot read it and at its status step when it can"
     assert b52.count(first) == 1 and f'the first build\'s read "{first}")' in b52
+    assert "Amended 2026-10-23, §16.187 E57 (by §16.180 D72 and §16.179 D79):" in b52
+    d79 = " ".join(_contracts_section("**Lead note 1's install.sh residuals** (D79:", "\n\n").split())
+    assert (
+        "§16.173's B52 paragraph quotes the round 24 `state-side-notfile` tail, before this clause) ends"
+        in d79
+    )
+
+
+def test_the_shell_pairing_records_case_count_is_the_tests() -> None:
+    """B13 round 26 E60: §16.179 gave the shell pairing test `eleven cases` and listed eight kinds, while the
+    test has had 13 ids since it landed (persons-exit-with-code, folder-700, governance-0600 and bare-end were
+    left out). The record's last count, its dated line's, is the number of ids the parametrize gives."""
+    name = "test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does"
+    source = (ROOT / "tests" / "test_install_oneshot.py").read_text(encoding="utf-8")
+    [ids] = re.findall(rf"ids=\[([^\]]*)\],\n\)\ndef {name}\(", source)
+    count = len(re.findall(r'"[^"]+"', ids))
+    record = " ".join(
+        _contracts_section("**The shell report pairs each step 3 stop as the agentsync", "\n\n").split()
+    )
+    words = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen")
+    stated = re.findall(rf"\b({'|'.join(words)}) cases\b", record)
+    assert stated[:1] == ["eleven"] and count >= 13, (stated, count)
+    assert words.index(stated[-1]) + 10 == count, (
+        f"the record's last count is {stated[-1]}, the test has {count}"
+    )
+
+
+def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
+    """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
+    and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
+    does, with the fifo gone. The dated line says so, and this measures it with the real CLI."""
+
+    def agentsync(*argv: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "agentsync", *argv],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+
+    assert agentsync("init").returncode == 0
+    [db] = Path(os.environ["HOME"]).rglob("manifest.sqlite")
+    wal = db.with_name("manifest.sqlite-wal")
+    wal.unlink(missing_ok=True)
+    os.mkfifo(wal)
+    status = agentsync("status")
+    assert status.returncode == 0 and not wal.exists(), status.stdout + status.stderr
+    assert re.search(r"\[ok\s*\] state_dir\.files", status.stdout), status.stdout
+    os.mkfifo(wal)
+    assert agentsync("init").returncode == 0 and not wal.exists()
+    d2 = " ".join(
+        _contracts_section("**D2, D8, D21, D70: a side file that is not a file stops", "\n\n").split()
+    )
+    assert (
+        "Amended 2026-10-23, §16.187 E55: a fifo at the -wal stops nothing, and through the CLI status does"
+        " not FAIL it either"
+    ) in d2
 
 
 def test_the_contract_cites_no_cached_brief_and_no_install_sh_line_number() -> None:
