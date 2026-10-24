@@ -1789,6 +1789,36 @@ Antigravity offers only 3.8 Flash and no Gemini 4 Argon to this login).
 
 Round 27, only if `e869fac7eb34` is answered no: the round 26 workflow on this section's landed tip, BASE `081db13b`.
 
+### B13 round 27: v33 rehearsal, cross-lane review, harvest (2026-10-24)
+
+The stop decision was re-filed as `b4780d7bb60e` (default: keep looping, deadline 2026-10-31), so round 27 ran on
+`62a90bca` in two runs: `wf_e887b970-e18`, then `wf_db01d499-e70`, which re-ran rehearsals A, B and F and the harvest
+after an operator message sent mid-run had led them to answer it instead of their tasks (their 22 off-topic findings
+are set aside; every prompt now opens with a guard line). All six scenarios pass their EXPECTED; no name leaks. 97
+findings, 91 confirmed (2 turns, 25 wrong, 64 small), 6 refused. None needs prompt text: v33 stays the prompt to paste.
+The two turns and most wrongs sit on round 26's own new paths: ruling 13 named link kinds at the governance files and
+the heartbeat that no reader caught (a link to nothing at holds.json read as no holds, and `purge --queue` erased a
+page under a hold on `all`: data integrity); step 2's NEXT over a lock or heartbeat that is not a file is the generic
+re-run, not the person's fix (the two turns, P22 and P124); and after the person's new start, a purge queued before
+the manifest was lost is still invited blind (P40, P112). Lead rulings for round 27 (in `lanes/COMMON26.md`), all
+code-only: (15) every link kind at a governance file or the heartbeat is the person's, and a hold list that cannot be
+read is never an empty one; (16) step 2's NEXT gives the person's fix for a lock, heartbeat or governance file that is
+not a file, and step 1 predicts it, through the installed agentsync's own judge; (17) the new start's queued purges
+wait for the next sync's manifest, then read as not resolvable, and are never invited blind; (18) beside a linked
+manifest, the -wal and -shm are judged beside its target.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91 over rounds 2 and 4 to 27; turns 0 for seven rounds, then 1, 2, 0, 0, 2, 0, 0, 2; wrongs as before, then 25.
+
+Lanes (`--account auto`, CONTRACTS §16.188 to §16.192, brief `lanes/COMMON26.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r27-land.lock`; scratch under `round27/`; back-channel
+pane 271): RA 28 (the report: the lost link's cases, a too-old Swift, earlier attempts, the new start's counts), B 26
+(ruling 15 first, then 17 and 18's helper, status, doctor and the commands), RB 18 (all of install.sh: ruling 16 and
+the two turns first), E 8 (cycle.py's new start and restored run numbers, the speech docstrings, the OCR URL cut), D 9
+(ship-land's early read of trunk's CI, guides, CONTRACTS records). Lead: P130 (the harvest's umbrella note, built as
+P131 to P138) and P139 (not built, measured: a check of only trunk's last completed run saves nothing in round 26 and
+would cancel trunk's runs; lane D's P140 builds the safe early read).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

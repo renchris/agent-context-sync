@@ -30680,3 +30680,23 @@ public), D16's clause as an expectation, with both reasons and one count when th
 too, D5's block in both reports with its pairing and the friction line's count, D26's line as status says it (an
 empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 `test_the_guide_gives_round_25s_new_report_and_installer_outputs`, which reads each from the code that prints it.
+
+### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
+
+Reserved for round 27 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 27").
+
+### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
+
+Reserved for round 27 lane RB of B13.
+
+### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
+
+Reserved for round 27 lane B of B13.
+
+### 16.191 Round 27: the new start's counts, restored run numbers, the speech docstrings and the OCR URL cut (2026-10-24, wave B13 round 27 lane E)
+
+Reserved for round 27 lane E of B13.
+
+### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
+
+Reserved for round 27 lane D of B13.
