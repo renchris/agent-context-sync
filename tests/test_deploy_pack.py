@@ -148,6 +148,10 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
     url, end = hosts.release_file(bullet)
     assert url == speech.NEMO_URL, "the page names the release the speech build fetches (B13 round 4 Q60)"
     assert end == "release-assets.githubusercontent.com"
+    # B13 round 26 E52: doctor's resolve fix names the release host the page names, which the weekly check
+    # follows, so a move GitHub makes turns this red until speech.FETCH_HOSTS moves too
+    assert ("github.com", end) == speech.FETCH_HOSTS, "doctor's fetch fix names the page's release host"
+    assert set(speech.FETCH_HOSTS) <= hosts.named_hosts(bullet)
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert hosts.uv_installer_url(script) == "https://astral.sh/uv/install.sh"
     installer = (

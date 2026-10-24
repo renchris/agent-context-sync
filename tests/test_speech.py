@@ -228,8 +228,21 @@ def test_a_clone_that_never_happened_says_the_fetch_failed(tools: Path, tmp_path
     script(tools / "swift", f'echo "{tools_version}" >&2\nexit 1')
     with pytest.raises(SpeechError) as error:
         speech.build(cache)
-    assert str(error.value) == f"swift package resolve failed (exit 1): {ocr._plain(tools_version)}"
-    assert "is using Swift tools version 99.0.0" in str(error.value)
+    assert str(error.value) == (  # B13 round 26 E48: its own words, not the fetch's
+        "swift package resolve failed (exit 1): this Mac's Swift 6.2.4 is older than the Swift 99.0.0 the "
+        "speech helper or FluidAudio needs"
+    )
+
+    # B13 round 26 E51: read raw, as another git command's missing folder reads the same once scrubbed
+    other = (
+        f"error: Git command 'git -C {repo} fetch --tags' failed: fatal: cannot change to '{repo}': No such "
+        "file or directory"
+    )
+    assert ocr._plain(other) == ocr._plain(shape.split('"')[1])
+    script(tools / "swift", f'echo "{other}" >&2\nexit 1')
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == f"swift package resolve failed (exit 1): {ocr._plain(other)}"
 
     script(tools / "swift", 'case "$1" in package) exit 0 ;; esac')  # the same line from a step but resolve
     script(tools / "git", f"{shape.replace('exit 1', 'exit 128')}")
@@ -239,6 +252,46 @@ def test_a_clone_that_never_happened_says_the_fetch_failed(tools: Path, tmp_path
         "git failed (exit 128): error: Git command '<command>' failed: fatal: cannot change to '<path>': "
         "No such file or directory"
     )
+
+
+def test_a_resolve_that_needs_a_newer_swift_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 26 E48: a resolve that needs a newer Swift than this Mac's (measured with Swift 6.2.4 and a
+    package at tools version 99.0) kept SwiftPM's line under the fetch's head, and doctor gave it the fetch's
+    re-run and hosts, which a re-run on the same toolchain never clears. Its cause is its own words, read from
+    the raw stderr, with only the two versions taken; the clone that never happened still wins, and another
+    step's line is not read so."""
+    too_old = (
+        b"error: 'contoso-kit': package 'contoso-kit' is using Swift tools version 6.0.0 but the installed "
+        b"version is 5.10.0 in /Users/kim/Contoso Kit\n"
+    )
+    uncloned = (
+        b"error: Git command 'git -C /x/FluidAudio-1 config --get remote.origin.url' failed: fatal: cannot "
+        b"change to '/x/FluidAudio-1': No such file or directory\n"
+    )
+    stderr = too_old
+
+    def fake(argv: list[str], **_: Any) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(argv, 1, b"", stderr)
+
+    monkeypatch.setattr(ocr, "_run_build", fake)
+
+    def step(what: str) -> str:
+        with pytest.raises(SpeechError) as error:
+            speech._step(["swift"], cwd=tmp_path, deadline=speech._clock() + 60, what=what, env={})
+        return str(error.value)
+
+    reason = step(speech._RESOLVE)
+    assert reason == (
+        "swift package resolve failed (exit 1): this Mac's Swift 5.10.0 is older than the Swift 6.0.0 the "
+        "speech helper or FluidAudio needs"
+    )
+    assert reason.startswith(speech.RESOLVE_FAILED) and "/" not in reason
+    found = speech.TOOLS_TOO_OLD_RE.search(reason)
+    assert found is not None and (found["installed"], found["needed"]) == ("5.10.0", "6.0.0")
+    stderr = uncloned + too_old
+    assert step(speech._RESOLVE).endswith(f"(exit 1): {speech._UNCLONED}")
+    stderr = too_old
+    assert step("swift build") == f"swift build failed (exit 1): {ocr._plain(too_old)}"
 
 
 def test_the_floor_check_reads_the_head_its_step_writes(

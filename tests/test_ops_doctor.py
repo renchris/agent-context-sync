@@ -3875,6 +3875,19 @@ def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
     ):
         marker.write_text(other, encoding="utf-8")
         assert by_name(run_checks(sample_config))["speech"].fix is None, other
+    # B13 round 26 E48: a resolve that needs a newer Swift fails the same way on every re-run, with the
+    # network fine, so its fix is the toolchain's update and names no host
+    too_old = f"{speech.RESOLVE_FAILED}1): " + speech.TOOLS_TOO_OLD.format(installed="5.10.0", needed="6.0.0")
+    marker.write_text(too_old, encoding="utf-8")
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({too_old})"), r
+    assert r.fix == (
+        "update the Command Line Tools (or Xcode) in Software Update to a release with Swift 6.0.0 or later "
+        f"(on a macOS too old for that release, update macOS first), then run {INSTALL_SH} again"
+    ), r.fix
+    assert "github" not in r.fix and "proxy" not in r.fix and "comes back" not in r.fix
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     marker.write_text(reason, encoding="utf-8")
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     assert by_name(run_checks(sample_config))["speech"].fix == doctor._OCR_DEVTOOLS_FIX

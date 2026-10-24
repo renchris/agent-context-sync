@@ -944,13 +944,22 @@ def _resolve_again_fix(detail: str) -> str | None:
     home of the v32 rehearsal); and, as a blocked host fails every time, where to look when it fails again:
     both hosts of :data:`speech.FETCH_HOSTS`, as resolve downloads the library FluidAudio links from GitHub's
     release host, and a SwiftPM mirror for FluidAudio's own clone (B13 round 25 D53, D65). No time limit and
-    no "less busy": this is no time-out (B13 round 24 B42)."""
+    no "less busy": this is no time-out (B13 round 24 B42). But for a resolve that needs a newer Swift than
+    this Mac's (``speech.TOOLS_TOO_OLD``): a re-run builds with the same Swift and fails the same way, and the
+    network is fine, so its fix is a Command Line Tools update first, and names no host (B13 round 26 E48)."""
     if not detail.startswith(speech.RESOLVE_FAILED):
         return None
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         again = AGAIN_UNDER_INSTALL_SH
     else:
         again = f"run {INSTALL_SH} again"
+    too_old = speech.TOOLS_TOO_OLD_RE.search(detail)
+    if too_old:
+        return (
+            f"update the Command Line Tools (or Xcode) in Software Update to a release with Swift "
+            f"{too_old['needed']} or later (on a macOS too old for that release, update macOS first), then "
+            f"{again}"
+        )
     github, assets = speech.FETCH_HOSTS
     return (
         f"{again}; it fetches FluidAudio and the library it links from GitHub again, and if this line comes "

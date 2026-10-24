@@ -128,12 +128,28 @@ _UNCLONED_RE = re.compile(
     rb"config --get remote\.origin\.url' failed: fatal: cannot change to '[^\n]*': No such file or directory"
 )
 """SwiftPM 6.2's whole stderr when the FluidAudio clone never happened (an unreachable host or a refused
-port): git asked about a cache folder no clone made.  Read raw, as :func:`ocr._plain` makes the command
-``<command>``, after which a resolve failure past the clone (a too-new tools version) reads the same; never
-keyed on the absent checkout, which such a failure leaves too (B13 round 25 D50)."""
+port): git asked about a cache folder no clone made.  Read raw: :func:`ocr._plain` makes the command
+``<command>``, which drops the ``config --get remote.origin.url`` words that say no clone was made, so another
+git command's missing-folder failure would read the same.  Not keyed on the absent checkout, which a resolve
+failure past the clone (a too-new tools version) leaves too (B13 round 25 D50; round 26 E51)."""
 _UNCLONED = "FluidAudio could not be fetched (the clone did not complete)"
 """:func:`_step`'s cause for :data:`_UNCLONED_RE`, after :data:`RESOLVE_FAILED`; no host, as a SwiftPM mirror
 may route the clone (:func:`_shared_config`), and doctor's fix names where to look (D50)."""
+_TOOLS_RE = re.compile(
+    rb"is using Swift tools version (\d+(?:\.\d+)*) but the installed version is (\d+(?:\.\d+)*)"
+)
+"""SwiftPM's words when a manifest (the speech helper's ``Package.swift``, or FluidAudio's) needs a newer
+Swift than this Mac's Command Line Tools bring: the version it needs, then this Mac's.  Read raw, as
+:data:`_UNCLONED_RE` is, and tried after it; digits only, so no path or URL comes along (B13 round 26 E48)."""
+TOOLS_TOO_OLD = (
+    "this Mac's Swift {installed} is older than the Swift {needed} the speech helper or FluidAudio needs"
+)
+""":func:`_step`'s cause for :data:`_TOOLS_RE`, after :data:`RESOLVE_FAILED`: no network fault, so doctor's
+fix for it is a Command Line Tools update, not the fetch's re-run (:data:`TOOLS_TOO_OLD_RE`; E48)."""
+TOOLS_TOO_OLD_RE = re.compile(
+    TOOLS_TOO_OLD.format(installed=r"(?P<installed>\d[\d.]*)", needed=r"(?P<needed>\d[\d.]*)")
+)
+"""Reads :data:`TOOLS_TOO_OLD` back from a reason, for doctor's fix; its words hold no regex sign (E48)."""
 _clock = time.monotonic
 
 
@@ -603,7 +619,14 @@ def _step(
         raise SpeechError(ocr._signal_reason(f"{what} was ", cp.returncode, cp.stderr))
     if cp.returncode != 0:
         uncloned = what == _RESOLVE and _UNCLONED_RE.search(cp.stderr or b"")
-        cause = _UNCLONED if uncloned else ocr._plain(cp.stderr or cp.stdout)
+        too_old = what == _RESOLVE and _TOOLS_RE.search(cp.stderr or b"")
+        if uncloned:
+            cause = _UNCLONED
+        elif too_old:
+            needed, installed = (v.decode("ascii") for v in too_old.groups())
+            cause = TOOLS_TOO_OLD.format(installed=installed, needed=needed)
+        else:
+            cause = ocr._plain(cp.stderr or cp.stdout)
         raise SpeechError(f"{what}{_FAILED}{cp.returncode}): {cause}")
     return cp.stdout.decode("utf-8", errors="replace").strip()
 

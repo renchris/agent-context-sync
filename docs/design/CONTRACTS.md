@@ -30021,6 +30021,13 @@ verifier's "from github.com": `_shared_config` copies the person's SwiftPM mirro
 the reason names no host and doctor's fix names where to look. Test:
 `test_speech.py::test_a_clone_that_never_happened_says_the_fetch_failed` (the shape, a tools-version failure kept,
 the same line from `git` kept).
+Amended 2026-10-23, §16.186 E48: a tools-version failure no longer keeps SwiftPM's words: it reads `swift package
+resolve failed (exit N): this Mac's Swift <installed> is older than the Swift <needed> the speech helper or
+FluidAudio needs`, and doctor's fix for it is a Command Line Tools update, not the fetch's (§16.186).
+Amended 2026-10-23, §16.186 E51: the raw read is because `<command>` drops the `config --get remote.origin.url`
+words, the only ones that say no clone was made; the tools-version failure is why the absent checkout is not the
+key. The test's resolve-step arm with another git command's missing folder (`fetch --tags`) pins the raw read
+(§16.186).
 
 **The fetch's fix names every host resolve reaches (D53, D65; `agentsync.ops.doctor`, `agentsync.convert.speech`;
 dated line at §16.175 B42).** One defect from two finders, built once. B42's fix sent the person to github.com
@@ -30033,6 +30040,10 @@ a proxy: HTTPS_PROXY set in the shell)`, the hosts read from `speech.FETCH_HOSTS
 alone: a mirror routes package URLs, not the binary target's. The proxy clause holds for both: `_seed` fetches the
 library through it first. Test: `test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix`
 (the fix, and each host among `setup_report._PUBLIC_HOSTS`).
+Amended 2026-10-23, §16.186 E48: but a resolve that needs a newer Swift than this Mac's: its fix names no host
+(§16.186).
+Amended 2026-10-23, §16.186 E52: `speech.FETCH_HOSTS` is tied to the release host `docs/deploy/it-request.md`
+names, which the weekly redirect check follows (§16.186).
 
 **A build step a signal stopped has the re-run as its fix (D85; `agentsync.ops.doctor`; dated lines at §16.137 V5
 and §16.175 B42).** Round 24's B42 point 3, not built then as outside its defect. A reason that ends in
@@ -30164,6 +30175,23 @@ Reserved for round 26 lane B of B13.
 Round 26's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 26"; specs `round26/items/E<n>.md`, the
 verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-23, §16.186 E<n>`.
 
+**A resolve that needs a newer Swift says so, and its fix is the toolchain (E48; `agentsync.convert.speech`,
+`agentsync.ops.doctor`; dated lines at §16.181 D50, D53).** `Package.swift` is `swift-tools-version: 6.0`, and
+nothing checks the toolchain before `swift package resolve`: on a Mac whose Command Line Tools bring an older Swift,
+resolve exits 1 with `package '<x>' is using Swift tools version <needed> but the installed version is
+<installed>` (measured with Swift 6.2.4 and a package at 99.0), the reason kept the `RESOLVE_FAILED` head, and
+doctor gave it the fetch's re-run and hosts, which a re-run on the same toolchain never clears. `speech._step`
+reads the resolve step's raw stderr for those words (`_TOOLS_RE`, digits only, after `_UNCLONED_RE`, which still
+wins) and writes `swift package resolve failed (exit N): this Mac's Swift <installed> is older than the Swift
+<needed> the speech helper or FluidAudio needs` (`speech.TOOLS_TOO_OLD`). The head stays, so no bucket moves (doctor
+is its only reader); `doctor._resolve_again_fix` reads the versions back (`speech.TOOLS_TOO_OLD_RE`) and gives
+`update the Command Line Tools (or Xcode) in Software Update to a release with Swift <needed> or later (on a macOS
+too old for that release, update macOS first), then run <install.sh> again`, with no host and no "if this line
+comes back". Tests: `test_speech.py::test_a_resolve_that_needs_a_newer_swift_says_so` (the cause, the versions read
+back, the clone that never happened winning, another step's line kept),
+`test_speech.py::test_a_clone_that_never_happened_says_the_fetch_failed` (its tools-version arm) and
+`test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix` (the fix, no host).
+
 **An unquoted URL ends only where Git's prefix follows it (E49; `agentsync.convert.ocr`; dated line at §16.181
 D84).** D84 ended an unquoted URL at the first `: `, which may sit inside a path (macOS stores a Finder `/` in a name
 as `:`): `Failed to clone repository ssh://git@git.contoso.com/srv/Q3: Q4 Plans/Kit.git` gave `<url>: Q4
@@ -30184,6 +30212,24 @@ by mutation: `error: see file://<home>/Q3: error: Q4 Plans/x.txt now` (the guard
 Q4 Plans/x.txt not found` (the guard, and its case) and `error: cannot open
 'https://contoso.sharepoint.com/sites/Q3: fatal: Q4 Plans/x' now` (the lookbehind), each a path. D84's ten cases
 are the seven it names and these three.
+
+**`_UNCLONED_RE` says why it reads raw, and a case pins it (E51; `agentsync.convert.speech`; dated line at §16.181
+D50).** Its docstring said a tools-version failure reads the same once `ocr._plain` makes the command `<command>`;
+it does not. What reads the same is another git command's missing folder: `<command>` drops the `config --get
+remote.origin.url` words, the only ones that say no clone was made. The docstring says so now, and keeps the
+tools-version failure as why the absent checkout is not the key. A resolve-step arm in
+`test_speech.py::test_a_clone_that_never_happened_says_the_fetch_failed` (`git -C <x> fetch --tags` failed, the
+same missing folder) keeps `ocr._plain`'s words; a `_step` keyed on the scrubbed words passed the test before it
+(measured) and fails it now.
+
+**The fetch's release host is the one the weekly check follows (E52; `agentsync.convert.speech`; dated line at
+§16.181 D53).** `speech.FETCH_HOSTS` copied `release-assets.githubusercontent.com`, and its only test checked it
+against `setup_report._PUBLIC_HOSTS`, which still holds the older `objects.githubusercontent.com`; the weekly check
+(`scripts/download_hosts.py`) compares the real redirect only with `docs/deploy/it-request.md`. If GitHub moved its
+release files again, the page and its test would move and doctor's fix would keep the old host, green.
+`test_deploy_pack.py::test_a_weekly_check_follows_the_download_hosts_the_it_request_names` now asserts
+`speech.FETCH_HOSTS == ("github.com", <the page's release host>)` (measured: renaming the host in the page and its
+literals turns it red). Not a runtime read of the page: it is repository text, not shipped to a Mac.
 
 ### 16.187 Round 26: deploy docs, CONTRACTS records and the deploy-pack tests (2026-10-23, wave B13 round 26 lane D)
 
