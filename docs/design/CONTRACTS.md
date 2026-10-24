@@ -30956,6 +30956,12 @@ the same rule. Test:
 and the sync say run 4, no trailer repeats, run 4's index line and month heading are written; with the index aside
 and a curated commit at HEAD the hint still reads run 3).
 
+**Each constant in cycle.py keeps its own docstring (P48; `agentsync.cycle`).** Round 26's `NEW_START_UNSAID_META`
+landed between `_SECRET_RESCAN_META` and its attribute docstring, which then followed the new constant's docstring
+and documented nothing, the K52 defect at another constant. The block moved below that docstring.
+`test_cycle.py::test_every_module_docstring_in_cycle_follows_its_own_constant` fails on any module-level string
+after the module's docstring that does not follow an assignment, and checks both constants' first words.
+
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 
 Lane D's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the

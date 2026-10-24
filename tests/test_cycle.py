@@ -3235,6 +3235,35 @@ def test_the_stub_render_meta_keeps_its_own_docstring() -> None:
     assert str(doc.value.value).startswith("The ``publish.STUB_RENDER`` the stub pages were last re-rendered")
 
 
+def test_every_module_docstring_in_cycle_follows_its_own_constant() -> None:
+    """B13 round 27 P48: round 26's ``NEW_START_UNSAID_META`` landed between ``_SECRET_RESCAN_META`` and its
+    attribute docstring, which then followed the new constant's docstring and documented nothing. Each
+    module-level string after the module's docstring follows an assignment, so the K52 defect cannot come
+    back at another constant."""
+    tree = ast.parse(Path(cycle_mod.__file__).read_text(encoding="utf-8"))
+    stray = [
+        node.lineno
+        for prev, node in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and not isinstance(prev, ast.Assign | ast.AnnAssign)
+    ]
+    assert stray == [], stray
+    after = {
+        node.targets[0].id: nxt
+        for node, nxt in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+    }
+    for name, head in (
+        ("_SECRET_RESCAN_META", 'Manifest meta: "1" from the run that found the secret-scan rules moved'),
+        ("NEW_START_UNSAID_META", "Manifest meta key: the person's new start"),
+    ):
+        doc = after[name]
+        assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant), name
+        assert str(doc.value.value).startswith(head), (name, doc.value.value)
+
+
 def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -294,12 +294,12 @@ _SECRET_RULES_META = "secret_rules"
 identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
 again, and every published page is scanned again (``_Cycle._check_secret_rules``)."""
 _SECRET_RESCAN_META = "secret_rescan_pending"
+"""Manifest meta: "1" from the run that found the secret-scan rules moved until a run has scanned every
+published page again (a run that fails before its secret scan leaves it set)."""
 NEW_START_UNSAID_META = "new_manifest_unsaid"
 """Manifest meta key: the person's new start the LaunchAgent's poll ran first, ``{"pages": N, "orphans":
 [rel, ...]}``, whose note and WARNINGs reached only the poll log; the next foreground sync says them once and
 clears it, and status counts it read-only (B13 round 26 E74)."""
-"""Manifest meta: "1" from the run that found the secret-scan rules moved until a run has scanned every
-published page again (a run that fails before its secret scan leaves it set)."""
 _SECRET_WAITING_META = "secret_rescreen_waiting"
 """Manifest meta: a JSON list of ``[source_id, stable_id]``, the credential stubs that were online-only when
 the rules moved; each is marked for the re-screen once it is on this Mac again."""
