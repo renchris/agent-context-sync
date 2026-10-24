@@ -5781,6 +5781,80 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
     assert [pairs.get(id(stop), "-") for stop in recorded] == told
 
 
+def _late_stop_report(env: dict[str, str], stop_at: str) -> str:
+    """The shell report of an attempt (v33) whose end line is at 10:05:00 and whose agent logged, at 10:05:40
+    (friction line F5), the step 3 error for a lost-manifest stop agentsync logged at ``stop_at``."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD + "2026-10-14T10:05:00Z | end | finished\n"
+        "2026-10-14T10:05:40Z | step 3 | error | agentsync sync exited 1: its state file is missing | -\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        f"2026-10-14T{stop_at}Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    return report_path(env).read_text()
+
+
+_LATE_HEAD = (
+    "Step-3 sync stops agentsync logged in sync-stops.log beside install.log after this attempt's end line "
+    "(they do not change the outcome):"
+)
+
+
+def test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart(env: dict[str, str]) -> None:
+    """B13 round 26 E76, the shell half of round 25 D5: the stop window ends at the attempt's end line, so a
+    stop logged after it had no line in the shell report, while the agent's line for it stayed in the
+    attempt. As setup_report._late_stops shows it: a block of its own after the attempt's, from the end line
+    to the attempt's own last timed line, each stop paired with the agent's line after the end line; the
+    outcome and its stop count do not read it, and a stop after the attempt's last line is not in it."""
+    text = _late_stop_report(env, "10:05:30")
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    block = installer.split(f"\n{_LATE_HEAD}\n\n", 1)[1]
+    lines = [ln for ln in block.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    assert lines == [
+        "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+        "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's (F5: "
+        "the agent's account of it)"
+    ], installer
+    assert "during this attempt:" not in installer, installer
+    assert _summary(text)[2] == NOT_COMPUTED, "no outcome reads it"
+    # after the attempt's own last line (10:05:40, plus 1 s): no part of it
+    text = _late_stop_report(env, "10:05:42")
+    assert _LATE_HEAD not in text and "sync-stops.log" not in text, text
+
+
+@pytest.mark.parametrize("cited", [True, False])
+def test_the_shell_report_says_what_its_f_ids_are(env: dict[str, str], cited: bool) -> None:
+    """B13 round 26 E4, E32: the shell report cites a stop's account as "F11", the line of friction.md, but
+    its friction section, a raw fence, never said what F<n> is, where the agentsync report numbers its lines
+    and says "the F<n> ids in the Summary are these numbers". It says so before the fence when it cites one,
+    and only then. The fence stays raw, so the link still fills Prompt version and Agent from it, and a
+    second report read back from the first (friction.md gone) carries neither the sentence nor numbers."""
+    text = _late_stop_report(env, "10:05:30" if cited else "10:05:42")
+    section = text.split("\n## Agent friction log\n\n", 1)[1].split("\n## ", 1)[0]
+    said = (
+        "The `F<n>` ids in the Summary and the Installer section are line numbers in this log, counting its "
+        "first line as 1."
+    )
+    assert section.startswith(f"{said}\n\n~~~text\n") is cited, section
+    assert ("(F5: the agent's account of it)" in text) is cited
+    fence = section.split("~~~text\n", 1)[1].split("\n~~~", 1)[0].splitlines()
+    assert fence[4].startswith("2026-10-14T10:05:40Z | step 3 | error | "), fence  # F5, its 5th line
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
+    assert fields["prompt_version"] == ["v33"] and fields["agent"] == ["Contoso Agent"], fields
+    friction_path(env).unlink()
+    assert install_sh(env, "--report-only").returncode == 0
+    again = report_path(env).read_text()
+    section = again.split("\n## Agent friction log\n\n", 1)[1].split("\n## ", 1)[0]
+    assert said not in again and section.startswith("~~~text\nAttempt: "), section
+
+
 def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report(
     env: dict[str, str],
 ) -> None:

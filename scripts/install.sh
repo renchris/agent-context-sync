@@ -878,6 +878,10 @@ FRICTION_AWK='
 # looking for a step that does not exist (B13 round 26 E16). It names no chmod, which the prompt's chmod rule
 # would read as the agent's, and no path: status, which decides it per path (doctor's _opens_first), does.
 SHUT_OPEN="; if status names a folder shut to this account, they open it first, as status says"
+# The friction section's sentence for the F<n> ids the Summary and the Installer section cite (B13 round 26 E4,
+# E32), as setup_report says its own "the F<n> ids in the Summary are these numbers"; friction_text leaves it
+# out when it reads an earlier report's section back.
+F_IDS_SAID="The \`F<n>\` ids in the Summary and the Installer section are line numbers in this log, counting its first line as 1."
 STEP1_ERROR_RE='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step 1 [|] error [|]'
 friction_attempt_stopped() {
 	local f
@@ -3453,8 +3457,12 @@ attempt_ran_no_install() {
 # governance file, 600 any other); a person's stop any other line, whatever its chmod words (round 26 ruling 11
 # refined again: E66, E77). A stamp is read as the prompt's "date -u +%FT%TZ" writes it, or with a fraction of a
 # second, read at its whole second (FRICTION_AWK, round 26 E77); Python also reads an offset.
-fallback_sync_stops() {
-	local f s w v mt
+# With "late", the stops logged at or after the attempt's end line, up to its own last timed line, plus 1 s,
+# each paired with the step 3 errors logged after that end line, as setup_report._late_stops gives them (round
+# 25 D5; round 26 E76): display only, never the outcome's count, and nothing when the attempt has no end line
+# or no timed line after it. Never the friction log's last write.
+fallback_sync_stops() { # [late]
+	local f s w v mt late="${1:-}"
 	f="$(friction_file)"
 	s="${SETUP_LOG%/*}/sync-stops.log"
 	[ -f "$f" ] && [ -f "$s" ] || return 0
@@ -3472,12 +3480,15 @@ fallback_sync_stops() {
 	# fractional mtime + 1 s
 	mt="$(/usr/bin/stat -f %Fm "$f" 2>/dev/null | LC_ALL=C awk '/^[0-9]+(\.[0-9]*)?$/ { s = int($1); if ($1 + 0 > s) s++; print s }' || true)"
 	[ -z "$mt" ] || mt="$(utc_stamp "$(date -u -r "$mt" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)")"
-	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" "$FRICTION_AWK"'
+	[ -z "$late" ] || mt=""
+	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" -v late="$late" "$FRICTION_AWK"'
 		BEGIN {
 			split(w, a, " "); lo = a[1]; last = a[3] != "-" && a[3] > lo ? a[3] : lo
 			if (mt != "" && mt > last) last = mt
 			hi = a[2]; edge = hi == "-"
 			if (edge) hi = last
+			# the late window: from the end line, in its own second, to the last timed line after it
+			if (late != "") { if (a[2] == "-" || a[3] == "-" || a[3] <= a[2]) exit; slo = a[2]; shi = a[3] }
 			stamp = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z"
 		}
 		function trim(t) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", t); return t }
@@ -3506,7 +3517,7 @@ fallback_sync_stops() {
 		FILENAME == fr {
 			t = $0; sub(/\r$/, "", t)
 			if (!match(t, "^[ \t]*([-*][ \t]+)?`?" stamp "`?[ \t]*[|]")) next
-			if (done) next
+			if (done && late == "") next
 			at = substr(t, RSTART, RLENGTH); sub(/^[^0-9]*/, "", at); at = substr(at, 1, 20)
 			rest = substr(t, RSTART + RLENGTH)
 			n = index(rest, "|"); head = tolower(trim(n ? substr(rest, 1, n - 1) : rest))
@@ -3515,7 +3526,7 @@ fallback_sync_stops() {
 				if ((head == "" || head == "finished" || index(head, "finish") == 1) && at >= lo) done = 1
 				next
 			}
-			if (at < lo || !match(head, /^(step[ \t]*)?[0-9]+$/)) next
+			if (at < lo || (late != "" && !done) || !match(head, /^(step[ \t]*)?[0-9]+$/)) next
 			sub(/^step[ \t]*/, "", head)
 			if (head + 0 != 3 || !n) next
 			rest = substr(rest, n + 1); n = index(rest, "|")
@@ -3531,7 +3542,8 @@ fallback_sync_stops() {
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
 		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
 		{ at = substr($0, 1, 20) }
-		at < lo || (edge ? secs(at) > secs(hi) : at >= hi) { next }
+		late == "" && (at < lo || (edge ? secs(at) > secs(hi) : at >= hi)) { next }
+		late != "" && (at < slo || secs(at) > secs(shi)) { next }
 		{
 			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
 			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
@@ -4026,6 +4038,14 @@ fallback_body() {
 	say "## Agent friction log"
 	say ""
 	if [ -n "$friction" ]; then
+		# what an F<n> id the report cites is, only when it cites one, as the agentsync report says it (B13 round
+		# 26 E4, E32): a stop's id is its line in friction.md (fallback_sync_stops), and the fence shows that
+		# file from its first line. Outside the fence and raw inside it, as the link, the redaction and
+		# friction_text read the fenced lines
+		if { fallback_sync_stops; fallback_sync_stops late; } | LC_ALL=C awk '$5 ~ /^F[0-9]+$/ { f = 1 } END { exit !f }'; then
+			say "$F_IDS_SAID"
+			say ""
+		fi
 		# fenced as setup_report._fence does: unfenced, the lines ran into one paragraph and a placeholder such as
 		# <folder-1> read as an HTML tag a renderer drops (B13 round 6 G6); a fence inside is broken up
 		say "~~~text"
@@ -4160,6 +4180,18 @@ fallback_body() {
 	if [ -n "$k" ]; then
 		say ""
 		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
+		say ""
+		while read -r n p v o fl; do
+			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
+		done <<<"$k"
+	fi
+	# and those logged after the attempt's end line, in a block of their own, as the agentsync report's D5
+	# block (B13 round 26 E76): a line logged after the finish cannot have stopped the run, so no outcome reads
+	# them, while the agent's line for one stayed in the attempt with no stop beside it
+	k="$(fallback_sync_stops late)"
+	if [ -n "$k" ]; then
+		say ""
+		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log after this attempt's end line (they do not change the outcome):"
 		say ""
 		while read -r n p v o fl; do
 			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
@@ -4593,7 +4625,7 @@ friction_text() {
 	if [ -f "$f" ]; then
 		head -c 262144 "$f"
 	elif [ -f "$REPORT_PATH" ]; then
-		LC_ALL=C awk '/^## / { found = ($0 == "## Agent friction log"); next } found { print }' "$REPORT_PATH" |
+		LC_ALL=C awk -v said="$F_IDS_SAID" '/^## / { found = ($0 == "## Agent friction log"); next } found && $0 != said { print }' "$REPORT_PATH" |
 			LC_ALL=C grep -v '^~~~' |
 			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi
