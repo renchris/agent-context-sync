@@ -5727,6 +5727,25 @@ def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
         "a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and "
         "doctor's state_dir.manifest FAIL still stands: the person's to fix"
     ), failed
+    # B13 round 27 P102: two FAILs of one check are two, in the person's stop and in a known-cause bucket
+    wal = setup_report._SyncStop(at, "manifest-wal", "person", None, False, "misplaced")
+    two = ["state_dir.files", "state_dir.files"]
+    failed = setup_report.compute_outcome(att, runs, sync_stops=[wal], persons_fails=two)
+    assert failed.why[1].endswith("and doctor's 2 state_dir.files FAILs still stand: the person's to fix"), (
+        failed
+    )
+    both = setup_report.compute_outcome(
+        att, runs, sync_stops=[wal], persons_fails=[*two, "state_dir.manifest"]
+    ).why[1]
+    assert both.endswith(
+        "doctor's 2 state_dir.files and state_dir.manifest FAILs still stand: the person's to fix"
+    )
+    bucket = "from the state file's write-ahead log and shared-memory file, which are not files"
+    known = [(name, bucket) for name in (*two, "state_dir.manifest")]
+    helped = setup_report.compute_outcome(att, runs, doctor_fails=known)
+    assert helped.why[-1] == (
+        f"3 doctor FAILs with a known cause, {bucket}: state_dir.files twice, state_dir.manifest"
+    ), helped
 
 
 @pytest.mark.usefixtures("clean_doctor")

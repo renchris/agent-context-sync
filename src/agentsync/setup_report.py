@@ -2858,9 +2858,13 @@ def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str], *, earli
         then = "no later sync in this attempt ended 0" if earlier else "no later sync ended 0"
     elif earlier or not persons_fails:
         then = "no sync in this attempt is known to have ended 0 after it"
-    else:
-        names = ", ".join(dict.fromkeys(persons_fails))
-        then = f"doctor's {names} FAIL still stands"
+    else:  # B13 round 27 P102: two FAILs of one check are two
+        names = " and ".join(n if k == 1 else f"{k} {n}" for n, k in Counter(persons_fails).items())
+        then = (
+            f"doctor's {names} FAIL still stands"
+            if len(persons_fails) == 1
+            else f"doctor's {names} FAILs still stand"
+        )
     first = _LINK_FIRST if stop.link == "unusable" else ""
     return f"a sync at step 3 exited 1 on {stop.what}, {which}, and {then}: the person's to fix{first}"
 
@@ -3160,7 +3164,12 @@ def compute_outcome(
         late = [s for s in late_stops if s.owner == "person"]
         for bucket, names in known.items():
             fails = _plural(len(names), "doctor FAIL")
-            reason = f"{fails} with a known cause, {bucket}: {', '.join(names)}"
+            # B13 round 27 P102: a check named once, with its count in words (no bracket or "x" inside)
+            said = ", ".join(
+                n if k == 1 else f"{n} twice" if k == 2 else f"{n} {k} times"
+                for n, k in Counter(names).items()
+            )
+            reason = f"{fails} with a known cause, {bucket}: {said}"
             if late and attempt is not None and Counter(names) <= Counter(persons_fails):
                 after = "a sync stop" if len(late) == 1 else f"{len(late)} sync stops"
                 reason += (
