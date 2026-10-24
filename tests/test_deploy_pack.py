@@ -8878,11 +8878,13 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     head = doctor.AGAIN_UNDER_INSTALL_SH.replace(doctor.INSTALL_SH, "<install.sh>")
     # B13 round 20 X21 (lane B) changed the head after X68's line: X68 quotes round 19's, X21 round 20's, and
     # B13 round 21 Y20 (lane B) the current, with no bracket of its own
-    assert head.startswith("run <install.sh> again without --report-only, which builds nothing")
+    # B13 round 27 P109 (lane B) gave --report-only its own subject, so "builds nothing" is not the re-run's
+    assert head.startswith("run <install.sh> again without --report-only, since a --report-only run builds")
     claims, _bare, _held, _unheld = _dated_line_scan()
     assert ("16.151", ["X68"], "16.132", "U78") in claims
     assert ("16.149", ["X20", "X21"], "16.132", "U78") in claims
     assert ("16.155", ["Y20"], "16.132", "U78") in claims
+    assert ("16.190", ["P109"], "16.132", "U78") in claims
     u78 = " ".join(
         _contracts_section(
             "**A time-out under install.sh does not name the same re-run twice", "\n\n"
@@ -8895,7 +8897,12 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     round_20 = "run <install.sh> again (it keeps the folders already synced; not --report-only, which builds"
     round_20 += " nothing)"
     assert f"§16.149 X21: under install.sh `_again_fix` starts `{round_20}`" in u78
-    assert f"§16.155 Y20: under install.sh `_again_fix` starts `{head}`" in u78
+    round_21 = (
+        "run <install.sh> again without --report-only, which builds nothing; a plain run keeps the folders"
+    )
+    round_21 += " already synced"
+    assert f"§16.155 Y20: under install.sh `_again_fix` starts `{round_21}`" in u78
+    assert f"§16.190 P109: under install.sh `_again_fix` starts `{head}`" in u78
 
 
 def test_y49s_line_says_staging_is_emptied_in_place() -> None:

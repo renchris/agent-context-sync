@@ -24027,6 +24027,9 @@ Amended 2026-10-20, §16.149 X21: under install.sh `_again_fix` starts `run <ins
 already synced; not --report-only, which builds nothing)`, with no options repeated.
 Amended 2026-10-20, §16.155 Y20: under install.sh `_again_fix` starts `run <install.sh> again without
 --report-only, which builds nothing; a plain run keeps the folders already synced`, with no bracket of its own.
+Amended 2026-10-24, §16.190 P109: under install.sh `_again_fix` starts `run <install.sh> again without
+--report-only, since a --report-only run builds nothing; a plain run keeps the folders already synced`, with no
+bracket of its own.
 
 **A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
 at §16.126 T17, T77).** It gave none, and round 16 left T77's optional part unrecorded. `_PANDOC_BUSY_START` is `any
@@ -30707,7 +30710,105 @@ Reserved for round 27 lane RB of B13.
 
 ### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
 
-Reserved for round 27 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 27 rulings 15,
+17 and 18; the words below were sent to lanes RA, RB and D before they built their halves.
+
+**P131, P132, P133, P134, P135, P136, P43: every link kind at a governance file and at the heartbeat is the
+person's (`agentsync.ops.doctor`, `agentsync.governance`, `agentsync.ops.lock`, `agentsync.cli`; ruling 15).** A
+symlink to nothing at holds.json read as no holds, so `purge --queue` erased a page under a hold on all, history
+and all. `doctor.governance_file_kind` is `state_file_kind` plus a link to nothing (`a symlink to nothing`); a link
+to a regular file stays ok. `state_file_kind` names a link through a file (ENOTDIR at the link itself) `a symlink to
+nothing`. `governance._read_json` raises `GovernanceNotAFileError` for a link to nothing, a loop or a link through a
+file at the file itself and for a folder this account cannot open there, never the empty default or "unreadable
+... fix or remove it by hand"; the same errnos from a folder above the file keep their `GovernanceError`, its cause
+kept, so a loop at governance/ never sends the person to move a file under it. The audit trail is judged before
+its `O_CREAT` open, which followed a link to nothing and created its target. `lock.read_regular_bytes` reads a loop
+or a link through a file at the path itself as not a regular file, so the next pass's rename replaces a
+heartbeat.json link and status warns that it does; from a folder above, the `OSError` stays that folder's. A
+folder this account cannot open at a governance file or heartbeat.json is judged by its lstat before the open's
+EACCES: status and every command say `the person runs chmod 700 <p> first, which is reversible, ...; then moves
+<p> aside, keeping a copy` (`governance._not_a_file_words` takes `doctor._opens_first`). Over a hold list that
+cannot be read no purge is invited (`governance.hold_list_unread`: no WAITING line, and the purge_queue warn has
+no fix). reconcile, accept-deletions, materialise and the checkpoint alias run sync's guard
+(`_not_a_file_stop(manifest=False)`; P136 and P43 are one defect); a link's stop record is named by where it
+stands. Tests: `test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_command` (every link kind
+at every governance file), `test_a_hold_list_behind_a_link_to_nothing_is_never_read_as_no_holds`,
+`test_a_working_hold_list_still_passes`,
+`test_a_loop_at_the_governance_folder_never_sends_the_person_to_a_file_under_it`,
+`test_a_link_at_heartbeat_json_that_reaches_no_file_is_rewritten_by_the_next_pass`,
+`test_a_shut_folder_at_a_state_file_takes_its_chmod_then_the_move_in_status_and_every_command`,
+`test_every_cycle_command_runs_syncs_guard_of_a_state_file_that_is_not_a_file`, and in `test_ops_lock.py`
+`test_a_link_at_the_heartbeat_that_reaches_no_file_is_not_a_regular_file` and
+`test_a_file_above_the_heartbeat_keeps_its_own_error`.
+
+**P40, P112, P24, P46, P118: the new start's queued purges (`agentsync.governance`, `agentsync.cli`,
+`agentsync.loop`; ruling 17).** With no manifest and none lost (the person's new start), an upstream deletion or
+label escalation is `NEW_START_NOTE` ("not judged yet ... until the next sync builds the manifest"), never
+runnable: run blind, one erased a page whose file was still listed. After that sync, an entry queued before the
+manifest's first run that the manifest holds nothing for (no row, page, tombstone or alias) is
+`unresolved_note` ("not resolvable: ... erase it with `~/.local/bin/agentsync purge docs=<page path>`", counted by
+its first words, `UNRESOLVED_HEAD`), and a run
+that targets nothing for such an entry is never VERIFIED and never dequeued. A link to nothing in a folder the next
+sync creates the file through is the new start's too. The unjudged words name the FAIL that is there
+(`unjudged_note(check)`: state_dir.files for a regular manifest this account cannot read and write, else
+state_dir.manifest), and `purge` (the queue, its dry run, a selector) over a regular manifest that does not open
+stops on the state file's own error, whatever the queue holds, so "refuses until then" is true. Every count agrees
+with its number (`kept_purges`, `kept_escalations`, `unjudged_purges`, `new_start_purges`, `unresolved_purges`;
+the constants are the plural forms), and status's state line gives `queued purges kept: N (the
+governance.purge_queue line says why)`. Not built, measured: the verifier's point 3, a page path or retired id
+stored at queue time and purged after the new start: that runs, after the manifest that judged the entry is gone,
+exactly the purge ruling 17 says must wait or stay unresolved, and a path purge erases every blob ever at that
+path, another file's included. Tests:
+`test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it`,
+`test_a_link_to_nothing_at_the_manifest_after_the_new_start_claims_no_fail`,
+`test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_never_verified`,
+`test_over_a_manifest_this_account_cannot_open_purge_refuses_and_names_the_fail_that_is_there`,
+`test_the_queued_purge_words_count_with_agreement_and_status_says_the_sentence_at_most_twice`.
+
+**P111: a lost manifest beside a heartbeat.json that cannot be read is still lost (`agentsync.manifest`; ruling
+17).** A damaged heartbeat, a fifo or a folder there read as no record, so the sync started a new manifest with no
+word to the person. `manifest.lost_words` gives `LOST_MANIFEST_UNREAD` ("is missing, and heartbeat.json beside it
+cannot be read, so earlier passes cannot be ruled out") with `doctor.LOST_MANIFEST_FIX`; the readers that key on
+a lost manifest's line take either ending (`LOST_MANIFEST_WORDS`, which `agentsync.cli` imports); a heartbeat link to
+nothing, or none there, stays a first start. Tests:
+`test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost`,
+`test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass`.
+
+**P42, P41: a linked manifest's sides are its target's; a lost link to nothing never refuses a hold
+(`agentsync.ops.doctor`, `agentsync.cli`; ruling 18).** `doctor.manifest_sides(db)` gives the -wal and -shm where
+sqlite keeps them, beside a linked manifest's target (none for a loop); `side_not_a_file_at`,
+`sides_not_a_file_at`, `_check_state_dir`, `refused_state_files` and the CLI's role and listing lookups use it,
+`side_suffix` reads a side's role, and its chmod names its own path. Nothing beside the link is judged. A lost
+manifest that is a link to nothing in a usable folder is judged as a plain lost one, so hold and release run.
+Tests: `test_beside_a_linked_manifest_a_folder_at_its_targets_side_is_the_persons_not_one_beside_the_link`,
+`test_a_linked_manifests_side_this_account_cannot_open_is_named_by_its_own_folder`,
+`test_a_hold_over_a_lost_manifest_link_to_nothing_in_a_usable_folder_is_not_refused`.
+
+**P23, P25, P44, P47, P49, P50, P51, P122, P16, P146: status, doctor and the commands after round 26
+(`agentsync.cli`, `agentsync.ops.doctor`, `agentsync.governance`).** The FAIL a sync stops on leads status's NEXT
+and the report's Loop hook, ahead of the skill's step (`cli._state_stop_first`, keyed on the sync's own guard). A
+queue run that cannot judge its entries logs one WARNING, counted, its cause in words. Status reads the holds and
+the queue apart. The background sync's new start is said in the sentence: `note: a new manifest was started over
+N existing mirror pages by the background sync; ...`. Only a -wal fifo this account can open is left to sqlite.
+The stale-lock fix tries the config's label prefix, then the default. governance's word builder is
+`_not_a_file_words`. A shut state folder's lines name its one FAIL (`doctor.state_folder_shut_line`, worded by
+`state_folder_says_why`). The listing note names each side that is not a file by its role
+(`listing_state_side_note`, ending `LISTING_STATE_SIDE_TAIL` for a reader that keys on it; P16 and P146 are one
+defect).
+Tests: `test_a_state_file_a_sync_stops_on_leads_status_ahead_of_the_skill_step`,
+`test_a_fail_the_sync_reads_past_keeps_the_skill_step_first`,
+`test_a_queue_run_over_a_manifest_it_cannot_open_warns_once_in_words`,
+`test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file`,
+`test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_once`,
+`test_a_fifo_at_the_wal_this_account_cannot_open_stops_every_command_first`,
+`test_a_stale_lock_of_a_job_under_the_default_prefix_names_its_log`, `test_only_doctor_has_a_state_not_a_file`,
+`test_a_shut_state_folder_names_the_one_check_that_fails_it`,
+`test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role`.
+
+**P109: under install.sh "--report-only" has its own subject (`agentsync.ops.doctor`; amends §16.132 U78).**
+`doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again without --report-only, since a --report-only run builds
+nothing; a plain run keeps the folders already synced`, so "builds nothing" no longer reads as the re-run's, with
+no bracket of its own. Test: `test_ops_doctor.py` (`RUN_AGAIN_INSTALL`).
 
 ### 16.191 Round 27: the new start's counts, restored run numbers, the speech docstrings and the OCR URL cut (2026-10-24, wave B13 round 27 lane E)
 
