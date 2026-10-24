@@ -2188,8 +2188,12 @@ def _governance_folder_checks(config: Config) -> list[doctor.CheckResult]:
     """``governance.hold``'s FAIL for a governance/ folder this account cannot write into, with
     ``doctor.state_path_fix``'s fix (this account's chmod 700, another account's chown, the person's ACL or
     volume fix): a hold, its release and a queued purge each write a temporary file there, while a read of
-    holds.json in it still passes (B13 round 24 B61: status passed a 0500 folder every hold stopped on).
-    Nothing for a folder not there yet (a fresh install) or not a folder (no mode fixes the wrong kind)."""
+    holds.json in it still passes (B13 round 24 B61: status passed a 0500 folder every hold stopped on). A
+    second FAIL, with the person's chown (``doctor._persons_chown``), for a folder that takes a write but is
+    sticky and another account's, holding a file a hold replaces (holds.json, the purge queue, the suppression
+    list) that is also another account's: no rename replaces it (``governance.sticky_blocker``; B13 round 25
+    D45). Another account's folder this account can write otherwise passes (B13 round 26 E47). Nothing for a
+    folder not there yet (a fresh install) or not a folder (no mode fixes the wrong kind)."""
     root = expand(config.state_paths.root)
     gov = governance.governance_dir(root)
     try:
@@ -2635,7 +2639,8 @@ def _report_hooks() -> setup_report.ReportHooks:
             try:
                 return _next_or_fix(config, fixes)
             except Exception:
-                return []
+                # no FAIL to name: the baseline wait still follows, as status prints it (B13 round 26 E44)
+                return _docs_waits(config)
 
     return setup_report.ReportHooks(
         doctor=checks,
@@ -3303,11 +3308,13 @@ be (:func:`_misplaced`): a folder where the manifest belongs, a file where the s
 :data:`STATE_REFUSED_STEP`'s "cannot open", the access framing round 20's X49 took off such a path (B13 round
 22 Z51)."""
 STATE_MISPLACED_COMMAND_STEP = (
-    "a state file or folder is not where or what it should be, so this command did not run: run "
-    f"`{loop.BIN} status` and do what its NEXT says; its [FAIL] line names the fix"
+    "a state file or folder is not where or what it should be, so this command stopped before it finished: "
+    f"run `{loop.BIN} status` and do what its NEXT says; its [FAIL] line names the fix"
 )
-"""The same NEXT after any other command's ``error: state:`` line (curate, hold, accept-deletions, init): "so
-this sync did not run" was false after a curate or a hold, which ran no sync (B13 round 25 D44)."""
+"""The same NEXT after any other command's ``error: state:`` line (curate, hold, accept-deletions, init,
+add-source): "so this sync did not run" was false after a curate or a hold, which ran no sync (B13 round 25
+D44), and "so this command did not run" after add-source and init, which add the source or write the config
+before the state stop; "stopped before it finished" is true of both kinds (B13 round 26 E42)."""
 
 
 def _state_next(

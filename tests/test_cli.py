@@ -4433,6 +4433,28 @@ def test_status_keeps_the_baseline_wait_when_it_cannot_read_the_state(
         assert out[1] == loop.WAIT_PREFIX + want, out
 
 
+def test_the_reports_loop_keeps_the_baseline_wait_when_a_busy_state_has_no_fail(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 26 E44: with the loop state busy (an OperationalError, no FAIL to name) and the baseline
+    questions a draft, the report's Loop hook fell back to nothing and its Loop line dropped the baseline wait
+    status prints. The wait reads the docs repo alone, so the hook still gives it, and no NEXT of its own."""
+    _synced(initialised)
+    evals = expand(initialised.docs_repo) / "_eval"
+    evals.mkdir(exist_ok=True)
+    for name in ("questions.md", "answers.md"):
+        (evals / name).write_text("---\nstatus: draft\n---\n", encoding="utf-8")
+        (evals / name).chmod(0o600)
+    (want,) = loop.docs_waits(initialised)
+
+    def busy(*_: object, **__: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(loop, "next_step", busy)
+    monkeypatch.setattr(loop, "next_lines", busy)
+    assert cli._report_hooks().loop_next(initialised) == [loop.WAIT_PREFIX + want]
+
+
 @pytest.mark.parametrize("where", ["the state folder", "a folder above it"])
 def test_a_file_where_the_state_folder_or_a_folder_above_it_belongs_is_one_fail_the_persons(
     initialised: Config, capsys: pytest.CaptureFixture[str], where: str
@@ -5226,6 +5248,36 @@ def test_a_link_to_a_folder_at_heartbeat_json_stays_a_warn_the_next_pass_clears(
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if ln.startswith(("[warn] heartbeat ", "[FAIL] heartbeat "))], out
+
+
+@pytest.mark.parametrize("started_by", ["other", "launchd", None])
+def test_a_stale_lock_names_a_crash_log_only_where_one_is(
+    initialised: Config, started_by: str | None
+) -> None:
+    """B13 round 26 E12: after an interactive sync was killed, the stale-lock warn told the person to read
+    Library/Logs/agentsync/*.err.log, which did not exist. The fix comes from the holder sidecar of the same
+    pid: the job's own err.log when it is there; none for a sync started elsewhere; with no sidecar, the log
+    folder's err.logs only when there are any."""
+    lock = expand(initialised.state_paths.lock)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    info = lock_mod.LockInfo(pid=999_999, boot_time=1, started_at="2026-10-23T00:00:00Z", label="poll")
+    lock.write_text(info.render() + "\n", encoding="utf-8")
+    if started_by is not None:
+        holder = {"pid": 999_999, "label": "poll", "started_by": started_by}
+        lock_mod._holder_path(lock).write_text(json.dumps(holder), encoding="utf-8")
+    log_dir = expand(initialised.log_dir)
+    assert not log_dir.exists() or not list(log_dir.glob("*.err.log"))
+    (stale,) = doctor._check_lock(initialised)
+    assert not stale.ok and "ended without releasing it" in stale.detail, stale
+    assert stale.fix is None, stale  # no log there to read
+    if started_by == "other":
+        return
+    log_dir.mkdir(parents=True, exist_ok=True)
+    err = log_dir / f"{initialised.launchd_label_prefix}.poll.err.log"
+    err.write_text("Traceback\n", encoding="utf-8")
+    (stale,) = doctor._check_lock(initialised)
+    want = f"read the crash in {err}" if started_by == "launchd" else f"read the crash in {log_dir}/*.err.log"
+    assert stale.fix == want, stale
 
 
 def test_a_state_path_another_account_owns_gets_the_persons_chown(
@@ -6979,6 +7031,33 @@ def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sy
     hb.write_text("{not json", encoding="utf-8")  # corrupt: doctor's WARN, which the next pass rewrites
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert cli.HEARTBEAT_REFUSED_STEP not in capsys.readouterr().out
+
+
+def test_add_source_over_a_folder_at_the_manifest_says_it_stopped_before_it_finished(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 26 E42: D44's NEXT said "so this command did not run" after add-source, which had already
+    added the source before it stopped on a folder at the manifest. The NEXT says the command stopped before
+    it finished, true of add-source and init as of curate and hold."""
+    cfg = str(initialised.config_path)
+    db = expand(initialised.state_paths.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.mkdir()
+    folder = tmp_path / "contoso-more"
+    folder.mkdir()
+    (folder / "notes.txt").write_text("Contoso notes\n", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr()
+    assert "contoso-more" in load_config(Path(cfg)).config_path.read_text(encoding="utf-8"), (
+        "the source is added"
+    )
+    assert [ln for ln in out.out.splitlines() if ln.startswith("NEXT")] == [
+        f"NEXT: {cli.STATE_MISPLACED_COMMAND_STEP}"
+    ], out
+    assert "did not run" not in cli.STATE_MISPLACED_COMMAND_STEP
+    assert "stopped before it finished" in cli.STATE_MISPLACED_COMMAND_STEP
 
 
 @pytest.mark.parametrize("where", ["the state folder", "a folder above it"])

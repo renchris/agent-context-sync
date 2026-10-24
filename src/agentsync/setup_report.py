@@ -588,7 +588,7 @@ _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
 _UNNUMBERED = frozenset(
-    {"home", "user", "name", "serial", "host", "mdmhost", "tmp", "label", "remote", "value"}
+    {"home", "user", "name", "serial", "host", "mdmhost", "tmp", "label", "remote", "value", "path"}
 )
 _NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder-12>); never <mdmhost>
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
@@ -931,6 +931,7 @@ _LEGEND = {
         "path (neither need be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
+    "path": "<path> a link's target outside this home (a state file's or the docs repo's)",
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL, or a URL prefix, that a [governance] error or check quotes",
@@ -4620,7 +4621,35 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add_commit(sha)
     for value in _hold_values(r):
         red.add("value", value, ignore_case=True)
+    # Last: where a state file's link (or the docs repo's) points, outside this home, which doctor's FAIL and
+    # the init error print whole, as the person repairs by it: a volume's or a folder's name can name the
+    # company ("/Volumes/Contoso Drive"); exact values, longest first, so a path with spaces is one (E2)
+    with contextlib.suppress(Exception):
+        for target in _link_targets(r):
+            red.add("path", target)
     return red
+
+
+def _link_targets(r: _Run) -> list[str]:
+    """The targets outside this home of the manifest's, its sides' and the docs repo's symlinks, as written
+    and normalized, longest first (B13 round 26 E2)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    if r.config is None:
+        return []
+    db = expand(r.config.state_paths.db)
+    found: set[str] = set()
+    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"), expand(r.config.docs_repo)):
+        try:
+            if not p.is_symlink():
+                continue
+            target = doctor.dangling_target(p) or p.parent / p.readlink()
+        except OSError:
+            continue
+        for value in (str(target), os.path.normpath(str(target)), str(p.readlink())):
+            if value.startswith("/") and not _under_home(value):
+                found.add(value)
+    return sorted(found, key=len, reverse=True)
 
 
 def _hold_values(r: _Run) -> list[str]:

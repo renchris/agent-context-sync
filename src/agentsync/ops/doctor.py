@@ -53,7 +53,14 @@ from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folder
 from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
-from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat, read_regular_text
+from agentsync.ops.lock import (
+    STARTED_BY_LAUNCHD,
+    STARTED_BY_OTHER,
+    LockInfo,
+    SingleWriterLock,
+    read_heartbeat,
+    read_regular_text,
+)
 from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
 from agentsync.skill import HELPER_RETRY_CLAUSE
 from agentsync.text import plural
@@ -3120,10 +3127,33 @@ def _check_lock(config: Config) -> list[CheckResult]:
                 "lock",
                 f"free, but {desc} ended without releasing it; the next cycle breaks it and runs FULL passes",
                 Severity.WARN,
-                fix=f"read the crash in {config.log_dir}/*.err.log",
+                fix=_stale_lock_fix(config, path, body),
             )
         ]
     return [_ok("lock", "free")]
+
+
+def _stale_lock_fix(config: Config, path: Path, body: str) -> str | None:
+    """Where a dead holder's crash can be read, by the holder sidecar of the same pid: the background job's
+    own err.log when it is there; nothing for a sync started in a terminal or by a command, whose output went
+    to whatever started it; with no matching sidecar (an older build, a governance label), the log folder's
+    err.logs only when there are any. Never a log that does not exist: after a killed interactive sync it
+    sent the person to Library/Logs/agentsync/*.err.log, which was not there (B13 round 26 E12)."""
+    info = LockInfo.parse(body)
+    holder = SingleWriterLock.read_holder(path)
+    same = info is not None and holder is not None and holder.get("pid") == info.pid
+    started = holder.get("started_by") if same and holder is not None else None
+    log_dir = expand(config.log_dir)
+    if started == STARTED_BY_LAUNCHD and info is not None:
+        err = log_dir / f"{config.launchd_label_prefix}.{info.label}.err.log"
+        return f"read the crash in {err}" if err.is_file() else None
+    if started == STARTED_BY_OTHER:
+        return None
+    try:
+        found = any(log_dir.glob("*.err.log"))
+    except OSError:
+        found = False
+    return f"read the crash in {log_dir}/*.err.log" if found else None
 
 
 def lock_not_a_file(config: Config, kind: str) -> CheckResult:

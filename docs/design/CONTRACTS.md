@@ -29975,6 +29975,8 @@ command did not run"); curate, hold and accept-deletions over a folder at the ma
 a lost manifest prints sync's line with LOST_MANIFEST_FIX and that NEXT and exits 1, never "0 findings" and "run
 sync again". Tests: `test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_say_syncs_words`,
 `test_curate_over_a_lost_manifest_says_syncs_line_and_never_to_sync_again`.
+Amended 2026-10-23, §16.185 E42: the NEXT reads "so this command stopped before it finished", since add-source
+and init change something before the state stop and "did not run" was false after them.
 
 **D45: another account's governance folder this account can write passes.** Keyed on what a hold does: a folder
 that refuses a write FAILs as before; a writable one passes whoever owns it; a sticky one over another account's

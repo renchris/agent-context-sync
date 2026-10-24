@@ -13990,6 +13990,36 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
 
 
+def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 26 E2: a manifest link to nothing on another volume printed its target whole in the report's
+    Doctor FAIL line, a path that can name the company ("/Volumes/Contoso Drive"). Status and the CLI keep
+    it whole, since the person repairs by it; the report shows <path>, and its dangling-link bucket still
+    fires."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    paths = load_config(cfg).state_paths
+    db, heartbeat = expand(paths.db), expand(paths.heartbeat)
+    for side in db.parent.glob(db.name + "*"):
+        side.unlink()
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))  # no earlier passes: not lost
+    target = "/Volumes/Contoso Drive/agentsync/manifest.sqlite"
+    db.symlink_to(target)
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    assert f"is a symlink to {target}, whose folder" in capsys.readouterr().out
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "is a symlink to <path>, whose folder" in text, text
+    assert "Contoso Drive" not in text and "/Volumes/" not in text
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        "from a state file that is a link into a folder that is missing or refuses a write (1 check): "
+        in line
+    )
+
+
 def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
