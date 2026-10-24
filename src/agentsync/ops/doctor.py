@@ -51,7 +51,7 @@ from agentsync.errors import AgentSyncError, ConfigError, ConversionError, Manif
 from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
-from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
+from agentsync.manifest import LOST_MANIFEST, Manifest, lost_words, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import (
@@ -1327,8 +1327,11 @@ def state_file_kind(path: Path) -> str | None:
     socket or a fifo (:func:`_not_a_file`), a symlink loop, or a symlink to a folder (or another non-file),
     read through the link as sqlite and the setup report read it (B13 round 23 A46: a link read as a file, so
     no state_dir.manifest line was printed while the report pointed at one, and a loop got an ACL FAIL and a
-    link to a folder a ``chmod 600`` that would follow the link). None for a regular file, a symlink to one, a
-    dangling symlink (no manifest yet) or nothing there."""
+    link to a folder a ``chmod 600`` that would follow the link). A link through a file (ENOTDIR: a file where
+    a folder on its way belongs) is ``a symlink to nothing``, as :func:`link_kind` and :func:`dangling_target`
+    word it (B13 round 27 P132: it read as a file, so no guard saw it and a hold list behind it read as a
+    fault to report). None for a regular file, a symlink to one, a symlink whose target is missing (no
+    manifest yet; a governance file's judge is :func:`governance_file_kind`) or nothing there."""
     try:
         st = path.lstat()
     except OSError:
@@ -1338,9 +1341,31 @@ def state_file_kind(path: Path) -> str | None:
     try:
         target = path.stat()
     except OSError as exc:
-        return "a symlink loop" if exc.errno == errno.ELOOP else None
+        return {errno.ELOOP: "a symlink loop", errno.ENOTDIR: "a symlink to nothing"}.get(exc.errno or 0)
     kind = _not_a_file(target.st_mode)
     return None if kind is None else f"a symlink to {kind}"
+
+
+def governance_file_kind(path: Path) -> str | None:
+    """:func:`state_file_kind` of a governance file, where a symlink whose target is missing is ``a symlink
+    to nothing`` too, the person's (ruling 13): no first sync creates a hold list, and a dangling holds.json
+    read as no holds, so ``purge --queue`` erased a page under a hold on all (B13 round 27 P131). None for a
+    regular file, a link to one (a working setup never newly FAILs) or nothing there."""
+    kind = state_file_kind(path)
+    if kind is not None:
+        return kind
+    try:
+        if not stat.S_ISLNK(path.lstat().st_mode):
+            return None
+    except OSError:  # nothing there, or a folder above it this account cannot search: its own lines
+        return None
+    try:
+        path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return "a symlink to nothing"
+    except OSError:
+        return None
+    return None
 
 
 def dangling_target(path: Path) -> Path | None:
@@ -1852,7 +1877,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 # move works through the link (a copy restored follows it into the missing folder, and with
                 # heartbeat.json aside the sync stops on the link) and "rm" alone ends on the lost guard
                 # (B13 round 25 D71); the generic lost line below is not printed beside it
-                detail += f", and {LOST_MANIFEST}"
+                detail += f", and {lost_words(expand(sp.db)) or LOST_MANIFEST}"
                 fix = (
                     f"the person removes the link first: rm {_shell_path(expand(p))}; then "
                     + LOST_MANIFEST_FIX.removeprefix("the person ")
@@ -1954,9 +1979,8 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         # LOST_MANIFEST, which the listing note reads, and both moves of the fix work through such a link
         target = dangling_target(expand(sp.db))
         what = f"is a symlink to {target}, which does not exist; the manifest " if target is not None else ""
-        out.append(
-            _bad("state_dir.manifest", f"{expand(sp.db)} {what}{LOST_MANIFEST}", fix=LOST_MANIFEST_FIX)
-        )
+        lost = lost_words(expand(sp.db)) or LOST_MANIFEST  # an unread heartbeat says so (P111)
+        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {what}{lost}", fix=LOST_MANIFEST_FIX))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600
@@ -3291,6 +3315,11 @@ def _check_heartbeat(
         folder = heartbeat_not_a_file(config)  # no pass replaces a folder: never the warn's promise (E39)
         return [folder or _bad("heartbeat", f"{exc}; the next completed pass rewrites it", Severity.WARN)]
     except PermissionError as exc:  # its mode or its owner, by its cause (B13 round 21 Y43)
+        # a 0000 folder refuses the open before any kind is read: judged by its lstat, the person's move
+        # aside with its chmod first, never the chmod alone, after which the next sync still stops (P135)
+        folder = heartbeat_not_a_file(config)
+        if folder is not None:
+            return [folder]
         refused = refused_state_path(config, "heartbeat", exc)
         if refused is None:
             raise

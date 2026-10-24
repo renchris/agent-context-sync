@@ -736,3 +736,39 @@ def test_a_socket_or_folder_at_a_state_file_reads_as_not_a_regular_file(tmp_path
     finally:
         sock.close()
     assert lockmod.read_regular_bytes(tmp_path / "missing.json") is None
+
+
+@pytest.mark.parametrize("what", ["a symlink loop", "a link through a file"])
+def test_a_link_at_the_heartbeat_that_reaches_no_file_is_not_a_regular_file(
+    tmp_path: Path, what: str
+) -> None:
+    """B13 round 27 P134: a loop or a link through a file at heartbeat.json raised the open's raw OSError
+    (ELOOP, ENOTDIR), which write_heartbeat never caught, so no pass rewrote it. The link itself is not a
+    regular file (ValueError), and a pass's rename replaces it."""
+    hb = tmp_path / "heartbeat.json"
+    if what == "a symlink loop":
+        hb.symlink_to(hb)
+    else:
+        (tmp_path / "afile").write_text("", encoding="utf-8")
+        hb.symlink_to(tmp_path / "afile" / "heartbeat.json")
+    with pytest.raises(ValueError, match="not a regular file"):
+        lockmod.read_heartbeat(hb)
+    lockmod.write_heartbeat(
+        hb,
+        "contoso",
+        run_id=3,
+        pass_kind=None,
+        enumeration_complete=True,
+        ok=True,
+        auth_state="ok",
+        now_iso="2026-10-24T00:00:00Z",
+    )
+    assert stat.S_ISREG(hb.lstat().st_mode) and lockmod.read_heartbeat(hb)["contoso"]["run_id"] == 3
+
+
+def test_a_file_above_the_heartbeat_keeps_its_own_error(tmp_path: Path) -> None:
+    """P134's verifier: ENOTDIR from a file where the state folder belongs is that folder's own FAIL, never
+    "not a regular file" of a heartbeat that no pass could write there."""
+    (tmp_path / "state").write_text("", encoding="utf-8")
+    with pytest.raises(NotADirectoryError):
+        lockmod.read_regular_bytes(tmp_path / "state" / "heartbeat.json")

@@ -105,7 +105,13 @@ from agentsync.graph import auth as graph_auth  # the module, so a patch of Msal
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
-from agentsync.manifest import ACCESS_ERRNOS, LOST_MANIFEST, Manifest, manifest_lost
+from agentsync.manifest import (
+    ACCESS_ERRNOS,
+    LOST_MANIFEST,
+    LOST_MANIFEST_WORDS,
+    Manifest,
+    lost_words,
+)
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
@@ -1163,6 +1169,8 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
     if args.accept_deletions and not args.source:
         _err(f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE")
         return EXIT_USAGE
+    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+        return EXIT_FAILED
     accept = tuple(args.source) if args.accept_deletions else ()
     return _run(
         config,
@@ -1180,6 +1188,8 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     interactive sync it waits for a running cycle's lock: launchd never re-runs an operator's assertion after
     exit 75."""
     config = _config(args)
+    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+        return EXIT_FAILED
     return _run(
         config,
         mode=CycleMode.RECONCILE,
@@ -1333,6 +1343,8 @@ def _exclude_empty_source(config: Config, source_id: str) -> SourceConfig | None
 
 def _cmd_mat(args: argparse.Namespace) -> int:
     config = _config(args)
+    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+        return EXIT_FAILED
     budget = parse_size(args.budget, where="--budget") if args.budget is not None else None
     # an online-only recording whose download failed in this run is named once, by the cycle's alarm
     return _run(config, mode=CycleMode.POLL, budget_bytes=budget, materialise_paths=tuple(args.paths))
@@ -1462,7 +1474,10 @@ def _status_lines(config: Config) -> list[str]:
             f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
             f"`{loop.BIN} purge --queue`)"
         )
-    out += [f"queued purges kept: {line}" for line in governance.kept_lines(kept)]
+    if (
+        kept
+    ):  # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
+        out.append(f"queued purges kept: {len(kept)} (the governance.purge_queue line says why)")
     if gov is not None:
         try:
             cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
@@ -1472,8 +1487,13 @@ def _status_lines(config: Config) -> list[str]:
     for event in _launcher_events(config):
         out.append(f"launcher: {event}")
     db = config.state_paths.db
-    if manifest_lost(expand(db)):  # never "no sync has run" over a heartbeat that records passes (A29)
+    lost = lost_words(expand(db))
+    if lost == LOST_MANIFEST:  # never "no sync has run" over a heartbeat that records passes (A29)
         out.append("manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)")
+        return out
+    if lost is not None:  # a heartbeat.json that cannot be read rules no earlier sync out (B13 round 27 P111)
+        unread = "heartbeat.json cannot be read; the person decides: see state_dir.manifest"
+        out.append(f"manifest: missing ({unread})")
         return out
     if doctor.manifest_refused(expand(db)):
         # a link to nothing in a folder it cannot use, or a loop: never "the next sync starts a new one"
@@ -1703,7 +1723,7 @@ def _unread_words(
         )
         return f"{said}; the state_dir lines say why"
     if isinstance(exc, ManifestLostError):  # not "a file cannot be opened" (A29's reviewer)
-        said = "the state file is missing, but heartbeat.json records earlier passes"
+        said = "the state file " + (exc.reason or LOST_MANIFEST)  # an unread heartbeat too (P111)
         return f"{said}; the state_dir.manifest [FAIL] line says why"
     if isinstance(exc, ManifestPathError):  # its reason is kept apart from strerror (B13 round 20 X47)
         said = f"a file cannot be opened: {exc.reason}" if exc.reason else "a file cannot be opened"
@@ -1881,7 +1901,7 @@ def _listings_unread(
     state_dir.files check, which also FAILs a loose mode the loop reads past."""
     read = isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
     lost = any(  # missing after earlier passes, not unreadable: its own note (B13 round 24 B36)
-        r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST) for r in checks
+        r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST_WORDS) for r in checks
     )
     db = Path(state_root) / "manifest.sqlite" if state_root is not None else None
     if lost or isinstance(exc, ManifestLostError):
@@ -2252,7 +2272,7 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
     root = expand(config.state_paths.root)
     out: list[doctor.CheckResult] = []
     audit = governance.audit_path(root)
-    kind = doctor.state_file_kind(audit)
+    kind = doctor.governance_file_kind(audit)  # a link to nothing too, which a hold's O_CREAT follows (P131)
     if kind is None:
         try:
             # O_NONBLOCK: a fifo there that nothing reads fails at once (ENXIO), where the open hung status;
@@ -2416,7 +2436,11 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             f"{plural(len(queued), 'purge request')} queued (confirmed upstream deletions / label "
             f"escalations){also}"
         )
-        if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        if governance.hold_list_unread(config.state_paths.root):
+            # a hold list that cannot be read is no empty one: no run is invited, its FAIL says why (P131)
+            detail += "; not run while the hold list cannot be read: the governance.hold line says why"
+            out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
+        elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
             # install.sh prints the loop's WAITING ON YOU line for the queue: no second instruction here.
             out.append(
                 doctor.CheckResult(
@@ -2820,18 +2844,32 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
             _misplaced_next(args, said)
             return True
     db = expand(config.state_paths.db)
-    if manifest_lost(db):
+    lost = lost_words(db)
+    if lost is not None:
         # a manifest lost from a Mac that has synced: sync's line and the person's fix, exit 1, never "0
         # findings" and a NEXT to run sync again, which stops on it (B13 round 25 D77); curate opens no
         # manifest, so its guard is here, as B89's is
-        said = _misplaced(
-            args, ManifestLostError(f"{db} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
-        )
+        said = _misplaced(args, ManifestLostError(f"{db} {lost}", errno.ENOENT, reason=lost))
         if said is not None:
             _err(said)
             _misplaced_next(args, said)
             return True
     return _not_a_file_stop(args, config)
+
+
+def _open_state_or_raise(config: Config) -> None:
+    """Open the manifest when a regular file is there, so one this account cannot open or read raises the
+    error a sync stops on, which ``_main`` prints with its fix and exit code: a purge over it skipped the
+    queued purges it could not judge and exited 0 with only those queued, and stopped on the open only when a
+    DLP entry was queued too, while its words said it refuses (B13 round 27 P24). Judged by stat, so a fifo is
+    never opened; nothing there, or not a regular file, is the guards' before it."""
+    db = expand(config.state_paths.db)
+    try:
+        if not stat.S_ISREG(db.stat().st_mode):
+            return
+    except OSError:
+        return
+    Manifest(db).close()
 
 
 def _not_a_file_state(args: argparse.Namespace) -> tuple[str, Path] | None:
@@ -2932,8 +2970,12 @@ def _cmd_curate_renamed(args: argparse.Namespace) -> int:
 
 
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
-    """Hidden alias (KISS K06): run an interactive sync, which records the checkpoint itself."""
-    return _run(_config(args), mode=None)
+    """Hidden alias (KISS K06): run an interactive sync, which records the checkpoint itself, behind sync's
+    guard of a state file that is not a file (B13 round 27 P43)."""
+    config = _config(args)
+    if _not_a_file_stop(args, config, manifest=False):
+        return EXIT_FAILED
+    return _run(config, mode=None)
 
 
 def _cmd_install_skill(args: argparse.Namespace) -> int:
@@ -3117,6 +3159,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     if (args.queue or args.selector) and _lost_state_stop(args, config):
         return EXIT_FAILED  # dry run included: it would plan erasing pages no manifest read (ruling 14)
+    if args.queue or args.selector:
+        _open_state_or_raise(config)  # sync's own line and exit, whatever the queue holds (P24)
     if args.queue:
         dry_run = bool(args.dry_run)
         reports = governance.run_purge_queue(config, dry_run=dry_run)
@@ -3130,7 +3174,16 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
         stuck, kept = governance.partition_purges(config.state_paths, left)
-        if kept and all(why == governance.UNJUDGED_NOTE for _q, why in kept):
+        if kept and all(why == governance.NEW_START_NOTE for _q, why in kept):
+            # the new start's: the next sync's manifest judges them (B13 round 27 P40)
+            until = "until the next sync builds the manifest"
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {until}")
+        elif kept and all(why.startswith(governance.UNRESOLVED_HEAD) for _q, why in kept):
+            # nothing in the new manifest names them: its note says how to erase the page by hand (P112)
+            _out(
+                f"{plural(ran, 'queued purge')} run; {len(left)} still queued, not resolvable (see its note)"
+            )
+        elif kept and all(why.startswith("not judged: ") for _q, why in kept):
             # kept for the state file, not for a listed file: no manifest read judged them (E25)
             blind = "while the state file cannot be read"
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {blind}")
@@ -3430,6 +3483,11 @@ def _stop_role(config: Config, path: object) -> str:
         real(governance._holds_file(root)): "holds",
     }
     where = real(path)
+    if where in roles:
+        return roles[where]
+    # a link standing at a state file is named by where it stands, not by its target (B13 round 27 P132)
+    named = expand(Path(os.fsdecode(path)))
+    where = Path(os.path.realpath(named.parent)) / named.name
     if where in roles:
         return roles[where]
     gov = real(governance.governance_dir(root))

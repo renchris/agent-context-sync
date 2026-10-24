@@ -645,7 +645,7 @@ def test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_fi
     assert kept[0][1].startswith("stays queued: the label policy no longer refuses the file"), kept
     step = loop.next_step(loosened)
     assert not [w for w in step.waits if "purge" in w], step.waits
-    assert f"1 {governance.KEPT_ESCALATIONS}" in step.notes, step.notes
+    assert governance.kept_escalations(1) in step.notes, step.notes
     assert governance.KEPT_PURGES not in " ".join(step.notes), "worded for upstream deletions only"
     (rep,) = governance.run_purge_queue(loosened, now=NOW)
     assert rep.not_run and rep.not_run == kept[0][1]

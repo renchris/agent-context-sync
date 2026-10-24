@@ -43,6 +43,7 @@ from agentsync import (
     skill,
 )
 from agentsync import cycle as cycle_mod
+from agentsync import manifest as manifest_mod
 from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import (
@@ -2278,13 +2279,14 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_coun
     reason = governance.PurgeReason.UPSTREAM_DELETED
     assert governance.enqueue_purge(initialised.state_paths.root, selector, reason)
     head = git(repo, "rev-parse", "HEAD").strip()
-    kept = f"1 {governance.KEPT_PURGES}"
+    kept = governance.kept_purges(1)
 
     step = loop.next_step(initialised)
     assert not any("queued purge" in w for w in step.waits) and "governance.purge_queue" not in step.checks
     assert kept in step.notes
     lines = cli._status_lines(initialised)
-    assert f"queued purges kept: {kept}" in lines and not any(x.startswith("queued purges: ") for x in lines)
+    said = "queued purges kept: 1 (the governance.purge_queue line says why)"  # P118: the sentence once
+    assert said in lines and not any(x.startswith("queued purges: ") for x in lines)
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
     assert check.ok and check.severity is doctor.Severity.INFO and check.fix is None and check.detail == kept
     capsys.readouterr()
@@ -2320,14 +2322,16 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
 
     step = loop.next_step(initialised)
     assert next(w for w in step.waits if "queued purge" in w).startswith("1 queued purge: ")
-    assert f"1 {governance.KEPT_PURGES}" in step.notes
+    assert governance.kept_purges(1) in step.notes
     lines = cli._status_lines(initialised)
     assert any(x.startswith("queued purges: 1 (") for x in lines) and any(
         x.startswith("queued purges kept: 1 ") for x in lines
     )
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
     assert not check.ok and check.severity is doctor.Severity.WARN
-    assert check.detail.startswith("1 purge request queued") and check.detail.endswith(governance.KEPT_PURGES)
+    assert check.detail.startswith("1 purge request queued") and check.detail.endswith(
+        governance.kept_purges(1)
+    )
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
@@ -5121,6 +5125,10 @@ def _make_not_a_file(path: Path, what: str) -> Any:
         path.symlink_to(real)
     elif what == "a symlink loop":
         path.symlink_to(path)
+    elif what == "a link through a file":
+        afile = path.parent / "afile"
+        afile.write_text("", encoding="utf-8")
+        path.symlink_to(afile / path.name)
     else:
         raise AssertionError(what)
     return None
@@ -5140,6 +5148,19 @@ def _make_not_a_file(path: Path, what: str) -> Any:
         ("holds", "a fifo"),
         ("queue", "a folder"),
         ("suppressed", "a fifo"),
+        # B13 round 27 P131, P132, P133 (ruling 15): every link kind at every governance file
+        ("holds", "a symlink to nothing"),
+        ("queue", "a symlink to nothing"),
+        ("suppressed", "a symlink to nothing"),
+        ("audit", "a symlink to nothing"),
+        ("holds", "a link through a file"),
+        ("queue", "a link through a file"),
+        ("suppressed", "a link through a file"),
+        ("audit", "a link through a file"),
+        ("holds", "a symlink loop"),
+        ("queue", "a symlink loop"),
+        ("suppressed", "a symlink loop"),
+        ("audit", "a symlink loop"),
     ],
 )
 def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_command(
@@ -5163,8 +5184,11 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
         "holds": (gov / "holds.json", "the hold list", "governance.hold"),
         "queue": (gov / "purge-queue.json", "the purge queue", "governance.purge_queue"),
         "suppressed": (gov / "suppressed.json", "the suppression list", "governance.suppressed"),
+        "audit": (gov / "audit.jsonl", "the audit trail", "governance.audit"),
     }[where]
     sock = _make_not_a_file(path, what)
+    if what == "a link through a file":  # a file where a folder on its way belongs: no target (P132)
+        what = "a symlink to nothing"
     stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
     stops.parent.mkdir(parents=True, exist_ok=True)
 
@@ -5184,6 +5208,7 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
         assert any(ln.startswith("last runs: ") for ln in out), out  # the rest still prints
         if where == "lock":  # never "free" (E38)
             assert not [ln for ln in out if ln.endswith("— free") or ln == "lock: free"], out
+        assert not [ln for ln in out if "report it" in ln or "unreadable" in ln], out
         line = "error: state: " + failed.split(" — ", 1)[1]
         commands = [
             ["sync"],
@@ -5192,6 +5217,8 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
             ["hold", "all", "--release", "--owner", "Contoso Legal"],
             ["purge", "--queue"],
         ]
+        if where == "holds":
+            commands.append(["hold", "--list"])
         for argv in commands:
             capsys.readouterr()
             assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
@@ -5210,6 +5237,88 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
     path.rename(path.with_name(path.name + ".kept"))  # the person's fix, followed
     capsys.readouterr()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+@pytest.mark.parametrize("dangles", ["into a gone folder", "into a folder that is there"])
+def test_a_hold_list_behind_a_link_to_nothing_is_never_read_as_no_holds(
+    initialised: Config, capsys: pytest.CaptureFixture[str], dangles: str
+) -> None:
+    """B13 round 27 P131 (ruling 15): with a hold on all and a DLP purge queued, holds.json moved aside and
+    a link to nothing put in its place passed status, `hold --list` showed nothing, and `purge --queue`
+    erased the page under the hold, history and all. The link is the person's: status FAILs it, and
+    `hold --list`, `purge --queue` and `purge docs=` refuse in status's words with a NEXT; the page and its
+    commit stay."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    dlp = governance.PurgeSelector.parse(f"docs={page}", source_id=None)
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    holds = governance._holds_file(root)
+    holds.rename(root / "holds.kept")
+    there = holds.parent / "elsewhere"
+    if dangles == "into a folder that is there":
+        there.mkdir()
+    holds.symlink_to(there / "holds.json")
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    words = f"{holds} is a symlink to nothing, not a file: the hold list belongs there"
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert rc == cli.EXIT_FAILED and words in failed and "aside, keeping a copy)" in failed, out
+    assert not [ln for ln in out if "purge --queue" in ln], "no purge is invited over the hold list"
+    line = "error: state: " + failed.split(" — ", 1)[1]
+    for argv in (["hold", "--list"], ["purge", "--queue"], ["purge", f"docs={page}"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        said = capsys.readouterr()
+        assert said.err.splitlines() == [line], (argv, said.err)
+        assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")], (argv, said.out)
+    assert (repo / page).is_file() and git(repo, "log", "--all", "--oneline", "--", page).strip()
+    assert not there.joinpath("holds.json").exists(), "nothing created through the link"
+
+
+@pytest.mark.parametrize("what", ["a regular file", "a link to a regular file", "nothing"])
+def test_a_working_hold_list_still_passes(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """P131's verifier: the judge of a link to nothing never newly FAILs a working setup."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    holds = governance._holds_file(root)
+    if what == "a link to a regular file":
+        holds.rename(root / "holds.real")
+        holds.symlink_to(root / "holds.real")
+    elif what == "nothing":
+        holds.unlink()
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance")], out
+    assert cli.main(["hold", "--list", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_a_loop_at_the_governance_folder_never_sends_the_person_to_a_file_under_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P133's verifier: with governance/ itself a symlink loop every file under it opens with ELOOP; no
+    line may tell the person to move holds.json, purge-queue.json or suppressed.json aside, a move that
+    fails under a looping folder."""
+    cfg = _synced(initialised)
+    gov = governance.governance_dir(expand(initialised.state_paths.root))
+    if gov.exists():
+        gov.rename(gov.with_name("governance.kept"))
+    gov.symlink_to(gov)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    said = list(out)
+    for argv in (["sync"], ["hold", "--list"], ["purge", "--queue"]):
+        cli.main([*argv, "--config", cfg])
+        both = capsys.readouterr()
+        said += both.out.splitlines() + both.err.splitlines()
+    for name in ("holds.json", "purge-queue.json", "suppressed.json", "audit.jsonl"):
+        assert not [ln for ln in said if f"{name} aside" in ln], (name, said)
 
 
 @pytest.mark.parametrize("what", ["a folder", "a fifo"])
@@ -5248,6 +5357,106 @@ def test_a_link_to_a_folder_at_heartbeat_json_stays_a_warn_the_next_pass_clears(
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if ln.startswith(("[warn] heartbeat ", "[FAIL] heartbeat "))], out
+
+
+@pytest.mark.parametrize("what", ["a symlink loop", "a link through a file"])
+def test_a_link_at_heartbeat_json_that_reaches_no_file_is_rewritten_by_the_next_pass(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 27 P134 (ruling 15): a loop or a link through a file at heartbeat.json was a status FAIL
+    "could not read ... report it" for good, and every sync ended 0 leaving the link. It is the warn whose
+    promise is true: the next completed pass rewrites it, a regular file, and status passes it."""
+    cfg = _synced(initialised)
+    hb = expand(initialised.state_paths.heartbeat)
+    hb.unlink()
+    _make_not_a_file(hb, what)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK, out
+    assert any(
+        ln.startswith("[warn] heartbeat ") and ln.endswith("the next completed pass rewrites it")
+        for ln in out
+    ), out
+    assert not [ln for ln in out if ln.startswith("[FAIL] heartbeat ") or "report it" in ln], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert stat.S_ISREG(hb.lstat().st_mode)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK and not [
+        ln for ln in out if ln.startswith(("[warn] heartbeat ", "[FAIL] heartbeat "))
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 folder")
+@pytest.mark.parametrize("where", ["heartbeat", "holds", "queue", "suppressed", "audit"])
+def test_a_shut_folder_at_a_state_file_takes_its_chmod_then_the_move_in_status_and_every_command(
+    initialised: Config, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 27 P135 (ruling 15): a 0000 folder at heartbeat.json or a governance file got status's
+    agent chmod 700 alone (the open's EACCES came before any kind), after which the next sync still stopped,
+    and the governance commands the person's move aside with no chmod first, which macOS refuses. Status and
+    every command say the same: the chmod first, then the move aside; followed, the next sync runs clean."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    gov = governance.governance_dir(expand(sp.root))
+    path, check = {
+        "heartbeat": (expand(sp.heartbeat), "heartbeat"),
+        "holds": (gov / "holds.json", "governance.hold"),
+        "queue": (gov / "purge-queue.json", "governance.purge_queue"),
+        "suppressed": (gov / "suppressed.json", "governance.suppressed"),
+        "audit": (gov / "audit.jsonl", "governance.audit"),
+    }[where]
+    _make_not_a_file(path, "a folder")
+    path.chmod(0o000)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ")]
+        first = f"the person runs chmod 700 {doctor._shell_path(path)} first, which is reversible"
+        assert rc == cli.EXIT_FAILED and first in failed and "aside, keeping a copy" in failed, failed
+        line = "error: state: " + failed.split(" — ", 1)[1]
+        for argv in (["sync"], ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal"]):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+            assert capsys.readouterr().err.splitlines() == [line], argv
+        path.chmod(0o700)  # the words, followed: the chmod, then the move aside
+        path.rename(path.with_name(path.name + ".kept"))
+    finally:
+        if path.exists():
+            path.chmod(0o700)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["checkpoint"], ["accept-deletions", "source"], ["reconcile"], ["materialise"]],
+    ids=["checkpoint", "accept-deletions", "reconcile", "materialise"],
+)
+@pytest.mark.parametrize("where", ["heartbeat folder", "holds folder", "holds fifo"])
+def test_every_cycle_command_runs_syncs_guard_of_a_state_file_that_is_not_a_file(
+    initialised: Config, capsys: pytest.CaptureFixture[str], argv: list[str], where: str
+) -> None:
+    """B13 round 27 P43, P136 (one defect; ruling 15): reconcile, accept-deletions, materialise and the
+    checkpoint alias ran their cycle over a folder at heartbeat.json or a folder or fifo at holds.json and
+    exited 0 with WARNINGs, where sync refuses. Each refuses with status's line and the command's NEXT, exit
+    1, records no sync stop and leaves the folder."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    path = expand(sp.heartbeat) if where == "heartbeat folder" else governance._holds_file(expand(sp.root))
+    _make_not_a_file(path, where.split()[1].replace("folder", "a folder").replace("fifo", "a fifo"))
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    before = stops.read_text(encoding="utf-8") if stops.exists() else ""
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith(("[FAIL] heartbeat ", "[FAIL] governance.hold "))]
+    capsys.readouterr()
+    assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+    said = capsys.readouterr()
+    assert said.err.splitlines() == ["error: state: " + failed.split(" — ", 1)[1]], said.err
+    assert said.out.splitlines()[-1] == loop.NEXT_PREFIX + cli.STATE_MISPLACED_COMMAND_STEP, said.out
+    assert (stops.read_text(encoding="utf-8") if stops.exists() else "") == before
+    assert path.is_dir() if "folder" in where else stat.S_ISFIFO(path.lstat().st_mode)
 
 
 @pytest.mark.parametrize("started_by", ["other", "launchd", None])
@@ -7927,3 +8136,229 @@ def test_cli_imports_graph_auth_once_as_a_module_never_lazily() -> None:
     ]
     assert lazy == [], lazy
     assert cli.graph_auth is graph_auth
+
+
+# ---- B13 round 27 ruling 17: the new start's queued purges, a lost manifest beside an unread heartbeat ----
+
+
+def _new_start(config: Config, tmp: Path) -> None:
+    """The person's new start: the manifest, its sides and heartbeat.json moved aside, keeping a copy."""
+    sp = config.state_paths
+    db = expand(sp.db)
+    aside = tmp / "aside"
+    aside.mkdir(exist_ok=True)
+    for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"), expand(sp.heartbeat)):
+        if os.path.lexists(side):
+            side.rename(aside / side.name)
+
+
+def _queue_upstream(config: Config, rel: str | None, stable_id: str | None = None) -> governance.QueuedPurge:
+    """Queue an upstream deletion as a cycle does, a few minutes ago (before a new start the test makes)."""
+    import datetime as dt  # noqa: PLC0415
+
+    sid = stable_id or _stable_id(config, rel or "")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    ago = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=5)
+    reason = governance.PurgeReason.UPSTREAM_DELETED
+    assert governance.enqueue_purge(config.state_paths.root, selector, reason, now=ago)
+    (q,) = [q for q in governance.pending_purges(config.state_paths.root) if q.selector == selector]
+    return q
+
+
+def test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 27 P40 (ruling 17): after the person's new start (heartbeat.json aside), an upstream
+    deletion queued for a file still listed read runnable, status invited `purge --queue`, and the run erased
+    the page and its history. It is "not judged yet" until the next sync builds a manifest: no wait, no
+    invitation, the run leaves it and the repo as they are; then it stays queued, its file listed."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    _queue_upstream(initialised, "projects/sample.txt")
+    ((_q, why),) = governance.partition_purges(initialised.state_paths)[1]
+    assert why.startswith("stays queued: the manifest lists the file as live"), why
+    _new_start(initialised, tmp_path)
+    runnable, kept = governance.partition_purges(initialised.state_paths)
+    assert not runnable and [w for _q, w in kept] == [governance.NEW_START_NOTE], kept
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w], step.waits
+    assert governance.new_start_purges(1) in step.notes, step.notes
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
+    qfile = governance._queue_file(expand(initialised.state_paths.root))
+    before = (
+        qfile.read_bytes(),
+        git(repo, "rev-parse", "HEAD^{tree}"),
+        git(repo, "log", "--all", "--", page),
+    )
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert "1 still queued until the next sync builds the manifest" in capsys.readouterr().out
+    assert (
+        qfile.read_bytes(),
+        git(repo, "rev-parse", "HEAD^{tree}"),
+        git(repo, "log", "--all", "--", page),
+    ) == before
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    ((_q, why),) = governance.partition_purges(initialised.state_paths)[1]
+    assert why.startswith("stays queued: the manifest lists the file as live"), why
+
+
+def test_a_link_to_nothing_at_the_manifest_after_the_new_start_claims_no_fail(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 27 P46: over a link to nothing in a folder the next sync creates the file through, with
+    heartbeat.json aside, the queued-purge words named a state_dir.manifest FAIL status never printed and said
+    `purge --queue` refuses, which ran. It is the new start's: the next sync judges it."""
+    cfg = _synced(initialised)
+    _queue_upstream(initialised, "projects/sample.txt")
+    _new_start(initialised, tmp_path)
+    db = expand(initialised.state_paths.db)
+    db.symlink_to(db.with_name("gone.sqlite"))
+    _runnable, kept = governance.partition_purges(initialised.state_paths)
+    assert [w for _q, w in kept] == [governance.NEW_START_NOTE], kept
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "state_dir.manifest [FAIL]" in ln], out
+
+
+def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_never_verified(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P112 (ruling 17): a purge queued before the new start, for an id the new manifest holds
+    nothing of (a re-keyed item whose alias only the lost manifest had), targeted 0 items, read VERIFIED and
+    was dequeued while the page's history stayed; status and the loop invited it. It is "not resolvable":
+    kept, no invitation, never VERIFIED, and its note names the by-hand erase."""
+    cfg = _synced(initialised)
+    q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    _new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    runnable, kept = governance.partition_purges(initialised.state_paths)
+    assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
+    assert "purge docs=<page path>" in kept[0][1] and "mirror/source/" in kept[0][1]
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
+    for argv in (["purge", "--queue", "--dry-run"], ["purge", "--queue"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
+        said = capsys.readouterr().out
+        assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
+    # the run's own guard: a purge that targeted nothing is never dequeued as VERIFIED, judged or not
+    monkeypatch.setattr(governance, "_kept_queued", lambda _db, _q: "")
+    (rep,) = governance.run_purge_queue(initialised)
+    assert rep.not_run == governance.unresolved_note(q) and not rep.verified
+    assert governance.pending_purges(initialised.state_paths.root) == [q]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("dlp", [False, True], ids=["kept only", "with a DLP entry"])
+def test_over_a_manifest_this_account_cannot_open_purge_refuses_and_names_the_fail_that_is_there(
+    initialised: Config, capsys: pytest.CaptureFixture[str], dlp: bool
+) -> None:
+    """B13 round 27 P24, P46: over a 0000 manifest the queued-purge words named a state_dir.manifest FAIL
+    status never printed (its FAIL is state_dir.files) and said `purge --queue` refuses, while it exited 0
+    with the entry skipped, and stopped only when a DLP entry was queued too. They name state_dir.files, and
+    the queue, its dry run and a selector each stop on the state file's error, whatever the queue holds."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    _queue_upstream(initialised, "projects/sample.txt")
+    root = expand(initialised.state_paths.root)
+    if dlp:
+        sel = governance.PurgeSelector.parse("docs=mirror/source/README.txt.md", source_id=None)
+        assert governance.enqueue_purge(root, sel, governance.PurgeReason.DLP_REMEDIATION)
+    db = expand(initialised.state_paths.db)
+    qfile = governance._queue_file(root)
+    before = (qfile.read_bytes(), git(repo, "rev-parse", "HEAD^{tree}"))
+    db.chmod(0o000)
+    try:
+        capsys.readouterr()
+        _rc, out = _status(cfg, capsys)
+        assert any(ln.startswith("[FAIL] state_dir.files ") for ln in out), out
+        assert not [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")], out
+        said = [ln for ln in out if "queued purge waits on agentsync's state file" in ln]
+        assert said and all("the state_dir.files [FAIL] line says what to do first" in ln for ln in said), out
+        assert not [ln for ln in out if "state_dir.manifest" in ln], out
+        for argv in (["purge", "--queue"], ["purge", "--queue", "--dry-run"], ["purge", "docs=mirror/x.md"]):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+            err = capsys.readouterr().err.splitlines()
+            assert len([ln for ln in err if ln.startswith("error: state: ")]) == 1, (argv, err)
+    finally:
+        db.chmod(0o600)
+    assert (qfile.read_bytes(), git(repo, "rev-parse", "HEAD^{tree}")) == before
+
+
+@pytest.mark.parametrize("n", [1, 2])
+def test_the_queued_purge_words_count_with_agreement_and_status_says_the_sentence_at_most_twice(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, n: int
+) -> None:
+    """B13 round 27 P118: over a lost manifest status printed "1 queued purge(s) wait on ..." three times
+    (the loop's note, the governance.purge_queue line, the queued-purges-kept line). The count agrees, no
+    "(s)", and the full sentence is said at most twice: the kept line gives the count and points at it."""
+    cfg = _synced(initialised)
+    _queue_upstream(initialised, "projects/sample.txt")
+    if n == 2:
+        _queue_upstream(initialised, "projects/acme/Kickoff Notes.docx")
+    db = expand(initialised.state_paths.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    words = "1 queued purge waits on agentsync's state file" if n == 1 else "2 queued purges wait on"
+    assert any(words in ln for ln in out), out
+    assert not [ln for ln in out if "(s)" in ln], out
+    assert sum(1 for ln in out if "queued purge" in ln and "wait" in ln and "state file" in ln) <= 2, out
+    assert f"queued purges kept: {n} (the governance.purge_queue line says why)" in out, out
+    assert governance.kept_purges(1).startswith("1 upstream deletion stays queued while its file")
+    assert governance.kept_escalations(2).startswith("2 label-escalation purges stay queued")
+
+
+@pytest.mark.parametrize("what", ["damaged JSON", "a fifo", "a folder"])
+def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, what: str
+) -> None:
+    """B13 round 27 P111 (ruling 17): with manifest.sqlite gone and heartbeat.json damaged or a fifo, the
+    heartbeat read as no record, so the sync started a new manifest over the mirror with no word to the
+    person. It is still lost, in its own words and the lost manifest's fix; moving heartbeat.json aside, as
+    the fix says, starts the new manifest."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db, hb = expand(sp.db), expand(sp.heartbeat)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    if what == "damaged JSON":
+        hb.write_bytes(hb.read_bytes()[:20] + b"\x00garbage")
+    else:
+        hb.unlink()
+        _make_not_a_file(hb, what)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and f"{db} {manifest_mod.LOST_MANIFEST_UNREAD}" in failed, failed
+    assert doctor.LOST_MANIFEST_FIX in failed, failed
+    assert not [ln for ln in out if "the next sync starts a new one" in ln], out
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err
+    if what != "a folder":  # a folder stops the sync on its own move aside first, the person's too
+        assert manifest_mod.LOST_MANIFEST_UNREAD in err, err
+    assert not db.exists(), "no new manifest over earlier passes"
+    hb.rename(tmp_path / "heartbeat.kept")  # the fix, followed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert db.exists()
+
+
+def test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P111's verifier: the new rule is about a missing manifest only; beside one that is there, a damaged
+    heartbeat.json is rewritten by the next pass, as before."""
+    cfg = _synced(initialised)
+    hb = expand(initialised.state_paths.heartbeat)
+    hb.write_bytes(b"{not json")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert isinstance(json.loads(hb.read_text(encoding="utf-8")), dict)

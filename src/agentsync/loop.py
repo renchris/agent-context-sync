@@ -895,6 +895,8 @@ def next_step(
     # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
     # published again, and running it would erase that page (B13 round 6 G30)
     queued, kept = governance.partition_purges(config.state_paths)
+    if queued and governance.hold_list_unread(config.state_paths.root):
+        queued = []  # an unread hold list is no empty one: its FAIL comes first (B13 round 27 P131)
     if queued:
         waits.append(
             f"{plural(len(queued), 'queued purge')}: preview with `{BIN} purge --queue --dry-run` (writes "

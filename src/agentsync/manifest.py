@@ -803,40 +803,67 @@ LOST_MANIFEST = "is missing, but heartbeat.json records earlier passes"
 """What doctor's state_dir.manifest FAIL and every refused open say of a lost manifest
 (:func:`manifest_lost`)."""
 
+LOST_MANIFEST_UNREAD = (
+    "is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+)
+""":data:`LOST_MANIFEST` when heartbeat.json is there but cannot be read (damaged JSON, a fifo, a folder, a
+link that reaches no file, a mode): still lost, never a first start (B13 round 27 P111; ruling 17)."""
+
+LOST_MANIFEST_WORDS = (LOST_MANIFEST, LOST_MANIFEST_UNREAD)
+"""Every ending of a lost manifest's line, for the readers that key on it."""
+
 
 def manifest_lost(db_path: Path) -> bool:
-    """Whether the manifest is missing while ``heartbeat.json`` beside it records an earlier pass (a source
-    with a ``last_success_at``, or a ``run_id`` of 1 or more): a manifest lost from a Mac that has synced,
-    which a new one would quietly replace, converting every file again and forgetting the deletions, the
-    breaker's suspended removals and the archive (B13 round 23 A29). Keyed on the state folder alone: a docs
-    repo restored onto a new Mac, with no heartbeat, is a first sync. An unreadable heartbeat is no record."""
+    """Whether the manifest is lost (:func:`lost_words`)."""
+    return lost_words(db_path) is not None
+
+
+def lost_words(db_path: Path) -> str | None:
+    """:data:`LOST_MANIFEST` when the manifest is missing while ``heartbeat.json`` beside it records an
+    earlier pass (a source with a ``last_success_at``, or a ``run_id`` of 1 or more): a manifest lost from a
+    Mac that has synced, which a new one would quietly replace, converting every file again and forgetting the
+    deletions, the breaker's suspended removals and the archive (B13 round 23 A29). Keyed on the state folder
+    alone: a docs repo restored onto a new Mac, with no heartbeat, is a first sync. A heartbeat.json that is
+    there but cannot be read (not a regular file, not JSON, not an object, refused) cannot rule earlier passes
+    out: :data:`LOST_MANIFEST_UNREAD`, the same person's fix, never a new manifest started over it (B13 round
+    27 P111: a damaged heartbeat read as no record, and the sync started one with no word to the person).
+    None otherwise: a readable heartbeat with no pass, or none there, is a first start."""
     try:
         if not stat.S_ISLNK(db_path.lstat().st_mode):
-            return False
+            return None
         db_path.stat()  # a symlink to a missing file is a missing manifest: a sync would start a new one
-        return False  # through it, the A29 hazard by a link (B13 round 24 B64)
+        return None  # through it, the A29 hazard by a link (B13 round 24 B64)
     except (
         FileNotFoundError,
         NotADirectoryError,
     ):  # a link through a file is to nothing too (B13 round 26 E45)
         pass
     except OSError:
-        return False
+        return None
     if not os.access(db_path.parent, os.R_OK | os.W_OK | os.X_OK):
-        return False  # a folder this account cannot use (a mode, a read-only volume): its refusal comes first
+        return None  # a folder this account cannot use (a mode, a read-only volume): its refusal comes first
+    heartbeat = db_path.parent / "heartbeat.json"
+    try:
+        heartbeat.lstat()
+    except OSError:  # none there: a first start
+        return None
     try:  # never a plain read: a fifo there hung status (B13 round 25 D46)
-        data = json.loads(read_regular_text(db_path.parent / "heartbeat.json") or "null")
-    except (OSError, ValueError):
-        return False
+        text = read_regular_text(heartbeat)
+        data = json.loads(text) if text is not None else None
+    except (OSError, ValueError):  # there, but no read: earlier passes cannot be ruled out (P111)
+        return LOST_MANIFEST_UNREAD
+    if text is None:  # a link to nothing: no heartbeat
+        return None
     if not isinstance(data, dict):
-        return False
-    return any(
+        return LOST_MANIFEST_UNREAD
+    passed = any(
         isinstance(entry, dict)
         and (
             bool(entry.get("last_success_at")) or (type(entry.get("run_id")) is int and entry["run_id"] >= 1)
         )
         for entry in data.values()
     )
+    return LOST_MANIFEST if passed else None
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -846,8 +873,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     disk) :class:`ManifestPathError`, one line with no access fix (B13 round 20 X49). A manifest lost from a
     Mac that has synced (:func:`manifest_lost`) is never created anew: the person decides, by restoring it or
     moving heartbeat.json aside (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29)."""
-    if manifest_lost(db_path):
-        raise ManifestLostError(f"{db_path} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
+    lost = lost_words(db_path)
+    if lost is not None:
+        raise ManifestLostError(f"{db_path} {lost}", errno.ENOENT, reason=lost)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)

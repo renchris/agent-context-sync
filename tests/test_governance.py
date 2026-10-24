@@ -801,8 +801,10 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     by_id = gv.PurgeSelector(source_id="src", stable_id="K1")
     quarantined = gv.PurgeSelector(source_id="src", stable_id="S1")
     deleted = gv.PurgeSelector(source_id="src", stable_id="G1")
+    # queued now, after the manifest's first run, as a cycle queues them (a fake NOW before it reads as a
+    # purge queued under a manifest a new start replaced: B13 round 27 P112)
     for selector in (by_alias, by_id, quarantined, deleted):
-        assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+        assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED)
     head = git(world.repo, "rev-parse", "HEAD").strip()
     previews = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
     assert [r.notes[0].startswith("stays queued:") for r in previews] == [True, True, False, False]

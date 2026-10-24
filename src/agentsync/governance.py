@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+import errno
 import hashlib
 import json
 import logging
@@ -314,27 +315,48 @@ def _atomic_write_json(path: Path, obj: object) -> None:
 
 
 def _read_json(path: Path, default: Any, role: str = "a governance file") -> Any:
+    """The JSON at ``path``, ``default`` only when nothing is there (a fresh install). Anything at the path
+    that is not a regular file is GovernanceNotAFileError, the person's, judged by the path's own lstat
+    (``doctor.governance_file_kind``): a symlink to nothing, never the empty default, which read a hold list
+    behind a dangling link as no holds (B13 round 27 P131); a loop or a link through a file at the file
+    itself, never "unreadable", the words of a fault to report (P132, P133); a folder this account cannot
+    open, never its chmod alone, after which the move aside still stops (P135). The same errnos from a
+    folder above the file keep their GovernanceError, the cause kept for the folder's own handlers."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
     try:  # never a plain read: a fifo at holds.json hung status and every hold (B13 round 25 D46)
         text = read_regular_text(path)
         if text is None:
+            if os.path.lexists(path):
+                raise GovernanceNotAFileError(
+                    path, doctor.governance_file_kind(path) or "a symlink to nothing", role
+                )
             return default
         return json.loads(text)
     except FileNotFoundError:
+        if os.path.lexists(path):
+            raise GovernanceNotAFileError(
+                path, doctor.governance_file_kind(path) or "a symlink to nothing", role
+            ) from None
         return default
     except ValueError as exc:
         if not isinstance(exc, json.JSONDecodeError | UnicodeDecodeError):  # not a file: moved aside (E43)
-            from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
-
             raise GovernanceNotAFileError(
-                path, doctor.state_file_kind(path) or "not a regular file", role
+                path, doctor.governance_file_kind(path) or "not a regular file", role
             ) from None
         raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
     except (
         PermissionError
     ) as exc:  # its owner or mode, not its contents (B13 round 20 X73): kept as the cause
+        kind = doctor.state_file_kind(path)
+        if kind is not None:  # a 0000 folder: the person's move aside, its chmod first (P135)
+            raise GovernanceNotAFileError(path, kind, role) from None
         raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
     except OSError as exc:
-        raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
+        kind = doctor.state_file_kind(path) if exc.errno in (errno.ELOOP, errno.ENOTDIR) else None
+        if kind is not None:  # at the file itself; above it, the folder's own (P133)
+            raise GovernanceNotAFileError(path, kind, role) from None
+        raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from exc
 
 
 def audit_path(state_dir: Path) -> Path:
@@ -371,7 +393,10 @@ def state_not_a_file(path: Path, kind: str, role: str) -> tuple[str, str]:
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     detail = f"{path} is {kind}, not a file: {role} belongs there"  # no bracket before "(fix:" (E18)
-    return detail, f"the person moves {doctor._shell_path(path)} aside, keeping a copy"
+    # a folder shut to this account takes its chmod (or the person's chown) first: macOS refuses its move
+    # (B13 round 27 P135, as the lock's and the heartbeat's fixes already said)
+    first = doctor._opens_first(path, kind)
+    return detail, f"the person {first}moves {doctor._shell_path(path)} aside, keeping a copy"
 
 
 def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
@@ -396,7 +421,7 @@ def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
 
     for name, role in GOVERNANCE_ROLES.items():
         path = governance_dir(state_dir) / name
-        kind = doctor.state_file_kind(path)
+        kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
         if kind is not None:
             return GovernanceNotAFileError(path, kind, role)
     return None
@@ -409,7 +434,7 @@ def _not_a_file_error(path: Path, mode: int | None = None) -> GovernanceError | 
     regular file or a link to one, which appends as before (B13 round 25 D41)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
-    kind = doctor.state_file_kind(path)
+    kind = doctor.governance_file_kind(path)
     if kind is None and mode is not None:
         kind = doctor._not_a_file(mode)
     if kind is None:
@@ -426,6 +451,11 @@ def _open_audit(path: Path) -> int:
     the open's errno, judged by what is there (B13 round 25 D41: only the fifo's ENXIO was, and a folder or a
     socket ended on a traceback). The flag changes nothing for a regular file."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NONBLOCK | os.O_CLOEXEC
+    refused = _not_a_file_error(
+        path
+    )  # first: O_CREAT follows a link to nothing and creates its target (P131)
+    if refused is not None:
+        raise refused
     try:
         fd = os.open(path, flags, 0o600)
     except OSError:
@@ -576,6 +606,18 @@ def config_holds(gov: GovernanceConfig) -> tuple[Hold, ...]:
 def state_holds(state_dir: Path) -> tuple[Hold, ...]:
     """The holds recorded in the state folder (``governance/holds.json``), by scope."""
     return tuple(sorted(_state_holds(state_dir), key=lambda h: h.scope))
+
+
+def hold_list_unread(state_dir: Path) -> bool:
+    """Whether the state's hold list cannot be read (not a file, a link to nothing, refused): status and the
+    loop invite no queued purge over it, since status FAILs it and every purge refuses until the person moves
+    it aside (B13 round 27 P131: a dangling holds.json read as no holds, and the invited run erased a page
+    under a hold on all)."""
+    try:
+        state_holds(state_dir)
+    except GovernanceError:
+        return True
+    return False
 
 
 def active_holds(state_dir: Path, gov: GovernanceConfig) -> tuple[Hold, ...]:
@@ -2653,50 +2695,172 @@ KEPT_REASONS = (PurgeReason.UPSTREAM_DELETED, PurgeReason.LABEL_ESCALATION)
 """The reasons :func:`_kept_why` judges: the cycle queues both for a file that may be listed again later."""
 
 
-UNJUDGED_NOTE = (
-    "not judged: agentsync's state file is missing or unreadable, so nothing says whether its file is listed "
-    "or published again; it stays queued until the state_dir.manifest [FAIL] line is fixed"
-)
-"""Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry while the manifest cannot be read
-(:func:`_unjudged`): run blind, it erased a current page and its history (B13 round 26 E25; ruling 14)."""
+def unjudged_note(check: str = "state_dir.manifest") -> str:
+    """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry while the manifest cannot be
+    read (:func:`_unjudged`): run blind, it erased a current page and its history (B13 round 26 E25; ruling
+    14). ``check`` is the status line that FAILs the state file there (:func:`_unjudged_check`): a 0000
+    manifest's is state_dir.files, never a state_dir.manifest line status does not print (B13 round 27 P24,
+    P46; ruling 17)."""
+    return (
+        "not judged: agentsync's state file is missing or unreadable, so nothing says whether its file is "
+        f"listed or published again; it stays queued until the {check} [FAIL] line is fixed"
+    )
+
+
+UNJUDGED_NOTE = unjudged_note()
+""":func:`unjudged_note` of a manifest lost, not a file or damaged (its state_dir.manifest FAIL)."""
 
 UNJUDGED_PURGES = (
-    "queued purge(s) wait on agentsync's state file: the state_dir.manifest [FAIL] line says what to do "
-    f"first; `{AGENTSYNC_BIN} purge --queue` refuses until then"
+    "queued purges wait on agentsync's state file: the state_dir.manifest [FAIL] line says what to do first; "
+    f"`{AGENTSYNC_BIN} purge --queue` refuses until then"
 )
-"""The note after the count of :data:`UNJUDGED_NOTE` entries in the loop, status, doctor and STATE.md: no
-wait and no invitation to ``purge --queue``, which refuses over a lost manifest (ruling 14), and never
-:data:`KEPT_ESCALATIONS`' words, which claim a label policy no read confirmed."""
+"""The note after a count of two or more :func:`unjudged_note` entries in the loop, status, doctor and
+STATE.md (:func:`unjudged_purges`): no wait and no invitation to ``purge --queue``, which refuses over a lost,
+misplaced or unreadable manifest (ruling 14; B13 round 27 P24), and never :data:`KEPT_ESCALATIONS`' words,
+which claim a label policy no read confirmed."""
+
+
+def unjudged_purges(n: int, check: str = "state_dir.manifest") -> str:
+    """``n`` :func:`unjudged_note` entries, counted with agreement ("1 queued purge waits", never "1 queued
+    purge(s) wait": B13 round 27 P118), naming ``check``, the FAIL that is there (P24, P46)."""
+    if n == 1:
+        return (
+            f"1 queued purge waits on agentsync's state file: the {check} [FAIL] line says what to do first; "
+            f"`{AGENTSYNC_BIN} purge --queue` refuses until then"
+        )
+    return f"{n} {UNJUDGED_PURGES}".replace("state_dir.manifest", check, 1)
+
+
+NEW_START_NOTE = (
+    "not judged yet: there is no manifest, so nothing says whether its file is listed or published again; it "
+    "stays queued until the next sync builds the manifest"
+)
+"""Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry with no manifest there and none
+lost: the person's new start (heartbeat.json moved aside), since only a sync with a manifest queues these, so
+an earlier manifest judged it. Run before the next sync, a purge erased a page whose file was still listed
+(B13 round 27 P40; ruling 17)."""
+
+
+def new_start_purges(n: int) -> str:
+    """``n`` :data:`NEW_START_NOTE` entries: no wait and no invitation, the next sync first (P40)."""
+    waits, them = ("waits", "it") if n == 1 else ("wait", "them")
+    return (
+        f"{plural(n, 'queued purge')} {waits} for the next sync to build the manifest (a new start): "
+        f"`{AGENTSYNC_BIN} purge --queue` leaves {them} queued until then; run `{AGENTSYNC_BIN} sync` first"
+    )
+
+
+UNRESOLVED_HEAD = "not resolvable: "
+"""The first words of :func:`unresolved_note`, by which :func:`kept_lines` counts it."""
+
+
+def unresolved_note(q: QueuedPurge) -> str:
+    """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry queued before the manifest it
+    names was replaced (a new start) when the current manifest holds nothing for its source and id (no row,
+    page, tombstone or alias): run, it targeted nothing, read VERIFIED and dropped its only record, while the
+    page's history stayed under the id the lost manifest's alias had linked (B13 round 27 P112; ruling 17).
+    The page is found and erased by its path, never guessed here: a new start may have published another page
+    there."""
+    where = f"mirror/{q.selector.source_id}/" if q.selector.source_id else "mirror/"
+    return (
+        f"{UNRESOLVED_HEAD}the manifest that recorded its file's page was replaced (a new start), and "
+        "nothing in the current one names it, so `purge --queue` leaves it queued; find the page with "
+        f"`git log --all --name-only -- {where}` in the docs repo and erase it with "
+        f"`{AGENTSYNC_BIN} purge docs=<page path>`"
+    )
+
+
+def unresolved_purges(n: int) -> str:
+    """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118)."""
+    is_, its, it = ("is", "its", "it") if n == 1 else ("are", "their", "them")
+    return (
+        f"{plural(n, 'queued purge')} {is_} not resolvable: the manifest that recorded {its} file's page "
+        f"was replaced by a new start and the current one names nothing for {it}; `{AGENTSYNC_BIN} purge "
+        f"--queue` leaves {it} queued, and `{AGENTSYNC_BIN} purge docs=<page path>` erases a page by hand"
+    )
+
+
+def _unjudged_check(db: Path) -> str:
+    """The status line that FAILs a manifest no queued purge can be judged over: state_dir.files for a
+    regular file this account cannot read and write (its mode), else state_dir.manifest (lost, not a file,
+    damaged) (B13 round 27 P24: the words named a state_dir.manifest line status never printed)."""
+    try:
+        st = db.stat()
+    except OSError:
+        return "state_dir.manifest"
+    if stat.S_ISREG(st.st_mode) and not os.access(db, os.R_OK | os.W_OK):
+        return "state_dir.files"
+    return "state_dir.manifest"
 
 
 def _unjudged(db: Path) -> bool:
     """Whether no queued ``upstream-deleted`` or ``label-escalation`` entry can be judged because the manifest
     is lost from a Mac that has synced (``manifest.manifest_lost``), or something other than a regular file
-    is there (a folder, a fifo, a socket, a link to nothing, a link loop or through a file), judged by stat so
-    nothing opens a fifo. A plain missing manifest with no heartbeat record (a first sync, or the person's new
-    start) is no read to wait for, as before (B13 round 26 E25; ruling 14)."""
+    is there (a folder, a fifo, a socket, a link loop or through a file, a link to nothing whose folder no
+    sync can use), judged by stat so nothing opens a fifo. A plain missing manifest with no heartbeat record,
+    or a link to nothing in a folder the next sync creates the file through, is the person's new start
+    (:data:`NEW_START_NOTE`; B13 round 26 E25, round 27 P40, P46)."""
     if manifest_lost(db):
         return True
     try:
         st = db.stat()
     except FileNotFoundError:
-        return os.path.lexists(db)  # a link to nothing; a plain missing file is a first start
+        if not os.path.lexists(db):
+            return False
+        from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+        return doctor.dangling_into_unusable(db) is not None
     except OSError:  # a loop, a link through a file, a folder above it this account cannot search
         return True
     return not stat.S_ISREG(st.st_mode)
 
 
+def _first_run_started(conn: sqlite3.Connection) -> str | None:
+    """``started_at`` of this manifest's first run, or None when it records none."""
+    row = conn.execute("SELECT MIN(started_at) FROM runs").fetchone()
+    return None if row is None or row[0] is None else str(row[0])
+
+
+def _queued_before(q: QueuedPurge, started: str | None) -> bool:
+    """Whether ``q`` was queued before ``started`` (a manifest's first run), both UTC ISO-8601; False when
+    either is missing or does not parse."""
+    if not started or not q.enqueued_at:
+        return False
+    try:
+        queued = datetime.fromisoformat(q.enqueued_at.replace("Z", "+00:00"))
+        first = datetime.fromisoformat(started.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return queued < first
+
+
+def _unresolved(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge, started: str | None) -> bool:
+    """Whether ``q``, an entry the cycle queues (a source + id selector), was queued before this manifest's
+    first run and the manifest holds nothing for it: no row, page, tombstone or alias (:func:`_resolve_read`),
+    so a run targets nothing (B13 round 27 P112). An entry queued by this manifest's own runs always has its
+    row or tombstone here."""
+    sel = q.selector
+    if q.reason not in KEPT_REASONS or not (sel.source_id and sel.stable_id) or sel.docs_glob:
+        return False
+    if not _queued_before(q, started):
+        return False
+    mt = _resolve_read(conn, m, sel, set())
+    return not mt.items and not mt.docs_paths and not mt.aliases
+
+
 def _kept_queued(db: Path, q: QueuedPurge) -> str:
     """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest);
-    :data:`UNJUDGED_NOTE` when the manifest is lost, not a file or unreadable, never "", which ran the entry
-    blind (B13 round 26 E25)."""
+    :func:`unjudged_note` when the manifest is lost, not a file or unreadable, :data:`NEW_START_NOTE` when
+    there is none (the new start), :func:`unresolved_note` when the manifest that replaced the one it was
+    queued under holds nothing for it, never "", which ran the entry blind (B13 round 26 E25; round 27 P40,
+    P112)."""
     if q.reason not in KEPT_REASONS:
         return ""
     db = expand(db)
     if _unjudged(db):
-        return UNJUDGED_NOTE
-    if not db.exists():
-        return ""
+        return unjudged_note(_unjudged_check(db))
+    if not os.path.exists(db):  # noqa: PTH110 - never Path.exists, which raises in a shut folder
+        return NEW_START_NOTE
     try:
         Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
         conn = _connect(db)
@@ -2706,7 +2870,7 @@ def _kept_queued(db: Path, q: QueuedPurge) -> str:
             conn.close()
     except (AgentSyncError, sqlite3.Error) as exc:
         log.warning("governance: cannot judge queued purge %s: %s", q.selector, exc)
-        return UNJUDGED_NOTE
+        return unjudged_note(_unjudged_check(db))
 
 
 def _kept_why(
@@ -2733,7 +2897,10 @@ def _kept_why(
         state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
     mt = _resolve_read(conn, m, q.selector, set())
     listed = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir and state.get((s, i)) in _LISTED_STATES]
-    return _kept_note(q, listed)
+    note = _kept_note(q, listed)
+    if not note and _unresolved(conn, m, q, _first_run_started(conn)):  # B13 round 27 P112
+        note = unresolved_note(q)
+    return note
 
 
 def _kept_listed(
@@ -2790,14 +2957,15 @@ def partition_purges(
     if all(q.reason not in KEPT_REASONS for q in entries):
         return entries, []
     if _unjudged(db):
-        return _unjudged_split(entries)
-    if not db.exists():
-        return entries, []
+        return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
+    if not os.path.exists(db):  # noqa: PTH110 - the new start: judged by the next sync's manifest (P40)
+        return _unjudged_split(entries, NEW_START_NOTE)
     try:
         Manifest(db).close()
         conn = _connect(db)
         try:
             m = _read_manifest(conn)
+            started = _first_run_started(conn)
             # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
             # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
             info = {(r["source_id"], r["stable_id"]): (r["state"], bool(r["is_dir"])) for r in m.rows}
@@ -2806,67 +2974,126 @@ def partition_purges(
             for q in entries:
                 sel = q.selector
                 if q.reason in KEPT_REASONS and sel.source_id and sel.stable_id and not sel.docs_glob:
-                    whys.append(
-                        _kept_note(q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current))
-                    )
+                    why = _kept_note(q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current))
+                    if not why and (sel.source_id, sel.stable_id) not in info:  # a row: resolvable (P112)
+                        why = unresolved_note(q) if _unresolved(conn, m, q, started) else ""
+                    whys.append(why)
                 else:
                     whys.append(_kept_why(conn, m, q, state))
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error) as exc:
         log.warning("governance: cannot tell which queued purges stay queued: %s", exc)
-        return _unjudged_split(entries)
+        return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
     return [q for q, why in zip(entries, whys, strict=True) if not why], [
         (q, why) for q, why in zip(entries, whys, strict=True) if why
     ]
 
 
 KEPT_PURGES = (
-    "upstream deletion(s) stay queued while their file is listed again; once the file is gone, they wait for "
+    "upstream deletions stay queued while their file is listed again; once the file is gone, they wait for "
     f"`{AGENTSYNC_BIN} purge --queue` like any queued purge"
 )
-"""The note after the count of kept upstream deletions (:func:`partition_purges`) in the loop, status,
-doctor and STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait until
-their file is gone.  Nothing runs them on its own: the history rewrite runs only from
-``agentsync purge --queue``."""
+"""The note after a count of two or more kept upstream deletions (:func:`partition_purges`) in the loop,
+status, doctor and STATE.md (:func:`kept_purges`): no ``purge --queue`` clears them while their file is
+listed, so they are no wait until their file is gone.  Nothing runs them on its own: the history rewrite runs
+only from ``agentsync purge --queue``."""
+
+
+def kept_purges(n: int) -> str:
+    """``n`` kept upstream deletions, counted with agreement (B13 round 27 P118: "1 upstream deletion(s)
+    stay queued")."""
+    if n == 1:
+        return (
+            "1 upstream deletion stays queued while its file is listed again; once the file is gone, it "
+            f"waits for `{AGENTSYNC_BIN} purge --queue` like any queued purge"
+        )
+    return f"{n} {KEPT_PURGES}"
+
 
 KEPT_ESCALATIONS = (
-    "label-escalation purge(s) stay queued while the label policy lets their file publish again: "
+    "label-escalation purges stay queued while the label policy lets their file publish again: "
     f"`{AGENTSYNC_BIN} purge --queue` skips them, since running one would erase a current page; if the "
-    "policy refuses the file again, they wait for it like any queued purge"
+    "policy refuses the file again, they wait like any queued purge"
 )
 """:data:`KEPT_PURGES` for kept label-escalation entries (B13 round 6 G30): the file is published again, not
 gone, so the upstream wording would tell the reader the wrong thing."""
 
 
+def kept_escalations(n: int) -> str:
+    """``n`` kept label escalations, counted with agreement (P118)."""
+    if n == 1:
+        return (
+            "1 label-escalation purge stays queued while the label policy lets its file publish again: "
+            f"`{AGENTSYNC_BIN} purge --queue` skips it, since running it would erase a current page; if the "
+            "policy refuses the file again, it waits like any queued purge"
+        )
+    return f"{n} {KEPT_ESCALATIONS}"
+
+
 def _unjudged_split(
-    entries: Sequence[QueuedPurge],
+    entries: Sequence[QueuedPurge], note: str = UNJUDGED_NOTE
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
-    """:func:`partition_purges` when the manifest cannot be read: DLP, erasure and operator entries stay
-    runnable, the ones it judges are kept with :data:`UNJUDGED_NOTE` (B13 round 26 E25)."""
+    """:func:`partition_purges` when the manifest cannot be read, or is not there yet: DLP, erasure and
+    operator entries stay runnable, the ones it judges are kept with ``note`` (B13 round 26 E25)."""
     return [q for q in entries if q.reason not in KEPT_REASONS], [
-        (q, UNJUDGED_NOTE) for q in entries if q.reason in KEPT_REASONS
+        (q, note) for q in entries if q.reason in KEPT_REASONS
     ]
 
 
+_UNJUDGED_CHECK = re.compile(r"until the (\S+) \[FAIL\] line is fixed$")
+
+
 def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
-    """The kept entries of :func:`partition_purges` as one ``<count> <note>`` per reason: the upstream
-    deletions (:data:`KEPT_PURGES`) apart from the label escalations (:data:`KEPT_ESCALATIONS`), and the ones
-    no manifest read judged (:data:`UNJUDGED_PURGES`) apart from both (B13 round 26 E25)."""
-    unjudged = sum(1 for _q, why in kept if why == UNJUDGED_NOTE)
-    judged = [(q, why) for q, why in kept if why != UNJUDGED_NOTE]
+    """The kept entries of :func:`partition_purges` as one counted line per kind: the upstream deletions
+    (:func:`kept_purges`) apart from the label escalations (:func:`kept_escalations`), the ones no manifest
+    read judged (:func:`unjudged_purges`, naming the FAIL their notes name), the new start's
+    (:func:`new_start_purges`) and the unresolvable ones (:func:`unresolved_purges`) apart from all (B13 round
+    26 E25; round 27 P40, P112, P118)."""
+    unjudged = [why for _q, why in kept if _UNJUDGED_CHECK.search(why) and why.startswith("not judged: ")]
+    new_start = sum(1 for _q, why in kept if why == NEW_START_NOTE)
+    unresolved = sum(1 for _q, why in kept if why.startswith(UNRESOLVED_HEAD))
+    judged = [
+        (q, why)
+        for q, why in kept
+        if why not in unjudged and why != NEW_START_NOTE and not why.startswith(UNRESOLVED_HEAD)
+    ]
     escalations = sum(1 for q, _why in judged if q.reason is PurgeReason.LABEL_ESCALATION)
     upstream = len(judged) - escalations
+    match = _UNJUDGED_CHECK.search(unjudged[0]) if unjudged else None
+    check = match.group(1) if match else "state_dir.manifest"
     return [
-        *([f"{upstream} {KEPT_PURGES}"] if upstream else []),
-        *([f"{escalations} {KEPT_ESCALATIONS}"] if escalations else []),
-        *([f"{unjudged} {UNJUDGED_PURGES}"] if unjudged else []),
+        *([kept_purges(upstream)] if upstream else []),
+        *([kept_escalations(escalations)] if escalations else []),
+        *([unjudged_purges(len(unjudged), check)] if unjudged else []),
+        *([new_start_purges(new_start)] if new_start else []),
+        *([unresolved_purges(unresolved)] if unresolved else []),
     ]
 
 
 _HELD_WHY = "the purge failed; the log has the error"
 """What a queued entry's report says when its purge raised a :class:`GovernanceError` that is not a hold: a
 git failure's text can name a path or an id, and the report is printed, so that text stays in the log."""
+
+
+def _targeted_nothing(db: Path, q: QueuedPurge, rep: PurgeReport) -> bool:
+    """Whether the purge of ``q``, an entry the cycle queued before this manifest's first run, found nothing:
+    no item, no docs path, no blob (B13 round 27 P112: it read VERIFIED and was dequeued, and the history the
+    lost manifest's alias had linked it to stayed)."""
+    sel = q.selector
+    if q.reason not in KEPT_REASONS or not (sel.source_id and sel.stable_id) or sel.docs_glob:
+        return False
+    if rep.items or rep.docs_paths or rep.blobs_targeted:
+        return False
+    try:
+        conn = _connect(expand(db))
+        try:
+            started = _first_run_started(conn)
+        finally:
+            conn.close()
+    except (AgentSyncError, sqlite3.Error):
+        return False
+    return _queued_before(q, started)
 
 
 def run_purge_queue(
@@ -2932,6 +3159,13 @@ def run_purge_queue(
             except GovernanceError as exc:
                 log.warning("governance: queued purge kept: %s", exc)
                 not_run(q, f"stays queued: {exc if isinstance(exc, HoldActiveError) else _HELD_WHY}")
+                continue
+            if _targeted_nothing(sp.db, q, rep):
+                # never VERIFIED over nothing: that dropped the only record of a page whose history stayed
+                # (B13 round 27 P112)
+                why = unresolved_note(q)
+                log.warning("governance: %s", why)
+                not_run(q, why)
                 continue
             reports.append(rep)
             if dry_run:

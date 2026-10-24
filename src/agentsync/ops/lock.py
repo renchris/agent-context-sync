@@ -622,19 +622,32 @@ def read_regular_text(path: Path) -> str | None:
     return None if data is None else data.decode("utf-8")
 
 
+def _is_link(path: Path) -> bool:
+    """Whether ``path`` itself is a symlink, by its own lstat; False when the lstat fails."""
+    try:
+        return stat.S_ISLNK(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def read_regular_bytes(path: Path) -> bytes | None:
     """The bytes of the regular file at ``path``, or None when nothing is there; ValueError for anything else
     (a fifo, a socket, a folder), judged on the open file (``fstat``, so through a link and with no race).
     Opened O_NONBLOCK: a plain open of a fifo nothing writes waits forever, and a fifo planted at
     heartbeat.json hung status and, inside the lock, every later sync (B13 round 25 D46). ValueError, not
     OSError: a heartbeat's readers already take it as a corrupt file, and the next pass writes a regular one
-    over it."""
+    over it. A symlink loop, or a link through a file (ELOOP, ENOTDIR), at ``path`` itself is not a regular
+    file too, so a pass's rename replaces the link (B13 round 27 P134: every sync ended 0 and left the link,
+    and status FAILed it as a fault to report); the same errnos from a folder above ``path`` (a file or a
+    loop where the state folder belongs) stay the OSError, that folder's own FAIL."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
         return None
     except OSError as exc:  # a folder (EISDIR), a socket (EOPNOTSUPP on macOS, ENXIO on Linux)
         if exc.errno in (errno.EISDIR, errno.EOPNOTSUPP, errno.ENXIO):
+            raise ValueError(f"{path}: not a regular file") from None
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR) and _is_link(path):
             raise ValueError(f"{path}: not a regular file") from None
         raise
     try:
