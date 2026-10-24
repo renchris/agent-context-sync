@@ -29899,11 +29899,11 @@ with nothing to write end 0 (the pipe takes the write), so it has no stop to wor
 `doctor.LISTING_STATE_SIDE_NOTE`. Tests:
 `test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next`,
 `test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so`.
-Amended 2026-10-23, §16.187 E55: a fifo at the -wal stops nothing, and through the CLI status does not FAIL it
-either: init, status and a sync each open the manifest first, and sqlite removes the -wal when that connection
-closes, so status prints `state_dir.files` ok and exits 0 with the fifo gone (measured at 081db13b); only
-`doctor._check_state_dir` called with no open before it sees the FAIL. Status's `<role> is not a file` words above
-apply only when something puts a fifo back there during the run.
+Amended 2026-10-23, §16.187 E55: a fifo at the -wal that this account can read and write stops nothing, and through
+the CLI status does not FAIL it either: init, status and a sync each open the manifest first, and sqlite removes the
+-wal when that connection closes, so status prints `state_dir.files` ok and exits 0 with the fifo gone (measured at
+081db13b); only `doctor._check_state_dir` called with no open before it sees the FAIL. One this account cannot open
+(a fifo at mode 0000) stays: status FAILs it in the words above and init exits 1 on them, as for a folder there.
 
 **D6, D22, D10: a side file is named by its role, its move aside keeps a copy, and it is one line.** The detail is
 `<path> is <kind>, not a file (the state file's write-ahead log)` (`doctor.SIDE_ROLES`) (`shared-memory file` for the -shm, `the token
@@ -30636,12 +30636,15 @@ folder (700) and a governance file (0600) do take (folder-700, governance-0600) 
 (lock-700), and a line after the end line (bare-end). The test reads the parametrize's ids and the record's last
 count, so a case added later needs its own dated count. Test: `test_the_shell_pairing_records_case_count_is_the_tests`.
 
-**A fifo at the -wal stops nothing** (E55; dated line at §16.180 D2). §16.180 said status still FAILs it. Measured
-at 081db13b in a fresh home with the real CLI: init, then `mkfifo manifest.sqlite-wal`, then status exits 0 with
-`state_dir.files` ok, and the fifo is gone, since status's own manifest read opens and closes the database first
-and sqlite removes the -wal on close; init over a new fifo exits 0 and removes it too. Only `doctor._check_state_dir`
-called alone sees it. The dated line says so; install.sh's step 1 prediction for it is lane RB's (E15, §16.184).
-A folder, a socket or a link loop at the -wal, and anything not a file at the -shm, still stop. Test: `test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says`.
+**A fifo at the -wal this account can open stops nothing** (E55; dated line at §16.180 D2). §16.180 said status
+still FAILs it. Measured at 081db13b in a fresh home with the real CLI: init, then `mkfifo manifest.sqlite-wal`, then
+status exits 0 with `state_dir.files` ok, and the fifo is gone, since status's own manifest read opens and closes the
+database first and sqlite removes the -wal on close; init over a new fifo exits 0 and removes it too. Only
+`doctor._check_state_dir` called alone sees it. The dated line first said any fifo at the -wal stops nothing; lane
+RB's review of its E15 found a fifo at mode 0000 stops init, measured here too (status 1 on its state_dir.files FAIL,
+init 1), so the line names the fifo this account can read and write, and the test runs both. install.sh's step 1
+prediction for it is lane RB's (E15, §16.184). A folder, a socket or a link loop at the -wal, and anything not a file
+at the -shm, still stop. Test: `test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says`.
 
 **The guide's pairing rule: governance's modes and the person's failed case** (E59;
 `docs/deploy/setup-feedback.md`). A mode an agent's chmod line names is `700 for the state folder, 600 or 700 for a

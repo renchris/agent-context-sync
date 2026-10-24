@@ -6315,7 +6315,8 @@ def test_the_guides_failed_at_step_3_examples_are_the_reports_words() -> None:
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
-    does, with the fifo gone. The dated line says so, and this measures it with the real CLI."""
+    does, with the fifo gone. The dated line says so, and this measures it with the real CLI; a fifo this
+    account cannot open (mode 0000) stays and stops both, as lane RB's review of its E15 found."""
 
     def agentsync(*argv: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -6336,12 +6337,25 @@ def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) ->
     assert re.search(r"\[ok\s*\] state_dir\.files", status.stdout), status.stdout
     os.mkfifo(wal)
     assert agentsync("init").returncode == 0 and not wal.exists()
+    # one this account cannot open stays, and stops both (lane RB's E15 review)
+    os.mkfifo(wal, 0)
+    try:
+        shut = agentsync("status")
+        assert shut.returncode == 1 and re.search(r"\[FAIL\] state_dir\.files", shut.stdout), shut.stdout
+        assert agentsync("init").returncode == 1 and wal.exists()
+    finally:
+        wal.unlink()
+    guide = " ".join(_feedback_page().split())
+    assert (
+        "a fifo at the -wal this account can read and write stops nothing, since SQLite removes it on close,"
+        " so step 1 says nothing of it, while one it cannot open stops init as a folder there does"
+    ) in guide
     d2 = " ".join(
         _contracts_section("**D2, D8, D21, D70: a side file that is not a file stops", "\n\n").split()
     )
     assert (
-        "Amended 2026-10-23, §16.187 E55: a fifo at the -wal stops nothing, and through the CLI status does"
-        " not FAIL it either"
+        "Amended 2026-10-23, §16.187 E55: a fifo at the -wal that this account can read and write stops"
+        " nothing"
     ) in d2
 
 

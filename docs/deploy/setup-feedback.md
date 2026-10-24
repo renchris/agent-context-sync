@@ -726,7 +726,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   ~/.local/bin/agentsync status prints it on its state_dir.files line`, or, for a folder at the -shm this account
   can read, which init opens past, `; step 2 stops at its status step on the -shm of agentsync's state file, which
   is a folder (not damage): ...` (B13 round 26 E15, measured: a fifo, a socket or a link at the -shm stops init
-  too, and a fifo at the -wal stops nothing, since SQLite removes it on close, so step 1 says nothing of it), and
+  too, and a fifo at the -wal this account can read and write stops nothing, since SQLite removes it on close, so
+  step 1 says nothing of it, while one it cannot open stops init as a folder there does: B13 round 26 E55, lane RB's
+  4b183682), and
   step 2's config step its own `NEXT:` (`the -wal or -shm of agentsync's state file is a
   folder or something else that is not a file (...): fixing it is the person's (keeping a copy, they move it aside;
   if status names a folder shut to this account, they open it first, as status says), not a step for the agent,
