@@ -1626,7 +1626,9 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
         "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands "
         "in the report's own text it can be read back.\n" in redaction
     ), redaction
-    assert "never as a public issue: it would show that name." in redaction, redaction
+    # B13 round 26 E6: a one-word value is a word, and no name is involved
+    assert "never as a public issue: it would show that word." in redaction, redaction
+    assert "that name" not in redaction, redaction
     assert setup_report.issue_link(text) is None
     # a hold of several words is cut as before, and no word of the report's is at stake
     cfg.write_text(

@@ -13606,9 +13606,11 @@ def _redaction_section(
             "install.out holds no folder list of step 1, so a folder name may show in clear."
         )
     if red.private_only:
-        why = (
+        why = (  # by flag (B13 round 26 E6): a hold's one-word value is a word, no name
             "it would show that name"
-            if red.word_named_shown or red.value_word_shown
+            if red.word_named_shown
+            else "it would show that word"
+            if red.value_word_shown
             else "a name may be in clear"
         )
         send = (  # and no link ends the report (B13 round 7 H75), as the shell report has none
