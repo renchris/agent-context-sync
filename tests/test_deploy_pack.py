@@ -6312,6 +6312,60 @@ def test_the_guides_failed_at_step_3_examples_are_the_reports_words() -> None:
     assert "which was missing after earlier syncs, and no later sync ended 0" not in page
 
 
+def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
+    """B13 round 26 E35, E58 (one gap, built once): round 25 added four report outputs and an installer tail
+    the guide never described: D80's Private only line for a hold's one-word value (and E6's send words,
+    E72's two-letter values), D16's NEXT: clause for a run with no end line (E29, E30: every path, both
+    reasons), D5's block of stops logged after the end line (the shell's too, E76), D26's evidence line over
+    existing mirror pages (E1, E24, E27: it never printed before) and D79's lost-link tail and NEXT. Each is
+    read from the code that prints it, with a count put back as the guide's N."""
+    from collections import Counter  # noqa: PLC0415
+
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    report = " ".join(inspect.getsource(setup_report).split())
+    install = " ".join((ROOT / "scripts" / "install.sh").read_text(encoding="utf-8").split())
+    private = (
+        "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands in"
+        " the report's own text it can be read back."
+    )
+    assert (
+        f"`{private}`" in page
+        and "the agentsync report's `Send it:` line says `it would show that word`" in page
+    )
+    assert '"it would show that word"' in report and private[:90] in install and private[:90] in report
+    assert "two-letter one" in page and "keeps the report public" in page
+    assert "it" in setup_report._SHORT_WORDS and "hr" not in setup_report._SHORT_WORDS
+    both = setup_report._instruction_text(Counter({"NEXT:": 1}), 30, 3, pending=True, open_runs=1)
+    clause = both.split("; ", 1)[1].split(")", 1)[0].replace("so 1 expected", "so N expected")
+    assert clause.startswith(
+        "the run writing this report prints its NEXT: after the report, and the run"
+    ) and (f"`{clause}`" in page)
+    one = setup_report._instruction_text(Counter(), 30, 2, open_runs=1).split("; ", 1)[1].split(")", 1)[0]
+    assert f"`{one.replace('so 1 expected', 'so N expected')}`" in page
+    late = "Step-3 sync stops agentsync logged after attempt {att.number}'s end line (they do not change "
+    assert late in report and late.replace("{att.number}", "N") + "the outcome):`" in page
+    shell = (
+        "Step-3 sync stops agentsync logged in sync-stops.log beside install.log"
+        " after this attempt's end line"
+    )
+    assert shell in install and f"`{shell} (they do not change the outcome):`" in page
+    assert (
+        "; {late_count} more logged after the end line" in report
+        and "(`N more logged after the end line`)" in page
+    )
+    pages = setup_report._NoManifestError(7).line.replace("over 7 ", "over N ")
+    assert pages.startswith("- no manifest yet (the next sync") and f"`{pages}`" in page
+    assert setup_report._NoManifestError(0).line == "- no manifest yet (no sync has run)"
+    link = (
+        "a symlink into a folder that does not exist or refuses a write,"
+        " which is missing though heartbeat.json"
+    )
+    fix = "they remove the link first; then they restore the file"
+    assert link in install and fix in install and link in page and f"`{fix} ...`" in page
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

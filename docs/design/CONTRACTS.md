@@ -30662,3 +30662,17 @@ doctor's state_dir.manifest FAIL still stands`. The example is the refused stop'
 sentence quotes the lost one's unmeasured form; a lock stop was not used, as no test pins it and its owner and
 claim rules differ. Both strings are read from `_persons_stop_reason`. Test:
 `test_the_guides_failed_at_step_3_examples_are_the_reports_words`.
+
+**The guide gives round 25's new report and installer outputs** (E35, E58; `docs/deploy/setup-feedback.md`). Round
+25 added outputs the guide never described: D80's Private only line for a hold's one-word value, D16's `NEXT:`
+clause for a run with no end line, D5's block of stops logged after the end line, D26's evidence line over existing
+mirror pages and D79's lost-link tail and NEXT. E35's verifier found that writing two of them up at dd5639cb would
+put false claims in the guide (D26's line never printed, since `_new_pages` read `int()` of a list, and D16's clause
+was missing on the most common path), and that a D80 sentence saying any one-word value makes a report private
+overstates it. So the guide was written after lane RA's fixes (E1, E24, E27; E29, E30; E6; E72) and lane RB's shell
+block (E76) landed, each sentence narrowed to what the code does: D80 in the Private only paragraph and the
+`<value>` row (each report checks its own word list, and a value met only on the cut hold line keeps the report
+public), D16's clause as an expectation, with both reasons and one count when the run writing the report is short
+too, D5's block in both reports with its pairing and the friction line's count, D26's line as status says it (an
+empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
+`test_the_guide_gives_round_25s_new_report_and_installer_outputs`, which reads each from the code that prints it.
