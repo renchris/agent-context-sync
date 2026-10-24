@@ -10968,12 +10968,20 @@ def _side_breaking_read(db: Path) -> Path | None:
 
 
 def _sides_not_files_at(db: Path) -> list[Path]:
-    """:func:`_sidecars_not_files` for the manifest at ``db``."""
+    """:func:`_sidecars_not_files` for the manifest at ``db``. Beside a manifest that is no link, any link at
+    a side is one, as doctor reads it: sqlite never opens a side through a link (B13 round 26 E62)."""
     out: list[Path] = []
+    try:
+        db_link = stat.S_ISLNK(db.lstat().st_mode)
+    except OSError:
+        db_link = False
     for p in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
             mode = p.lstat().st_mode
             if stat.S_ISLNK(mode):
+                if not db_link:
+                    out.append(p)
+                    continue
                 mode = p.stat().st_mode
         except OSError as exc:
             if exc.errno == errno.ELOOP:
@@ -10985,25 +10993,19 @@ def _sides_not_files_at(db: Path) -> list[Path]:
 
 
 def _dangling_state(c: Config) -> list[Path]:
-    """The manifest, its -wal and its -shm, each a symlink to nothing (``doctor.dangling_target``) whose
-    folder is not a folder this account can write and search: doctor's B13 round 24 B64 FAIL, the person's to
-    point at an existing file or remove (B13 round 25 D34). A link into a writable folder is none: the first
-    sync creates the file it points at. A test that fails says none of that path."""
+    """The manifest when it is a symlink to nothing whose folder is not a folder this account can write and
+    search (``doctor.dangling_into_unusable``, the one test status uses): doctor's B13 round 24 B64 FAIL, the
+    person's to point at an existing file or remove (B13 round 25 D34; round 26 E75). A link into a writable
+    folder is none: the first sync creates the file it points at. A -wal or -shm link of any kind is no file
+    sqlite opens, a side not a file in doctor's words and the side bucket's (B13 round 26 E62), so none is
+    listed here. A test that fails says none of that path."""
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
     db = expand(c.state_paths.db)
-    out: list[Path] = []
-    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
-        try:
-            target = doctor.dangling_target(p)
-            if target is None:
-                continue
-            folder = target.parent
-            if not (folder.is_dir() and os.access(folder, os.W_OK | os.X_OK)):
-                out.append(p)
-        except Exception:
-            continue
-    return out
+    try:
+        return [db] if doctor.dangling_into_unusable(db) is not None else []
+    except Exception:
+        return []
 
 
 def _root_foreign(c: Config) -> bool:
@@ -12539,9 +12541,9 @@ _STATE_SIDE_NOT_FILE_RE = re.compile(
     r"error: state: .*-(?P<role>wal|shm) is (?P<kind>[^,]+), not (?:a|the state) file\b"
 )
 """The line sync, curate and init print for something not a file where the manifest's -wal or -shm belongs
-(lane B's B13 round 25 ruling 12, D2, D21: status's state_dir.files detail, ``<db>-wal is a folder, not a file
-(the state file's write-ahead log)``), read before :data:`_STATE_NOT_FILE_RE`, which an older doctor's words
-for it would also match."""
+(lane B's B13 round 25 ruling 12, D2, D21: status's state_dir.files detail, ``<db>-wal is a folder, not a
+file: the state file's write-ahead log belongs there`` since round 26 E18, in brackets before it), read before
+:data:`_STATE_NOT_FILE_RE`, which an older doctor's words for it would also match."""
 _STATE_NOT_FILE_RE = re.compile(r"error: state: .* is (?P<kind>[^,]+), not the state file\b")
 """The sync's line for something not a file where manifest.sqlite belongs (``cli._misplaced``: doctor's
 ``_not_a_file`` kinds, and lane B's symlink to a folder and symlink loop, B13 round 23 A46), which holds no

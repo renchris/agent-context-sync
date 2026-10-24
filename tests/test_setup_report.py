@@ -9841,8 +9841,8 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         ),
         (  # B13 round 25 ruling 12 (D9): lane B's line for a folder at the -wal (D2, D21), and an older
             # doctor's words for a fifo at the -shm, each the side file's, never "the state file"
-            f"error: state: {db}-wal is a folder, not a file (the state file's write-ahead log) (fix: the "
-            f"person moves {db}-wal aside, keeping a copy)",
+            f"error: state: {db}-wal is a folder, not a file: the state file's write-ahead log belongs there "
+            f"(fix: the person moves {db}-wal aside, keeping a copy)",
             "on the state file's -wal, which is a folder, not a file: the person's to fix",
             "it was moved aside",
         ),
@@ -14026,7 +14026,13 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
             if link == db:
                 heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
         line = _line(section(text, "Summary"), "- doctor: ")
-        assert f"{bucket}{name} FAIL (the person's; see Doctor) · " in line, (name, line)
+        # B13 round 26 E62: a -wal link of any kind is a side that is not a file, sqlite never opening a side
+        # through a link; its bucket is the side's, still the person's
+        side = "from a side file of the state file that is not a file (1 check): "
+        assert f"{bucket if link == db else side}{name} FAIL (the person's; see Doctor) · " in line, (
+            name,
+            line,
+        )
         assert line.endswith(" · unexpected 0"), (name, line)
     # a link into a writable folder: the first sync creates its file, nothing FAILs, no bucket
     db.rename(db.with_name("kept.sqlite"))

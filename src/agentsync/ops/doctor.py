@@ -1272,6 +1272,10 @@ def refused_state_files(config: Config) -> list[Path]:
     for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
             st = p.lstat()
+            if stat.S_ISLNK(st.st_mode):
+                if p != db:
+                    continue  # a side link is no file sqlite opens: its own FAIL (B13 round 26 E62)
+                st = p.stat()  # a linked manifest by its target, as state_dir.files reads it (E63)
         except OSError:
             continue
         if not stat.S_ISREG(st.st_mode):
@@ -1289,7 +1293,7 @@ def refused_files_fix(config: Config, files: Sequence[Path]) -> str:
     refuses, the person's (:func:`state_path_fix`)."""
     root = expand(config.state_paths.root)
     for p in files:
-        st = p.lstat()
+        st = p.stat()  # a linked manifest by its target (B13 round 26 E63)
         if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o600 == 0o600 or _read_only(p):
             return state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(p)))
     return "chmod 600 " + " ".join(_shell_path(root / p.name) for p in files)
@@ -1340,7 +1344,7 @@ def dangling_target(path: Path) -> Path | None:
             return None
         path.stat()
         return None
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):  # a link through a file is to nothing too (E45)
         pass
     except OSError:
         return None
@@ -1348,6 +1352,66 @@ def dangling_target(path: Path) -> Path | None:
         return path.parent / path.readlink()
     except OSError:  # gone in between
         return None
+
+
+def dangling_into_unusable(path: Path) -> Path | None:
+    """Where ``path`` points when it is a symlink to nothing (:func:`dangling_target`) whose folder is not a
+    folder this account can write and search, so no sync can create the file through it (B13 round 24 B64,
+    round 25 D34); else None, a link into a usable folder included (the first sync creates the file it points
+    at). Never raises. One test for status's state_dir lines, its manifest line and the setup report (B13
+    round 26 E75, E41). The manifest's alone since round 26 E62: a -wal or -shm link of any kind is no
+    file."""
+    try:
+        target = dangling_target(path)
+        if target is None:
+            return None
+        folder = target.parent
+        return None if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else target
+    except OSError:
+        return None
+
+
+def manifest_refused(db: Path) -> bool:
+    """Whether a sync stops on what is at ``db`` while no manifest file is there to read: a link to nothing
+    whose folder it cannot use (:func:`dangling_into_unusable`) or a link loop or a link to a non-file
+    (:func:`state_file_kind`), so status never says the next sync starts a new manifest beside the FAIL it
+    stops on (B13 round 26 E41)."""
+    # os.path.exists, never Path.exists, which raises in a folder this account cannot search
+    return not os.path.exists(db) and (  # noqa: PTH110
+        state_file_kind(db) is not None or dangling_into_unusable(db) is not None
+    )
+
+
+def link_kind(path: Path) -> str | None:
+    """What a symlink at ``path`` is, by the link's own lstat: :func:`state_file_kind`'s words for a link to
+    a folder or another non-file and for a loop, else ``a symlink to nothing`` (its target missing, or a
+    file where a folder on its way belongs) or ``a symlink to a file``; None when ``path`` is no symlink.
+    For a state file no link may stand in for: the lock, which a sync opens with O_NOFOLLOW (a link there
+    ended every sync on a traceback while status said ``free``), and a -wal or -shm, which sqlite never opens
+    through a link (B13 round 26 E38, E62; ruling 13)."""
+    try:
+        if not stat.S_ISLNK(path.lstat().st_mode):
+            return None
+    except OSError:
+        return None
+    kind = state_file_kind(path)
+    if kind is not None:
+        return kind
+    try:
+        path.stat()
+    except OSError:
+        return "a symlink to nothing"
+    return "a symlink to a file"
+
+
+def own_kind(path: Path) -> str | None:
+    """What is at ``path`` when it is not a regular file, a link read as itself (:func:`link_kind`): a
+    folder, a socket, a fifo, or any symlink; None for a regular file or nothing there (B13 round 26 E38)."""
+    try:
+        mode = path.lstat().st_mode
+    except OSError:
+        return None
+    return link_kind(path) if stat.S_ISLNK(mode) else _not_a_file(mode)
 
 
 def _them(names: Sequence[str], one: str, many: str) -> str:
@@ -1514,14 +1578,18 @@ SIDE_ROLES = {"-wal": "the state file's write-ahead log", "-shm": "the state fil
 
 def _not_a_file_detail(sp: StatePaths, p: Path, kind: str) -> str:
     """The detail of a state path that is not a file (:func:`state_file_kind`): the manifest's "is <kind>, not
-    the state file"; a side file's and the token cache's name the file by its role, "not a file (the state
-    file's write-ahead log)", since "not the state file" said the -shm was the manifest (B13 round 25 D6, D21:
-    the sync's line, status's and the report's read the same words)."""
+    the state file"; a side file's, the lock's, the heartbeat's and the token cache's name the file by its
+    role, "not a file: the state file's write-ahead log belongs there", since "not the state file" said the
+    -shm was the manifest (B13 round 25 D6, D21: the sync's line, status's and the report's read the same
+    words). The role follows a colon, not in brackets: the line's ``(fix: ...)`` came right after it, two
+    brackets back to back (B13 round 26 E18); the report's readers key on ", not a file", either way."""
     if p == sp.db:
         return f"{expand(p)} is {kind}, not the state file"
     suffix = p.name.removeprefix(sp.db.name) if p.name.startswith(sp.db.name) else ""
-    role = SIDE_ROLES.get(suffix, "the token cache")
-    return f"{expand(p)} is {kind}, not a file ({role})"
+    role = SIDE_ROLES.get(suffix) or {sp.lock: "the lock", sp.heartbeat: "the heartbeat"}.get(
+        p, "the token cache"
+    )
+    return f"{expand(p)} is {kind}, not a file: {role} belongs there"
 
 
 def _opens_first(path: Path, kind: str) -> str:
@@ -1560,15 +1628,22 @@ def side_not_a_file_at(db: Path) -> Path | None:
     """The manifest's -wal or -shm beside ``db`` that is not a file sqlite can open (the first): a folder, a
     socket, a fifo, a link to one or a loop (:func:`state_file_kind`), or a link to nothing whose folder is
     missing or refuses a write (:func:`dangling_target`), as state_dir.files FAILs it; else None. By the stat,
-    never by sqlite's error, which says only CANTOPEN or READONLY (B13 round 25 D2, D8, D70)."""
+    never by sqlite's error, which says only CANTOPEN or READONLY (B13 round 25 D2, D8, D70). Beside a
+    manifest that is no link, any link at a side is one: sqlite opens a side only where it is, never
+    through a link, so a link to nothing in a writable folder or to a regular file stopped every sync on
+    "unable to open database file" while status passed it; beside a manifest that is a link, sqlite keeps
+    its sides beside the target, and a link here is none of its business (B13 round 26 E62)."""
+    try:  # never Path.is_symlink, which raises in a folder this account cannot search
+        db_link = stat.S_ISLNK(db.lstat().st_mode)
+    except OSError:
+        db_link = False
     for suffix in SIDE_ROLES:
         side = db.with_name(db.name + suffix)
-        if state_file_kind(side) is not None:
+        if link_kind(side) is not None:
+            if db_link:
+                continue
             return side
-        target = dangling_target(side)
-        if target is not None and not (
-            target.parent.is_dir() and os.access(target.parent, os.W_OK | os.X_OK)
-        ):
+        if state_file_kind(side) is not None:
             return side
     return None
 
@@ -1588,6 +1663,62 @@ def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
     found = (r for r in results if r.name == "state_dir.files" and not r.ok and r.detail.startswith(named))
     result = next(found, None)
     return None if result is None else (side, result)
+
+
+_GOVERNANCE_CHECKS = {
+    "holds.json": "governance.hold",
+    "purge-queue.json": "governance.purge_queue",
+    "suppressed.json": "governance.suppressed",
+    "audit.jsonl": "governance.audit",
+}
+"""The status check that FAILs each governance file that is not a file (B13 round 26 E43)."""
+
+
+def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, CheckResult] | None:
+    """The first state file that is not a regular file where one belongs, and status's own FAIL of it, judged
+    by stat before anything opens it (so a fifo never blocks): a -wal or -shm (:func:`side_not_a_file`; a
+    fifo at the -wal is left to the open, since sqlite's open replaces it and the run goes on), the manifest
+    (a folder, a fifo, a socket, a loop, a link to nothing whose folder is missing: its state_dir.manifest
+    FAIL), the lock (:func:`lock_not_a_file`), a folder at heartbeat.json (:func:`heartbeat_not_a_file`) and
+    the governance files; None when none is, the state folder itself is not a folder (its own guard), or any
+    check raises. Every command that opens one prints it as its ``error: state:`` line (B13 round 26 E22,
+    E38, E39, E40, E43, E65; ruling 13). ``manifest=False`` skips the manifest and its sides, which a sync's
+    own open already stops on, with its lost-manifest record (``kind=lost``)."""
+    try:
+        sp = config.state_paths
+        if state_root_not_folder(config) is not None:
+            return None
+        db = expand(sp.db)
+        side = side_not_a_file(config) if manifest else None
+        if side is not None and not (
+            side[0].name.endswith("-wal") and stat.S_ISFIFO(side[0].lstat().st_mode)
+        ):
+            return side
+        if (
+            manifest
+            and os.path.lexists(db)
+            and (state_file_kind(db) is not None or dangling_target(db) is not None)
+        ):
+            named = f"{db} is "
+            for r in _check_state_dir(config):
+                if r.name == "state_dir.manifest" and not r.ok and r.detail.startswith(named):
+                    return db, r
+        lock = expand(sp.lock)
+        kind = own_kind(lock)
+        if kind is not None:
+            return lock, lock_not_a_file(config, kind)
+        folder = heartbeat_not_a_file(config)
+        if folder is not None:
+            return expand(sp.heartbeat), folder
+        from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
+
+        odd = governance.governance_not_a_file(expand(sp.root))
+        if odd is not None:
+            name = _GOVERNANCE_CHECKS.get(odd.path.name, "governance.hold")
+            return odd.path, _bad(name, odd.detail, fix=odd.fix)
+    except Exception:  # the error path: never a second error over the first
+        return None
+    return None
 
 
 def _no_manifest_yet(config: Config) -> str:
@@ -1661,6 +1792,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     denied: list[Path] = []  # this account's at a mode that gives it access, or on a read-only volume
     nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
     lost_link = False  # a dangling manifest link over earlier passes: its own FAIL holds the lost fix (D71)
+    other_link: Path | None = None  # another account's file reached through a link (E63)
     for p in (
         sp.db,
         sp.db.with_name(sp.db.name + "-wal"),
@@ -1686,10 +1818,21 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
+        if p not in (sp.db, sp.token_cache_fallback) and stat.S_ISLNK(fst.st_mode):
+            # a -wal or -shm link: sqlite never opens a side through a link, so a link to nothing in a
+            # writable folder or to a file stopped every sync while this line passed it, and a link's own
+            # 0755 got a chmod 600 that follows the link and never clears; beside a manifest that is a link,
+            # sqlite keeps its sides by the target and this link is harmless (B13 round 26 E62, E46)
+            if sp.db.is_symlink():
+                continue
+            link = link_kind(p) or "a symlink"
+            nonfile.append(
+                _bad("state_dir.files", _not_a_file_detail(sp, p, link), fix=_not_a_file_fix(sp, p, link))
+            )
+            continue
         target = dangling_target(p)
         if target is not None:  # by what a sync does through it, never an ACL (B13 round 24 B64)
-            folder = target.parent
-            if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK):
+            if dangling_into_unusable(p) is None:
                 # the first sync creates the file it points at, as with no file there; over earlier passes
                 # the lost manifest's FAIL below, whose moves work through the link
                 continue
@@ -1717,12 +1860,23 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             name = "state_dir.manifest" if p == sp.db else "state_dir.files"
             nonfile.append(_bad(name, _not_a_file_detail(sp, p, kind), fix=_not_a_file_fix(sp, p, kind)))
             continue
+        if stat.S_ISLNK(fst.st_mode):
+            # a link to a file is judged by that file: a link's own mode (0755 under umask 022) means nothing
+            # on macOS, and the chmod 600 its FAIL named follows the link, so the FAIL never cleared (B13
+            # round 26 E63)
+            try:
+                fst = p.stat()
+            except OSError:
+                continue  # gone in between
+            m = stat.S_IMODE(fst.st_mode)
         present.append(p.name)
         modes.append(f"{p.name} ({m:04o})")
         # B13 round 19 W64: a manifest this account cannot open read "are 0600" and no FAIL, while every
         # read of the state failed (sqlite's CANTOPEN, which state_dir.manifest does not judge)
         if fst.st_uid != os.getuid():
             others.append(f"{p.name} (owner uid {fst.st_uid}, mode {m:04o})")
+            if p.is_symlink():  # the target may sit outside the state folder: its own fix (E63)
+                other_link = p
         elif not os.access(p, os.R_OK | os.W_OK):
             # a read-only volume before the mode, as state_path_fix tests it: no chmod writes there (B13
             # round 22 Z78), so a 0400 file on one joins A85's one volume line (B13 round 24 B65)
@@ -1743,7 +1897,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 "state_dir.files",
                 f"owned by another account, so this one cannot open {_them(others, 'it', 'them')}: "
                 f"{', '.join(others)}",
-                fix=_persons_chown(root),
+                fix=_persons_chown(root)
+                if other_link is None
+                else state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(other_link))),
             )
         )
     elif shut:
@@ -1760,13 +1916,13 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         # its files (B13 round 23 A85: three lines gave the same fix three times)
         read_only = [p for p in denied if _read_only(p)]
         if read_only:
-            named = ", ".join(f"{p.name} ({stat.S_IMODE(p.lstat().st_mode):04o})" for p in read_only)
+            named = ", ".join(f"{p.name} ({stat.S_IMODE(p.stat().st_mode):04o})" for p in read_only)
             detail = f"on a read-only volume, so this account cannot write {named}"
             out.append(_bad("state_dir.files", detail, fix=read_only_fix(read_only[0])))
         for p in denied:
             if p in read_only:
                 continue
-            m = stat.S_IMODE(p.lstat().st_mode)
+            m = stat.S_IMODE(p.stat().st_mode)  # a link's target's, as above (E63)
             detail = f"refused to this account by an ACL or a privacy setting: {p.name} ({m:04o})"
             out.append(_bad("state_dir.files", detail, fix=_search_fix(p, folder=False)))
     if others or shut or denied:
@@ -2908,8 +3064,16 @@ def _check_lock(config: Config) -> list[CheckResult]:
     """Who holds the single-writer lock, whether it is silent, and whether a crash left it stale."""
     path = config.state_paths.lock
     try:
-        if not path.exists():
+        try:
+            path.lstat()  # a link to nothing is there too; a refused search raises PermissionError, as before
+        except FileNotFoundError:
             return [_ok("lock", "no lock file yet")]
+        kind = own_kind(path)
+        if kind is not None:
+            # a folder, fifo, socket or any link: a sync opens the lock O_NOFOLLOW and flocks it, so each
+            # ended on a traceback (EISDIR, ELOOP, EOPNOTSUPP) while this line said "free"; judged before
+            # the probe, which opens a fifo fine, and before any read (B13 round 26 E38; ruling 13)
+            return [lock_not_a_file(config, kind)]
         try:
             # the open a sync's acquire makes, less O_CREAT and the flock, so status creates and locks
             # nothing: a lock this account can read but not write passed, while every sync stopped on it
@@ -2960,6 +3124,31 @@ def _check_lock(config: Config) -> list[CheckResult]:
             )
         ]
     return [_ok("lock", "free")]
+
+
+def lock_not_a_file(config: Config, kind: str) -> CheckResult:
+    """The lock's FAIL for something there that is not a file (``kind``, :func:`own_kind`'s words): the
+    person's move aside, keeping a copy, after the step that opens a folder shut to this account, as the
+    other state files say it (B13 round 26 E38; ruling 13)."""
+    sp = config.state_paths
+    return _bad("lock", _not_a_file_detail(sp, sp.lock, kind), fix=_not_a_file_fix(sp, sp.lock, kind))
+
+
+def heartbeat_not_a_file(config: Config) -> CheckResult | None:
+    """The heartbeat's FAIL for a real folder at heartbeat.json (by its own lstat), which no pass can write
+    over (a rename of a file onto a folder fails EISDIR); None for anything a pass's rename replaces (a fifo,
+    a socket, a link to a folder), whose warn's promise is true (B13 round 26 E39)."""
+    sp = config.state_paths
+    try:
+        if not stat.S_ISDIR(expand(sp.heartbeat).lstat().st_mode):
+            return None
+    except OSError:
+        return None
+    return _bad(
+        "heartbeat",
+        f"{_not_a_file_detail(sp, sp.heartbeat, 'a folder')}; no pass can write over it",
+        fix=_not_a_file_fix(sp, sp.heartbeat, "a folder"),
+    )
 
 
 def _check_shared_content(config: Config) -> list[CheckResult]:
@@ -3061,7 +3250,8 @@ def _check_heartbeat(
     try:
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
     except ValueError as exc:
-        return [_bad("heartbeat", f"{exc}; the next completed pass rewrites it", Severity.WARN)]
+        folder = heartbeat_not_a_file(config)  # no pass replaces a folder: never the warn's promise (E39)
+        return [folder or _bad("heartbeat", f"{exc}; the next completed pass rewrites it", Severity.WARN)]
     except PermissionError as exc:  # its mode or its owner, by its cause (B13 round 21 Y43)
         refused = refused_state_path(config, "heartbeat", exc)
         if refused is None:

@@ -94,6 +94,7 @@ from agentsync.errors import (
     AuthRequiredError,
     ConfigError,
     LockHeldError,
+    LockNotAFileError,
     ManifestLostError,
     ManifestOpenError,
     ManifestPathError,
@@ -969,6 +970,8 @@ def _cmd_init(args: argparse.Namespace) -> int:
         text = default_config_text()
         config = parse_config(text, config_path=cfg_path)  # validate before writing anything
         _write_config(cfg_path, text)
+    if _not_a_file_stop(args, config):  # a -shm folder let init's open pass, so it said nothing (E65)
+        return EXIT_FAILED
     return _ensure_setup(config)
 
 
@@ -1082,6 +1085,8 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     """One cycle; without ``--mode`` (an agent's or a person's run, never a LaunchAgent's) the report ends
     with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
+    if _not_a_file_stop(args, config, manifest=False):  # the lock, heartbeat.json, a governance file (E38)
+        return EXIT_FAILED
     mode = CycleMode(args.mode) if args.mode else None
     hints = mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1"
     if args.materialise_budget is None:
@@ -1424,8 +1429,12 @@ def _status_lines(config: Config) -> list[str]:
     """What ``agentsync status`` prints (read-only); ``setup-report`` embeds the same lines."""
     out: list[str] = [f"config: {config.config_path}", f"docs repo: {config.docs_repo}"]
     lock_path = config.state_paths.lock
-    held = lock_path.exists() and SingleWriterLock.is_held(lock_path)
-    out.append(f"lock: {SingleWriterLock.describe(lock_path) if held else 'free'}")
+    odd = doctor.own_kind(lock_path)  # never "free" over a folder, fifo, socket or link (E38)
+    held = odd is None and lock_path.exists() and SingleWriterLock.is_held(lock_path)
+    if odd is not None:
+        out.append(f"lock: {odd}, not a file; the lock line says why")
+    else:
+        out.append(f"lock: {SingleWriterLock.describe(lock_path) if held else 'free'}")
     # B13 round 18 V10: a [governance] that does not load hides only the lines that need it (HOLD, retention);
     # the manifest's ``last runs:`` and the sources below still print, so the setup report reads the loop
     gov: governance.GovernanceConfig | None = None
@@ -1435,9 +1444,14 @@ def _status_lines(config: Config) -> list[str]:
         out.append(
             f"status: cannot read the state: {_unread_words(exc, refused='governance.config', config=config)}"
         )
-    for h in governance.active_holds(config.state_paths.root, gov) if gov is not None else ():
+    try:  # a governance file that is not a file: one line, and the rest still print (B13 round 26 E43)
+        holds = governance.active_holds(config.state_paths.root, gov) if gov is not None else []
+        queued, kept = governance.partition_purges(config.state_paths)
+    except governance.GovernanceNotAFileError as exc:
+        out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
+        holds, queued, kept = [], [], []
+    for h in holds:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
-    queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         out.append(
             f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
@@ -1455,6 +1469,11 @@ def _status_lines(config: Config) -> list[str]:
     db = config.state_paths.db
     if manifest_lost(expand(db)):  # never "no sync has run" over a heartbeat that records passes (A29)
         out.append("manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)")
+        return out
+    if doctor.manifest_refused(expand(db)):
+        # a link to nothing in a folder it cannot use, or a loop: never "the next sync starts a new one"
+        # beside the FAIL that sync stops on (B13 round 26 E41)
+        out.append("manifest: none (the next sync stops on it; the person decides: see state_dir.manifest)")
         return out
     if not db.exists():
         # over the pages earlier syncs wrote (the person's new start, heartbeat.json aside), "no sync has run"
@@ -1651,6 +1670,8 @@ def _unread_words(
         # read: state_dir's one FAIL, the person's, says why, never "GovernanceError: ... [Errno 20]" (B13
         # round 23 A22, A33; round 23 ruling 4)
         return "the state folder is not a folder; the state_dir line says why"
+    if isinstance(exc, governance.GovernanceNotAFileError):  # no class name (B13 round 26 E43)
+        return f"{exc.role} is not a file; its governance [FAIL] line says why"
     if isinstance(exc, StateUnreadableError):
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
@@ -2152,6 +2173,10 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     """``name``'s FAIL for a governance file in the state folder this account cannot open (``exc`` caused by
     a PermissionError), with the fix of what refused it; any other error is raised (B13 round 20 X73: the
     whole governance check crashed on holds.json at 0000)."""
+    if isinstance(exc, governance.GovernanceNotAFileError):
+        # a folder, fifo or socket at holds.json, the queue or the suppression list: the person's move aside,
+        # never "check crashed ... a fault in agentsync to report" (B13 round 26 E43; ruling 13)
+        return _check(name, False, exc.detail, doctor.Severity.ERROR, fix=exc.fix)
     cause = exc.__cause__
     refused = doctor.refused_state_path(config, name, cause) if isinstance(cause, PermissionError) else None
     if refused is None:
@@ -2220,6 +2245,8 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
     try:
         governance.load_suppressions(root)
+    except governance.GovernanceNotAFileError as exc:  # the person's move aside, never "crashed" (E43)
+        out.append(_refused_check(config, "governance.suppressed", exc))
     except AgentSyncError as exc:
         cause = exc.__cause__
         refused = (
@@ -2773,7 +2800,37 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
             _err(said)
             _misplaced_next(args, said)
             return True
-    return False
+    return _not_a_file_stop(args, config)
+
+
+def _not_a_file_state(args: argparse.Namespace) -> tuple[str, Path] | None:
+    """:func:`_not_a_file_stop`'s line and path, for the error path: None when nothing is found or the
+    config does not load (never a second error over the first)."""
+    try:
+        found = doctor.state_not_a_file(_config(args))
+    except Exception:
+        return None
+    if found is None:
+        return None
+    where, result = found
+    return f"error: state: {result.detail}" + (f" (fix: {result.fix})" if result.fix else ""), where
+
+
+def _not_a_file_stop(args: argparse.Namespace, config: Config, *, manifest: bool = True) -> bool:
+    """Print status's own FAIL of a state file that is not a regular file (``doctor.state_not_a_file``: a
+    folder, fifo, socket or link where the lock, heartbeat.json, a governance file, the manifest or a side of
+    it belongs) as the command's ``error: state:`` line, with the NEXT (and a sync's stop record), and return
+    True; else False. Judged by stat before anything opens it, so a fifo never blocks and nothing ends on a
+    traceback (B13 round 26 E22, E38, E39, E40, E43, E65; ruling 13)."""
+    found = doctor.state_not_a_file(config, manifest=manifest)
+    if found is None:
+        return False
+    where, result = found
+    fix = f" (fix: {result.fix})" if result.fix else ""
+    said = f"error: state: {result.detail}{fix}"
+    _err(said)
+    _misplaced_next(args, said, where)
+    return True
 
 
 def _curate_findings(config: Config) -> list[LintFinding]:
@@ -3103,6 +3160,11 @@ def _cmd_compact(args: argparse.Namespace) -> int:
 
 def _cmd_hold(args: argparse.Namespace) -> int:
     config = _config(args)
+    listing = args.list or (args.scope is None and not args.release)
+    # a hold and its release write holds.json and the audit trail; the list only reads holds.json, whose own
+    # not-a-file error _main words the same way, so a broken audit trail never hides the holds (E43)
+    if not listing and _not_a_file_stop(args, config):
+        return EXIT_FAILED
     root = config.state_paths.root
     if args.list or (args.scope is None and not args.release):
         holds = governance.active_holds(root, governance.load_governance(config.config_path))
@@ -3360,7 +3422,7 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
         name = "state_dir.manifest"
     elif isinstance(exc, ManifestLostError):
         name = "state_dir.manifest"  # lost from a Mac that has synced: no new one started (B13 round 23 A29)
-    elif exc.errno in (errno.ENOENT, errno.ELOOP) and path == db:
+    elif exc.errno in (errno.ENOENT, errno.ELOOP, errno.ENOTDIR) and path == db:
         # a link to nothing at the manifest whose folder is missing, or a symlink loop there (realpath goes
         # through the link either way): "error: <db> cannot be opened: No such file or directory" (or "Too
         # many levels of symbolic links") had no fix, no NEXT and no stop record while status FAILed it (B13
@@ -3382,8 +3444,9 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
     except Exception as err:  # a file above the folder: its stat raises; status's backstop line, the same
         results = [doctor.stopped(config, "state_dir", err)]
     found = next((r for r in results if r.name == name and not r.ok), None)
-    if found is None and name == "state_dir.manifest" and exc.errno == errno.ELOOP:
-        found = next((r for r in results if r.name == "state_dir" and not r.ok), None)  # a loop above it
+    if found is None and name == "state_dir.manifest" and exc.errno in (errno.ELOOP, errno.ENOTDIR):
+        # a loop above it, or a state folder that is a file: state_dir's own FAIL (E45)
+        found = next((r for r in results if r.name == "state_dir" and not r.ok), None)
     return found
 
 
@@ -3612,6 +3675,16 @@ def _main(argv: Sequence[str] | None) -> int:
         else:  # a terminal's or an agent's run: the line above already said it (B13 round 19 W13, W30)
             _log.debug("skipped: lock held by %s", _lock_holder(exc.who))
         return EXIT_LOCK_HELD
+    except LockNotAFileError as exc:
+        # a folder, fifo, socket or link at the lock, met by a command no guard covers (exclude-empty, a
+        # purge's lock): status's lock FAIL and the person's move aside, never a traceback (E38; ruling 13)
+        found = _not_a_file_state(args)
+        if found is None:
+            raise
+        _log.debug("state: %s", exc, exc_info=True)
+        _err(found[0])
+        _misplaced_next(args, found[0], found[1])
+        return EXIT_FAILED
     except ConfigError as exc:
         _err(f"configuration error: {exc}")
         return EXIT_CONFIG
@@ -3684,6 +3757,11 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
         _state_next(args, said=said, path=exc.filename)
+        return EXIT_FAILED
+    except governance.GovernanceNotAFileError as exc:
+        # a governance file that is not a file, met inside a command: its status words, a NEXT (E43)
+        _err(f"error: state: {exc}")
+        _misplaced_next(args, f"error: state: {exc}", exc.path)
         return EXIT_FAILED
     except AgentSyncError as exc:
         said = _non_folder_said(args, exc)

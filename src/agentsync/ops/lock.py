@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 
-from agentsync.errors import LockHeldError
+from agentsync.errors import LockHeldError, LockNotAFileError
 from agentsync.model import CycleMode, PassKind
 
 log = logging.getLogger(__name__)
@@ -371,7 +371,17 @@ class SingleWriterLock:
         if self._fd is not None:
             raise RuntimeError(f"{self._path}: already acquired by this instance")
         flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
-        fd = os.open(self._path, flags, 0o600)
+        try:
+            fd = os.open(self._path, flags, 0o600)
+        except OSError as exc:  # a folder (EISDIR), any link (ELOOP under O_NOFOLLOW), a socket (EOPNOTSUPP)
+            if exc.errno in (errno.EISDIR, errno.ELOOP, errno.EOPNOTSUPP, errno.ENXIO):
+                raise LockNotAFileError(exc.errno, exc.strerror, str(self._path)) from None
+            raise
+        if not stat.S_ISREG(
+            os.fstat(fd).st_mode
+        ):  # a fifo opens O_RDWR, and its flock fails (B13 round 26 E38)
+            os.close(fd)
+            raise LockNotAFileError(errno.EINVAL, "not a regular file", str(self._path))
         try:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

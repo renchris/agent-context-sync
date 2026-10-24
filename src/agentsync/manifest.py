@@ -815,7 +815,10 @@ def manifest_lost(db_path: Path) -> bool:
             return False
         db_path.stat()  # a symlink to a missing file is a missing manifest: a sync would start a new one
         return False  # through it, the A29 hazard by a link (B13 round 24 B64)
-    except FileNotFoundError:
+    except (
+        FileNotFoundError,
+        NotADirectoryError,
+    ):  # a link through a file is to nothing too (B13 round 26 E45)
         pass
     except OSError:
         return False

@@ -1814,7 +1814,7 @@ def test_a_side_file_that_is_not_a_file_is_one_fail_named_by_its_role_with_a_cop
     files = [r for r in doctor._check_state_dir(sample_config) if r.name == "state_dir.files"]
     (line,) = files
     role = SIDES.get(side, "the token cache")
-    assert not line.ok and line.detail == f"{there} is a folder, not a file ({role})", line
+    assert not line.ok and line.detail == f"{there} is a folder, not a file: {role} belongs there", line
     assert line.fix == f"the person moves {doctor._shell_path(there)} aside, keeping a copy", line
     assert doctor.is_persons_fix(line.fix)
 

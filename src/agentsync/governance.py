@@ -138,6 +138,18 @@ class GovernanceError(AgentSyncError):
     """A purge, compaction, hold or offboarding step was refused or failed; the message says why."""
 
 
+class GovernanceNotAFileError(GovernanceError):
+    """A governance file that is not a regular file (a folder, a fifo, a socket, a link to one or a loop):
+    the person's move aside, keeping a copy, in status's words (:func:`state_not_a_file`), never "a fault in
+    agentsync to report"; fail closed, never the empty default, which would drop legal holds (B13 round 26
+    E43; ruling 13)."""
+
+    def __init__(self, path: Path, kind: str, role: str) -> None:
+        self.path, self.kind, self.role = path, kind, role
+        self.detail, self.fix = state_not_a_file(path, kind, role)
+        super().__init__(f"{self.detail} (fix: {self.fix})")
+
+
 class HoldActiveError(GovernanceError):
     """A legal/records hold covers the scope: purge and compaction are suspended until it is released."""
 
@@ -301,7 +313,7 @@ def _atomic_write_json(path: Path, obj: object) -> None:
     tmp.replace(path)
 
 
-def _read_json(path: Path, default: Any) -> Any:
+def _read_json(path: Path, default: Any, role: str = "a governance file") -> Any:
     try:  # never a plain read: a fifo at holds.json hung status and every hold (B13 round 25 D46)
         text = read_regular_text(path)
         if text is None:
@@ -309,11 +321,19 @@ def _read_json(path: Path, default: Any) -> Any:
         return json.loads(text)
     except FileNotFoundError:
         return default
+    except ValueError as exc:
+        if not isinstance(exc, json.JSONDecodeError | UnicodeDecodeError):  # not a file: moved aside (E43)
+            from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+            raise GovernanceNotAFileError(
+                path, doctor.state_file_kind(path) or "not a regular file", role
+            ) from None
+        raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
     except (
         PermissionError
     ) as exc:  # its owner or mode, not its contents (B13 round 20 X73): kept as the cause
         raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
         raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
 
 
@@ -342,15 +362,44 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         os.close(fd)
 
 
-def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
-    """The detail and the person's fix of something at the audit trail that is not a file (``kind``, in
-    ``doctor.state_file_kind``'s words): status's governance.audit FAIL and a hold's error line say the same,
+def state_not_a_file(path: Path, kind: str, role: str) -> tuple[str, str]:
+    """The detail and the person's fix of something at a governance file that is not a file (``kind``, in
+    ``doctor.state_file_kind``'s words; ``role`` names the file: ``the audit trail``, ``the hold list``,
+    ``the purge queue``, ``the suppression list``): status's FAIL and a command's error line say the same,
     the file named by what it is, never "not the state file" (the manifest's words), and the move aside
-    keeping a copy, as install.sh and state_dir.files say it (B13 round 25 D22, D41)."""
+    keeping a copy, as install.sh and state_dir.files say it (B13 round 25 D22, D41; round 26 E43)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
-    detail = f"{path} is {kind}, not a file (the audit trail)"
+    detail = f"{path} is {kind}, not a file: {role} belongs there"  # no bracket before "(fix:" (E18)
     return detail, f"the person moves {doctor._shell_path(path)} aside, keeping a copy"
+
+
+def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
+    """:func:`state_not_a_file` of the audit trail (B13 round 25 D41)."""
+    return state_not_a_file(path, kind, "the audit trail")
+
+
+GOVERNANCE_ROLES = {
+    "holds.json": "the hold list",
+    "purge-queue.json": "the purge queue",
+    "suppressed.json": "the suppression list",
+    "audit.jsonl": "the audit trail",
+}
+"""What each governance file is, in the words of its not-a-file FAIL (B13 round 26 E43)."""
+
+
+def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
+    """The first governance file that is not a regular file, by its stat (``doctor.state_file_kind``, which
+    opens nothing, so a fifo never blocks), as the error its readers raise; None when each is a file, a link
+    to one or missing (B13 round 26 E43; ruling 13)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    for name, role in GOVERNANCE_ROLES.items():
+        path = governance_dir(state_dir) / name
+        kind = doctor.state_file_kind(path)
+        if kind is not None:
+            return GovernanceNotAFileError(path, kind, role)
+    return None
 
 
 def _not_a_file_error(path: Path, mode: int | None = None) -> GovernanceError | None:
@@ -462,7 +511,7 @@ def _check_scope(scope: str) -> str:
 
 
 def _state_holds(state_dir: Path) -> list[Hold]:
-    data = _read_json(_holds_file(state_dir), {"holds": []})
+    data = _read_json(_holds_file(state_dir), {"holds": []}, "the hold list")
     out: list[Hold] = []
     for h in data.get("holds", []):
         out.append(Hold(str(h["scope"]), str(h["reason"]), str(h["owner"]), str(h["set_at"]), "state"))
@@ -668,7 +717,7 @@ def _suppress_file(state_dir: Path) -> Path:
 
 def load_suppressions(state_dir: Path) -> Suppressions:
     """Load the suppression list (empty when none)."""
-    data = _read_json(_suppress_file(state_dir), {})
+    data = _read_json(_suppress_file(state_dir), {}, "the suppression list")
     items = frozenset((str(a), str(b)) for a, b in data.get("items", []))
     globs = tuple((str(a), str(b)) for a, b in data.get("globs", []))
     paths = frozenset((str(a), _path_key(str(b))) for a, b in data.get("paths", []))
@@ -720,7 +769,7 @@ def _queue_file(state_dir: Path) -> Path:
 
 def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     """Queued purges, oldest first."""
-    data = _read_json(_queue_file(state_dir), {"queue": []})
+    data = _read_json(_queue_file(state_dir), {"queue": []}, "the purge queue")
     return [
         QueuedPurge(PurgeSelector(**q["selector"]), PurgeReason(q["reason"]), str(q["enqueued_at"]))
         for q in data.get("queue", [])

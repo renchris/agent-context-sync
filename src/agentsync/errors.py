@@ -43,6 +43,12 @@ class ManifestOpenError(ManifestPathError):
     move-aside fix would throw good state away: the CLI says one line and exits 1 (B13 round 19 W65)."""
 
 
+class LockNotAFileError(OSError):
+    """Something that is not a regular file where the lock belongs (a folder, a fifo, a socket, a link): an
+    ``OSError`` carrying the lock's path, which the CLI words as status's lock FAIL, never a traceback (B13
+    round 26 E38; ruling 13)."""
+
+
 class LockHeldError(AgentSyncError):
     """Another live agentsync process holds the single-writer lock (CLI exit 75, logged as skipped)."""
 
