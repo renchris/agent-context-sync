@@ -14117,6 +14117,62 @@ def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_wh
     )
 
 
+def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 26 E11, E28: with a fifo at the manifest's -shm, sqlite's read-only open fails with IOERR
+    (IOERR_LOCK), not CANTOPEN, so the report called the state file damaged, pointed six times at a Doctor
+    state_dir.manifest line that does not exist and filed the listing warn as unexpected. The read is the
+    side file's (``doctor.side_may_explain``), named the -shm, with Doctor's state_dir.files line; a folder at
+    the -shm still reads whole."""
+    real = cli._status_checks
+    listing = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)",
+        doctor.Severity.WARN,
+    )
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        kept = [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        return [*kept, listing]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    shm = db.with_name(db.name + "-shm")
+    os.mkfifo(shm, 0o600)
+    try:
+        assert setup_report._side_breaking_read(db) == shm
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        shm.unlink()
+    assert "state_dir.manifest line" not in text, [
+        ln for ln in text.splitlines() if "state_dir.manifest" in ln
+    ]
+    summary = section(text, "Summary")
+    words = "the state file's -shm is not a file: see Doctor's state_dir.files line"
+    assert section(text, "Status").count(f"- not measured ({words})") >= 4, section(text, "Status")
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        f"last re-screen: not read ({words})"
+    )
+    line = _line(summary, "- doctor: ")
+    assert "heartbeat.x warn (not judged: " in line and line.endswith(" · unexpected 0"), line
+    assert "state_dir.files FAIL (the person's; see Doctor)" in line, line
+    outcome = _line(summary, "- **outcome: ")
+    assert "state_dir.files" in outcome and "unexpected" not in outcome, outcome
+    # the control: a folder at the -shm leaves the read whole
+    shm.mkdir(mode=0o700)
+    try:
+        assert setup_report._side_breaking_read(db) is None
+    finally:
+        shm.rmdir()
+
+
 def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

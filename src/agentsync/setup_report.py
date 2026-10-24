@@ -7077,8 +7077,9 @@ class _StateFolderNotFolderError(_NoStateError):
 
 
 class _StateSideNotFileError(_NoStateError):
-    """Something other than a file sits where the manifest's -wal belongs (``side``), and sqlite's read-only
-    open of the manifest fails on it (CANTOPEN), while the manifest and its folder open: the person's to move
+    """Something other than a file sits where the manifest's -wal or -shm belongs (``side``), and sqlite's
+    read-only open of the manifest fails on it (CANTOPEN, or IOERR for a fifo at the -shm: B13 round 26 E11,
+    E28), while the manifest and its folder open: the person's to move
     aside, keeping a copy, as Doctor's state_dir.files FAIL says (B13 round 25 ruling 12, D20), never "this
     account cannot open the state file", which points at a chmod (:func:`_side_breaking_read`)."""
 
@@ -11059,10 +11060,12 @@ def _sidecars_not_files(c: Config) -> list[Path]:
 
 def _side_breaking_read(db: Path) -> Path | None:
     """The manifest's -wal (or -shm) where something other than a file sits, when it is what makes the
-    report's own read-only open of the manifest fail (sqlite's CANTOPEN), B13 round 25 ruling 12 (D20): the
-    manifest is a file this account can read and write in a folder it can search, so the failure is the side
-    file's, never access. Keyed on both facts, as a folder at -shm leaves the read whole (its parts are
-    measured): never on a side file being there alone. None otherwise, and when any test fails."""
+    report's own read-only open of the manifest fail (an error a side file that is not a file gives,
+    ``doctor.side_may_explain``: CANTOPEN, READONLY, or IOERR, a fifo; B13 round 26 E11, E28), B13 round 25
+    ruling 12 (D20): the manifest is a file this account can read and write in a folder it can search, so the
+    failure is the side file's, never access. Keyed on both facts, as a folder at -shm leaves the read whole
+    (its parts are measured): never on a side file being there alone. A fifo's IOERR_LOCK comes from the
+    -shm, so it names the -shm first; the -wal otherwise. None otherwise, and when any test fails."""
     sides = _sides_not_files_at(db)
     if not sides:
         return None
@@ -11077,9 +11080,17 @@ def _side_breaking_read(db: Path) -> Path | None:
         finally:
             conn.close()
     except sqlite3.Error as exc:
-        if not _cannot_open(exc):
+        code = getattr(exc, "sqlite_errorcode", 0)
+        try:
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+            explains = bool(doctor.side_may_explain(exc))
+        except Exception:  # an older or broken doctor: the same codes, read here
+            explains = _cannot_open(exc) or code & 0xFF == sqlite3.SQLITE_IOERR
+        if not explains:
             return None
-        return next((p for p in sides if p.name.endswith("-wal")), sides[0])
+        first = "-shm" if code == sqlite3.SQLITE_IOERR_LOCK else "-wal"
+        return next((p for p in sides if p.name.endswith(first)), sides[0])
     except OSError:
         return None
     return None
