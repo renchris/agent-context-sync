@@ -30747,9 +30747,8 @@ label escalation is `NEW_START_NOTE` ("not judged yet ... until the next sync bu
 runnable: run blind, one erased a page whose file was still listed. After that sync, an entry queued before the
 manifest's first run that the manifest holds nothing for (no row, page, tombstone or alias) is
 `unresolved_note` ("not resolvable: ... erase it with `~/.local/bin/agentsync purge docs=<page path>`", counted by
-its first words, `UNRESOLVED_HEAD`), and a run
-that targets nothing for such an entry is never VERIFIED and never dequeued. A link to nothing in a folder the next
-sync creates the file through is the new start's too. The unjudged words name the FAIL that is there
+its first words, `UNRESOLVED_HEAD`), kept before the run, so it is never VERIFIED and never dequeued. A link
+to nothing in a folder the next sync creates the file through is the new start's too. The unjudged words name the FAIL that is there
 (`unjudged_note(check)`: state_dir.files for a regular manifest this account cannot read and write, else
 state_dir.manifest), and `purge` (the queue, its dry run, a selector) over a regular manifest that does not open
 stops on the state file's own error, whatever the queue holds, so "refuses until then" is true. Every count agrees

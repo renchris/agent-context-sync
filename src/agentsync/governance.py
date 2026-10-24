@@ -616,7 +616,7 @@ def hold_list_unread(state_dir: Path) -> bool:
     under a hold on all)."""
     try:
         state_holds(state_dir)
-    except GovernanceError:
+    except Exception:  # not a file, refused, or the wrong shape: no read, so no hold list to trust
         return True
     return False
 
@@ -2791,6 +2791,10 @@ def _unjudged_check(db: Path) -> str:
         return "state_dir.manifest"
     if stat.S_ISREG(st.st_mode) and not os.access(db, os.R_OK | os.W_OK):
         return "state_dir.files"
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    if doctor.side_not_a_file_at(db) is not None:  # a -wal or -shm that is not a file: its files line
+        return "state_dir.files"
     return "state_dir.manifest"
 
 
@@ -2832,6 +2836,9 @@ def _queued_before(q: QueuedPurge, started: str | None) -> bool:
         first = datetime.fromisoformat(started.replace("Z", "+00:00"))
     except ValueError:
         return False
+    # a stamp with no zone (hand-edited, another writer) is UTC, as every stamp agentsync writes is: comparing
+    # a naive one with an aware one raised TypeError through status and the loop (P112's reviewer)
+    queued, first = (t if t.tzinfo else t.replace(tzinfo=_UTC) for t in (queued, first))
     return queued < first
 
 
@@ -3100,26 +3107,6 @@ _HELD_WHY = "the purge failed; the log has the error"
 git failure's text can name a path or an id, and the report is printed, so that text stays in the log."""
 
 
-def _targeted_nothing(db: Path, q: QueuedPurge, rep: PurgeReport) -> bool:
-    """Whether the purge of ``q``, an entry the cycle queued before this manifest's first run, found nothing:
-    no item, no docs path, no blob (B13 round 27 P112: it read VERIFIED and was dequeued, and the history the
-    lost manifest's alias had linked it to stayed)."""
-    sel = q.selector
-    if q.reason not in KEPT_REASONS or not (sel.source_id and sel.stable_id) or sel.docs_glob:
-        return False
-    if rep.items or rep.docs_paths or rep.blobs_targeted:
-        return False
-    try:
-        conn = _connect(expand(db))
-        try:
-            started = _first_run_started(conn)
-        finally:
-            conn.close()
-    except (AgentSyncError, sqlite3.Error):
-        return False
-    return _queued_before(q, started)
-
-
 def run_purge_queue(
     config: Config,
     *,
@@ -3187,13 +3174,6 @@ def run_purge_queue(
             except GovernanceError as exc:
                 log.warning("governance: queued purge kept: %s", exc)
                 not_run(q, f"stays queued: {exc if isinstance(exc, HoldActiveError) else _HELD_WHY}")
-                continue
-            if _targeted_nothing(sp.db, q, rep):
-                # never VERIFIED over nothing: that dropped the only record of a page whose history stayed
-                # (B13 round 27 P112)
-                why = unresolved_note(q)
-                log.warning("governance: %s", why)
-                not_run(q, why)
                 continue
             reports.append(rep)
             if dry_run:

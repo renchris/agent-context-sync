@@ -8240,7 +8240,7 @@ def test_a_link_to_nothing_at_the_manifest_after_the_new_start_claims_no_fail(
 
 
 def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_never_verified(
-    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     """B13 round 27 P112 (ruling 17): a purge queued before the new start, for an id the new manifest holds
     nothing of (a re-keyed item whose alias only the lost manifest had), targeted 0 items, read VERIFIED and
@@ -8263,11 +8263,6 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
         assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
         said = capsys.readouterr().out
         assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
-    # the run's own guard: a purge that targeted nothing is never dequeued as VERIFIED, judged or not
-    monkeypatch.setattr(governance, "_kept_queued", lambda _db, _q: "")
-    (rep,) = governance.run_purge_queue(initialised)
-    assert rep.not_run == governance.unresolved_note(q) and not rep.verified
-    assert governance.pending_purges(initialised.state_paths.root) == [q]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
@@ -8722,3 +8717,65 @@ def test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role(
         )
     else:
         assert f"{doctor.SIDE_ROLES[where[0]]} is not a file" in out.note and "moves it aside" in out.note
+
+
+# ---- B13 round 27 lane B's reviewer ----
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_linked_manifest_in_a_folder_this_account_cannot_search_gets_that_folders_line(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """P42's reviewer: a link into a folder this account cannot search gave manifest_sides no sides, so the
+    target folder's own state_dir.files line could never print."""
+    _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    other = tmp_path / "other"
+    other.mkdir()
+    for name in ("", "-wal", "-shm"):
+        here = db.with_name(db.name + name)
+        if here.exists():
+            here.rename(other / f"real.sqlite{name}")
+    db.symlink_to(other / "real.sqlite")
+    other.chmod(0o000)
+    try:
+        assert doctor.manifest_sides(db) == (other / "real.sqlite-wal", other / "real.sqlite-shm")
+        lines = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.files" and not r.ok]
+        assert any(r.detail.startswith(f"cannot look inside {other}: ") for r in lines), lines
+    finally:
+        other.chmod(0o700)
+
+
+def test_a_queued_purge_stamped_with_no_zone_is_judged_never_a_traceback() -> None:
+    """P112's reviewer: a naive enqueued_at against a "...Z" first run raised TypeError through status."""
+    sel = governance.PurgeSelector(source_id="source", stable_id="contoso-1")
+    q = governance.QueuedPurge(sel, governance.PurgeReason.UPSTREAM_DELETED, "2026-01-01T00:00:00")
+    assert governance._queued_before(q, "2026-02-01T00:00:00Z") is True
+    assert governance._queued_before(q, "2025-12-01T00:00:00Z") is False
+
+
+def test_a_hold_list_of_the_wrong_shape_invites_no_purge_and_never_crashes_the_loop(
+    initialised: Config,
+) -> None:
+    """P131's reviewer: the loop read holds.json for every queued purge, and a hold list of the wrong shape
+    (valid JSON) raised out of next_step; it is a hold list that cannot be read, so no purge is invited."""
+    _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sel = governance.PurgeSelector.parse("docs=mirror/source/README.txt.md", source_id=None)
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.DLP_REMEDIATION)
+    holds = governance._holds_file(root)
+    holds.write_text("[]\n", encoding="utf-8")
+    assert governance.hold_list_unread(root)
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w], step.waits
+
+
+def test_the_unjudged_words_over_a_side_that_is_not_a_file_name_the_files_line(initialised: Config) -> None:
+    """P24's reviewer: over a readable manifest whose -wal is a folder the note named a state_dir.manifest
+    line; status FAILs it under state_dir.files."""
+    _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    wal = db.with_name(db.name + "-wal")
+    wal.unlink(missing_ok=True)
+    wal.mkdir()
+    assert governance._unjudged_check(db) == "state_dir.files"

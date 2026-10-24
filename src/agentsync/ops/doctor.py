@@ -1670,7 +1670,9 @@ def manifest_sides(db: Path) -> tuple[Path, ...]:
     if linked:
         try:
             db = Path(os.path.realpath(db, strict=True))
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
+            # a link to nothing, or into a folder this account cannot search: beside the target it names, so
+            # the state_dir.files line names that folder (P42's reviewer)
             db = Path(os.path.realpath(db))
         except OSError:  # a loop, or a link through a file: the manifest's own FAIL
             return ()
