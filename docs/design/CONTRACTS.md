@@ -30340,7 +30340,113 @@ of its check whose line names the file goes to `from agentsync's lock file that 
 
 ### 16.184 Round 26: the installer and the shell report (2026-10-23, wave B13 round 26 lane RB)
 
-Reserved for round 26 lane RB of B13.
+Fourteen items of `docs/plans/bring-back-ocr.md`, "B13 round 26", each built to its verifier's corrected fix
+(`~/.cache/agentsync-bring-back/b13/round26/items/<id>.md`), plus two halves other lanes' items named in
+scripts/install.sh, which lane RB owns this round. Every runnable command keeps `~/.local/bin/agentsync`.
+
+**The shell pairs a person's step 3 stop as the agentsync report does** (E66, E77: round 26 ruling 11, refined
+again; lane RA's `_claims`). §16.179's shell pairing gave a person's stop only a line naming a non-zero exit and no
+`chmod`. `claims()` in `fallback_sync_stops` now takes, for a person's stop, any line but a `skipped: lock held`
+one, whatever its chmod words (`no chmod was run`, the person's own `chmod -N`, `agentsync sync returned 1`); for
+an agent's stop it first takes out the person's chmods (`chmod [-R] -N|-RN|u+rwx <p>`, `the person runs chmod
+<mode> <p>`, lane RA's expression) and then keeps §16.179's rule. Lane RA's pairing commit carries this hunk, so
+both halves land in one commit. Test: the pairing table of
+`test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does` (`persons-chmod`
+now pairs; `persons-no-exit`, `persons-acl`, `agents-persons-acl`, `agents-persons-chmod-700`), still checked
+against `_stop_pairs`.
+
+**A friction stamp with a fraction of a second is read at its whole second** (E77). The shell's friction readers
+took only `date -u +%FT%TZ` stamps, while setup_report's `_ISO_TIME` reads a fraction, so a line stamped
+`10:01:00.5Z` paired in the agentsync report only. One rule at the end of `FRICTION_AWK`, the first rule of every
+reader that includes it, rewrites such a stamp to its whole second; comparing whole seconds is exact against the
+whole-second stops agentsync writes, except at the end line that bounds the window: there the rule sets `FRAC`,
+`friction_attempt_bounds` prints a fourth field (`f` when the latest end line had a fraction), and both stop windows
+take a stop in that second as before the end line, as setup_report does (the lane's review). An offset is still
+read by Python only. This replaces §16.179's sentence that
+the shell reads only the prompt's stamps. Tests: the pairing table's `fraction` and `fraction-end` cases, and
+`test_a_stop_in_a_fractional_end_lines_second_is_the_attempts`.
+
+**The uncomputed outcome says ruling 10's rule for a person's stop** (E66). A step 3 that ended on the person's stop
+is `failed at step 3` in the agentsync report when no later sync ended 0 (ruling 10), which the shell cannot read.
+When a stop it lists is the person's, paired or not, each of its three uncomputed lines adds `; the agentsync report
+reads a stop whose fix is the person's as failed at step 3 unless a later sync ended 0, which this shell fallback
+does not read (setup-feedback.md, Failed at step N)`; never a computed outcome, and nothing for an agent's stop.
+Test: `test_the_shell_reports_outcome_says_ruling_10s_rule_for_a_persons_stop` (each line, each owner).
+
+**A stop logged after the end line is listed apart** (E76, the shell half of round 25 D5). `fallback_sync_stops
+late` gives the stops from the attempt's end line, in its own second, to its last timed line, plus 1 s (never the
+friction log's last write), each paired with the step 3 errors after that end line, as `_late_stops` does; the
+Installer section prints them after the attempt's block under `Step-3 sync stops agentsync logged in sync-stops.log
+beside install.log after this attempt's end line (they do not change the outcome):`. The outcome and its stop count
+never read them. Test: `test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
+
+**The report says what its `F<n>` ids are** (E4, E32). When the Summary or the Installer section cites an id (from
+either window above), the friction section opens with `The `F<n>` ids in the Summary and the Installer section are
+line numbers in this log, counting its first line as 1.`, outside the fence. The fence stays raw: numbering it would
+change the issue link's `friction_latest_said` read, the Agent line's redaction and `friction_text`'s read-back, and
+`friction_text` leaves the sentence out when it reads a report back. Test: `test_the_shell_report_says_what_its_f_ids_are`.
+
+**A run a usage error stopped says it read no commit** (E21). `commit_shown` printed a bare `-` when no read was
+tried; it says `not read (this run stopped before it read the commit)`, as setup_report says such a run read none.
+`COMMIT` and install.log's `commit=` stay `-`, the machine word, and nothing runs git; the install source line,
+which is about `~/src/agent-context-sync` and git-free, is unchanged. Test:
+`test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit`.
+
+**Step 1 names the step a side file that is not a file stops** (E15, with lane D's E55 and lane B's E62, install.sh's
+halves). Measured with `agentsync init` on this Mac: only a folder at the -shm that this account can read (not a link
+to one) is opened past, so step 2 stops at its status step; a fifo, a socket, a link or an unreadable folder at the
+-shm, and a folder, a socket, a link loop or any link at the -wal, stop init, at the config step; a fifo at the -wal
+that this account can read and write stops nothing, since SQLite removes it on close (one it cannot open stops init,
+the lane's review). `config_errors` adds a `side-status` line for the readable folder (read apart, as `lost-link`
+is) and gives no word to that openable fifo, nor does step 2's `state_side_not_a_file`; step 1's tail is `; step 2 stops at its
+config step on the -wal or -shm of agentsync's state file, which is a folder or something else that is not a file
+(not damage): ...`, or `; step 2 stops at its status step on the -shm of agentsync's state file, which is a folder
+(not damage): ...`. Since SQLite opens a side with O_NOFOLLOW (lane B's E62, measured here too: init exits 1 on a
+side link to a file or to nothing), any link at a side is `state-side-notfile` in step 1's probe and in step 2's
+`state_side_not_a_file`, except beside a manifest that is itself a link, whose sides SQLite opens at its target.
+Tests: the step 1 table's `SN-shm-fifo`, `SN-shm-link`, `SN-wal-fifo`, `SN-wal-fifo-shut`, `SN-shm-dangling`, `SN-wal-filelink`,
+`SN-beside-link` and its `SN-shm` cases under `SIDE_STATUS_TAIL`, and `test_a_link_at_the_wal_is_a_side_not_a_file_at_step_2`.
+
+**The not-a-file fixes name an opening step only when status names one** (E16). §16.179's D-L1d clause, `; they
+first open a folder shut to this account, as status names it`, printed whatever the folder's mode, while doctor's
+`_opens_first` names a `chmod 700` or a `sudo chown` only for a folder this account cannot read, write and search.
+It is one variable, `SHUT_OPEN`, ending every not-a-file tail and NEXT: `; if status names a folder shut to this
+account, they open it first, as status says`. It names no chmod, which the prompt's chmod rule would read as the
+agent's (the verifier's `they first run the chmod 700 or sudo chown it names` would). This replaces D-L1d's words.
+Test: `test_a_folder_at_the_wal_that_is_not_shut_names_no_opening_step` (a 0700 folder at the -wal: status names no
+chmod 700), and every not-a-file test through the test's `SHUT_OPEN`.
+
+**The shut folder's NEXT takes only a chmod that is a [FAIL] line's whole fix** (E54). After a 0000 state folder's
+`chmod 700`, step 2's NEXT had the agent run `each chmod 600 or chmod 700 its [FAIL] lines name for a path in that
+folder`, which took in doctor's D72 fix for a 0000 folder at a side file, `the person runs chmod 700 <side> first,
+...; then moves <side> aside`. It reads `each chmod 600 or chmod 700 that is the whole fix of one of its [FAIL] lines
+for a path in that folder (a fix that starts 'the person', even one that names a chmod 700 first, stays theirs)`.
+No prompt change: the NEXT follows doctor. Test:
+`test_a_shut_folder_holding_a_shut_side_folder_leaves_its_opening_chmod_to_the_person`.
+
+**A lost manifest that is a link to nothing is named as the link** (E19). Over earlier passes, a symlink at
+manifest.sqlite to a file that does not exist, in a folder a sync can write, was `missing` in status, step 1 and step
+2 while `ls` lists it. Doctor's state_dir.manifest detail reads `<db> is a symlink to <target>, which does not
+exist; the manifest is missing, but heartbeat.json records earlier passes`, still ending on `LOST_MANIFEST`, which
+the listing note and the report's matcher read; init prints it as its `error: state:` line. Step 1's probe adds a
+`lost-dangling` line and `state_lost` prints 3, so the tail and the NEXT say `a symlink to a file that does not
+exist`; ruling 7's fix stays, since both its moves work through such a link. Tests:
+`test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl` (doctor),
+`test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_steps_1_and_2` and the step 1 table's
+`LM-link`.
+
+**The inlined lost-manifest copies never block on a fifo** (E31, E56). Step 1's `lost()` and step 2's `state_lost`
+read heartbeat.json with a blocking open, so a fifo there held step 1's config probe until `with_timeout 5` killed
+it, with every word it would have printed, and step 2's for its 10 s, while `manifest_lost` (D46) reads no record
+there at once. Both open it `O_NONBLOCK` and read only a regular file, inline (an older installed build runs them).
+§16.179's D33 test now runs both copies, `state_lost` whole over a config, each in a process with a 5 s limit, with a
+fifo heartbeat in every case: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`.
+
+**The rest** (E36, E79). B51's parity test's docstring states D80's rule and asserts the cut it describes
+(`test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does`). The installer's header names both
+hosts the speech build fetches from, as `speech.FETCH_HOSTS` has them, and the SwiftPM mirror
+(`test_the_installer_header_names_every_host_the_speech_build_fetches_from`). Lane B's E2 has no shell half: the
+shell report copies no doctor or init output.
 
 ### 16.185 Round 26: a state file that is not a file, purge over a lost manifest and the new start (2026-10-23, wave B13 round 26 lane B)
 
