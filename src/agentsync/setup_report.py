@@ -10112,18 +10112,19 @@ def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> st
     later sync ended 0; ``account``, the agent's error line it claims (:func:`_stop_pairs`), named on it, so
     one stop is one line (B13 round 24 ruling 9). What stopped it in lane B's words by ``kind`` (B13 round 24
     B82); a state-folder stop (one its folder refused, lane B's writer since round 24) named as the folder,
-    and "the fix is the person's", never "the person's fix" after "the fix is" (B16)."""
+    and "the fix is the person's", never "the person's fix" after "the fix is" (B16); a measured stop no later
+    sync ended 0 after says whose the fix is the same way (B13 round 26 E17)."""
     told = f" (F{account.line}: the agent's account of it)" if account is not None else ""
     agents = stop.owner == "agent"
     after = "the agent's chmod" if agents else "the person's fix"
+    whose = "the agent's chmod" if agents else "the person's"
     if not stop.measured:
         why = _stop_unread_why(stop)
-        whose = "the agent's chmod" if agents else "the person's"
         then = f"whether a later sync ended 0: not measured ({why}); the fix is {whose}"
     elif stop.ended_ok is not None:
         then = f"it ended 0 after {after}"
     else:
-        then = f"no sync ended 0 after it by this report ({after})"
+        then = f"no sync ended 0 after it by this report; the fix is {whose}"
     which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
     return f"- agentsync sync · step 3 · exited 1 on {stop.what}, {which}; {then}{told}"
 

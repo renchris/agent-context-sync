@@ -3203,7 +3203,12 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
         "agentsync's state file, which this account could not open, and no later sync ended 0: the "
         "person's to fix)"
     ), summary
-    assert "no sync ended 0 after it by this report (the person's fix)" in summary, summary
+    assert "no sync ended 0 after it by this report; the fix is the person's" in summary, summary
+    # B13 round 26 E17: an agent's measured stop no later sync ended 0 after says its fix the same way
+    lock = setup_report._SyncStop(datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "lock", "agent", None)
+    assert setup_report._sync_stop_line(lock).endswith(
+        "no sync ended 0 after it by this report; the fix is the agent's chmod"
+    )
     db.chmod(0)
     try:
         _text, summary = summary_of(fake_mac)
@@ -3243,7 +3248,7 @@ def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Pat
         "should be; whether a later sync ended 0: not measured (the state folder is not a folder)"
     )
     assert line("manifest", "person", measured=True).endswith(
-        "no sync ended 0 after it by this report (the person's fix)"
+        "no sync ended 0 after it by this report; the fix is the person's"
     )
     stops = tmp_path / setup_report._SYNC_STOPS_NAME
     stops.write_text(
@@ -5526,8 +5531,8 @@ def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
     ), summary
     assert _items_of(summary) == [
         "- agentsync sync · step 3 · exited 1 on agentsync's state folder, which was not where or what it "
-        "should be; no sync ended 0 after it by this report (the person's fix) (F4: the agent's account of "
-        "it)"
+        "should be; no sync ended 0 after it by this report; the fix is the person's (F4: the agent's "
+        "account of it)"
     ], summary
     assert _line(summary, "- agent friction: ").endswith(
         "1 step-3 sync stop agentsync logged itself, one of the outcome's reasons (see Items; F4 is the "
