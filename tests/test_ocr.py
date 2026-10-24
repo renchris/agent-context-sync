@@ -506,6 +506,28 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "error: Failed to clone repository ssh://git@git.contoso.com/HOME/Contoso Repos/Kit.git: fatal",
         "error: Failed to clone repository ssh:<path>",
     ),
+    # B13 round 26 E49: a raw ": " inside the path ends no URL unless Git's own prefix follows it
+    "an unquoted URL whose path holds a colon and a space is a path": (
+        "error: Failed to clone repository ssh://git@git.contoso.com/srv/Q3: Q4 Plans/Kit.git",
+        "error: Failed to clone repository ssh:<path>",
+    ),
+    "a colon, a space and a cause word that is no Git prefix are a path too": (
+        "error: Failed to clone repository ssh://git@git.contoso.com/srv/Q3: fatal Plans/Kit.git",
+        "error: Failed to clone repository ssh:<path>",
+    ),
+    # B13 round 26 E50: the guards matter only for a URL that holds a colon, a space and Git's prefix
+    "a file URL that holds a Git prefix is a path": (
+        "error: see file://HOME/Q3: error: Q4 Plans/x.txt now",
+        "error: see file:<path>",
+    ),
+    "a FILE URL that holds a Git prefix is a path": (
+        "error: FILE://HOME/Q3: fatal: Q4 Plans/x.txt not found",
+        "error: FILE:<path>",
+    ),
+    "a quoted URL that holds a Git prefix is a path": (
+        "error: cannot open 'https://contoso.sharepoint.com/sites/Q3: fatal: Q4 Plans/x' now",
+        "error: cannot open 'https:<path>",
+    ),
     "two Git commands keep both causes": (
         "error: Git command 'git -C HOME/a fetch' failed: fatal: first cause; "
         "Git command 'git -C /b clone' failed: fatal: second cause",

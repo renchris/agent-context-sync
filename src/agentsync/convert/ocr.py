@@ -96,10 +96,12 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
 _PATH_RE = re.compile(
     # a quoted URL: to its own closing quote (B39), one that ends a word: a URL may hold an apostrophe (D51)
     r"(?P<uq>['\"])[A-Za-z][\w+.-]*://[^'\"\s]*(?P=uq)(?=[:;,.)\]]?(?:\s|$))"
-    # an unquoted URL but a file:// one (any case), ending where a colon and a space follow it or the line
-    # ends: one that runs into a space may hold more of a path, and is a path; so is a quoted URL that is no
-    # word of its own (a space inside) (B13 round 25 D84)
-    r"|(?<![\w.<~/'\"])(?P<url>(?![Ff][Ii][Ll][Ee]:)[A-Za-z][\w+.-]*://[^\s'\"]+?)(?=:\s|[:;,.)]?$)"
+    # an unquoted URL but a file:// one (any case), ending where ": " and Git's own prefix follow it or the
+    # line ends: one that runs into a space, or into any other ": ", may hold more of a path, and is a path;
+    # so is a quoted URL that is no word of its own (a space inside). The file:// guard and the quote
+    # lookbehind matter only for a URL that holds ": " (B13 round 25 D84; round 26 E49, E50)
+    r"|(?<![\w.<~/'\"])(?P<url>(?![Ff][Ii][Ll][Ee]:)[A-Za-z][\w+.-]*://[^\s'\"]+?)"
+    r"(?=: (?:fatal|error|warning|remote): |[:;,.)]?$)"
     r"|(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
     r"|(?<![\w.<])~?/\S.*?(?=:\d+:\d+: |$)"  # an unquoted one: to a compiler's line:column, else to the end
 )
@@ -197,9 +199,10 @@ def _plain(text: str | bytes) -> str:
     A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
     but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote, and a
     quoted URL through its own, one followed by a space or the line's end, perhaps after a stop or a colon,
-    as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL is ``<url>`` where a colon and a
-    space follow it (``<url>: <cause>``) or the line ends, but a ``file://`` one; one that runs into a space
-    is a path, as a raw space may be part of it (D84).  SwiftPM's ``Git command '...' failed: <cause>`` keeps
+    as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL is ``<url>`` where ``: `` and Git's
+    own prefix (``fatal:``, ``error:``, ``warning:``, ``remote:``) follow it (``<url>: fatal: <cause>``) or
+    the line ends, but a ``file://`` one; one that runs into a space, or into any other ``: ``, is a path, as
+    a raw space may be part of it (D84; round 26 E49).  SwiftPM's ``Git command '...' failed: <cause>`` keeps
     its cause: the command (``git -C`` and SwiftPM's cache), up to its own
     ``' failed:`` (a folder's apostrophe is followed by no such words), is ``<command>``, each of two on one
     line (B13 round 24 B39, round 25 D84)."""

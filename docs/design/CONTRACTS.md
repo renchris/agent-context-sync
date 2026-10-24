@@ -29999,6 +29999,13 @@ and of `FILE://`, which the code before it hid. Tests: seven cases in
 `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (a clone line, a URL with a user and token,
 a spaced `file://` URL and one in capitals, an unquoted URL that runs into a space, a quoted URL with a space, two
 Git commands).
+Amended 2026-10-23, §16.186 E49: an unquoted URL ends at `: ` only where Git's own prefix follows it (`fatal: `,
+`error: `, `warning: `, `remote: `), or at the line's end: a raw `: ` may be part of a path (a Finder `/` is stored
+as `:`), and `ssh://git@git.contoso.com/srv/Q3: Q4 Plans/Kit.git` leaked `<url>: Q4 Plans/Kit.git` (§16.186).
+Amended 2026-10-23, §16.186 E50: the `file://` guard and the quote lookbehind matter only for a URL whose path holds
+`: ` and Git's prefix (`file://<home>/Q3: error: Q4 Plans/x.txt`, `'https://contoso.sharepoint.com/sites/Q3:
+fatal: Q4 Plans/x'`); the spaced `file://` URL, the one in capitals and the quoted `Contoso Files/x` above stay
+paths without them, and pin neither (§16.186).
 
 **A clone that never happened says the fetch failed (D50; `agentsync.convert.speech`; dated line at §16.175
 B39).** SwiftPM 6.2.4's only stderr for a FluidAudio host it cannot reach (a DNS failure and a refused port,
@@ -30154,7 +30161,29 @@ Reserved for round 26 lane B of B13.
 
 ### 16.186 Round 26: the speech fix for an old toolchain and the OCR URL cut (2026-10-23, wave B13 round 26 lane E)
 
-Reserved for round 26 lane E of B13.
+Round 26's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 26"; specs `round26/items/E<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-23, §16.186 E<n>`.
+
+**An unquoted URL ends only where Git's prefix follows it (E49; `agentsync.convert.ocr`; dated line at §16.181
+D84).** D84 ended an unquoted URL at the first `: `, which may sit inside a path (macOS stores a Finder `/` in a name
+as `:`): `Failed to clone repository ssh://git@git.contoso.com/srv/Q3: Q4 Plans/Kit.git` gave `<url>: Q4
+Plans/Kit.git`, where the code before D84 gave `ssh:<path>`. The URL now ends at `: ` only where Git's own prefix
+follows it (`fatal: `, `error: `, `warning: `, `remote: `), or at the line's end, perhaps after one stop; anything
+else runs to the end of the line as a path. Not the finder's word list (`fatal|error|...|Could not|Failed|unable`
+then a word end): a folder `Q3: fatal Plans` still leaked, and the last three are no Git prefix. By design, a URL
+followed by a cause with no Git prefix (`: Permission denied`) reads `https:<path>` as before D84: the cause is
+lost, nothing leaks. Tests: two cases in `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path`
+(`Q3: Q4 Plans`, `Q3: fatal Plans`).
+
+**The URL guards are each pinned by a case (E50; `agentsync.convert.ocr`; dated line at §16.181 D84).** D84's
+`file://` exclusion (in any case) and the quote in the URL's lookbehind were pinned by no case: removing either,
+or making the first case-sensitive, left every case green, as the end rule cannot cross a space and its cases all
+held one. They matter only for a URL whose path holds `: ` and Git's prefix (after E49; the verifier's `Q3: Q4
+Plans` probes, measured at dd5639cb, pin E49's end rule instead). Three cases now fail without them, each measured
+by mutation: `error: see file://<home>/Q3: error: Q4 Plans/x.txt now` (the guard), `error: FILE://<home>/Q3: fatal:
+Q4 Plans/x.txt not found` (the guard, and its case) and `error: cannot open
+'https://contoso.sharepoint.com/sites/Q3: fatal: Q4 Plans/x' now` (the lookbehind), each a path. D84's ten cases
+are the seven it names and these three.
 
 ### 16.187 Round 26: deploy docs, CONTRACTS records and the deploy-pack tests (2026-10-23, wave B13 round 26 lane D)
 
