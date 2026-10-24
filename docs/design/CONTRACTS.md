@@ -29859,6 +29859,8 @@ commit): a person's stop now claims any line but a `skipped: lock held` one, wha
 is gone, and an agent's stop takes out the chmods doctor gives the person (`chmod -N`, `chmod u+rwx`, `the person
 runs chmod 700 <p>`) before its chmod test; the new cases are a person's line with a chmod, with no exit or quoting
 the person's `chmod -N`, and an agent's stop over the person's chmod.
+Amended 2026-10-23, §16.184 E77: nineteen cases, not seventeen: two stamps with a fraction of a second (in the
+stop's own second, and an end line), which the shell now reads.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -30355,7 +30357,7 @@ both halves land in one commit. Test: the pairing table of
 now pairs; `persons-no-exit`, `persons-acl`, `agents-persons-acl`, `agents-persons-chmod-700`), still checked
 against `_stop_pairs`.
 
-**A friction stamp with a fraction of a second is read at its whole second** (E77). The shell's friction readers
+**A friction stamp with a fraction of a second is read at its whole second** (E77; dated line at §16.179 D79). The shell's friction readers
 took only `date -u +%FT%TZ` stamps, while setup_report's `_ISO_TIME` reads a fraction, so a line stamped
 `10:01:00.5Z` paired in the agentsync report only. One rule at the end of `FRICTION_AWK`, the first rule of every
 reader that includes it, rewrites such a stamp to its whole second; comparing whole seconds is exact against the

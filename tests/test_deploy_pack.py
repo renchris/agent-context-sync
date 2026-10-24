@@ -6245,7 +6245,21 @@ def test_the_shell_pairing_records_case_count_is_the_tests() -> None:
     record = " ".join(
         _contracts_section("**The shell report pairs each step 3 stop as the agentsync", "\n\n").split()
     )
-    words = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen")
+    words = (
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+        "twenty",
+        "twenty-one",
+        "twenty-two",
+    )
     stated = re.findall(rf"\b({'|'.join(words)}) cases\b", record)
     assert stated[:1] == ["eleven"] and count >= 13, (stated, count)
     assert words.index(stated[-1]) + 10 == count, (
