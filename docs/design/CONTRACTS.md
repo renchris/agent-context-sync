@@ -29854,6 +29854,11 @@ Amended 2026-10-23, §16.187 E60: thirteen cases, not eleven (the test has had 1
 person's exit line with or without `with code`, the modes the state folder (700) and a governance
 file (0600) do take beside one its file does not, and a line after the end line (a bare `end` included) are
 cases too.
+Amended 2026-10-23, §16.183 E8: seventeen cases, not thirteen (lane RB's rows, folded into round 26 ruling 11's
+commit): a person's stop now claims any line but a `skipped: lock held` one, whatever its chmod words, so `_EXIT_RE`
+is gone, and an agent's stop takes out the chmods doctor gives the person (`chmod -N`, `chmod u+rwx`, `the person
+runs chmod 700 <p>`) before its chmod test; the new cases are a person's line with a chmod, with no exit or quoting
+the person's `chmod -N`, and an agent's stop over the person's chmod.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -30202,7 +30207,136 @@ the converter words from the report and the download case from `_stub_settled`'s
 
 ### 16.183 Round 26: setup report: pairing every person's stop, the new start's pages, state files that are not files (2026-10-23, wave B13 round 26 lane RA)
 
-Reserved for round 26 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 26").
+Lane RA's round 26 items (`docs/plans/bring-back-ocr.md`, "B13 round 26"; specs `round26/items/E<n>.md`, the
+verifier's corrected fix built): E1, E3, E5, E6, E7, E8, E11, E14, E17, E20, E23, E24, E26, E27, E28, E29, E30, E33,
+E34, E37, E53, E67, E68, E72 and E78, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the
+hunks of other lanes' files the items need (named below). Items that describe one defect are built once: E8, E33,
+E53 and E68; E1, E24 and E27; E3 and E14; E11 and E28; E5 and E23; E29 and E30; E34 and E78.
+
+**A person's step 3 stop claims its line whatever its chmod words** (E8, E33, E53, E68; round 26 ruling 11, refined
+again; amends §16.179 D79). `_claims` refused a person-owned stop any line that named a chmod, so round 25's own v33 line ("so no chmod
+was run"), a line quoting the person's `chmod -N <path>` or "the person runs chmod 700 <p> first", and one that said
+only "agentsync sync returned 1" left the stop and its line two records. A person-owned stop now claims the first
+unclaimed step 3 error at or after it and before the stop after next, whatever its words; only a `skipped: lock
+held` line is never claimed (`_EXIT_RE` is gone). An agent-owned stop still claims only a chmod of its own: the
+chmods doctor gives the person (`_PERSONS_CHMOD_RE`: `chmod -N <path>`, `chmod u+rwx <path>`, `the person runs chmod
+<mode> <path>`, bounded to the command and its path, so `...; ran chmod 600 x` after one stays the agent's) are
+removed first. The shell report's `claims()` in `scripts/install.sh` does the same, in the one commit (lane RB's
+patch, folded in). Fractional-second stamps pair in the agentsync report as before. Tests:
+`test_every_step_3_stop_claims_the_agents_line_that_names_its_fix` (the `_claims` table) and the shell parity rows of
+`test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does`.
+
+**A stop that came back after the agent's chmod** (E67). Two agent-owned stops on one file in v33's "a chmod you
+already ran" order read "the fix is the agent's chmod", though it had run. `_after_chmod` marks an agent-owned stop
+an earlier same-file stop claimed a line before (a paired agent stop's line names a chmod); `_open_stop_reasons`
+gives those stops their own reason, `2 syncs at step 3 exited 1 on agentsync's lock file, the later after the
+agent's chmod for the earlier, and no sync ended 0 after them by this report: the fix is no longer the agent's
+chmod, as v33 sends it to the person`. A second stop alone, with no claimed line, keeps the old words. Test:
+`test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`.
+
+**The new start's mirror pages are counted** (E1, E24, E27; ruling 14's report side, the D26 half of §16.178 that
+never fired). `_new_pages` took `int()` of lane B's `cycle.unowned_mirror_pages`, which returns the pages, so it
+failed into 0 and every part said `no manifest yet (no sync has run)` over real pages; its test had patched an int
+in. It counts the list (an int is still taken as a count). Test:
+`test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them` reads the real pages a sync wrote,
+cross-checks status's own count, and empties the mirror and removes the function for the two `no sync has run`
+cases.
+
+**A lost manifest that is a link into a gone folder** (E3, E14; ruling 13's words for the manifest). Doctor's one
+FAIL for it (round 25 D71) has the person remove the link first, while the report's outcome, bucket and evidence
+gave only the lost manifest's two moves. The outcome's cause and the Items after-words key on the run's own `error:
+state:` line (` is a symlink to `), as the link may be fixed by report time: `on agentsync's state file, a link into
+a folder that is missing or refuses a write, which is missing though heartbeat.json records earlier passes: the
+person's to fix, removing or re-pointing the link first`, after-words `after the link was removed or pointed at a
+folder that exists, and the file restored or heartbeat.json moved aside`. The Doctor bucket
+(`_STATE_LOST_LINK_WORDS`) and the evidence clause (`_STATE_LOST_LINK_EVIDENCE`) key on the report's own lstat
+(`_lost_link`: lost and in `_dangling_state`). No word holds the link's target, and `_LOST_MANIFEST_LINE` (the
+`evidence_lost` count) is unchanged. Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured` (the
+link sub-case, and a link into a folder that exists keeping the plain words), the config-step words table, and
+`test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`.
+
+**A fifo at the -shm is the side file's** (E11, E28). sqlite's read-only open fails with IOERR_LOCK on a fifo at the
+-shm, not CANTOPEN, so `_side_breaking_read` returned nothing and the report called the state file damaged, pointing
+six times at a state_dir.manifest line doctor never prints, with the listing warn "unexpected". It asks
+`doctor.side_may_explain` (the same codes as a fallback for an older doctor) and names the -shm first on
+IOERR_LOCK. Test: `test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests` (a folder at the -shm still reads
+whole).
+
+**The side files have doctor's names** (E5, E23). The report said `the state file's -wal` and `-shm` beside
+Doctor's `write-ahead log` and `shared-memory file`, and named one folder at the -wal two ways. One source,
+`_SIDE_ROLE` (`doctor.SIDE_ROLES` with the dash dropped), feeds the stop lines, the not-measured reason
+(`_StateSideNotFileError.words`), the outcome's clause (`_side_words`) and the shell report's
+`fallback_sync_stop_line` (its two words, in `scripts/install.sh`); the two matchers read it. The Doctor bucket
+names the side file (`from the state file's write-ahead log that is not a file`, or both: `from the state file's
+write-ahead log and shared-memory file, which are not files`), as do the listing warn's clause and the evidence
+clause, keeping `a side file of the state file` only as the fallback. Tests:
+`test_the_side_files_have_doctors_names_in_every_reader` and the ruling 12 tests.
+
+**The send line for a hold's one-word value** (E6). `Send it` says `it would show that word` for a one-word hold
+value (D80), `that name` only for a folder or organisation name. Test:
+`test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`.
+
+**A stop logged after the end line, in the friction line** (E7). The friction line counted the stops in the attempt
+while the late block showed one more, and called the late stop's own line one of "the others". It adds `; 1 more
+logged after the end line (listed after Items; F7 is the agent's account of it)` (with no in-window stop: `; 1
+step-3 sync stop agentsync logged after the end line (...)`), keeps that line out of the others, and says `the other
+does not change it by itself` when one line is left. Test:
+`test_the_friction_line_counts_a_stop_logged_after_the_end_line`.
+
+**The Items line of a stop no later sync ended 0 after** (E17). It read `no sync ended 0 after it by this report
+(the agent's chmod)`; it reads `...by this report; the fix is the agent's chmod` (or `the person's`), as the
+not-measured form already did (B16's rule kept: never "the person's fix" after "the fix is").
+
+**A stopped copy's reason** (E20). `after its end line, which ended rc 0` read as the attempt's end line ending rc
+0. B20's reason now ends `... after its end line is a stand-alone run that does not change it (that run ended rc
+N)` (or `(that run has no end line)`), and Y19's `... is a stand-alone run and does not resolve it (that run ended
+rc 0)`. Tests: `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` and
+`test_a_stopped_copys_reason_says_the_late_runs_end_in_a_clause_of_its_own`.
+
+**The lost manifest's listing warn beside a loop wait** (E26). The lost manifest's bucket took the heartbeat listing
+warn only when the loop had no check at all, so a queued purge's wait made it "unexpected"; it is not judged
+whenever the loop's checks do not name that heartbeat. Test:
+`test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait`.
+
+**The installer output's NEXT: clause** (E29, E30). D16's `the run with no end line prints none if stopped before
+its NEXT:` was built only for a part of install.out, so an attempt whose runs are all of it (the common path) got
+none; the whole-output line and the Installer section pass `open_runs` too. With the run writing the report and a
+run with no end line both short a NEXT:, the clause names both reasons with the one count. Tests:
+`test_an_attempts_own_run_with_no_end_line_gets_the_next_clause_too` and
+`test_a_pending_run_and_a_run_with_no_end_line_each_give_their_reason`.
+
+**A helper build a signal stopped** (E34, E78). Doctor gives a signal-stopped build (and a speech build whose
+FluidAudio fetch failed) the plain re-run since lane E's D85, while the report bucketed only time-outs, so the warn
+was "unexpected". `_helpers_again` reads each marker (a reason ending in `skill.HELPER_RETRY_CLAUSE`, or a speech
+reason starting with `speech.RESOLVE_FAILED`) and the warn lands in `from a helper build that stopped before it
+finished (1 check): ocr warn (install.sh builds it again)`, with no time limit; the time-out bucket stays keyed on
+BUILD_TIMED_OUT. A warn whose fix is the developer tools' (doctor keeps the clause then), an older marker without
+the clause, or a warn whose reason is not the marker's stays unexpected. Test:
+`test_a_helper_build_a_signal_stopped_is_install_shs_to_build_again_never_unexpected`.
+
+**A two-letter hold value** (E72). report_words reads three letters or more, so an owner `IT` cut every `it` of the
+report while both reports stayed public. `_TWO_LETTER_WORDS` (install.sh's `two_letter_word`, kept equal) lists
+every two-letter word either reader prints, and a two-letter value in it is a one-word value the report prints
+(D80's rule): private only. `HR` is in neither list and stays public. In `scripts/install.sh` the `hold_values`
+loop's flag h reads it. Tests: `test_a_two_letter_hold_value_the_report_prints_makes_it_private`,
+`test_the_two_letter_words_are_every_two_letter_word_either_report_prints` (fails when either reader prints a
+two-letter word the list lacks), and the `IT` case of
+`test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private`.
+
+**The doctor hook's check-group holder is per thread** (E37). A module global in `ops/doctor.py` let another
+report's or test's abandoned doctor thread, still inside `groups_seen`, keep its callback held and take this
+thread's groups, so `test_the_doctor_hook_says_which_check_it_started_last` failed in a loaded serial run (its
+bound was not timing, so it is not marked timing). `_group_holder` is a `threading.local`; the hook sets and reads
+it in the doctor's own thread. Test: `test_another_threads_doctor_never_reaches_this_ones_group_holder`.
+
+**A lock, heartbeat or governance file that is not a file** (ruling 13's report words for lane B's E38, E39 and E43,
+grown into this lane at lane B's ask). Doctor FAILs `lock`, `heartbeat` or `governance.hold`, `.purge_queue`,
+`.suppressed` or `.audit` as `<path> is <kind>, not a file: <role> belongs there`, the person's to move aside, and
+no bucket of the report's read it, so it was "unexpected". `_misplaced_state` lstats each of those files, and a FAIL
+of its check whose line names the file goes to `from agentsync's lock file that is not a file` (the file's words, or
+`from state files that are not files` for several), a person's bucket that the outcome's known causes and ruling
+10's person's FAILs read; that check's FAIL over a regular file stays unexpected. Test:
+`test_a_lock_heartbeat_or_governance_file_that_is_not_a_file_is_the_persons`.
 
 ### 16.184 Round 26: the installer and the shell report (2026-10-23, wave B13 round 26 lane RB)
 
