@@ -5736,6 +5736,62 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["10:01:30.25 | end", "10:01:40 | step 3 | error | chmod 600 <lock> | -"],
             ["-"],
         ),
+        # B13 round 27 P145: every stamp setup_report reads (_ISO_TIME), written whole, pairs as it does
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T06:01:05-04:00 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T10:01:05+0000 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T23:01:05+13:00 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-15T00:01:05+14:00 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T06:01:00-04:00 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T06:00:59-04:00 | step 3 | error | sync exited 1 | -"],
+            ["-"],
+        ),
+        (
+            ["10:01:00 lock agent refused"],
+            ["2026-10-14T10:01:30.25-00:00 | end", "10:01:40 | step 3 | error | chmod 600 <lock> | -"],
+            ["-"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T10:01:05 | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14 10:01:05Z | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 manifest person lost"],
+            ["2026-10-14T10:02Z | step 3 | error | sync exited 1 | -"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 lock agent refused"],
+            ["2026-10-14T06:01:05.5-04:00 | step 3 | error | exit code 1 | chmod 600 <lock>"],
+            ["F4"],
+        ),
     ],
     ids=[
         "chmod-after",
@@ -5757,6 +5813,17 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "one-to-one",
         "fraction",
         "fraction-end",
+        "offset",
+        "offset-no-colon",
+        "offset-same-day",
+        "offset-day-before",
+        "offset-same-second",
+        "offset-second-before",
+        "offset-fraction-end",
+        "no-zone",
+        "blank-for-t",
+        "no-seconds",
+        "agents-offset-fraction",
     ],
 )
 def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does(
@@ -5771,8 +5838,9 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
     outcome names the lines that are the agent's account of a stop."""
     setup = friction_path(env).parent
     setup.mkdir(parents=True)
-    log = [f"2026-10-14T{e}" for e in events] + ["2026-10-14T10:05:00Z | end | finished"]
-    log = [ln.replace(" | ", "Z | ", 1) if not ln.endswith("finished") else ln for ln in log]
+    # a time alone is given the date and Z; a stamp written whole keeps its own form (round 27 P145)
+    log = [e if e.startswith("2026-") else f"2026-10-14T{e}".replace(" | ", "Z | ", 1) for e in events]
+    log += ["2026-10-14T10:05:00Z | end | finished"]
     friction_path(env).write_text(_PAIR_HEAD + "".join(f"{ln}\n" for ln in log))
     (setup / "install.log").write_text(
         "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "

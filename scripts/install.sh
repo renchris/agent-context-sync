@@ -868,13 +868,58 @@ FRICTION_AWK='
 			if (new) { HD = 0; PS = 0; W = 1 }
 			return new
 		}
-		# the first rule of every reader: an event stamp with a fraction of a second, which setup_report reads
-		# too (_ISO_TIME), is read at its whole second, so each reader here takes the line (B13 round 26 E77);
-		# exact against the whole-second stops agentsync writes. An offset is still not read
-		# (FRAC says the line had one: an end line so cut ends its attempt after its whole second)
-		{ FRAC = 0 }
-		match($0, /^[ \t]*([-*][ \t]+)?`?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9]+Z`?[ \t]*[|]/) {
-			if (match($0, /:[0-9][0-9][.][0-9]+Z/)) { $0 = substr($0, 1, RSTART + 2) substr($0, RSTART + RLENGTH - 1); FRAC = 1 }
+		# secs() inverted: the whole-second UTC text of s, its day count turned back into a date (the civil
+		# from days of H. Hinnant, on the same count, which is his plus 719469)
+		function utctext(s,    z, era, doe, yoe, y, doy, mp, d, m, r) {
+			z = int(s / 86400) - 1; r = s - (z + 1) * 86400
+			era = int(z / 146097); doe = z - era * 146097
+			yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
+			y = yoe + era * 400; doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
+			mp = int((5 * doy + 2) / 153); d = doy - int((153 * mp + 2) / 5) + 1
+			m = mp < 10 ? mp + 3 : mp - 9
+			if (m <= 2) y++
+			# the format in parts: one string "...dT...dZ" read as two-letter words to the report scan
+			return sprintf("%04d-%02d-%02d" "T" "%02d:%02d:%02d" "Z", y, m, d, int(r / 3600), int(r % 3600 / 60), r % 60)
+		}
+		# the stamp at the start of t as setup_report._ISO_TIME and parse_time read it (a T or a blank, seconds
+		# and a fraction of one optional, then Z, an offset with or without its colon, or no zone, which is UTC),
+		# as whole-second UTC text; "" when t does not start with one. STAMPLEN: the characters it took, so the
+		# text as written can be cited (RAWSTAMP); STAMPFRAC: whether it had a fraction
+		function canon(t,    i, ss, c, o) {
+			STAMPLEN = 0; STAMPFRAC = 0
+			if (!match(t, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][Tt ][0-9][0-9]:[0-9][0-9]/)) return ""
+			i = 17; ss = "00"
+			if (match(substr(t, i), /^:[0-9][0-9]/)) {
+				ss = substr(t, i + 1, 2); i += 3
+				if (match(substr(t, i), /^[.][0-9]+/)) { i += RLENGTH; STAMPFRAC = 1 }
+			}
+			c = substr(t, i, 1); o = 0
+			if (c == "Z" || c == "z") i++
+			else if ((c == "+" || c == "-") && match(substr(t, i + 1), /^[0-9][0-9]:?[0-9][0-9]/)) {
+				o = (c == "-" ? -1 : 1) * (substr(t, i + 1, 2) * 3600 + substr(t, i + RLENGTH - 1, 2) * 60)
+				i += RLENGTH + 1
+			}
+			STAMPLEN = i - 1
+			return utctext(secs(substr(t, 1, 10) "T" substr(t, 12, 5) ":" ss) - o)
+		}
+		# the first rule of every reader: an event stamp in any form setup_report reads (_ISO_TIME), and the
+		# Attempt: line, are rewritten to the whole-second UTC text "date -u +%FT%TZ" writes before any reader
+		# sees the line, so each reader here takes it, offsets included (B13 round 26 E77 read a fraction at its
+		# whole second; round 27 P145: an offset, no zone, a blank for the T or no seconds dropped the line,
+		# while setup_report paired it); exact against the whole-second stops agentsync writes. FRAC says the
+		# line had a fraction: an end line so cut ends its attempt after its whole second. RAWSTAMP is the stamp
+		# as written, which the shell report cites, as the friction log it copies shows it (P106)
+		{ FRAC = 0; RAWSTAMP = "" }
+		match($0, /^[ \t]*([-*][ \t]+)?`?[0-9]/) {
+			CP = RLENGTH - 1; CT = canon(substr($0, CP + 1))
+			if (CT != "" && substr($0, CP + 1 + STAMPLEN) ~ /^`?[ \t]*[|]/) {
+				RAWSTAMP = substr($0, CP + 1, STAMPLEN); FRAC = STAMPFRAC
+				$0 = substr($0, 1, CP) CT substr($0, CP + 1 + STAMPLEN)
+			}
+		}
+		match($0, /^Attempt:[ \t]*[0-9]/) {
+			CP = RLENGTH - 1; CT = canon(substr($0, CP + 1))
+			if (CT != "" && substr($0, CP + 1 + STAMPLEN) ~ /^[ \t]*$/) $0 = "Attempt: " CT
 		}
 '
 # The clause every not-a-file fix ends with (round 25 D79's D-L1d): macOS refuses to copy or rename a folder this
@@ -3518,8 +3563,9 @@ attempt_ran_no_install() {
 # held" line; an agent's stop a line naming chmod, past the person's chmods ("chmod -N", "chmod u+rwx", "the
 # person runs chmod 700 <p>"), and when it names modes, one its file takes (700 the state folder, 600 or 700 a
 # governance file, 600 any other); a person's stop any other line, whatever its chmod words (round 26 ruling 11
-# refined again: E66, E77). A stamp is read as the prompt's "date -u +%FT%TZ" writes it, or with a fraction of a
-# second, read at its whole second (FRICTION_AWK, round 26 E77); Python also reads an offset.
+# refined again: E66, E77). A stamp is read in every form setup_report reads, at its whole second in UTC
+# (FRICTION_AWK: a fraction since round 26 E77, an offset, no zone, a blank for the T and no seconds since round
+# 27 P145).
 # With "late", the stops logged at or after the attempt's end line, up to its own last timed line, plus 1 s,
 # each paired with the step 3 errors logged after that end line, as setup_report._late_stops gives them (round
 # 25 D5; round 26 E76): display only, never the outcome's count, and nothing when the attempt has no end line
@@ -6158,7 +6204,7 @@ friction_attempt_errors() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 1
-	LC_ALL=C awk '/^Attempt:/ { e = 0; next } /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[^|]*[|][^|]*[|] error [|]/ { e = 1 }
+	LC_ALL=C awk "$FRICTION_AWK"'/^Attempt:/ { e = 0; next } /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[^|]*[|][^|]*[|] error [|]/ { e = 1 }
 		END { exit !e }' "$f" 2>/dev/null
 }
 # The step 1 stop of step 1's own command, before install.sh --log-start (a git or Xcode stop), when the

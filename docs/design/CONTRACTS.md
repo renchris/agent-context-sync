@@ -29878,6 +29878,9 @@ Amended 2026-10-23, §16.184 E77: nineteen cases, not seventeen: two stamps with
 stop's own second, and an end line), which the shell now reads.
 Amended 2026-10-24, §16.192 P59 (by §16.184 E76): the shell does now list a stop logged after the end line apart,
 in its Installer section under its own heading, as lane RA's D5 does; the outcome still never reads it.
+Amended 2026-10-24, §16.189 P145: thirty cases, not nineteen: eleven stamps in the other forms setup_report reads
+(an offset with and without its colon, two that cross a UTC day, the same second and the second before, an
+offset on a fractional end line, no zone, a blank for the T, no seconds, and an agent's stop under an offset).
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -30386,6 +30389,9 @@ take a stop in that second as before the end line, as setup_report does (the lan
 read by Python only. This replaces §16.179's sentence that
 the shell reads only the prompt's stamps. Tests: the pairing table's `fraction` and `fraction-end` cases, and
 `test_a_stop_in_a_fractional_end_lines_second_is_the_attempts`.
+Amended 2026-10-24, §16.189 P145: an offset is read by the shell too: `FRICTION_AWK`'s first rule rewrites every
+stamp `_ISO_TIME` reads (an offset with or without its colon, no zone, a blank for the T, no seconds, a fraction)
+and the `Attempt:` line's to whole-second UTC text before any reader sees it.
 
 **The uncomputed outcome says ruling 10's rule for a person's stop** (E66). A step 3 that ended on the person's stop
 is `failed at step 3` in the agentsync report when no later sync ended 0 (ruling 10), which the shell cannot read.
@@ -30767,6 +30773,28 @@ both, `the -wal and the -shm of agentsync's state file (its write-ahead log and 
 folder and a fifo, not files`, and the NEXT says `the error above names the first` and `they move each aside`, since
 moving the one init's error names alone led to a second stop. Tests: the step 1 table's `SN-*` rows (`SN-both`),
 `test_step_2_names_both_sides_that_are_not_files` and the side tests with the real agentsync.
+
+**A closing status a signal stopped is said** (P14). `loop_next` ran `with_progress "status" loop_status_run ||
+true`, so a status killed by SIGKILL or SIGTERM ended the run 0 on the fallback NEXT with nothing said. It keeps
+the rc and, at 128 or more (never on an empty `LOOP_OUT`: a status left running can still write it), says `note:
+the closing status was <rc_meaning> before it finished, so its NEXT line may be missing here:
+~/.local/bin/agentsync status prints it again` above the NEXT, which falls back as before; the exit stays 0, since
+the sync itself finished, and install.log's `step=report` line adds `closing_status=<rc>`. The deploy guide has no
+catalog of the closing lines, so install.sh's header says it. Test:
+`test_a_closing_status_a_signal_stopped_is_said_and_logged` (SIGKILL, SIGTERM, and a status that exits 1 on a
+`[FAIL]` line, which says nothing).
+
+**Every friction stamp setup_report reads, the shell reads** (P145; amends §16.184 E77; dated line at §16.179 D79).
+The shell's readers took `...:SSZ` and, since E77, a fraction, while `_ISO_TIME` and `parse_time` read an offset
+(`-04:00`, `+0000`), no zone (UTC), a blank for the T and no seconds, so such a step 3 line paired in the agentsync
+report only. `FRICTION_AWK`'s first rule now parses the stamp at the start of every line (after a list marker and a
+backtick) and of the `Attempt:` line, subtracts its offset, rebuilds the date with the inverse of `secs()`'s day
+count (Hinnant's days-to-civil, integer awk, no `date` call) and splices whole-second UTC text in its place, so
+every reader's text comparisons stay exact; `FRAC` still marks a fraction for the end line's edge, and `RAWSTAMP`
+keeps the stamp as written. `friction_attempt_errors` reads through it too. Tests: the pairing table's `offset`,
+`offset-no-colon`, `offset-same-day`, `offset-day-before`, `offset-same-second`, `offset-second-before`,
+`offset-fraction-end`, `no-zone`, `blank-for-t`, `no-seconds` and `agents-offset-fraction` cases, each still
+checked against `_stop_pairs` (thirty cases).
 
 ### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
 
