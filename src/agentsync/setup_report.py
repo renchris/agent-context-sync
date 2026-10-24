@@ -10880,6 +10880,48 @@ def _helpers_timed_out(c: Config) -> dict[str, str]:
         return {}
 
 
+def _helpers_again(c: Config) -> dict[str, str]:
+    """The helpers whose last build failed in a way doctor gives the plain re-run as its fix (B13 round 26
+    E34, E78; lane E's round 25 D85): a build step a signal stopped (its marker's reason ends in
+    ``skill.HELPER_RETRY_CLAUSE``, ``ocr._signal_reason``'s) and a speech build whose FluidAudio fetch failed
+    (``speech.RESOLVE_FAILED``), each with the words doctor's detail keeps of it (the reason without the
+    clause, which doctor drops). Keyed on the report's own read of each marker, as :func:`_helpers_timed_out`
+    is; a time-out is that one's, never this. Empty when convert cannot be imported."""
+    out: dict[str, str] = {}
+    try:
+        from agentsync import skill  # noqa: PLC0415 - lazy, as the doctor reads are
+        from agentsync.convert import media, ocr, speech  # noqa: PLC0415 - lazy, as the doctor reads are
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        for name, kind in (("ocr", ocr._OCR), ("media", media.MEDIA), ("speech", speech.SPEECH)):
+            reason = ocr._failure(ocr._helper_path(c.cache_dir, kind), kind)
+            if not reason or reason.startswith(doctor.helper_timed_out_words(name)[0]):
+                continue
+            if reason.endswith(skill.HELPER_RETRY_CLAUSE):
+                out[name] = reason.removesuffix(skill.HELPER_RETRY_CLAUSE)
+            elif name == "speech" and reason.startswith(speech.RESOLVE_FAILED):
+                out[name] = speech.RESOLVE_FAILED
+    except Exception:
+        return out
+    return out
+
+
+def _helper_again_warn(name: str, detail: str, again: dict[str, str]) -> bool:
+    """Whether doctor's ``name`` warn is :func:`_helpers_again`'s build with the re-run as its fix: its
+    words are in the detail and the retry clause is not after them (doctor keeps it when its fix is the
+    developer tools', and install.sh builds nothing without them), nor the developer tools' fix."""
+    stem = again.get(name)
+    if stem is None or stem not in detail:
+        return False
+    try:
+        from agentsync import skill  # noqa: PLC0415 - lazy, as the doctor reads are
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        return stem + skill.HELPER_RETRY_CLAUSE not in detail and doctor._OCR_DEVTOOLS_FIX not in detail
+    except Exception:
+        return False
+
+
 _PERSONS = " (the person's; see Doctor)"
 _AGENTS = " (the agent's; see Doctor)"
 """The label of a state file or folder this account cannot open whose fix is its own chmod (B13 round 21 Y3:
@@ -10998,6 +11040,7 @@ class _DoctorSort:
     from_notfile: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D23, D78)
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
     from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
+    from_again: list[str] = dataclasses.field(default_factory=list)  # B13 round 26 E34, E78
     lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
     side_words: str = _SIDE_NOT_FILE_WORDS  # B13 round 26 E23: the side file by name (_side_bucket_words)
 
@@ -11400,6 +11443,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_refused: list[str] = []
     timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
     from_helpers: list[str] = []
+    again = _helpers_again(r.config) if r.config is not None else {}  # B13 round 26 E34, E78
+    from_again: list[str] = []
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []
     fails: list[tuple[str, str | None]] = []
@@ -11543,6 +11588,9 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if tag == "warn" and name in timed_out and timed_out[name] in detail:
             from_helpers.append(name)
             continue
+        if tag == "warn" and _helper_again_warn(name, detail, again):  # B13 round 26 E34, E78: D85's re-run
+            from_again.append(name)
+            continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
             if tag == "warn"
@@ -11580,8 +11628,9 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_notfile,
         from_side,
         from_dangling,
-        lost_words,
-        side_words,
+        from_again=from_again,
+        lost_words=lost_words,
+        side_words=side_words,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -11696,6 +11745,14 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"from {'a helper build' if one else 'helper builds'} that ran out of time "
             f"({_plural(len(from_helpers), 'check')}): "
             + ", ".join(f"{n} warn" for n in from_helpers)
+            + f" (install.sh builds {'it' if one else 'them'} again)"
+        )
+    if sort.from_again:  # B13 round 26 E34, E78: a signal or a failed fetch, no time limit
+        one = len(sort.from_again) == 1
+        parts.append(
+            f"from {'a helper build' if one else 'helper builds'} that stopped before "
+            f"{'it' if one else 'they'} finished ({_plural(len(sort.from_again), 'check')}): "
+            + ", ".join(f"{n} warn" for n in sort.from_again)
             + f" (install.sh builds {'it' if one else 'them'} again)"
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))

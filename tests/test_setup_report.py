@@ -10291,6 +10291,81 @@ def test_an_ocr_or_media_build_that_ran_out_of_time_shares_the_helper_bucket(
     ), summary
 
 
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_helper_build_a_signal_stopped_is_install_shs_to_build_again_never_unexpected(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 26 E34, E78: doctor gives a helper build a signal stopped (and a speech build whose
+    FluidAudio fetch failed) the re-run as its fix since lane E's round 25 D85, while the report kept only
+    time-outs in a bucket, so such a warn was "unexpected". It has a bucket of its own, keyed on the report's
+    own read of the marker, with no time limit; a warn whose fix is the developer tools', a marker without
+    the clause, or a warn whose reason differs from the marker's, stays unexpected."""
+    from agentsync import skill  # noqa: PLC0415
+    from agentsync.convert import media  # noqa: PLC0415
+
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    config = load_config(fake_mac["config"])
+    kinds = {"ocr": ocr._OCR, "media": media.MEDIA, "speech": speech.SPEECH}
+
+    def warn(name: str, reason: str, fix: str | None) -> str:
+        detail = doctor._helper_detail(reason, fix)
+        said = {
+            "ocr": f"on-device OCR is not working: {detail}",
+            "media": f"media helper: not working ({detail})",
+            "speech": f"speech: failed ({detail})",
+        }[name]
+        return f"[warn] {name} — {said}" + (f" (fix: {fix})" if fix else "")
+
+    def marked(name: str, reason: str) -> Path:
+        marker = ocr._marker(ocr._helper_path(config.cache_dir, kinds[name]))
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(reason, encoding="utf-8")
+        return marker
+
+    def doctor_line(lines: list[str]) -> str:
+        _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", *lines])
+        return _line(summary, "- doctor: ")
+
+    for name, head in (
+        ("ocr", "swiftc, building the OCR helper, was "),
+        ("media", "swiftc, building the media helper, was "),
+        ("speech", "swift build was "),
+    ):
+        for rc in (-9, -11):
+            reason = ocr._signal_reason(head, rc)
+            marker = marked(name, reason)
+            fix = doctor._helper_again_fix(reason, name)
+            assert fix is not None, (name, reason)
+            line = doctor_line([warn(name, reason, fix)])
+            assert line.endswith(
+                f"· from a helper build that stopped before it finished (1 check): {name} warn (install.sh "
+                "builds it again) · unexpected 0"
+            ), (name, rc, line)
+            assert "ran out of time" not in line and "less busy" not in line, line
+            # the developer tools are missing: install.sh builds nothing, so its fix is theirs
+            line = doctor_line([warn(name, reason, doctor._OCR_DEVTOOLS_FIX)])
+            assert line.endswith(f"unexpected 1: {name} warn"), (name, line)
+            # a warn whose reason is not the marker's
+            line = doctor_line([warn(name, "the helper is not owned by this user", None)])
+            assert line.endswith(f"unexpected 1: {name} warn"), (name, line)
+            marker.unlink()
+    # a speech build whose FluidAudio fetch failed, doctor's own re-run
+    reason = f"{speech.RESOLVE_FAILED}1): could not reach the host"
+    marked("speech", reason)
+    fix = doctor._resolve_again_fix(reason)
+    line = doctor_line([warn("speech", reason, fix)])
+    assert line.endswith("(1 check): speech warn (install.sh builds it again) · unexpected 0"), line
+    # an older marker without the clause, and a time-out, keep their own reading
+    marked("ocr", "swiftc, building the OCR helper, was stopped by SIGKILL")
+    old = warn("ocr", "swiftc, building the OCR helper, was stopped by SIGKILL", None)
+    assert doctor_line([old]).endswith("unexpected 1: ocr warn")
+    timed = "swiftc ran out of time building the OCR helper"
+    marked("ocr", timed + skill.HELPER_RETRY_CLAUSE)
+    line = doctor_line([warn("ocr", timed + skill.HELPER_RETRY_CLAUSE, "run install.sh again")])
+    assert "from a helper build that ran out of time (1 check): ocr warn" in line, line
+
+
 def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
