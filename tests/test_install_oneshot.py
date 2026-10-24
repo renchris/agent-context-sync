@@ -5642,6 +5642,18 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["10:01:20 | step 3 | error | chmod 600 <lock> | -"],
             ["F4", "-"],
         ),
+        # round 26 E77: a stamp with a fraction of a second, which setup_report reads, the shell reads too: in
+        # the stop's own second, and as a closing line
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:00.5 | step 3 | error | exit code 1 | chmod 600 <lock>"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:30.25 | end", "10:01:40 | step 3 | error | chmod 600 <lock> | -"],
+            ["-"],
+        ),
     ],
     ids=[
         "chmod-after",
@@ -5661,6 +5673,8 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "stop-after-next",
         "bare-end",
         "one-to-one",
+        "fraction",
+        "fraction-end",
     ],
 )
 def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does(

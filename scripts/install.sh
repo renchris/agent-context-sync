@@ -820,6 +820,7 @@ NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # A second Prompt: line in one attempt opens another, as in parse_friction, for any log version (B13 round 6
 # G81): track() then reads it as a time-less Attempt: line (PS: a Prompt: line seen in this attempt) and sets
 # NH, which each reader takes right after track() as it takes an Attempt: line, and clears.
+# shellcheck disable=SC2016 # the backticks are text: a stamp a markdown list may quote
 FRICTION_AWK='
 		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
 			y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0
@@ -863,6 +864,12 @@ FRICTION_AWK='
 			else if (line ~ s1 && stated(line)) W = 1 # no header and no words yet: the error states them (L26)
 			if (new) { HD = 0; PS = 0; W = 1 }
 			return new
+		}
+		# the first rule of every reader: an event stamp with a fraction of a second, which setup_report reads
+		# too (_ISO_TIME), is read at its whole second, so each reader here takes the line (B13 round 26 E77);
+		# exact against the whole-second stops agentsync writes. An offset is still not read
+		match($0, /^[ \t]*([-*][ \t]+)?`?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9]+Z`?[ \t]*[|]/) {
+			if (match($0, /:[0-9][0-9][.][0-9]+Z/)) $0 = substr($0, 1, RSTART + 2) substr($0, RSTART + RLENGTH - 1)
 		}
 '
 # The clause every not-a-file fix ends with (round 25 D79's D-L1d): macOS refuses to copy or rename a folder this
@@ -3444,8 +3451,8 @@ attempt_ran_no_install() {
 # held" line; an agent's stop a line naming chmod, past the person's chmods ("chmod -N", "chmod u+rwx", "the
 # person runs chmod 700 <p>"), and when it names modes, one its file takes (700 the state folder, 600 or 700 a
 # governance file, 600 any other); a person's stop any other line, whatever its chmod words (round 26 ruling 11
-# refined again: E66, E77). Only the "date -u +%FT%TZ" stamps the prompt writes are read (Python also reads a fraction or an
-# offset).
+# refined again: E66, E77). A stamp is read as the prompt's "date -u +%FT%TZ" writes it, or with a fraction of a
+# second, read at its whole second (FRICTION_AWK, round 26 E77); Python also reads an offset.
 fallback_sync_stops() {
 	local f s w v mt
 	f="$(friction_file)"
