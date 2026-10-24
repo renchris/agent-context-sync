@@ -2983,7 +2983,9 @@ def compute_outcome(
         )
         if copy_stop is not None and not install_runs_only(inside):
             late_rc = late_installs[-1].rc
-            ended = "which has no end line" if late_rc is None else f"which ended rc {late_rc}"
+            # B13 round 26 E20: the late run's state in a clause of its own, never "which" after "its end
+            # line", where it read as the attempt's end line
+            ended = "that run has no end line" if late_rc is None else f"that run ended rc {late_rc}"
             n = (
                 "the install.sh run"
                 if len(late_installs) == 1
@@ -2995,8 +2997,8 @@ def compute_outcome(
                 (
                     f"no install.sh run during this attempt, and step {copy_stop.step} logged an error "
                     f"(F{copy_stop.line})",
-                    f"the installer stopped this copy at step 1, and {n} after its end line, {ended}, is a "
-                    "stand-alone run that does not change it",
+                    f"the installer stopped this copy at step 1, and {n} after its end line is a stand-alone "
+                    f"run that does not change it ({ended})",
                 ),
                 version,
             )
@@ -3021,8 +3023,8 @@ def compute_outcome(
                     run.rc == 0 for run in _after_end(installs, _attempt_end(attempt), stopped=True)
                 ):
                     resolution = (
-                        "the installer stopped this copy at step 1; the install.sh run after its end line, "
-                        "which ended rc 0, is a stand-alone run and does not resolve it"
+                        "the installer stopped this copy at step 1; the install.sh run after its end line is "
+                        "a stand-alone run and does not resolve it (that run ended rc 0)"
                     )
                 return Outcome(
                     "failed",

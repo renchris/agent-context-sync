@@ -17824,14 +17824,49 @@ def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tm
         # B13 round 25 D15: B20's words, as for any other late exit; the attempt ran no install.sh
         assert outcome.why == (
             "no install.sh run during this attempt, and step 1 logged an error (F4)",
-            "the installer stopped this copy at step 1, and the install.sh run after its end line, which "
-            "ended rc 0, is a stand-alone run that does not change it",
+            "the installer stopped this copy at step 1, and the install.sh run after its end line is a "
+            "stand-alone run that does not change it (that run ended rc 0)",
         ), outcome
         assert "install.sh exit 0" not in outcome.why[0], outcome
     head = "Attempt: 2026-10-20T10:00:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
     late = "2026-10-20T10:00:20Z | step 1 | error | install.sh --list-folders exited 1 | -\n"
     ordinary = _x19_outcome(tmp_path, head + late + "2026-10-20T10:30:00Z | end | finished\n", "10:40:00")
     assert ordinary.kind != "failed", "another step 1 error is still resolved by a later run"
+
+
+def test_a_stopped_copys_reason_says_the_late_runs_end_in_a_clause_of_its_own(tmp_path: Path) -> None:
+    """B13 round 26 E20: "after its end line, which ended rc 0" read as the attempt's end line ending rc 0.
+    The late run's state is a clause of its own, in B20's reason and in Y19's (a copy with an install run
+    inside its attempt)."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    fr = setup_report.parse_friction(
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:01:00Z | end | finished\n"
+    )
+
+    def run(start: str, rid: str) -> str:
+        return (
+            f"2026-10-20T{start}Z run={rid} start install.sh compat=28 commit=0123456789ab kind=checkout "
+            "source=- args=\n"
+            f"2026-10-20T{start}Z run={rid} step=agentsync seconds=30 rc=0 result=done\n"
+            f"2026-10-20T{start}Z run={rid} end rc=0 seconds=60\n"
+        )
+
+    log = tmp_path / "install.log"
+    log.write_text(
+        run("10:00:10", "20261020T100010Z-1") + run("10:05:00", "20261020T100500Z-2"), encoding="utf-8"
+    )
+    runs = setup_report.runs_for_attempt(fr, 0, setup_report.read_install_runs(log))
+    outcome = setup_report.compute_outcome(fr.attempts[0], runs)
+    assert outcome.why[1].endswith(
+        "the installer stopped this copy at step 1; the install.sh run after its end line is a stand-alone "
+        "run and does not resolve it (that run ended rc 0)"
+    ), outcome
+    assert "which ended" not in " ".join(outcome.why), outcome
 
 
 def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path: Path) -> None:
@@ -17855,11 +17890,11 @@ def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path
         f"2026-10-20T10:05:00Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
     )
     for rc, ended in (
-        ("0", "which ended rc 0"),  # B13 round 25 D15
-        ("2", "which ended rc 2"),
-        ("1", "which ended rc 1"),
-        ("143", "which ended rc 143"),
-        (None, "which has no end line"),
+        ("0", "that run ended rc 0"),  # B13 round 25 D15; B13 round 26 E20: a clause of its own
+        ("2", "that run ended rc 2"),
+        ("1", "that run ended rc 1"),
+        ("143", "that run ended rc 143"),
+        (None, "that run has no end line"),
     ):
         tail = f"2026-10-20T10:05:00Z run={run} end rc={rc} seconds=60\n" if rc is not None else ""
         log = tmp_path / "install.log"
@@ -17870,8 +17905,8 @@ def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path
         assert (outcome.kind, outcome.step) == ("failed", 1), (rc, outcome)
         assert outcome.why == (
             "no install.sh run during this attempt, and step 1 logged an error (F4)",
-            f"the installer stopped this copy at step 1, and the install.sh run after its end line, {ended}, "
-            "is a stand-alone run that does not change it",
+            "the installer stopped this copy at step 1, and the install.sh run after its end line is a "
+            f"stand-alone run that does not change it ({ended})",
         ), (rc, outcome)
     # an earlier attempt in a later report: never "failed at step 2"
     log.write_text(head + f"2026-10-20T10:05:00Z run={run} end rc=2 seconds=60\n", encoding="utf-8")
