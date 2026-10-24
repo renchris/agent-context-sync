@@ -8620,6 +8620,26 @@ STATE_LOST_NEXT = (
 )
 """Step 2's NEXT for it, where fail's generic "fix the error above" read as the agent's step (ruling 7)."""
 
+LOST_UNREAD = "is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+"""Lane B's manifest.LOST_MANIFEST_UNREAD (B13 round 27 P111, ruling 17)."""
+
+STATE_LOST_UNREAD_TAIL = (
+    f"; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which {LOST_UNREAD} (not "
+    "damage, not a mode): "
+    + LOST_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for a lost manifest beside a heartbeat.json that cannot be read (round 27 P111)."""
+
+STATE_LOST_UNREAD_NEXT = (
+    f"NEXT: agentsync's state file, manifest.sqlite, {LOST_UNREAD} (the error above names it; "
+    "~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+    + LOST_FIX.format(it="it is")
+    + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
+    "next run is: {rerun}"
+)
+"""Step 2's NEXT for it (round 27 P111): it was read as a first start, and a new manifest began unasked."""
+
 LOST_LINK_FIX = (
     "fixing {it} the person's (they remove the link first; then they restore the file from a copy they "
     "trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest)"
@@ -8873,6 +8893,8 @@ def misplaced_tail(role: str) -> str:
         "LM-link",
         "LM-link-live",
         "LM-link-gone",
+        "LM-damaged",
+        "LM-fifo",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -8961,6 +8983,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM-wal": "state-lost",
         "LM-link": "state-lost",
         "LM-link-gone": "state-lost",
+        "LM-damaged": "state-lost",
+        "LM-fifo": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -9023,8 +9047,12 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.unlink(missing_ok=True)
             passed = {"run_id": 3, "last_success_at": "2026-10-20T09:00:00Z"}
             entry = {"run_id": 0} if state == "LM-new" else passed
-            if state != "LM-none":
-                heartbeat = db.parent / "heartbeat.json"
+            heartbeat = db.parent / "heartbeat.json"
+            if state == "LM-fifo":  # round 27 P111: there, but no record can be read
+                os.mkfifo(heartbeat, 0o600)
+            elif state == "LM-damaged":
+                heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
+            elif state != "LM-none":
                 heartbeat.write_text(json.dumps({"project-alpha": entry}), encoding="utf-8")
             if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
                 wal.write_bytes(b"")
@@ -9125,6 +9153,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
     if state == "LM-link":  # round 26 E19: named as the link
         tail = STATE_LOST_DANGLING_TAIL
+    if state in ("LM-damaged", "LM-fifo"):  # round 27 P111: still lost, named so
+        tail = STATE_LOST_UNREAD_TAIL
     odd = {  # round 27 P119: which side, and what is there
         "SN-shm": "shm-folder",
         "SN-shm-shut": "shm-folder",
@@ -9143,7 +9173,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         tail = side_tail(odd, both=state in ("SN-shm", "SN-shm-0500"))
     assert last_line(cp).endswith(tail), last_line(cp)
     assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
-    assert "damaged" not in last_line(cp) and "cannot be read" not in last_line(cp), last_line(cp)
+    said = last_line(cp).replace("heartbeat.json beside it cannot be read", "")  # P111: not damage
+    assert "damaged" not in said and "cannot be read" not in said, last_line(cp)
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
 
 
@@ -10631,7 +10662,7 @@ def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable
     script = INSTALL_SH.read_text(encoding="utf-8")
     [body] = re.findall(r"(?ms)^(def lost\(p\):\n.*?)\n\n\n", script)
     [probe] = re.findall(r"(?ms)^state_lost\(\) \{\n.*?\"\$TOOL_PY\" -I -c '\n(.*?)\n' \"\$CONFIG\"", script)
-    step1 = body + "\n\nimport sys\nprint(int(lost(Path(sys.argv[1]))))\n"
+    step1 = body + "\n\nimport sys\nprint(int(bool(lost(Path(sys.argv[1])))))\n"
     head = "import errno, json, os, stat\nfrom pathlib import Path\n"
 
     def run(code: str, arg: Path) -> str:
@@ -10679,7 +10710,10 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
         "file": lambda: db.write_bytes(b""),
         "folder": db.mkdir,
     }
-    for beat in ("record", "none", "fifo"):
+    # B13 round 27 P111 (ruling 17): a heartbeat.json there that cannot be read is lost all the same, as
+    # manifest.lost_words reads it (lane B); none there, or a link to nothing, is a first start
+    unread = ("fifo", "damaged", "folder", "array", "loop")
+    for beat in ("record", "none", *unread, "to-nothing"):
         for name, make in cases.items():
             for f in state.iterdir():
                 f.rmdir() if f.is_dir() and not f.is_symlink() else f.unlink()
@@ -10687,12 +10721,24 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
                 heartbeat.write_text(json.dumps({"alpha": {"run_id": 3}}), encoding="utf-8")
             elif beat == "fifo":
                 os.mkfifo(heartbeat)
+            elif beat == "damaged":
+                heartbeat.write_text('{"alpha": {"run_id": 3', encoding="utf-8")
+            elif beat == "folder":
+                heartbeat.mkdir()
+            elif beat == "array":
+                heartbeat.write_text("[]", encoding="utf-8")
+            elif beat == "loop":
+                heartbeat.symlink_to(heartbeat)
+            elif beat == "to-nothing":
+                heartbeat.symlink_to(state / "gone.json")
             make()
             want = manifest_lost(db)
             assert lost(db) is want, (name, beat)
-            link = {"dangling": 3, "dangling-dir": 2}.get(name, 1)
+            link = {"dangling": 3, "dangling-dir": 2}.get(name, 4 if beat in unread else 1)
             assert state_lost(db) == (link if want else 0), (name, beat)
-            assert want is (beat == "record" and name in ("missing", "dangling", "dangling-dir")), (
+            assert want is (
+                beat in ("record", *unread) and name in ("missing", "dangling", "dangling-dir")
+            ), (
                 name,
                 beat,
             )
@@ -10938,6 +10984,37 @@ def test_step_2_judges_a_linked_manifests_sides_beside_its_target(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert last_line(cp).startswith(side_next("shm-folder", f"{INSTALL_SH} {wheel}")), last_line(cp)
     moved.with_name("moved.sqlite-shm").rmdir()  # moved aside, as the words say
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 27 P111, install.sh's half (ruling 17, lane B's words), with the real agentsync: a lost
+    manifest beside a damaged heartbeat.json read as a first start, so step 2 started a new manifest,
+    which forgets the deletions, with no word to the person. Step 1 predicts the stop, step 2's NEXT is the
+    person's, and moving heartbeat.json aside, as the words say, starts the new manifest."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    heartbeat = db.with_name("heartbeat.json")
+    heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(STATE_LOST_UNREAD_TAIL), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(STATE_LOST_UNREAD_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(
+        cp
+    )
+    assert not db.exists(), "no new manifest was started over it"
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

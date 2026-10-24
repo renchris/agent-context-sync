@@ -810,11 +810,6 @@ LOST_MANIFEST_UNREAD = (
 link that reaches no file, a mode): still lost, never a first start (B13 round 27 P111; ruling 17)."""
 
 LOST_MANIFEST_WORDS = (LOST_MANIFEST, LOST_MANIFEST_UNREAD)
-
-_UNREAD_IS_LOST = False
-"""Whether a heartbeat.json that is there but cannot be read makes a missing manifest lost (B13 round 27
-P111): off until install.sh's two inlined copies of this rule land beside it, so step 1, step 2 and the
-sync agree (lane RB's land turns it on)."""
 """Every ending of a lost manifest's line, for the readers that key on it."""
 
 
@@ -855,12 +850,12 @@ def lost_words(db_path: Path) -> str | None:
     try:  # never a plain read: a fifo there hung status (B13 round 25 D46)
         text = read_regular_text(heartbeat)
         data = json.loads(text) if text is not None else None
-    except (OSError, ValueError):  # there, but no read: lost too once install.sh's copies say so (P111)
-        return LOST_MANIFEST_UNREAD if _UNREAD_IS_LOST else None
+    except (OSError, ValueError):  # there, but no read: earlier passes cannot be ruled out (P111)
+        return LOST_MANIFEST_UNREAD
     if text is None:  # a link to nothing: no heartbeat
         return None
     if not isinstance(data, dict):
-        return LOST_MANIFEST_UNREAD if _UNREAD_IS_LOST else None
+        return LOST_MANIFEST_UNREAD
     passed = any(
         isinstance(entry, dict)
         and (

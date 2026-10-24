@@ -30801,6 +30801,22 @@ beside a manifest link before any stat follows it. Tests: the step 1 table's `SN
 `SN-beside-link-folder`, `SN-beside-link-loop`, `SN-beside-link-shm` (nothing said) and `SN-target-shm` rows, and
 `test_step_2_judges_a_linked_manifests_sides_beside_its_target` with the real agentsync.
 
+**A lost manifest beside a heartbeat.json that cannot be read is still lost, in install.sh's copies** (P111's
+install.sh half; round 27 ruling 17, lane B's words). Step 1's `lost()` and step 2's `state_lost` inline
+`manifest.manifest_lost` (the installed build may predate it), and both read a heartbeat.json that is there but
+cannot be read (a fifo, a folder, a loop or a link through a file, not UTF-8 or JSON, not an object, refused) as no
+record, a first start, while lane B's `lost_words` now calls it lost (`LOST_MANIFEST_UNREAD`). Both copies follow
+it, opening nothing that blocks; none there, or a link to nothing, stays a first start. Step 1 adds `lost-unread`
+(read apart, as `lost-link`) and the tail `; step 2 stops at its config step on agentsync's state file,
+manifest.sqlite, which is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled
+out (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move
+heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status
+prints it on its state_dir.manifest line`; step 2's `state_lost` prints 4 and `config_failed` gives the same in its
+NEXT. A folder at heartbeat.json is that and the misplaced heartbeat, whose words come first, as init stops on it
+first. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost` (a fifo, damaged JSON, a
+folder, an array, a loop and a link to nothing), the step 1 table's `LM-damaged` and `LM-fifo` rows, and
+`test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read` with the real agentsync.
+
 **A closing status a signal stopped is said** (P14). `loop_next` ran `with_progress "status" loop_status_run ||
 true`, so a status killed by SIGKILL or SIGTERM ended the run 0 on the fallback NEXT with nothing said. It keeps
 the rc and, at 128 or more (never on an empty `LOOP_OUT`: a status left running can still write it), says `note:
