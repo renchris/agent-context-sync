@@ -6294,6 +6294,16 @@ def test_the_guides_pairing_rule_gives_governances_modes_and_the_persons_failed_
         "is an Items line and no reason of its own, unless it is a stop whose fix is the person's that step 3"
         " ended on, which makes the attempt failed at step 3 (below; B13 round 26 E59)."
     ) in page
+    # round 26's ruling 11, refined again: a person's stop claims any line but a lock-held skip, whatever its
+    # chmod words; the guide said only a line naming the sync's non-zero exit and no chmod
+    persons = setup_report._SyncStop(at, "manifest", "person", None)
+    for words in ("no chmod was run", "agentsync sync returned 1", "they ran chmod 600 <it>"):
+        assert setup_report._claims(persons, setup_report.FrictionEvent(9, at, 3, "error", words, "-"))
+    assert (
+        "a stop whose fix is the person's any line, whatever its chmod words (`no chmod was run`, the"
+        " person's own chmod quoted, `agentsync sync returned 1`: B13 round 26 ruling 11, refined again)"
+    ) in page
+    assert "names the sync's non-zero exit and no chmod" not in page
 
 
 def test_the_guides_failed_at_step_3_examples_are_the_reports_words() -> None:

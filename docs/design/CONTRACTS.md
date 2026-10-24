@@ -30653,7 +30653,10 @@ governance file, 600 for any other file`, as `_claims` and the shell's reader ta
 a later ok sync nor a claimed line is no reason of its own `unless it is a stop whose fix is the person's that step
 3 ended on, which makes the attempt failed at step 3`, as `_open_persons_stop` takes it whether or not a line claims
 it (ruling 10). An unmeasured person's stop with no person's FAIL standing still takes no reason, so the sentence is
-scoped, not narrowed to the agent's stops. Test:
+scoped, not narrowed to the agent's stops. Once lane RA's round 26 ruling 11 build landed (E8, E33, E53, E68; its E53
+step 5 named the guide's words as lane D's), the same sentence gives a person's stop any line but a lock-held skip,
+whatever its chmod words, where it said only a line naming the sync's non-zero exit and no chmod, and an agent's
+stop only a chmod of its own, never the person's chmod doctor gives; the test reads `_claims` for it. Test:
 `test_the_guides_pairing_rule_gives_governances_modes_and_the_persons_failed_case`.
 
 **The guide's failed-at-step-3 example is a refused stop's** (E69; `docs/deploy/setup-feedback.md`). It quoted a

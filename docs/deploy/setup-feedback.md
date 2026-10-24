@@ -355,11 +355,12 @@ install.log (a `--list-folders` run is not an install run):
   the one "failed" case, below). One stop is counted once: in time order, each recorded stop claims the
   first unclaimed step 3 error with a time at or after it (the same second counts) and before the stop
   after next (v33 logs a fixed stop's line after the sync that follows its chmod, which can stop again
-  first), of its own kind only: a stop the agent fixes claims a line that names a chmod (a line that names
-  a mode names its file's: 700 for the state folder, 600 or 700 for a governance file, 600 for any other
-  file; B13 round 26 E59), a stop whose fix is the person's a
-  line that names the sync's non-zero exit and no chmod, and no stop claims a `skipped: lock held` line,
-  which writes no `sync-stops.log` line (B13 round 25 ruling 11). The pair is one Items line ending
+  first), of its own kind only: a stop the agent fixes claims a line that names a chmod of its own (a line that
+  names a mode names its file's: 700 for the state folder, 600 or 700 for a governance file, 600 for any other
+  file; B13 round 26 E59), never the person's chmod that doctor gives, a stop whose fix is the person's any line,
+  whatever its chmod words (`no chmod was run`, the person's own chmod quoted, `agentsync sync returned 1`: B13
+  round 26 ruling 11, refined again), and no stop claims a `skipped: lock held` line, which writes no
+  `sync-stops.log` line (B13 round 25 ruling 11). The pair is one Items line ending
   `(F<n>: the agent's account of it)`; `step 3 logged N errors` counts only the errors no stop claims (a
   `skipped: lock held`, or one logged before its stop), and each of those is an Items line too. A paired
   stop that no later sync ended ok after is a reason of its own: `1 sync at step 3 exited 1 on agentsync's
