@@ -8613,6 +8613,9 @@ measured; every other side file that is not a file stops init, at the config ste
         "SN-shm-fifo",
         "SN-shm-link",
         "SN-wal-fifo",
+        "SN-shm-dangling",
+        "SN-wal-filelink",
+        "SN-beside-link",
         "SW",
         "SW-bare",
         "SW-wal",
@@ -8691,6 +8694,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-wal": "state-side-notfile",
         "SN-shm-fifo": "state-side-notfile",
         "SN-shm-link": "state-side-notfile",
+        "SN-shm-dangling": "state-side-notfile",  # round 26 E62: any link at a side stops init
+        "SN-wal-filelink": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
@@ -8767,6 +8772,16 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 (wal if state == "SN-wal-link" else shm).symlink_to(elsewhere)
             elif state in ("SN-shm-fifo", "SN-wal-fifo"):  # round 26 E15, E55
                 os.mkfifo(shm if state == "SN-shm-fifo" else wal)
+            elif state == "SN-shm-dangling":  # round 26 E62: SQLite opens a side with O_NOFOLLOW
+                shm.symlink_to(db.with_name("nothing-here"))
+            elif state == "SN-wal-filelink":
+                db.with_name("elsewhere-wal").write_bytes(b"")
+                wal.symlink_to(db.with_name("elsewhere-wal"))
+            elif state == "SN-beside-link":  # beside a manifest link, SQLite opens the sides at its target
+                moved = db.with_name("moved.sqlite")
+                db.rename(moved)
+                db.symlink_to(moved)
+                wal.symlink_to(db.with_name("nothing-here"))
             else:
                 shm.mkdir({"SN-shm-shut": 0, "SN-shm-0500": 0o500}.get(state, 0o700))
         elif state.startswith("SW"):  # round 24 B12: a 0500 state folder, with both side files or not
@@ -8803,7 +8818,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo"):
+    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo", "SN-beside-link"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
@@ -10458,6 +10473,28 @@ def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_
     # "they move it aside": macOS renames a folder only when it can write the folder (its ".." entry), so a
     # person opens a shut one first; the finally above did
     shm.rename(shm.with_name("manifest.sqlite-shm.aside"))
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_link_at_the_wal_is_a_side_not_a_file_at_step_2(real_env: dict[str, str], wheel: Path) -> None:
+    """Lane B's B13 round 26 E62, install.sh's half, with the real agentsync: SQLite opens a -wal or -shm with
+    O_NOFOLLOW, so init stops on any link there, to a file or to nothing, while step 2's state_side_not_a_file
+    read a dangling one as no file at all and its NEXT named an ACL or "fix the error above". It is the
+    person's side not a file now; moving it aside, as the words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    wal = _state_db(env).with_name("manifest.sqlite-wal")
+    wal.unlink(missing_ok=True)
+    wal.symlink_to(wal.with_name("nothing-here"))
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    wal.rename(wal.with_name("manifest.sqlite-wal.aside"))
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

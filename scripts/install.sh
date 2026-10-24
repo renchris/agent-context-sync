@@ -6846,13 +6846,19 @@ except OSError as exc:  # a symlink loop where the folder belongs is no folder e
     notdir = exc.errno == errno.ELOOP
 access = dirwrite = sidestatus = None
 sides = (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
+try:  # SQLite opens the sides beside the target of a manifest link, so a side link beside one stops nothing
+    dblink = stat.S_ISLNK(db.lstat().st_mode)
+except OSError:
+    dblink = False
 for p in () if notdir else (db.parent, db, *sides):
     if p == db and notfile:  # judged below, whatever its mode: it is no file to chmod (the review of Z11)
         continue
     if p in sides:  # a folder (or a link to one) where a -wal or -shm belongs: no mode fixes it (round 24 B52)
         try:
-            if not_a_file(p):
-                kind = p.lstat().st_mode
+            kind = p.lstat().st_mode
+            # any link at a side, to a file or to nothing: SQLite opens a -wal or -shm with O_NOFOLLOW, so init
+            # stops on it (measured; lane B round 26 E62)
+            if (stat.S_ISLNK(kind) and not dblink) or not_a_file(p):
                 # measured (round 26 E15, E55): init opens past a fifo at the -wal, which SQLite removes as it
                 # closes, so nothing stops; and past a folder at the -shm that this account can read (not a
                 # link to one), so step 2 stops at its status step; every other one (a folder, a socket or a
@@ -8221,9 +8227,16 @@ from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
 n = 0
+try:  # SQLite opens the sides beside the target of a manifest link, so a side link beside one stops nothing
+    dblink = stat.S_ISLNK(db.lstat().st_mode)
+except OSError:
+    dblink = False
 for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
     try:
         mode = side.lstat().st_mode
+        if stat.S_ISLNK(mode) and not dblink:  # any link: SQLite opens a side with O_NOFOLLOW (round 26 E62)
+            n = 1
+            continue
         if stat.S_ISLNK(mode):
             mode = side.stat().st_mode
     except OSError as exc:  # a link loop is no file; a shut folder above it says nothing (state_open_fix)
