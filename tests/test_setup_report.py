@@ -6,6 +6,7 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 from __future__ import annotations
 
 import ast
+import dataclasses
 import functools
 import itertools
 import json
@@ -14049,7 +14050,8 @@ def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(
 ) -> None:
     """B13 round 26 E26: the lost manifest's bucket took the heartbeat listing warn only when the loop had
     no check at all, so a queued purge's wait on the Loop line made it "unexpected". It is not judged
-    whenever the loop's checks do not name that heartbeat."""
+    whenever the loop's checks do not name that heartbeat. Since lane B's E25 the loop over a lost manifest
+    invites no purge, so the loop's check is given here, as any other wait of the loop's would give one."""
     real = cli._status_checks
     listing = doctor.CheckResult(
         "heartbeat.x",
@@ -14063,6 +14065,20 @@ def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(
         return [*kept, listing]
 
     monkeypatch.setattr(cli, "_status_checks", these)
+    hooks = cli._report_hooks
+
+    def waiting() -> setup_report.ReportHooks:
+        real = hooks()
+        assert real.loop_next is not None
+        nxt = real.loop_next
+
+        def with_check(config: Config) -> Any:
+            step = nxt(config)
+            return step if isinstance(step, list) else dataclasses.replace(step, checks=("governance.x",))
+
+        return dataclasses.replace(real, loop_next=with_check)
+
+    monkeypatch.setattr(cli, "_report_hooks", waiting)
     cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(cfg)]) == 0
@@ -14079,7 +14095,7 @@ def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(
     _rc, text, _ = report(tmp_path, cfg)
     summary = section(text, "Summary")
     loop = _line(summary, "- Loop: ")
-    assert "purge" in loop and "not read" not in loop, loop
+    assert "not read" not in loop, loop  # lane B's E25: over a lost manifest the Loop invites no purge
     line = _line(summary, "- doctor: ")
     assert (
         "(2 checks): state_dir.manifest FAIL (the person's; see Doctor), heartbeat.x warn (not judged: the "
@@ -14583,8 +14599,8 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
                 heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
         line = _line(section(text, "Summary"), "- doctor: ")
         # B13 round 26 E62: a -wal link of any kind is a side that is not a file, sqlite never opening a side
-        # through a link; its bucket is the side's, still the person's
-        side = "from a side file of the state file that is not a file (1 check): "
+        # through a link; its bucket is the side's, still the person's, named by the side (B13 round 26 E23)
+        side = "from the state file's write-ahead log that is not a file (1 check): "
         assert f"{bucket if link == db else side}{name} FAIL (the person's; see Doctor) · " in line, (
             name,
             line,
