@@ -30790,6 +30790,17 @@ folder and a fifo, not files`, and the NEXT says `the error above names the firs
 moving the one init's error names alone led to a second stop. Tests: the step 1 table's `SN-*` rows (`SN-both`),
 `test_step_2_names_both_sides_that_are_not_files` and the side tests with the real agentsync.
 
+**A linked manifest's sides are judged beside its target, by doctor's helper** (P35; round 27 ruling 18, after lane
+B's P42). Beside a manifest that is a link, step 1's probe and step 2's `state_side_not_a_file` followed a side
+link to a folder or a loop and said init stops on it, while doctor, status, sync and init passed it; and they never
+looked beside the target, where SQLite keeps the sides. Every side judgment in install.sh (step 1's probe, step 2's
+`state_side_not_a_file`, `state_owned_elsewhere` and `state_open_fix`) now takes the sides from the installed
+build's `doctor.manifest_sides(db)`: beside the target, where any link, folder, fifo or socket stops the sync, and
+nothing beside the link is judged. An installed build without it judges beside the manifest and skips a side link
+beside a manifest link before any stat follows it. Tests: the step 1 table's `SN-beside-link`,
+`SN-beside-link-folder`, `SN-beside-link-loop`, `SN-beside-link-shm` (nothing said) and `SN-target-shm` rows, and
+`test_step_2_judges_a_linked_manifests_sides_beside_its_target` with the real agentsync.
+
 **A closing status a signal stopped is said** (P14). `loop_next` ran `with_progress "status" loop_status_run ||
 true`, so a status killed by SIGKILL or SIGTERM ended the run 0 on the fallback NEXT with nothing said. It keeps
 the rc and, at 128 or more (never on an empty `LOOP_OUT`: a status left running can still write it), says `note:

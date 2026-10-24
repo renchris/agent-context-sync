@@ -8888,6 +8888,7 @@ def misplaced_tail(role: str) -> str:
         "SN-beside-link-folder",
         "SN-beside-link-loop",
         "SN-beside-link-shm",
+        "SN-target-shm",
         "SN-both",
         "SW",
         "SW-bare",
@@ -8971,6 +8972,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-dangling": "state-side-notfile",  # round 26 E62: any link at a side stops init
         "SN-wal-filelink": "state-side-notfile",
         "SN-both": "state-side-notfile",
+        "SN-target-shm": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
@@ -9068,6 +9070,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                         state, elsewhere
                     )
                 )
+            elif state == "SN-target-shm":  # round 27 ruling 18 (P35): judged beside the link's target
+                moved = db.with_name("moved.sqlite")
+                db.rename(moved)
+                db.symlink_to(moved)
+                moved.with_name("moved.sqlite-shm").mkdir(0)
             elif state == "SN-both":  # round 27 P21, P119: both are named
                 wal.mkdir(0o700)
                 os.mkfifo(shm, 0o644)
@@ -9101,6 +9108,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             shm.rmdir()
         if db.with_name("elsewhere").is_dir():
             db.with_name("elsewhere").rmdir()
+        if db.with_name("moved.sqlite-shm").is_dir():
+            db.with_name("moved.sqlite-shm").chmod(0o700)
+            db.with_name("moved.sqlite-shm").rmdir()
         for f in (db, wal, shm):
             if f.exists():
                 subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
@@ -9127,6 +9137,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-dangling": "shm-symlink",
         "SN-wal-filelink": "wal-symlink",
         "SN-both": "wal-folder shm-fifo",
+        "SN-target-shm": "shm-folder",
     }.get(state)
     if odd is not None:  # ruling 16: a folder it can read at the -shm stops init; add-source opens past it
         tail = side_tail(odd, both=state in ("SN-shm", "SN-shm-0500"))
@@ -10892,6 +10903,43 @@ def test_a_lock_folder_beside_a_refused_remote_gives_the_locks_next(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert "governance: remote origin (" not in cp.stderr, cp.stderr
     assert last_line(cp).startswith(misplaced_next("lock", f"{INSTALL_SH} {wheel}")), last_line(cp)
+
+
+@pytest.mark.parametrize("where", ["target", "beside"])
+def test_step_2_judges_a_linked_manifests_sides_beside_its_target(
+    real_env: dict[str, str], wheel: Path, where: str
+) -> None:
+    """B13 round 27 P35, ruling 18 (install.sh's half, after lane B's doctor.manifest_sides), with the real
+    agentsync: beside a manifest that is a link, SQLite keeps the -wal and -shm beside the target, so a folder
+    at the target's -shm stops step 2 with the person's NEXT naming it, while a link to a folder beside the
+    link stops nothing (step 2's state_side_not_a_file followed it and gave the person's NEXT over a stop
+    that never came)."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for end in ("-wal", "-shm"):
+        db.with_name(db.name + end).unlink(missing_ok=True)
+    moved = db.with_name("moved.sqlite")
+    db.rename(moved)
+    db.symlink_to(moved)
+    if where == "target":
+        moved.with_name("moved.sqlite-shm").mkdir(0o700)
+    else:
+        db.with_name("elsewhere").mkdir(0o700)
+        db.with_name(db.name + "-wal").symlink_to(db.with_name("elsewhere"))
+    cp = install_sh(env, str(wheel))
+    if where == "beside":
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        return
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(side_next("shm-folder", f"{INSTALL_SH} {wheel}")), last_line(cp)
+    moved.with_name("moved.sqlite-shm").rmdir()  # moved aside, as the words say
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
 
 
 def test_step_2_names_both_sides_that_are_not_files(real_env: dict[str, str], wheel: Path) -> None:

@@ -7001,9 +7001,13 @@ except NotADirectoryError:
 except OSError as exc:  # a symlink loop where the folder belongs is no folder either (the review)
     notdir = exc.errno == errno.ELOOP
 access = dirwrite = sidestatus = None
-sides = (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
+try:  # where sqlite keeps the -wal and -shm: beside a linked manifest target (doctor.manifest_sides, ruling 18)
+    from agentsync.ops.doctor import manifest_sides
+except ImportError:  # an older build: beside the manifest, as it judges them
+    manifest_sides = None
+sides = tuple(manifest_sides(db)) if manifest_sides else (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
 try:  # SQLite opens the sides beside the target of a manifest link, so a side link beside one stops nothing
-    dblink = stat.S_ISLNK(db.lstat().st_mode)
+    dblink = stat.S_ISLNK(db.lstat().st_mode) and manifest_sides is None  # judged at the target with the helper
 except OSError:
     dblink = False
 
@@ -7023,7 +7027,7 @@ def side_kind(p):
         return None
     if stat.S_ISLNK(mode):
         return None if dblink else "symlink"
-    if p == sides[0] and stat.S_ISFIFO(mode) and os.access(p, os.R_OK | os.W_OK):
+    if p.name.endswith("-wal") and stat.S_ISFIFO(mode) and os.access(p, os.R_OK | os.W_OK):
         return None
     for test, word in ((stat.S_ISDIR, "folder"), (stat.S_ISFIFO, "fifo"), (stat.S_ISSOCK, "socket")):
         if test(mode):
@@ -7042,7 +7046,7 @@ for p in () if notdir else (db.parent, db, *sides):
             # on the --source-local path step 2 stops at its status step on it (B13 round 27 ruling 16: P15,
             # P56, P114; round 26 E15 measured it before E65)
             access = "state-side-notfile"
-            sidestatus = kind == "folder" and p == sides[1] and os.access(p, os.R_OK)
+            sidestatus = kind == "folder" and p.name.endswith("-shm") and os.access(p, os.R_OK)
             break
         try:
             if stat.S_ISLNK(p.lstat().st_mode) or stat.S_ISFIFO(p.lstat().st_mode):
@@ -7195,7 +7199,7 @@ elif access:
     if access == "state-side-notfile":  # each side that is not a file, and what is there (B13 round 27 P119)
         for s in sides:
             if side_kind(s):
-                words.append("sideodd-" + ("wal" if s == sides[0] else "shm") + "-" + side_kind(s))
+                words.append("sideodd-" + ("wal" if s.name.endswith("-wal") else "shm") + "-" + side_kind(s))
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
     words.append("state-notfile")
 elif db.is_file():
@@ -8258,8 +8262,13 @@ from agentsync.config import load_config
 from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+try:  # where sqlite keeps the -wal and -shm: beside a linked manifest target (doctor.manifest_sides, ruling 18)
+    from agentsync.ops.doctor import manifest_sides
+except ImportError:  # an older build: beside the manifest, as it judges them
+    manifest_sides = None
+sides = tuple(manifest_sides(db)) if manifest_sides else (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
 owned = 0
-for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+for p in (db.parent, db, *sides):
     try:
         owned = owned or int(p.stat().st_uid != os.getuid())
     except OSError:
@@ -8298,6 +8307,11 @@ from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
 root = Path(os.path.realpath(db.parent))
+try:  # where sqlite keeps the -wal and -shm: beside a linked manifest target (doctor.manifest_sides, ruling 18)
+    from agentsync.ops.doctor import manifest_sides
+except ImportError:  # an older build: beside the manifest, as it judges them
+    manifest_sides = None
+sides = tuple(manifest_sides(db)) if manifest_sides else (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
 try:
     if not stat.S_ISDIR(db.parent.stat().st_mode):  # no folder: no chmod is its fix (state_not_a_folder)
         sys.exit(0)
@@ -8336,15 +8350,15 @@ for p, want in ((db.parent, 0o700), (db, 0o600)):
             continue
     fix = state_path_fix(root, Path(os.path.realpath(p))) if mode_refuses(p, want) else ""
     if fix.startswith("chmod 600 "):  # with the -wal and -shm its mode refuses, as state_dir.files names them
-        for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        for side in sides:
             more = state_path_fix(root, Path(os.path.realpath(side))) if mode_refuses(side, 0o600) else ""
             if more.startswith("chmod 600 "):
                 fix += " " + more[len("chmod 600 ") :]
     print(fix if fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
     break
 else:  # the folder and the manifest open: a -wal or -shm this account cannot open stops init the same way (A78)
-    sides, fix = [], ""
-    for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    shut, fix = [], ""
+    for side in sides:
         try:
             side.lstat()
             if side.is_dir():  # a folder there is no chmod: state_side_not_a_file (round 24 B52)
@@ -8360,9 +8374,9 @@ else:  # the folder and the manifest open: a -wal or -shm this account cannot op
         if not more.startswith("chmod 600 "):
             fix = "refused"
             break
-        sides.append(more[len("chmod 600 ") :])
-    if fix or sides:
-        print(fix or "chmod 600 " + " ".join(sides))
+        shut.append(more[len("chmod 600 ") :])
+    if fix or shut:
+        print(fix or "chmod 600 " + " ".join(shut))
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
 	printf '%s' "$fix"
@@ -8452,12 +8466,18 @@ from agentsync.config import load_config
 from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+try:  # where sqlite keeps the -wal and -shm: beside a linked manifest target (doctor.manifest_sides, ruling 18)
+    from agentsync.ops.doctor import manifest_sides
+except ImportError:  # an older build: beside the manifest, as it judges them
+    manifest_sides = None
+sides = tuple(manifest_sides(db)) if manifest_sides else (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm"))
 try:
-    dblink = stat.S_ISLNK(db.lstat().st_mode)
+    dblink = stat.S_ISLNK(db.lstat().st_mode) and manifest_sides is None  # judged at the target with the helper
 except OSError:
     dblink = False
 odd = []
-for side, name in ((db.with_name(db.name + "-wal"), "wal"), (db.with_name(db.name + "-shm"), "shm")):
+for side in sides:
+    name = "wal" if side.name.endswith("-wal") else "shm"
     try:
         mode = side.lstat().st_mode
     except OSError:  # a shut folder above it says nothing (state_open_fix)
