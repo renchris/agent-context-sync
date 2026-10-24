@@ -1761,6 +1761,34 @@ of install.sh: its inlined lost-manifest copies, tails and the shell report's pa
 for an old toolchain, the OCR URL cut), D 10 (guides, CONTRACTS records, deploy-pack tests). Lead: E71 (the cache
 brief's stale CI line; round 26's brief is built from the repo copy, which carries lane D's).
 
+### B13 round 26 landed (2026-10-24)
+
+All five lanes landed; CI green on `905df01b` (ci `40062449895`); the prompt is still v33. Notes `lanes/r26-<lane>.md`,
+lead notes `round26/lead-notes.md`. All 77 items are built, each with a test that fails without it, and none carries
+a not-built reason. Lane B built E25 first: `purge --queue` and every governance write now refuse over a lost
+manifest. Lane RA built one more at lane B's ask (`c98ea001`: the person's bucket for a lock, heartbeat or governance
+file that is not a file), and lane RB the install.sh halves of lane D's E55 and lane B's E62.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `68be7e8d..45203314`, 2 commits |
+| B | `a41923ed..ac5b0daf`, 6 commits |
+| RA | `1c38ca58..df65185e`, 18 commits |
+| RB | 16 commits, ending `69cd15b1` |
+| D | 7 commits, `54982c6c` to `905df01b` |
+
+Learnings: lane RA read ruling 11 refined and built it at once, and trunk stayed green all round. Before round 27 the
+operator asked whether the loop ever ends; the lead's measured answer (one page,
+`~/.cache/agentsync-bring-back/b13/report/b13-value-by-version.pdf`): the person's normal path has finished in one
+command with no turn in every rehearsal since v22, while confirmed findings stay near 80 a round (2,055 built over
+24 rounds, no downward trend), because each round's fixes give the next round's probes new paths. Two operator
+decisions are open before any round 27: `e869fac7eb34` (stop the loop, paste v33, and adopt a stop rule a round can
+meet; lead 85% for yes) and `290215743799` (send the committed code, as a /tmp export, to OpenAI through Codex for a
+second-vendor reviewer; lead 75% for yes; measured: Codex weekly meter at 0% on plan "prolite", Gemini through
+Antigravity offers only 3.8 Flash and no Gemini 4 Argon to this login).
+
+Round 27, only if `e869fac7eb34` is answered no: the round 26 workflow on this section's landed tip, BASE `081db13b`.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
