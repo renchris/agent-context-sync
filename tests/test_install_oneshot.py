@@ -8302,6 +8302,26 @@ STATE_LOST_LINK_NEXT = (
 )
 """Step 2's NEXT for it (D79)."""
 
+STATE_LOST_DANGLING_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, a symlink to a file that "
+    "does not exist, which is missing though heartbeat.json beside it records earlier passes (not damage, "
+    "not a mode): "
+    + LOST_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for a lost manifest that is a symlink to nothing in a folder a sync can write (B13 round 26
+E19: "missing" alone read false beside the manifest.sqlite ls lists); ruling 7's fix works through it."""
+
+STATE_LOST_DANGLING_NEXT = (
+    "NEXT: agentsync's state file, manifest.sqlite, is a symlink to a file that does not exist, and is "
+    "missing, though heartbeat.json beside it records earlier passes (the error above names it; "
+    "~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+    + LOST_FIX.format(it="it is")
+    + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
+    "next run is: {rerun}"
+)
+"""Step 2's NEXT for it (E19)."""
+
 
 SIDE_STOPS = (
     "; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds "
@@ -8658,6 +8678,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
+    if state == "LM-link":  # round 26 E19: named as the link
+        tail = STATE_LOST_DANGLING_TAIL
     if state in ("SN-shm", "SN-shm-0500"):  # round 26 E15: a folder it can read at the -shm, measured
         tail = SIDE_STATUS_TAIL
     assert last_line(cp).endswith(tail), last_line(cp)
@@ -10061,7 +10083,10 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     (step 1's lost(), step 2's state_lost) did `lstat(); return False`. So step 1 said "(none is needed)" and
     step 2's NEXT took the state_open_fix branch: an ACL, a folder above it or a read-only volume, the
     person's for a cause that is not there. Both copies read the link as manifest_lost does now; the person's
-    choice the NEXT words (heartbeat.json aside) ends it."""
+    choice the NEXT words (heartbeat.json aside) ends it.
+
+    B13 round 26 E19: the tail, the NEXT and status called it "missing" alone while ls lists
+    manifest.sqlite; each names the link now, and status's line still ends on LOST_MANIFEST."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -10076,13 +10101,30 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     assert heartbeat.is_file(), "the first install's sync recorded a pass"
     listed = install_sh(env, "--list-folders")
     assert listed.returncode == 0, listed.stdout + listed.stderr
-    assert last_line(listed).endswith(STATE_LOST_TAIL), last_line(listed)
+    assert last_line(listed).endswith(STATE_LOST_DANGLING_TAIL), last_line(listed)
     assert install_log(env)[-2].endswith(" config_err=state-lost"), install_log(env)[-2]
     lost = install_sh(env, str(wheel))
     assert lost.returncode == 1, lost.stdout + lost.stderr
-    assert f"{db} is missing, but heartbeat.json records earlier passes" in lost.stderr, lost.stderr
-    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(lost)
+    said = (
+        f"{db} is a symlink to {db.with_name('gone.sqlite')}, which does not exist; the manifest is missing, "
+    )
+    assert f"error: state: {said}but heartbeat.json records earlier passes" in lost.stderr, lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_DANGLING_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(lost)
+    )
     assert "an ACL" not in last_line(lost), last_line(lost)
+    status = subprocess.run(
+        [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    [line] = [ln for ln in status.stdout.splitlines() if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert "manifest.sqlite is a symlink to " in line and "gone.sqlite, which does not exist; the " in line, (
+        line
+    )
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr

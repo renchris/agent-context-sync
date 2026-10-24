@@ -1949,7 +1949,14 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     elif not nonfile and not manifest_lost(expand(sp.db)):
         out.append(_ok("state_dir.files", _no_manifest_yet(config)))
     if manifest_lost(expand(sp.db)) and not lost_link:  # whatever else is there: a stale -wal (A29)
-        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {LOST_MANIFEST}", fix=LOST_MANIFEST_FIX))
+        # a link to a file that does not exist, in a folder a sync can write, is named as one: "missing" read
+        # false beside the manifest.sqlite ls lists (B13 round 26 E19); the detail still ends on
+        # LOST_MANIFEST, which the listing note reads, and both moves of the fix work through such a link
+        target = dangling_target(expand(sp.db))
+        what = f"is a symlink to {target}, which does not exist; the manifest " if target is not None else ""
+        out.append(
+            _bad("state_dir.manifest", f"{expand(sp.db)} {what}{LOST_MANIFEST}", fix=LOST_MANIFEST_FIX)
+        )
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600

@@ -1772,6 +1772,11 @@ def test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl(
     (line,) = failed()
     assert line.name == "state_dir.manifest" and line.detail.endswith(LOST_MANIFEST), line
     assert line.fix == doctor.LOST_MANIFEST_FIX
+    # B13 round 26 E19: named as the link ls lists, not "missing" alone; still ending on LOST_MANIFEST
+    assert line.detail == (
+        f"{db} is a symlink to {db.parent / 'elsewhere.sqlite'}, which does not exist; the manifest "
+        f"{LOST_MANIFEST}"
+    ), line
     # B13 round 25 D71: (d) earlier passes and a link into a missing folder: neither LOST_MANIFEST_FIX move
     # works through the link, so one FAIL names the link's removal first, then those moves; no second line
     db.unlink()
