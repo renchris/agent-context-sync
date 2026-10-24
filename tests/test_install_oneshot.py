@@ -3343,6 +3343,54 @@ def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
         assert "sudo chown" not in text, "an older run's fix is never shown"
 
 
+ERROR_ABOVE_SAID = (
+    "The error that NEXT line names was printed on the terminal before it and is kept in that run's block of "
+    "~/agent-context/setup/install.out; this shell fallback copies no error text, which can name a path or a "
+    "host outside this home, and ~/.local/bin/agentsync status, which prints it again, needs agentsync "
+    "installed."
+)
+
+
+@pytest.mark.parametrize("points", [True, False])
+def test_the_shell_report_says_where_the_error_a_quoted_next_names_is(
+    env: dict[str, str], points: bool
+) -> None:
+    """B13 round 27 P105 (rehearsal a, lml-fb): the shell fallback quotes the last run's NEXT, whose
+    "(the error above names it; ~/.local/bin/agentsync status prints it ...)" points at nothing its reader
+    sees: it copies no error line, and status cannot run with agentsync not installed. Copying the error is
+    measured worse (its link target, a volume outside this home, has no shell redaction rule), so a sentence
+    in fixed words says where the error is; nothing of the error is copied. A NEXT that names no error above
+    gets no sentence."""
+    home = Path(env["HOME"])
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    run = "20261010T010000Z-4242"
+    (setup / "install.log").write_text(
+        f"2026-10-10T01:00:00Z run={run} start install.sh compat=33 commit=- kind=- source=- args=\n"
+        f"2026-10-10T01:00:05Z run={run} step=config seconds=1 rc=1 result=failed\n"
+    )
+    said = (
+        "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
+        "refuses a write, and is missing (the error above names it; ~/.local/bin/agentsync status prints it "
+        "and its fix on its state_dir.manifest line): fixing it is the person's"
+        if points
+        else "NEXT: run ~/.local/bin/agentsync sync and follow its NEXT line"
+    )
+    (setup / "install.out").write_text(
+        f"# run={run} 2026-10-10T01:00:00Z install.sh\n"
+        "error: state: /Volumes/Contoso Vault/agentsync/manifest.sqlite is a symlink to a file that does not "
+        "exist (fix: the person removes the link)\n"
+        f"{said}\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    flat = " ".join(installer.split())
+    assert (f"~~~ {ERROR_ABOVE_SAID}" in flat) is points, installer
+    assert "Contoso Vault" not in text and "error: state:" not in text, text
+
+
 _BARE_LEAD = "The last install run's NEXT line, from the copy of its output:\n"
 _CLEAN_LEAD = (
     "The last install run ended 0; its own NEXT line, from the copy of its output (an agentsync run after it "

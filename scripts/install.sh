@@ -4042,6 +4042,17 @@ fallback_next_line() {
 	say "~~~"
 	printf '%s\n' "$v" | LC_ALL=C sed 's/~~~/~ ~ ~/g'
 	say "~~~"
+	# a NEXT that points to "the error above" names nothing a reader of this report can see: say where it is,
+	# in fixed words. Never its text, which can name a path or a host outside this home that this shell's
+	# redaction does not cut, as setup_report's does (B13 round 27 P105; install.sh's rule, fixed words only)
+	case "$v" in
+	*"error above"*)
+		say ""
+		say "The error that NEXT line names was printed on the terminal before it and is kept in that run's block of ~/agent-context/setup/install.out;" \
+			"this shell fallback copies no error text, which can name a path or a host outside this home, and ~/.local/bin/agentsync" \
+			"status, which prints it again, needs agentsync installed."
+		;;
+	esac
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 # The sha REF names in the checkout GIT, read from its ref files with no git process: the loose file first, else
