@@ -6872,8 +6872,8 @@ for p in () if notdir else (db.parent, db, *sides):
                 # closes, so nothing stops; and past a folder at the -shm that this account can read (not a
                 # link to one), so step 2 stops at its status step; every other one (a folder, a socket or a
                 # link at the -wal; a pipe, a socket, a link or a folder it cannot read at the -shm) stops init
-                if p == sides[0] and stat.S_ISFIFO(kind):
-                    continue
+                if p == sides[0] and stat.S_ISFIFO(kind) and os.access(p, os.R_OK | os.W_OK):
+                    continue  # one this account cannot open stops init, as a folder there does
                 access = "state-side-notfile"
                 sidestatus = p == sides[1] and stat.S_ISDIR(kind) and os.access(p, os.R_OK)
                 break
@@ -8229,7 +8229,7 @@ state_side_not_a_file() {
 	local n=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import errno, stat, sys
+import errno, os, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand
@@ -8245,6 +8245,9 @@ for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         mode = side.lstat().st_mode
         if stat.S_ISLNK(mode) and not dblink:  # any link: SQLite opens a side with O_NOFOLLOW (round 26 E62)
             n = 1
+            continue
+        # a fifo at the -wal this account can open stops nothing: SQLite removes it on close (round 26 E15)
+        if side.name.endswith("-wal") and stat.S_ISFIFO(mode) and os.access(side, os.R_OK | os.W_OK):
             continue
         if stat.S_ISLNK(mode):
             mode = side.stat().st_mode

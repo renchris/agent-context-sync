@@ -8639,6 +8639,7 @@ measured; every other side file that is not a file stops init, at the config ste
         "SN-shm-fifo",
         "SN-shm-link",
         "SN-wal-fifo",
+        "SN-wal-fifo-shut",
         "SN-shm-dangling",
         "SN-wal-filelink",
         "SN-beside-link",
@@ -8720,6 +8721,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-wal": "state-side-notfile",
         "SN-shm-fifo": "state-side-notfile",
         "SN-shm-link": "state-side-notfile",
+        "SN-wal-fifo-shut": "state-side-notfile",  # round 26 E15's review: one it cannot open stops init
         "SN-shm-dangling": "state-side-notfile",  # round 26 E62: any link at a side stops init
         "SN-wal-filelink": "state-side-notfile",
         "SW": "state-dir-write",
@@ -8796,8 +8798,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 elsewhere = db.with_name("elsewhere")
                 elsewhere.mkdir(0o700)
                 (wal if state == "SN-wal-link" else shm).symlink_to(elsewhere)
-            elif state in ("SN-shm-fifo", "SN-wal-fifo"):  # round 26 E15, E55
-                os.mkfifo(shm if state == "SN-shm-fifo" else wal)
+            elif state in ("SN-shm-fifo", "SN-wal-fifo", "SN-wal-fifo-shut"):  # round 26 E15, E55
+                os.mkfifo(shm if state == "SN-shm-fifo" else wal, 0 if state.endswith("-shut") else 0o644)
             elif state == "SN-shm-dangling":  # round 26 E62: SQLite opens a side with O_NOFOLLOW
                 shm.symlink_to(db.with_name("nothing-here"))
             elif state == "SN-wal-filelink":
