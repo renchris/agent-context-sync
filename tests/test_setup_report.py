@@ -13834,6 +13834,49 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     )
 
 
+def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 26 E26: the lost manifest's bucket took the heartbeat listing warn only when the loop had
+    no check at all, so a queued purge's wait on the Loop line made it "unexpected". It is not judged
+    whenever the loop's checks do not name that heartbeat."""
+    real = cli._status_checks
+    listing = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)",
+        doctor.Severity.WARN,
+    )
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        kept = [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+        return [*kept, listing]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    selector = governance.PurgeSelector(source_id="contoso", stable_id="s1")
+    assert governance.enqueue_purge(
+        expand(config.state_paths.root), selector, governance.PurgeReason.OPERATOR
+    )
+    db = expand(config.state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    assert manifest_mod.manifest_lost(db)
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    loop = _line(summary, "- Loop: ")
+    assert "purge" in loop and "not read" not in loop, loop
+    line = _line(summary, "- doctor: ")
+    assert (
+        "(2 checks): state_dir.manifest FAIL (the person's; see Doctor), heartbeat.x warn (not judged: the "
+        "state file is missing) · unexpected 0"
+    ) in line, line
+
+
 def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

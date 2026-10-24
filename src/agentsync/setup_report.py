@@ -11488,7 +11488,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             and tag == "warn"
             and name.startswith("heartbeat.")
             and detail.startswith(_LISTING_INCOMPLETE)
-            and not r.facts.loop_checks
+            and name not in r.facts.loop_checks  # B13 round 26 E26: a purge wait is no reason to judge it
         ):
             # not "the loop cannot read the state": a record-only FAIL leaves the loop's read whole, and a
             # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
