@@ -8222,10 +8222,12 @@ def _acl_deny(path: Path) -> None:
         pytest.skip("no ACL that refuses the owner here")
 
 
-SHUT_OPEN = "; they first open a folder shut to this account, as status names it"
+SHUT_OPEN = "; if status names a folder shut to this account, they open it first, as status says"
 """The clause each not-a-file fix of install.sh ends with (B13 round 25 D79's D-L1d): macOS refuses to copy or
 rename a folder this account cannot read, write and search (EACCES), so status's fix (lane B's D72) names the
-chmod 700, or another account's sudo chown, to run first; install.sh names no path, so it defers to it."""
+chmod 700, or another account's sudo chown, to run first; install.sh names no path, so it defers to it. Only
+when status names one (B13 round 26 E16: said of a folder this account can open, a fifo or a link, it sent the
+person looking for a step that does not exist)."""
 
 STATE_NOTFILE_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or "
@@ -10207,6 +10209,46 @@ def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_
     shm.rename(shm.with_name("manifest.sqlite-shm.aside"))
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_folder_at_the_wal_that_is_not_shut_names_no_opening_step(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 26 E16 (the rehearsal's SSW): every not-a-file tail and NEXT ended "they first open a folder
+    shut to this account, as status names it", whatever the folder's mode, while status names an opening step
+    only for a folder this account cannot read, write and search (doctor's _opens_first). With a 0700 folder
+    at the -wal, status's fix names no chmod 700, and step 1's tail and step 2's NEXT say the opening step
+    only on the condition that status names one."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    wal = _state_db(env).with_name("manifest.sqlite-wal")
+    wal.unlink(missing_ok=True)
+    wal.mkdir(0o700)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+        status = subprocess.run(
+            [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    finally:
+        wal.rmdir()
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-notfile"]), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    for said in (last_line(listed), last_line(cp)):
+        assert SHUT_OPEN in said and "they first open a folder shut" not in said, said
+        assert "chmod" not in said, said  # the prompt's chmod rule never reads it as the agent's
+    [files] = [ln for ln in status.stdout.splitlines() if ln.startswith("[FAIL] state_dir.files ")]
+    assert "manifest.sqlite-wal is a folder, not a file" in files and "chmod 700" not in files, files
 
 
 @pytest.mark.parametrize(

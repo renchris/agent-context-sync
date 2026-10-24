@@ -700,8 +700,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `manifest.sqlite` belongs passes every probe above, and every build's init stops on it: `state-notfile`, `; step 2
   stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is
   not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or
-  move the folder aside and heartbeat.json with it, so the next sync starts a new manifest; they first open a folder
-  shut to this account, as status names it), and ~/.local/bin/agentsync status prints it on its state_dir.manifest
+  move the folder aside and heartbeat.json with it, so the next sync starts a new manifest; if status names a folder
+  shut to this account, they open it first, as status says), and ~/.local/bin/agentsync status prints it on its state_dir.manifest
   line`, with no
   reinstall hedge, and step 2's config step its own `NEXT:` (`agentsync's state file, manifest.sqlite, is a folder
   or something else that is not a file (...): fixing it is the person's (...), not a step for the agent, so show them
@@ -720,17 +720,18 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod words,
   or none): `state-side-notfile`, `; step 2 stops at its config step on the -wal or -shm of agentsync's state file,
   which is a folder or something else that is not a file (not damage): fixing that is the person's (keeping a copy,
-  they move it aside; they first open a folder shut to this account, as status names it), and
+  they move it aside; if status names a folder shut to this account, they open it first, as status says), and
   ~/.local/bin/agentsync status prints it on its state_dir.files line`, or, for a folder at the -shm this account
   can read, which init opens past, `; step 2 stops at its status step on the -shm of agentsync's state file, which
   is a folder (not damage): ...` (B13 round 26 E15, measured: a fifo, a socket or a link at the -shm stops init
   too, and a fifo at the -wal stops nothing, since SQLite removes it on close, so step 1 says nothing of it), and
   step 2's config step its own `NEXT:` (`the -wal or -shm of agentsync's state file is a
   folder or something else that is not a file (...): fixing it is the person's (keeping a copy, they move it aside;
-  they first open a folder shut to this account, as status names it), not a step for the agent, ...`). That last
-  clause, in each of the three, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or rename a
-  folder this account cannot read, write and search, so status names the `chmod 700` (or, for another account's, the
-  `sudo chown`) to run first. A state folder of this
+  if status names a folder shut to this account, they open it first, as status says), not a step for the agent,
+  ...`). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
+  rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another
+  account's, the `sudo chown`) to run first; only then, since B13 round 26 E16 (CONTRACTS §16.184): said of a folder
+  this account can open, a fifo or a link, it sent the person looking for a step status does not name. A state folder of this
   account's own that it can open but not write, holding the manifest, its -wal and its -shm, is opened past by init,
   so step 2 stops at its status step on the chmod 700 (round 24 B12): `state-dir-write`, `; step 2 stops at its
   status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod

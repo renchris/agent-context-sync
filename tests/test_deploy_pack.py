@@ -6670,8 +6670,10 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-lost",  # B13 round 24 ruling 7: no manifest, while heartbeat.json records a pass
         "state-notdir",  # B13 round 23 ruling 4: no folder where the state folder belongs
     ]
+    # B13 round 26 E16: the not-a-file tails end on one clause, kept in one variable
+    [shut] = re.findall(r'^SHUT_OPEN="([^"$]*)"$', script, re.M)
     for word, said in opened:
-        assert f"`{word}`, `{said.replace('$fnoun', '<file>')}`" in section, word
+        assert f"`{word}`, `{said.replace('$fnoun', '<file>').replace('$SHUT_OPEN', shut)}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
