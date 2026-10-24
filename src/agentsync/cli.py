@@ -79,6 +79,7 @@ from agentsync.cycle import (
     _CONVERT_RETRIES,
     ECHOED_WHEN,
     INTERACTIVE_LOCK_WAIT_S,
+    NEW_START_UNSAID_META,
     UNRECORDED_LOCK_HOLDER,
     _acquire_waiting,
     _holds_home,
@@ -495,16 +496,20 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
     if report.new_manifest_pages:
         pages = plural(report.new_manifest_pages, "existing mirror page")
+        by = (
+            " (by the background sync)" if report.new_manifest_by_job else ""
+        )  # its poll log alone had it (E74)
         if report.new_manifest_removed:  # not every one came back: say how many went (B13 round 26 E10)
             gone = report.new_manifest_removed
             back = report.new_manifest_pages - gone
             whose = "its" if gone == 1 else "their"
             _out(
                 f"note: a new manifest was started over {pages}; {back} written back, {gone} removed "
-                f"({whose} file is gone or was not converted)"
+                f"({whose} file is gone or was not converted){by}"
             )
         else:
-            _out(f"note: a new manifest was started over {pages}; every file is converted again")
+            note = f"note: a new manifest was started over {pages}; every file is converted again"
+            _out(note + by)
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(
@@ -1494,6 +1499,7 @@ def _status_lines(config: Config) -> list[str]:
         out.append(
             "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
         )
+        out += _new_start_unsaid_line(config, manifest.get_meta(NEW_START_UNSAID_META))
         statuses = source_statuses(config, manifest, now=datetime.now(UTC), quiet=True)
         absent = manifest.absent_counts()  # not in SourceStatus: that feeds the committed snapshot
     try:
@@ -1784,6 +1790,26 @@ def _manifest_first_lines(config: Config, step: loop.NextStep | None, first: str
     if step is not None:
         return dataclasses.replace(step, step=first, rule=1).lines()
     return [loop.NEXT_PREFIX + first, *_docs_waits(config)]
+
+
+def _new_start_unsaid_line(config: Config, raw: str | None) -> list[str]:
+    """Status's one line for a new start the background job ran and no foreground sync has said yet (its
+    note and WARNINGs went to the poll log alone); read-only, it never clears the key (B13 round 26 E74)."""
+    try:
+        saved = json.loads(raw) if raw else None
+        orphans = saved.get("orphans", []) if isinstance(saved, dict) else None
+    except ValueError:
+        return []
+    if orphans is None:
+        return []
+    gone = sum(1 for rel in orphans if not (expand(config.docs_repo) / rel).is_file())
+    if not gone:
+        return ["new start: the background sync started a new manifest; the next sync says so"]
+    removed = plural(gone, "page")
+    return [
+        f"new start: the background sync started a new manifest and removed {removed} it did not write back; "
+        "the next sync names them"
+    ]
 
 
 def _docs_waits(config: Config) -> list[str]:

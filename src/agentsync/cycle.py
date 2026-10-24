@@ -294,6 +294,10 @@ _SECRET_RULES_META = "secret_rules"
 identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
 again, and every published page is scanned again (``_Cycle._check_secret_rules``)."""
 _SECRET_RESCAN_META = "secret_rescan_pending"
+NEW_START_UNSAID_META = "new_manifest_unsaid"
+"""Manifest meta key: the person's new start the LaunchAgent's poll ran first, ``{"pages": N, "orphans":
+[rel, ...]}``, whose note and WARNINGs reached only the poll log; the next foreground sync says them once and
+clears it, and status counts it read-only (B13 round 26 E74)."""
 """Manifest meta: "1" from the run that found the secret-scan rules moved until a run has scanned every
 published page again (a run that fails before its secret scan leaves it set)."""
 _SECRET_WAITING_META = "secret_rescreen_waiting"
@@ -2073,6 +2077,7 @@ class _Cycle:
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
         self._say_orphans_not_written_back()
+        report = self._new_start_unsaid(report)
         if self.new_manifest_pages:
             report = dataclasses.replace(
                 report,
@@ -2092,6 +2097,41 @@ class _Cycle:
         gone = self._orphans_gone
         for rel in gone if gone is not None else self._not_written_back():
             log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
+
+    def _new_start_unsaid(self, report: CycleReport) -> CycleReport:
+        """A new start the background job ran: its note and WARNINGs went only to the poll log, so the
+        manifest keeps them (:data:`NEW_START_UNSAID_META`), in the run's own state, never beside the
+        heartbeat the new start moved aside. The next foreground run says them once, by a fresh look at each
+        page (one a later poll wrote back is not named), as its own note and WARNINGs, and clears the key
+        (B13 round 26 E74)."""
+        try:
+            if self.new_manifest_pages:
+                if started_by_our_job(self.config):
+                    gone = self._orphans_gone if self._orphans_gone is not None else self._not_written_back()
+                    saved = {"pages": self.new_manifest_pages, "orphans": sorted(gone)}
+                    self.manifest.set_meta(NEW_START_UNSAID_META, json.dumps(saved, sort_keys=True))
+                return report
+            if started_by_our_job(self.config):
+                return report
+            raw = self.manifest.get_meta(NEW_START_UNSAID_META)
+            if not raw:
+                return report
+            saved = json.loads(raw)
+            self.manifest.set_meta(NEW_START_UNSAID_META, "")
+            pages = int(saved.get("pages", 0))
+            missing = [rel for rel in saved.get("orphans", []) if not (self.repo / rel).is_file()]
+        except (AgentSyncError, sqlite3.Error, ValueError, TypeError, AttributeError) as exc:
+            log.debug("new start note: %s", exc)
+            return report
+        for rel in missing:
+            log.warning(
+                "repair: removed orphan mirror page %s (not written back by the background sync)", rel
+            )
+        if not pages:
+            return report
+        return dataclasses.replace(
+            report, new_manifest_pages=pages, new_manifest_removed=len(missing), new_manifest_by_job=True
+        )
 
     def _not_written_back(self) -> list[str]:
         """The pages a new manifest's reset removed that this run has not written back."""

@@ -7714,6 +7714,60 @@ def test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers(
         assert f"- D `{rel}`" in section, section
 
 
+def test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_once(
+    initialised: Config,
+    local_source_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 26 E74: when the LaunchAgent's poll was the first run after the person's new start, the
+    new-start note and the "not written back" WARNINGs went to the poll log alone. The job keeps them in the
+    manifest; status counts them and leaves them; the next foreground sync says them once (a page a later
+    poll wrote back is not named) and clears them; a second sync says nothing."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    gone = sorted(p for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("."))[0]
+    gone.unlink()
+    db = _manifest_gone(initialised, heartbeat=False)
+    monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.poll")
+    capsys.readouterr()
+    assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    monkeypatch.delenv("XPC_SERVICE_NAME")
+    with Manifest(db) as m:
+        saved = json.loads(m.get_meta(cycle_mod.NEW_START_UNSAID_META) or "{}")
+        (missing,) = saved["orphans"]
+        back = next(
+            p.relative_to(repo).as_posix()
+            for p in initialised.layout.mirror.rglob("*.md")
+            if p.name != "CLAUDE.md"
+        )
+        saved["orphans"] = sorted([missing, back])  # one a later poll wrote back
+        m.set_meta(cycle_mod.NEW_START_UNSAID_META, json.dumps(saved))
+    assert not (repo / missing).exists()
+    _rc, out = _status(cfg, capsys)
+    assert (
+        "new start: the background sync started a new manifest and removed 1 page it did not write back; "
+        "the next sync names them" in out
+    ), out
+    with Manifest(db) as m:
+        assert m.get_meta(cycle_mod.NEW_START_UNSAID_META), "status leaves the key"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr()
+    over = plural(saved["pages"], "existing mirror page")
+    assert (
+        f"note: a new manifest was started over {over}; {saved['pages'] - 1} written back, 1 removed "
+        "(its file is gone or was not converted) (by the background sync)"
+    ) in said.out.splitlines(), said.out
+    warned = [ln for ln in said.err.splitlines() if "removed orphan mirror page" in ln]
+    assert len(warned) == 1 and missing in warned[0] and "by the background sync" in warned[0], said.err
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    again = capsys.readouterr()
+    assert "a new manifest was started" not in again.out and "removed orphan" not in again.err, again
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("new start: ")], out
+
+
 def test_curate_over_a_lost_manifest_says_syncs_line_and_never_to_sync_again(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
