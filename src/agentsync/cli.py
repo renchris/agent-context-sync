@@ -501,21 +501,21 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
     if report.new_manifest_pages:
-        pages = plural(report.new_manifest_pages, "existing mirror page")
-        by = (
-            " (by the background sync)" if report.new_manifest_by_job else ""
-        )  # its poll log alone had it (E74)
+        # the background sync's (its poll log alone had it: E74) in the sentence, after the count, never a
+        # second bracket after the first (B13 round 27 P47); the "started over " prefix install.sh reads stays
+        by = " by the background sync" if report.new_manifest_by_job else ""
+        pages = plural(report.new_manifest_pages, "existing mirror page") + by
         if report.new_manifest_removed:  # not every one came back: say how many went (B13 round 26 E10)
             gone = report.new_manifest_removed
             back = report.new_manifest_pages - gone
             whose = "its" if gone == 1 else "their"
             _out(
                 f"note: a new manifest was started over {pages}; {back} written back, {gone} removed "
-                f"({whose} file is gone or was not converted){by}"
+                f"({whose} file is gone or was not converted)"
             )
         else:
             note = f"note: a new manifest was started over {pages}; every file is converted again"
-            _out(note + by)
+            _out(note)
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(
@@ -1461,12 +1461,21 @@ def _status_lines(config: Config) -> list[str]:
         out.append(
             f"status: cannot read the state: {_unread_words(exc, refused='governance.config', config=config)}"
         )
-    try:  # a governance file that is not a file: one line, and the rest still print (B13 round 26 E43)
-        holds = governance.active_holds(config.state_paths.root, gov) if gov is not None else []
+    # a governance file that is not a file: one line each, and the rest still print (B13 round 26 E43); read
+    # apart, so a queue that is not a file never hides the holds read, and a hold list that is not one never
+    # hides sources.toml's own hold (B13 round 27 P44)
+    holds: Sequence[governance.Hold] = ()
+    if gov is not None:
+        try:
+            holds = governance.active_holds(config.state_paths.root, gov)
+        except governance.GovernanceNotAFileError as exc:
+            out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
+            holds = governance.config_holds(gov)
+    try:
         queued, kept = governance.partition_purges(config.state_paths)
     except governance.GovernanceNotAFileError as exc:
         out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
-        holds, queued, kept = [], [], []
+        queued, kept = [], []
     for h in holds:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     if queued:
@@ -1655,7 +1664,9 @@ def _says_why(config: Config | None, filename: object) -> str | None:
     if not (path == root or path.is_relative_to(root)):
         return None
     files = {real(sp.db), *(real(side) for side in doctor.manifest_sides(expand(sp.db)))}  # P42
-    if path == root or path in files | {real(sp.token_cache_fallback)} or doctor.state_folder_shut(config):
+    if doctor.state_folder_shut(config):  # its one FAIL, named (B13 round 27 P122)
+        return doctor.state_folder_says_why(config)
+    if path == root or path in files | {real(sp.token_cache_fallback)}:
         return "the state_dir lines say why"
     checks = {
         real(sp.lock): "lock",
@@ -1721,7 +1732,10 @@ def _unread_words(
         said = (
             f"the state folder cannot be opened: {reason}" if reason else "the state folder cannot be opened"
         )
-        return f"{said}; the state_dir lines say why"
+        pointer = (
+            doctor.state_folder_says_why(config) if config is not None else "the state_dir lines say why"
+        )
+        return f"{said}; {pointer}"  # its one FAIL, named (P122)
     if isinstance(exc, ManifestLostError):  # not "a file cannot be opened" (A29's reviewer)
         said = "the state file " + (exc.reason or LOST_MANIFEST)  # an unread heartbeat too (P111)
         return f"{said}; the state_dir.manifest [FAIL] line says why"
@@ -1802,6 +1816,32 @@ def _manifest_first(checks: Sequence[doctor.CheckResult]) -> str | None:
     the loop's skill or sign-in step (B13 round 25 D43, lane B's reviewer)."""
     fail = next((r for r in checks if r.name == "state_dir.manifest" and not r.ok), None)
     return None if fail is None else _fail_step(fail)
+
+
+def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> str | None:
+    """The NEXT step of the FAIL a sync stops on (:func:`_fail_step`), or None: a state_dir.manifest FAIL
+    (:func:`_manifest_first`), the state folder that is not a folder or refuses a look inside, or the state
+    file that is not a file the sync's own guard finds (``doctor.state_not_a_file``: the lock, heartbeat.json,
+    a governance file, a -wal or -shm). It leads, never the loop's skill or sign-in step, whose sync stops on
+    it, so status and the sync sent the agent back and forth (B13 round 27 P23). A FAIL the sync reads past
+    (a loose mode, the docs repo's permissions) keeps the loop's order."""
+    first = _manifest_first(checks)
+    if first is not None:
+        return first
+    try:
+        if doctor.state_folder_unchecked(config) is not None:
+            fail = next((r for r in checks if r.name.startswith("state_dir") and not r.ok), None)
+            return None if fail is None else _fail_step(fail)
+        found = doctor.state_not_a_file(config)  # the sync's own stop, by stat
+    except Exception:  # the NEXT path never raises over the checks
+        return None
+    if found is None:
+        return None
+    _where, result = found
+    fail = next(
+        (r for r in checks if not r.ok and r.name == result.name and r.detail == result.detail), result
+    )
+    return _fail_step(fail)
 
 
 def _manifest_first_lines(config: Config, step: loop.NextStep | None, first: str) -> list[str]:
@@ -1911,7 +1951,8 @@ def _listings_unread(
     elif read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
         note = doctor.LISTING_STATE_UNREADABLE_NOTE
     elif db is not None and doctor.side_not_a_file_at(db) is not None:
-        note = doctor.LISTING_STATE_SIDE_NOTE  # the person's move aside, not this account's access (D8)
+        # the person's move aside, not this account's access (D8), each side by its role (P16, P146)
+        note = doctor.listing_state_side_note(doctor.sides_not_a_file_at(db))
     elif doctor.state_unopenable(exc, state_root):
         note = doctor.LISTING_STATE_SHUT_NOTE
     else:
@@ -1964,7 +2005,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
     if not hint_off:
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
-        elif (first := _manifest_first(checks)) is not None:
+        elif (first := _state_stop_first(config, checks)) is not None:
             # the person's state_dir.manifest FAIL first: a link to nothing, a loop or a lost manifest let the
             # loop read past it, so its "run sync" NEXT sent them to the sync that stops on it (B13 round 25
             # D43); the loop's own waits stay when it read the state, else the docs repo's
@@ -2653,7 +2694,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root))
         fixes[:] = _fail_steps(results)
-        first = _manifest_first(results)
+        first = _state_stop_first(config, results)  # status's own lead (P23)
         manifest_first[:] = [] if first is None else [first]
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).

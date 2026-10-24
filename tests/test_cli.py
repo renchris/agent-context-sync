@@ -7754,7 +7754,10 @@ def test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so(
     exc = sqlite3.OperationalError("unable to open database file")
     exc.sqlite_errorcode = sqlite3.SQLITE_CANTOPEN  # type: ignore[attr-defined]
     (out,) = cli._listings_unread([warn], exc, db.parent)
-    note = doctor.LISTING_STATE_NOT_FILE_NOTE if where == "manifest" else doctor.LISTING_STATE_SIDE_NOTE
+    side = db.with_name(db.name + "-wal")  # named by its role since B13 round 27 P16, P146
+    note = (
+        doctor.LISTING_STATE_NOT_FILE_NOTE if where == "manifest" else doctor.listing_state_side_note([side])
+    )
     assert out.note == note and out.fix is None, out
     assert "cannot be read" not in note and "cannot open" not in note
 
@@ -7975,10 +7978,12 @@ def test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr()
     over = plural(saved["pages"], "existing mirror page")
-    assert (
-        f"note: a new manifest was started over {over}; {saved['pages'] - 1} written back, 1 removed "
-        "(its file is gone or was not converted) (by the background sync)"
-    ) in said.out.splitlines(), said.out
+    # one bracket, the job in the sentence (P47)
+    back = saved["pages"] - 1
+    want = (
+        f"note: a new manifest was started over {over} by the background sync; {back} written back, 1 removed"
+    )
+    assert f"{want} (its file is gone or was not converted)" in said.out.splitlines(), said.out
     warned = [ln for ln in said.err.splitlines() if "removed orphan mirror page" in ln]
     assert len(warned) == 1 and missing in warned[0] and "by the background sync" in warned[0], said.err
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
@@ -8475,3 +8480,245 @@ def test_a_hold_over_a_lost_manifest_link_to_nothing_in_a_usable_folder_is_not_r
     capsys.readouterr()
     assert cli.main(hold) == cli.EXIT_FAILED
     assert "whose folder does not exist or refuses a write" in capsys.readouterr().err
+
+
+# ---- B13 round 27: status, doctor and the commands after round 26 ----
+
+
+def _stale_skill() -> None:
+    for path in skill.skill_paths():
+        path.write_text("an older skill\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("where", ["lock", "heartbeat", "holds"])
+def test_a_state_file_a_sync_stops_on_leads_status_ahead_of_the_skill_step(
+    initialised: Config, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 27 P23: with the skill stale and a folder at the lock or heartbeat.json, status's NEXT was
+    the skill's "run sync", whose sync stops on the folder and sends the agent back to status. The FAIL a sync
+    stops on leads, in status and in the setup report's Loop hook alike."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    path, check = {
+        "lock": (expand(sp.lock), "lock"),
+        "heartbeat": (expand(sp.heartbeat), "heartbeat"),
+        "holds": (governance._holds_file(expand(sp.root)), "governance.hold"),
+    }[where]
+    _stale_skill()
+    _make_not_a_file(path, "a folder")
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    want = f"NEXT: the {check} check failed: its fix on the [FAIL] line below is the person's"
+    assert rc == cli.EXIT_FAILED and out[0].startswith(want), out[0]
+    hooks = cli._report_hooks()
+    assert hooks.doctor is not None and hooks.loop_next is not None
+    hooks.doctor(initialised)
+    said = hooks.loop_next(initialised)
+    lines = said.lines() if isinstance(said, loop.NextStep) else said
+    assert lines[0] == out[0], (lines, out[0])
+
+
+def test_a_fail_the_sync_reads_past_keeps_the_skill_step_first(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P23's verifier: a loose mode on the manifest stops no sync, so it never leads over the skill's sync;
+    with nothing a sync stops on, the skill's step still leads."""
+    cfg = _synced(initialised)
+    _stale_skill()
+    loose = doctor.CheckResult(
+        "state_dir.files",
+        False,
+        "readable by others: manifest.sqlite (0644)",
+        doctor.Severity.ERROR,
+        "chmod 600 x",
+    )
+    assert cli._state_stop_first(initialised, [loose]) is None
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert out[0].startswith("NEXT: the agentsync-docs skill is missing or out of date"), out[0]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_queue_run_over_a_manifest_it_cannot_open_warns_once_in_words(
+    initialised: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 27 P25: a queue run over a manifest this account cannot open logged two WARNINGs per entry,
+    one with a PurgeSelector repr and the full path. One WARNING, counted, with its cause in words."""
+    _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    for n in range(3):
+        sel = governance.PurgeSelector(source_id="source", stable_id=f"contoso-{n}")
+        assert governance.enqueue_purge(root, sel, governance.PurgeReason.LABEL_ESCALATION)
+    db = expand(initialised.state_paths.db)
+    db.chmod(0o000)
+    try:
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="agentsync.governance"):
+            reps = governance.run_purge_queue(initialised, dry_run=True)
+    finally:
+        db.chmod(0o600)
+    assert [bool(r.not_run) for r in reps] == [True, True, True]
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warned) == 1, warned
+    assert "3 queued purges" in warned[0] and "permission denied" in warned[0], warned
+    assert "PurgeSelector(" not in warned[0] and str(Path.home()) not in warned[0], warned
+
+
+def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 27 P44: one try read the holds and the queue, so a folder at purge-queue.json dropped the
+    HOLD lines status had read, and a folder at holds.json dropped sources.toml's own hold. Each read keeps
+    its own line."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    queue = governance._queue_file(root)
+    _make_not_a_file(queue, "a folder")
+    lines = cli._status_lines(initialised)
+    assert any(ln.startswith("HOLD: hold all (state): matter 8") for ln in lines), lines
+    assert any(ln.startswith("status: cannot read the state: the purge queue is not a file") for ln in lines)
+    queue.rmdir()
+    text = initialised.config_path.read_text(encoding="utf-8")
+    initialised.config_path.write_text(
+        text + '\n[governance]\nhold = true\nhold_reason = "matter 9"\nhold_owner = "Contoso Legal"\n',
+        encoding="utf-8",
+    )
+    governance._holds_file(root).unlink()
+    _make_not_a_file(governance._holds_file(root), "a folder")
+    lines = cli._status_lines(load_config(initialised.config_path))
+    assert any(ln.startswith("HOLD: hold all (config)") for ln in lines), lines
+
+
+def test_a_fifo_at_the_wal_this_account_cannot_open_stops_every_command_first(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 27 P49: the -wal fifo exemption (sqlite removes a fifo it can open) also passed one this
+    account cannot open, so curate ran its work before stopping and hold ran over it. That fifo stops at the
+    guard, as a folder does; one it can open is still left to sqlite."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    wal = db.with_name(db.name + "-wal")
+    wal.unlink(missing_ok=True)
+    os.mkfifo(wal, 0o600)
+    assert doctor.state_not_a_file(initialised) is None
+    wal.chmod(0o000)
+    try:
+        found = doctor.state_not_a_file(initialised)
+        assert found is not None and found[0] == wal, found
+        for argv in (["curate"], ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal"]):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+            said = capsys.readouterr()
+            assert said.err.startswith(f"error: state: {wal} is a fifo"), said.err
+            assert "finding" not in said.out, said.out
+    finally:
+        wal.unlink()
+
+
+def test_a_stale_lock_of_a_job_under_the_default_prefix_names_its_log(initialised: Config) -> None:
+    """B13 round 27 P50: with the config's label prefix changed and the job still under the default one, the
+    stale-lock fix named no log though com.agentsync.poll.err.log was there. The config's prefix first, then
+    the default's."""
+    config = dataclasses.replace(initialised, launchd_label_prefix="com.contoso.agentsync")
+    lock = expand(config.state_paths.lock)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    info = lock_mod.LockInfo(pid=999_999, boot_time=1, started_at="2026-10-24T00:00:00Z", label="poll")
+    lock.write_text(info.render() + "\n", encoding="utf-8")
+    holder = {"pid": 999_999, "label": "poll", "started_by": "launchd"}
+    lock_mod._holder_path(lock).write_text(json.dumps(holder), encoding="utf-8")
+    log_dir = expand(config.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    old = log_dir / "com.agentsync.poll.err.log"
+    old.write_text("Traceback\n", encoding="utf-8")
+    (stale,) = doctor._check_lock(config)
+    assert stale.fix == f"read the crash in {old}", stale
+    new = log_dir / "com.contoso.agentsync.poll.err.log"
+    new.write_text("Traceback\n", encoding="utf-8")
+    (stale,) = doctor._check_lock(config)
+    assert stale.fix == f"read the crash in {new}", "the current job's log first"
+
+
+def test_only_doctor_has_a_state_not_a_file() -> None:
+    """B13 round 27 P51: governance had a state_not_a_file that built words beside doctor's that finds the
+    file; the builder is governance._not_a_file_words."""
+    assert not hasattr(governance, "state_not_a_file") and callable(doctor.state_not_a_file)
+    detail, fix = governance._not_a_file_words(Path("/x/holds.json"), "a fifo", "the hold list")
+    assert detail == "/x/holds.json is a fifo, not a file: the hold list belongs there" and "aside" in fix
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 folder")
+@pytest.mark.parametrize("how", ["mode 0000", "another account", "an ACL"])
+def test_a_shut_state_folder_names_the_one_check_that_fails_it(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """B13 round 27 P122: over a shut state folder every not-checked line and status's tail said "the
+    state_dir lines say why" over one line. They name the one state_dir check that FAILs: state_dir for its
+    mode or another account's folder, state_dir.files when the owner bits are open and it still refuses (an
+    ACL)."""
+    _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    real_stat = Path.stat
+    if how == "mode 0000":
+        root.chmod(0o000)
+    else:  # its own lstat still refuses, as an ACL or another account's folder does
+        me = os.getuid()
+
+        def refused(self: Path, *a: Any, **k: Any) -> os.stat_result:
+            if self != root and (self.parent == root or root in self.parents):
+                raise PermissionError(errno.EACCES, "Permission denied", str(self))
+            st = real_stat(self, *a, **k)
+            if self == root and how == "another account":
+                fields = list(st)
+                fields[4] = me + 1
+                return os.stat_result(fields)
+            return st
+
+        monkeypatch.setattr(Path, "stat", refused)
+        monkeypatch.setattr(Path, "lstat", lambda self: refused(self, follow_symlinks=False))
+    try:
+        assert doctor.state_folder_shut(initialised)
+        line = doctor.state_folder_shut_line(initialised)
+        assert line == ("state_dir.files" if how == "an ACL" else "state_dir"), line
+        words = doctor.state_folder_unchecked(initialised)
+        said = (
+            f"not checked: this account cannot look inside the state folder; the {line} [FAIL] line says why"
+        )
+        assert words == said, words
+    finally:
+        monkeypatch.undo()
+        root.chmod(0o700)
+
+
+@pytest.mark.parametrize("where", [("-wal",), ("-shm",), ("-wal", "-shm")], ids=["wal", "shm", "both"])
+def test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role(
+    initialised: Config, where: tuple[str, ...]
+) -> None:
+    """B13 round 27 P16, P146 (one defect): beside a -wal or -shm that is not a file, the incomplete-listing
+    note said "a side file of the state file" while the state_dir.files lines beside it named them. It names
+    each by its role, both when both are, and keeps the tail readers key on."""
+    _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    for suffix in where:
+        side = db.with_name(db.name + suffix)
+        side.unlink(missing_ok=True)
+        side.mkdir(mode=0o700)
+    warn = doctor.CheckResult(
+        name="heartbeat.contoso",
+        ok=False,
+        detail=doctor.LISTING_INCOMPLETE + "3 passes",
+        severity=doctor.Severity.WARN,
+        fix="sync again",
+    )
+    exc = sqlite3.OperationalError("unable to open database file")
+    exc.sqlite_errorcode = sqlite3.SQLITE_CANTOPEN  # type: ignore[attr-defined]
+    (out,) = cli._listings_unread([warn], exc, db.parent)
+    assert out.note is not None and "a side file of the state file" not in out.note, out
+    assert out.note.endswith(doctor.LISTING_STATE_SIDE_TAIL), out.note
+    if len(where) == 2:
+        assert (
+            "write-ahead log and shared-memory file are not files" in out.note
+            and "moves them aside" in out.note
+        )
+    else:
+        assert f"{doctor.SIDE_ROLES[where[0]]} is not a file" in out.note and "moves it aside" in out.note

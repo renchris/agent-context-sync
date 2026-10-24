@@ -180,10 +180,32 @@ LISTING_STATE_NOT_FILE_NOTE = (
 # The same note for a side file of the state file (its -wal or -shm) that is not a file: no account's access,
 # so not the shut note's "cannot open", but the person's move aside that state_dir.files names (B13 round 25
 # D8: a folder at the -wal read "this account cannot open the state file").
+LISTING_STATE_SIDE_TAIL = "the state_dir.files [FAIL] line says what to do first"
+"""The last words of every :func:`listing_state_side_note`, for a reader that keys on the note."""
+
 LISTING_STATE_SIDE_NOTE = (
     "as of its last walk: a side file of the state file is not a file, so no sync lists it again until the "
-    "person moves it aside; the state_dir.files [FAIL] line says what to do first"
+    f"person moves it aside; {LISTING_STATE_SIDE_TAIL}"
 )
+""":func:`listing_state_side_note` when no side is named."""
+
+
+def listing_state_side_note(sides: Sequence[Path]) -> str:
+    """The listing note beside a -wal or -shm that is not a file, naming each by the role its state_dir.files
+    FAIL gives it (:data:`SIDE_ROLES`), the write-ahead log first: "a side file of the state file" said none
+    while the FAIL lines beside it named them (B13 round 27 P16, P146). :data:`LISTING_STATE_SIDE_NOTE`
+    with none named."""
+    suffixes = [x for x in SIDE_ROLES if any(side_suffix(side) == x for side in sides)]
+    if not suffixes:
+        return LISTING_STATE_SIDE_NOTE
+    if len(suffixes) == 1:
+        what, them = f"{SIDE_ROLES[suffixes[0]]} is not a file", "it"
+    else:
+        what, them = "the state file's write-ahead log and shared-memory file are not files", "them"
+    return (
+        f"as of its last walk: {what}, so no sync lists it again until the person moves {them} aside; "
+        f"{LISTING_STATE_SIDE_TAIL}"
+    )
 
 
 def state_unopenable(exc: BaseException | None, state_root: Path | None = None) -> bool:
@@ -619,19 +641,21 @@ def _quoted(text: str) -> str:
 
 
 AGAIN_UNDER_INSTALL_SH = (
-    f"run {INSTALL_SH} again without --report-only, which builds nothing; a plain run keeps the folders "
-    "already synced"
+    f"run {INSTALL_SH} again without --report-only, since a --report-only run builds nothing; a plain run "
+    "keeps the folders already synced"
 )
-"""How a fix under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) says to run it again: by what the command is.
-It said ``run the same <install.sh> command again as it is (its NEXT line names it)``, but a warn makes no
-NEXT line name install.sh, and the same command under ``--report-only``, which sets the variable too and
-writes this fix into the report, builds nothing (B13 round 19 W19, W48). ``--list-folders`` runs no doctor.
-No options are repeated: "the options of the run that installed agentsync" named options the person never
-saw, and a plain run does the same job, since a run with no --source-local keeps the config's folders
-(install.sh's header; its own re-run drops them too) and background sync is the operator's flag, which a
-setup agent never passes (B13 round 20 X21). No bracket of its own: every doctor line wraps its fix in
-``(fix: ...)``, so ``(it keeps ...)`` and :data:`_STILL_NO_ANSWER`'s ``(the program ...)`` nested a bracket in
-that one, which round 20's X7 and X44 had taken out of such lines (B13 round 21 Y20)."""
+"""How a fix under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) says to run it again: by what the command is,
+--report-only with its own subject, so "builds nothing" never reads as the re-run's (B13 round 27 P109), and
+no bracket inside the line's ``(fix: ...)``. It said ``run the same <install.sh> command again as it is (its
+NEXT line names it)``, but a warn makes no NEXT line name install.sh, and the same command under
+``--report-only``, which sets the variable too and writes this fix into the report, builds nothing (B13 round
+19 W19, W48). ``--list-folders`` runs no doctor. No options are repeated: "the options of the run that
+installed agentsync" named options the person never saw, and a plain run does the same job, since a run with
+no --source-local keeps the config's folders (install.sh's header; its own re-run drops them too) and
+background sync is the operator's flag, which a setup agent never passes (B13 round 20 X21). No bracket of its
+own: every doctor line wraps its fix in ``(fix: ...)``, so ``(it keeps ...)`` and :data:`_STILL_NO_ANSWER`'s
+``(the program ...)`` nested a bracket in that one, which round 20's X7 and X44 had taken out of such lines
+(B13 round 21 Y20)."""
 
 
 def _again_fix(fallback: str | None = None) -> str:
@@ -1468,10 +1492,31 @@ def state_folder_shut(config: Config) -> bool:
 
 
 STATE_FOLDER_UNCHECKED = (
-    "not checked: this account cannot look inside the state folder; the state_dir lines say why"
+    "not checked: this account cannot look inside the state folder; the state_dir [FAIL] line says why"
 )
 """The [info] line of a check that reads the state folder, when :func:`state_folder_shut` (B13 round 20
-X73)."""
+X73), naming the one state_dir check that FAILs it (:func:`state_folder_shut_line`): "the state_dir lines"
+was false over one line (B13 round 27 P122)."""
+
+
+def state_folder_shut_line(config: Config) -> str:
+    """The one check whose FAIL says why this account cannot look inside the state folder:
+    ``state_dir.files`` when the folder is this account's with its owner bits open (its owner and mode are
+    right, so the files check's "cannot look inside" FAIL is the one printed: an ACL, a sandbox), else
+    ``state_dir`` (another account's, a mode, a folder above it that refuses a search) (B13 round 27 P122:
+    "the state_dir lines say why" over one line, and a fixed "state_dir" would point at an [ok] line)."""
+    try:
+        st = expand(config.state_paths.root).stat()
+    except OSError:
+        return "state_dir"
+    own = st.st_uid == os.getuid() and stat.S_IMODE(st.st_mode) & 0o700 == 0o700
+    return "state_dir.files" if own else "state_dir"
+
+
+def state_folder_says_why(config: Config) -> str:
+    """``the <check> [FAIL] line says why`` of :func:`state_folder_shut_line`."""
+    return f"the {state_folder_shut_line(config)} [FAIL] line says why"
+
 
 STATE_FOLDER_NOT_A_FOLDER = "not checked: the state folder is not a folder (see state_dir)"
 """The [info] line of a check that reads the state folder, when :func:`state_root_not_folder` (round 23
@@ -1509,7 +1554,9 @@ def state_folder_unchecked(config: Config) -> str | None:
     when the checks can read it."""
     if state_root_not_folder(config) is not None:
         return STATE_FOLDER_NOT_A_FOLDER
-    return STATE_FOLDER_UNCHECKED if state_folder_shut(config) else None
+    if not state_folder_shut(config):
+        return None
+    return STATE_FOLDER_UNCHECKED.replace("the state_dir [FAIL] line says why", state_folder_says_why(config))
 
 
 def _not_a_folder_fail(root: Path, that: Path) -> CheckResult:
@@ -1602,7 +1649,7 @@ def _behind_the_state_folders_refuser(config: Config, exc: OSError) -> str | Non
     if not path.is_relative_to(above):
         return None
     said = f"not checked: this account cannot search {above}, a folder above the state folder"
-    return f"{said}; the state_dir lines say why"
+    return f"{said}; the state_dir [FAIL] line says why"  # its one line (P122)
 
 
 SIDE_ROLES = {"-wal": "the state file's write-ahead log", "-shm": "the state file's shared-memory file"}
@@ -1694,10 +1741,18 @@ def side_not_a_file_at(db: Path) -> Path | None:
     "unable to open database file" while status passed it (B13 round 26 E62); beside a manifest that is a
     link, sqlite keeps its sides beside the target, so those are judged and nothing beside the link is
     (:func:`manifest_sides`; B13 round 27 P42)."""
-    for side in manifest_sides(db):  # beside a linked manifest's target, where sqlite keeps them (P42)
-        if link_kind(side) is not None or state_file_kind(side) is not None:
-            return side
-    return None
+    found = sides_not_a_file_at(db)
+    return found[0] if found else None
+
+
+def sides_not_a_file_at(db: Path) -> list[Path]:
+    """Every side :func:`side_not_a_file_at` judges not a file, the -wal first, beside a linked manifest's
+    target (:func:`manifest_sides`; P42), so a note naming them names both (B13 round 27 P16)."""
+    return [
+        side
+        for side in manifest_sides(db)
+        if link_kind(side) is not None or state_file_kind(side) is not None
+    ]
 
 
 def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
@@ -1729,7 +1784,8 @@ _GOVERNANCE_CHECKS = {
 def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, CheckResult] | None:
     """The first state file that is not a regular file where one belongs, and status's own FAIL of it, judged
     by stat before anything opens it (so a fifo never blocks): a -wal or -shm (:func:`side_not_a_file`; a
-    fifo at the -wal is left to the open, since sqlite's open replaces it and the run goes on), the manifest
+    fifo at the -wal this account can read and write is left to the open, since sqlite removes it on close
+    and the run goes on; one it cannot open stops here as a folder does: B13 round 27 P49), the manifest
     (a folder, a fifo, a socket, a loop, a link to nothing whose folder is missing: its state_dir.manifest
     FAIL), the lock (:func:`lock_not_a_file`), a folder at heartbeat.json (:func:`heartbeat_not_a_file`) and
     the governance files; None when none is, the state folder itself is not a folder (its own guard), or any
@@ -1743,7 +1799,11 @@ def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, Ch
         db = expand(sp.db)
         side = side_not_a_file(config) if manifest else None
         if side is not None and not (
-            side[0].name.endswith("-wal") and stat.S_ISFIFO(side[0].lstat().st_mode)
+            side[0].name.endswith("-wal")
+            and stat.S_ISFIFO(side[0].lstat().st_mode)
+            # only a fifo this account can open: one it cannot stops here, as a folder does (P49); the
+            # access check opens nothing, so a fifo still never blocks
+            and os.access(side[0], os.R_OK | os.W_OK)
         ):
             return side
         if (
@@ -3203,8 +3263,14 @@ def _stale_lock_fix(config: Config, path: Path, body: str) -> str | None:
     started = holder.get("started_by") if same and holder is not None else None
     log_dir = expand(config.log_dir)
     if started == STARTED_BY_LAUNCHD and info is not None:
-        err = log_dir / f"{config.launchd_label_prefix}.{info.label}.err.log"
-        return f"read the crash in {err}" if err.is_file() else None
+        # the config's prefix first, then the default a job installed before a prefix change still runs
+        # under (launchd.started_by_our_job accepts both), so an old log never hides the current job's (B13
+        # round 27 P50)
+        for prefix in dict.fromkeys((config.launchd_label_prefix, launchd._DEFAULT_LABEL_PREFIX)):
+            err = log_dir / f"{prefix}.{info.label}.err.log"
+            if err.is_file():
+                return f"read the crash in {err}"
+        return None
     if started == STARTED_BY_OTHER:
         return None
     try:

@@ -141,13 +141,14 @@ class GovernanceError(AgentSyncError):
 
 class GovernanceNotAFileError(GovernanceError):
     """A governance file that is not a regular file (a folder, a fifo, a socket, a link to one or a loop):
-    the person's move aside, keeping a copy, in status's words (:func:`state_not_a_file`), never "a fault in
+    the person's move aside, keeping a copy, in the words status prints (built by :func:`_not_a_file_words`;
+    ``doctor.state_not_a_file`` is the finder), never "a fault in
     agentsync to report"; fail closed, never the empty default, which would drop legal holds (B13 round 26
     E43; ruling 13)."""
 
     def __init__(self, path: Path, kind: str, role: str) -> None:
         self.path, self.kind, self.role = path, kind, role
-        self.detail, self.fix = state_not_a_file(path, kind, role)
+        self.detail, self.fix = _not_a_file_words(path, kind, role)
         super().__init__(f"{self.detail} (fix: {self.fix})")
 
 
@@ -384,7 +385,7 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         os.close(fd)
 
 
-def state_not_a_file(path: Path, kind: str, role: str) -> tuple[str, str]:
+def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     """The detail and the person's fix of something at a governance file that is not a file (``kind``, in
     ``doctor.state_file_kind``'s words; ``role`` names the file: ``the audit trail``, ``the hold list``,
     ``the purge queue``, ``the suppression list``): status's FAIL and a command's error line say the same,
@@ -400,8 +401,8 @@ def state_not_a_file(path: Path, kind: str, role: str) -> tuple[str, str]:
 
 
 def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
-    """:func:`state_not_a_file` of the audit trail (B13 round 25 D41)."""
-    return state_not_a_file(path, kind, "the audit trail")
+    """:func:`_not_a_file_words` of the audit trail (B13 round 25 D41)."""
+    return _not_a_file_words(path, kind, "the audit trail")
 
 
 GOVERNANCE_ROLES = {
@@ -2868,9 +2869,32 @@ def _kept_queued(db: Path, q: QueuedPurge) -> str:
             return _kept_why(conn, _read_manifest(conn), q)
         finally:
             conn.close()
-    except (AgentSyncError, sqlite3.Error) as exc:
-        log.warning("governance: cannot judge queued purge %s: %s", q.selector, exc)
+    except (AgentSyncError, sqlite3.Error):  # its cause is said once per run (_unjudged_cause; P25)
         return unjudged_note(_unjudged_check(db))
+
+
+def _unjudged_cause(db: Path) -> str:
+    """Why no queued purge could be judged, in words, the file by its name: never a selector's repr or the
+    full path under the home, which a WARNING per entry printed twice over (B13 round 27 P25)."""
+    name = db.name
+    try:
+        st = db.stat()
+    except FileNotFoundError:
+        return f"{name} in the state folder is missing"
+    except OSError as exc:
+        return f"{name} in the state folder cannot be reached ({(exc.strerror or 'refused').lower()})"
+    if not stat.S_ISREG(st.st_mode):
+        return f"{name} in the state folder is not a regular file"
+    try:
+        Manifest(db).close()
+    except (AgentSyncError, sqlite3.Error) as exc:
+        cause = exc.__cause__ if isinstance(exc.__cause__, OSError) else exc
+        if isinstance(cause, OSError) and cause.strerror:
+            return f"{name} in the state folder cannot be opened ({cause.strerror.lower()})"
+        if isinstance(exc, sqlite3.Error):
+            return f"{name} in the state folder cannot be read ({exc})"
+        return f"{name} in the state folder cannot be read"
+    return f"{name} in the state folder cannot be read"
 
 
 def _kept_why(
@@ -2982,8 +3006,8 @@ def partition_purges(
                     whys.append(_kept_why(conn, m, q, state))
         finally:
             conn.close()
-    except (AgentSyncError, sqlite3.Error) as exc:
-        log.warning("governance: cannot tell which queued purges stay queued: %s", exc)
+    except (AgentSyncError, sqlite3.Error):
+        log.warning("governance: cannot tell which queued purges stay queued: %s", _unjudged_cause(db))
         return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
     return [q for q, why in zip(entries, whys, strict=True) if not why], [
         (q, why) for q, why in zip(entries, whys, strict=True) if why
@@ -3124,6 +3148,7 @@ def run_purge_queue(
             set()
         )  # indexes in ``queue`` of the later entries a verified purge of this run did
         queue = pending_purges(sp.root)
+        unjudged = 0  # entries no manifest read could judge: said once, with the cause
 
         def not_run(q: QueuedPurge, why: str) -> None:
             reports.append(
@@ -3149,7 +3174,10 @@ def run_purge_queue(
                 continue
             why = _kept_queued(sp.db, q)
             if why:
-                log.warning("governance: %s", why)
+                if why.startswith("not judged: "):
+                    unjudged += 1  # one WARNING for the run, with its cause, after the loop (P25)
+                else:
+                    log.warning("governance: %s", why)
                 not_run(q, why)
                 continue
             try:
@@ -3233,6 +3261,12 @@ def run_purge_queue(
                 )
         if not dry_run:
             _write_queue(sp.root, remaining)
+        if unjudged:
+            log.warning(
+                "governance: cannot judge %s: %s",
+                plural(unjudged, "queued purge"),
+                _unjudged_cause(expand(sp.db)),
+            )
     return reports
 
 

@@ -514,9 +514,10 @@ RUN_AGAIN = "run ~/.local/bin/agentsync status again as it is"
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 # B13 round 19 W19, W48: by what it is; no NEXT line names it under a warn, and --report-only builds nothing
 # B13 round 20 X21: the plain command, which keeps the folders; no options the person never saw
+# B13 round 27 P109: --report-only its own subject, so "builds nothing" is not the re-run's
 RUN_AGAIN_INSTALL = (
-    f"run {INSTALL_SH} again without --report-only, which builds nothing; a plain run keeps the folders "
-    "already synced"
+    f"run {INSTALL_SH} again without --report-only, since a --report-only run builds nothing; a plain run "
+    "keeps the folders already synced"
 )
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it: the program does not answer on this Mac, and no setup step clears that"
