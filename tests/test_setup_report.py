@@ -5543,6 +5543,20 @@ def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason
             [first, second], paired, setup_report._after_chmod([first, second], paired)
         )
         assert reason.endswith(fix) or f"the fix is {fix}" in reason, (paired, reason)
+    # B13 round 27 P36: a person's earlier paired stop claims any line, never the agent's chmod, so the later
+    # agent stop did not come after one, measured (the person's fixed) or not
+    for measured in (True, False):
+        ended = at.replace(second=52) if measured else None
+        person = setup_report._SyncStop(at, "manifest", "person", ended, measured)
+        agent = setup_report._SyncStop(at.replace(second=56), "manifest", "agent", None, measured)
+        paired = {id(person), id(agent)}
+        after = setup_report._after_chmod([person, agent], paired)
+        reasons = setup_report._open_stop_reasons([person, agent], paired, after)
+        wrong = [r for r in reasons if "after the agent's chmod" in r or "no longer" in r]
+        assert not wrong, (measured, reasons)
+        if measured:
+            last = reasons[-1]
+            assert last.endswith("after it by this report: the fix is the agent's chmod"), last
     assert [ln.rsplit(" (F", 1)[1] for ln in _items_of(summary)] == [
         "4: the agent's account of it)",
         "5: the agent's account of it)",

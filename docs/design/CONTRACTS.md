@@ -30267,6 +30267,8 @@ gives those stops their own reason, `2 syncs at step 3 exited 1 on agentsync's l
 agent's chmod for the earlier, and no sync ended 0 after them by this report: the fix is no longer the agent's
 chmod, as v33 sends it to the person`. A second stop alone, with no claimed line, keeps the old words. Test:
 `test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`.
+Amended 2026-10-24, §16.188 P36: the earlier stop must be agent-owned too; a person's stop, which claims any line,
+is no chmod of the agent's.
 
 **The new start's mirror pages are counted** (E1, E24, E27; ruling 14's report side, the D26 half of §16.178 that
 never fired). `_new_pages` took `int()` of lane B's `cycle.unowned_mirror_pages`, which returns the pages, so it
@@ -30754,7 +30756,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52; P123 and P101.
 
@@ -30872,6 +30874,15 @@ forms (`, whose folder `, `, which does not exist`, the docs repo's bare form; `
 normalized, outside this home, and only two parts deep or more, so `/` or `/x` never cuts every path; one sorted list
 with the on-disk targets, longest first. The clause is kept, as the bucket and outcome readers match on its words.
 Test: `test_a_link_target_only_the_runs_own_text_names_is_redacted`.
+
+**A person's earlier stop is no chmod of the agent's** (P36; amends §16.183's E67). `_after_chmod` took any earlier
+paired stop on the same file as the agent's chmod, while a person-owned stop claims any line (ruling 11 refined
+again) and v33 runs no chmod for it, so a person's stop the person fixed, or one not measured, then an agent stop on
+the manifest read `... came back after the agent's chmod ...: the fix is no longer the agent's chmod`, with no chmod
+run. The earlier stop must be agent-owned too; that reason now reads `..., and no sync ended 0 after it by this
+report: the fix is the agent's chmod`. The finder's case (both open and measured) never reaches it, as the
+person's open stop fails the attempt first. Test: the P36 rows of
+`test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

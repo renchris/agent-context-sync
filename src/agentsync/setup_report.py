@@ -2747,11 +2747,13 @@ def _after_chmod(stops: Sequence[_SyncStop], paired: Collection[int]) -> set[int
     """The ``id``s of the agent-owned stops an earlier stop on the same file claimed a line before (B13 round
     26 E67): a paired agent-owned stop's line names a chmod (:func:`_claims`), so the later stop came after
     the agent's chmod for the earlier, v33's "a chmod you already ran". Only that claimed line is evidence: a
-    second stop alone is no proof the chmod ran."""
+    second stop alone is no proof the chmod ran, and a person-owned earlier stop's claimed line is none: it
+    claims any line, and v33 runs no chmod for it (B13 round 27 P36)."""
     return {
         id(s)
         for s in stops
-        if s.owner == "agent" and any(t.file == s.file and t.at < s.at and id(t) in paired for t in stops)
+        if s.owner == "agent"
+        and any(t.owner == "agent" and t.file == s.file and t.at < s.at and id(t) in paired for t in stops)
     }
 
 
