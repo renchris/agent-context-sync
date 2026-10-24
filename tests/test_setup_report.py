@@ -8664,10 +8664,11 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
     ]
     v6_install_log(fake_mac)
     lines = (
-        "2026-09-29T10:01:20Z | step 1 | error | git clone https://mirror.northwind.invalid:8443/northwind-team/"
-        "someone/agent-context-sync.git/: Could not resolve host: mirror.northwind.invalid (exit 128) | -\n"
-        "2026-09-29T10:01:21Z | step 1 | error | git pull git@scp.northwind-two.invalid:northwind-scp/x.git: "
-        "Could not resolve hostname scp.northwind-two.invalid (exit 1) | -\n"
+        "2026-09-29T10:01:20Z | step 1 | error | git clone "
+        "https://mirror.northwind.invalid:8443/northwind-team/someone/agent-context-sync.git/: Could not "
+        "resolve host: mirror.northwind.invalid (exit 128) | -\n2026-09-29T10:01:21Z | step 1 | error | git "
+        "pull git@scp.northwind-two.invalid:northwind-scp/x.git: Could not resolve hostname "
+        "scp.northwind-two.invalid (exit 1) | -\n"
     )
     write_friction(fake_mac, V11_HAPPY + lines)
     _rc, text, _ = report(tmp_path, fake_mac["config"])
@@ -9885,12 +9886,12 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             # doctor's words for a fifo at the -shm, each the side file's, never "the state file"
             f"error: state: {db}-wal is a folder, not a file: the state file's write-ahead log belongs there "
             f"(fix: the person moves {db}-wal aside, keeping a copy)",
-            "on the state file's -wal, which is a folder, not a file: the person's to fix",
+            "on the state file's write-ahead log, which is a folder, not a file: the person's to fix",
             "it was moved aside",
         ),
         (
             f"error: state: {db}-shm is a fifo, not the state file (fix: the person moves {db}-shm aside)",
-            "on the state file's -shm, which is a fifo, not a file: the person's to fix",
+            "on the state file's shared-memory file, which is a fifo, not a file: the person's to fix",
             "it was moved aside",
         ),
         (  # lane B's lost manifest (B13 round 23 A29): no new one over earlier passes, the person decides;
@@ -13958,9 +13959,10 @@ def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
             assert "the agent's" not in line and line.endswith(" · unexpected 0"), (suffix, mode, line)
             assert setup_report._STATE_SHUT_WORDS not in line, (suffix, mode, line)
             # B13 round 25 ruling 12 (D4, D9, D78): the side file's own bucket, never "cannot be read"
+            role = setup_report._SIDE_ROLE[suffix.lstrip("-")]  # B13 round 26 E23: by name
             assert (
-                " · from a side file of the state file that is not a file (1 check): state_dir.files FAIL "
-                "(the person's; see Doctor) · "
+                f" · from {role} that is not a file (1 check): state_dir.files FAIL (the person's; see "
+                "Doctor) · "
             ) in line, (suffix, mode, line)
             assert "cannot be read" not in line, (suffix, mode, line)
     shm = db.with_name(db.name + "-shm")
@@ -14026,22 +14028,22 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     summary = section(text, "Summary")
     line = _line(summary, "- doctor: ")
     assert (
-        " · from a side file of the state file that is not a file (2 checks): state_dir.files FAIL (the "
-        "person's; see Doctor), heartbeat.x warn (not judged: a side file of the state file is not a file) · "
-        "unexpected 0"
+        " · from the state file's write-ahead log that is not a file (2 checks): state_dir.files FAIL (the "
+        "person's; see Doctor), heartbeat.x warn (not judged: the state file's write-ahead log is not a "
+        "file) · unexpected 0"
     ) in line, line
     assert "cannot open" not in line and "cannot be opened by this account" not in text, line
-    words = "the state file's -wal is not a file: see Doctor's state_dir.files line"
+    words = "the state file's write-ahead log is not a file: see Doctor's state_dir.files line"
     assert section(text, "Status").count(f"- not measured ({words})") >= 4, section(text, "Status")
     assert (
-        "because a side file of the state file is not a file: a report written after the person moves it "
+        "because the state file's write-ahead log is not a file: a report written after the person moves it "
         in (_line(summary, "- evidence: "))
     ), _line(summary, "- evidence: ")
     assert _line(section(text, "Environment"), "- secret scan: ").endswith(
         f"last re-screen: not read ({words})"
     )
     outcome = _line(summary, "- **outcome: ")
-    assert "from a side file of the state file that is not a file: state_dir.files" in outcome, outcome
+    assert "from the state file's write-ahead log that is not a file: state_dir.files" in outcome, outcome
     # a folder at the -shm: the read is whole, so the parts are measured and the warn is judged
     shm = db.with_name(db.name + "-shm")
     shm.mkdir(mode=0o700)
@@ -14052,8 +14054,9 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
         shm.rmdir()
     summary = section(text, "Summary")
     assert "were measured" in _line(summary, "- evidence: "), _line(summary, "- evidence: ")
-    assert "from a side file of the state file that is not a file (1 check): state_dir.files FAIL" in _line(
-        summary, "- doctor: "
+    assert (
+        "from the state file's shared-memory file that is not a file (1 check): state_dir.files FAIL"
+        in _line(summary, "- doctor: ")
     )
     # the install run's status step FAILed on it (a folder at -shm lets init run): the outcome names it
     log = fake_mac["setup"] / "install.log"
@@ -14065,8 +14068,8 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
         shm.rmdir()
     outcome = _line(section(text, "Summary"), "- **outcome: ")
     assert outcome.endswith(
-        "(computed: install.sh exited 1 at its status step on the state file's -shm, which is a folder, "
-        "not a file: the person's to fix)"
+        "(computed: install.sh exited 1 at its status step on the state file's shared-memory file, which is "
+        "a folder, not a file: the person's to fix)"
     ), outcome
     shm.mkdir(mode=0o700)
     try:  # the review: an earlier attempt does not share today's state, so it is never blamed on it
@@ -14081,9 +14084,9 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
     stop = setup_report._SyncStop(at, "manifest-wal", "person", None, False, "misplaced")
     assert setup_report._sync_stop_line(stop) == (
-        "- agentsync sync · step 3 · exited 1 on the state file's -wal, which was not where or what it "
-        "should be; whether a later sync ended 0: not measured (the state file's -wal is not a file); the "
-        "fix is the person's"
+        "- agentsync sync · step 3 · exited 1 on the state file's write-ahead log, which was not where or "
+        "what it should be; whether a later sync ended 0: not measured (the state file's write-ahead log is "
+        "not a file); the fix is the person's"
     )
 
 
@@ -14115,6 +14118,59 @@ def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_wh
         "from a state file that is a link into a folder that is missing or refuses a write (1 check): "
         in line
     )
+
+
+def test_the_side_files_have_doctors_names_in_every_reader(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 26 E5, E23: the stop lines and the outcome said "the state file's -shm" while Doctor beside
+    them said its shared-memory file, and one report named a folder at the -wal two ways. Every reader takes
+    doctor.SIDE_ROLES' words (the shell report's fallback too), and the Doctor bucket names both sides when
+    both are not files."""
+    for suffix, words in doctor.SIDE_ROLES.items():
+        role = suffix.lstrip("-")
+        assert setup_report._SIDE_ROLE[role] == words
+        assert setup_report._SYNC_STOP_FILES[f"manifest{suffix}"] == words
+        side = setup_report._StateSideNotFileError(Path(f"/x/manifest.sqlite{suffix}"))
+        assert side.words == f"{words} is not a file: see Doctor's state_dir.files line"
+        shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+        assert f'\tmanifest{suffix}) what="{words}" ;;' in shell
+    stop = setup_report._SyncStop(
+        datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "manifest-shm", "person", None
+    )
+    stop = setup_report._SyncStop(stop.at, stop.file, stop.owner, None, kind="misplaced")
+    assert setup_report._sync_stop_line(stop).startswith(
+        "- agentsync sync · step 3 · exited 1 on the state file's shared-memory file, which was not where or "
+        "what it should be"
+    )
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    both = [db.with_name(db.name + s) for s in ("-wal", "-shm")]
+    for there in both:
+        there.mkdir(mode=0o700)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        for there in both:
+            there.rmdir()
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        " · from the state file's write-ahead log and shared-memory file, which are not files (2 checks): "
+        "state_dir.files FAIL (the person's; see Doctor), state_dir.files FAIL (the person's; see Doctor) · "
+    ) in line, line
+    assert "a side file of the state file" not in text, [
+        ln for ln in text.splitlines() if "a side file" in ln
+    ]
 
 
 def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
@@ -14155,7 +14211,7 @@ def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
         ln for ln in text.splitlines() if "state_dir.manifest" in ln
     ]
     summary = section(text, "Summary")
-    words = "the state file's -shm is not a file: see Doctor's state_dir.files line"
+    words = "the state file's shared-memory file is not a file: see Doctor's state_dir.files line"
     assert section(text, "Status").count(f"- not measured ({words})") >= 4, section(text, "Status")
     assert _line(section(text, "Environment"), "- secret scan: ").endswith(
         f"last re-screen: not read ({words})"

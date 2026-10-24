@@ -2636,10 +2636,14 @@ _SYNC_STOP_RE = re.compile(
     r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
     r"(?: kind=(?P<kind>[a-z]+(?:-[a-z]+)*))?$"
 )
+_SIDE_ROLE = {"wal": "the state file's write-ahead log", "shm": "the state file's shared-memory file"}
+"""What each side file of the manifest is, ``doctor.SIDE_ROLES`` with the dash dropped (B13 round 26 E5, E23):
+every report line that names the -wal or the -shm says it so, as Doctor's state_dir.files line beside it
+does. A literal: the report and doctor ship together, and a test keeps the two equal."""
 _SYNC_STOP_FILES = {
     "manifest": "agentsync's state file",
-    "manifest-wal": "the state file's -wal",
-    "manifest-shm": "the state file's -shm",
+    "manifest-wal": _SIDE_ROLE["wal"],
+    "manifest-shm": _SIDE_ROLE["shm"],
     "lock": "agentsync's lock file",
     "heartbeat": "agentsync's heartbeat file",
     "holds": "agentsync's holds file",
@@ -3128,7 +3132,7 @@ def compute_outcome(
             detail += "the prompt calls running it again safe"
         elif failing and failing[0] == "config" and config_cause:
             detail = f"install.sh exited {last.rc} at its config step{config_cause}"
-        elif not failing and config_cause and " on the state file's -" in config_cause:  # ruling 12 (D9)
+        elif not failing and config_cause and any(f" on {w}," in config_cause for w in _SIDE_ROLE.values()):
             detail = f"install.sh exited {last.rc} at its status step{config_cause}"
         else:
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
@@ -7089,8 +7093,14 @@ class _StateSideNotFileError(_NoStateError):
 
     @property
     def words(self) -> str:
-        """``the state file's -wal is not a file: see Doctor's state_dir.files line``."""
-        return f"the state file's -{self.side.name.rsplit('-', 1)[-1]} is not a file: {_SIDE_SEE}"
+        """``the state file's write-ahead log is not a file: see Doctor's state_dir.files line``."""
+        return f"{_side_role(self.side)} is not a file: {_SIDE_SEE}"
+
+
+def _side_role(side: Path) -> str:
+    """:data:`_SIDE_ROLE`'s words for the side file at ``side`` (``manifest.sqlite-wal``)."""
+    suffix = side.name.rsplit("-", 1)[-1]
+    return _SIDE_ROLE.get(suffix, f"the state file's -{suffix}")
 
 
 _SIDE_SEE = "see Doctor's state_dir.files line"
@@ -9250,7 +9260,11 @@ def _evidence_line(r: _Run) -> str:
     folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
     notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
     # B13 round 25 ruling 12 (D20): the -wal is not a file, the person's move aside, never access
-    side = sum(n for w, n in why.items() if w.startswith("the state file's -") and _SIDE_SEE in w)
+    side_whys = [w for w in why if _SIDE_SEE in w and any(w.startswith(v) for v in _SIDE_ROLE.values())]
+    side = sum(why[w] for w in side_whys)
+    # B13 round 26 E23: the side file by name when every such line names the same one
+    side_names = {w.split(" is not a file", 1)[0] for w in side_whys}
+    side_name = next(iter(side_names)) if len(side_names) == 1 else ""
     notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
     above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
     gov = sum(n for w, n in why.items() if w.startswith("a file in the state folder cannot be opened"))  # A87
@@ -9279,8 +9293,8 @@ def _evidence_line(r: _Run) -> str:
         ),
         (
             side,
-            "a side file of the state file is not a file: a report written after the person moves it aside "
-            "measures them (see Doctor's state_dir.files line)",
+            f"{side_name or 'a side file of the state file'} is not a file: a report written after the "
+            "person moves it aside measures them (see Doctor's state_dir.files line)",
         ),
         (
             notfolder,
@@ -10951,6 +10965,7 @@ class _DoctorSort:
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
     from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
     lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
+    side_words: str = _SIDE_NOT_FILE_WORDS  # B13 round 26 E23: the side file by name (_side_bucket_words)
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -11047,6 +11062,25 @@ def _refused_files(c: Config) -> dict[str, str]:
         except Exception:  # a test that fails says nothing about the file
             continue
     return out
+
+
+def _side_bucket_words(sidecars: Sequence[Path], problems: Sequence[tuple[str, str, str]]) -> str:
+    """The Doctor line's bucket for the side files that are not files, by name where the report holds them
+    (B13 round 26 E23): those of ``sidecars`` doctor's state_dir.files line names, one ("from the state
+    file's write-ahead log that is not a file") or both; :data:`_SIDE_NOT_FILE_WORDS` when it names
+    neither."""
+    named = [
+        p for p in sidecars if any(n == "state_dir.files" and f"{p.name} is " in d for _t, n, d in problems)
+    ]
+    roles = list(
+        dict.fromkeys(_side_role(p) for p in sorted(named, key=lambda p: not p.name.endswith("-wal")))
+    )
+    if len(roles) == 1:
+        return f"from {roles[0]} that is not a file"
+    if len(roles) == 2:
+        second = roles[1].removeprefix("the state file's ")
+        return f"from {roles[0]} and {second}, which are not files"
+    return _SIDE_NOT_FILE_WORDS
 
 
 def _sidecars_not_files(c: Config) -> list[Path]:
@@ -11292,14 +11326,15 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     sidecars = [] if notfolder or r.config is None else _sidecars_not_files(r.config)
     # B13 round 25 ruling 12 (D20): a -wal that is not a file is why the loop's read failed: the listing warn
     # beside it is not judged, in the side file's words (a folder at -shm leaves the read whole)
-    side_read = (
-        not notfile
-        and r.config is not None
-        and bool(sidecars)
-        and _side_breaking_read(expand(r.config.state_paths.db)) is not None
+    side_at = (
+        _side_breaking_read(expand(r.config.state_paths.db))
+        if not notfile and r.config is not None and sidecars
+        else None
     )
+    side_read = side_at is not None
     from_notfile: list[str] = []
     from_side: list[str] = []
+    side_words = _side_bucket_words(sidecars, r.facts.doctor_problems)  # B13 round 26 E23
     # B13 round 25 D34: a state file that is a link into a missing or unwritable folder (round 24 B64)
     dangling = [] if notfolder or unreadable or r.config is None else _dangling_state(r.config)
     db_name = expand(r.config.state_paths.db).name if r.config is not None else ""
@@ -11404,7 +11439,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             )
         ):
             from_side.append(f"{name} FAIL{_PERSONS}")
-            fails.append((name, _SIDE_NOT_FILE_WORDS))
+            fails.append((name, side_words))
             continue
         # B13 round 20 X28: one this account cannot open (its owner, its mode or its folder's) is no damage,
         # and doctor FAILs state_dir.files (or state_dir, for a folder it cannot search) for it, read from the
@@ -11459,7 +11494,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             elif notfile:  # B13 round 25 ruling 12 (D23, D78): not a file, not unreadable
                 from_notfile.append(f"{name} warn (not judged: the state file is not a file)")
             elif side_read and not shut:  # B13 round 25 ruling 12 (D20)
-                from_side.append(f"{name} warn (not judged: a side file of the state file is not a file)")
+                what = _side_role(side_at) if side_at is not None else "a side file of the state file"
+                from_side.append(f"{name} warn (not judged: {what} is not a file)")
             elif lost:  # B13 round 24 ruling 7: missing, not unreadable
                 from_lost.append(f"{name} warn (not judged: the state file is missing)")
             elif shut != "folder":
@@ -11511,6 +11547,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_side,
         from_dangling,
         lost_words,
+        side_words,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -11598,7 +11635,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if sort.from_side:  # B13 round 25 ruling 12 (D4, D9, D20, D78)
         parts.append(
-            f"{_SIDE_NOT_FILE_WORDS} ({_plural(len(sort.from_side), 'check')}): " + ", ".join(sort.from_side)
+            f"{sort.side_words} ({_plural(len(sort.from_side), 'check')}): " + ", ".join(sort.from_side)
         )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
@@ -12944,9 +12981,10 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun], *, latest: bool = True) 
 
 def _side_words(role: str, kind: str) -> str:
     """The outcome's clause for the manifest's -``role`` (wal or shm) where ``kind`` sits (``a folder``), the
-    person's to move aside, keeping a copy (B13 round 25 ruling 12, D9), with no bracket inside."""
+    person's to move aside, keeping a copy (B13 round 25 ruling 12, D9), with no bracket inside, the side file
+    in :data:`_SIDE_ROLE`'s words (B13 round 26 E5)."""
     what = kind if kind == "not a regular file" else f"{kind}, not a file"
-    return f" on the state file's -{role}, which is {what}: the person's to fix"
+    return f" on {_side_role(Path(f'x-{role}'))}, which is {what}: the person's to fix"
 
 
 def _state_folder_named(r: _Run, fix: str) -> str:

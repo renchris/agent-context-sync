@@ -3533,8 +3533,8 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	local what why whose="the person's"
 	case "$2" in
 	manifest) what="agentsync's state file" ;;
-	manifest-wal) what="the state file's -wal" ;;
-	manifest-shm) what="the state file's -shm" ;;
+	manifest-wal) what="the state file's write-ahead log" ;;
+	manifest-shm) what="the state file's shared-memory file" ;;
 	lock) what="agentsync's lock file" ;;
 	heartbeat) what="agentsync's heartbeat file" ;;
 	holds) what="agentsync's holds file" ;;
