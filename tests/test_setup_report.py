@@ -5086,7 +5086,8 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
     assert (
         "- installer output: 1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 1 "
         "other instruction-like line (1 fix:) in the last 5 lines of install.out (this attempt's runs "
-        "only; the Installer section also counts the 1 earlier run in the lines read)\n" in summary
+        "only; the Installer section also counts the 1 earlier run in the last 11 lines of install.out)\n"
+        in summary
     )
     write_friction(fake_mac, first)  # attempt 1 is the latest and owns both runs
     _text, summary = summary_of(fake_mac)
@@ -18896,7 +18897,11 @@ def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_e
         assert output.startswith(
             "- installer output: no run of this attempt; the run after its end line: 1 NEXT: line in 1 run"
         ), output
-        assert output.endswith("counts the 1 earlier run in the lines read)"), output
+        # B13 round 27 P13: both counts, the run's own lines and the Installer section's
+        assert output.endswith(
+            "in the last 3 lines of install.out (the Installer section also counts the 1 earlier run in the "
+            "last 6 lines of install.out)"
+        ), output
         sync = _line(summary, "- sync: ")
         assert sync.startswith(
             "- sync: no install run during this attempt; the install run after its end line: done in 34s · "
@@ -18916,7 +18921,23 @@ def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_e
             "install.out (the install.sh run after this attempt's end line, a stand-alone run: this attempt "
             "ran no install.sh)</summary>" in installer
         ), installer
+    # B13 round 27 P13: a stopped copy with a run of its own and one after its end line names the Installer
+    # section's count for the earlier run too
+    own = "2026-10-20T10:00:30Z"
+    (fake_mac["setup"] / "install.log").write_text(
+        earlier + install_run(own, 0) + install_run(late, 0), encoding="utf-8"
+    )
+    out.write_text(
+        "\n".join([*block("2026-10-19T09:00:00Z"), *block(own), *block(late)]) + "\n", encoding="utf-8"
+    )
+    write_friction(fake_mac, stopped.replace("10:00:00Z | end", "10:01:00Z | end"))
+    output = _line(summary_of(fake_mac)[1], "- installer output: ")
+    assert output.endswith(
+        "in the last 6 lines of install.out (this attempt's runs and the run after its end line; the "
+        "Installer section also counts the 1 earlier run in the last 9 lines of install.out)"
+    ), output
     # an ordinary attempt's run after its end line is still its own (round 5 F37)
+    (fake_mac["setup"] / "install.log").write_text(earlier + install_run(late, 0), encoding="utf-8")
     out.write_text("\n".join([*block("2026-10-19T09:00:00Z"), *block(late)]) + "\n", encoding="utf-8")
     write_friction(fake_mac, ordinary)
     text, summary = summary_of(fake_mac)

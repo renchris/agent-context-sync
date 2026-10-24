@@ -5937,8 +5937,11 @@ def _installer_output_line(
         counted = instruction_counts(theirs)
         text = _instruction_text(counted, len(theirs), k, pending=pending, open_runs=unended)
         which = "the run" if k == 1 else f"the {k} runs"
+        # B13 round 27 P13: the Installer section's own count of lines, which the earlier runs sit in, never
+        # the lines this line has just named
         earlier = (
-            f" (the Installer section also counts the {_plural(total - k, 'earlier run')} in the lines read)"
+            f" (the Installer section also counts the {_plural(total - k, 'earlier run')} in "
+            f"{_the_last(read, 'line')} of install.out)"
             if total > k
             else ""
         )
@@ -5959,12 +5962,13 @@ def _installer_output_line(
         n = sum(1 for ln in lines[after:] if _OUT_RUN_RE.match(ln))
         own = f"this attempt's runs and {'the run' if n == 1 else f'the {n} runs'} after its end line"
         earlier = (
-            f"; the Installer section also counts the {_plural(total - k, 'earlier run')} in the lines read"
+            f"; the Installer section also counts the {_plural(total - k, 'earlier run')} in "
+            f"{_the_last(read, 'line')} of install.out"
         )
         return f"- installer output: {text} ({own}{earlier if total > k else ''})"
     return (
         f"- installer output: {text} (this attempt's runs only; the Installer section also counts the "
-        f"{_plural(total - k, 'earlier run')} in the lines read)"
+        f"{_plural(total - k, 'earlier run')} in {_the_last(read, 'line')} of install.out)"
     )
 
 

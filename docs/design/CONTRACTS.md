@@ -12102,6 +12102,8 @@ or "worked with help": that is this fix, not a new event. Tests:
 `test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0`.
 Amended 2026-10-15, §16.92 M44: the brackets read `(this attempt's runs only; the Installer section also counts the
 <k> earlier run(s) in the lines read)` and `(the Installer section counts the <r> earlier run(s) in the lines read)`.
+Amended 2026-10-24, §16.188 P13: the first bracket, and the stopped copy's and the late runs' brackets like it, end
+`in the last <read> lines of install.out)`, the Installer section's own count; the second keeps `in the lines read`.
 
 **The first-sync count names the field it counts** (B13 N17, field triage 2026-10-07 U18 and 2026-10-08 D1.h;
 amends §16.14 and §16.37). The clause read "N of M source(s) listed completely (status: baseline complete) at
@@ -30762,9 +30764,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115 and P26, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of other lanes' files the
-items need (named below). Items that describe one defect are built once: P33 and P58; P103, P121 and P129; P19 and
-P127; P32 and P52. P123 and P101 are two defects built in one commit.
+P102, P115, P26 and P13, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of
+other lanes' files the items need (named below). Items that describe one defect are built once: P33 and P58; P103,
+P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30925,6 +30927,18 @@ not measure a new start. `no manifest yet (no sync has run)` (an empty mirror) s
 `test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them`; its dated line is pinned by the row
 `_ROUND_27_RA_PARAGRAPH_AMENDS` in `tests/test_deploy_pack.py` (other file), which
 `test_every_dated_line_from_round_11_on_is_held_by_a_test` reads.
+
+**The installer output's earlier runs are named in the Installer section's own count** (P13; amends §16.40 H21 with a dated
+line). A stopped copy's line read `no run of this attempt; the run after its end line: ... in the last 4 lines
+of install.out (the Installer section also counts the 2 earlier runs in the lines read)`: the only count on the line
+was the late run's 4 lines, which cannot hold the 2 earlier runs, while the Installer section said `the last 165
+lines`. In the late-run branch, the branch of this attempt's runs and late runs, and the `this attempt's runs only`
+branch, the bracket now ends `in the last 165 lines of install.out`, from `read`, the field the Installer section's
+line prints, so the two cannot disagree. The `no run of this attempt in the last N lines` branch keeps `in the lines
+read`: its number already is `read`. Other files: `docs/deploy/setup-feedback.md`'s quote of the bracket and its pin
+in `tests/test_deploy_pack.py` (`test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`). Tests:
+`test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart` (both numbers) and
+`test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

@@ -8128,7 +8128,8 @@ def test_the_guide_names_every_source_of_a_proxy_number() -> None:
 
 def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     """B13 round 12 N66: since round 11 M44 the Summary's `installer output:` bracket reads `(this attempt's
-    runs only; the Installer section also counts the N earlier run(s) in the lines read)`; the guide quoted
+    runs only; the Installer section also counts the N earlier run(s) in the lines read)` (B13 round 27 P13:
+    `in the last M lines of install.out`, the Installer section's own count); the guide quoted
     the old `this attempt's runs only: ...`. N67: the `expected turns: none (step 1's list stopped ...)` row
     and §16.86's M7 line left out M7's own condition, a Mac that syncs no folder: the report then read a
     stopped list only `if not synced`. B13 round 13 O63: round 12 N31 has since removed that guard, so M4's
@@ -8139,7 +8140,7 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     source = Path(setup_report.__file__).read_text(encoding="utf-8")
     assert (
         '(this attempt\'s runs only; the Installer section also counts the "\n        f"{_plural(total - k, '
-        "'earlier run')} in the lines read)\""
+        "'earlier run')} in {_the_last(read, 'line')} of install.out)\""
     ) in source
     # B13 round 12 N31: read on a Mac that already syncs too, whose sign-in stop has a line of its own
     assert "list_stop = _list_stopped(runs)\n" in source
@@ -8147,7 +8148,8 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     assert "this attempt's runs only: ..." not in page
     assert (
         "and a bracket says so and names the earlier runs the Installer section also counts (`(this "
-        "attempt's runs only; the Installer section also counts the N earlier runs in the lines read)`)"
+        "attempt's runs only; the Installer section also counts the N earlier runs in the last M lines of "
+        "install.out)`, M the Installer section's own count of lines)"
     ) in page
     assert (
         "| On a Mac that syncs no folder (no list logged `synced=N`, N at least 1), the attempt's only runs "
