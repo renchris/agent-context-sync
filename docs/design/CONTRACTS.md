@@ -30769,7 +30769,9 @@ path, another file's included. Tests:
 word to the person. `manifest.lost_words` gives `LOST_MANIFEST_UNREAD` ("is missing, and heartbeat.json beside it
 cannot be read, so earlier passes cannot be ruled out") with `doctor.LOST_MANIFEST_FIX`; the readers that key on
 a lost manifest's line take either ending (`LOST_MANIFEST_WORDS`, which `agentsync.cli` imports); a heartbeat link to
-nothing, or none there, stays a first start. Tests:
+nothing, or none there, stays a first start. The rule is on behind `manifest._UNREAD_IS_LOST`, which lane RB's
+land turns on in the one commit that changes install.sh's two inlined copies with it, so step 1, step 2 and the sync
+never disagree. Tests:
 `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost`,
 `test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass`.
 
