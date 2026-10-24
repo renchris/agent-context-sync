@@ -29195,6 +29195,10 @@ starts with `chmod 700 <path>` first (another account's: `sudo chown -R`), not o
 added `; they first open a folder shut to this account, as status names it` at the end of the parenthesis of
 install.sh's not-a-file tails and NEXTs; round 26's E16 (§16.184) replaced that clause with `SHUT_OPEN`'s words
 (§16.192 P59).
+Amended 2026-10-24, §16.189 P21: step 2's NEXT and step 1's tail name each side that is not a file and what is
+there (`the -shm of agentsync's state file (its shared-memory file) is a folder, not a file (the error above names it;
+...)`; with both, `... are a folder and a fifo, not files (the error above names the first; ...): fixing them is the
+person's (keeping a copy, they move each aside ...)`), not `the -wal or -shm ... a folder or something else` (P119).
 
 **The lane's review** (a fresh reviewer over the branch, with a scratch harness running the probe, the real init
 and the real status; each finding fixed or recorded). A stale 0000 -wal beside a lost manifest got `state-access`,
@@ -30423,6 +30427,11 @@ side link to a file or to nothing), any link at a side is `state-side-notfile` i
 `state_side_not_a_file`, except beside a manifest that is itself a link, whose sides SQLite opens at its target.
 Tests: the step 1 table's `SN-shm-fifo`, `SN-shm-link`, `SN-wal-fifo`, `SN-wal-fifo-shut`, `SN-shm-dangling`, `SN-wal-filelink`,
 `SN-beside-link` and its `SN-shm` cases under `SIDE_STATUS_TAIL`, and `test_a_link_at_the_wal_is_a_side_not_a_file_at_step_2`.
+Amended 2026-10-24, §16.189 P56: this measurement predates lane B's E65 (bc7988cc2), whose init guard stops on every
+side that is not a file, a folder at the -shm this account can read included; only add-source opens past that one,
+so its tail is `; step 2 stops at its config step (at its status step when it adds a folder with --source-local) on
+...` (measured both ways), `SIDE_STATUS_TAIL` is gone, and beside a manifest link a side link is skipped before any
+stat follows it (P35).
 
 **The not-a-file fixes name an opening step only when status names one** (E16). §16.179's D-L1d clause, `; they
 first open a folder shut to this account, as status names it`, printed whatever the folder's mode, while doctor's
@@ -30706,7 +30715,58 @@ Reserved for round 27 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
-Reserved for round 27 lane RB of B13.
+Eighteen items of `docs/plans/bring-back-ocr.md`, "B13 round 27", each built to its verifier's corrected fix
+(`~/.cache/agentsync-bring-back/b13/round27/items/<id>.md`) or carrying a measured reason, in scripts/install.sh,
+which lane RB owns this round, and its tests. Every runnable command keeps `~/.local/bin/agentsync`.
+
+**Step 2 gives the person's NEXT over a lock, heartbeat or governance file that is not a file, and step 1 predicts
+it** (P22, P124, the round's two turns; P57, P110, P113, P125, P142: one build, round 27 ruling 16). A folder, a fifo
+or a link where agentsync.lock, heartbeat.json or a governance file belongs stopped step 2's `agentsync init` (lane
+B's E65 guard, `cli._not_a_file_stop`) with the person's `error: state:` line under fail's generic `NEXT: fix the
+error above, then re-run`, so an agent moved the file itself or re-ran into the same stop; step 1's probe skipped
+the wrong kind and said `(none is needed)`. install.sh now asks the installed build's own
+`doctor.state_not_a_file(load_config(cfg))` under `-I` and a timeout, in step 1's `config_errors` and in step 2's new
+`state_misplaced`, and maps its first finding's check (`lock`, `heartbeat`, `governance.hold`,
+`governance.purge_queue`, `governance.suppressed`, `governance.audit`) to fixed words (`misplaced_words`); it never
+re-implements the kinds, and says nothing when that build lacks the function, it raises, or its first finding is the
+manifest or a side (whose own words come first, as init stops on them first). The call keeps `manifest=True`, not
+the ruling's `manifest=False`, so the first finding is init's own: a side or a manifest that init stops on first
+keeps its word, and a lock folder beside a lost manifest gets the lock's words (init judges it first), so step 2's
+branch comes right after `state_not_a_folder`, ahead of `state_lost` and the owner's, and joins `state_stop_holds`.
+Step 2's NEXT: `<file> is a folder or something else that is not a file (the error above names it;
+~/.local/bin/agentsync status prints it and its fix on its <check> line): fixing it is the person's (keeping a copy,
+they move it aside; if status names a folder shut to this account, they open it first, as status says), not a step
+for the agent, so show them the error and go on to the report; once it is fixed, the next run is: ...`. Step 1's word
+is `state-file-notfile` with its `role-` line, judged first after `state-notdir`, tail `; step 2 stops at its config
+step (at its status step when it adds a folder with --source-local) on <file>, which is a folder or something else
+that is not a file (not damage, not a mode): fixing that is the person's (...), and ~/.local/bin/agentsync status
+prints it on its <check> line`. Measured both ways with the real agentsync: init exits 1 on every kind at the lock
+(folder, fifo, link to a file), a folder at heartbeat.json and a folder at each governance file, while add-source
+exits 0 on each, so a step 2 that adds a folder stops at its status step, whose own NEXT is the person's; a fifo at
+heartbeat.json and a governance link to a regular file stop neither. The report's outcome names it too
+(`setup_report._STATE_MISPLACED_RE`: `install.sh exited 1 at its config step on agentsync's lock file, which is a
+folder, not a file: the person's to fix`). Tests:
+`test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file`,
+`test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file` (step 1, both step 2 paths,
+the report's outcome and the move aside, with the real agentsync) and
+`test_a_lock_folder_beside_a_refused_remote_gives_the_locks_next`.
+
+**A folder at the -shm: step 1 names both paths** (P15, P56, P114; amends §16.184 E15). Round 26's E15 measured init
+opening past a folder at the -shm this account can read before lane B's E65 guard, which stops on it at any mode; only
+add-source opens past it. Step 1's tail for it is `; step 2 stops at its config step (at its status step when it adds
+a folder with --source-local) on the -shm of agentsync's state file (its shared-memory file), which is a folder, not a
+file (not damage): ...`, measured both ways; every other side keeps the config step. Tests: the step 1 table's
+`SN-shm` and `SN-shm-0500` rows and `test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it`.
+
+**The side words name which side and what is there** (P21, P119; amends §16.173 B52). Step 1's tail and step 2's NEXT
+said `the -wal or -shm of agentsync's state file ... a folder or something else that is not a file`, while the error
+line names the file. The probe writes a `sideodd-<wal|shm>-<folder|fifo|socket|symlink|other>` line for each side
+that is not a file and step 2's `state_side_not_a_file` the same list, by lstat, never by the error's words, and
+`side_words` makes `the -shm of agentsync's state file (its shared-memory file)`, `is a folder, not a file`; with
+both, `the -wal and the -shm of agentsync's state file (its write-ahead log and its shared-memory file)`, `are a
+folder and a fifo, not files`, and the NEXT says `the error above names the first` and `they move each aside`, since
+moving the one init's error names alone led to a second stop. Tests: the step 1 table's `SN-*` rows (`SN-both`),
+`test_step_2_names_both_sides_that_are_not_files` and the side tests with the real agentsync.
 
 ### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
 

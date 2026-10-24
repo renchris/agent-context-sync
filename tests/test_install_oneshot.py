@@ -8593,13 +8593,65 @@ STATE_OPEN_TAIL = {
 its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: init opens past a -wal or a
 -shm); the noun covers the folder (Y14)."""
 
-SIDE_STATUS_TAIL = (
-    "; step 2 stops at its status step on the -shm of agentsync's state file, which is a folder (not "
-    "damage): fixing that is the person's (keeping a copy, they move it "
-    f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
-)
-"""Step 1's tail for a folder at the -shm this account can read, which init opens past (B13 round 26 E15:
-measured; every other side file that is not a file stops init, at the config step)."""
+STOPS_BOTH = "at its config step (at its status step when it adds a folder with --source-local)"
+"""Where step 2 stops on a state file init's not-a-file guard stops on and add-source opens past (B13 round 27
+ruling 16, measured both ways): a lock, heartbeat or governance file that is not a file, a readable folder at
+the -shm."""
+
+SIDE_ROLES = {"wal": "write-ahead log", "shm": "shared-memory file"}
+
+
+def side_named(odd: str) -> tuple[str, str, int]:
+    """The noun, the predicate and the count install.sh's side_words gives a list such as "wal-folder
+    shm-fifo" (B13 round 27 P21, P119: the words named neither the side nor what is there)."""
+    pairs = [part.split("-", 1) for part in odd.split()]
+    kinds = [
+        f"a {k}" if k in ("folder", "fifo", "socket", "symlink") else "something else" for _s, k in pairs
+    ]
+    sides = " and the ".join(f"-{s}" for s, _k in pairs)
+    roles = " and ".join(f"its {SIDE_ROLES[s]}" for s, _k in pairs)
+    noun = f"the {sides} of agentsync's state file ({roles})"
+    if len(pairs) > 1:
+        return noun, f"are {' and '.join(kinds)}, not files", len(pairs)
+    return (
+        noun,
+        ("is not a regular file" if kinds[0] == "something else" else f"is {kinds[0]}, not a file"),
+        1,
+    )
+
+
+def side_tail(odd: str, *, both: bool = False) -> str:
+    """Step 1's tail for the sides in ``odd`` that are not files: at the config step, which since lane B's
+    E65 stops on every one, or on both paths (``both``) for a folder at the -shm this account can read, which
+    add-source alone opens past (B13 round 27 ruling 16: P15, P56, P114; round 26 E15 measured it before
+    E65)."""
+    noun, is_, _n = side_named(odd)
+    return (
+        f"; step 2 stops {STOPS_BOTH if both else 'at its config step'} on {noun}, which {is_} (not damage): "
+        f"fixing that is the person's (keeping a copy, they move it aside{SHUT_OPEN}), and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+    )
+
+
+MISPLACED_CHECKS = {
+    "lock": "lock",
+    "heartbeat": "heartbeat",
+    "holds": "governance.hold",
+    "queue": "governance.purge_queue",
+    "suppressed": "governance.suppressed",
+    "audit": "governance.audit",
+}
+
+
+def misplaced_tail(role: str) -> str:
+    """Step 1's tail for a lock, heartbeat or governance file that is not a regular file where one belongs,
+    which init stops on and add-source opens past (B13 round 27 ruling 16: P113, P125, P142)."""
+    return (
+        f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which is a folder or something else that is not "
+        "a "
+        f"file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it "
+        f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its {MISPLACED_CHECKS[role]} line"
+    )
 
 
 @pytest.mark.parametrize(
@@ -8643,6 +8695,10 @@ measured; every other side file that is not a file stops init, at the config ste
         "SN-shm-dangling",
         "SN-wal-filelink",
         "SN-beside-link",
+        "SN-beside-link-folder",
+        "SN-beside-link-loop",
+        "SN-beside-link-shm",
+        "SN-both",
         "SW",
         "SW-bare",
         "SW-wal",
@@ -8724,6 +8780,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-wal-fifo-shut": "state-side-notfile",  # round 26 E15's review: one it cannot open stops init
         "SN-shm-dangling": "state-side-notfile",  # round 26 E62: any link at a side stops init
         "SN-wal-filelink": "state-side-notfile",
+        "SN-both": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
     try:
@@ -8805,11 +8862,25 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             elif state == "SN-wal-filelink":
                 db.with_name("elsewhere-wal").write_bytes(b"")
                 wal.symlink_to(db.with_name("elsewhere-wal"))
-            elif state == "SN-beside-link":  # beside a manifest link, SQLite opens the sides at its target
+            elif state.startswith(
+                "SN-beside-link"
+            ):  # beside a manifest link, SQLite opens the sides at its target
                 moved = db.with_name("moved.sqlite")
                 db.rename(moved)
                 db.symlink_to(moved)
-                wal.symlink_to(db.with_name("nothing-here"))
+                # round 27 P35: a link to a folder or a loop there was followed, and read as no file
+                elsewhere = db.with_name("elsewhere")
+                if state != "SN-beside-link-loop":
+                    elsewhere.mkdir(0o700)
+                side = shm if state == "SN-beside-link-shm" else wal
+                side.symlink_to(
+                    {"SN-beside-link": db.with_name("nothing-here"), "SN-beside-link-loop": side}.get(
+                        state, elsewhere
+                    )
+                )
+            elif state == "SN-both":  # round 27 P21, P119: both are named
+                wal.mkdir(0o700)
+                os.mkfifo(shm, 0o644)
             else:
                 shm.mkdir({"SN-shm-shut": 0, "SN-shm-0500": 0o500}.get(state, 0o700))
         elif state.startswith("SW"):  # round 24 B12: a 0500 state folder, with both side files or not
@@ -8846,14 +8917,29 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo", "SN-beside-link"):
+    if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo") or state.startswith(
+        "SN-beside-link"
+    ):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
     tail = STATE_LOST_LINK_TAIL if state == "LM-link-gone" else STATE_OPEN_TAIL[word]
     if state == "LM-link":  # round 26 E19: named as the link
         tail = STATE_LOST_DANGLING_TAIL
-    if state in ("SN-shm", "SN-shm-0500"):  # round 26 E15: a folder it can read at the -shm, measured
-        tail = SIDE_STATUS_TAIL
+    odd = {  # round 27 P119: which side, and what is there
+        "SN-shm": "shm-folder",
+        "SN-shm-shut": "shm-folder",
+        "SN-shm-0500": "shm-folder",
+        "SN-wal-link": "wal-symlink",
+        "SN-wal": "wal-folder",
+        "SN-shm-fifo": "shm-fifo",
+        "SN-shm-link": "shm-symlink",
+        "SN-wal-fifo-shut": "wal-fifo",
+        "SN-shm-dangling": "shm-symlink",
+        "SN-wal-filelink": "wal-symlink",
+        "SN-both": "wal-folder shm-fifo",
+    }.get(state)
+    if odd is not None:  # ruling 16: a folder it can read at the -shm stops init; add-source opens past it
+        tail = side_tail(odd, both=state in ("SN-shm", "SN-shm-0500"))
     assert last_line(cp).endswith(tail), last_line(cp)
     assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
     assert "damaged" not in last_line(cp) and "cannot be read" not in last_line(cp), last_line(cp)
@@ -10461,13 +10547,23 @@ def test_a_refused_remote_beside_a_lost_manifest_gives_the_lost_manifests_next_f
     ), last_line(remote)
 
 
-SIDE_NOTFILE_NEXT = (
-    "NEXT: the -wal or -shm of agentsync's state file is a folder or something else that is not a file "
-    "(~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the "
-    f"person's (keeping a copy, they move it aside{SHUT_OPEN}), not a step for the agent, so show them the "
-    "error and go on to the report; once it is fixed, the next run is: {rerun}"
-)
-"""Step 2's NEXT for a folder where the -wal or -shm belongs, at the config step (round 24 B52)."""
+def side_next(odd: str, rerun: str) -> str:
+    """Step 2's NEXT for the sides in ``odd`` that are not files, at the config step (round 24 B52), naming
+    each and what is there (B13 round 27 P21, P119: it said "the -wal or -shm ... a folder or something
+    else", and the person moved only the side init's error named, then stopped again on the other)."""
+    noun, is_, n = side_named(odd)
+    go_on = "not a step for the agent, so show them the error and go on to the report"
+    if n > 1:
+        return (
+            f"NEXT: {noun} {is_} (the error above names the first; ~/.local/bin/agentsync status prints each "
+            "and its fix on its state_dir.files lines): fixing them is the person's (keeping a copy, they "
+            f"move each aside{SHUT_OPEN}), {go_on}; once they are fixed, the next run is: {rerun}"
+        )
+    return (
+        f"NEXT: {noun} {is_} (the error above names it; ~/.local/bin/agentsync status prints it and its fix "
+        f"on its state_dir.files line): fixing it is the person's (keeping a copy, they move it "
+        f"aside{SHUT_OPEN}), {go_on}; once it is fixed, the next run is: {rerun}"
+    )
 
 
 def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_it(
@@ -10493,14 +10589,145 @@ def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_
         cp = install_sh(env, str(wheel))
     finally:
         shm.chmod(0o700)
-    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-notfile"]), last_line(listed)
+    assert last_line(listed).endswith(side_tail("shm-folder")), last_line(listed)
     assert logged.endswith(" config_err=state-side-notfile"), logged
     assert cp.returncode == 1, cp.stdout + cp.stderr
-    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert last_line(cp).startswith(side_next("shm-folder", f"{INSTALL_SH} {wheel}")), last_line(cp)
     assert "chmod" not in last_line(cp) and "ACL" not in last_line(cp), last_line(cp)
     # "they move it aside": macOS renames a folder only when it can write the folder (its ".." entry), so a
     # person opens a shut one first; the finally above did
     shm.rename(shm.with_name("manifest.sqlite-shm.aside"))
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def misplaced_next(role: str, rerun: str) -> str:
+    """Step 2's NEXT for a lock, heartbeat or governance file that is not a regular file where one belongs,
+    which init stops on (B13 round 27 ruling 16: P22, P124, P57, P110: it was fail's generic "fix the error
+    above, then re-run")."""
+    check = MISPLACED_CHECKS[role]
+    return (
+        f"NEXT: {FILE_NOUNS[role]} is a folder or something else that is not a file (the error above names "
+        f"it; ~/.local/bin/agentsync status prints it and its fix on its {check} line): fixing it is the "
+        f"person's (keeping a copy, they move it aside{SHUT_OPEN}), not a step for the agent, so show them "
+        f"the error and go on to the report; once it is fixed, the next run is: {rerun}"
+    )
+
+
+@pytest.mark.parametrize(
+    "case", ["lock-folder", "lock-fifo", "heartbeat-folder", "holds-folder", "audit-folder"]
+)
+def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file(
+    real_env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 27 ruling 16, the round's two turns (P22, P124; P57, P110, P113, P125, P142; rehearsal probes
+    m3 53 and 54, h2-61, LKD, LKF, HBD, GVD), with the real agentsync: a folder or a fifo where the lock,
+    heartbeat.json or a governance file belongs stopped step 2's init with the person's error line under
+    fail's
+    generic "NEXT: fix the error above, then re-run", so an agent moved the file itself or re-ran into the
+    same stop, while status says the fix is the person's; and step 1 said "(none is needed)". Step 1 now
+    predicts the stop and step 2's NEXT is the person's, both keyed on the installed build's own
+    doctor.state_not_a_file. A step 2 that adds a folder runs add-source, which opens past it, and stops at
+    its status step, as step 1 says. Moving it aside, as the words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    role = case.split("-", maxsplit=1)[0]
+    path = {
+        "lock": root / "agentsync.lock",
+        "heartbeat": root / "heartbeat.json",
+        "holds": root / "governance" / "holds.json",
+        "audit": root / "governance" / "audit.jsonl",
+    }[role]
+    path.parent.mkdir(mode=0o700, exist_ok=True)
+    kept = path.with_name(path.name + ".kept")
+    if path.exists():
+        path.rename(kept)
+    if case.endswith("-fifo"):
+        os.mkfifo(path, 0o600)
+    else:
+        path.mkdir(0o700)
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(misplaced_tail(role)), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert "error: agentsync init failed" in cp.stderr, cp.stderr
+    assert last_line(cp).startswith(misplaced_next(role, f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert "fix the error above" not in last_line(cp), last_line(cp)
+    kind = "a fifo" if case.endswith("-fifo") else "a folder"
+    report = (Path(env["HOME"]) / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
+    assert (  # P110: the outcome names the stop and whose fix it is
+        "- **outcome: failed at step 2** (computed: install.sh exited 1 at its config step on "
+        f"{FILE_NOUNS[role]}, "
+        f"which is {kind}, not a file: the person's to fix)"
+    ) in report, [ln for ln in report.splitlines() if "outcome" in ln]
+    beta = folder.parent / "Beta"
+    beta.mkdir()
+    added = install_sh(env, str(wheel), "--source-local", str(beta))  # add-source opens past it: status stops
+    assert added.returncode == 1, added.stdout + added.stderr
+    assert "error: agentsync add-source failed" not in added.stderr, added.stderr
+    assert f"[FAIL] {MISPLACED_CHECKS[role]} " in added.stdout + added.stderr, added.stdout + added.stderr
+    assert "fix the error above" not in last_line(added), last_line(added)
+    path.unlink() if case.endswith("-fifo") else path.rmdir()  # the person moves it aside
+    if kept.exists():
+        kept.rename(path)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_lock_folder_beside_a_refused_remote_gives_the_locks_next(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 27 ruling 16 (the verifier of P22): init stops on a lock that is not a file before it reads
+    the docs repo's remotes, so beside a remote the policy refuses no "governance:" line is printed, and the
+    lock's NEXT, not the remote's, is the one to give (state_stop_holds, round 25 D76)."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    docs = Path(env["HOME"]) / "agent-context" / "docs"
+    subprocess.run(
+        ["git", "-C", str(docs), "remote", "add", "origin", "https://git.contoso.example/kb.git"], check=True
+    )
+    lock = _state_db(env).with_name("agentsync.lock")
+    lock.unlink(missing_ok=True)
+    lock.mkdir(0o700)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert "governance: remote origin (" not in cp.stderr, cp.stderr
+    assert last_line(cp).startswith(misplaced_next("lock", f"{INSTALL_SH} {wheel}")), last_line(cp)
+
+
+def test_step_2_names_both_sides_that_are_not_files(real_env: dict[str, str], wheel: Path) -> None:
+    """B13 round 27 P21, P119 (rehearsal probes shm, both, FIFO, SSW), with the real agentsync: step 2's NEXT
+    said "the -wal or -shm ... is a folder or something else", while init's error names the first; with a
+    folder at the -wal and a fifo at the -shm, moving the one the error named led to a second stop on the
+    other. The NEXT names each side and what is there; moving both aside, as it says, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
+    for side in (wal, shm):
+        side.unlink(missing_ok=True)
+    wal.mkdir(0o700)
+    os.mkfifo(shm, 0o644)
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(side_tail("wal-folder shm-fifo")), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(side_next("wal-folder shm-fifo", f"{INSTALL_SH} {wheel}")), last_line(cp)
+    wal.rmdir()
+    shm.unlink()
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 
@@ -10521,7 +10748,7 @@ def test_a_link_at_the_wal_is_a_side_not_a_file_at_step_2(real_env: dict[str, st
     wal.symlink_to(wal.with_name("nothing-here"))
     cp = install_sh(env, str(wheel))
     assert cp.returncode == 1, cp.stdout + cp.stderr
-    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert last_line(cp).startswith(side_next("wal-symlink", f"{INSTALL_SH} {wheel}")), last_line(cp)
     wal.rename(wal.with_name("manifest.sqlite-wal.aside"))
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
@@ -10557,9 +10784,9 @@ def test_a_folder_at_the_wal_that_is_not_shut_names_no_opening_step(
         )
     finally:
         wal.rmdir()
-    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-notfile"]), last_line(listed)
+    assert last_line(listed).endswith(side_tail("wal-folder")), last_line(listed)
     assert cp.returncode == 1, cp.stdout + cp.stderr
-    assert last_line(cp).startswith(SIDE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert last_line(cp).startswith(side_next("wal-folder", f"{INSTALL_SH} {wheel}")), last_line(cp)
     for said in (last_line(listed), last_line(cp)):
         assert SHUT_OPEN in said and "they first open a folder shut" not in said, said
         assert "chmod" not in said, said  # the prompt's chmod rule never reads it as the agent's
@@ -10864,6 +11091,84 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     assert last_line(cp).endswith(tail), last_line(cp)
     assert logged.endswith(f" config_err={word}"), logged
     assert "role-" not in logged, logged
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "lock-folder",
+        "lock-fifo",
+        "lock-filelink",
+        "heartbeat-folder",
+        "holds-folder",
+        "queue-folder",
+        "suppressed-folder",
+        "audit-folder",
+        "lock-folder-lost",
+        "lock-folder-shut-heartbeat",
+        "heartbeat-fifo",
+        "holds-filelink",
+        "older",
+    ],
+)
+def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file(
+    env: dict[str, str], case: str
+) -> None:
+    """B13 round 27 ruling 16 (P113, P125, P142; rehearsal probes LKD, LKF, HBD, GVD): with a folder, a fifo
+    or
+    a link where the lock, heartbeat.json or a governance file belongs, step 1's probe skipped the wrong kind
+    and said "(none is needed)", while step 2's init stops on it (cli._not_a_file_stop, lane B's E65) and
+    add-source opens past it (measured: its status step stops then). Step 1 now asks the installed build's
+    own doctor.state_not_a_file, never its own copy of the kinds, and names the file, both steps and the
+    status check: ahead of a lost manifest and of a heartbeat this account cannot read, as init stops on it
+    first. What init passes says nothing: a fifo at heartbeat.json, which a pass's rename replaces, and a
+    governance link to a regular file. An installed build without the function says nothing (older)."""
+    _config_step_2_stops_on(env, "clean-real")
+    db = _state_db(env)
+    root = db.parent
+    gov = root / "governance"
+    gov.mkdir(0o700)
+    lock, heartbeat = root / "agentsync.lock", root / "heartbeat.json"
+    heartbeat.write_text(
+        json.dumps({"project-alpha": {"run_id": 3, "last_success_at": "2026-10-20T09:00:00Z"}})
+    )
+    path = {
+        "lock": lock,
+        "heartbeat": heartbeat,
+        "holds": gov / "holds.json",
+        "queue": gov / "purge-queue.json",
+        "suppressed": gov / "suppressed.json",
+        "audit": gov / "audit.jsonl",
+    }[case.split("-", maxsplit=1)[0] if case != "older" else "lock"]
+    path.unlink(missing_ok=True)
+    if case.endswith("-fifo"):
+        os.mkfifo(path, 0o600)
+    elif case.endswith("-filelink"):
+        root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
+        path.symlink_to(root / "elsewhere.json")
+    else:
+        path.mkdir(0o700)
+    if case == "lock-folder-lost":  # a lost manifest beside it: init stops on the lock first
+        db.unlink()
+    if case == "older":
+        _tool_python_without(env, "agentsync.ops.doctor", "state_not_a_file")
+    else:
+        _tool_python(env)
+    try:
+        if case == "lock-folder-shut-heartbeat":  # the status step's word would be the agent's chmod
+            heartbeat.chmod(0)
+        cp = install_sh(env, "--list-folders")
+    finally:
+        heartbeat.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    logged = install_log(env)[-2]
+    if case in ("heartbeat-fifo", "holds-filelink", "older"):
+        assert last_line(cp).endswith("(none is needed)"), last_line(cp)
+        assert "config_err" not in logged, logged
+        return
+    role = case.split("-", maxsplit=1)[0]
+    assert last_line(cp).endswith(misplaced_tail(role)), last_line(cp)
+    assert logged.endswith(" config_err=state-file-notfile"), logged
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])

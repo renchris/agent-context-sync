@@ -757,21 +757,39 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   write, the tail names the link too (`... manifest.sqlite, a symlink to a file that does not exist, which is missing
   though heartbeat.json beside it records earlier passes ...`) and ruling 7's fix stays, with no `rm` first, as it
   works through a link into a folder a sync can write (round 25 D79); step 2's `NEXT:` reads `... is a symlink to a file that does not
-  exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). A folder (or a link to one) where the -wal or
-  -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod words,
-  or none): `state-side-notfile`, `; step 2 stops at its config step on the -wal or -shm of agentsync's state file,
-  which is a folder or something else that is not a file (not damage): fixing that is the person's (keeping a copy,
-  they move it aside; if status names a folder shut to this account, they open it first, as status says), and
-  ~/.local/bin/agentsync status prints it on its state_dir.files line`, or, for a folder at the -shm this account
-  can read, which init opens past, `; step 2 stops at its status step on the -shm of agentsync's state file, which
-  is a folder (not damage): ...` (B13 round 26 E15, measured: a fifo, a socket or a link at the -shm stops init
-  too, and a fifo at the -wal this account can read and write stops nothing, since SQLite removes it on close, so
-  step 1 says nothing of it, while one it cannot open stops init as a folder there does: B13 round 26 E55, lane RB's
-  4b183682), and
-  step 2's config step its own `NEXT:` (`the -wal or -shm of agentsync's state file is a
-  folder or something else that is not a file (...): fixing it is the person's (keeping a copy, they move it aside;
-  if status names a folder shut to this account, they open it first, as status says), not a step for the agent,
-  ...`). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
+  exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). A folder, a fifo, a socket or a link where the -wal
+  or -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod
+  words, or none): `state-side-notfile`, `; step 2 stops <at its step> on <the side>, which <is what> (not damage):
+  fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,
+  they open it first, as status says), and ~/.local/bin/agentsync status prints it on its state_dir.files line`,
+  where `<the side>` and `<is what>` name each side that is not a file and what is there (`the -shm of agentsync's
+  state file (its shared-memory file)`, `is a folder, not a file`; with both, `the -wal and the -shm of agentsync's
+  state file (its write-ahead log and its shared-memory file)`, `are a folder and a fifo, not files`; B13 round 27
+  P21, P119, lane RB: it said `the -wal or -shm ... is a folder or something else that is not a file`), and `<at
+  its step>` is `at its config step`, or, for a folder at the -shm this account can read, `at its config step (at
+  its status step when it adds a folder with --source-local)`: init stops on it since lane B's round 26 E65, and
+  add-source alone opens past it (B13 round 27 ruling 16: P15, P56, P114, measured both ways; round 26 E15 measured
+  the status step before E65). A link beside a manifest that is itself a link says nothing, as SQLite keeps the
+  sides beside the target (B13 round 27 P35); a fifo at the -wal this account can read and write stops nothing,
+  since SQLite removes it on close, so step 1 says nothing of it, while one it cannot open stops init as a folder
+  there does (B13 round 26 E55, lane RB's 4b183682). Step 2's config step gives its own `NEXT:` (`<the side> <is
+  what> (the error above names it; ...): fixing it is the person's (keeping a copy, they move it aside; if status
+  names a folder shut to this account, they open it first, as status says), not a step for the agent, ...`; with
+  both, `(the error above names the first; ...): fixing them is the person's (keeping a copy, they move each aside;
+  ...)`, since moving the one the error names alone led to a second stop on the other). A lock, heartbeat or
+  governance file that is not a regular file where one belongs (a folder, a fifo, a link: whatever the installed
+  agentsync's own `doctor.state_not_a_file` finds first, never a copy of its kinds, and nothing from a build without
+  it), which init stops on before it opens anything and add-source opens past, is the person's, judged first after
+  `state-notdir` (`<file>` and `<check>` as below): `state-file-notfile`, `; step 2 stops at its config step (at
+  its status step when it adds a folder with --source-local) on <file>, which is a folder or something else that is
+  not a file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it aside; if status
+  names a folder shut to this account, they open it first, as status says), and ~/.local/bin/agentsync status prints
+  it on its <check> line` (`<check>` is `lock`, `heartbeat`, `governance.hold`, `governance.purge_queue`,
+  `governance.suppressed` or `governance.audit`), and step 2's config step its own `NEXT:` (`<file> is a folder or
+  something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix
+  on its <check> line): fixing it is the person's (...), not a step for the agent, so show them the error and go on
+  to the report; ...`), where it said `fix the error above` (B13 round 27 ruling 16, the round's two turns: P22,
+  P124, P57, P110, P113, P125, P142). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
   rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another
   account's, the `sudo chown`) to run first; only then, since B13 round 26 E16 (CONTRACTS §16.184): said of a folder
   this account can open, a fifo or a link, it sent the person looking for a step status does not name. A state folder of this
@@ -819,8 +837,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
   `state-side-refused`, `state-side-notfile`, `state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`,
-  `state-file-access`, `state-file-owner` and
-  `state-file-refused`, never the error's text.
+  `state-file-access`, `state-file-owner`, `state-file-refused` and `state-file-notfile`, never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

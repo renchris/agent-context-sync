@@ -880,6 +880,58 @@ FRICTION_AWK='
 # looking for a step that does not exist (B13 round 26 E16). It names no chmod, which the prompt's chmod rule
 # would read as the agent's, and no path: status, which decides it per path (doctor's _opens_first), does.
 SHUT_OPEN="; if status names a folder shut to this account, they open it first, as status says"
+# Where step 2 stops on a state file init's not-a-file guard stops on but add-source opens past (a lock,
+# heartbeat or governance file that is not a file, a folder at the -shm this account can read; measured both
+# ways): the flagless step 2 runs init, its config step; one that adds a folder runs add-source, and its status
+# step stops (B13 round 27 ruling 16).
+STOPS_BOTH="at its config step (at its status step when it adds a folder with --source-local)"
+# The words for a lock, heartbeat or governance file that is not a regular file where one belongs, by the role
+# step 1's probe and step 2's state_misplaced read off the installed build's own doctor.state_not_a_file (B13
+# round 27 ruling 16): the file, in the fixed words step 1's status-step tails use (round 24 B13), and the
+# status check that FAILs it. Fixed words only, never the check's detail, which quotes a path. 1 for a role
+# it does not know.
+misplaced_words() { # ROLE: sets MISPLACED_NOUN and MISPLACED_CHECK
+	case "$1" in
+	lock) MISPLACED_NOUN="agentsync's lock file" MISPLACED_CHECK=lock ;;
+	heartbeat) MISPLACED_NOUN="agentsync's heartbeat file" MISPLACED_CHECK=heartbeat ;;
+	holds) MISPLACED_NOUN="agentsync's governance file holds.json" MISPLACED_CHECK=governance.hold ;;
+	queue) MISPLACED_NOUN="agentsync's governance file purge-queue.json" MISPLACED_CHECK=governance.purge_queue ;;
+	suppressed) MISPLACED_NOUN="agentsync's governance file suppressed.json" MISPLACED_CHECK=governance.suppressed ;;
+	audit) MISPLACED_NOUN="agentsync's governance file audit.jsonl" MISPLACED_CHECK=governance.audit ;;
+	*) return 1 ;;
+	esac
+}
+# The words for the manifest's -wal and -shm that are not files, from a list such as "wal-folder shm-fifo" (each
+# side, then its kind by its own lstat: folder, fifo, socket, symlink or other) that step 1's probe and step 2's
+# state_side_not_a_file give, so the tail and the NEXT name which side and what is there, as the error line
+# above and the report do (B13 round 27 P21, P119: "the -wal or -shm ... a folder or something else" named
+# neither). Both, when both are not files: init's error names the first, and moving that one alone led to a
+# second stop on the other. The generic words when the list is empty (an installed build that cannot say).
+side_words() { # LIST: sets SIDE_NOUN, SIDE_IS ("is a folder, not a file") and SIDE_N (how many it names)
+	local s k r sides="" roles="" kinds="" what=""
+	SIDE_N=0
+	for s in $1; do
+		k="${s#*-}"
+		case "$k" in
+		folder | fifo | socket | symlink) k="a $k" ;;
+		*) k="something else" ;;
+		esac
+		case "$s" in
+		wal-*) s="-wal" r="write-ahead log" ;;
+		shm-*) s="-shm" r="shared-memory file" ;;
+		*) continue ;;
+		esac
+		SIDE_N=$((SIDE_N + 1))
+		sides="${sides:+$sides and the }$s" roles="${roles:+$roles and }its $r" kinds="${kinds:+$kinds and }$k" what="$k"
+	done
+	SIDE_NOUN="the $sides of agentsync's state file ($roles)"
+	case "$SIDE_N/$what" in
+	0/*) SIDE_NOUN="the -wal or -shm of agentsync's state file" SIDE_IS="is a folder or something else that is not a file" ;;
+	1/"something else") SIDE_IS="is not a regular file" ;;
+	1/*) SIDE_IS="is $kinds, not a file" ;;
+	*) SIDE_IS="are $kinds, not files" ;;
+	esac
+}
 # The friction section's sentence for the F<n> ids the Summary and the Installer section cite (B13 round 26 E4,
 # E32), as setup_report says its own "the F<n> ids in the Summary are these numbers"; friction_text leaves it
 # out when it reads an earlier report's section back.
@@ -6711,8 +6763,13 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # "state-lost" when no manifest is there while heartbeat.json beside it records a pass (manifest.manifest_lost,
 # inlined, as the installed build may predate it): every init step 2 reinstalls stops on it, and the choice
 # is the person's (round 24 ruling 7: B3, B24, B33, B41, B48, B69, B83, B85; step 1 said "(none is needed)").
-# "state-side-notfile" when a -wal or -shm is a folder (or a link to one), not a file: no mode fixes it, and
-# moving it aside is the person's (round 24 B52: it got the agent's chmod words). "state-dir-write" when the
+# "state-side-notfile" when a -wal or -shm is a folder, a fifo, a socket or a link, not a file (a link only
+# beside a manifest that is no link: beside one, SQLite keeps its sides at the target, round 27 P35): no mode
+# fixes it, and moving it aside is the person's (round 24 B52: it got the agent's chmod words), with a
+# "sideodd-<side>-<kind>" line for each such side, read apart, to name it (round 27 P119). "state-file-notfile",
+# with its "role-<which>" line, when the lock, the heartbeat or a governance file is not a regular file where
+# one belongs, as the installed build's own doctor.state_not_a_file finds it: init stops on it before anything
+# else here (round 27 ruling 16). "state-dir-write" when the
 # state folder is this account's own and it can open but not write it while the manifest, its -wal and its -shm
 # are all there for it, which init opens past: step 2 stops at its status step, on the chmod 700 (B12).
 # "state-file-owner", "state-file-access" or "state-file-refused" for the lock, the heartbeat, governance/ or its
@@ -6859,24 +6916,47 @@ try:  # SQLite opens the sides beside the target of a manifest link, so a side l
     dblink = stat.S_ISLNK(db.lstat().st_mode)
 except OSError:
     dblink = False
+
+
+def side_kind(p):
+    """What is at a -wal or -shm that is not a file a sync can open, by its own lstat, in fixed words (folder,
+    fifo, socket, symlink, other), or None. Any link, to a file or to nothing: SQLite opens a side with
+    O_NOFOLLOW, so init stops on it (measured; lane B round 26 E62), but beside a manifest that is a link,
+    SQLite keeps its sides beside the target and a link here is none of its business, whatever it points to:
+    skipped before any stat follows it, as doctor does (B13 round 27 P35: a link to a folder or a loop there
+    said init stops, while doctor, status, sync and init all passed it). A fifo at the -wal this account can
+    open stops nothing: SQLite removes it as it closes (measured, round 26 E15, E55); one it cannot open
+    stops init, as a folder there does."""
+    try:
+        mode = p.lstat().st_mode
+    except OSError:
+        return None
+    if stat.S_ISLNK(mode):
+        return None if dblink else "symlink"
+    if p == sides[0] and stat.S_ISFIFO(mode) and os.access(p, os.R_OK | os.W_OK):
+        return None
+    for test, word in ((stat.S_ISDIR, "folder"), (stat.S_ISFIFO, "fifo"), (stat.S_ISSOCK, "socket")):
+        if test(mode):
+            return word
+    return None if stat.S_ISREG(mode) else "other"
+
+
 for p in () if notdir else (db.parent, db, *sides):
     if p == db and notfile:  # judged below, whatever its mode: it is no file to chmod (the review of Z11)
         continue
-    if p in sides:  # a folder (or a link to one) where a -wal or -shm belongs: no mode fixes it (round 24 B52)
+    if p in sides:  # a folder (or a link) where a -wal or -shm belongs: no mode fixes it (round 24 B52)
+        kind = side_kind(p)
+        if kind is not None:
+            # every one stops init since lane B E65 (cli._not_a_file_stop, doctor.state_not_a_file), a folder
+            # at the -shm this account can read included; that one, alone, add-source opens past (measured), so
+            # on the --source-local path step 2 stops at its status step on it (B13 round 27 ruling 16: P15,
+            # P56, P114; round 26 E15 measured it before E65)
+            access = "state-side-notfile"
+            sidestatus = kind == "folder" and p == sides[1] and os.access(p, os.R_OK)
+            break
         try:
-            kind = p.lstat().st_mode
-            # any link at a side, to a file or to nothing: SQLite opens a -wal or -shm with O_NOFOLLOW, so init
-            # stops on it (measured; lane B round 26 E62)
-            if (stat.S_ISLNK(kind) and not dblink) or not_a_file(p):
-                # measured (round 26 E15, E55): init opens past a fifo at the -wal, which SQLite removes as it
-                # closes, so nothing stops; and past a folder at the -shm that this account can read (not a
-                # link to one), so step 2 stops at its status step; every other one (a folder, a socket or a
-                # link at the -wal; a pipe, a socket, a link or a folder it cannot read at the -shm) stops init
-                if p == sides[0] and stat.S_ISFIFO(kind) and os.access(p, os.R_OK | os.W_OK):
-                    continue  # one this account cannot open stops init, as a folder there does
-                access = "state-side-notfile"
-                sidestatus = p == sides[1] and stat.S_ISDIR(kind) and os.access(p, os.R_OK)
-                break
+            if stat.S_ISLNK(p.lstat().st_mode) or stat.S_ISFIFO(p.lstat().st_mode):
+                continue  # a link beside a manifest link, or a fifo at the -wal it can open: no mode to read
         except OSError:
             pass
     # a -wal or -shm this account cannot read stops init as the manifest does, empty or not; only one it can
@@ -6983,8 +7063,35 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
         break
 if access in ("state-side-access", "state-dir-write") and checked in ("state-file-owner", "state-file-refused"):
     access = None  # the stop of the person is the one to say: the chmods of the agent alone would not end it
+# a lock, heartbeat or governance file that is not a regular file where one belongs (a folder, a fifo, a
+# link...): init stops on it before it opens anything (cli._not_a_file_stop), so ahead of the lost manifest
+# and every access word, while step 1 said "(none is needed)" (B13 round 27 ruling 16: P113, P125, P142).
+# Judged by doctor.state_not_a_file of the installed build, never re-implemented here: its first finding,
+# the manifest and its sides included, so a side or a manifest init stops on first keeps its own word below;
+# nothing when that build lacks it or it raises
+misplaced = None
+if not notdir:
+    try:
+        from agentsync.ops.doctor import state_not_a_file
+
+        found = state_not_a_file(config)
+    except Exception:
+        found = None
+    if found is not None:
+        misplaced = {
+            "lock": "lock",
+            "heartbeat": "heartbeat",
+            "governance.hold": "holds",
+            "governance.purge_queue": "queue",
+            "governance.suppressed": "suppressed",
+            "governance.audit": "audit",
+        }.get(getattr(found[1], "name", None))
+if misplaced:
+    checked, role = "state-file-notfile", misplaced  # its role- line, as the status-step files give theirs
 if notdir:
     words.append("state-notdir")
+elif misplaced:
+    pass
 elif lost(db):  # step 2 reinstalls this checkout, whose init stops on it before any other open (ruling 7):
     words.append("state-lost")  # a shut -wal left beside it would get a chmod that ends nothing (the review)
     if gone_link(db):
@@ -6995,6 +7102,10 @@ elif access:
     words.append(access)
     if sidestatus:
         words.append("side-status")  # read apart from the words, as a role- line is (round 26 E15)
+    if access == "state-side-notfile":  # each side that is not a file, and what is there (B13 round 27 P119)
+        for s in sides:
+            if side_kind(s):
+                words.append("sideodd-" + ("wal" if s == sides[0] else "shm") + "-" + side_kind(s))
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
     words.append("state-notfile")
 elif db.is_file():
@@ -7054,7 +7165,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cside="" fnoun=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7150,11 +7261,12 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused|state-file-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				clink="$(LC_ALL=C grep -xE 'lost-(link|dangling)' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cside="$(LC_ALL=C grep -x 'side-status' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
+				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
 			fi
 		fi
 	fi
@@ -7289,11 +7401,12 @@ list_folders() {
 		# read as false under an error whose fix is "chmod -N" (an ACL) or a chmod of a folder above it, which is
 		# the person's too (round 24 B5, B15). A status-step file "cannot be used as its step needs", not "cannot
 		# be opened": a 0400 lock or a 0500 governance/ opens, but cannot be written (the lane's review of B10).
-		# A folder at the -wal stops init at any mode, one at the -shm only when unreadable (measured, the
-		# review of B52); so do a socket, a link loop or a link at either, and a fifo at the -shm (sqlite's
-		# IOERR or CANTOPEN), while a fifo at the -wal stops nothing, as SQLite removes it on close (measured,
-		# round 26 E15, E55): the probe gives a readable folder at the -shm the status step (side-status) and
-		# none to a fifo at the -wal. Something that is not a folder where the state folder or a
+		# A folder, a socket or a link at either side, and a fifo at the -shm, stop init (sqlite's IOERR or
+		# CANTOPEN, and since lane B's E65 init's own not-a-file guard, a folder at the -shm this account can
+		# read included), while a fifo at the -wal it can open stops nothing, as SQLite removes it on close
+		# (measured, round 26 E15, E55); add-source opens past that readable -shm folder alone (measured), so
+		# its tail names the status step on the --source-local path (B13 round 27 ruling 16: P15, P56, P114).
+		# Something that is not a folder where the state folder or a
 		# folder above it belongs is no mode, owner or ACL: moving it aside is the person's, and its case comes
 		# last (round 23 ruling 4: A2, A6, A21, A32, A80). A folder where the manifest belongs goes aside with
 		# heartbeat.json, as doctor.MANIFEST_FIX says: moved alone, the next run stops on a lost manifest (round
@@ -7323,9 +7436,17 @@ list_folders() {
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmods that fix it are the agent's to run, once each, when step 2 stops on them, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused, and no change of its mode fixes that (an ACL, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-dir-write,"*) stail="; step 2 stops at its status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod 700 that fixes it is the agent's to run, once, as step 2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
-		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops at its config step on the -wal or -shm of agentsync's state file, which is a folder or something else that is not a file (not damage): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
-		# a folder at the -shm this account can read: init opens past it, measured (round 26 E15)
-		case ",$cerr,/$cside" in *",state-side-notfile,"*/side-status) stail="; step 2 stops at its status step on the -shm of agentsync's state file, which is a folder (not damage): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		# which side and what is there, as the error line names it (B13 round 27 P119); a folder at the -shm this
+		# account can read stops init since lane B's E65, and only add-source opens past it, measured both ways
+		# (ruling 16: P15, P56, P114; round 26 E15 measured the status step before E65)
+		side_words "$codd"
+		stopsat="at its config step"
+		[ "$cside" != side-status ] || stopsat="$STOPS_BOTH"
+		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops $stopsat on $SIDE_NOUN, which $SIDE_IS (not damage): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		# a lock, heartbeat or governance file that is not a file, by the installed doctor.state_not_a_file: init
+		# stops on it, add-source opens past it (measured both ways; B13 round 27 ruling 16: P113, P125, P142)
+		misplaced_words "${crole#role-}" || MISPLACED_NOUN="$fnoun" MISPLACED_CHECK="lock, heartbeat or governance"
+		case ",$cerr," in *",state-file-notfile,"*) stail="; step 2 stops $STOPS_BOTH on $MISPLACED_NOUN, which is a folder or something else that is not a file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its $MISPLACED_CHECK line" ;; esac
 		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		# a lost manifest that is a symlink into a folder that is gone or refuses a write: the link goes first, as
@@ -8220,45 +8341,88 @@ except OSError as exc:  # a symlink loop where the folder belongs is no folder e
 	fi
 	[ "$n" = 1 ]
 }
-# Whether the -wal or the -shm of the manifest is there and is no file (a folder, a socket, a fifo, or a link to
-# one), as not_a_file judges the manifest: init exits 1 on one this account cannot read, and its fix, moving it
-# aside, is the person's, as doctor's state_dir.files line gives it; state_open_fix gave the agent's or the
-# ACL's words (round 24 B52). Keyed on lstat, never on the error's words. False when it cannot say. -I:
-# nothing from the folder this runs in is imported.
+# Whether the -wal or the -shm of the manifest is there and is no file (a folder, a socket, a fifo, or any link
+# beside a manifest that is no link), as doctor.side_not_a_file_at judges it: init exits 1 on it, and its fix,
+# moving it aside, is the person's, as doctor's state_dir.files line gives it; state_open_fix gave the agent's
+# or the ACL's words (round 24 B52). Each such side and what is there, in fixed words, go to STATE_SIDE_BAD
+# ("wal-folder shm-fifo"), so the NEXT names them, every one, as the error line names the first (B13 round 27
+# P21, P119). Beside a manifest that is a link, SQLite keeps its sides beside the target, so a side link here
+# is skipped before any stat follows it, whatever it points to (round 27 P35: a link to a folder or a loop
+# there gave the person's NEXT over a stop that never came). Keyed on lstat, never on the error's words. False
+# when it cannot say. -I: nothing from the folder this runs in is imported.
+STATE_SIDE_BAD=""
 state_side_not_a_file() {
 	local n=""
+	STATE_SIDE_BAD=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import errno, os, stat, sys
+import os, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
-n = 0
-try:  # SQLite opens the sides beside the target of a manifest link, so a side link beside one stops nothing
+try:
     dblink = stat.S_ISLNK(db.lstat().st_mode)
 except OSError:
     dblink = False
-for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+odd = []
+for side, name in ((db.with_name(db.name + "-wal"), "wal"), (db.with_name(db.name + "-shm"), "shm")):
     try:
         mode = side.lstat().st_mode
-        if stat.S_ISLNK(mode) and not dblink:  # any link: SQLite opens a side with O_NOFOLLOW (round 26 E62)
-            n = 1
-            continue
-        # a fifo at the -wal this account can open stops nothing: SQLite removes it on close (round 26 E15)
-        if side.name.endswith("-wal") and stat.S_ISFIFO(mode) and os.access(side, os.R_OK | os.W_OK):
-            continue
-        if stat.S_ISLNK(mode):
-            mode = side.stat().st_mode
-    except OSError as exc:  # a link loop is no file; a shut folder above it says nothing (state_open_fix)
-        n = n or int(exc.errno == errno.ELOOP)
+    except OSError:  # a shut folder above it says nothing (state_open_fix)
         continue
-    n = n or int(not stat.S_ISREG(mode))
-print(n)
+    if stat.S_ISLNK(mode):  # any link: SQLite opens a side with O_NOFOLLOW (round 26 E62)
+        if not dblink:
+            odd.append(name + "-symlink")
+        continue
+    # a fifo at the -wal this account can open stops nothing: SQLite removes it on close (round 26 E15)
+    if name == "wal" and stat.S_ISFIFO(mode) and os.access(side, os.R_OK | os.W_OK):
+        continue
+    kind = next((w for t, w in ((stat.S_ISDIR, "folder"), (stat.S_ISFIFO, "fifo"), (stat.S_ISSOCK, "socket")) if t(mode)), None)
+    if kind is None and not stat.S_ISREG(mode):
+        kind = "other"
+    if kind is not None:
+        odd.append(name + "-" + kind)
+print(" ".join([str(int(bool(odd)))] + odd))
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
-	[ "$n" = 1 ]
+	case "$n" in "1 "*) STATE_SIDE_BAD="${n#1 }" ;; esac
+	[ "${n%% *}" = 1 ]
+}
+# Whether init stopped on a lock, heartbeat or governance file that is not a regular file where one belongs (a
+# folder, a fifo, a socket, a link...), as the installed build's own doctor.state_not_a_file finds it first,
+# the manifest and its sides included (so one init stops on before it keeps its own NEXT): its role goes to
+# STATE_MISPLACED (lock, heartbeat, holds, queue, suppressed or audit). init exits 1 on it before it opens
+# anything, and fail's "fix the error above, then re-run" read as the agent's step, or a re-run that stops the
+# same way, while status says the fix is the person's (B13 round 27 ruling 16: P22, P124, P57, P110). Never
+# re-implements the kinds; false when the installed build lacks the function, it raises or finds none (the
+# generic NEXT stays). -I: nothing from the folder this runs in is imported.
+STATE_MISPLACED=""
+state_misplaced() {
+	local n=""
+	STATE_MISPLACED=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.ops.doctor import state_not_a_file
+
+found = state_not_a_file(load_config(Path(sys.argv[1])))
+roles = {
+    "lock": "lock",
+    "heartbeat": "heartbeat",
+    "governance.hold": "holds",
+    "governance.purge_queue": "queue",
+    "governance.suppressed": "suppressed",
+    "governance.audit": "audit",
+}
+print(roles.get(getattr(found[1], "name", None), "-") if found is not None else "-")
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	misplaced_words "$n" || return 1
+	STATE_MISPLACED="$n"
 }
 STATE_LOST_LINK="" # 1 once state_lost finds the lost manifest a symlink into a folder gone or refusing a write
 STATE_LOST_DANGLING="" # 1 once state_lost finds it a symlink to nothing in a folder a sync can write (round 26 E19)
@@ -8368,8 +8532,8 @@ print((3 if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else 2) if 
 # read the docs repo's remotes (cli._ensure_setup): then the error above is the state's, and no "governance:"
 # line was printed for a remote the policy refuses (B13 round 25 D76).
 state_stop_holds() {
-	state_not_a_folder || state_lost || state_owned_elsewhere || state_not_a_file || state_side_not_a_file ||
-		[ -n "$(state_open_fix)" ]
+	state_not_a_folder || state_misplaced || state_lost || state_owned_elsewhere || state_not_a_file ||
+		state_side_not_a_file || [ -n "$(state_open_fix)" ]
 }
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
@@ -8382,6 +8546,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	fi
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED"; then
+		# init's not-a-file guard runs before it opens anything, so ahead of the lost manifest and the owner's
+		# (B13 round 27 ruling 16)
+		FAIL_NEXT="$MISPLACED_NOUN is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_lost; then
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier passes (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		# a symlink to nothing in a folder a sync can write: named as one, the same fix (round 26 E19)
@@ -8395,7 +8563,13 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_side_not_a_file; then
-		FAIL_NEXT="the -wal or -shm of agentsync's state file is a folder or something else that is not a file (~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		# which side and what is there, every one: init's error names the first (B13 round 27 P21, P119)
+		side_words "$STATE_SIDE_BAD"
+		if [ "$SIDE_N" -gt 1 ]; then
+			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names the first; ~/.local/bin/agentsync status prints each and its fix on its state_dir.files lines): fixing them is the person's (keeping a copy, they move each aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once they are fixed, the next run is: $SELF$RERUN_ARGS"
+		else
+			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		fi
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ]; then
 		local fix
 		fix="$(state_open_fix)"

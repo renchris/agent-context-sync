@@ -6906,25 +6906,40 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-side-refused",
         "state-dir-write",  # B13 round 24 B12: a 0500 state folder init opens past
         "state-side-notfile",  # B13 round 24 B52: a folder where the -wal or -shm belongs
+        "state-file-notfile",  # B13 round 27 ruling 16: a lock, heartbeat or governance file not a file
         "state-notfile",  # B13 round 22 Z11: a folder where manifest.sqlite belongs
         "state-lost",  # B13 round 24 ruling 7: no manifest, while heartbeat.json records a pass
         "state-notdir",  # B13 round 23 ruling 4: no folder where the state folder belongs
     ]
     # B13 round 26 E16: the not-a-file tails end on one clause, kept in one variable
     [shut] = re.findall(r'^SHUT_OPEN="([^"$]*)"$', script, re.M)
-    for word, said in opened:
-        assert f"`{word}`, `{said.replace('$fnoun', '<file>').replace('$SHUT_OPEN', shut)}`" in section, word
+    [both] = re.findall(r'^STOPS_BOTH="([^"$]*)"$', script, re.M)
+    shown = {  # B13 round 27 P119, ruling 16: the variable parts, as the guide names them
+        "$fnoun": "<file>",
+        "$MISPLACED_NOUN": "<file>",
+        "$MISPLACED_CHECK": "<check>",
+        "$stopsat": "<at its step>",
+        "$SIDE_NOUN": "<the side>",
+        "$SIDE_IS": "<is what>",
+        "$STOPS_BOTH": both,
+        "$SHUT_OPEN": shut,
+    }
+    for word, tail in opened:
+        said = tail
+        for var, words in shown.items():
+            said = said.replace(var, words)
+        assert f"`{word}`, `{said}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
         "`state-side-access`, `state-side-owner`, `state-side-refused`, `state-side-notfile`, "
         "`state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`, "
-        "`state-file-access`, `state-file-owner` and `state-file-refused`" in section
+        "`state-file-access`, `state-file-owner`, `state-file-refused` and `state-file-notfile`" in section
     )
     words_read = (
         "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused"
         "|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access"
-        "|state-file-owner|state-file-refused)$"
+        "|state-file-owner|state-file-refused|state-file-notfile)$"
     )
     assert words_read in script, "the list reads every word config_errors writes"
     [row] = [
