@@ -6836,30 +6836,61 @@ def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> 
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
-def test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit(env: dict[str, str]) -> None:
+@pytest.mark.parametrize("checkout", ["clean", "dirty", "no-tools", "no-git"])
+def test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit(
+    env: dict[str, str], tmp_path: Path, checkout: str
+) -> None:
     """B13 round 26 E21: a run of a git checkout that a usage error stopped (a --source-local folder that is
     not there) stops before it reads the commit, and the Summary said "source commit -", which a reader cannot
     tell from an unknown commit; the agentsync report says that run read none. It says so; install.log's
-    commit= field, the machine word, stays "-", and nothing runs git for it."""
+    commit= field, the machine word, stays "-".
+
+    Round 27 P143 (E21's optional half): it adds this installer's checkout's commit, read in the parent shell
+    as --report-only reads it: the short sha, with `-dirty tree=<fingerprint>` for local changes, or the HEAD
+    file's sha with "(local changes not checked)" where the developer tools are not; nothing for a copy with
+    no .git."""
+    if checkout != "no-git" and not _have_git():
+        pytest.skip("needs developer tools (git)")
     src = Path(env["HOME"]) / "src" / "contoso-copy"
     (src / "scripts").mkdir(parents=True)
     shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
     (src / "pyproject.toml").write_text("[project]\nname = 'agentsync'\n")
-    _git_checkout(src)
+    sha = ""
+    if checkout != "no-git":
+        git = _git_checkout(src)
+        sha = subprocess.run(
+            [*git, "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+    if checkout == "dirty":
+        with (src / "pyproject.toml").open("a") as fh:
+            fh.write("# a local change\n")
+    extra = {"DEVELOPER_DIR": str(tmp_path / "none")} if checkout == "no-tools" else {}
     cp = subprocess.run(
         [BASH32, str(src / "scripts" / "install.sh"), "--source-local", str(src / "not-there")],
         capture_output=True,
         text=True,
         check=False,
-        env=env,
+        env={**env, **extra},
         stdin=subprocess.DEVNULL,
         timeout=120,
     )
     assert cp.returncode == 2 and "--source-local is not an existing folder" in cp.stderr, cp.stderr
     [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+    at = {
+        "clean": sha,
+        "dirty": f"{sha}-dirty tree={_fingerprint(git)}" if checkout == "dirty" else "",
+        "no-tools": f"{sha} (local changes not checked)",
+    }.get(checkout)
+    named = f"; this installer's checkout, ~/src/contoso-copy, is at {at}" if at else ""
+    if checkout == "no-git":  # its own words, as before: a copy with no .git is no checkout to read
+        named = "none (~/src/contoso-copy has no .git: not a git checkout)"
+        assert (
+            line == f"- install.sh: setup-prompt-compat {COMPAT}, source commit {named}, exit 2 (usage error)"
+        )
+        return
     assert line == (
         f"- install.sh: setup-prompt-compat {COMPAT}, source commit not read (this run stopped before it "
-        "read the commit), exit 2 (usage error)"
+        f"read the commit{named}), exit 2 (usage error)"
     ), line
     assert "source commit -," not in line
     [start] = [ln for ln in install_log(env) if " start install.sh " in ln]

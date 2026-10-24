@@ -30420,6 +30420,9 @@ tried; it says `not read (this run stopped before it read the commit)`, as setup
 `COMMIT` and install.log's `commit=` stay `-`, the machine word, and nothing runs git; the install source line,
 which is about `~/src/agent-context-sync` and git-free, is unchanged. Test:
 `test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit`.
+Amended 2026-10-24, §16.189 P143: the line adds `; this installer's checkout, <path>, is at <commit>` when that
+checkout's commit can be read (git runs for it in the parent shell, the shell fallback only); `COMMIT` and
+install.log's `commit=` still stay `-`.
 
 **Step 1 names the step a side file that is not a file stops** (E15, with lane D's E55 and lane B's E62, install.sh's
 halves). Measured with `agentsync init` on this Mac: only a folder at the -shm that this account can read (not a link
@@ -30807,6 +30810,28 @@ report stacked another number. The fence stays raw; each citation names the line
 the Installer section and `F5 (stamped ...)` in the Summary's outcome line, and `F_IDS_SAID` adds `; each is cited
 with its line's time stamp, as written below`. Tests: the pairing table (each paired line's stamp as written),
 `test_the_shell_report_says_what_its_f_ids_are` and `test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
+
+**The shell fallback says where the error its quoted NEXT names is** (P105). The shell report quotes the last run's
+NEXT, and most of install.sh's FAIL_NEXTs say `the error above names it; ~/.local/bin/agentsync status prints it`,
+which point at nothing its reader sees: the fallback copies no error line, and status cannot run with agentsync
+not installed. Copying the run's `error:` lines is measured worse: the shell's `redact_stream` has no rule for a
+link target outside the home (`/Volumes/<drive>/...`), which setup_report's Redactor cuts, so round 26's fixed leak
+would return. When the quoted NEXT says `error above`, one sentence in fixed words follows it: `The error that
+NEXT line names was printed on the terminal before it and is kept in that run's block of
+~/agent-context/setup/install.out; this shell fallback copies no error text, which can name a path or a host
+outside this home, and ~/.local/bin/agentsync status, which prints it again, needs agentsync installed.` Test:
+`test_the_shell_report_says_where_the_error_a_quoted_next_names_is` (the link target's folder appears 0 times).
+
+**A run a usage error stopped names this installer's checkout** (P143; amends §16.184 E21). E21 left out the
+optional commit of the installer's checkout as "git-free", while the only cost of git here is the developer tools'
+install offer, which `checkout_commit` already avoids, and `--report-only` already reads it. `write_fallback_report`
+reads it in the parent shell (`commit_shown` runs in `$( )`, where `git_ro_resolve` would be lost) into
+`INSTALLER_COMMIT`, rendered as `--report-only` renders it (`<sha>`, `<sha>-dirty tree=<fingerprint>`, or the HEAD
+file's `<sha> (local changes not checked)` without the developer tools), and the line reads `not read (this run
+stopped before it read the commit; this installer's checkout, <path>, is at <commit>)`. `COMMIT`, `DIRTY` and
+`COMMIT_TRIED` are untouched, so install.log's start line and the install stamp keep `commit=-`. Test:
+`test_the_shell_report_says_a_run_a_usage_error_stopped_read_no_commit` (clean, dirty, no developer tools, and a
+copy with no .git, which keeps its own words).
 
 ### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
 

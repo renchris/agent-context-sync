@@ -3866,8 +3866,9 @@ fallback_outcome_line() {
 # and the install stamp keep as their machine word, why there is none (B13 round 9 K17, K29): a wheel, a copy
 # with no .git (the --report-only checkout, or a real run's SOURCE), or a .git git could not read, as --version
 # says "unknown"; and when no read was tried (a run stopped before it, as a usage error stops one), that it was
-# not read, as setup_report._install_source says, never a bare "-" (B13 round 26 E21). COMMIT stays "-", the
-# machine word, and no git runs here.
+# not read, as setup_report._install_source says, never a bare "-" (B13 round 26 E21), with this installer's
+# checkout's commit when write_fallback_report could read it (INSTALLER_COMMIT, round 27 P143). COMMIT stays
+# "-", the machine word, and no git runs here.
 commit_shown() {
 	local d="$repo"
 	if [ "$COMMIT" != "-" ]; then
@@ -3882,6 +3883,10 @@ commit_shown() {
 		printf 'none (%s has no .git: not a git checkout)' "$d"
 	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
 		printf 'unknown (%s)' "$(unread_reason "$d")"
+	elif [ -n "$INSTALLER_COMMIT" ]; then
+		# the run's own source was never read, so this names the installer's checkout, even when it is the
+		# source; read by write_fallback_report in the parent shell (B13 round 27 P143)
+		printf "not read (this run stopped before it read the commit; this installer's checkout, %s, is at %s)" "$repo" "$INSTALLER_COMMIT"
 	else
 		printf 'not read (this run stopped before it read the commit)'
 	fi
@@ -4860,8 +4865,25 @@ strip_run_pids() {
 			print out rest
 		}'
 }
+INSTALLER_COMMIT="" # this installer's checkout, when the run stopped before it read its source's commit (P143)
 write_fallback_report() { # RC WHY
 	local dir tmp friction c used
+	# a run a usage error stopped read no commit: its Summary names this installer's checkout instead, read
+	# here, in the parent shell (commit_shown runs in $( ), where git_ro_resolve would be lost), with the
+	# rendering --report-only gives below; COMMIT stays "-", so install.log and the stamp keep commit=- (B13
+	# round 27 P143: E21's optional half; git runs only where the developer tools are, else the HEAD file)
+	if [ "$REPORT_ONLY" -eq 0 ] && [ "$COMMIT" = "-" ] && [ "$COMMIT_TRIED" -eq 0 ] && [ -e "$repo/.git" ]; then
+		git_ro_resolve
+		c="$(checkout_commit "$repo")"
+		case "$c" in
+		*" dirty "*) INSTALLER_COMMIT="${c%% *}-dirty tree=${c##* }" ;;
+		"")
+			c="$(git_head_file "$repo")"
+			[ -z "$c" ] || INSTALLER_COMMIT="$c (local changes not checked)"
+			;;
+		*) INSTALLER_COMMIT="$c" ;;
+		esac
+	fi
 	# --report-only reads no SOURCE: its Summary names this installer's checkout, as --version does. Only here,
 	# so a report agentsync writes runs no git.
 	if [ "$REPORT_ONLY" -eq 1 ] && [ -e "$repo/.git" ]; then
