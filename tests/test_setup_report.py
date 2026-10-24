@@ -18045,6 +18045,59 @@ def test_a_stand_alone_run_with_no_end_line_is_in_the_time_install_and_output_li
     assert "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected)" in output, output
 
 
+def test_an_attempts_own_run_with_no_end_line_gets_the_next_clause_too(fake_mac: dict[str, Path]) -> None:
+    """B13 round 26 E29: D16's clause sat only on the line for a part of install.out, so an attempt whose
+    runs are all of install.out (the most common path) counted one NEXT: in two runs with nothing to explain
+    it. Every installer output line says it now; when both runs printed one, no clause claims one is
+    missing."""
+    write_friction(
+        fake_mac,
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent (model-1)\n"
+        "2026-10-20T10:30:00Z | end | finished\n",
+    )
+    first, second = "2026-10-20T10:05:00Z", "2026-10-20T10:10:00Z"
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run(first, None) + install_run(second, 0), encoding="utf-8"
+    )
+    out = fake_mac["setup"] / "install.out"
+
+    def block(start: str, next_line: bool) -> list[str]:
+        head = f"# run={re.sub('[-:]', '', start)}-77 {start} install.sh --source-local x"
+        return [head, "output", *(["NEXT: done"] if next_line else [])]
+
+    clause = "the run with no end line prints none if stopped before its NEXT:, so 1 expected here"
+    out.write_text("\n".join([*block(first, False), *block(second, True)]) + "\n", encoding="utf-8")
+    text, summary = summary_of(fake_mac)
+    output = _line(summary, "- installer output: ")
+    assert output.startswith(
+        f"- installer output: 1 NEXT: line in 2 runs (exactly one per install.sh run is expected; {clause})"
+    ), output
+    assert (
+        f"Installer output: 1 NEXT: line in 2 runs (exactly one per install.sh run is expected; {clause})"
+        in (text)
+    ), section(text, "Installer")
+    out.write_text("\n".join([*block(first, True), *block(second, True)]) + "\n", encoding="utf-8")
+    output = _line(summary_of(fake_mac)[1], "- installer output: ")
+    assert "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected)" in output, output
+
+
+def test_a_pending_run_and_a_run_with_no_end_line_each_give_their_reason() -> None:
+    """B13 round 26 E30: with the run writing the report and a run with no end line both missing a NEXT:,
+    the clause gave one reason for two missing lines; it gives both, with the one count."""
+    one = setup_report._instruction_text(Counter({"NEXT:": 1}), 30, 3, pending=True, open_runs=1)
+    assert (
+        "(exactly one per install.sh run is expected; the run writing this report prints its NEXT: after the "
+        "report, and the run with no end line prints none if stopped before its NEXT:, so 1 expected here)"
+    ) in one, one
+    two = setup_report._instruction_text(Counter({"NEXT:": 0}), 30, 3, pending=True, open_runs=2)
+    assert (
+        "the run writing this report prints its NEXT: after the report, and the 2 runs with no end line "
+        "print none if stopped before their NEXT:, so 0 expected here)"
+    ) in two, two
+    alone = setup_report._instruction_text(Counter({"NEXT:": 1}), 30, 2, pending=False, open_runs=1)
+    assert "after the report" not in alone and "so 1 expected here" in alone, alone
+
+
 def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart(
     fake_mac: dict[str, Path],
 ) -> None:

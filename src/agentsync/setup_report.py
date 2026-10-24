@@ -5722,15 +5722,18 @@ def _instruction_text(
         f" (whole runs only: the {_plural(cut, 'line')} read before the first run header "
         f"{'is' if cut == 1 else 'are'} not counted)"
     )
-    due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
+    mine_ = "the run writing this report prints its NEXT: after the report"
+    due = f"; {mine_}, so {runs - 1} expected here"
     expected = runs - (1 if pending else 0)
     unended = ""
     if open_runs and counts["NEXT:"] < expected:
         which = "the run" if open_runs == 1 else f"the {open_runs} runs"
-        unended = (
-            f"; {which} with no end line {'prints' if open_runs == 1 else 'print'} none if stopped before "
-            f"{'its' if open_runs == 1 else 'their'} NEXT:, so {expected - open_runs} expected here"
+        stopped = (
+            f"{which} with no end line {'prints' if open_runs == 1 else 'print'} none if stopped before "
+            f"{'its' if open_runs == 1 else 'their'} NEXT:"
         )
+        # B13 round 26 E30: both reasons when both apply, one count
+        unended = f"; {mine_ + ', and ' if pending else ''}{stopped}, so {expected - open_runs} expected here"
     clauses = [
         f"{_plural(counts['NEXT:'], 'NEXT: line')}{in_runs} (exactly one per install.sh run is expected"
         + (due if pending and not unended else "")
@@ -5782,7 +5785,12 @@ def _installer_output_line(
     install run": install.out holds ``--list-folders`` runs too."""
     assert r.facts.instructions is not None
     counts, read, total, cut, pending = r.facts.instructions
-    whole = f"- installer output: {_instruction_text(counts, read, total, cut, pending)}"
+    # B13 round 26 E29: D16's clause on the early returns too (every run read is the attempt's, or runs cannot
+    # be told apart): out_counted holds exactly the lines this counts
+    unended_all = _open_runs(r, r.facts.out_counted, pending)
+    whole = (
+        f"- installer output: {_instruction_text(counts, read, total, cut, pending, open_runs=unended_all)}"
+    )
     start = _attempt_out_start(r, [run for run in runs if run not in late], scoped)
     if start == "unknown":  # nothing to tell runs apart by
         return whole
@@ -5921,9 +5929,12 @@ def _installer_output(r: _Run) -> list[str]:
         saw = "earlier attempts' install.sh output: " + (
             "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
         )
+    # B13 round 26 E29: D16's clause, as the Summary's line has it
+    unended = _open_runs(r, r.facts.out_counted, r.facts.instructions[4])
     return [
-        f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
-        "than NEXT: is a hint the agent may act on before install.sh's own next step; a fix: on a [FAIL] "
+        f"Installer output: {_instruction_text(*r.facts.instructions, open_runs=unended)}. An "
+        "instruction-like line other than NEXT: is a hint the agent may act on before install.sh's own next "
+        "step; a fix: on a [FAIL] "
         "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
         "Nor is a person's fix: on any line of a run whose NEXT says fixing its error is the person's, as "
         "the state file's error line, nor a fix: that its run's NEXT gives the agent as its step. "
