@@ -3650,8 +3650,8 @@ class _Facts:
     # lines of the evidence parts that say the manifest is missing though earlier syncs recorded (B13 round 24
     # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
     evidence_lost: int = 0
-    # the lost manifest is a link into a folder that is missing or refuses a write, by the report's own read
-    # (B13 round 26 E3, E14): its fix removes or re-points the link first
+    # the lost manifest is a link into a folder that does not exist or refuses a write, by the report's own
+    # read (B13 round 26 E3, E14): its fix removes or re-points the link first
     lost_link: bool = False
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
     evidence_damage_failed: bool = (
@@ -9241,15 +9241,16 @@ _STATE_LOST_EVIDENCE = (
 they were not measured, the person's, in ``doctor.LOST_MANIFEST_FIX``'s two moves, with no advice to write the
 report again when idle, which cannot bring a manifest back."""
 _STATE_LOST_LINK_EVIDENCE = (
-    "not measured, as the state file is a link into a folder that is missing or refuses a write, and "
-    "missing though heartbeat.json records earlier passes: a report written after the person removes or "
+    "not measured, as the state file is missing though heartbeat.json records earlier passes, and is a link "
+    "into a folder that does not exist or refuses a write: a report written after the person removes or "
     "re-points the link, then restores the file or moves heartbeat.json aside so the next sync starts a new "
     "manifest, measures them (see Doctor's state_dir.manifest line)"
 )
-""":data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link into a missing or unwritable folder (B13
-round 26 E3, E14; ``r.facts.lost_link``): neither move works through the link, so doctor's fix (B13 round 25
-D71) removes it first, or a link pointed at a folder that exists works again. Never the link's target: it is a
-path."""
+""":data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link into a folder that does not exist or
+refuses a write (B13 round 26 E3, E14; ``r.facts.lost_link``): neither move works through the link, so
+doctor's fix (B13 round 25 D71) removes it first, or a link pointed at a folder that exists works again. Never
+the link's target: it is a path. The file's fact first, as :data:`_STATE_LOST_LINK_WORDS` (B13 round 27 P103,
+P121, P129)."""
 
 
 def _evidence_line(r: _Run) -> str:
@@ -11025,11 +11026,11 @@ _SIDE_NOT_FILE_WORDS = "from a side file of the state file that is not a file"
 B13 round 25 ruling 12, D4, D9, D20, D78), in lane B's words for it ("a side file of the state file is not a
 file"): the person's move aside, keeping a copy, never "the state file that cannot be read" (the manifest
 reads, or fails only on its -wal) nor "this account cannot open" (no access fails)."""
-_DANGLING_WORDS = "from a state file that is a link into a folder that is missing or refuses a write"
+_DANGLING_WORDS = "from a state file that is a link into a folder that does not exist or refuses a write"
 """The Doctor line's bucket for doctor's B13 round 24 B64 FAIL: the manifest, its -wal or its -shm is a
-symlink to nothing whose folder is missing or refuses a write, the person's to point at an existing file or
-remove (B13 round 25 D34: no bucket read it, so it was "unexpected"), keyed on the report's own read
-(:func:`_dangling_state`)."""
+symlink to nothing whose folder does not exist or refuses a write (doctor's words, B13 round 27 P103), the
+person's to point at an existing file or remove (B13 round 25 D34: no bucket read it, so it was "unexpected"),
+keyed on the report's own read (:func:`_dangling_state`)."""
 _STATE_LOST_WORDS = "from the state file that is missing though heartbeat.json records earlier passes"
 """The Doctor line's bucket for a lost manifest (B13 round 24 ruling 7; B4, B9, B25, B32, B44, B49, B99):
 manifest.sqlite missing while heartbeat.json beside it records an earlier pass (lane B's round 23 A29 FAIL,
@@ -11039,17 +11040,17 @@ aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doc
 
 
 _STATE_LOST_LINK_WORDS = (
-    "from the state file that is a link into a folder that is missing or refuses a write, and missing though "
-    "heartbeat.json records earlier passes"
+    _STATE_LOST_WORDS + ", and is a link into a folder that does not exist or refuses a write"
 )
-""":data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a missing or unwritable folder (B13 round
-26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the bucket keeps the
-lost manifest's decision and names the link its fix removes first."""
+""":data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a folder that does not exist or refuses a
+write (B13 round 26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the
+bucket keeps the lost manifest's decision and names the link its fix removes first. The file's fact first, so
+"missing" is said once and of the file, and the folder in doctor's words (B13 round 27 P103, P121, P129)."""
 
 
 def _lost_link(c: Config | None) -> bool:
-    """Whether the manifest is lost (:func:`_manifest_lost_at`) and a link into a folder that is missing or
-    refuses a write (:func:`_dangling_state`): the report's own read, never doctor's words, which hold the
+    """Whether the manifest is lost (:func:`_manifest_lost_at`) and a link into a folder that does not exist
+    or refuses a write (:func:`_dangling_state`): the report's own read, never doctor's words, which hold the
     link's target (B13 round 26 E3, E14). False when the read fails."""
     if c is None:
         return False
@@ -11470,7 +11471,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_notfile: list[str] = []
     from_side: list[str] = []
     side_words = _side_bucket_words(sidecars, r.facts.doctor_problems)  # B13 round 26 E23
-    # B13 round 25 D34: a state file that is a link into a missing or unwritable folder (round 24 B64)
+    # B13 round 25 D34: a state file that is a link into a folder that does not exist or refuses a write (B64)
     dangling = [] if notfolder or unreadable or r.config is None else _dangling_state(r.config)
     db_name = expand(r.config.state_paths.db).name if r.config is not None else ""
     from_dangling: list[str] = []
@@ -13010,16 +13011,17 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             # (B13 round 26 E19) is a link too, with no step for it (B13 round 27 P33, P58)
             if " is a symlink to " in ln and _dangling_unusable() in ln:
                 return (
-                    " on agentsync's state file, a link into a folder that is missing or refuses a write, "
-                    "which is missing though heartbeat.json records earlier passes: the person's to fix, "
-                    "removing or re-pointing the link first",
+                    # the file's fact first, "missing" once (B13 round 27 P103, P121, P129)
+                    " on agentsync's state file, which is missing though heartbeat.json records earlier "
+                    "passes, and is a link into a folder that does not exist or refuses a write: the "
+                    "person's to fix, removing or re-pointing the link first",
                     "after the link was removed or pointed at a folder that exists, and the file restored "
                     "or heartbeat.json moved aside",
                 )
             if " is a symlink to " in ln:  # E19's: both moves of the plain fix work through the link
                 return (
                     " on agentsync's state file, which is missing though heartbeat.json records earlier "
-                    "passes and is a link to a file that does not exist: the person's to fix",
+                    "passes, and is a link to a file that does not exist: the person's to fix",
                     "after the file was restored or heartbeat.json moved aside",
                 )
             return (

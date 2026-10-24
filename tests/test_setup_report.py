@@ -10054,9 +10054,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             f"error: state: {db} is a symlink to /Users/x/gone/manifest.sqlite, whose folder does not "
             f"exist or refuses a write, and {manifest_mod.LOST_MANIFEST} (fix: the person removes the "
             "link first: rm x)",
-            "on agentsync's state file, a link into a folder that is missing or refuses a write, which is "
-            "missing though heartbeat.json records earlier passes: the person's to fix, removing or "
-            "re-pointing the link first",
+            "on agentsync's state file, which is missing though heartbeat.json records earlier passes, and "
+            "is a link into a folder that does not exist or refuses a write: the person's to fix, removing "
+            "or re-pointing the link first",
             "the link was removed or pointed at a folder that exists, and the file restored or "
             "heartbeat.json moved aside",
         ),
@@ -10064,7 +10064,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             # round 26 E19) is no link into a missing folder, and its fix has no step for the link
             f"error: state: {db} is a symlink to /Users/x/agentsync/gone.sqlite, which does not exist; the "
             f"manifest {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})",
-            "on agentsync's state file, which is missing though heartbeat.json records earlier passes and "
+            "on agentsync's state file, which is missing though heartbeat.json records earlier passes, and "
             "is a link to a file that does not exist: the person's to fix",
             "the file was restored or heartbeat.json moved aside",
         ),
@@ -14018,9 +14018,9 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     db.symlink_to(gone / "manifest.sqlite")
     _rc, text, _ = report(tmp_path, cfg)
     summary = section(text, "Summary")
-    link = (
-        "from the state file that is a link into a folder that is missing or refuses a write, and missing "
-        "though heartbeat.json records earlier passes"
+    link = (  # B13 round 27 P103, P121, P129: "missing" once, about the file, said first
+        "from the state file that is missing though heartbeat.json records earlier passes, and is a link "
+        "into a folder that does not exist or refuses a write"
     )
     assert f" · {link} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
         summary, "- doctor: "
@@ -14030,8 +14030,8 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     assert status.count(setup_report._LOST_MANIFEST_LINE) == lost, status  # the lost count is unchanged
     assert _line(summary, "- evidence: ") == (
         f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
-        "file is a link into a folder that is missing or refuses a write, and missing though heartbeat.json "
-        "records earlier passes: a report written after the person removes or re-points the link, then "
+        "file is missing though heartbeat.json records earlier passes, and is a link into a folder that does "
+        "not exist or refuses a write: a report written after the person removes or re-points the link, then "
         "restores the file or moves heartbeat.json aside so the next sync starts a new manifest, measures "
         "them (see Doctor's state_dir.manifest line)"
     ), summary
@@ -14404,7 +14404,7 @@ def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_wh
     assert "Contoso Drive" not in text and "/Volumes/" not in text
     line = _line(section(text, "Summary"), "- doctor: ")
     assert (
-        "from a state file that is a link into a folder that is missing or refuses a write (1 check): "
+        "from a state file that is a link into a folder that does not exist or refuses a write (1 check): "
         in line
     )
 
@@ -14579,9 +14579,9 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B13 round 25 D34: doctor's round 24 B64 FAIL (the manifest, its -wal or its -shm a symlink into a
-    folder that is missing or refuses a write, with no earlier passes) fell into no bucket of the report's, so
-    it was "unexpected". A person's bucket of its own, by the report's own read; a link into a writable
-    folder FAILs nothing, and a dangling manifest over earlier passes stays the lost manifest's."""
+    folder that does not exist or refuses a write, with no earlier passes) fell into no bucket of the
+    report's, so it was "unexpected". A person's bucket of its own, by the report's own read; a link into a
+    writable folder FAILs nothing, and a dangling manifest over earlier passes stays the lost manifest's."""
     real = cli._status_checks
 
     def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
@@ -14597,7 +14597,9 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
         side.unlink()
     db.rename(db.with_name("kept.sqlite"))
     gone = db.parent / "gone"
-    bucket = "from a state file that is a link into a folder that is missing or refuses a write (1 check): "
+    bucket = (
+        "from a state file that is a link into a folder that does not exist or refuses a write (1 check): "
+    )
     for link, name in ((db, "state_dir.manifest"), (db.with_name(db.name + "-wal"), "state_dir.files")):
         if link != db:
             db.with_name("kept.sqlite").rename(db)
@@ -14636,8 +14638,8 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     line = _line(section(text, "Summary"), "- doctor: ")
     assert "from a state file that is a link" not in line and "state_dir.manifest FAIL (the person's" in line
     assert (
-        "from the state file that is a link into a folder that is missing or refuses a write, and missing"
-        in (line)
+        "from the state file that is missing though heartbeat.json records earlier passes, and is a link "
+        "into a folder that does not exist or refuses a write" in (line)
     ), line  # B13 round 26 E3, E14: the lost manifest's one bucket, which names the link
 
 
