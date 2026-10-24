@@ -14433,6 +14433,63 @@ def test_the_side_files_have_doctors_names_in_every_reader(
     ]
 
 
+def test_a_lock_heartbeat_or_governance_file_that_is_not_a_file_is_the_persons(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 26 ruling 13 (lane B's E38, E39, E43; the report's words are lane RA's): something that is
+    not a regular file where the lock, the heartbeat or a governance file belongs is the person's, and doctor
+    FAILs it as ``<path> is <kind>, not a file: <role> belongs there``; no bucket of the report's read it, so
+    it was "unexpected". A person's bucket of its own, keyed on the report's own lstat with the check and the
+    file's name in doctor's line; a FAIL of that check with no such file stays unexpected."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "governance").mkdir(exist_ok=True)
+
+    def fail(name: str, p: Path, kind: str, role: str) -> str:
+        return (
+            f"[FAIL] {name} — {p} is {kind}, not a file: {role} belongs there (fix: the person moves {p} "
+            "aside, keeping a copy)"
+        )
+
+    lock, holds = root / "agentsync.lock", root / "governance" / "holds.json"
+    lines = {
+        "lock": fail("lock", lock, "a folder", "the lock"),
+        "holds": fail("governance.hold", holds, "a fifo", "the hold list"),
+    }
+    lock.unlink(missing_ok=True)
+    lock.mkdir()
+    try:
+        _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", lines["lock"]])
+        line = _line(summary, "- doctor: ")
+        assert (
+            " · from agentsync's lock file that is not a file (1 check): lock FAIL (the person's; see "
+            "Doctor) · unexpected 0"
+        ) in line, line
+        assert (
+            "1 doctor FAIL with a known cause, from agentsync's lock file that is not a file: lock"
+            in _line(summary, "- **outcome: ")
+        ), summary
+        holds.unlink(missing_ok=True)
+        os.mkfifo(holds, 0o600)
+        try:
+            _text, summary = summary_of(
+                fake_mac, doctor=lambda config: ["[ok  ] python — fine", *lines.values()]
+            )
+        finally:
+            holds.unlink()
+        assert (
+            " · from state files that are not files (2 checks): lock FAIL (the person's; see Doctor), "
+            "governance.hold FAIL (the person's; see Doctor) · unexpected 0"
+        ) in _line(summary, "- doctor: "), summary
+    finally:
+        lock.rmdir()
+    # the same FAIL with a regular file there is not this one: unexpected
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", lines["lock"]])
+    assert _line(summary, "- doctor: ").endswith("unexpected 1: lock FAIL"), summary
+
+
 def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -10900,6 +10900,42 @@ def _helpers_timed_out(c: Config) -> dict[str, str]:
         return {}
 
 
+_MISPLACED_ROLES = {
+    "lock": "agentsync's lock file",
+    "heartbeat": "agentsync's heartbeat file",
+    "governance.hold": "agentsync's holds file",
+    "governance.purge_queue": "a governance file in the state folder",
+    "governance.suppressed": "a governance file in the state folder",
+    "governance.audit": "a governance file in the state folder",
+}
+"""The doctor check that FAILs each state file other than the manifest when something that is not a regular
+file sits where it belongs (lane B's round 26 ruling 13: E38 the lock, E39 the heartbeat, E43 the governance
+files), and the report's words for that file, :data:`_SYNC_STOP_FILES`' where it has them."""
+
+
+def _misplaced_state(c: Config) -> dict[str, Path]:
+    """Those of :data:`_MISPLACED_ROLES`' files where something that is not a regular file sits (a folder, a
+    fifo, a socket, a link), by the report's own lstat, keyed by doctor's check: the person's to move aside,
+    keeping a copy (B13 round 26 ruling 13). A test that fails says none of that path."""
+    root = expand(c.state_paths.root)
+    files = {
+        "lock": root / "agentsync.lock",
+        "heartbeat": root / "heartbeat.json",
+        "governance.hold": root / "governance" / "holds.json",
+        "governance.purge_queue": root / "governance" / "purge-queue.json",
+        "governance.suppressed": root / "governance" / "suppressed.json",
+        "governance.audit": root / "governance" / "audit.jsonl",
+    }
+    out: dict[str, Path] = {}
+    for name, p in files.items():
+        try:
+            if not stat.S_ISREG(p.lstat().st_mode):
+                out[name] = p
+        except OSError:
+            continue
+    return out
+
+
 def _helpers_again(c: Config) -> dict[str, str]:
     """The helpers whose last build failed in a way doctor gives the plain re-run as its fix (B13 round 26
     E34, E78; lane E's round 25 D85): a build step a signal stopped (its marker's reason ends in
@@ -11061,6 +11097,8 @@ class _DoctorSort:
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
     from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
     from_again: list[str] = dataclasses.field(default_factory=list)  # B13 round 26 E34, E78
+    from_misplaced: list[str] = dataclasses.field(default_factory=list)  # B13 round 26 ruling 13
+    misplaced_words: str = "from state files that are not files"
     lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
     side_words: str = _SIDE_NOT_FILE_WORDS  # B13 round 26 E23: the side file by name (_side_bucket_words)
 
@@ -11465,6 +11503,21 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_helpers: list[str] = []
     again = _helpers_again(r.config) if r.config is not None else {}  # B13 round 26 E34, E78
     from_again: list[str] = []
+    # B13 round 26 ruling 13: the lock, the heartbeat or a governance file that is not a regular file
+    misplaced = {} if notfolder or r.config is None else _misplaced_state(r.config)
+    from_misplaced: list[str] = []
+    misplaced_named = [
+        n
+        for n, p in misplaced.items()
+        if any(
+            t == "FAIL" and m == n and f"{p.name} is " in d and ", not a file" in d
+            for t, m, d in r.facts.doctor_problems
+        )
+    ]
+    roles = list(dict.fromkeys(_MISPLACED_ROLES[n] for n in misplaced_named))
+    misplaced_words = (
+        f"from {roles[0]} that is not a file" if len(roles) == 1 else "from state files that are not files"
+    )
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []
     fails: list[tuple[str, str | None]] = []
@@ -11509,6 +11562,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if notfile and tag == "FAIL" and name == "state_dir.manifest":
             from_notfile.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_NOT_FILE_WORDS))
+            continue
+        if tag == "FAIL" and name in misplaced_named:  # B13 round 26 ruling 13, by the report's own lstat
+            from_misplaced.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, misplaced_words))
             continue
         if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
             from_lost.append(f"{name} FAIL{_PERSONS}")
@@ -11649,6 +11706,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_side,
         from_dangling,
         from_again=from_again,
+        from_misplaced=from_misplaced,
+        misplaced_words=misplaced_words,
         lost_words=lost_words,
         side_words=side_words,
     )
@@ -11739,6 +11798,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if sort.from_side:  # B13 round 25 ruling 12 (D4, D9, D20, D78)
         parts.append(
             f"{sort.side_words} ({_plural(len(sort.from_side), 'check')}): " + ", ".join(sort.from_side)
+        )
+    if sort.from_misplaced:  # B13 round 26 ruling 13
+        parts.append(
+            f"{sort.misplaced_words} ({_plural(len(sort.from_misplaced), 'check')}): "
+            + ", ".join(sort.from_misplaced)
         )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
