@@ -30764,9 +30764,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26 and P13, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of
-other lanes' files the items need (named below). Items that describe one defect are built once: P33 and P58; P103,
-P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
+P102, P115, P26, P13 and P104, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks
+of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and P58;
+P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30939,6 +30939,16 @@ read`: its number already is `read`. Other files: `docs/deploy/setup-feedback.md
 in `tests/test_deploy_pack.py` (`test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`). Tests:
 `test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart` (both numbers) and
 `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only`.
+
+**A private-only report shows no issue link that install.out holds** (P104). A report private only by a hold's
+one-word value still copied an earlier run's `issue link (review the report first): https://github.com/...
+/issues/new?...` line in its copy of install.out, under its own `never as a public issue` line; only the report's
+closing link was dropped. The verdict is final only after `red.recount(main)`, so `build_report` then rewrites, in
+a private-only report, every line whose text starts with `ISSUE_LINK_LABEL` to `issue link (not shown: this report
+is private only)` and cuts a copied `NEXT:`'s `, or paste the setup report into the issue the link above opens` (or
+`paste it`) (`_without_copied_links`). The label is matched, never a bare `issues/new`. No second recount: the
+counts stand as counted on the shown text, and a recount could clear `word_named_shown` and flip the verdict. A
+public report copies both lines as they are. Test: `test_a_private_only_report_shows_no_issue_link_install_out_holds`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

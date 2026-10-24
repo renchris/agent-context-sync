@@ -1640,6 +1640,46 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
     assert "Private only:" not in text and setup_report.issue_link(text) is not None
 
 
+def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: dict[str, Path]) -> None:
+    """B13 round 27 P104: a private-only report (a hold's one-word value it would print) still copied an
+    earlier run's `issue link (review the report first): https://github.com/.../issues/new?...` line from
+    install.out, under a Redaction section that says never to send it as a public issue. The copied line
+    says the link is not shown, and a copied NEXT: no longer points at it; a public report copies both as
+    they are."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    link = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.ISSUE_URL}&title=setup"
+    next_line = (
+        "NEXT: review ~/agent-context/setup/setup-report.md and copy that one file back privately, or paste "
+        "the setup report into the issue the link above opens (nothing is sent for you)"
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"{link}\n{next_line}\n",
+        encoding="utf-8",
+    )
+    cfg.write_text('[governance]\nhold = true\nhold_reason = "Page"\nhold_owner = "Mark"\n\n' + plain)
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    assert "issues/new" not in text, [ln for ln in text.splitlines() if "issues/new" in ln]
+    installer = section(text, "Installer")
+    assert installer.count("\nissue link (not shown: this report is private only)\n") == 1, installer
+    assert (
+        "\nNEXT: review ~/agent-context/setup/setup-report.md and copy that one file back privately "
+        "(nothing is sent for you)\n" in installer
+    ), installer
+    redaction = text.split("\n## Redaction\n", 1)[1]
+    assert "Private only: a hold's reason or owner is also a word this report prints" in redaction
+    assert "Send it: privately (" in redaction and setup_report.issue_link(text) is None, redaction
+    # a public report copies the old link and its NEXT: as they are
+    cfg.write_text(
+        '[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "Avery Quill"\n\n' + plain
+    )
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    installer = section(text, "Installer")
+    assert f"\n{link}\n" in installer and f"\n{next_line}\n" in installer, installer
+    assert "Private only:" not in text and setup_report.issue_link(text) is not None
+
+
 def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: dict[str, Path]) -> None:
     """B13 round 26 E72: a two-letter hold owner ("IT") cut every "it" of the report, while neither report
     went private, as report_words reads three letters or more. A two-letter value that is a word either

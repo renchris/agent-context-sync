@@ -14641,6 +14641,8 @@ def build_report(
         lines += bodies[title]
     main = _redact_lines(red, lines, [a.said("Agent") for a in (r.friction.attempts if r.friction else ())])
     red.recount(main)
+    if red.private_only:  # final only after recount (B13 round 27 P104)
+        main = _without_copied_links(main)
     counts = f"{_plural(red.total, 'replacement')} of {_plural(red.values, 'value')} (legend under Redaction)"
     main = main.replace(_REDACTION_MARK, counts)
     try:
@@ -14652,6 +14654,28 @@ def build_report(
     if not red.private_only:  # a private copy ends with no public issue link (B13 round 7 H75)
         tail += ["", link]
     return main + "\n" + "\n".join(tail) + "\n", red
+
+
+_LINK_NOT_SHOWN = "issue link (not shown: this report is private only)"
+# a copied NEXT:'s pointer at that link, both of install.sh's forms (scripts/install.sh, the report-step NEXT)
+_LINK_ABOVE_RE = re.compile(r", or paste (?:the setup report|it) into the issue the link above opens")
+
+
+def _without_copied_links(main: str) -> str:
+    """``main`` of a private-only report with every copied ``issue link (review the report first): ...`` line
+    (an earlier run's, in the copy of install.out) said as not shown, and a copied NEXT:'s ``or paste ... into
+    the issue the link above opens`` cut: the report says never to send it as a public issue (B13 round 27
+    P104). The label is matched, never a bare ``issues/new``. Not recounted: the placeholders were counted
+    on the text as shown, and a second recount could clear :attr:`Redactor.word_named_shown`, the verdict
+    this follows from."""
+    return "\n".join(
+        _LINK_NOT_SHOWN
+        if ln.lstrip().startswith(ISSUE_LINK_LABEL)
+        else _LINK_ABOVE_RE.sub("", ln)
+        if ln.lstrip().startswith("NEXT:")
+        else ln
+        for ln in main.split("\n")
+    )
 
 
 def write_report(path: Path, text: str) -> None:
