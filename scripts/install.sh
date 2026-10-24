@@ -6757,8 +6757,17 @@ def lost(p):
         return False
     if not os.access(p.parent, os.R_OK | os.W_OK | os.X_OK):
         return False  # a folder this account cannot use: its own word comes first
+    # never a blocking open: a fifo at heartbeat.json held this probe until with_timeout killed it, and every
+    # word with it, while manifest_lost reads no record there (round 25 D46; round 26 E31, E56)
     try:
-        data = json.loads((p.parent / "heartbeat.json").read_text(encoding="utf-8"))
+        fd = os.open(p.parent / "heartbeat.json", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return False
+            raw = b"".join(iter(lambda: os.read(fd, 65536), b""))
+        finally:
+            os.close(fd)
+        data = json.loads(raw.decode("utf-8"))
     except (OSError, ValueError):
         return False
     if not isinstance(data, dict):
@@ -8220,7 +8229,20 @@ except OSError:
 if not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
     print(0)
     sys.exit(0)
-data = json.loads((db.parent / "heartbeat.json").read_text(encoding="utf-8"))
+# never a blocking open (round 26 E31, E56): a fifo at heartbeat.json waited out with_timeout, as a record
+# that is no regular file is none to manifest_lost (round 25 D46)
+try:
+    fd = os.open(db.parent / "heartbeat.json", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("not a regular file")
+        raw = b"".join(iter(lambda: os.read(fd, 65536), b""))
+    finally:
+        os.close(fd)
+    data = json.loads(raw.decode("utf-8"))
+except (OSError, ValueError):
+    print(0)
+    sys.exit(0)
 lost = isinstance(data, dict) and any(
     isinstance(e, dict) and (bool(e.get("last_success_at")) or (type(e.get("run_id")) is int and e["run_id"] >= 1))
     for e in data.values()

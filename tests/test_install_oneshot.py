@@ -22,7 +22,6 @@ import base64
 import calendar
 import contextlib
 import dataclasses
-import errno
 import fcntl
 import hashlib
 import itertools
@@ -10163,15 +10162,36 @@ def test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_word
     assert again.returncode == 0, again.stdout + again.stderr
 
 
-def _inlined_lost() -> Callable[[Path], bool]:
-    """Step 1's lost(), the copy of manifest.manifest_lost that config_errors' probe runs, from install.sh."""
+def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable[[Path], int]]:
+    """install.sh's two copies of manifest.manifest_lost, each run from its own text in a process of its own
+    under a time limit, so a copy that blocks fails the test rather than hanging it (B13 round 26 E31, E56):
+    step 1's lost(), from config_errors' probe, and step 2's state_lost probe, whole, over a config whose
+    state folder is the case's, printing what it prints (2 for a link into a folder gone or refusing a write,
+    3 for a link to nothing in a folder a sync can write, else 0 or 1)."""
     script = INSTALL_SH.read_text(encoding="utf-8")
     [body] = re.findall(r"(?ms)^(def lost\(p\):\n.*?)\n\n\n", script)
-    scope: dict[str, object] = {"errno": errno, "json": json, "os": os, "stat": stat}
-    exec(body, scope)  # install.sh's own text: the copy under test
-    found = scope["lost"]
-    assert callable(found)
-    return lambda p: bool(found(p))
+    [probe] = re.findall(r"(?ms)^state_lost\(\) \{\n.*?\"\$TOOL_PY\" -I -c '\n(.*?)\n' \"\$CONFIG\"", script)
+    step1 = body + "\n\nimport sys\nprint(int(lost(Path(sys.argv[1]))))\n"
+    head = "import errno, json, os, stat\nfrom pathlib import Path\n"
+
+    def run(code: str, arg: Path) -> str:
+        cp = subprocess.run(
+            [sys.executable, "-I", "-c", code, str(arg)],
+            capture_output=True,
+            text=True,
+            timeout=5,  # a blocking open of a fifo never returns
+            check=False,
+            env={**os.environ, "HOME": str(tmp_path)},
+        )
+        assert cp.returncode == 0 and cp.stderr == "", cp.stderr
+        return cp.stdout.strip()
+
+    def state_lost(db: Path) -> int:
+        cfg = tmp_path / "sources.toml"
+        cfg.write_text(default_config_text() + f'[agentsync]\nstate_dir = "{db.parent}"\n', encoding="utf-8")
+        return int(run(probe, cfg))
+
+    return (lambda db: run(head + step1, db) == "1"), state_lost
 
 
 def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_path: Path) -> None:
@@ -10179,8 +10199,13 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
     state_lost), since the installed build that runs them may predate it, and both missed round 24 B64's
     dangling link. Each copy answers as manifest_lost does over a missing file, a dangling link, a link to a
     live file, a link loop, a regular file, a folder and a missing heartbeat, so they cannot drift apart
-    again unseen. state_lost is read as text: its probe loads a config, which this test has none of."""
-    lost = _inlined_lost()
+    again unseen.
+
+    B13 round 26 E31, E56: both copies read heartbeat.json with a blocking open, so a fifo there held step
+    1's probe until with_timeout killed it, with every word it would have printed, and step 2's for its 10 s,
+    while manifest_lost (D46) reads no record there at once. Both copies run here, state_lost whole (it was
+    read as text), and a fifo heartbeat is a case."""
+    lost, state_lost = _inlined_lost_runs(tmp_path)
     state = tmp_path / "state"
     state.mkdir()
     db = state / "manifest.sqlite"
@@ -10194,19 +10219,23 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
         "file": lambda: db.write_bytes(b""),
         "folder": db.mkdir,
     }
-    for beat in (True, False):
+    for beat in ("record", "none", "fifo"):
         for name, make in cases.items():
             for f in state.iterdir():
                 f.rmdir() if f.is_dir() and not f.is_symlink() else f.unlink()
-            if beat:
+            if beat == "record":
                 heartbeat.write_text(json.dumps({"alpha": {"run_id": 3}}), encoding="utf-8")
+            elif beat == "fifo":
+                os.mkfifo(heartbeat)
             make()
             want = manifest_lost(db)
             assert lost(db) is want, (name, beat)
-            assert want is (beat and name in ("missing", "dangling", "dangling-dir")), (name, beat)
-    [probe] = re.findall(r"(?ms)^state_lost\(\) \{\n(.*?)^\}$", INSTALL_SH.read_text(encoding="utf-8"))
-    assert "if not stat.S_ISLNK(db.lstat().st_mode):" in probe and "    db.stat()\n" in probe, probe
-    assert "except OSError:\n    print(0)" in probe, probe
+            link = {"dangling": 3, "dangling-dir": 2}.get(name, 1)
+            assert state_lost(db) == (link if want else 0), (name, beat)
+            assert want is (beat == "record" and name in ("missing", "dangling", "dangling-dir")), (
+                name,
+                beat,
+            )
 
 
 @pytest.mark.parametrize("call", ["init", "add-source"])
