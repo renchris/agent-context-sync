@@ -146,6 +146,42 @@ def test_a_red_trunk_stops_the_push_unless_allowed(remote: Path, tmp_path: Path,
     assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
 
 
+def test_a_trunk_already_red_stops_before_the_gate(remote: Path, tmp_path: Path, env: dict[str, str]) -> None:
+    """B13 round 27 P140: trunk's CI was read only after the gate, so two lanes ran 35-minute land gates
+    under the shared lock on a trunk whose run had already ended red, each to exit 6. A run already ended red
+    stops the land before the gate; --allow-red-trunk still gates and lands."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    gh_env = _with_gh(tmp_path, env, STUB_GH)
+    cp = _land(clone, gh_env)
+    assert cp.returncode == 6, cp.stdout + cp.stderr
+    assert "trunk is red: run 101" in cp.stderr and "(before the gate)" in cp.stderr
+    assert not (tmp_path / "gate.log").exists()
+    assert "run watch" not in (tmp_path / "gh.log").read_text(), "the read before the gate never waits"
+    cp = _land(clone, gh_env, "--allow-red-trunk")
+    assert cp.returncode == 8, cp.stdout + cp.stderr
+    assert (tmp_path / "gate.log").read_text() == "ran\n"
+
+
+def test_a_cancelled_or_running_trunk_run_still_gates(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 27 P140 (P139's rules): the read before the gate stops only on a run already ended
+    failure, timed_out or startup_failure. A cancelled run (perhaps superseded), one in progress, or a gh that
+    fails goes on to the gate, and the check after it decides as before."""
+    for n, view in enumerate(("completed cancelled", "in_progress", "")):
+        clone = _clone(remote, tmp_path / f"c{n}", env, f"c{n}")
+        log = tmp_path / "gate.log"
+        log.unlink(missing_ok=True)
+        answer = f"echo {view}" if view else "exit 1"
+        body = (
+            'case "$1 $2" in\n  "run list") echo 101 ;;\n  "run watch") exit 1 ;;\n'
+            f'  "run view") {answer} ;;\nesac\n'
+        )
+        cp = _land(clone, _with_gh(tmp_path, env, body))
+        assert cp.returncode != 0 and "(before the gate)" not in cp.stderr, cp.stdout + cp.stderr
+        assert log.read_text() == "ran\n", view
+
+
 def test_a_gh_that_answers_nothing_is_ci_not_read_and_pushes_nothing(
     remote: Path, tmp_path: Path, env: dict[str, str]
 ) -> None:
@@ -236,7 +272,7 @@ def test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read(
 
 def _ci_listed_late(trunk: str, ci_run: str) -> str:
     """A gh whose pushed sha lists a green diagrams run (202) and, for ``--workflow ci``, ``ci_run`` (none if
-    empty); run 303 is red. Trunk's run 101 is green either way."""
+    empty); run 303 is red. Trunk's run 101 is green either way, to a watch and to the early read."""
     return (
         'case "$1 $2" in\n'
         '  "run list")\n'
@@ -244,7 +280,7 @@ def _ci_listed_late(trunk: str, ci_run: str) -> str:
         f'    elif [ "$5 $6" = "--workflow ci" ]; then [ -z "{ci_run}" ] || echo {ci_run}\n'
         "    else echo 202; fi ;;\n"
         '  "run watch") [ "$3" != 303 ] ;;\n'
-        '  "run view") echo completed failure ;;\n'
+        '  "run view") if [ "$3" = 303 ]; then echo completed failure; else echo completed success; fi ;;\n'
         "esac\n"
     )
 

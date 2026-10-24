@@ -9,7 +9,7 @@
 # Bash(scripts/ship-land.sh:*) is what lets it run without a prompt, and the push it makes is a subprocess the
 # Bash(git push:*) ask rule never sees. It never forces: a rejected push is fetched, rebased and gated again.
 # Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red,
-# 6 trunk CI red, 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, or no run appeared): before
+# 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, or no run appeared): before
 # the push nothing is pushed, after it the line says LANDED and the runs are read back by hand.
 set -euo pipefail
 
@@ -132,6 +132,27 @@ watch_runs() {
   done
 }
 
+# One read of a sha's runs, with no wait, before the gate (B13 round 27 P140): 1, the run's id printed, only when a
+# run has already ended failure, timed_out or startup_failure; 0 in every other case (gh failed, no run yet, queued,
+# in progress, cancelled), which the check after the gate decides as before. A gate on a trunk already known red
+# would end in exit 6 anyway, about 35 minutes later and holding the land lock.
+trunk_known_red() {
+  local sha=$1 req all id state
+  req=$(gh run list --commit "$sha" --workflow ci --json databaseId --jq '.[].databaseId' 2>/dev/null) || return 0
+  all=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>/dev/null) || return 0
+  [ -n "$req" ] || return 0
+  for id in $(printf '%s\n' "$req" "$all" | awk 'NF && !seen[$0]++'); do
+    state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null) || continue
+    case $state in
+      "completed failure" | "completed timed_out" | "completed startup_failure")
+        echo "$id"
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
 if [ "$locked" = 0 ]; then
   echo "== waiting for the land lock $lock"
   rc=0
@@ -166,6 +187,12 @@ while :; do
   if git merge-base --is-ancestor HEAD origin/main; then
     echo "== HEAD is on origin/main already; nothing to land"
     exit 0
+  fi
+  # Every attempt reads the head just fetched, so a re-gate after origin/main moved checks the new head too.
+  if [ "$ci" = 1 ] && [ "$allow_red" = 0 ] && ! out=$(trunk_known_red "$(git rev-parse origin/main)"); then
+    echo "ship-land: trunk is red: run $out (gh run view $out --log-failed); nothing pushed (before the gate)." >&2
+    echo "  Land on top only when this diff does not touch those tests: rerun with --allow-red-trunk" >&2
+    exit 6
   fi
   if ! git rebase -q origin/main; then
     git rebase --abort

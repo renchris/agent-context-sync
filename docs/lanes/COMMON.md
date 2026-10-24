@@ -201,7 +201,8 @@ is the full set, resumed where a killed run of the same tree stopped). Before ev
 `GATE GREEN at <sha>`.
 
 Landing (round 27): land with `scripts/ship-land.sh --lock /tmp/b13-r27-land.lock`, typed exactly so (no env prefix,
-no `bash` in front, its own command). It takes the one lock, fetches, rebases onto origin/main, runs `scripts/gate.sh`,
+no `bash` in front, its own command). It takes the one lock, fetches, reads trunk's CI once without waiting (a run
+already ended red stops it there, exit 6, before the gate), rebases onto origin/main, runs `scripts/gate.sh`,
 waits out and checks trunk's CI, pushes `HEAD:main` with no permission prompt (never forced; a refused push is rebased
 and gated again), then reads the push's CI back; exit codes are in its header. Never run a bare `git push`: it stops at
 the operator's ask rule. Every other full test run also takes the same lock: `lockf /tmp/b13-r27-land.lock
@@ -209,7 +210,8 @@ scripts/gate.sh --lane`; `--affected` runs need no lock. If ship-land exits 5 wi
 137), that is memory, not your diff: wait for the 1-minute load to fall under about 400 and run it again. Exit 9 is
 CI it could not read: `nothing pushed` before the push (retry), `LANDED` after it (read the runs back by hand).
 
-Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6). If trunk is red, do not
+Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6); since round 27 P140 it
+also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
 tests (`gh run view <id> --log-failed`), then wait for the owner's fix. The lane that landed a test that is red on CI
 owns its fix until main is green, even after other lanes land on top. CI takes 18 to 37 minutes a run (the slowest, 36:24, in round 24), and a run can wait up to about 48 minutes for a macOS runner first; its limit is 50 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83).
