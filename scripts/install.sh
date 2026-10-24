@@ -224,7 +224,10 @@
 # and finally one line starting "NEXT:" with the single next step and, in brackets, the report path. A run
 # that ends with a folder to sync and nothing failed ends on the loop's NEXT (KISS K02): install.sh runs
 # `agentsync status` once more with its NEXT line on, prints none of its output and lifts its first "NEXT:"
-# line ("run ~/.local/bin/agentsync sync and follow its NEXT line" when it prints none); with
+# line ("run ~/.local/bin/agentsync sync and follow its NEXT line" when it prints none; when a signal stopped
+# that status, a line "note: the closing status was stopped by SIGKILL (signal 9) before it finished, so its
+# NEXT line may be missing here: ~/.local/bin/agentsync status prints it again" comes first, the exit is kept,
+# and install.log's step=report line adds closing_status=<rc>; B13 round 27 P14); with
 # --confirm-install-agent the line starts "background sync: running; " (or "ok; "). A [FAIL] line in that
 # status is printed and the NEXT says to fix it, or, as step 5's, whose fix it is; a listing macOS held for an Allow click in this terminal is
 # the NEXT and the run exits 1. A run without a folder over an existing config ends on that status's NEXT
@@ -1468,6 +1471,8 @@ step_end() { # RESULT [RC] [NOTE]: close the open step (done | skipped | failed)
 	local text
 	[ -n "$STEP" ] || return 0
 	text="step=$STEP seconds=$((SECONDS - STEP_T0)) rc=${2:-0} result=$1${3:+ note=$3}"
+	# the closing status a signal stopped, which the run's exit does not show (B13 round 27 P14)
+	[ "$STEP" != report ] || [ -z "${LOOP_STOPPED:-}" ] || text="$text closing_status=$LOOP_STOPPED"
 	if [ "$STEP" = "report" ] && [ -n "$END_LINE" ]; then
 		REPORT_LINE="$STEP_AT run=$RUN_ID $text" # finish_setup_log puts it before the end line
 	else
@@ -9338,9 +9343,17 @@ cleared_listings() {
 	done
 }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
-	local fails blocking held waits chmods
+	local fails blocking held waits chmods srun=0
 	LOOP_OUT="$(mktemp)"
-	with_progress "status" loop_status_run || true # its exit status is its [FAIL] lines
+	# its exit status is its [FAIL] lines; 128 or more is a signal that stopped it, which `|| true` dropped, so
+	# the run ended 0 on the fallback NEXT with nothing said (B13 round 27 P14). Keyed on the rc, never on an
+	# empty LOOP_OUT: a status left running when only with_progress was stopped can still write it later, and
+	# one stopped after its NEXT left that NEXT in it. The exit stays: the sync itself finished
+	with_progress "status" loop_status_run || srun=$?
+	if [ "$srun" -ge 128 ]; then
+		say "note: the closing status was $(rc_meaning "$srun") before it finished, so its NEXT line may be missing here: $AGENTSYNC status prints it again"
+		LOOP_STOPPED="$srun"
+	fi
 	cleared_listings
 	fails="$(grep '^\[FAIL' "$LOOP_OUT" 2>/dev/null || true)"
 	blocking="$(blocking_fails "$LOOP_OUT")" # the launcher's TCC_PENDING alone does not stop the loop
@@ -9367,6 +9380,7 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	fi
 }
 EXIT_RC=0
+LOOP_STOPPED="" # the closing status's rc when a signal stopped it: install.log's report line says so (P14)
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 if [ "$DRY_RUN" -eq 1 ]; then
 	next="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"

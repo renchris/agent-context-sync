@@ -205,6 +205,7 @@ case "$sub" in
     if [ "$sub" = status ] && [ "${AGENTSYNC_NO_NEXT_HINT:-}" != 1 ]; then  # install.sh's closing status
       printf '%s\\n' "${STUB_STATUS_OUT:-NEXT: draft the baseline questions (stub)}"
       echo "  exclude_label_names: Stub Secret Label"
+      [ -z "${STUB_STATUS_SIGNAL:-}" ] || kill -"$STUB_STATUS_SIGNAL" $$  # a stop before it ended (P14)
       exit "${STUB_STATUS_RC:-0}"
     fi
     [ -z "${STUB_DOCTOR_SLEEP:-}" ] || sleep "$STUB_DOCTOR_SLEEP"
@@ -1310,6 +1311,45 @@ def test_the_loops_next_falls_back_when_status_prints_none(
         f"[setup report: {report_path(env)}]"
     )
     assert one_next(cp)
+
+
+@pytest.mark.parametrize(
+    ("signal_name", "said"),
+    [
+        ("KILL", "stopped by SIGKILL (signal 9)"),
+        ("TERM", "stopped by SIGTERM, perhaps a tool timeout"),
+        ("", ""),
+    ],
+)
+def test_a_closing_status_a_signal_stopped_is_said_and_logged(
+    env: dict[str, str], folder: Path, wheel: Path, signal_name: str, said: str
+) -> None:
+    """B13 round 27 P14 (rehearsal c): a closing status killed by a signal ended the run 0 on the fallback
+    NEXT with nothing said, as `|| true` dropped its rc. The run says so above the NEXT, which falls back as
+    before, keeps exit 0 (the sync itself finished) and logs closing_status=<rc> on install.log's report
+    line. A status that exits 1 on a [FAIL] line is no stop (the empty case)."""
+    failed = "[FAIL] sources.alpha — a stub failure (fix: run the stub again)"
+    out = "NEXT: run the stub's own step" if signal_name else failed
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_SIGNAL": signal_name, "STUB_STATUS_RC": "1"},
+        str(wheel),
+        "--source-local",
+        str(folder),
+    )
+    note = [ln for ln in cp.stdout.splitlines() if ln.startswith("note: the closing status was ")]
+    report_line = next(ln for ln in install_log(env) if " step=report " in ln)
+    if not signal_name:
+        assert note == [] and "closing_status=" not in report_line, cp.stdout
+        return
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    assert note == [
+        f"note: the closing status was {said} before it finished, so its NEXT line may be missing here: "
+        f"{agentsync} status prints it again"
+    ], cp.stdout
+    rc = 137 if signal_name == "KILL" else 143
+    assert report_line.endswith(f" closing_status={rc}"), report_line
+    assert last_line(cp).startswith("NEXT: "), last_line(cp)
 
 
 def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
