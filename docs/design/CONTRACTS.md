@@ -1055,6 +1055,8 @@ class CycleReport:
     legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
+    new_manifest_removed: int = 0  # 2026-10-23 (§16.185 E10): of those, the ones this run did not write back
+    new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -30208,7 +30210,81 @@ Reserved for round 26 lane RB of B13.
 
 ### 16.185 Round 26: a state file that is not a file, purge over a lost manifest and the new start (2026-10-23, wave B13 round 26 lane B)
 
-Reserved for round 26 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 26 rulings 13
+and 14; the words below were sent to lanes RA, RB and D before they built their halves.
+
+**E25: over a lost manifest no queued purge is invited or run (`agentsync.governance`, `agentsync.cli`; ruling
+14).** With manifest.sqlite lost after earlier syncs, `partition_purges` and `_kept_queued` read every entry as
+runnable, the loop invited `purge --queue`, and the run erased a current page and its history. `_unjudged` (lost,
+not a regular file by stat, so no fifo opens, or unreadable) keeps upstream-deleted and label-escalation entries
+with `UNJUDGED_NOTE`, never runnable; over a lost manifest every entry is kept, so nothing invites a run that
+refuses; `kept_lines` words them `UNJUDGED_PURGES`, never `KEPT_ESCALATIONS`. `cli._lost_state_stop` (curate's
+B89 and D77 guard, shared) stops `purge` (queue, dry run, selector) and `compact-history` on sync's line, the
+person's fix and a NEXT, exit 1, nothing written. A missing manifest with no heartbeat record is a first start,
+judged as before. hold and release are not refused: they change no page, and a hold blocks purges. Test:
+`test_over_a_lost_manifest_no_queued_purge_is_invited_or_run`.
+
+**E9, E10: the new start continues the run numbers and counts each page it removes (`agentsync.cycle`,
+`agentsync.manifest`; ruling 14).** A manifest with no runs numbered from 1 again, so `append_changelog` skipped
+the section as already written and the commit's `Agentsync-Run` trailer repeated an old one; its reset removed
+the page of a file that had gone while the commit said 0d. `Manifest.seed_run_sequence` continues after the
+highest trailer or CHANGELOG heading the docs repo records (`cycle._highest_recorded_run`; the dry run estimates
+the same number); `Cycle._count_orphans_removed` makes each orphan page not written back a DELETED change of its
+source, one list for the counts, the WARNING and `CycleReport.new_manifest_removed`; the note reads `K written
+back, R removed (its|their file is gone or was not converted)`, unchanged when none went. Test:
+`test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers`.
+
+**E74: a new start the background job ran is said by the next foreground sync (`agentsync.cycle`).** The job
+keeps its unsaid note and pages in the manifest (`NEW_START_UNSAID_META`); status counts them read-only (`new
+start: ...`); the next foreground sync re-tests each page, says the note `(by the background sync)` and a
+WARNING per page still missing, once, and clears the key. Test:
+`test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_once`.
+
+**E22, E38, E39, E40, E43, E45, E46, E62, E63, E65: a state file that is not a regular file is the person's
+(`agentsync.ops.doctor`, `agentsync.cli`, `agentsync.governance`, `agentsync.ops.lock`; ruling 13).**
+`doctor.state_not_a_file` judges by stat before any open: a -wal or -shm (a fifo at the -wal is left to sqlite's
+open, which replaces it), the manifest, the lock (a folder, fifo, socket or any link: `lock_not_a_file`, never
+`free`), a real folder at heartbeat.json (`heartbeat_not_a_file`; a fifo, socket or link to a folder keeps the
+warn, whose rename does replace them) and the governance files (`GovernanceNotAFileError`, which fails closed,
+never the empty default). `cli._not_a_file_stop` prints status's FAIL as `error: state: <detail> (fix: <fix>)`
+with the NEXT and a sync's stop record (`file=lock|heartbeat|holds|governance owner=person kind=misplaced`), exit
+1: curate, init, hold and release, purge and compact-history judge every file; sync judges the lock, heartbeat
+and governance files, its own open already stopping on the manifest and sides; `hold --list` reads holds.json
+alone. `SingleWriterLock.acquire` raises `errors.LockNotAFileError` for a command no guard covers. The kinds come
+from `doctor.own_kind` (a link read as itself) and `doctor.link_kind`; the governance files' roles from
+`governance.GOVERNANCE_ROLES`, judged by `governance.governance_not_a_file`. Links: ENOTDIR
+through a link is a link to nothing (`dangling_target`, `manifest_lost`; E45); any -wal or -shm link beside a
+manifest that is no link is a side not a file with the move aside, since sqlite never opens a side through a link
+(E62; this replaces the dangling side's "points the link at an existing file", which E62's measurement showed
+false, so E46's words now agree with the FAIL); a linked manifest's mode and owner are its target's (E63). Tests:
+`test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_command`,
+`test_the_lock_refuses_anything_not_a_file_with_its_path_never_a_traceback`,
+`test_a_link_to_a_folder_at_heartbeat_json_stays_a_warn_the_next_pass_clears`,
+`test_a_manifest_link_a_sync_stops_on_stops_curate_and_never_reads_as_a_new_start`,
+`test_a_side_file_link_is_no_file_sqlite_opens_and_its_fix_leads_to_a_clean_sync`,
+`test_a_side_link_beside_a_manifest_link_is_harmless_and_a_linked_manifest_reads_its_targets_mode`,
+`test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_the_persons_next`.
+
+**E18, E41, E75: the not-a-file words, status's manifest line, one dangling test (`agentsync.ops.doctor`,
+`agentsync.cli`, `agentsync.setup_report`).** Every not-a-file detail reads `<path> is <kind>, not a file: <role>
+belongs there`, no bracket before `(fix:` (the report's readers key on `, not a file`). Status says `manifest:
+none (the next sync stops on it; ...)` for a manifest link a sync stops on (`doctor.manifest_refused`), never
+"starts a new one".
+`doctor.dangling_into_unusable` is the one test doctor, status and the report read; the report's
+`_dangling_state` is the manifest's alone, and `_sides_not_files_at` follows E62.
+
+**E2, E12, E44, E47: the report's link targets, the stale lock's log, the Loop wait, a docstring
+(`agentsync.setup_report`, `agentsync.ops.doctor`, `agentsync.cli`).** The redactor shows a state-file or
+docs-repo link target outside home as the unnumbered `<path>`; status keeps it whole. The stale-lock warn names
+the job's own err.log by the holder sidecar of the same pid, none for a sync started elsewhere, and the log
+folder's only when it holds any. The report's Loop hook keeps the baseline wait over a busy state with no FAIL.
+Tests: `test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status`,
+`test_a_stale_lock_names_a_crash_log_only_where_one_is`,
+`test_the_reports_loop_keeps_the_baseline_wait_when_a_busy_state_has_no_fail`.
+
+**E42: the misplaced NEXT says the command stopped before it finished (`agentsync.cli`; amends §16.180 D44).**
+"so this command did not run" was false after add-source and init, which add the source or write the config
+before the state stop. Test: `test_add_source_over_a_folder_at_the_manifest_says_it_stopped_before_it_finished`.
 
 ### 16.186 Round 26: the speech fix for an old toolchain and the OCR URL cut (2026-10-23, wave B13 round 26 lane E)
 
