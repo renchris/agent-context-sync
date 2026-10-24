@@ -30351,6 +30351,8 @@ finished (1 check): ocr warn (install.sh builds it again)`, with no time limit; 
 BUILD_TIMED_OUT. A warn whose fix is the developer tools' (doctor keeps the clause then), an older marker without
 the clause, or a warn whose reason is not the marker's stays unexpected. Test:
 `test_a_helper_build_a_signal_stopped_is_install_shs_to_build_again_never_unexpected`.
+Amended 2026-10-24, §16.188 P32, P52: a speech reason that needs a newer Swift (`speech.TOOLS_TOO_OLD`, under the
+same head) is not the re-run's; it has its own bucket, `from a speech build that needs a newer Swift`.
 
 **A two-letter hold value** (E72). report_words reads three letters or more, so an owner `IT` cut every `it` of the
 report while both reports stayed public. `_TWO_LETTER_WORDS` (install.sh's `two_letter_word`, kept equal) lists
@@ -30747,9 +30749,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19 and P127, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
-one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127.
+one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30804,6 +30806,19 @@ report words this line too (`fallback_sync_stop_line`, `which was missing after 
 is lane RB's file and is not changed here (routed to RB). Tests:
 `test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
 `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured` (the writable-folder sub-case).
+
+**A speech build that needs a newer Swift is the Command Line Tools update, never the re-run** (P32, P52; amends
+§16.183's E34). Lane E's E48 gives a fetch that needs a newer Swift than this Mac's the cause `speech.TOOLS_TOO_OLD`
+under the `speech.RESOLVE_FAILED` head, and doctor's fix for it is `update the Command Line Tools (or Xcode) in
+Software Update to a release with Swift <n> or later ..., then run install.sh again`, as a re-run builds with the
+same Swift and fails the same way. `_helpers_again` keyed on the head alone, so the Doctor line filed the warn under
+`from a helper build that stopped before it finished ... (install.sh builds it again)`. `_helpers_again` now skips a
+reason `speech.TOOLS_TOO_OLD_RE` matches, and the new `_speech_newer_swift` reads it from the marker for a bucket of
+its own: `from a speech build that needs a newer Swift (1 check): speech warn (update the Command Line Tools to a
+release with Swift <n> or later, then run install.sh again)`, doctor's words without `(or Xcode) in Software Update`; with the developer tools' fix the warn stays unexpected. The report reads
+`speech.TOOLS_TOO_OLD_RE` lazily (`_tools_too_old_re`, the copy `_TOOLS_TOO_OLD_COPY` for a build without it) and
+quotes doctor's opening, up to `or later`, as `_NEWER_SWIFT_FIX_COPY`; a test keeps both equal to their sources. Test:
+`test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

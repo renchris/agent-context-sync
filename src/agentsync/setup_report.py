@@ -10995,7 +10995,9 @@ def _helpers_again(c: Config) -> dict[str, str]:
     ``skill.HELPER_RETRY_CLAUSE``, ``ocr._signal_reason``'s) and a speech build whose FluidAudio fetch failed
     (``speech.RESOLVE_FAILED``), each with the words doctor's detail keeps of it (the reason without the
     clause, which doctor drops). Keyed on the report's own read of each marker, as :func:`_helpers_timed_out`
-    is; a time-out is that one's, never this. Empty when convert cannot be imported."""
+    is; a time-out is that one's, never this, and a fetch that needs a newer Swift than this Mac's is
+    :func:`_speech_newer_swift`'s, never this, as a re-run fails the same way (B13 round 27 P32, P52). Empty
+    when convert cannot be imported."""
     out: dict[str, str] = {}
     try:
         from agentsync import skill  # noqa: PLC0415 - lazy, as the doctor reads are
@@ -11008,17 +11010,65 @@ def _helpers_again(c: Config) -> dict[str, str]:
                 continue
             if reason.endswith(skill.HELPER_RETRY_CLAUSE):
                 out[name] = reason.removesuffix(skill.HELPER_RETRY_CLAUSE)
-            elif name == "speech" and reason.startswith(speech.RESOLVE_FAILED):
+            elif (
+                name == "speech"
+                and reason.startswith(speech.RESOLVE_FAILED)
+                and not _tools_too_old_re(speech).search(reason)
+            ):
                 out[name] = speech.RESOLVE_FAILED
     except Exception:
         return out
     return out
 
 
+_TOOLS_TOO_OLD_COPY = (
+    "this Mac's Swift {installed} is older than the Swift {needed} the speech helper or FluidAudio needs"
+)
+"""``speech.TOOLS_TOO_OLD``, the cause a speech build's marker gives a fetch that needs a newer Swift than
+this Mac's: the report's copy for an installed build without the name, which a test keeps equal to the source
+(B13 round 27 P32, P52)."""
+_NEWER_SWIFT_FIX_COPY = (
+    "update the Command Line Tools (or Xcode) in Software Update to a release with Swift {needed} or later"
+)
+"""How doctor's fix for :data:`_TOOLS_TOO_OLD_COPY` opens (``doctor._resolve_again_fix``, lane E's E48): a
+test keeps the report's words equal to doctor's, which have no name of their own (P32, P52). The Doctor line
+says it without the ``(or Xcode) in Software Update`` the Doctor section's fix spells out."""
+
+
+def _tools_too_old_re(speech: Any) -> re.Pattern[str]:
+    """``speech.TOOLS_TOO_OLD_RE``, or the same read of :data:`_TOOLS_TOO_OLD_COPY` when the installed speech
+    module has no such name (an older build), as :func:`_state_lost` reads lane B's words."""
+    found = getattr(speech, "TOOLS_TOO_OLD_RE", None)
+    if isinstance(found, re.Pattern):
+        return cast("re.Pattern[str]", found)
+    words = _TOOLS_TOO_OLD_COPY  # no regex sign in it, as speech's own read says
+    return re.compile(words.format(installed=r"(?P<installed>\d[\d.]*)", needed=r"(?P<needed>\d[\d.]*)"))
+
+
+def _speech_newer_swift(c: Config) -> tuple[str, str] | None:
+    """The cause doctor's detail keeps of a speech build whose ``swift package resolve`` failed as it needs a
+    newer Swift than this Mac's (``speech.TOOLS_TOO_OLD``), and the Swift it needs; None for any other marker,
+    or when convert cannot be imported. A re-run builds with the same Swift and fails the same way, so
+    doctor's fix is a Command Line Tools update first, and the Doctor line says that one, never "install.sh
+    builds it again" (B13 round 27 P32, P52)."""
+    try:
+        from agentsync.convert import ocr, speech  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        reason = ocr._failure(ocr._helper_path(c.cache_dir, speech.SPEECH), speech.SPEECH)
+        if not reason or not reason.startswith(speech.RESOLVE_FAILED):
+            return None
+        found = _tools_too_old_re(speech).search(reason)
+    except Exception:
+        return None
+    return (found.group(0), found["needed"]) if found else None
+
+
 def _helper_again_warn(name: str, detail: str, again: dict[str, str]) -> bool:
     """Whether doctor's ``name`` warn is :func:`_helpers_again`'s build with the re-run as its fix: its
     words are in the detail and the retry clause is not after them (doctor keeps it when its fix is the
-    developer tools', and install.sh builds nothing without them), nor the developer tools' fix."""
+    developer tools', and install.sh builds nothing without them), nor the developer tools' fix. Also asked
+    with :func:`_speech_newer_swift`'s words for the newer-Swift bucket, whose fix is a Command Line Tools
+    update first and not the re-run (B13 round 27 P32, P52)."""
     stem = again.get(name)
     if stem is None or stem not in detail:
         return False
@@ -11174,6 +11224,8 @@ class _DoctorSort:
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
     from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
     from_again: list[str] = dataclasses.field(default_factory=list)  # B13 round 26 E34, E78
+    from_newer_swift: list[str] = dataclasses.field(default_factory=list)  # B13 round 27 P32, P52
+    newer_swift: str = ""  # the Swift :func:`_speech_newer_swift` read the build needs
     from_misplaced: list[str] = dataclasses.field(default_factory=list)  # B13 round 26 ruling 13
     misplaced_words: str = "from state files that are not files"
     lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
@@ -11579,6 +11631,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_helpers: list[str] = []
     again = _helpers_again(r.config) if r.config is not None else {}  # B13 round 26 E34, E78
     from_again: list[str] = []
+    newer_swift = _speech_newer_swift(r.config) if r.config is not None else None  # B13 round 27 P32, P52
+    from_newer_swift: list[str] = []
     # B13 round 26 ruling 13: the lock, the heartbeat or a governance file that is not a regular file
     misplaced = {} if notfolder or r.config is None else _misplaced_state(r.config)
     from_misplaced: list[str] = []
@@ -11744,6 +11798,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if tag == "warn" and _helper_again_warn(name, detail, again):  # B13 round 26 E34, E78: D85's re-run
             from_again.append(name)
             continue
+        if (
+            tag == "warn"
+            and name == "speech"
+            and newer_swift is not None
+            and _helper_again_warn(name, detail, {name: newer_swift[0]})
+        ):  # B13 round 27 P32, P52: doctor's Command Line Tools update first, never the plain re-run
+            from_newer_swift.append(name)
+            continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
             if tag == "warn"
@@ -11782,6 +11844,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_side,
         from_dangling,
         from_again=from_again,
+        from_newer_swift=from_newer_swift,
+        newer_swift=newer_swift[1] if newer_swift is not None else "",
         from_misplaced=from_misplaced,
         misplaced_words=misplaced_words,
         lost_words=lost_words,
@@ -11914,6 +11978,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"{'it' if one else 'they'} finished ({_plural(len(sort.from_again), 'check')}): "
             + ", ".join(f"{n} warn" for n in sort.from_again)
             + f" (install.sh builds {'it' if one else 'them'} again)"
+        )
+    if sort.from_newer_swift:  # B13 round 27 P32, P52: doctor's fix; a re-run fails the same way
+        update = _NEWER_SWIFT_FIX_COPY.replace(" (or Xcode) in Software Update", "", 1)
+        parts.append(
+            f"from a speech build that needs a newer Swift ({_plural(len(sort.from_newer_swift), 'check')}): "
+            + ", ".join(f"{n} warn" for n in sort.from_newer_swift)
+            + f" ({update.format(needed=sort.newer_swift)}, then run install.sh again)"
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)

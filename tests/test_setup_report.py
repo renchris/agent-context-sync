@@ -10539,6 +10539,41 @@ def test_a_helper_build_a_signal_stopped_is_install_shs_to_build_again_never_une
     assert "from a helper build that ran out of time (1 check): ocr warn" in line, line
 
 
+def test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P32, P52: a speech fetch that needs a newer Swift than this Mac's (lane E's E48) starts
+    with ``speech.RESOLVE_FAILED``, so the report filed it under "install.sh builds it again", while doctor's
+    fix is a Command Line Tools update first, as a re-run fails the same way. It has a bucket of its own in
+    doctor's words; the developer tools' fix keeps it unexpected; the report's copies equal their sources."""
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    assert speech.TOOLS_TOO_OLD == setup_report._TOOLS_TOO_OLD_COPY
+    assert setup_report._tools_too_old_re(object()).pattern == speech.TOOLS_TOO_OLD_RE.pattern
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    config = load_config(fake_mac["config"])
+    reason = f"{speech.RESOLVE_FAILED}1): " + speech.TOOLS_TOO_OLD.format(installed="5.9", needed="6.1")
+    marker = ocr._marker(ocr._helper_path(config.cache_dir, speech.SPEECH))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(reason, encoding="utf-8")
+    fix = doctor._resolve_again_fix(reason)
+    assert fix is not None and fix.startswith(setup_report._NEWER_SWIFT_FIX_COPY.format(needed="6.1")), fix
+
+    def doctor_line(fix: str | None) -> str:
+        detail = doctor._helper_detail(reason, fix)
+        said = f"[warn] speech — speech: failed ({detail})" + (f" (fix: {fix})" if fix else "")
+        _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", said])
+        return _line(summary, "- doctor: ")
+
+    line = doctor_line(fix)
+    assert "install.sh builds it again" not in line, line
+    assert line.endswith(
+        "· from a speech build that needs a newer Swift (1 check): speech warn (update the Command Line "
+        "Tools to a release with Swift 6.1 or later, then run install.sh again) · unexpected 0"
+    ), line
+    assert doctor_line(doctor._OCR_DEVTOOLS_FIX).endswith("unexpected 1: speech warn")
+
+
 def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
