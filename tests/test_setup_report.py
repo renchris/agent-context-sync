@@ -14536,10 +14536,17 @@ def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
         side.unlink(missing_ok=True)
     pages = cycle.unowned_mirror_pages(load_config(cfg))
     assert len(pages) >= 1, pages
-    status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    status = section(text, "Status")
     over = setup_report._plural(len(pages), "existing mirror page")
     words = f"- no manifest yet (the next sync starts a new one over {over}; every file is converted again)"
     assert status.count(words) >= 4 and "no sync has run" not in status, status
+    # B13 round 27 P26: the Summary counts those lines apart, never as measured
+    evidence = _line(section(text, "Summary"), "- evidence: ")
+    assert evidence == (
+        f'- evidence: {status.count(words)} lines at the end of Status say "no manifest yet": the next sync '
+        f"starts a new manifest over {over}; a report written after it measures them"
+    ), evidence
     ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
     assert ocr.count(words) == 1, ocr
     capsys.readouterr()
@@ -14548,8 +14555,11 @@ def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
     for page in pages:  # an empty mirror: no page to start over
         (load_config(cfg).docs_repo / page).unlink()
     assert cycle.unowned_mirror_pages(load_config(cfg)) == []
-    status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    status = section(text, "Status")
     assert "- no manifest yet (no sync has run)" in status and "existing mirror page" not in status, status
+    evidence = _line(section(text, "Summary"), "- evidence: ")  # unchanged by P26
+    assert evidence == "- evidence: the 6 parts at the end of Status were measured", evidence
     monkeypatch.delattr(cycle, "unowned_mirror_pages")  # an installed build without the count
     status = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Status")
     assert "- no manifest yet (no sync has run)" in status, status

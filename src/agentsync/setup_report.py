@@ -3718,6 +3718,11 @@ class _Facts:
     # lines of the evidence parts that say the manifest is missing though earlier syncs recorded (B13 round 24
     # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
     evidence_lost: int = 0
+    # lines of the evidence parts that say "no manifest yet" over existing mirror pages (a new start), and
+    # those pages (B13 round 27 P26): not measured, and no wait measures them, only the next sync; "no sync
+    # has run" is not counted
+    evidence_new: int = 0
+    evidence_new_pages: int = 0
     # the lost manifest is a link into a folder that does not exist or refuses a write, by the report's own
     # read (B13 round 26 E3, E14): its fix removes or re-points the link first
     lost_link: bool = False
@@ -7210,9 +7215,12 @@ class _NoManifestError(_NoStateError):
         if not self.pages:
             return _NO_MANIFEST_LINE
         pages = _plural(self.pages, "existing mirror page")
-        return (
-            f"- no manifest yet (the next sync starts a new one over {pages}; every file is converted again)"
-        )
+        return f"{_NEW_START_LINE}{pages}; every file is converted again)"
+
+
+_NEW_START_LINE = "- no manifest yet (the next sync starts a new one over "
+"""The opening of :meth:`_NoManifestError.line` over existing mirror pages, which the Summary's evidence line
+counts (B13 round 27 P26)."""
 
 
 class _LostManifestError(_NoManifestError):
@@ -9316,6 +9324,9 @@ def _evidence(r: _Run) -> list[str]:
     r.facts.evidence_lost = out.count(_LOST_MANIFEST_LINE)  # B13 round 24 ruling 7
     r.facts.lost_link = bool(r.facts.evidence_lost) and _lost_link(r.config)  # B13 round 26 E3, E14
     r.facts.lost_dangling = bool(r.facts.evidence_lost) and _lost_dangling(r.config)  # B13 round 27 P19
+    # B13 round 27 P26: only the lines with the page count, never "no sync has run"
+    r.facts.evidence_new = sum(1 for line in out if line.startswith(_NEW_START_LINE))
+    r.facts.evidence_new_pages = mirror.new_pages
     for line in unmeasured:
         m = _NOT_MEASURED_WHY_RE.search(line)
         r.facts.evidence_why[m.group(1) if m is not None else "time limit"] += 1
@@ -9420,12 +9431,21 @@ def _evidence_line(r: _Run) -> str:
             else _STATE_LOST_EVIDENCE
         )
     )
+    # B13 round 27 P26: a new start's lines were not measured either, and only the next sync measures them; a
+    # lost manifest is caught before them, so the two never stand together
+    new = r.facts.evidence_new
+    over = _plural(r.facts.evidence_new_pages, "existing mirror page")
+    said_new = (
+        f'{_plural(new, "line")} at the end of Status {"says" if new == 1 else "say"} "no manifest yet": the '
+        f"next sync starts a new manifest over {over}; a report written after it measures them"
+    )
+    opening = said_lost if lost else said_new if new else ""
     if count == 0:
-        if lost:
-            return f"- evidence: {said_lost}"
+        if opening:
+            return f"- evidence: {opening}"
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
     say = "says" if count == 1 else "say"
-    first = f"{said_lost}; " if lost else ""
+    first = f"{opening}; " if opening else ""
     head = f'- evidence: {first}{_plural(count, "line")} at the end of Status {say} "not measured"'
     why = r.facts.evidence_why
     retry = sum(n for w, n in why.items() if w in _RETRY_WHYS)

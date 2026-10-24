@@ -8478,6 +8478,11 @@ type>)`, never the message. The Summary has one line for all of it, above its re
 the 6 parts at the end of Status were measured`, or how many lines say "not measured" and to write the report
 again when the Mac is idle (`install.sh --report-only`) before sending it; `not read` when the config does
 not load, since the parts then do not run.
+Amended 2026-10-24, §16.188 P26: over a new start (no manifest, mirror pages already in the docs repo) the lines
+that say `no manifest yet (the next sync starts a new one over N existing mirror pages; ...)` are counted apart:
+`- evidence: 4 lines at the end of Status say "no manifest yet": the next sync starts a new manifest over N existing
+mirror pages; a report written after it measures them`, before any "not measured" clause and never "were measured";
+`no manifest yet (no sync has run)` still reads as measured.
 
 **Sources are never named in clear** (`_Labels`). A configured id is printed as the Redactor shows it only
 when that is one whole placeholder (`<source-N>`, `<folder-N>`). One the Redactor leaves alone is kept only
@@ -30757,7 +30762,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102 and P115, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of other lanes' files the
+P102, P115 and P26, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of other lanes' files the
 items need (named below). Items that describe one defect are built once: P33 and P58; P103, P121 and P129; P19 and
 P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
@@ -30906,6 +30911,20 @@ files were already reported gone)` after it, the `R removed` part left out at 0;
 note's end or after `pages` (lane B's P47) reads `... mirror pages by the background sync: ...`. A note that every
 file is converted again, one of an earlier run and one of an earlier sync add nothing. The count is the CLI's, so the
 report and the CLI never disagree. Test: `test_the_sync_line_counts_the_pages_a_new_start_removed`.
+
+**Over a new start the evidence line counts "no manifest yet" apart** (P26; amends the evidence-line paragraph of
+the setup report's Status parts with a dated line). `r.facts.evidence` counts only lines that say `not measured`, so
+over a new start (no manifest, no heartbeat.json, mirror pages left) the Summary said `the 6 parts at the end of
+Status were measured` above four `- no manifest yet (the next sync starts a new one over 24 existing mirror pages;
+every file is converted again)` lines. The new `evidence_new` counts the lines that open with `_NEW_START_LINE` (the
+page-count form only), `evidence_new_pages` keeps the count, and `_evidence_line` says `4 lines at the end of Status
+say "no manifest yet": the next sync starts a new manifest over 24 existing mirror pages; a report written after it
+measures them`, alone or before the "not measured" head, where the lost manifest's clause goes (the two never stand
+together). The "not measured" count and its advice to write the report again when idle are unchanged: waiting does
+not measure a new start. `no manifest yet (no sync has run)` (an empty mirror) still reads as measured. Test:
+`test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them`; its dated line is pinned by the row
+`_ROUND_27_RA_PARAGRAPH_AMENDS` in `tests/test_deploy_pack.py` (other file), which
+`test_every_dated_line_from_round_11_on_is_held_by_a_test` reads.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

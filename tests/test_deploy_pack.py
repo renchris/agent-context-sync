@@ -5979,6 +5979,13 @@ _ROUND_26_D_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: E57's at §16.173's review paragraph, whose "Not built" remote order round
 25 D76 built."""
 
+_ROUND_27_RA_PARAGRAPH_AMENDS = (
+    ("16.28", "**Bounded.** The six parts share `EVIDENCE_BUDGET_S`, counted from the first", "§16.188 P26"),
+)
+"""Round 27 lane RA's dated line at a paragraph its claim cannot name by an item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: P26's at §16.28's evidence paragraph, whose Summary line now counts a new
+start's "no manifest yet" lines apart."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -6100,6 +6107,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_24_D_PARAGRAPH_AMENDS,
         *_ROUND_24_RA_PARAGRAPH_AMENDS,
         *_ROUND_26_D_PARAGRAPH_AMENDS,
+        *_ROUND_27_RA_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
