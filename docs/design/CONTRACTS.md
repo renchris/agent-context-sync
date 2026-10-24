@@ -30956,6 +30956,15 @@ the same rule. Test:
 and the sync say run 4, no trailer repeats, run 4's index line and month heading are written; with the index aside
 and a curated commit at HEAD the hint still reads run 3).
 
+**A new start that fails before publishing counts the pages it removed (P45; `agentsync.cycle`).** E10's one
+list (`Cycle._orphans_gone`) was set only by `_count_orphans_removed`, after publishing. A new start whose run failed
+first (a fault in `build_arms`) logged a "not written back" WARNING for every page its reset removed, from a fresh
+look, while the CLI's note read the unset list as none removed and said "every file is converted again" (measured:
+18 WARNINGs, 18 pages gone, that note). `_say_orphans_not_written_back` now sets the list when no earlier step has,
+so the WARNINGs, the background job's saved note (`NEW_START_UNSAID_META`) and the CLI's note read the same pages:
+`0 written back, 18 removed (their file is gone or was not converted)`. Test:
+`test_cli.py::test_a_new_start_that_fails_before_publishing_counts_the_pages_it_removed`.
+
 **Each constant in cycle.py keeps its own docstring (P48; `agentsync.cycle`).** Round 26's `NEW_START_UNSAID_META`
 landed between `_SECRET_RESCAN_META` and its attribute docstring, which then followed the new constant's docstring
 and documented nothing, the K52 defect at another constant. The block moved below that docstring.

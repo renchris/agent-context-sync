@@ -2125,9 +2125,12 @@ class _Cycle:
         back: its file gone, a source waiting for sign-in, an online-only file deferred, a run that failed or
         blocked first, or a page whose path changed. B37's quiet reset assumed every one came back, so a
         deleted page was committed with no line above DEBUG (B13 round 25 D40). No cause is named: the same
-        state has each of those."""
-        gone = self._orphans_gone
-        for rel in gone if gone is not None else self._not_written_back():
+        state has each of those. A run that failed or blocked before publishing sets the one list here, so
+        its WARNINGs, the background job's saved note and the CLI's note read the same pages (B13 round 27
+        P45)."""
+        if self._orphans_gone is None:
+            self._orphans_gone = self._not_written_back()
+        for rel in self._orphans_gone:
             log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
 
     def _new_start_unsaid(self, report: CycleReport) -> CycleReport:
@@ -2139,7 +2142,7 @@ class _Cycle:
         try:
             if self.new_manifest_pages:
                 if started_by_our_job(self.config):
-                    gone = self._orphans_gone if self._orphans_gone is not None else self._not_written_back()
+                    gone = self._orphans_gone or []  # set by _say_orphans_not_written_back (P45)
                     saved = {"pages": self.new_manifest_pages, "orphans": sorted(gone)}
                     self.manifest.set_meta(NEW_START_UNSAID_META, json.dumps(saved, sort_keys=True))
                 return report

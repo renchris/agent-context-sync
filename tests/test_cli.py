@@ -7941,6 +7941,37 @@ def test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers(
         assert f"- D `{rel}`" in section, section
 
 
+def test_a_new_start_that_fails_before_publishing_counts_the_pages_it_removed(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P45: a new start whose run failed before publishing (a fault in build_arms) logged a
+    "not written back" WARNING for every page its reset removed, while the note read "every file is converted
+    again": the WARNING fell back to a fresh look, and the note read the one list, still unset. The WARNINGs
+    set that list, so the note's removed count is the number of WARNINGs and of pages gone."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    pages = sorted(
+        p.relative_to(repo).as_posix()
+        for p in initialised.layout.mirror.rglob("*.md")
+        if p.name != "CLAUDE.md"
+    )
+    _manifest_gone(initialised, heartbeat=False)
+
+    def broken(*_a: object, **_k: object) -> object:
+        raise RuntimeError("a fault in the arms")
+
+    monkeypatch.setattr(cycle_mod, "build_arms", broken)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr()
+    gone = [rel for rel in pages if not (repo / rel).exists()]
+    warned = [ln for ln in out.err.splitlines() if "removed orphan mirror page" in ln]
+    assert gone and len(warned) == len(gone), (gone, out.err)
+    (note,) = [ln for ln in out.out.splitlines() if ln.startswith("note: a new manifest was started over ")]
+    removed = f"{len(pages) - len(gone)} written back, {len(gone)} removed (their file is gone or was not "
+    assert removed in note, note
+
+
 def test_a_manifest_restored_from_an_older_copy_continues_the_run_numbers_the_repo_records(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
