@@ -5949,7 +5949,7 @@ themselves" since A9 and A36 no longer holds."""
 
 _ROUND_23_B_PARAGRAPH_AMENDS = (
     ("16.29", "Every one is a path a sync makes owner-only", "§16.167 A94"),
-    ("16.32", "Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without", "§16.167 A94"),
+    ("16.32", "Amended 2026-10-20, §16.155 Y20: `run scripts/install.sh again without", "§16.167 A94"),
     ("16.32", "**Every FAIL names a fix.** install.sh's `NEXT:` says so", "§16.167 A94"),
 )
 """Round 23 lane B's dated lines at sections its claims name with no item, as
@@ -6111,14 +6111,22 @@ def test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date() -> 
     (2026-10-22) and lanes RA, RB, P and B the day they landed (2026-10-23), so at §16.14's K10 two B80 lines
     dated a day before the B97 line above them pointed to it. A dated line takes its home section's heading
     date, as 926 of the file's 1,034 did; every `Amended <date>, §16.N` with a home of §16.157 or later
-    carries §16.N's. The 90 older drifts (§16.45, round 11's §16.92 to §16.97 and round 21's §16.153 to
-    §16.156, dated the day after their headings) stay as written."""
+    carries §16.N's. Round 26 E70: the 90 older drifts (§16.45, round 11's §16.92 to §16.97 and round 21's
+    §16.153 to §16.156, dated the day after their headings) made six paragraphs read a lower section's line a
+    day after a higher one from the same round; they carry their headings' dates now, so every home does, in
+    each form (`Amended <date>, §16.N`, `Amended <date> (§16.N` and `Amended <date> by §16.N`), and so does
+    each section's own "A dated line this round writes reads" sentence."""
     text = CONTRACTS.read_text(encoding="utf-8")
     heads = dict(re.findall(r"^### (16\.\d+) .*?\((\d{4}-\d\d-\d\d)", text, re.M))
     dated = re.findall(r"Amended\s+(\d{4}-\d\d-\d\d),\s+§(16\.\d+)\b", text)
-    later = [(date, home) for date, home in dated if int(home[3:]) >= 157]
-    assert len(later) >= 120, "the scan is broken"
-    assert [f"{date} §{home}" for date, home in later if heads[home] != date] == []
+    assert len(dated) >= 1000, "the scan is broken"
+    assert [f"{date} §{home}" for date, home in dated if heads[home] != date] == []
+    older = re.findall(r"Amended\s+(\d{4}-\d\d-\d\d)\s+(?:\(|by\s+)§(16\.\d+)\b", text)
+    assert len(older) >= 30, "the scan is broken"
+    assert [f"{date} §{home}" for date, home in older if heads[home] != date] == []
+    rule = re.findall(r"this round writes reads\s+`Amended\s+(\d{4}-\d\d-\d\d),\s+§(16\.\d+)", text)
+    assert len(rule) >= 20, "the scan is broken"
+    assert [f"{date} §{home}" for date, home in rule if heads[home] != date] == []
     k10 = " ".join(_contracts_section("**Summary lines (K10).**", "\n\n").split())
     b97, b80 = k10.index("Amended 2026-10-22, §16.171 B97:"), k10.index("Amended 2026-10-22, §16.176 B80")
     assert b97 < b80 and k10.endswith("words: B97's line above).")
@@ -7757,7 +7765,7 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     # B13 round 14 Q71: since round 13 O5 that exit logs the apps and the missing count before synced=N
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     assert 'not-signed-in apps=$tokens missing=$missing synced=$synced"' in installer
-    m7 = " ".join(_contracts_section("Amended 2026-10-16, §16.92 M7:", "\n\n").split())
+    m7 = " ".join(_contracts_section("Amended 2026-10-15, §16.92 M7:", "\n\n").split())
     assert "that all failed, on a Mac that syncs no folder, counts no folder question" in m7
     assert "A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the" in m7
 
@@ -7788,15 +7796,15 @@ def test_round_12s_contract_quotes_and_moves_read_as_written() -> None:
         "The finish still applies after every one of these stops. Step 1's version check now reads \"the "
         "--version inside step 1's one command\", so the Xcode and git stops' own `--version` is not taken "
         "for it. Step 3's no-report cases are four. Test: `test_readme_step1_is_one_command`, "
-        "`test_readme_report_step_after_any_failure`. Amended 2026-10-16, §16.94 M16, M32:"
+        "`test_readme_report_step_after_any_failure`. Amended 2026-10-15, §16.94 M16, M32:"
     )
     assert v19 in l31
     v20_line = l31[
-        l31.index("Amended 2026-10-16, §16.94 M16, M32:") : l31.index("Amended 2026-10-16, §16.103 N68:")
+        l31.index("Amended 2026-10-15, §16.94 M16, M32:") : l31.index("Amended 2026-10-16, §16.103 N68:")
     ]
     assert v20_line.endswith("Test: `test_readme_step1_is_one_command`. "), v20_line
     l58 = " ".join(_contracts_section("**The local-work line says only what it can know**", "\n\n").split())
-    m83 = "Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20"
+    m83 = "Amended 2026-10-15, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20"
     assert l58.count("§16.94 M83") == 1
     assert l58.index("L58's prompt half (delete the empty branch) was not built") < l58.index(m83)
     assert l58.index("Amended 2026-10-15, §16.93 M18:") < l58.index(m83)

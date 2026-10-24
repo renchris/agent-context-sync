@@ -528,7 +528,7 @@ records `SF_DATALESS` (0x40000000 in `st_flags`) as `dataless`, `gen_count` via 
 (None/0 = unknown ⇒ hash to confirm), and reports zero-child cloud directories and EPERM (TCC) directories as
 `unknown_dirs` (never empty). **Amended (2026-10-06, §16.22):** the zero-child cloud directories below the root
 are also returned on their own, as `WalkStats.empty_cloud_dirs`.
-**Amended 2026-10-12, §16.45 R1:** the rule holds for a zero-child folder in a File Provider domain: its provider
+**Amended 2026-10-11, §16.45 R1:** the rule holds for a zero-child folder in a File Provider domain: its provider
 folder (`~/Library/CloudStorage/<provider>`, the first component below a cloud root) carries a File Provider
 extended attribute, such as `com.apple.file-provider-domain-id`, or the attribute read fails for any reason
 (EPERM, ENOSYS off macOS). A zero-child folder in a provider folder whose read is clean and finds none (a plain
@@ -4888,7 +4888,7 @@ and a `tmutil` call costs ~11 s; the xattr code lives in the leaf module `agents
 KISS K12) and doctor
 `governance.time_machine`. `remote_allowed` parses both URLs (scheme, userinfo, host equal; path at a `/`
 boundary); `parse_governance` rejects a prefix that is not a URL or carries a password.
-Amended 2026-10-21, §16.155 Y49 (by §16.149 X4): `staging/` is no longer recreated: `cycle._clear_staging` empties
+Amended 2026-10-20, §16.155 Y49 (by §16.149 X4): `staging/` is no longer recreated: `cycle._clear_staging` empties
 it in place, so it keeps its inode and exclusion xattr, and sets the exclusion again at once each cycle; the direct
 setxattr still spares that call the ~11 s `tmutil` costs.
 
@@ -4897,7 +4897,7 @@ setxattr still spares that call the ~11 s `tmutil` costs.
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
 complete passes before it is tombstoned (`extra.absent_since_run`; **amended 2026-10-08, §16.37:** `status` ends
 that source's line with `· absent N (turned into deletion notices by a later complete pass if still missing)`
-(**Amended 2026-10-12, §16.45 R105:** was `removed by ...`; the page stays as a `[DELETED UPSTREAM]` notice;
+(**Amended 2026-10-11, §16.45 R105:** was `removed by ...`; the page stays as a `[DELETED UPSTREAM]` notice;
 **amended 2026-10-12, §16.51 Q16:** now `· absent N (each becomes a deletion notice on a later complete pass if
 still missing)`) while N present rows
 carry the mark and the breaker is not tripped (a tripped breaker removes nothing and counts its held files
@@ -5267,7 +5267,7 @@ how many it left out; the section's line is unchanged.
 **Amended (2026-10-11, §16.41 "The report install.sh writes at its own exit counts its own run's `NEXT:` as
 still to come"):** when the last header counted is the run writing the report, the parenthesis adds that its
 `NEXT:` comes after the report.
-Amended 2026-10-16, §16.92 M36: the report's own words spell it "capitalized", and "organization" (the legend's
+Amended 2026-10-15, §16.92 M36: the report's own words spell it "capitalized", and "organization" (the legend's
 `<org-N>`, the Private-only line), the setup prompt's US spelling, in both reports.
 Amended 2026-10-20, §16.146 X35: every doctor FAIL still keeps the outcome from "fully one command", but only a
 FAIL in no bucket of the Summary's doctor line is called unexpected; one in a bucket is `N doctor FAIL(s) with a
@@ -5361,7 +5361,7 @@ line (install.sh writes the report once the run is closed), so the run's seconds
 Amended 2026-10-13, §16.69 H22: on origin/main reads `yes|no|unknown[, N ahead][, N behind]`: `git rev-list
 --left-right --count HEAD...origin/main` adds `N behind` when it is above 0, and `N ahead` to a `no`; no count when
 that call fails.
-Amended 2026-10-16, §16.92 M34: the Summary's `- friction (attempt N)` line is left out when it would only repeat the
+Amended 2026-10-15, §16.92 M34: the Summary's `- friction (attempt N)` line is left out when it would only repeat the
 agent-friction line (every event a deviation, prompt or error, and no legacy line); where it prints, its counts still
 add up.
 Amended 2026-10-16, §16.98 N20: and left out too when the rest is the closing `end | finished` line (every event a
@@ -6290,12 +6290,12 @@ printed link and the Summary's outcome are the same value.
 counts the words as listed (a word found in two sections is listed and counted twice; it counted distinct words,
 so the number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
 before the `…`, never inside a word.
-Amended 2026-10-16, §16.92 M36: "Residue check: N capitalized or joined word(s)".
+Amended 2026-10-15, §16.92 M36: "Residue check: N capitalized or joined word(s)".
 
 **Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
 `~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
 deletions are held until the folder gains a child or is excluded.
-**Amended 2026-10-12, §16.45 R1:** the rule holds only for a zero-child folder in a File Provider domain: its
+**Amended 2026-10-11, §16.45 R1:** the rule holds only for a zero-child folder in a File Provider domain: its
 provider folder (`~/Library/CloudStorage/<provider>`, the first component below a cloud root) carries a File
 Provider extended attribute, such as `com.apple.file-provider-domain-id`, or the attribute read fails for any
 reason (EPERM, ENOSYS off macOS). A zero-child folder in a provider folder whose read is clean and finds none (a
@@ -6368,7 +6368,7 @@ or empty for this case (a source sat incomplete for 900 passes):
   2026-10-11, §16.47 R53:** an inbox the loop gives empty-cloud-folder waits (`loop.empty_cloud_folders_held`:
   stored empty folders today's exclude does not prune, after a FULL pass) gets the local source's fix and note;
   any other incomplete inbox keeps the sync -v text.
-  **Amended 2026-10-12, §16.45 R38, R151:** status prints this fix, so it names no command and no "above"
+  **Amended 2026-10-11, §16.45 R38, R151:** status prints this fix, so it names no command and no "above"
   (the setup report's Doctor section may show no line above): `each WAITING ON YOU line about <id> says what
   stops the listing and what to do: another sync does not clear it`. status reads the loop before its checks
   and passes `NextStep.checks` to `doctor.run_checks(loop_checks=...)`: that fix, or under
@@ -7972,7 +7972,7 @@ failed conversion.
   capabilities change, or when agentsync is upgraded (its version is part of them). **Amended 2026-10-11,
   §16.39 N4:** the version was 0.1.0 in every build, so an upgrade restarted nothing; what is part of them
   now is a digest of the installed package's files (`_build_digest`), so another build of agentsync does.
-  **Amended 2026-10-12, §16.45 R100:** so does an upgrade of a converter library alone (`cycle._CONVERTER_DISTS`: the installed
+  **Amended 2026-10-11, §16.45 R100:** so does an upgrade of a converter library alone (`cycle._CONVERTER_DISTS`: the installed
   distribution version of each is part of them).
 
 **A file the pass calls maybe-changed** (`_outdated_in_queue`; amended 2026-10-06). `_reread_source` reads
@@ -7998,7 +7998,7 @@ once a cycle (`_Cycle._reread_load`).
   converter, the engine's identity (`""` without one) and each converter's `outdated_key`. A new version,
   suffix, engine, emitter or floor is something new to look for, and a file given up under one build is
   tried by the next. **Amended 2026-10-11, §16.39 N4:** the build's part is `_build_digest`, a digest of the
-  installed package's files, not the version: another build is what is new to look for. **Amended 2026-10-12, §16.45 R100:**
+  installed package's files, not the version: another build is what is new to look for. **Amended 2026-10-11, §16.45 R100:**
   `for` also holds `deps`, the sorted `[name, version]` pairs of the converter libraries
   (`cycle._CONVERTER_DISTS`: olefile, openpyxl, pdfminer.six, pypandoc_binary, pypdfium2, python-pptx), each
   `convert._common._dist_version` (`unknown` when not installed). Distribution versions only: a converter's
@@ -8122,7 +8122,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
 | `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-22, §16.171 B74:** it says `that run refused with no converter for its type` |
-| `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
+| `converted_unreadable` | (**Amended 2026-10-11, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
@@ -8149,7 +8149,7 @@ other key that would be 0 is left out. No reader depended on the old content.
   retry that worked: the files are still stubs. The report's Quarantine by reason part counts them, class
   `conversion failed`, and its Repeat conversions part says so under the table when a run it shows has a
   failure. Whether a failed conversion should be tried again is older behavior and a separate decision.
-  **Amended 2026-10-12, §16.45 R2:** an UNREADABLE result was counted in `converted` only, so a run of encrypted or misnamed files
+  **Amended 2026-10-11, §16.45 R2:** an UNREADABLE result was counted in `converted` only, so a run of encrypted or misnamed files
   read like conversions that worked. It is now `converted_unreadable`, and `SourceReport` carries
   `unreadable` and `conversion_failed` beside `converted`. The sync's last line ends
   ` (of the converted: U unreadable, F failed)` when U > 0, after the words install.sh and setup-report match,
@@ -8637,7 +8637,7 @@ the same file from the same bytes as an earlier run, and of those as the run jus
 for a run from before the run record). Then the converter cache: how many rows a later run used again than
 the one that made them, and how many of those the newest run and the one before it used last. That count
 needs no run record, so it also speaks for the runs of an earlier build; it is by the bytes alone, so a
-copy of a file counts there and the line says so. **Amended 2026-10-12, §16.45 R2:** a column `of them unreadable (stub, kept,
+copy of a file counts there and the line says so. **Amended 2026-10-11, §16.45 R2:** a column `of them unreadable (stub, kept,
 not retried)` follows `of them failed`, and when a run shown has one, a note under the table says such a file
 is in Quarantine by reason under its stub's class (`encrypted`, `not the type its name says`, `empty`, a
 `no text` class), never `conversion failed`. **Amended 2026-10-14, §16.74 J30:** the column reads `the same file
@@ -9322,7 +9322,7 @@ wording, and the report now says what each number is. The cycle, its limits and 
   whose conversion failed (§16.27). "442 read again (0 kept the page they had)" read as 442 new pages. It is
   not: a file read again whose text comes out the same is cut off at the page's own hash, so the page file
   and its `converter:` line stay and only the output row's key moves (§16.27).
-  Amended 2026-10-16, §16.92 M12: a run record's `reread_first` (a stub read for the first time) is no read again:
+  Amended 2026-10-15, §16.92 M12: a run record's `reread_first` (a stub read for the first time) is no read again:
   all first reads read `N first read(s) of a stub whose bytes had never been read, also in the converted count`, some
   `N read(s) again (F of them a first read ...; K could not be converted and kept their page)`, and the run's cell
   adds `, F first read`.
@@ -9337,7 +9337,7 @@ wording, and the report now says what each number is. The cycle, its limits and 
   engine, newest first (the sums above are over all 7 run(s) read, so these rows do not add up to them)`.
   The field's five rows were added up against sums over six runs. With five or fewer the title is `the last
   runs that had an engine, newest first`, as before.
-  Amended 2026-10-16, §16.92 M19: both title forms, and Repeat conversions' `The last runs, newest first:`, start
+  Amended 2026-10-15, §16.92 M19: both title forms, and Repeat conversions' `The last runs, newest first:`, start
   with a capital, as every paragraph of the report does.
 - **The limit that ends the reading.** After the title: a run starts no more re-reads once it has spent 120
   s on them (`_REREAD_BUDGET_S`, a copy of the cycle's; a test holds the two equal), whatever OCR time is
@@ -10046,7 +10046,7 @@ with the options of the run that installed agentsync (not --report-only, which b
 (`doctor.AGAIN_UNDER_INSTALL_SH`); the row below no longer holds.
 Amended 2026-10-20, §16.149 X21: `run scripts/install.sh again (it keeps the folders already synced; not
 --report-only, which builds nothing)`, with no options repeated.
-Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without --report-only, which builds nothing; a plain
+Amended 2026-10-20, §16.155 Y20: `run scripts/install.sh again without --report-only, which builds nothing; a plain
 run keeps the folders already synced`, and every other check's `<then>` is `report it: the program does not answer
 on this Mac, and no setup step clears that`: no bracket inside the line's `(fix: ...)`.
 Amended 2026-10-22, §16.167 A94: by hand `<run again>` is `run ~/.local/bin/agentsync status again as it is`, a
@@ -10118,7 +10118,7 @@ traceback: a check that crashes is a fault in agentsync to report, and no setup 
 | `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again; if the line stays, report it: agentsync status -v prints where the check stopped`; with no path it starts `run again; if the line stays, ...` (no bracket inside the line's own since §16.161 Z7) |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
 | `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
-| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-16, §16.95 M10:** by what is missing, `doctor._missing_source_fix`; **Amended 2026-10-16, §16.101 N53:** a missing SharePoint library beside its organization's OneDrive folder, sync the library) |
+| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-15, §16.95 M10:** by what is missing, `doctor._missing_source_fix`; **Amended 2026-10-16, §16.101 N53:** a missing SharePoint library beside its organization's OneDrive folder, sync the library) |
 | `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
 | a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
 
@@ -11165,7 +11165,7 @@ still holds no path, and the live `agentsync status` wait keeps the full path.
   **Amended 2026-10-12, §16.51 Q16:** the status suffix reads `· absent N (each becomes a deletion notice on a
   later complete pass if still missing)` and the sync line `K page(s) turned into deletion notice(s) (deleted
   upstream)`; the alarms are unchanged.
-  **Amended 2026-10-12, §16.45 R105:** the three literals above and the marking pass's alarm (`N file(s) absent from this complete pass:
+  **Amended 2026-10-11, §16.45 R105:** the three literals above and the marking pass's alarm (`N file(s) absent from this complete pass:
   their pages become deletion notices only if still absent next pass`) said "removed"; the page stays in the
   mirror as a `[DELETED UPSTREAM]` stub until `tombstone_reap_days`, so they now say "deletion notices", plural
   because an `.eml` tombstones its attachment pages with it. `; purge queued` is printed only when
@@ -11308,7 +11308,7 @@ Every text that asks the operator to run the purge queue names the preview first
   --dry-run`, then run `agentsync purge --queue` (rewrites history)``
 - the label-escalation alarm ends with `cycle._PURGE_QUEUE_STEPS`, ``(preview with `agentsync purge --queue
   --dry-run` before `agentsync purge --queue`)``, which any later alarm that queues a purge uses too.
-- **Amended 2026-10-12, §16.45 R46/R47/R57:** the credential rescan's alarm (§16.39 N5, ``a published page
+- **Amended 2026-10-11, §16.45 R46/R47/R57:** the credential rescan's alarm (§16.39 N5, ``a published page
   matches the secret scan's new rules: ...``) ended ``(run `agentsync purge --queue`)`` with no preview; it now
   ends with `cycle._PURGE_QUEUE_STEPS` too (`tests/test_credential_rescreen.py`, the two tests that read it).
 
@@ -11393,7 +11393,7 @@ it stubbed. `tests/test_credential_rescreen.py` pins a hash of the code that dec
 `SECRET_RULES_VERSION`: a change that decides differently bumps the version, a comment or docstring edit only
 updates the pin.
 
-**Amended 2026-10-12, §16.45 R75:** a run from the shell records the gitleaks its PATH finds
+**Amended 2026-10-11, §16.45 R75:** a run from the shell records the gitleaks its PATH finds
 (`lints.remember_gitleaks`, in `agentsync sync` and `agentsync install-agent`), and a LaunchAgent run uses that
 one (`lints.gitleaks_lookup` tries `lints.recorded_gitleaks` before PATH and the fixed places, which now include
 `/opt/local/bin`, `~/.local/bin` and `~/go/bin`). Both kinds of run read the record first, so the identity does
@@ -11409,7 +11409,7 @@ page does.
 text was written; `sync` refuses it with exit 2), and no launchd run selects sources, so the later launchd run's
 reason is the byte budget alone.
 
-**Amended 2026-10-12, §16.45 R76:** the "new id is a new file to the scan" and "gitleaks alone when there is
+**Amended 2026-10-11, §16.45 R76:** the "new id is a new file to the scan" and "gitleaks alone when there is
 one" residuals are gone. `lints.lint_secrets` runs the builtin patterns over every page it scans, and gitleaks
 beside them when there is one (`builtin_too=` is removed: every page is read that way now), so a copy, a move to
 another source or a delete-then-recreate of a stubbed file, and any new page with a plain `Password: ...`, is a
@@ -11418,7 +11418,7 @@ space (`(minimum 8 characters)`, `<your password>`) or is one placeholder word (
 over a value of mask characters only (`*`, `x`, `.`, `•`, `-`; trailing punctuation allowed); a bracketed value
 that is neither (`(Welcome123)`, `<S3cr3t!x>`) and a value after a hint are hits. `SECRET_RULES_VERSION` is 2,
 so every install scans its published pages once more under both changes.
-**Amended 2026-10-12, §16.45 R74:** `[governance] archive` pages are scanned again too (the residual above is
+**Amended 2026-10-11, §16.45 R74:** `[governance] archive` pages are scanned again too (the residual above is
 closed). The rescan also reads every `archive/` page whose frontmatter says `status: archived`, with the text
 sidecars under its `.files/` folder, symlinks skipped (`_Cycle._add_archive_pages`). They are no output rows and
 never become a stub: a hit deletes the copy and its sidecars, rewrites the item's mirror tombstone without the line
@@ -11438,7 +11438,7 @@ on the pass that removes it. `SourceReport` carries the outcome as two counts, l
 default: `absent_marked` (a local or inbox file absent for the first time, kept) and `absent_removed` (a file
 removed this pass as deleted upstream: a local or inbox file on its second absence, a Graph item or a file under
 `accept-deletions` on its first). `_Cycle._confirmed_absent` is the one place that sets them. The source's line
-prints `M marked absent` and `K turned into deletion notices (deleted upstream)` (**Amended 2026-10-12, §16.45 R105:** was `K removed
+prints `M marked absent` and `K turned into deletion notices (deleted upstream)` (**Amended 2026-10-11, §16.45 R105:** was `K removed
 as deleted upstream`), each only when nonzero, after `BREAKER TRIPPED`
 and before the cursor's word; a pass with neither prints the line it always did. `_sync/STATE.md`'s `this_run:`
 line adds ` · absent_marked: M` and ` · absent_removed: K` after `materialised_bytes`, each only when nonzero.
@@ -11527,7 +11527,7 @@ move it. A commit that changes no packaged file restarts nothing; the two deploy
 the installed tool hash differently (the record's second slot keeps both, so going between them costs a manifest
 query, not repeated attempts). A dependency upgrade alone does not move the digest and restarts nothing: `for`
 holds each converter's `outdated_key` (its emitter and floor), not its version string, so a file given up stays
-given up until a packaged file changes. **Amended 2026-10-12, §16.45 R100:** no longer so: `for` holds the converter libraries'
+given up until a packaged file changes. **Amended 2026-10-11, §16.45 R100:** no longer so: `for` holds the converter libraries'
 distribution versions (`deps`, §16.27 "The record"), so a library upgrade alone (a `uv sync` that moves pdfminer.six
 or pypdfium2) restarts the scan once, as a new build does, and a file given up under the old library gets its two
 attempts under the new one. A file or a folder that cannot be read (a tree an install is replacing
@@ -11733,7 +11733,7 @@ still tell a stuck holder from repeated slow runs. Amends §9 step 2 (dated line
 (`test_lock_held_warning_names_the_holder_and_repeats_verbatim`), `tests/test_ops_lock.py`
 (`test_second_instance_in_same_process_is_refused`,
 `test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`).
-**Amended 2026-10-12, §16.45 R50:** an empty body reads `an unrecorded holder (install.sh while it reinstalls
+**Amended 2026-10-11, §16.45 R50:** an empty body reads `an unrecorded holder (install.sh while it reinstalls
 agentsync, a status or doctor check, or a cycle starting)` in `who`, in the stderr line and in doctor alike
 (one constant, `agentsync.ops.lock.EMPTY_BODY_HOLDER`); install.sh's lockf, an `is_held` probe and a cycle
 between its flock and its body write all leave the body empty. A non-empty body that does not parse keeps `an
@@ -11777,7 +11777,7 @@ withheld item is not in the listing, so its row is not stamped. Nothing is taken
 promises only "those still absent"), and the first sync that lists the file drops it from the count. The
 withheld set is not stored per walk, so the count cannot leave it out
 (`test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it`).
-**Amended 2026-10-12, §16.45 R101:** a pass stamps `last_seen_run`, and only that, on the present file rows
+**Amended 2026-10-11, §16.45 R101:** a pass stamps `last_seen_run`, and only that, on the present file rows
 of the files its walk withheld (`ScanResult.withheld`, `Manifest.touch_withheld`), so neither count includes a
 withheld file that is still there, and `unseen_live` never offers one as a deletion candidate. A withheld file
 with no row (a new file still being written) stamps nothing, so a file deleted upstream still counts. N27's
@@ -11809,14 +11809,14 @@ exclude:
   them)`;
 - no empty cloud folder below the root (an unreadable folder, a provider error, an empty cloud root): the old
   text, byte for byte.
-  **Amended 2026-10-12, §16.45 R103:** an empty root, cloud or plain, gets one alarm and no exclude advice:
+  **Amended 2026-10-11, §16.45 R103:** an empty root, cloud or plain, gets one alarm and no exclude advice:
   with files mirrored, `source root <root> is empty but N file(s) are mirrored (unmounted volume?): enumeration
   incomplete, nothing is deleted`; an empty cloud root with nothing mirrored, `source root <root> has zero
   children in a cloud tree: enumeration incomplete, nothing is deleted`. A root that cannot be listed keeps the
   old cause, with the advice `(grant the agent Files and Folders access)` only.
-  **Amended 2026-10-16, §16.95 M47:** a folder the walk could not read is named with the reason it recorded,
+  **Amended 2026-10-15, §16.95 M47:** a folder the walk could not read is named with the reason it recorded,
   `could not be read: 'X' (EACCES: Permission denied)`, with the fix for its kind and no empty-folder exclude;
-  the old text stays, byte for byte, only for a folder with no recorded reason. **Amended 2026-10-16, §16.95 M5
+  the old text stays, byte for byte, only for a folder with no recorded reason. **Amended 2026-10-15, §16.95 M5
   (by §16.95 M45, M46, M56):** the mixed form has one clause per kind, each capped at five with its own `sync -v`
   pointer, and names the wait it means by its subject: `the WAITING ON YOU line about the empty cloud folder(s)
   in <id>`.
@@ -11842,7 +11842,7 @@ can take belongs in a wait (install.sh, the setup report's Loop line and the set
 notes); "the WAITING ON YOU line" sat above two lines when a source had both kinds of folder. Rejected: an
 inbox-only note telling the person to remove the folders, which drops the "if the files were removed on
 purpose" condition for a folder whose removal lets held deletions through. Not changed: an empty cloud source
-root still gets the old alarm's exclude advice, though a root cannot be excluded. **Amended 2026-10-12, §16.45
+root still gets the old alarm's exclude advice, though a root cannot be excluded. **Amended 2026-10-11, §16.45
 R103:** it no longer does: an empty root, cloud or plain, gets the empty-root alarm alone (the bullet above).
 Amends §16.20, §16.22 and
 §16.37 (dated lines in §16.20, §16.22 and §16.37). Tests: `tests/test_arm_local.py`
@@ -12035,7 +12035,7 @@ reader counts), and naming the next step from a fixed order (older installers ha
 `test_a_run_cut_off_in_a_step_names_the_last_step_logged`, `test_pid_alive_reads_this_process_and_a_reaped_one`
 and `test_a_run_killed_during_the_helper_builds_reads_as_killed`. Accepted: a reused pid reads as "in use",
 which keeps both readings, as before.
-Amended 2026-10-16, §16.92 M24 (M41 the same defect): the outcome detail has no bracket inside its `(computed: ...)`:
+Amended 2026-10-15, §16.92 M24 (M41 the same defect): the outcome detail has no bracket inside its `(computed: ...)`:
 `install.sh has no end line after its failed <step> step, <state>` (the step before the causes, so it never reads as
 one of them), and `install.sh exited <rc>: its <step> step failed with rc <n>` (`with no rc logged` when its line has
 none), which says whose each exit code is.
@@ -12090,7 +12090,7 @@ triage of a report from a Mac with such a v6 attempt sees it move from "failed a
 or "worked with help": that is this fix, not a new event. Tests:
 `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only` and
 `test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0`.
-Amended 2026-10-16, §16.92 M44: the brackets read `(this attempt's runs only; the Installer section also counts the
+Amended 2026-10-15, §16.92 M44: the brackets read `(this attempt's runs only; the Installer section also counts the
 <k> earlier run(s) in the lines read)` and `(the Installer section counts the <r> earlier run(s) in the lines read)`.
 
 **The first-sync count names the field it counts** (B13 N17, field triage 2026-10-07 U18 and 2026-10-08 D1.h;
@@ -12336,7 +12336,7 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
     probe, a cycle between flock and its write) reads `an unrecorded holder (install.sh while it reinstalls
     agentsync, or a check for an instant)`, not `'<empty body>' (unparseable lock body)`; a non-empty body
     that does not parse keeps the old text. The module docstring says so.
-    **Amended 2026-10-12, §16.45 R50:** the empty-body text is now `an unrecorded holder (install.sh while it
+    **Amended 2026-10-11, §16.45 R50:** the empty-body text is now `an unrecorded holder (install.sh while it
     reinstalls agentsync, a status or doctor check, or a cycle starting)`, the same as N24's `who`, and
     doctor's held line adds `(a cycle is running)` only when the body parses as a cycle's record.
   - The setup log is unchanged: `step=agentsync seconds=N` carries the wait. The header's run-time sentence
@@ -13243,7 +13243,7 @@ folder) keeps the generic cause with the advice `(grant the agent Files and Fold
 changed: an empty cloud source root still gets the old alarm's exclude advice" and N27's third alarm bullet ("...
 an empty cloud root): the old text, byte for byte"); both carry dated lines. Test:
 `tests/test_arm_local.py::test_an_empty_root_alarm_never_advises_an_exclude`.
-**Amended 2026-10-16, §16.95 M42 (by §16.95 M47):** a root that cannot be listed is named with its reason, `could not be
+**Amended 2026-10-15, §16.95 M42 (by §16.95 M47):** a root that cannot be listed is named with its reason, `could not be
 read: '.' (EPERM: ...)`; EPERM keeps the grant, and EACCES reads `the source folder's own permissions do not let
 this account read it: check its owner and mode with ls -ld`, with no grant.
 Amended 2026-10-19, §16.131 U18, U71, U102: `is empty but N files are mirrored` (`1 file is mirrored`).
@@ -13266,7 +13266,7 @@ withheld as changed within `quiescence_s` or future-dated (`ScanResult.withheld`
 `Manifest.touch_withheld`, in the pass's transaction). `Manifest.unlisted_count`, so `loop._missed` and the setup
 report's Empty cloud folders count, no longer count such a file, and `unseen_live` never offers it as a deletion
 candidate. A withheld file with no row (a new file still being written) stamps nothing, so a file deleted upstream
-still counts. §16.39 N26's Known limit carries a dated line (`**Amended 2026-10-12, §16.45 R101:**`). Tests:
+still counts. §16.39 N26's Known limit carries a dated line (`**Amended 2026-10-11, §16.45 R101:**`). Tests:
 `tests/test_loop.py::test_an_inbox_file_the_walk_withheld_is_not_in_the_count` (was
 `..._is_in_the_count_until_a_sync_lists_it`), `test_withheld_inbox_files_leave_a_real_deletion_in_the_count`.
 
@@ -13656,7 +13656,7 @@ its own NEXT with one clause added.
   counts `(install.log: that earlier run; ...)` or `(install.out: an earlier run's; this attempt ran none)`. With
   no earlier sync step it reads `no install.sh run during this attempt (install.log)`. The live baseline clause
   and the Loop line keep their words. `test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_reads`.
-  Amended 2026-10-16, §16.92 M6 (M22, M38 the same defect): an attempt whose install runs reached no first-sync step
+  Amended 2026-10-15, §16.92 M6 (M22, M38 the same defect): an attempt whose install runs reached no first-sync step
   reads `no install run of this attempt reached its first sync (install.log: the last stopped at its <step> step)` (a
   list-only attempt: `this attempt ran only install.sh --list-folders, no first sync (install.log)`), and
   install.out's counts are its own only under one of its runs' headers; an earlier run's are tagged `(install.out:
@@ -14248,7 +14248,7 @@ the ones install.sh counts (`synced_folders`: live `kind = "local"` sources), th
 as they are (never the inbox or another kind = "inbox" folder), saying which of them this session added: those for
 which a run of step 2 this session printed an "added source" line": step 1's `[synced]` marks no longer decide it, so
 a list that marked nothing gives no false "none" (§16.72 calls this paragraph §16.36's and §16.43's finish).
-Amended 2026-10-16, §16.94 M28: since v20 a sources.toml that does not load is "unknown", not "none".
+Amended 2026-10-15, §16.94 M28: since v20 a sources.toml that does not load is "unknown", not "none".
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -15249,7 +15249,7 @@ whose converter id is not `none`: a binary .msg read, then withheld by a label r
 by its name and that sync's [policy] change queued it, not a later sync while
 `policy_rescreen_pending` stays set; a stub of
 a file no converter claims still does not.
-Amended 2026-10-21, §16.156 Y73: or a later sync that converts a stub a [policy] change queued and the sync
+Amended 2026-10-20, §16.156 Y73: or a later sync that converts a stub a [policy] change queued and the sync
 before left (the `rescreen-stubs` record, kept until the stub is converted); still never by
 `policy_rescreen_pending`.
 
@@ -15287,7 +15287,7 @@ the product name in the friction log's Agent: line stays as written; M of the co
 redacted to <folder-N> like any other`, or `could not list ~/Library/CloudStorage` for the count. The line gives no
 example product word: such a word is a folder name a source can have, and the redacted example would give it back
 (F92). Test: `test_configuration_counts_the_folders_named_like_a_coding_agent`.
-Amended 2026-10-16, §16.92 M2: `, so the product name ... stays as written` follows only when an Agent: line of the
+Amended 2026-10-15, §16.92 M2: `, so the product name ... stays as written` follows only when an Agent: line of the
 friction log has a word of a listed folder's name that is not configured, and N counts only those folders (a
 configured one is redacted, and never decides the clause).
 Amended 2026-10-20, §16.140 W17: when M is not 0 the clause ends `, except as a word of the agent's name in the friction log's Agent: line`.
@@ -15503,7 +15503,7 @@ Amended 2026-10-13, §16.65 G47, G65: a report with a `Private only:` line gets 
 Amended 2026-10-13, §16.69 H75: the agentsync report's `Send it:` line reads `privately (docs/deploy/setup-feedback.md
 in the agentsync repository), never as a public issue: it would show that name. Nothing is sent automatically.`, and
 the report ends after its Redaction section with no issue link, as the shell report does.
-Amended 2026-10-16, §16.92 M36: `Private only: one of your folder, library or organization names ...`.
+Amended 2026-10-15, §16.92 M36: `Private only: one of your folder, library or organization names ...`.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -16050,7 +16050,7 @@ friction section's attempt lines. Test: `test_an_attempt_that_only_stopped_for_t
 Amended 2026-10-13, §16.69 H40: step 1 may also log `question`, `click`, `approval` and `prompt` lines beside its
 deviation; the wait is read from the deviations alone, and the why then reads `step 1 logged a deviation (F<n>), <N
 kind(s)> and nothing else`. Amended 2026-10-13, §16.69 H42: the issue title says `Stopped at step 1 (…)`.
-Amended 2026-10-16, §16.92 M31: the Summary's line is `- attempt: N of N; earlier: …`, so an outcome's own note
+Amended 2026-10-15, §16.92 M31: the Summary's line is `- attempt: N of N; earlier: …`, so an outcome's own note
 bracket is the line's only one.
 
 **G27: the origin/main clause dates the checkout's last fetch.** The run metadata's `install source` line ends `on
@@ -16120,7 +16120,7 @@ private, Downloads only the shell's). An organisation is unaffected; `Status` st
 `test_the_shell_report_leaves_a_report_with_a_generic_folder_public`.
 Amended 2026-10-13, §16.70 H39: the skip covers every pair that shares a generic folder's placeholder, its slug
 id (G8) included.
-Amended 2026-10-21, §16.153 Y7, Y72: a folder or library made of coding-agent product words only (`Copilot`,
+Amended 2026-10-20, §16.153 Y7, Y72: a folder or library made of coding-agent product words only (`Copilot`,
 `github-copilot`) is skipped the same way in both reports.
 
 **G49: OneDrive's organisation stays <org-1> beside a custom-domain tenant.** Amends §16.58 F42: the custom-domain
@@ -17052,7 +17052,7 @@ fails, H9's verifier) and a second "already synced, not added" line (`already co
 **Amended 2026-10-14, §16.85 K65 (by §16.76 J6):** since v17 the "none" form also covers a missing sources.toml,
 which is all a stop before step 2 on a new Mac has: "or, if ~/agent-context/sources.toml does not exist yet or has
 no such kind = "local" source, "none: this Mac syncs no folder"".
-Amended 2026-10-16, §16.94 M28: since v20 a sources.toml that exists but does not load has a case of its own, which
+Amended 2026-10-15, §16.94 M28: since v20 a sources.toml that exists but does not load has a case of its own, which
 lists no folders and says "unknown: ~/agent-context/sources.toml does not load", with the report's reason.
 
 **At the folder wait the NEXT item is "none"** (H6; amends §16.43's H3 paragraph, "The finish names one NEXT
@@ -17995,7 +17995,7 @@ Amended 2026-10-14, §16.86 L8, L25, L40, L58: the line reads by the patch count
 main's or origin/main's own commit is not counted, and branches with no patch get a line without "kept". Branches
 are still counted because they outlive a patch folder the person moved or deleted and v15 to v17 keeps wrote
 patches without a branch name; the overwrite reason ended with §16.82 K28's `--suffix`.
-Amended 2026-10-16, §16.92 M49 (M70 the same defect), M54, M71: the line is left out only when there is no patch and
+Amended 2026-10-15, §16.92 M49 (M70 the same defect), M54, M71: the line is left out only when there is no patch and
 no counted branch, a missing or `.git`-file checkout included (the branches are read from its common dir); a branch
 at main's or origin/main's own commit counts when a patch is named for it, and one at any commit origin/main's reflog
 names does not.
@@ -18603,7 +18603,7 @@ reads `so step 1 asks at most whether to add one`. Tests:
 `test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
 `test_a_folder_list_run_again_before_the_install_is_what_step_1_printed`,
 `test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`.
-Amended 2026-10-16, §16.92 M7: an attempt whose runs are only step 1 lists that all failed, on a Mac that syncs no
+Amended 2026-10-15, §16.92 M7: an attempt whose runs are only step 1 lists that all failed, on a Mac that syncs no
 folder, counts no folder question: after an exit 3 (`not-signed-in`, `no-folders`) nothing was listed and the
 expected turns are none; after an exit 4 (`denied`, `tcc-pending`, or an exit 3 after one) the Allow click stays the
 turn. A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the already-synced
@@ -18635,16 +18635,16 @@ hash." L58's prompt half (delete the empty branch) was not built: it is prompt t
 branches earlier runs left. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`.
-Amended 2026-10-16, §16.92 M71: "a branch cut from an older origin/main still counts" is no longer so: a branch at
+Amended 2026-10-15, §16.92 M71: "a branch cut from an older origin/main still counts" is no longer so: a branch at
 any commit origin/main's reflog names is not counted, since v19's recovery moves main on to origin/main. Amended
-2026-10-16, §16.92 M54: a branch at main's or origin/main's commit is counted when a top-level patch is named for it
-(`.<branch>.patch`). Amended 2026-10-16, §16.92 M49 (M70 the same defect): the patches are counted whatever the
+2026-10-15, §16.92 M54: a branch at main's or origin/main's commit is counted when a top-level patch is named for it
+(`.<branch>.patch`). Amended 2026-10-15, §16.92 M49 (M70 the same defect): the patches are counted whatever the
 checkout is, and the branches read from its common dir, so a `.git` file is no reason for no line.
 Amended 2026-10-15, §16.93 M18: the bracket reads `...; any patch an earlier report already carried is listed there
 by its hash`, and the header's no-patch sentence is `its one patch was in an earlier report` for one patch.
 Amended 2026-10-19, §16.129 U36, U60, U89: the bracket ends `listed there, by its hash when it can be read`, the
 prompt's words: since §16.123 T24 a carried patch this account cannot read is listed with no hash.
-Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20, so the sentence
+Amended 2026-10-15, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20, so the sentence
 above saying it was not built no longer holds. A keep with nothing to keep deletes its branch. That branch sat at
 the old main, a commit the sha skip does not catch and M71's reflog skip catches only when origin/main's reflog
 names it. Both skips stay for branches earlier runs left.
@@ -18692,7 +18692,7 @@ puts the note in one. install.log keeps its tokens; any other note is shown as i
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 Amended 2026-10-20, §16.147 X43: `waited-for-an-unrecorded-holder` reads `waited for the sync lock to be free` and
 `lock-wait-ran-out-after-<N>s` reads `waited <N>s for the sync lock, then reinstalled while it was still held`.
-Amended 2026-10-16, §16.92 M40: the first-sync step's notes read as words too (`_first_sync_note`), in the Installer
+Amended 2026-10-15, §16.92 M40: the first-sync step's notes read as words too (`_first_sync_note`), in the Installer
 table and the Summary alike.
 
 **The friction section's attempt line has one bracket** (L32). `- attempt 2 (lines 5-5; no Attempt: line (logged
@@ -18761,7 +18761,7 @@ line alone is no header (G51), so a stated error after it now states its words t
 `test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers`,
 `test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`, and the late-line contract table,
 unchanged.
-Amended 2026-10-16, §16.92 M30 (M73 the same defect): such an attempt is labelled `since its session stopped before
+Amended 2026-10-15, §16.92 M30 (M73 the same defect): such an attempt is labelled `since its session stopped before
 `install.sh --log-start`` too, not `since it is in the v4 format`: `_headerless_kind` reads the first step 1 error
 when only step 1 lines come before it.
 Amended 2026-10-16, §16.98 N23: the run is the step 1 lines dated at or after the end line, whatever the gap, in both
@@ -18972,7 +18972,7 @@ words now read "not a checkout this setup can use" and name the local-work branc
 review found that loop: v18 cloned onto such a folder instead). The allow list gains `Bash([ -f
 ~/src/agent-context-sync/.git ])`, so step 1 needs the first eight rules. Test:
 `test_a_checkout_whose_git_is_a_file_pulls`.
-Amended 2026-10-16, §16.94 M17, M69: "lossless under the ancestor test" covered only the local-work commits: the
+Amended 2026-10-15, §16.94 M17, M69: "lossless under the ancestor test" covered only the local-work commits: the
 runner's reset (Apple git 2.39.5's) moves the main another worktree has out under that checkout's files, which then
 hold a staged revert of the update. Since v20 every recovery goes back with a plain `switch main`, which refuses there
 on every git from 2.39.5 to 2.54, and the worktree case is a stop of its own that names both of git's phrases, the
@@ -18988,7 +18988,7 @@ exit-1 case), main stays as it was. `switch -C` from a remote-tracking branch se
 track" line comes before the count, and the upstream step is a no-op there. The optional `fetch` before format-patch
 is not built: step 1's pull fetched before it failed. Tests: `test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`,
 `test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`.
-Amended 2026-10-16, §16.94 M69, M83: since v20 the reset is `switch main && reset -q --keep origin/main`, which sets
+Amended 2026-10-15, §16.94 M69, M83: since v20 the reset is `switch main && reset -q --keep origin/main`, which sets
 no upstream, so git's "set up to track" line comes from the upstream step, after the count, and only where main had
 none; a count of 0 also deletes the local-work branch, in the same chain.
 
@@ -19008,7 +19008,7 @@ number; otherwise they tell the person the code on the Mac is not this prompt's 
 could be updated. The finish still applies after every one of these stops. Step 1's version check now reads "the
 --version inside step 1's one command", so the Xcode and git stops' own `--version` is not taken for it. Step 3's
 no-report cases are four. Test: `test_readme_step1_is_one_command`, `test_readme_report_step_after_any_failure`.
-Amended 2026-10-16, §16.94 M16, M32: "where no pull ran" was so at the Xcode stop only; at the other-git-failure
+Amended 2026-10-15, §16.94 M16, M32: "where no pull ran" was so at the Xcode stop only; at the other-git-failure
 stop the pull ran and failed. Since v20 the prompt says step 1 did not update that copy, and the stop with no report
 also says the person has nothing more to do: the next paste tries the update first. Test:
 `test_readme_step1_is_one_command`.
@@ -19041,7 +19041,7 @@ says about proxy variables comes from the shell the report ran in, which may not
 only labels both reports print (`setup_report.py`'s proxy fact and `install.sh`'s shell report), not "proxy
 environment", which only the shell report has, and no parenthesis, which H21 keeps out of the quote. Test:
 `test_readme_step1_is_one_command`.
-Amended 2026-10-16, §16.94 M21, M33: "say only set or not set" was false (both reports add a bracket to "set": the
+Amended 2026-10-15, §16.94 M21, M33: "say only set or not set" was false (both reports add a bracket to "set": the
 rewrite count, H20, and that git's proxy wins), and the unmarked labels read as a broken sentence. Since v20 the
 labels are in code marks and the entries "say whether each is set, never which host".
 
@@ -19069,7 +19069,7 @@ unreadable folders the wait said `a folder in work could not be listed ... which
 five and `+1 more`. The three unlisted-folder waits now say `one or more folders in <id>` (`in each of A and B`),
 that the alarm names `what could not be listed, up to five, and past five how to list the rest`
 (`loop._WHAT_FAILED`: a missing sentinel lands on the same wait, and its alarm names the sentinel, no folder;
-**Amended 2026-10-16, §16.95 M59:** a walk incomplete only for its sentinel has its own wait), and
+**Amended 2026-10-15, §16.95 M59:** a walk incomplete only for its sentinel has its own wait), and
 `add each one to that source's exclude` or `adding such a folder`. Tests: `test_loop.py::
 test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at`, `test_loop.py::
 test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`.
@@ -19088,11 +19088,11 @@ with no empty folder. Names, not the verifier's count, so an exclude added since
 A manifest from before this build has no key and reads as none. Tests: `test_loop.py::
 test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`, `test_loop.py::
 test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words`.
-**Amended 2026-10-16, §16.95 M57:** the missed count moves to that line only when the folder it could not read holds
+**Amended 2026-10-15, §16.95 M57:** the missed count moves to that line only when the folder it could not read holds
 mirrored files, and beside a gone folder it is said `in all`; otherwise the line offers the plain exclude and the
-count stays on the empty folders' line. **Amended 2026-10-16, §16.95 M58:** after exclude-empty, before another sync,
-the wait stays. **Amended 2026-10-16, §16.95 M42:** its fix follows the kind each folder was refused with.
-**Amended 2026-10-16, §16.97 M81 (by §16.95 M47):** `_note_empty_dirs` also stores each such folder's kind as
+count stays on the empty folders' line. **Amended 2026-10-15, §16.95 M58:** after exclude-empty, before another sync,
+the wait stays. **Amended 2026-10-15, §16.95 M42:** its fix follows the kind each folder was refused with.
+**Amended 2026-10-15, §16.97 M81 (by §16.95 M47):** `_note_empty_dirs` also stores each such folder's kind as
 manifest meta `unlisted_kinds:<id>` beside `unlisted_dirs:<id>`, and `loop._access_fix` words the wait's fix by it;
 §16.95 M47 names a dated line here that no line carried.
 
@@ -19104,8 +19104,8 @@ The alarm counts the kinds present from `known_h0`: one kind reads `the WAITING 
 or more, or no `known_h0` (count unknown), keep `each`. One folder keeps the singular (round 5 F11). Dated lines at
 §16.63 G57 and §16.83 K41. Tests: `test_arm_local.py::test_the_empty_folder_alarm_counts_the_waits_by_the_loops_rule`,
 `test_arm_local.py::test_an_empty_folder_that_held_files_is_its_own_wait_in_the_alarm`.
-**Amended 2026-10-16, §16.95 M55:** the count takes the files this walk listed as well as `known_h0`'s, which is empty
-on a first sync. **Amended 2026-10-16, §16.95 M56 (by §16.95 M46):** the line is named by its subject, `the WAITING ON
+**Amended 2026-10-15, §16.95 M55:** the count takes the files this walk listed as well as `known_h0`'s, which is empty
+on a first sync. **Amended 2026-10-15, §16.95 M56 (by §16.95 M46):** the line is named by its subject, `the WAITING ON
 YOU line about the empty cloud folder(s) in <id>` (`each WAITING ON YOU line about empty cloud folders in <id>`),
 since a folder the walk could not read beside them gets a wait about the same source.
 
@@ -19118,7 +19118,7 @@ own, so `setup_report._SPLIT_RE` still matches). W stays out of N, and its paren
 cannot be read: an image or a .msg not on this Mac)`. K + W are the pages that say withheld. Dated lines at §16.77
 J29 and §16.83 K33. Tests: `test_cycle.py::test_the_sync_line_counts_every_stub_the_label_rule_withheld`, the pins
 in `test_cli.py`, `test_cycle.py` and `test_setup_report.py`.
-Amended 2026-10-16, §16.92 M82: `_SPLIT_RE` now reads K too, and the setup report's Summary prints `, K of them
+Amended 2026-10-15, §16.92 M82: `_SPLIT_RE` now reads K too, and the setup report's Summary prints `, K of them
 withheld by the label rule` after R.
 Amended 2026-10-17, §16.107 O34: the parenthesis reads `(a file whose label cannot be read: an image, or a .msg not
 on this Mac)`.
@@ -19140,7 +19140,7 @@ converted)`, not `now in the count above)`; the report's clause (`also in the co
 `_CONVERTED_LINE_RE` reads R at `, first read R` before the bracket, so an install.out with the older words still
 parses. Amended 2026-10-15, §16.97 M78, M81: the dated line for §16.37 is in §16.14, at the setup log's
 `converted-N-deferred-M` note that carries §16.37's amendment; §16.37 itself holds none.
-**Amended 2026-10-16, §16.95 M11:** for R = 1 both read `a stub whose bytes had never been read`.
+**Amended 2026-10-15, §16.95 M11:** for R = 1 both read `a stub whose bytes had never been read`.
 
 **L73: the lock holder says who started the sync (`agentsync.ops.lock`, `agentsync.ops.launchd`, `agentsync.cycle`,
 `agentsync.ops.doctor`; amends §16.83 K37).** K37's optional `started_by` key is built, from the environment: the
@@ -22803,7 +22803,7 @@ Tests: `test_the_shell_report_says_step_1_kept_local_work_in_counts_only` (2 and
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 Amended 2026-10-19, §16.129 U38: the Summary label keeps no `(es)`: `- local-work branches in the checkout: N with
 commits of their own`, and `1 with commits of its own` for one.
-Amended 2026-10-21, §16.153 Y23: the `--report-only` NEXT says so too, beside the review.
+Amended 2026-10-20, §16.153 Y23: the `--report-only` NEXT says so too, beside the review.
 
 **A re-run names no folder the config step added, and quotes a spaced one** (T22, T35). Every add-source failure stops
 the run, so once the config step ends each `--source-local` folder is in the config, and the NEXTs after it re-run
@@ -24015,7 +24015,7 @@ with the options of the run that installed agentsync (not --report-only, which b
 (`doctor.AGAIN_UNDER_INSTALL_SH`), not `run the same <installer> command again ...`; the fallback above is unchanged.
 Amended 2026-10-20, §16.149 X21: under install.sh `_again_fix` starts `run <install.sh> again (it keeps the folders
 already synced; not --report-only, which builds nothing)`, with no options repeated.
-Amended 2026-10-21, §16.155 Y20: under install.sh `_again_fix` starts `run <install.sh> again without
+Amended 2026-10-20, §16.155 Y20: under install.sh `_again_fix` starts `run <install.sh> again without
 --report-only, which builds nothing; a plain run keeps the folders already synced`, with no bracket of its own.
 
 **A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
@@ -24634,7 +24634,7 @@ names it)`, which no NEXT line made true for a warn.
 Amended 2026-10-20, §16.149 X20, X21: the line drops the marker's retry clause where the fix says the re-run, and
 under install.sh the fix starts `run <install.sh> again (it keeps the folders already synced; not --report-only,
 which builds nothing)`.
-Amended 2026-10-21, §16.155 Y20: under install.sh the fix starts `run <install.sh> again without --report-only,
+Amended 2026-10-20, §16.155 Y20: under install.sh the fix starts `run <install.sh> again without --report-only,
 which builds nothing; a plain run keeps the folders already synced`, no bracket inside the line's `(fix: ...)`.
 Amended 2026-10-22, §16.175 B42: "any other failed build keeps no fix" now has one exception, a build whose
 `swift package resolve` (the FluidAudio fetch) failed: its fix is the re-run and where to look if it fails again
@@ -25358,7 +25358,7 @@ sync still drops it (§16.68 H31). W30's "log file only" has no file to map onto
 have emptied Recent errors of background skips, so neither is built. One defect from two finders, built once.
 Tests: `test_cli.py::test_a_foreground_skip_is_said_once_in_the_wait_lines_words`, and
 `test_lock_held_warning_names_the_holder_and_repeats_verbatim` under the job's `XPC_SERVICE_NAME`.
-Amended 2026-10-21, §16.155 Y27: so is a stale lock a sync breaks: `SingleWriterLock.acquire` logs `breaking stale
+Amended 2026-10-20, §16.155 Y27: so is a stale lock a sync breaks: `SingleWriterLock.acquire` logs `breaking stale
 lock left by ...` at DEBUG for a sync the background job did not start, whose report prints the `note:` line, and
 keeps the WARNING for the job and for a caller with no `started_by`.
 
@@ -25402,7 +25402,7 @@ under `--report-only`. Tests: `RUN_AGAIN_INSTALL` in `test_ops_doctor.py` and th
 `test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
 Amended 2026-10-20, §16.149 X21: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again (it keeps the folders
 already synced; not --report-only, which builds nothing)`.
-Amended 2026-10-21, §16.155 Y20: it is `run <install.sh> again without --report-only, which builds nothing; a plain
+Amended 2026-10-20, §16.155 Y20: it is `run <install.sh> again without --report-only, which builds nothing; a plain
 run keeps the folders already synced`, with no bracket of its own.
 
 **W47: the run line's docstring gives the converter-waiting count its own letter (`agentsync.cli`).** Round 18's
@@ -25453,7 +25453,7 @@ defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this li
 Amended 2026-10-20, §16.149 X47, X49: the error keeps the system's words as its own `reason` (status: `a file
 cannot be opened: <reason>; the state_dir lines say why`), and only EACCES, EPERM and EROFS are
 `ManifestOpenError` with this fix; any other errno is its base `ManifestPathError`, one `error:` line with no fix.
-Amended 2026-10-21, §16.155 Y31, Y69: the fix is status's for the same path, `doctor.state_path_fix` (`chmod 600
+Amended 2026-10-20, §16.155 Y31, Y69: the fix is status's for the same path, `doctor.state_path_fix` (`chmod 600
 <db>`, `chmod 700 <folder>`, another account's the person's chown), then `; the file itself is not damaged`; only a
 refusal that is no PermissionError (a read-only volume) keeps `MANIFEST_OPEN_FIX`. An interactive sync adds a NEXT
 naming status.
@@ -25541,7 +25541,7 @@ Amended 2026-10-20, §16.150 X53: the note reads `tried again, up to 2 times in 
 on` (`of their sources` for more than one) and the report's bullet `in up to 2 runs of its source from that one on`:
 the move takes every source's failures, and a source this sync does not read (paused, `reconcile --source`, no Graph
 client, the time limit) tries its files in its own later syncs.
-Amended 2026-10-21, §16.155 Y28: the note is split by outcome; the rows this sync made current read `note: N
+Amended 2026-10-20, §16.155 Y28: the note is split by outcome; the rows this sync made current read `note: N
 conversion(s) an older build gave up on was/were tried again in this sync and is/are now current`, and the retry
 words, for the rest, end `may show again until those tries are used`.
 
@@ -26078,7 +26078,7 @@ friction log's Agent line and the link's agent field in both reports, a path in 
 `<folder-N>`, the legend clause) and `test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name`
 (a configured Copilot: the Summary's agent field, the link, the stated prefix kept, the path redacted), and
 `test_the_shells_agent_spans_keep_only_a_product_word_standing_alone` (the review's cases, the pairs stubbed).
-Amended 2026-10-21, §16.153 Y7, Y72: the two reports' public/private rule for a product-word folder is one now,
+Amended 2026-10-20, §16.153 Y7, Y72: the two reports' public/private rule for a product-word folder is one now,
 as G48 meant: both stay public.
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
@@ -26132,7 +26132,7 @@ person's NEXT; this account's own keeps `fix the error above`) and, with the rea
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says` (step 1's clause, step 2's exit 1 at its
 config step with `cannot be opened: Permission denied`, and a pass after the chmod).
 
-Amended 2026-10-21, §16.154 Y24, Y10, Y4, Y14, Y57: this account's own state folder or manifest no longer keeps
+Amended 2026-10-20, §16.154 Y24, Y10, Y4, Y14, Y57: this account's own state folder or manifest no longer keeps
 `fix the error above`: step 2's NEXT names the chmod `doctor.state_path_fix` gives, the agent's once, or the person's
 NEXT when that fix is no chmod; step 1's tails say "state folder or a file in it", and "no build can open the file
 either" holds for the folder and the manifest only: init opens past a `-wal` or `-shm`, whose own words
@@ -26199,9 +26199,9 @@ one-line `error: state:` must not print, so the system's words are the error's o
 with no fix line: not an `OSError` left raw, which no arm of `cli._main` catches and would be a traceback again.
 Tests: `test_cli.py::test_a_manifest_this_account_cannot_open_keeps_its_reason` and
 `test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix` (both layouts).
-Amended 2026-10-21, §16.155 Y31, Y69: the access fix of an EACCES or EPERM is `doctor.state_path_fix`'s, as
+Amended 2026-10-20, §16.155 Y31, Y69: the access fix of an EACCES or EPERM is `doctor.state_path_fix`'s, as
 status's.
-Amended 2026-10-21, §16.155 Y47: a folder where the manifest belongs FAILs `state_dir.manifest` in status too,
+Amended 2026-10-20, §16.155 Y47: a folder where the manifest belongs FAILs `state_dir.manifest` in status too,
 which then exits 1.
 
 **X50: damage under an index root fails status before any sync (`agentsync.ops.doctor`; amends §16.143 W41,
@@ -26274,18 +26274,18 @@ the whole check. Tests:
 poll, curate), `test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix`,
 `test_a_state_path_another_account_owns_gets_the_persons_chown` and
 `test_a_permission_error_outside_the_state_folder_keeps_its_traceback`.
-Amended 2026-10-21, §16.155 Y11, Y26: `sources.shared_content` reads the manifest too: with two sources it says
+Amended 2026-10-20, §16.155 Y11, Y26: `sources.shared_content` reads the manifest too: with two sources it says
 `STATE_FOLDER_UNCHECKED`, and its look for the manifest is inside its `try`.
-Amended 2026-10-21, §16.155 Y42: so does graph.auth, whose token cache is in the folder; graph.client_id and
+Amended 2026-10-20, §16.155 Y42: so does graph.auth, whose token cache is in the folder; graph.client_id and
 graph.config still run, and a cache file at 0000 in an open folder gets `state_path_fix`'s fix, never a logout.
-Amended 2026-10-21, §16.155 Y43: the lock and heartbeat checks give a file this account cannot open the same FAIL
+Amended 2026-10-20, §16.155 Y43: the lock and heartbeat checks give a file this account cannot open the same FAIL
 (`doctor.refused_state_path`, which `cli._refused_check` calls), and `status: cannot read the state:` points at the
 line that judges the path.
-Amended 2026-10-21, §16.155 Y44: the config-level hold is sources.toml's, so it is shown first either way; only the
+Amended 2026-10-20, §16.155 Y44: the config-level hold is sources.toml's, so it is shown first either way; only the
 state holds say not checked or FAIL.
-Amended 2026-10-21, §16.155 Y45: status's words for a governance file it cannot open are `<name> cannot be opened:
+Amended 2026-10-20, §16.155 Y45: status's words for a governance file it cannot open are `<name> cannot be opened:
 <reason>; the <check> [FAIL] line says why`, and the report has a bucket for its FAIL.
-Amended 2026-10-21, §16.155 Y31, Y69: the access fix of an own folder at 0700, or an own file or subfolder whose
+Amended 2026-10-20, §16.155 Y31, Y69: the access fix of an own folder at 0700, or an own file or subfolder whose
 mode already gives access, refused anyway (an ACL), and of a folder whose parent refuses a search, starts `the
 person `: the person's, by the round 21 ownership rule.
 
@@ -26302,7 +26302,7 @@ read its exclusion: <path> (<reason>)`, plus `; the state_dir lines say why` whe
 the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's X28, in §16.146, needs no
 time_machine case of its own. Test:
 `test_cli.py::test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded` (macOS).
-Amended 2026-10-21, §16.155 Y51: over a state folder this account cannot search, its paths get one
+Amended 2026-10-20, §16.155 Y51: over a state folder this account cannot search, its paths get one
 `STATE_FOLDER_UNCHECKED` line, as governance.hold's, and only the paths outside it are judged.
 
 **X14, X15, X46: the listing note over a state file that cannot be read makes no claim about the loop, and an
@@ -26346,7 +26346,7 @@ WARNING, which is a background job's only record in its err.log, and so does sta
 lines of `test_cli.py::test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it`,
 `test_a_failed_loop_read_with_no_fail_still_logs_its_warning` and
 `test_loop.py::test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it`.
-Amended 2026-10-21, §16.155 Y27, Y43: the lock's stale-lock WARNING is DEBUG under a sync that prints its own note,
+Amended 2026-10-20, §16.155 Y27, Y43: the lock's stale-lock WARNING is DEBUG under a sync that prints its own note,
 and status's read of a heartbeat its heartbeat line names logs `heartbeat unreadable` at DEBUG
 (`cycle.source_statuses`, `quiet`).
 
@@ -26378,7 +26378,7 @@ with no --source-local keeps the config's folders and background sync is the ope
 Tests: `RUN_AGAIN_INSTALL` and the X20 lines of
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one` and
 `test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
-Amended 2026-10-21, §16.155 Y20: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again without --report-only,
+Amended 2026-10-20, §16.155 Y20: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again without --report-only,
 which builds nothing; a plain run keeps the folders already synced`: its bracket sat inside every line's `(fix:
 ...)`.
 
@@ -26444,7 +26444,7 @@ convert (online-only, out of time) is left out of S in the sync that does, as be
 `test_cycle.py::test_the_sync_line_after_a_label_rule_is_lifted_names_every_conversion_it_counts` (an image
 and a binary .msg, then the image alone: no rule, the rule, the rule removed; S equals N and no `reread`),
 `test_cycle.py::test_an_image_stub_converted_after_a_rule_changes_sync_is_no_re_screen`.
-Amended 2026-10-21, §16.156 Y73: a queued stub that sync does not convert is now counted in S by the sync that
+Amended 2026-10-20, §16.156 Y73: a queued stub that sync does not convert is now counted in S by the sync that
 does (`rescreen-stubs` replaces `_rescreen_queued`); a re-read, as an online-only stub's later conversion is,
 stays out of S.
 
@@ -26461,7 +26461,7 @@ migration. Tests: `test_cycle.py::test_the_upgrades_retry_note_counts_a_source_t
 (a paused source's failure: counted, not tried, then tried twice in that source's later syncs, no note again),
 `test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once` and
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the words).
-Amended 2026-10-21, §16.155 Y28: those words are for the rows that failed again or were not read; `until then`
+Amended 2026-10-20, §16.155 Y28: those words are for the rows that failed again or were not read; `until then`
 reads `until those tries are used`, and a row this sync made current has its own note.
 Amended 2026-10-21, §16.162 Z55: so has a row this sync settled with no try left (unreadable, refused or
 removed): `was tried again in this sync and is settled ... not tried again`, never the retry words.
@@ -26473,7 +26473,7 @@ W38).** `ocr._entry`, `ocr._main`, `media._main` and `speech._main` said exit 1 
 also exits 1 when the probe after a good build answers `failed` (V6); install.sh already says `not built, or
 built and failing its probe`. The four now say so. Two finders, one defect, built once. Docstrings only, with no
 test that could fail.
-Amended 2026-10-21, §16.156 Y55: that exit 1 dates from each helper's first build (§16.25 for OCR), not V6, which
+Amended 2026-10-20, §16.156 Y55: that exit 1 dates from each helper's first build (§16.25 for OCR), not V6, which
 changed only install.sh; install.sh has read it as not ready since §16.135 V6 and §16.141 W38.
 
 **The recording tests' docstring and W70 name CI's limit (X58).** One defect with lane D's X61 (§16.151), built
@@ -26551,7 +26551,7 @@ deploy guide's list says 1 is also another error the job's log names in one line
 fix (owner and mode 600, the file is not damaged, so it is not moved aside); `setup_report.EXIT_MEANINGS[1]` and
 `--help`'s list name it too. `curate` on the same file printed the line and exited 0 in the verifier's run, so
 nothing says it exits 1. Test: `test_exit_1_names_a_state_file_this_account_cannot_open`.
-Amended 2026-10-21, §16.155 Y31, Y69, Y75: curate exits 1 on that file too (measured on a 0400 and a 0000
+Amended 2026-10-20, §16.155 Y31, Y69, Y75: curate exits 1 on that file too (measured on a 0400 and a 0000
 manifest), its `--help` line says so (§16.157 Y76's words), and the line's fix is status's, `doctor.state_path_fix`.
 
 **W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
@@ -26933,7 +26933,7 @@ Round 21's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `
 verifier's corrected fix, under the round's ownership rule: a state file or folder this account owns but cannot open
 by its own mode is the agent's `chmod 600` or `chmod 700` (`doctor.state_path_fix`), and one another account owns,
 an ACL deny or a folder whose parent refuses a search is the person's. A dated line this round writes reads
-`Amended 2026-10-21, §16.155 Y<n>`.
+`Amended 2026-10-20, §16.155 Y<n>`.
 
 **Y11, Y26: shared content over a shut state folder says not checked (`agentsync.ops.doctor`; amends §16.149
 X73).** X73's configs had one source, so `_check_shared_content` returned before its `db.exists()`, which on Python
@@ -27117,7 +27117,7 @@ callers, and §16.12 has a dated line. Test: `test_deploy_pack.py::test_y49s_lin
 ### 16.156 Round 21: the convert retry clause, helper docstrings and rescreened stubs (2026-10-20, wave B13 round 21 lane E)
 
 Round 21's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`, the
-verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-21, §16.156 Y<n>`.
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-20, §16.156 Y<n>`.
 
 **A withheld stub a rule change queued is re-screened in the sync that converts it (Y73; `agentsync.cycle`,
 `agentsync.manifest`; corrects §16.150 X34; dated line at §16.57 F35).** X34 counted a stub a label rule
@@ -30099,6 +30099,8 @@ landing date) was the wrong way round: at 3ec66a92, 926 of the file's 1,034 date
 §16.92 to §16.97 and round 21's 30 in §16.153 to §16.156), five of them quoted by tests; they stay as written, and
 the rule is held from §16.157 on. Test:
 `test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date`.
+Amended 2026-10-23, §16.187 E70: the 90 carry their headings' dates now, and the test reads every home, in each
+of the three forms, and each section's own "A dated line this round writes reads" sentence.
 
 **§16.176's B84 record follows B55** (D61; dated line at §16.176 B84). §16.176 says the `<value>` row keeps "each
 counted as a `<value>`" to the agentsync report; §16.171's B55 (5c7d7a9c, landed after both B84 commits) made
@@ -30233,4 +30235,17 @@ literals turns it red). Not a runtime read of the page: it is repository text, n
 
 ### 16.187 Round 26: deploy docs, CONTRACTS records and the deploy-pack tests (2026-10-23, wave B13 round 26 lane D)
 
-Reserved for round 26 lane D of B13.
+Lane D's round 26 items (`docs/plans/bring-back-ocr.md`, "B13 round 26"; specs `round26/items/E<n>.md`, the
+verifier's corrected fix built): E35, E55, E57, E58, E59, E60, E61, E69, E70 and E81. E61 and E81 are one defect
+of the D59 test, built once; E35 and E58 are one gap in the guide, built once.
+
+**Round 21's and round 11's older dated lines take their headings' dates** (E70; dated line at §16.182 D64). D64
+held the rule from §16.157 on and left 90 lines dated the day after their headings as written: §16.45's 22
+(2026-10-12 under 2026-10-11), round 11's 38 in §16.92, §16.94, §16.95 and §16.97 (2026-10-16 under 2026-10-15) and
+round 21's 30 in §16.153 to §16.156 (2026-10-21 under 2026-10-20). Six paragraphs read a lower section's line a day
+after a higher one from the same round (§16.97 M61 before §16.95 M11, §16.92 against §16.93, §16.45 against §16.47).
+They carry their headings' dates now, as do §16.155's and §16.156's own "A dated line this round writes reads"
+sentences, and the five test quotes of them move with them. The test reads every home (1,053 lines), the older
+`Amended <date> (§16.N` and `Amended <date> by §16.N` forms (34, all already right) and each section's own
+sentence. The finder's one older-form line under a 2026-10-15 heading is not there: the 11 of that form all read
+2026-10-12 under 2026-10-12 headings. Test: `test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date`.
