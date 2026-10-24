@@ -6346,7 +6346,9 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     )
     assert '"it would show that word"' in report and private[:90] in install and private[:90] in report
     assert "two-letter one" in page and "keeps the report public" in page
-    assert "it" in setup_report._SHORT_WORDS and "hr" not in setup_report._SHORT_WORDS
+    # B13 round 27 P63: the two-letter words either report prints, not the name-part list
+    assert "it" in setup_report._TWO_LETTER_WORDS and "hr" not in setup_report._TWO_LETTER_WORDS
+    assert "| is | it | js |" in install  # two_letter_word's case list, not the name-part one
     both = setup_report._instruction_text(Counter({"NEXT:": 1}), 30, 3, pending=True, open_runs=1)
     clause = both.split("; ", 1)[1].split(")", 1)[0].replace("so 1 expected", "so N expected")
     assert clause.startswith(
@@ -6365,6 +6367,18 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
         "; {late_count} more logged after the end line" in report
         and "(`N more logged after the end line`)" in page
     )
+    # B13 round 27 P64: with no stop in the window the count has its own words, and the shell report, which
+    # has no Items list, lists the block in its Installer section
+    assert (
+        "else f\"; {_plural(late_count, 'step-3 sync stop')} agentsync logged after the end line\"" in report
+        and "`N step-3 sync stop(s) agentsync logged after the end line` when the window has none" in page
+    )
+    assert (
+        install.index('say "## Installer"') < install.index(shell) < install.index('say "## Configuration"')
+    )
+    assert (
+        "The shell fallback report has no Items list, so it lists the stop in its Installer section" in page
+    )
     pages = setup_report._NoManifestError(7).line.replace("over 7 ", "over N ")
     assert pages.startswith("- no manifest yet (the next sync") and f"`{pages}`" in page
     assert setup_report._NoManifestError(0).line == "- no manifest yet (no sync has run)"
@@ -6374,6 +6388,140 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     )
     fix = "they remove the link first; then they restore the file"
     assert link in install and fix in install and link in page and f"`{fix} ...`" in page
+
+
+def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
+    """B13 round 27 P60: round 26 added outputs the guide never described, the gap E35 and E58 closed
+    for round 25: E19's step 1 tail and step 2 NEXT for a manifest link to a file that does not exist in a
+    folder a sync can write, and E67's reason for an agent's stop that came back after the agent's chmod (one,
+    several, and not measured). Each is read from the code that prints it, with a count or a file put back as
+    the guide's N and <what>. E3's report outcome is left out on purpose: the guide gives no step 2 state
+    outcome."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    install = " ".join((ROOT / "scripts" / "install.sh").read_text(encoding="utf-8").split())
+    tail = (
+        "manifest.sqlite, a symlink to a file that does not exist, which is missing though heartbeat.json"
+        " beside it records earlier passes"
+    )
+    nxt = "is a symlink to a file that does not exist, and is missing, though heartbeat.json"
+    assert tail in install and nxt in install
+    assert f"`... {tail} ...`" in page and f"`... {nxt} ...`" in page
+    assert "ruling 7's fix stays, with no `rm` first" in page
+    at = datetime(2026, 10, 24, 10, 0, tzinfo=UTC)
+    lock = setup_report._SyncStop(at, "lock", "agent", None)
+    one = setup_report._again_reason([lock], True)
+    assert (
+        one.startswith("a sync at step 3 exited 1 on agentsync's lock file and came back")
+        and f"`{one}`" in page
+    )
+    two = setup_report._again_reason([lock, lock], True).replace("2 syncs", "N syncs")
+    head = two.replace(lock.what, "<what>").split(": ", 1)[0]
+    assert head.startswith("N syncs at step 3 exited 1 on <what>, the later") and f"`{head}: ...`" in page
+    unmeasured = setup_report._again_reason([lock], False)
+    clause = "whether a sync ended 0 after it was not measured"
+    assert clause in unmeasured and f"`{clause}` when the runs table cannot be read; B13 round 26 E67" in page
+
+
+def test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_target() -> None:
+    """B13 round 27 P61: round 26 E2 made a state file's or the docs repo's link target outside home the
+    unnumbered `<path>` in the agentsync report, and the guide's `<path>` row named only log-line paths; its
+    count sentence listed 7 of the 11 unnumbered kinds. The row gives the link target, the sentence lists
+    `_UNNUMBERED` (home as `~`), and says `<path>` is counted only for a link target, as `Redactor.note` and
+    the regex cuts of a log line count nothing."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    [listed] = re.findall(r"the unnumbered ones \(([^)]*)\) as often as a value was replaced", page)
+    want = {"~" if k == "home" else f"<{k}>" for k in setup_report._UNNUMBERED}
+    assert sorted(re.findall(r"`([^`]+)`", listed)) == sorted(want) and len(want) == 11
+    assert (
+        "`<path>` is counted only for a replaced link target; a log line's `<path>` cut is not counted"
+        in page
+    )
+    assert "a link's target outside this home" in setup_report._LEGEND["path"]
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| `<path>` |")]
+    assert "in the agentsync report only, since B13 round 26 E2, the target outside the home folder" in row
+    assert "`agentsync status` and the CLI still print it whole" in row
+
+
+def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
+    """B13 round 27 P55: the speech helper's Package.swift needs Swift 6.0 (E48 words the failure after the
+    fact), and no guide said so: an IT department with an older Command Line Tools release got OCR and media
+    and no speech with no warning. The install prerequisites, the speech models section, the IT request's
+    download list and the asks table give the floor read from Package.swift, outside the setup prompt."""
+    package = (ROOT / "src" / "agentsync" / "convert" / "speech_helper" / "Package.swift").read_text("utf-8")
+    [floor] = re.findall(r"^// swift-tools-version: ?(\d+\.\d+)", package, re.M)
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    deploy = " ".join(_page("docs/deploy/README.md").split())
+    it_request = " ".join(_page("docs/deploy/it-request.md").split())
+    needs = (
+        f"the speech helper also needs them (or Xcode) to bring Swift {floor} or later, which is Command Line"
+        " Tools 16 or later on macOS 14.5 or later. With an older release everything else works and the"
+        " `speech:` line says this Mac's Swift is too old."
+    )
+    assert floor == "6.0" and needs in readme and needs in deploy
+    assert f"It needs Swift {floor} or later from the Command Line Tools or Xcode" in readme
+    assert f"| the Command Line Tools, a release with Swift {floor} or later (16 or later) |" in deploy
+    assert f"Where developer tools with Swift {floor} or later are installed" in it_request
+    assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
+    prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
+    assert "Swift" not in prompt[: prompt.index("prompt v33, <agent> and a colon")], "the prompt stays v33"
+
+
+def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
+    """B13 round 27 P62: round 26 E25 (ruling 14) made `purge` (a selector, the queue and their dry runs) and
+    `compact-history` stop over a lost manifest, and data-governance.md gave the erasure recipe and the queue
+    as always there. Its bullet names each, status's own words, the fix and its cost, and that hold works."""
+    from agentsync import cli, manifest  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost manifest:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert f"`{manifest.LOST_MANIFEST}`" in bullet
+    for word in (
+        "`agentsync purge`",
+        "`--queue`",
+        "`--dry-run`",
+        "`agentsync compact-history`",
+        "`agentsync hold`",
+    ):
+        assert word in bullet, word
+    assert "exit 1 and write nothing" in bullet and "Queued purges stay queued" in bullet
+    assert "restore manifest.sqlite from a copy you trust, or else move heartbeat.json aside" in bullet
+    source = inspect.getsource(cli)
+    assert "if (args.queue or args.selector) and _lost_state_stop(args, config):" in source
+    assert "_lost_state_stop" not in inspect.getsource(cli._cmd_hold)
+
+
+def test_records_round_26_changed_point_to_the_change() -> None:
+    """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
+    D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)
+    and left no dated line at them, E57's defect class again: no "(...; amends §X)" claim asked for one. Each
+    line is the one line of a §16.192 claim, quoting what the code says now; the E57 lines that quote D79's
+    clause say E16 replaced it. P55's and P61's lines at E48 and E2 are claimed the same way."""
+    claims, _bare, _held_at, unheld = _dated_line_scan()
+    assert unheld == []
+    for claim in (
+        ("16.192", ["P144"], "16.179", "D79"),
+        ("16.192", ["P59"], "16.179", "D79"),
+        ("16.192", ["P59"], "16.179", "D33"),
+        ("16.192", ["P59"], "16.180", "D6"),
+        ("16.192", ["P55"], "16.186", "E48"),
+        ("16.192", ["P61"], "16.185", "E2"),
+    ):
+        assert claim in claims, claim
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [shut] = re.findall(r'^SHUT_OPEN="([^"]*)"$', install, re.M)
+    assert f"Amended 2026-10-24, §16.192 P144 (by §16.184 E16): the clause is now `{shut}`" in text
+    doctor = (ROOT / "src" / "agentsync" / "ops" / "doctor.py").read_text(encoding="utf-8")
+    assert 'f"{expand(p)} is {kind}, not a file: {role} belongs there"' in doctor
+    assert "§16.192 P59 (by §16.185 E18): the detail reads `<path> is <kind>, not a file: <role>" in text
+    assert "§16.192 P59 (by §16.184 E76): the shell does now list a stop logged after the end line" in text
+    assert "§16.192 P59 (by §16.184 E31, E56): the test runs both copies, step 2's `state_lost` whole" in text
+    replaced = "round 26's E16 (§16.184) replaced that clause with `SHUT_OPEN`'s words (§16.192 P59)"
+    assert text.count(replaced) == 2
 
 
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:

@@ -265,11 +265,13 @@ about three times that on disk counting the cache and git. The secret scan reads
 #### Placing the speech models
 
 Speech (the words said in a recording, and which voice said them) is read on the Mac by a third helper, built by
-`scripts/install.sh` right after the media helper (one `speech:` line). Its build fetches the FluidAudio library
-from github.com and a prebuilt library FluidAudio links (87 MB, from `release-assets.githubusercontent.com`), and
-can take up to 20 minutes the first time. agentsync never downloads the models: you place two folders, under
-FluidAudio's own names, in the `speech` folder of agentsync's cache
-(`~/Library/Caches/agentsync/speech/` unless `[agentsync] cache_dir` says otherwise):
+`scripts/install.sh` right after the media helper (one `speech:` line). It needs Swift 6.0 or later from the Command
+Line Tools or Xcode; with an older one the `speech:` line names both versions, and the fix is a Command Line Tools
+update in Software Update, then `scripts/install.sh` again. Its build fetches the FluidAudio library from github.com
+and a prebuilt library FluidAudio links (87 MB, from `release-assets.githubusercontent.com`), and can take up to 20
+minutes the first time. agentsync never downloads the models: you place two folders, under FluidAudio's own names,
+in the `speech` folder of agentsync's cache (`~/Library/Caches/agentsync/speech/` unless `[agentsync] cache_dir`
+says otherwise):
 
 - `parakeet-tdt-0.6b-v3/`, the speech recogniser (483 MB);
 - `speaker-diarization/`, the voice separator (22 MB of model files).
@@ -1005,8 +1007,11 @@ delta, and shared-mailbox delta.
 ## Install
 
 `agentsync` runs as you on a Mac and needs no admin rights. You need the Xcode Command Line Tools first
-(`xcode-select -p` prints a path). They provide `git` and the compiler that builds the launcher. To have a coding
-agent do all of this for you, paste the block in [Set up on a new Mac: one prompt](#set-up-on-a-new-mac-one-prompt).
+(`xcode-select -p` prints a path). They provide `git` and the compiler that builds the launcher; the speech helper
+also needs them (or Xcode) to bring Swift 6.0 or later, which is Command Line Tools 16 or later on macOS 14.5 or
+later. With an older release everything else works and the `speech:` line says this Mac's Swift is too old. To have
+a coding agent do all of this for you, paste the block in
+[Set up on a new Mac: one prompt](#set-up-on-a-new-mac-one-prompt).
 
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync

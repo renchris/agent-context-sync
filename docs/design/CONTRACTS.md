@@ -27579,7 +27579,8 @@ Amended 2026-10-22, §16.173 B7, B21, B86: the tail's and the NEXT's parenthesis
 back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest)`, as
 doctor.MANIFEST_FIX words it: the folder moved alone stopped the next run on the lost-manifest guard (round 23 A29).
 Amended 2026-10-23, §16.187 E57 (by §16.179 D79): D79 added `; they first open a folder shut to this account, as
-status names it` at the end of both parentheses.
+status names it` at the end of both parentheses; round 26's E16 (§16.184) replaced that clause with `SHUT_OPEN`'s
+words (§16.192 P59).
 
 Amended 2026-10-22, §16.166 A46: a symlink where manifest.sqlite belongs counts by what it points to: a link to a folder, or a
 link loop, is no file (`state-notfile`, the person's NEXT); a dangling link is no manifest yet.
@@ -29189,7 +29190,8 @@ SN-shm-0500, SN-wal-link, SW, SW-bare and SW-wal cases of
 Amended 2026-10-23, §16.187 E57 (by §16.180 D72 and §16.179 D79): doctor's fix for a folder shut to this account
 starts with `chmod 700 <path>` first (another account's: `sudo chown -R`), not only "moves it aside", and D79
 added `; they first open a folder shut to this account, as status names it` at the end of the parenthesis of
-install.sh's not-a-file tails and NEXTs.
+install.sh's not-a-file tails and NEXTs; round 26's E16 (§16.184) replaced that clause with `SHUT_OPEN`'s words
+(§16.192 P59).
 
 **The lane's review** (a fresh reviewer over the branch, with a scratch harness running the probe, the real init
 and the real status; each finding fixed or recorded). A stale 0000 -wal beside a lost manifest got `state-access`,
@@ -29772,6 +29774,8 @@ heartbeat.json aside, as the NEXT words it, ends 0), the step 1 table's `LM-link
 `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`, which runs step 1's copy beside
 manifest_lost over a missing file, a dangling link, one into a missing folder, a live link, a loop, a file and a
 folder, with and without a heartbeat, so the copies cannot drift apart unseen again.
+Amended 2026-10-24, §16.192 P59 (by §16.184 E31, E56): the test runs both copies, step 2's `state_lost` whole, each
+under a 5 s limit, and a fifo heartbeat is a case beside a heartbeat and none.
 
 **A refused docs remote comes after the state stops** (D76, D-L1h). `cli._ensure_setup` opens the state folder and
 the manifest before it reads the docs repo's remotes, so beside a lost manifest (or any state stop) init and
@@ -29830,6 +29834,9 @@ them. Tests: `test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_a
 agentsync: the link removed and heartbeat.json aside, as the words say, ends 0), the step 1 table's `LM-link-gone`,
 and the not-a-file tests through `SHUT_OPEN` (`STATE_NOTFILE_TAIL`, `STATE_NOTFILE_NEXT`, `SIDE_NOTFILE_NEXT`,
 `STATE_OPEN_TAIL["state-side-notfile"]`).
+Amended 2026-10-24, §16.192 P144 (by §16.184 E16): the clause is now `; if status names a folder shut to this
+account, they open it first, as status says` (install.sh's `SHUT_OPEN`), since status names an opening step only for
+a folder shut to this account.
 
 **The shell report pairs each step 3 stop as the agentsync report does** (D79's D-L1a and ruling 11, the shell
 half; amends §16.172 B95). Ruling 11 pairs every recorded stop, fixed or not, so pairing no longer needs the manifest's runs, and the
@@ -29862,6 +29869,8 @@ runs chmod 700 <p>`) before its chmod test; the new cases are a person's line wi
 the person's `chmod -N`, and an agent's stop over the person's chmod.
 Amended 2026-10-23, §16.184 E77: nineteen cases, not seventeen: two stamps with a fraction of a second (in the
 stop's own second, and an end line), which the shell now reads.
+Amended 2026-10-24, §16.192 P59 (by §16.184 E76): the shell does now list a stop logged after the end line apart,
+in its Installer section under its own heading, as lane RA's D5 does; the outcome still never reads it.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -29915,6 +29924,8 @@ line beside it under the same name; a FAIL with another owner's fix (the chmod 6
 line. The setup report's A44 matcher reads `, not a file (`. Tests:
 `test_a_side_file_that_is_not_a_file_is_one_fail_named_by_its_role_with_a_copy_kept`,
 `test_a_side_that_is_a_folder_beside_a_loose_manifest_keeps_both_fails_and_no_ok`.
+Amended 2026-10-24, §16.192 P59 (by §16.185 E18): the detail reads `<path> is <kind>, not a file: <role> belongs
+there`, and the report's readers key on `, not a file`.
 
 **D72: a folder shut to this account is opened first.** Measured on this Mac: macOS renames a folder only with
 write on the folder itself (a 0000 or 0500 folder refuses `mv`) and copies it only with read and search (a 0300
@@ -30524,6 +30535,8 @@ folder's only when it holds any. The report's Loop hook keeps the baseline wait 
 Tests: `test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status`,
 `test_a_stale_lock_names_a_crash_log_only_where_one_is`,
 `test_the_reports_loop_keeps_the_baseline_wait_when_a_busy_state_has_no_fail`.
+Amended 2026-10-24, §16.192 P61: the guide's `<path>` row gives this link target (the agentsync report only), and
+its count sentence lists every unnumbered kind, `<path>` counted only for a replaced link target.
 
 **E42: the misplaced NEXT says the command stopped before it finished (`agentsync.cli`; amends §16.180 D44).**
 "so this command did not run" was false after add-source and init, which add the source or write the config
@@ -30550,6 +30563,9 @@ comes back". Tests: `test_speech.py::test_a_resolve_that_needs_a_newer_swift_say
 back, the clone that never happened winning, another step's line kept),
 `test_speech.py::test_a_clone_that_never_happened_says_the_fetch_failed` (its tools-version arm) and
 `test_ops_doctor.py::test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix` (the fix, no host).
+Amended 2026-10-24, §16.192 P55: the guides give the floor beforehand: the install prerequisites of README.md and
+docs/deploy/README.md, README.md's "Placing the speech models", it-request.md's download list and the asks table
+say the speech helper needs Swift 6.0 or later (Command Line Tools 16 or later, on macOS 14.5 or later).
 
 **An unquoted URL ends only where Git's prefix follows it (E49; `agentsync.convert.ocr`; dated line at §16.181
 D84).** D84 ended an unquoted URL at the first `: `, which may sit inside a path (macOS stores a Finder `/` in a name
@@ -30699,4 +30715,71 @@ Reserved for round 27 lane E of B13.
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 
-Reserved for round 27 lane D of B13.
+Lane D's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
+verifier's corrected fix built): P140, P55, P59, P60, P61, P62, P63, P64 and P144. P59 and P144 are one gap in the
+§16.179 and §16.180 records, built once. P139 (the lead's) stays unbuilt; P140 is built within its four rules.
+
+**ship-land reads trunk's CI before the gate** (P140; `scripts/ship-land.sh`). Trunk's CI was read only after
+`scripts/gate.sh`, so on 2026-10-22 two land gates of about 35 minutes each ran under the shared land lock on a
+trunk whose ci run had already ended red, and each then stopped on exit 6. On every attempt of the land loop, after
+the fetch and the nothing-to-land check and before the rebase (so a re-gate after origin/main moved reads the new
+head), `trunk_known_red` lists the head's runs with the same two `gh run list --commit` calls as `watch_runs` and
+reads each once with `gh run view`, never a watch, a poll or a sleep. Only a run already `completed` with
+`failure`, `timed_out` or `startup_failure` stops the land there: the exit-6 lines, with `(before the gate)`, and no
+gate run. A cancelled run (perhaps superseded), one queued or in progress, no run yet and a gh error all go on to
+the gate and the unchanged check after it, which decides them as before, so no outcome changes: a trunk red at that
+fetch already ended in exit 6 after the gate. `--no-ci` and `--allow-red-trunk` skip the read. CLAUDE.md's Landing
+section and `docs/lanes/COMMON.md` say so. One stub of the old suite answered `run view` with `completed failure`
+for trunk's run while its watch passed; it answers per run now. Tests: `test_a_trunk_already_red_stops_before_the_gate`
+(no gate.log, no `run watch` call; `--allow-red-trunk` gates and lands), `test_a_cancelled_or_running_trunk_run_still_gates`.
+
+**The guides give the speech helper's Swift floor** (P55; dated line at §16.186 E48). Package.swift is
+`swift-tools-version: 6.0`, as is FluidAudio `04e363c`'s, and the guides asked only for the Command Line Tools, so a
+Mac with an older release got OCR and media and no speech, with E48's line as the first word of it. The install
+prerequisites of README.md and docs/deploy/README.md, README.md's "Placing the speech models", it-request.md's
+download list and the asks table give Swift 6.0 or later (Command Line Tools or Xcode 16 or later, which needs
+macOS 14.5 or later) and say what happens with an older one; the setup prompt is unchanged (v33). Only Swift 6.2.4
+was measured here, so 6.0 is the stated floor, not a proven build. Test:
+`test_the_guides_give_the_speech_helpers_swift_floor`, which reads the floor from Package.swift.
+
+**Records round 26 changed point to the change** (P144; dated line at §16.179 D79). §16.179's D-L1d clause quoted
+`; they first open a folder shut to this account, as status names it`, which E16 replaced with `SHUT_OPEN`'s
+words, and its dated line says so. The other three records round 26 changed with no line at them (P59; dated lines
+at §16.179 D79, D33, §16.180 D6): the pairing paragraph said the shell does not list a stop logged after the end
+line, which E76 made it do; D33's test runs both inlined copies with a fifo heartbeat since E31 and E56; D6 quotes
+the side file's detail before E18 made it `: <role> belongs there`. Both E57 lines quoting D79's clause add that E16
+replaced it. Each line names the round 26 item that made the change after `by`, and is claimed here rather than
+from §16.184 or §16.185, which this round leaves as written: the scan holds a claim with one line only, so the four
+lines are split between the two items, each the one line of its claim in the paragraphs naming its target (P144's
+D79 line sits in a paragraph that names D33 too, so D33's line is P59's). Tests:
+`test_records_round_26_changed_point_to_the_change`, `test_every_dated_line_from_round_11_on_is_held_by_a_test`.
+
+**The guide gives round 26's new installer and report outputs** (P60; `docs/deploy/setup-feedback.md`). E19's step 1
+tail and step 2 NEXT for a manifest that is a symlink to a file that does not exist, in a folder a sync can write
+(ruling 7's fix, no `rm` first), and E67's reason for an agent's stop that came back after the agent's chmod (one,
+several, not measured). E3's report outcome is left out on purpose: the guide gives no step 2 state outcome of the
+report's, the plain lost manifest's included. Test: `test_the_guide_gives_round_26s_new_installer_and_report_outputs`,
+which reads each from install.sh and `setup_report._again_reason`.
+
+**The redaction legend gives every unnumbered kind** (P61; dated line at §16.185 E2). The `<path>` row gives E2's
+link target outside home (the agentsync report only; E2 has no shell half), and the count sentence lists the 11
+kinds of `_UNNUMBERED`, where it listed 7, with `<path>` counted only for a replaced link target, as
+`Redactor.note` and a log line's regex cut count nothing. Test:
+`test_the_guides_redaction_legend_gives_every_unnumbered_kind_and_the_link_target`.
+
+**The records page says purge stops over a lost manifest** (P62; `docs/deploy/data-governance.md`). E25's guard
+(ruling 14) stops `purge` (a selector, `--queue` and the dry run of either) and `compact-history` on status's line;
+the page gave the erasure recipe and the queue as always there. Its new bullet names each, the fix with the new
+start's cost, and that `hold` and its release still work, as measured at f04c61db over a moved manifest (hold set,
+listed and released exit 0; the two dry runs exit 1). Test: `test_the_records_page_says_purge_stops_over_a_lost_manifest`.
+
+**The guide test checks the two-letter word list** (P63; `tests/test_deploy_pack.py`). Its IT and HR check read
+`_SHORT_WORDS`, the name-part list, so removing `it` from the two-letter lists left it green; it reads
+`_TWO_LETTER_WORDS` and install.sh's `two_letter_word` case list now. Test:
+`test_the_guide_gives_round_25s_new_report_and_installer_outputs`.
+
+**The late-stop sentence gives both friction forms and the shell's section** (P64;
+`docs/deploy/setup-feedback.md`). The friction line counts a stop logged after the end line as `N more logged after
+the end line` after an in-window stop's count and as `N step-3 sync stop(s) agentsync logged after the end line`
+when the window has none; the shell report has no Items list and lists the block in its Installer section. Test:
+`test_the_guide_gives_round_25s_new_report_and_installer_outputs`, extended.

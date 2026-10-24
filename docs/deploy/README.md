@@ -32,8 +32,10 @@ reads. It runs as you, needs **no admin rights**, and keeps everything on the Ma
 ## Install: one command, no admin
 
 Prerequisite: the Xcode Command Line Tools (`xcode-select -p` prints a path). They provide `git` and the compiler
-that builds the launcher. If they are missing, ask IT through Self Service, because installing them may need admin.
-A coding agent can run every step below for you: paste the block in the top-level README's
+that builds the launcher; the speech helper also needs them (or Xcode) to bring Swift 6.0 or later, which is Command
+Line Tools 16 or later on macOS 14.5 or later. With an older release everything else works and the `speech:` line
+says this Mac's Swift is too old. If they are missing, ask IT through Self Service, because installing them may need
+admin. A coding agent can run every step below for you: paste the block in the top-level README's
 [one-prompt setup](../../README.md#set-up-on-a-new-mac-one-prompt).
 
 Get the code, pick the folders to sync (`install.sh --list-folders` prints the OneDrive and SharePoint folders this
@@ -136,7 +138,7 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
 | libraries you do not sync, Outlook folders, Teams channels and chats | Entra app registration + admin consent + assignment | [it-request.md](it-request.md) |
 | a compliant-device Conditional Access policy to pass | Company Portal + Enterprise SSO plug-in on an enrolled Mac | [it-request.md](it-request.md#conditional-access) |
 | background reads with nobody to click Allow | a Developer-ID re-sign of the launcher + the PPPC profile | [mdm/README.md](mdm/README.md) |
-| the Command Line Tools | Self Service or a ticket | — |
+| the Command Line Tools, a release with Swift 6.0 or later (16 or later) | Self Service or a ticket | — |
 
 `agentsync it-request --out ~/agent-context/it-request-draft.md` writes [it-request.md](it-request.md) as an email
 draft for this Mac: your name, the serial number, the CPU, the organization and the sources you already sync are
