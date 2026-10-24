@@ -2700,6 +2700,8 @@ def _read_sync_stops(
     hi: datetime | None,
     ok_starts: Sequence[datetime] | None = (),
     heartbeat_at: datetime | None = None,
+    *,
+    until: datetime | None = None,
 ) -> list[_SyncStop]:
     """The :data:`_SYNC_STOPS_NAME` lines beside ``log`` (install.log) whose time is at or after ``lo`` (the
     attempt's begin) and before ``hi`` (its end line, or the next attempt's begin), each paired with the first
@@ -2708,7 +2710,8 @@ def _read_sync_stops(
     ``ok_starts`` None: the runs table could not be read, so no stop is paired and each says not measured. A
     heartbeat stop pairs only when ``heartbeat_at``, the time the heartbeat file was last written (when this
     account can read and write it now), is after the stop: a sync whose heartbeat write is refused still ends
-    its run ``ok`` (round 23 ruling 5; the review of A9)."""
+    its run ``ok`` (round 23 ruling 5; the review of A9). ``until``: no start at or after it pairs, so an
+    earlier attempt's stop is never fixed by a later attempt's sync (B13 round 27 P123)."""
     try:
         text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -2719,7 +2722,7 @@ def _read_sync_stops(
         at = parse_time(m.group("at")) if m is not None else None
         if m is None or at is None or at < lo or (hi is not None and at >= hi) or m.group("rc") == "0":
             continue
-        ended = min((t for t in ok_starts or () if t > at), default=None)
+        ended = min((t for t in ok_starts or () if t > at and (until is None or t < until)), default=None)
         if m.group("file") == "heartbeat" and (heartbeat_at is None or heartbeat_at <= at):
             ended = None
         kind = m.group("kind") or "refused"
@@ -2753,7 +2756,11 @@ def _after_chmod(stops: Sequence[_SyncStop], paired: Collection[int]) -> set[int
 
 
 def _open_stop_reasons(
-    stops: Sequence[_SyncStop], paired: Collection[int], after_chmod: Collection[int] = ()
+    stops: Sequence[_SyncStop],
+    paired: Collection[int],
+    after_chmod: Collection[int] = (),
+    *,
+    earlier: bool = False,
 ) -> list[str]:
     """B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D58, D69): the outcome's reasons for the step-3
     sync stops no later sync ended 0 after that claim the agent's error line (``paired``, their ``id``s,
@@ -2761,7 +2768,9 @@ def _open_stop_reasons(
     reason of its own any more, so the stop is, or a stop that never recovered read "fully one command". A
     stop with neither a later sync that ended 0 nor a claimed line is an Items line and no reason.
     B13 round 26 E67: the agent-owned ones on a file a stop came back on after the agent's chmod
-    (``after_chmod``, :func:`_after_chmod`) are a reason of their own whose fix is no longer that chmod."""
+    (``after_chmod``, :func:`_after_chmod`) are a reason of their own whose fix is no longer that chmod.
+    ``earlier``: an attempt before the latest, whose stops pair only with its own syncs (B13 round 27
+    P123)."""
     out: list[str] = []
     for measured in (True, False):
         open_ = [s for s in stops if s.ended_ok is None and id(s) in paired and s.measured is measured]
@@ -2770,14 +2779,14 @@ def _open_stop_reasons(
         ran = {s.file for s in stops if id(s) in after_chmod and s.ended_ok is None}
         again = [s for s in open_ if s.owner == "agent" and s.file in ran]
         if again:
-            out.append(_again_reason(again, measured))
+            out.append(_again_reason(again, measured, earlier=earlier))
             open_ = [s for s in open_ if all(s is not t for t in again)]
             if not open_:
                 continue
         whats = " and ".join(dict.fromkeys(s.what for s in open_))
         it = "it" if len(open_) == 1 else "them"
         then = (
-            f"no sync ended 0 after {it} by this report"
+            f"no sync ended 0 after {it} {_BY_THIS[earlier]}"
             if measured
             else f"whether a sync ended 0 after {it} was not measured"
         )
@@ -2794,7 +2803,12 @@ def _open_stop_reasons(
     return out
 
 
-def _again_reason(again: Sequence[_SyncStop], measured: bool) -> str:
+_BY_THIS = {False: "by this report", True: "in this attempt"}
+"""How far a measured stop's "no sync ended 0 after it" reaches: the latest attempt's to this report, an
+earlier attempt's to its own end (B13 round 27 P123: :func:`_read_sync_stops`' ``until``)."""
+
+
+def _again_reason(again: Sequence[_SyncStop], measured: bool, *, earlier: bool = False) -> str:
     """:func:`_open_stop_reasons`' reason for agent-owned stops that came back after the agent's chmod (B13
     round 26 E67), in computed facts only: what was shown to the person is not measured here."""
     whats = " and ".join(dict.fromkeys(s.what for s in again))
@@ -2806,33 +2820,42 @@ def _again_reason(again: Sequence[_SyncStop], measured: bool) -> str:
         head += " earlier"
         it = "them"
     then = (
-        f"no sync ended 0 after {it} by this report"
+        f"no sync ended 0 after {it} {_BY_THIS[earlier]}"
         if measured
         else f"whether a sync ended 0 after {it} was not measured"
     )
     return f"{head}, and {then}: the fix is no longer the agent's chmod, as v33 sends it to the person"
 
 
-def _open_persons_stop(stops: Sequence[_SyncStop], persons_fails: Sequence[str] = ()) -> _SyncStop | None:
+def _open_persons_stop(
+    stops: Sequence[_SyncStop], persons_fails: Sequence[str] = (), *, earlier: bool = False
+) -> _SyncStop | None:
     """B13 round 25 ruling 10 (D3, D19, D27): the last step-3 sync stop whose fix is the person's that no
     later sync ended 0 after, when the step ended on it: v33 has the agent log it, show the [FAIL] line and go
     to the report, so no sync can run after it, and the attempt "failed" at the report step, as the same
     state at step 2 does (round 23 A36's "never failed" held for the agent's chmod, which a re-sync follows).
     One whose record could not be measured (the runs table not read) counts only while a doctor FAIL in a
     person's bucket (``persons_fails``, their names) still stands. None otherwise: an agent-owned stop and a
-    step 3 error with no stop record keep "worked with help"."""
+    step 3 error with no stop record keep "worked with help". ``earlier``: an attempt before the latest,
+    judged on its own record, never on today's doctor (B13 round 27 P123): its stop no sync of that attempt
+    ended 0 after counts, measured or not, as v33 sent the agent to the report after it."""
     open_ = [
-        s for s in stops if s.owner == "person" and s.ended_ok is None and (s.measured or bool(persons_fails))
+        s
+        for s in stops
+        if s.owner == "person" and s.ended_ok is None and (s.measured or earlier or bool(persons_fails))
     ]
     return max(open_, key=lambda s: s.at) if open_ else None
 
 
-def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str]) -> str:
+def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str], *, earlier: bool = False) -> str:
     """The outcome's reason for :func:`_open_persons_stop`'s stop: what stopped it in its kind's words and
-    that its fix is the person's, with no bracket or second "; " inside (B13 round 21 Y32)."""
+    that its fix is the person's, with no bracket or second "; " inside (B13 round 21 Y32). An earlier
+    attempt's names no doctor FAIL, as it reads none (B13 round 27 P123)."""
     which = _stop_which(stop)
     if stop.measured:
-        then = "no later sync ended 0"
+        then = "no later sync in this attempt ended 0" if earlier else "no later sync ended 0"
+    elif earlier or not persons_fails:
+        then = "no sync in this attempt is known to have ended 0 after it"
     else:
         names = ", ".join(dict.fromkeys(persons_fails))
         then = f"doctor's {names} FAIL still stands"
@@ -2948,6 +2971,8 @@ def compute_outcome(
     config_cause: str | None = None,
     sync_stops: Sequence[_SyncStop] = (),
     persons_fails: Sequence[str] = (),
+    earlier: bool = False,
+    late_stops: Sequence[_SyncStop] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -2981,7 +3006,10 @@ def compute_outcome(
     ended 0 after makes it "worked with help" (B13 round 23 A9, the lead's ruling), as does one that claims
     the agent's error line (B13 round 25 ruling 11); one whose fix is the person's that no later sync ended 0
     after makes it "failed" at the report step (ruling 10: :func:`_open_persons_stop`, with
-    ``persons_fails``, the doctor FAILs in a person's bucket now, for one whose record was not measured)."""
+    ``persons_fails``, the doctor FAILs in a person's bucket now, for one whose record was not measured).
+    ``earlier``: an attempt before the latest, whose person's stop counts on its own record (B13 round 27
+    P123). ``late_stops``: the stops logged after the end line (:func:`_late_stops`), which change no outcome
+    kind but say when a person's bucketed FAIL came (B13 round 27 P101)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -3059,12 +3087,12 @@ def compute_outcome(
                 )
             # B13 round 25 ruling 10 (D3, D19, D27): a step 3 that ended on the person's unfixed FAIL failed
             # at the report step, as the same state at step 2 does
-            persons_stop = _open_persons_stop(sync_stops, persons_fails)
+            persons_stop = _open_persons_stop(sync_stops, persons_fails, earlier=earlier)
             if persons_stop is not None:
                 return Outcome(
                     "failed",
                     layout.report_step,
-                    ("install.sh exit 0", _persons_stop_reason(persons_stop, persons_fails)),
+                    ("install.sh exit 0", _persons_stop_reason(persons_stop, persons_fails, earlier=earlier)),
                     version,
                 )
             retried = retried_runs(attempt, runs)
@@ -3076,7 +3104,7 @@ def compute_outcome(
                 why.append(stopped_sync)
             # B13 round 25 ruling 11: a stop that claims the agent's line is a reason, fixed or not
             paired = {id(s) for s, _e in _stop_pairs(attempt, sync_stops)}
-            why += _open_stop_reasons(sync_stops, paired, _after_chmod(sync_stops, paired))
+            why += _open_stop_reasons(sync_stops, paired, _after_chmod(sync_stops, paired), earlier=earlier)
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):
@@ -3121,9 +3149,19 @@ def compute_outcome(
         # the Doctor line's own bucket: its cause is known, so it is no unexpected FAIL (X35). A reason of its
         # own a bucket, its words (each starts "from ...") before the names: no bracket inside the outcome's
         # own, and no second "; " inside one reason (B13 round 21 Y32)
+        # B13 round 27 P101: a person's bucket beside a stop logged after the end line stood up after the
+        # attempt ended; it stays a reason, never a "failed" (round 25 D5), and says when it came and whose
+        late = [s for s in late_stops if s.owner == "person"]
         for bucket, names in known.items():
             fails = _plural(len(names), "doctor FAIL")
-            why.append(f"{fails} with a known cause, {bucket}: {', '.join(names)}")
+            reason = f"{fails} with a known cause, {bucket}: {', '.join(names)}"
+            if late and attempt is not None and Counter(names) <= Counter(persons_fails):
+                after = "a sync stop" if len(late) == 1 else f"{len(late)} sync stops"
+                reason += (
+                    f", still standing when this report ran, after {after} logged after attempt "
+                    f"{attempt.number}'s end line: the person's to fix"
+                )
+            why.append(reason)
         if not why:
             return Outcome(
                 "fully one command",
@@ -10099,7 +10137,8 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         with contextlib.suppress(OSError):
             last = max(last, datetime.fromtimestamp(r.friction_path.stat().st_mtime, UTC))
     hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
-    stops = _measured_stops(r, lo, hi)
+    # B13 round 27 P123: an earlier attempt's stop pairs only with a sync of its own, never a later attempt's
+    stops = _measured_stops(r, lo, hi, until=hi if nxt is not None else None)
     # B13 round 27 P127, P19: the latest attempt's open stop on a lost manifest, by the report's own read of
     # the link now (never the stop record: an older reader takes a new kind for "refused"); an earlier
     # attempt's, or one a sync ended 0 after, is of a time the read says nothing of
@@ -10112,9 +10151,9 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     ]
 
 
-def _measured_stops(r: _Run, lo: datetime, hi: datetime) -> list[_SyncStop]:
+def _measured_stops(r: _Run, lo: datetime, hi: datetime, until: datetime | None = None) -> list[_SyncStop]:
     """The sync-stops.log lines from ``lo`` to before ``hi``, each paired with the first later sync the
-    runs table records as ended ok (:func:`_step3_stops`' reads)."""
+    runs table records as ended ok, before ``until`` when given (:func:`_step3_stops`' reads)."""
     stops = _read_sync_stops(r.install_log, lo, hi)
     if not stops:
         return []
@@ -10136,7 +10175,7 @@ def _measured_stops(r: _Run, lo: datetime, hi: datetime) -> list[_SyncStop]:
         hb = expand(r.config.state_paths.heartbeat)
         if os.access(hb, os.R_OK | os.W_OK):
             beat = datetime.fromtimestamp(hb.stat().st_mtime, UTC)
-    stops = _read_sync_stops(r.install_log, lo, hi, starts, beat)
+    stops = _read_sync_stops(r.install_log, lo, hi, starts, beat, until=until)
     if starts is None and _manifest_missing(expand(r.config.state_paths.db)):  # B13 round 25 D4
         stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
     return stops
@@ -10259,6 +10298,8 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         config_cause=_outcome_cause(r, runs, latest=latest),
         sync_stops=_step3_stops(r, index),
         persons_fails=_persons_fails(r, runs) if latest else (),
+        earlier=not latest,  # B13 round 27 P123
+        late_stops=[s for s, _e in _late_stops(r, index)] if latest else (),  # B13 round 27 P101
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
@@ -13429,6 +13470,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         config_cause=_outcome_cause(r, runs),
         sync_stops=stops,
         persons_fails=persons_fails,
+        late_stops=[s for s, _e in late_stops],  # B13 round 27 P101
     )
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type

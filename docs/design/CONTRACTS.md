@@ -29738,6 +29738,9 @@ pairs its stops with the report-step errors after the end line by the same order
 agentsync logged after attempt N's end line (they do not change the outcome):`, each paired line ending `(F<n>: the
 agent's account of it)` and out of Agent friction. No outcome reads them. Test:
 `test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outcome`.
+Amended 2026-10-24, §16.188 P101: no outcome kind reads them still, but a known-cause reason whose FAILs are all
+the person's, beside a person's stop logged after the end line, ends `, still standing when this report ran, after
+a sync stop logged after attempt N's end line: the person's to fix`.
 
 **No manifest over existing mirror pages, in status's words** (lane B's D26, its report half, built here at lane B's
 ask; §16.180). After the person's new start (the manifest and heartbeat.json moved aside, the mirror pages left),
@@ -30749,9 +30752,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
-one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52.
+one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52; P123 and P101.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30819,6 +30822,27 @@ release with Swift <n> or later, then run install.sh again)`, doctor's words wit
 `speech.TOOLS_TOO_OLD_RE` lazily (`_tools_too_old_re`, the copy `_TOOLS_TOO_OLD_COPY` for a build without it) and
 quotes doctor's opening, up to `or later`, as `_NEWER_SWIFT_FIX_COPY`; a test keeps both equal to their sources. Test:
 `test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run`.
+
+**An earlier attempt is never recast as "worked with help"** (P123, P101: two defects, built in one commit, ruling
+10; amends §16.178 D5, P101's half).
+An earlier attempt is judged with no doctor FAIL (doctor shows the state now), so its person's stop whose record
+could not be measured fell through `_open_persons_stop` to `worked with help`, and `_read_sync_stops` paired a stop
+with the first ok sync at any later time, so a later attempt's sync read as the fix of an earlier attempt's stop
+(`ended 0 after a fix`): the `earlier:` line and the Attempts section called an attempt that failed at step 3 one that
+worked. `_step3_stops` now gives an earlier attempt's stops `until` (its end line, or the next attempt's begin), past
+which no ok start pairs; `compute_outcome(earlier=True)`, from `_attempt_outcome` for every attempt but the latest,
+counts its person's stop measured or not and never reads today's doctor: `..., and no later sync in this attempt
+ended 0: the person's to fix` when measured, `..., and no sync in this attempt is known to have ended 0 after it: the
+person's to fix` when not (never `doctor's  FAIL` with no name), and its open-stop reasons say `in this attempt` for
+`by this report`. A sync of its own that ended 0 after the stop keeps `worked with help`; the latest attempt is
+unchanged. P101 (its verifier's fix; the finder's `failed` would let a stop after the end line change a finished
+outcome, which D5 measured and ruled out): `compute_outcome(late_stops=...)`, the stops `_late_stops` shows apart,
+changes no outcome kind, but a known-cause bucket whose FAILs are all the person's, beside a person's late stop, says
+when it came: `2 doctor FAILs with a known cause, <bucket>: <names>, still standing when this report ran, after a
+sync stop logged after attempt N's end line: the person's to fix` (no bracket inside the outcome, ruling M24; the
+verifier's `standing at this report` reworded to plain English). Tests:
+`test_an_earlier_attempt_that_ended_on_the_persons_stop_is_never_recast_as_worked_with_help` and
+`test_a_persons_fail_after_a_stop_logged_after_the_end_line_says_when_it_came`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

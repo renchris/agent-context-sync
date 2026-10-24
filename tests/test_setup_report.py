@@ -5677,6 +5677,110 @@ def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
     ), failed
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_earlier_attempt_that_ended_on_the_persons_stop_is_never_recast_as_worked_with_help(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 27 P123: an earlier attempt is judged with no doctor FAIL (doctor shows the state now), so
+    its person's stop that could not be measured read "worked with help", and one a later attempt's sync ended
+    0 after read "ended 0 after a fix": the attempt that failed at step 3 read as one that worked. An earlier
+    attempt's stop pairs only with a sync of its own and counts, measured or not, with no doctor FAIL named;
+    a sync of its own that ended 0 after the stop keeps "worked with help"."""
+    line = "agentsync sync exited 1: the state folder is a file; status says the fix is the person's"
+    stop = _stop_line("50", "state-folder", "person", "misplaced")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0  # its ok run starts after both
+    v6_install_log(fake_mac)
+    write_install_log(fake_mac, start="2026-09-30T10:00:00Z", run="20260930T100000Z-77", append=True)
+    first = _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", line), V12_HAPPY)
+    write_friction(fake_mac, first + V12_HAPPY.replace("2026-09-29T", "2026-09-30T"))
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stop, encoding="utf-8")
+
+    def earlier() -> str:
+        """The Summary's ``earlier:`` line, once the Attempts section's attempt 1 line says the same."""
+        text, summary = summary_of(fake_mac)
+        said = next(ln for ln in summary.splitlines() if ln.startswith("- attempt: 2 of 2; earlier: "))
+        listed = next(ln for ln in text.splitlines() if ln.startswith("- attempt 1 ("))
+        outcome = said.removeprefix("- attempt: 2 of 2; earlier: attempt 1 ")
+        assert f"): {outcome}; " in listed, (said, listed)
+        return said
+
+    # measured: the only ok sync is a later attempt's, which fixes nothing of attempt 1's
+    assert earlier() == "- attempt: 2 of 2; earlier: attempt 1 failed at step 3", earlier()
+    # a sync of attempt 1's own that ended 0 after the stop: worked with help, as before
+    conn = sqlite3.connect(expand(load_config(fake_mac["config"]).state_paths.db))
+    try:
+        conn.execute("UPDATE runs SET started_at = '2026-09-29T10:00:58Z' WHERE status = 'ok'")
+        conn.commit()
+    finally:
+        conn.close()
+    assert earlier() == "- attempt: 2 of 2; earlier: attempt 1 worked with help", earlier()
+    # not measured (the manifest is gone now): still failed, naming no doctor FAIL
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        p.unlink(missing_ok=True)
+    assert earlier() == "- attempt: 2 of 2; earlier: attempt 1 failed at step 3", earlier()
+    att = setup_report.read_friction(write_friction(fake_mac, first)).latest
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    unread = setup_report._SyncStop(at, "manifest", "person", None, False, "lost")
+    out = setup_report.compute_outcome(att, runs, sync_stops=[unread], earlier=True)
+    assert out.text == "failed at step 3", out
+    assert out.why[1] == (
+        "a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and no "
+        "sync in this attempt is known to have ended 0 after it: the person's to fix"
+    ), out
+    measured = setup_report._SyncStop(at, "manifest", "person", None, True, "lost")
+    out = setup_report.compute_outcome(att, runs, sync_stops=[measured], earlier=True)
+    assert out.why[1].endswith("and no later sync in this attempt ended 0: the person's to fix"), out
+    # the latest attempt's own cases are unchanged
+    assert setup_report.compute_outcome(att, runs, sync_stops=[unread]).kind == "worked with help"
+
+
+def test_a_persons_fail_after_a_stop_logged_after_the_end_line_says_when_it_came(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P101: a stop logged after the end line changes no outcome (round 25 D5), so an attempt
+    that worked with help keeps it, but the person's two FAILs the late stop left read as reasons of the
+    attempt's help with no word of when they came. The bucket's reason says they stand at this report after
+    a stop logged after the end line, and whose they are; the same stop inside the attempt still fails it."""
+    real = cli._status_checks
+
+    def state_fails_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("state_dir")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", state_fails_only)
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    said = "agentsync sync exited 1: the state file's write-ahead log is a folder; the fix is the person's"
+    write_friction(fake_mac, V12_HAPPY + _step3_error("55", said).replace("10:00:55", "10:01:40"))
+    stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+    stops.write_text("2026-09-29T10:01:30Z sync-stop file=manifest-wal rc=1 owner=person kind=misplaced\n")
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        side.unlink(missing_ok=True)
+        side.mkdir()
+    first = section(report(tmp_path, fake_mac["config"])[1], "Summary").strip().splitlines()[0]
+    assert first.startswith("- **outcome: worked with help** (computed: install.sh exit 0; 2 doctor FAILs"), (
+        first
+    )
+    assert first.endswith(
+        ", still standing when this report ran, after a sync stop logged after attempt 1's end line: the "
+        "person's to fix)"
+    ), first
+    # inside the attempt: the step ended on the person's stop, failed at step 3, as before
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY)
+    )
+    stops.write_text(_stop_line("50", "manifest-wal", "person", "misplaced"), encoding="utf-8")
+    first = section(report(tmp_path, fake_mac["config"])[1], "Summary").strip().splitlines()[0]
+    assert first.startswith("- **outcome: failed at step 3**"), first
+    assert "still standing when this report ran" not in first, first
+
+
 def test_a_step_3_stop_on_a_lost_manifest_link_names_the_link(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
