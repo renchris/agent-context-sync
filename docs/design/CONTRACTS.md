@@ -30322,3 +30322,20 @@ at 081db13b in a fresh home with the real CLI: init, then `mkfifo manifest.sqlit
 and sqlite removes the -wal on close; init over a new fifo exits 0 and removes it too. Only `doctor._check_state_dir`
 called alone sees it. The dated line says so; install.sh's step 1 prediction for it is lane RB's (E15, §16.184).
 A folder, a socket or a link loop at the -wal, and anything not a file at the -shm, still stop. Test: `test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says`.
+
+**The guide's pairing rule: governance's modes and the person's failed case** (E59;
+`docs/deploy/setup-feedback.md`). A mode an agent's chmod line names is `700 for the state folder, 600 or 700 for a
+governance file, 600 for any other file`, as `_claims` and the shell's reader take it (D57); and a stop with neither
+a later ok sync nor a claimed line is no reason of its own `unless it is a stop whose fix is the person's that step
+3 ended on, which makes the attempt failed at step 3`, as `_open_persons_stop` takes it whether or not a line claims
+it (ruling 10). An unmeasured person's stop with no person's FAIL standing still takes no reason, so the sentence is
+scoped, not narrowed to the agent's stops. Test:
+`test_the_guides_pairing_rule_gives_governances_modes_and_the_persons_failed_case`.
+
+**The guide's failed-at-step-3 example is a refused stop's** (E69; `docs/deploy/setup-feedback.md`). It quoted a
+lost manifest with the measured `and no later sync ended 0`, which under v33 a lost manifest never gets: the runs
+table lives in the missing file, so its stop is unmeasured (`_read_sync_stops` with no runs) and reads `and
+doctor's state_dir.manifest FAIL still stands`. The example is the refused stop's measured form, and the next
+sentence quotes the lost one's unmeasured form; a lock stop was not used, as no test pins it and its owner and
+claim rules differ. Both strings are read from `_persons_stop_reason`. Test:
+`test_the_guides_failed_at_step_3_examples_are_the_reports_words`.

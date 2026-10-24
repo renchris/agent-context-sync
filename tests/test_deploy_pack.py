@@ -6253,6 +6253,51 @@ def test_the_shell_pairing_records_case_count_is_the_tests() -> None:
     )
 
 
+def test_the_guides_pairing_rule_gives_governances_modes_and_the_persons_failed_case() -> None:
+    """B13 round 26 E59: the guide said a mode an agent's chmod line names is 700 for the state folder and 600
+    for a file, while both reports let a governance stop take either (D57), and that a stop with no later ok
+    sync and no claimed line is no reason of its own, while a person's stop step 3 ended on is the attempt's
+    failed-at-step-3 reason whether or not a line claims it (ruling 10). The modes are read from `_claims`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    assert (
+        "(a line that names a mode names its file's: 700 for the state folder, 600 or 700 for a governance"
+        " file, 600 for any other file; B13 round 26 E59)"
+    ) in page
+    at = datetime(2026, 9, 29, 10, 1, tzinfo=UTC)
+
+    def takes(file: str, mode: str) -> bool:
+        line = setup_report.FrictionEvent(
+            9, at, 3, "error", f"agentsync sync exited 1; ran chmod {mode} <it>", "-"
+        )
+        return setup_report._claims(setup_report._SyncStop(at, file, "agent", None), line)
+
+    assert [takes(f, m) for f in ("state-folder", "governance", "lock") for m in ("700", "600")] == [
+        True, False, True, True, False, True,
+    ]  # fmt: skip
+    assert (
+        "is an Items line and no reason of its own, unless it is a stop whose fix is the person's that step 3"
+        " ended on, which makes the attempt failed at step 3 (below; B13 round 26 E59)."
+    ) in page
+
+
+def test_the_guides_failed_at_step_3_examples_are_the_reports_words() -> None:
+    """B13 round 26 E69: the guide's ruling 10 example gave a lost manifest the measured words ("and no later
+    sync ended 0"), which under v33 it never gets: the runs table lives in the missing file, so its stop is
+    unmeasured and counts only while doctor's state_dir.manifest FAIL stands. The measured example is a
+    refused stop's, and the lost one's unmeasured form is quoted, each read from `_persons_stop_reason`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    at = datetime(2026, 9, 29, 10, 1, tzinfo=UTC)
+    refused = setup_report._persons_stop_reason(setup_report._SyncStop(at, "manifest", "person", None), [])
+    assert f"`failed at step 3 (computed: install.sh exit 0; {refused})`" in page
+    lost = setup_report._SyncStop(at, "manifest", "person", None, False, "lost")
+    assert f"`{setup_report._persons_stop_reason(lost, ['state_dir.manifest'])}`" in page
+    assert "which was missing after earlier syncs, and no later sync ended 0" not in page
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
@@ -8332,8 +8377,9 @@ def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error
     [open_reason] = setup_report._open_stop_reasons([open_stop], {id(open_stop)})
     assert f"A paired stop that no later sync ended ok after is a reason of its own: `{open_reason}`" in flat
     assert "and before the stop after next" in flat and "no stop claims a `skipped: lock held` line" in flat
-    lost = setup_report._SyncStop(at, "manifest", "person", None, True, "lost")
-    persons = setup_report._persons_stop_reason(lost, ())
+    # B13 round 26 E69: a measured stop's example is a refused one's, as a lost manifest's is never measured
+    refused = setup_report._SyncStop(at, "manifest", "person", None)
+    persons = setup_report._persons_stop_reason(refused, ())
     assert f"`failed at step 3 (computed: install.sh exit 0; {persons})`" in flat, persons
     kinds = page.split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
     [error_row] = [ln for ln in kinds.splitlines() if ln.startswith("| `error` |")]

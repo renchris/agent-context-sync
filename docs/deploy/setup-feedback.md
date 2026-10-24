@@ -342,7 +342,8 @@ install.log (a `--list-folders` run is not an install run):
   first unclaimed step 3 error with a time at or after it (the same second counts) and before the stop
   after next (v33 logs a fixed stop's line after the sync that follows its chmod, which can stop again
   first), of its own kind only: a stop the agent fixes claims a line that names a chmod (a line that names
-  a mode names its file's: 700 for the state folder, 600 for a file), a stop whose fix is the person's a
+  a mode names its file's: 700 for the state folder, 600 or 700 for a governance file, 600 for any other
+  file; B13 round 26 E59), a stop whose fix is the person's a
   line that names the sync's non-zero exit and no chmod, and no stop claims a `skipped: lock held` line,
   which writes no `sync-stops.log` line (B13 round 25 ruling 11). The pair is one Items line ending
   `(F<n>: the agent's account of it)`; `step 3 logged N errors` counts only the errors no stop claims (a
@@ -351,7 +352,9 @@ install.log (a `--list-folders` run is not an install run):
   lock file, and no sync ended 0 after it by this report: the fix is the agent's chmod` (`whether a sync
   ended 0 after it was not measured` when the runs table cannot be read). Neither kind is then in the
   Agent friction list, which holds what does not change the outcome. A recorded stop with neither a later
-  sync that ended ok nor a claimed line is an Items line and no reason of its own.
+  sync that ended ok nor a claimed line is an Items line and no reason of its own, unless it is a stop whose
+  fix is the person's that step 3 ended on, which makes the attempt failed at step 3 (below; B13 round 26
+  E59).
 - **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
   is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
   error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a
@@ -368,9 +371,11 @@ install.log (a `--list-folders` run is not an install run):
   below). When the last install run exited 0 and step 3 ended on a recorded sync stop whose fix is the person's
   that no later sync ended ok after (v33 has the agent log it, show the `[FAIL]` line and go to the report), N is
   the report step: `failed at step 3 (computed: install.sh exit 0; a sync at step 3 exited 1 on agentsync's state
-  file, which was missing after earlier syncs, and no later sync ended 0: the person's to fix)`, as the same state
-  at step 2 is `failed at step 2`. A stop whose runs table cannot be read counts only while doctor shows a
-  `[FAIL]` in a person's bucket (B13 round 25 ruling 10).
+  file, which this account could not open, and no later sync ended 0: the person's to fix)`, as the same state
+  at step 2 is `failed at step 2`. A stop whose runs table cannot be read (a lost manifest's, under v33, since the
+  table lives in the missing file) counts only while doctor shows a `[FAIL]` in a person's bucket, and then reads
+  `a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and doctor's
+  state_dir.manifest FAIL still stands: the person's to fix` (B13 round 25 ruling 10; B13 round 26 E69).
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
   line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
