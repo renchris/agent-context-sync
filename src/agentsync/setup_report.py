@@ -1045,6 +1045,16 @@ _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its c
     # R after "read again", or after "first read" when all R were first reads (B13 round 10 L34)
     r"(?:, read again (?P<r>\d+)\b|, first read (?P<r1>\d+)\b)?(?P<tail>.*)"
 )
+# The CLI's note before that line when the sync started a new manifest over mirror pages and removed some
+# (cli, B13 round 26 E10): R removed, and since lane E's P116 D deletion notices removed, the R part left out
+# at 0; "by the background sync" at the end, or right after "pages" (lane B's P47). "every file is converted
+# again" removed none and does not match (B13 round 27 P115)
+_NEW_START_RE = re.compile(
+    r"\bnote: a new manifest was started over (?P<n>\d+) existing mirror pages?"
+    r"(?P<by>,? \(?by the background sync\)?)?; (?P<k>\d+) written back"
+    r"(?:, (?P<r>\d+) removed \((?:its|their) file is gone or was not converted\))?"
+    r"(?:, (?P<d>\d+) deletion notices? removed \([^)]*\))?(?P<by2> \(by the background sync\))?"
+)
 # The clauses in that rest, read apart so their order and brackets do not matter: Q28's first reads and the
 # unreadable/failed split, "(F of them read for the first time, also counted above); of the converted: U
 # unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
@@ -3677,6 +3687,9 @@ class _Facts:
     first_sync_withheld_unread: tuple[int, int] | None = None
     # its "W waiting for its/their converter" as (N, W); None: the line has none (B13 round 19 W52)
     first_sync_converter_waiting: tuple[int, int] | None = None
+    # the CLI's new-start note printed before that line in the same run (B13 round 27 P115) as (N, pages,
+    # written back, removed, deletion notices removed, by the background sync); None: none, or none removed
+    first_sync_new_start: tuple[int, int, int, int, int, bool] | None = None
     # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
     # install.out has no header at all (an older install.sh), None when the line is above the first header
     # read (the tail starts inside an earlier run)
@@ -5982,20 +5995,35 @@ def _installer_output(r: _Run) -> list[str]:
     me = os.environ.get(REPORT_RUN_ENV, "").strip()
     r.facts.instructions = (counts, len(counted), runs, first, bool(me) and bool(heads) and heads[-1] == me)
     r.facts.out_counted = counted
-    synced: list[tuple[re.Match[str], str | None]] = []
+    synced: list[tuple[re.Match[str], str | None, re.Match[str] | None]] = []
     current: str | None = None  # the run whose output this is (B13 round 7 H29)
+    # the new-start note the CLI prints before its sync line: that sync's, so a header or another sync line
+    # in between drops it (B13 round 27 P115)
+    started: re.Match[str] | None = None
     for ln in lines:
         head = _OUT_RUN_RE.match(ln)
         if head is not None:
-            current = head.group(1)
+            current, started = head.group(1), None
         elif (found := _CONVERTED_LINE_RE.search(ln)) is not None:
-            synced.append((found, current))
+            synced.append((found, current, started))
+            started = None
+        elif (note := _NEW_START_RE.search(ln)) is not None:
+            started = note
     if synced:
-        last, r.facts.first_sync_run = synced[-1]
+        last, r.facts.first_sync_run, started = synced[-1]
         if not heads:  # no header at all: an install.sh too old to write one, not a tail inside a run
             r.facts.first_sync_run = ""
         converted, again = int(last.group("c")), int(last.group("r") or last.group("r1") or 0)
         r.facts.first_sync = (converted, int(last.group("d")), again)
+        if started is not None and (int(started.group("r") or 0) or int(started.group("d") or 0)):
+            r.facts.first_sync_new_start = (
+                converted,
+                int(started.group("n")),
+                int(started.group("k")),
+                int(started.group("r") or 0),
+                int(started.group("d") or 0),
+                bool(started.group("by") or started.group("by2")),
+            )
         split = _SPLIT_RE.search(last.group("tail"))
         if split is not None:
             u, f, refused, of_refused = (int(g or 0) for g in split.groups())
@@ -12406,6 +12434,23 @@ def _sync_line_end(
             line = "install.out's last sync line" if borrowed else "install.out"
             source += f"; {' and '.join(named)}: {line}"
         parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
+        # the pages the new start removed, in the CLI's words: its note sits only in install.out, before the
+        # sync line it belongs to (B13 round 27 P115, round 26 E10's report half)
+        start = r.facts.first_sync_new_start
+        if start is not None and start[0] == converted:
+            _n, pages, back, gone, notices, by_job = start
+            by = " by the background sync" if by_job else ""
+            over = _plural(pages, "existing mirror page")
+            said = f"a new manifest was started over {over}{by}: {back} written back"
+            if gone:
+                said += (
+                    f", {gone} removed ({'its' if gone == 1 else 'their'} file is gone or was not converted)"
+                )
+            if notices:
+                whose = "its file was" if notices == 1 else "their files were"
+                said += f", {_plural(notices, 'deletion notice')} removed ({whose} already reported gone)"
+            line = "install.out's last sync line" if borrowed else "install.out"
+            parts.append(f"{said[:-1]}; {line})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
         parts.append(

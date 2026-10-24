@@ -6124,6 +6124,77 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         assert ") (" not in line, "B13 round 6 G34: the source tag is the clause's one bracket"
 
 
+def test_the_sync_line_counts_the_pages_a_new_start_removed(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 27 P115 (round 26 E10's report half): the CLI's note that a new manifest was started over
+    N existing mirror pages, K written back, R removed, is one more part of the Summary's sync line, in the
+    CLI's words, when it was printed before the sync line the Summary shows. Lane E's P116 form (deletion
+    notices removed, the R part left out at 0) and "by the background sync" after "pages" read the same. A
+    note of every file converted again, one of an earlier run, and one of an earlier sync in the same run add
+    nothing."""
+    write_friction(fake_mac, V6_HAPPY)
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\n"
+    sync = "first sync: converted 11, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)\n"
+    note = "first sync: note: a new manifest was started over 13 existing mirror pages; "
+    gone = "(their file is gone or was not converted"
+    for out, want in (
+        (
+            f"{head}{note}11 written back, 2 removed (their file is gone or was not converted)\n{sync}",
+            f"a new manifest was started over 13 existing mirror pages: 11 written back, 2 removed {gone}; "
+            "install.out)",
+        ),
+        (
+            f"{head}{note}12 written back, 1 removed (its file is gone or was not converted) (by the "
+            f"background sync)\n{sync}",
+            "a new manifest was started over 13 existing mirror pages by the background sync: 12 written "
+            "back, 1 removed (its file is gone or was not converted; install.out)",
+        ),
+        (  # lane E's P116: the deletion notices it removed, after the pages
+            f"{head}{note}9 written back, 2 removed (their file is gone or was not converted), 2 deletion "
+            f"notices removed (their files were already reported gone)\n{sync}",
+            f"a new manifest was started over 13 existing mirror pages: 9 written back, 2 removed {gone}), 2 "
+            "deletion notices removed (their files were already reported gone; install.out)",
+        ),
+        (  # and with no page newly removed, the R part left out
+            f"{head}{note}12 written back, 1 deletion notice removed (its file was already reported "
+            f"gone)\n{sync}",
+            "a new manifest was started over 13 existing mirror pages: 12 written back, 1 deletion notice "
+            "removed (its file was already reported gone; install.out)",
+        ),
+        (  # lane B's P47: "by the background sync" right after "pages"
+            f"{head}first sync: note: a new manifest was started over 13 existing mirror pages by the "
+            f"background sync; 11 written back, 2 removed (their file is gone or was not converted)\n{sync}",
+            "a new manifest was started over 13 existing mirror pages by the background sync: 11 written "
+            f"back, 2 removed {gone}; install.out)",
+        ),
+        (f"{head}{note}every file is converted again\n{sync}", None),
+        (  # a note of an earlier run, above this run's header
+            f"# run=20260928T100000Z-4141 2026-09-28T10:00:00Z install.sh\n{note}11 written back, 2 removed "
+            f"(their file is gone or was not converted)\n{head}{sync}",
+            None,
+        ),
+        (  # a note of an earlier sync in the same run: the line shown is a later sync's
+            f"{head}{note}11 written back, 2 removed (their file is gone or was not converted)\nfirst sync: "
+            f"converted 11, deferred 0 online-only\n{sync}",
+            None,
+        ),
+    ):
+        v6_install_log(fake_mac, first_sync="seconds=9 rc=0 result=done")
+        (fake_mac["setup"] / "install.out").write_text(out, encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+        assert (
+            "converted 11, deferred 0 online-only; of the converted: 1 unreadable, 0 failed (install.out)"
+            in line
+        )
+        if want is None:
+            assert "new manifest" not in line, line
+        else:
+            assert line.endswith(f" · {want}") or f" · {want} · " in line, line
+        assert not setup_report.instruction_counts(out.splitlines()), out
+
+
 def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -> None:
     """B13 round 5 F34: with the Q28 clause, sync now joins the split with "; " so two parentheses never
     stand side by side; an earlier sync's two-parenthesis line persists in install.out. Both give the

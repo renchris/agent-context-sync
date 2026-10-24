@@ -30756,8 +30756,8 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36 and
-P102, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of other lanes' files the
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
+P102 and P115, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks of other lanes' files the
 items need (named below). Items that describe one defect are built once: P33 and P58; P103, P121 and P129; P19 and
 P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
@@ -30893,6 +30893,19 @@ between checks, the one-FAIL words unchanged), and the known-cause reason names 
 words, `state_dir.files twice` (`<check> <n> times` past two): no `×`, bracket or second `; ` inside an outcome
 reason (rulings M24, Y32). Test: the P102 rows of
 `test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step`.
+
+**The sync line counts the pages a new start removed** (P115; round 26 E10's report half, ruling 14). The CLI's
+`note: a new manifest was started over 13 existing mirror pages; 11 written back, 2 removed (their file is gone or
+was not converted)` sat only in the copy of install.out: the Summary's sync line said `converted 11` and nothing of
+the 2 pages gone. `_installer_output` now keeps the note (`_NEW_START_RE`) printed before the sync line the Summary
+shows, in the same run with no other sync line between, as `first_sync_new_start`, and `_sync_line_end` adds one
+part in the CLI's words when a page or deletion notice was removed and the converted counts agree: `a new manifest
+was started over 13 existing mirror pages: 11 written back, 2 removed (their file is gone or was not converted;
+install.out)` (`its` for one). Lane E's P116 form reads too: `, D deletion notice(s) removed (its file was|their
+files were already reported gone)` after it, the `R removed` part left out at 0; `by the background sync` at the
+note's end or after `pages` (lane B's P47) reads `... mirror pages by the background sync: ...`. A note that every
+file is converted again, one of an earlier run and one of an earlier sync add nothing. The count is the CLI's, so the
+report and the CLI never disagree. Test: `test_the_sync_line_counts_the_pages_a_new_start_removed`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
