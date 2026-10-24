@@ -330,6 +330,14 @@ G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path 
 recovery line of one that has none names no position (B13 round 7 H77). 6: the tombstones of a source deleted
 from sources.toml are rendered again too (B13 round 8 J74, round 9 K70)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
+
+
+def notice_gone_why(n: int = 1) -> str:
+    """Why a new start's removal of ``n`` deletion notices is no new deletion: the WARNING, the CHANGELOG
+    line, the commit-body note and the CLI's note clause say it in these words (B13 round 27 P116)."""
+    return f"{'its file was' if n == 1 else 'their files were'} already reported gone"
+
+
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
 DELETED_UPSTREAM = "deleted-upstream"
@@ -1995,12 +2003,21 @@ class Publisher:
                 idx.unlink()
 
     def append_changelog(
-        self, run_id: int, today: str, changes: Sequence[MirrorChange], report: CycleReport
+        self,
+        run_id: int,
+        today: str,
+        changes: Sequence[MirrorChange],
+        report: CycleReport,
+        *,
+        removed_notices: Sequence[tuple[str, str]] = (),
     ) -> None:
         """Append one section to ``CHANGELOG/<yyyy-mm>.md`` (A|M|R|D per path, counts, breaker state) and
-        regenerate CHANGELOG.md as the index of the last 30 days.  Called only when ``changes`` is non-empty.
+        regenerate CHANGELOG.md as the index of the last 30 days.  Called only when ``changes`` or
+        ``removed_notices`` is non-empty. ``removed_notices`` is ``(source_id, page)`` for each deletion
+        notice a new start removed: no new deletion, so no ``D`` line, but a line of its own, as a commit that
+        removes a page always has one (B13 round 27 P116).
         """
-        if not changes:
+        if not changes and not removed_notices:
             return
         date.fromisoformat(today)
         month = today[:7]
@@ -2012,13 +2029,13 @@ class Publisher:
         if any(line.startswith(marker) for line in existing.splitlines()):
             log.info("CHANGELOG already has run %d; not appending twice", run_id)
         else:
-            sources = sorted({c.source_id for c in changes})
+            sources = sorted({c.source_id for c in changes} | {sid for sid, _page in removed_notices})
             section = [marker + gitops.commit_subject(changes, sources), "", f"- mode: {report.mode.value}"]
             per_source: dict[str, list[MirrorChange]] = {}
             for c in changes:
                 per_source.setdefault(c.source_id, []).append(c)
             reports = {r.source_id: r for r in report.sources}
-            for sid in sorted({*per_source, *reports}):
+            for sid in sorted({*per_source, *reports, *(sid for sid, _page in removed_notices)}):
                 r = reports.get(sid)
                 bits = [f"{_counts_text(per_source.get(sid, []))}"]
                 if r is not None:
@@ -2044,6 +2061,13 @@ class Publisher:
             if len(ordered) > _CHANGELOG_MAX_PATHS:
                 rest = len(ordered) - _CHANGELOG_MAX_PATHS
                 section.append(f"- … {rest} more paths: `git show --stat` on this sync's commit")
+            for _sid, page in sorted(removed_notices, key=lambda n: n[1])[:_CHANGELOG_MAX_PATHS]:
+                section.append(f"- removed deletion notice {_quoted(page, 400)} ({notice_gone_why()})")
+            if len(removed_notices) > _CHANGELOG_MAX_PATHS:
+                rest = len(removed_notices) - _CHANGELOG_MAX_PATHS
+                section.append(
+                    f"- … {rest} more deletion notices removed: `git show --stat` on this sync's commit"
+                )
             text = existing.rstrip("\n") + "\n\n" + "\n".join(section) + "\n"
             self._write_text(rel, text)
         self._write_changelog_index(today)

@@ -526,6 +526,9 @@ class CycleReport:
     # of those, the ones this run did not write back: each a deletion in the commit and the CHANGELOG, and
     # the count on the CLI's note (B13 round 26 E10)
     new_manifest_removed: int = 0
+    # of those, the deletion notices it removed: no new deletion, never in the commit's d count, said in their
+    # own clause (B13 round 27 P116)
+    new_manifest_notices: int = 0
     # the new start was the background job's, said by this foreground run (B13 round 26 E74)
     new_manifest_by_job: bool = False
 

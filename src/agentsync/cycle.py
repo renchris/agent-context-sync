@@ -185,6 +185,7 @@ from agentsync.publish import (
     SourceStatus,
     _withheld_on_page,
     archive_path,
+    notice_gone_why,
     render_tombstone,
     sidecar_rel,
 )
@@ -298,8 +299,9 @@ _SECRET_RESCAN_META = "secret_rescan_pending"
 published page again (a run that fails before its secret scan leaves it set)."""
 NEW_START_UNSAID_META = "new_manifest_unsaid"
 """Manifest meta key: the person's new start the LaunchAgent's poll ran first, ``{"pages": N, "orphans":
-[rel, ...]}``, whose note and WARNINGs reached only the poll log; the next foreground sync says them once and
-clears it, and status counts it read-only (B13 round 26 E74)."""
+[rel, ...], "notices": [rel, ...]}``, whose note and WARNINGs reached only the poll log; the next foreground
+sync says them once and clears it, and status counts it read-only (B13 round 26 E74). ``notices`` holds the
+deletion notices it removed, said apart (B13 round 27 P116)."""
 _SECRET_WAITING_META = "secret_rescreen_waiting"
 """Manifest meta: a JSON list of ``[source_id, stable_id]``, the credential stubs that were online-only when
 the rules moved; each is marked for the re-screen once it is on this Mac again."""
@@ -1480,15 +1482,34 @@ def unowned_mirror_pages(config: Config, owned: frozenset[str] = frozenset()) ->
     return out
 
 
+def _deletion_notice(page: Path) -> bool:
+    """True when the page's frontmatter says ``status: deleted`` (a deletion notice: its file was already
+    reported gone) or ``status: archived``, as ``cli._is_tombstone`` and the purge's history walk read it."""
+    try:
+        with page.open("rb") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return False
+    front = head.split(b"\n---\n", 1)[0] + b"\n"
+    return head.startswith(b"---\n") and (b"\nstatus: deleted\n" in front or b"\nstatus: archived\n" in front)
+
+
 def _repair_outputs(
-    config: Config, manifest: Manifest, run_id: int, *, orphaned: list[str] | None = None, quiet: bool = False
+    config: Config,
+    manifest: Manifest,
+    run_id: int,
+    *,
+    orphaned: list[str] | None = None,
+    notices: set[str] | None = None,
+    quiet: bool = False,
 ) -> list[MirrorChange]:
     """Make ``docs/mirror`` match the manifest: re-publish damaged/missing pages, drop orphan files.
 
     Used after a crash or when HEAD moved under the manifest.  Items the cache cannot re-render are marked
     MAYBE_CHANGED so the next work queue fetches and re-publishes them (``_pages_intact`` forces it). Each
-    orphan page removed is appended to ``orphaned``; ``quiet`` logs each at DEBUG, for a new manifest over
-    existing pages, whose one plain note the CLI prints (B13 round 24 B37).
+    orphan page removed is appended to ``orphaned``, and added to ``notices`` too when it was a deletion
+    notice, whose removal is no new deletion (B13 round 27 P116); ``quiet`` logs each at DEBUG, for a new
+    manifest over existing pages, whose one plain note the CLI prints (B13 round 24 B37).
     """
     repo = config.docs_repo
     publisher = Publisher(config, manifest)
@@ -1552,6 +1573,8 @@ def _repair_outputs(
             log.log(level, "repair: removing orphan mirror page %s", rel)
             if orphaned is not None:
                 orphaned.append(rel)
+            if notices is not None and _deletion_notice(page):
+                notices.add(rel)
             page.unlink()
             sidecars = page.with_suffix(".files")
             if sidecars.is_dir() and not sidecars.is_symlink():
@@ -1559,7 +1582,9 @@ def _repair_outputs(
     return changes
 
 
-def recover(config: Config, manifest: Manifest, *, orphaned: list[str] | None = None) -> RecoveryAction:
+def recover(
+    config: Config, manifest: Manifest, *, orphaned: list[str] | None = None, notices: set[str] | None = None
+) -> RecoveryAction:
     """Compare manifest tree_sha / pending cursors with git HEAD and repair (design 4.7 recovery).
 
     - HEAD's tree differs from ``tree_sha`` and HEAD carries the ``Agentsync-Run`` trailer of the run that
@@ -1571,7 +1596,8 @@ def recover(config: Config, manifest: Manifest, *, orphaned: list[str] | None = 
 
     A new manifest (no runs, no tree) over a HEAD with a tree is the person's new start, once
     heartbeat.json is aside (``doctor.LOST_MANIFEST_FIX``): its reset says each line at DEBUG, and the orphan
-    pages it removes (every existing one) go in ``orphaned`` for the CLI's one plain note; the run says each
+    pages it removes (every existing one) go in ``orphaned`` for the CLI's one plain note, the deletion
+    notices among them in ``notices`` too (B13 round 27 P116); the run says each
     it did not write back as a WARNING (B13 round 25 D40: not every one comes back). An existing manifest
     whose tree disagrees with HEAD keeps its WARNINGs (B13 round 24 B37: 28 WARNING lines, 24 of them pages
     the same run wrote back, and no plain line).
@@ -1626,7 +1652,9 @@ def recover(config: Config, manifest: Manifest, *, orphaned: list[str] | None = 
         manifest.finish_run(crashed, status="aborted", commit_sha=landed, counts={})
     if repair:
         run_for_repair = crashed if crashed is not None else (runs[0][0] if runs else 0)
-        changes = _repair_outputs(config, manifest, run_for_repair, orphaned=orphaned, quiet=new_manifest)
+        changes = _repair_outputs(
+            config, manifest, run_for_repair, orphaned=orphaned, notices=notices, quiet=new_manifest
+        )
         log.log(said, "recover: verified mirror against the manifest (%d page change(s))", len(changes))
     return action
 
@@ -1915,6 +1943,8 @@ class _Cycle:
         self.heartbeat_refused: PermissionError | None = None  # said once, by the CLI (A1, A34, A84)
         self.new_manifest_pages = 0  # the mirror pages a new manifest started over (B13 round 24 B37)
         self._orphans_gone: list[str] | None = None  # of those, the ones this run did not write back (E10)
+        self._fresh_notices: set[str] = set()  # those pages that were deletion notices (P116)
+        self._notices_gone: list[str] = []  # of the pages not written back, the deletion notices (P116)
         self._fresh_orphans: list[
             str
         ] = []  # those pages, each said at DEBUG: any not written back is a WARNING
@@ -1980,11 +2010,13 @@ class _Cycle:
         crashed = last[0][0] if last and last[0][2] == "running" else None
         fresh = not last and self.manifest.tree_sha() is None  # a new manifest: a quiet reset (B37)
         orphaned: list[str] = []
-        recovery = recover(self.config, self.manifest, orphaned=orphaned)
+        notices: set[str] = set()
+        recovery = recover(self.config, self.manifest, orphaned=orphaned, notices=notices)
         if recovery is not RecoveryAction.NONE:
             log.log(logging.DEBUG if fresh else logging.WARNING, "recovery: %s", recovery.value)
         self.new_manifest_pages = len(orphaned) if fresh else 0
         self._fresh_orphans = orphaned if fresh else []
+        self._fresh_notices = notices if fresh else set()
         self._refuse_vanished_sources()
         # a new manifest over a repo that names runs continues their numbers (E9), and so does one restored
         # from an older copy (P137); seed_run_sequence never lowers the sequence
@@ -2055,8 +2087,14 @@ class _Cycle:
             self.shard_sources = {Path(p).stem for p in shards if (self.repo / p).is_file()}
             self.publisher.write_quarantine()
             self.publisher.write_index(statuses)
-            if self.changes:
-                self.publisher.append_changelog(self.run_id, self.today(), self.changes, self._report(None))
+            if self.changes or self._notices_gone:
+                self.publisher.append_changelog(
+                    self.run_id,
+                    self.today(),
+                    self.changes,
+                    self._report(None),
+                    removed_notices=[(self._page_source(rel), rel) for rel in self._notices_gone],
+                )
             self.lock.beat(LockStage.LAND_GATE)
             dirty = gitops.has_changes(self.repo)
             if dirty or self.mode is CycleMode.RECONCILE:
@@ -2115,6 +2153,7 @@ class _Cycle:
                 report,
                 new_manifest_pages=self.new_manifest_pages,
                 new_manifest_removed=len(self._orphans_gone or []),
+                new_manifest_notices=len(self._notices_gone),
             )
         if self.heartbeat_refused is not None:
             return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
@@ -2129,9 +2168,11 @@ class _Cycle:
         its WARNINGs, the background job's saved note and the CLI's note read the same pages (B13 round 27
         P45)."""
         if self._orphans_gone is None:
-            self._orphans_gone = self._not_written_back()
-        for rel in self._orphans_gone:
+            self._split_gone()
+        for rel in self._orphans_gone or []:
             log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
+        for rel in self._notices_gone:  # no new deletion: its own words (B13 round 27 P116)
+            log.warning("repair: removed deletion notice %s (%s)", rel, notice_gone_why())
 
     def _new_start_unsaid(self, report: CycleReport) -> CycleReport:
         """A new start the background job ran: its note and WARNINGs went only to the poll log, so the
@@ -2143,7 +2184,11 @@ class _Cycle:
             if self.new_manifest_pages:
                 if started_by_our_job(self.config):
                     gone = self._orphans_gone or []  # set by _say_orphans_not_written_back (P45)
-                    saved = {"pages": self.new_manifest_pages, "orphans": sorted(gone)}
+                    saved = {
+                        "pages": self.new_manifest_pages,
+                        "orphans": sorted(gone),
+                        "notices": sorted(self._notices_gone),  # said apart (P116)
+                    }
                     self.manifest.set_meta(NEW_START_UNSAID_META, json.dumps(saved, sort_keys=True))
                 return report
             if started_by_our_job(self.config):
@@ -2155,6 +2200,7 @@ class _Cycle:
             self.manifest.set_meta(NEW_START_UNSAID_META, "")
             pages = int(saved.get("pages", 0))
             missing = [rel for rel in saved.get("orphans", []) if not (self.repo / rel).is_file()]
+            notices = [rel for rel in saved.get("notices", []) if not (self.repo / rel).is_file()]
         except (AgentSyncError, sqlite3.Error, ValueError, TypeError, AttributeError) as exc:
             log.debug("new start note: %s", exc)
             return report
@@ -2162,28 +2208,45 @@ class _Cycle:
             log.warning(
                 "repair: removed orphan mirror page %s (not written back by the background sync)", rel
             )
+        for rel in notices:
+            log.warning(
+                "repair: removed deletion notice %s (%s; by the background sync)", rel, notice_gone_why()
+            )
         if not pages:
             return report
         return dataclasses.replace(
-            report, new_manifest_pages=pages, new_manifest_removed=len(missing), new_manifest_by_job=True
+            report,
+            new_manifest_pages=pages,
+            new_manifest_removed=len(missing),
+            new_manifest_notices=len(notices),
+            new_manifest_by_job=True,
         )
 
     def _not_written_back(self) -> list[str]:
         """The pages a new manifest's reset removed that this run has not written back."""
         return [rel for rel in self._fresh_orphans if not (self.repo / rel).is_file()]
 
+    def _split_gone(self) -> None:
+        """Set the one list from a fresh look at the pages not written back, the deletion notices apart."""
+        gone = self._not_written_back()
+        self._orphans_gone = [rel for rel in gone if rel not in self._fresh_notices]
+        self._notices_gone = [rel for rel in gone if rel in self._fresh_notices]
+
+    def _page_source(self, rel: str) -> str:
+        """The source id a mirror page sits under (``mirror`` for one under no configured source)."""
+        parts = rel.split("/")
+        return parts[1] if len(parts) > 2 and parts[1] in {s.id for s in self.config.sources} else "mirror"
+
     def _count_orphans_removed(self) -> None:
         """Count each page a new manifest's reset removed and this run did not write back as a deletion of
         its source, once publishing is done: the commit said 0d and the CHANGELOG nothing while the commit
         deleted it (B13 round 26 E10). One list (``_orphans_gone``) feeds the counts, the WARNING and the
-        CLI's note, so they never disagree; the pages written back are no change."""
-        gone = self._not_written_back()
-        self._orphans_gone = gone
-        ids = {s.id for s in self.config.sources}
-        for rel in gone:
-            parts = rel.split("/")
-            sid = parts[1] if len(parts) > 2 and parts[1] in ids else "mirror"
-            self.changes.append(MirrorChange(ChangeOp.DELETED, rel, sid, ""))
+        CLI's note, so they never disagree; the pages written back are no change. A page that was already a
+        deletion notice is no new deletion: it goes in ``_notices_gone``, said by its own CHANGELOG line,
+        commit-body note, WARNING and note clause, never in the ``d`` count (B13 round 27 P116)."""
+        self._split_gone()
+        for rel in self._orphans_gone or []:
+            self.changes.append(MirrorChange(ChangeOp.DELETED, rel, self._page_source(rel), ""))
 
     def _session_topic_pages(self) -> tuple[str | None, set[str]]:
         """KISS K06: the pre-run HEAD and the topic pages a session left dirty (uncommitted or untracked),
@@ -3359,6 +3422,11 @@ class _Cycle:
         self.publisher.write_state_snapshot(statuses)
         source_ids = sorted({c.source_id for c in self.changes} | self.shard_sources)
         notes = [f"{a.src.id}: {alarm}" for a in self.accs.values() for alarm in a.alarms]
+        by_source = Counter(self._page_source(rel) for rel in self._notices_gone)
+        notes += [
+            f"{sid}: {plural(n, 'deletion notice')} removed ({notice_gone_why(n)})"
+            for sid, n in sorted(by_source.items())
+        ]
         body = gitops.commit_body(self.changes, run_id=self.run_id, mode=self.mode.value, notes=notes)
         sha = gitops.commit_cycle(self.repo, gitops.commit_subject(self.changes, source_ids), body)
         if sha is not None:

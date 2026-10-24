@@ -1056,6 +1056,7 @@ class CycleReport:
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
     new_manifest_removed: int = 0  # 2026-10-23 (§16.185 E10): of those, the ones this run did not write back
+    new_manifest_notices: int = 0  # 2026-10-24 (§16.191 P116): of those, the deletion notices
     new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
@@ -30970,6 +30971,26 @@ landed between `_SECRET_RESCAN_META` and its attribute docstring, which then fol
 and documented nothing, the K52 defect at another constant. The block moved below that docstring.
 `test_cycle.py::test_every_module_docstring_in_cycle_follows_its_own_constant` fails on any module-level string
 after the module's docstring that does not follow an assignment, and checks both constants' first words.
+
+**A new start counts a deletion notice it removed apart (P116; `agentsync.cycle`, `agentsync.publish`,
+`agentsync.cli`).** A file reported gone leaves a deletion notice (`status: deleted`). The person's new start
+removed that notice as an orphan, since a new manifest holds no tombstone for it, and E10's count made it a second
+deletion of the same file: `sync: 17a 0m 0r 1d source`, a second `- D` line under the new run, the note's "1
+removed" and a "not written back" WARNING (measured with no file gone between the two runs). Not the finder's
+"count it not at all": the commit still removes a tracked page, and a removal with no CHANGELOG line is what E10
+fixed. `_repair_outputs` reads each orphan's frontmatter before it unlinks it (`_deletion_notice`: `status: deleted`
+or `status: archived`, as `cli._is_tombstone` and the purge's history walk read it) and keeps those in a second
+set; `_count_orphans_removed` puts only the others in the one list and the `D` changes, and keeps the notices in
+`_notices_gone`. Each removed notice gets its own CHANGELOG line (`- removed deletion notice `<page>` (its file was
+already reported gone)`, `Publisher.append_changelog`'s `removed_notices`, which also writes a section when the
+notices are its only lines), a commit-body note per source, its own WARNING (`repair: removed deletion notice <page>
+(its file was already reported gone)`), and its own clause in the CLI's note after the written-back and removed
+counts (`…; 17 written back, 1 deletion notice removed (its file was already reported gone)`;
+`CycleReport.new_manifest_notices`; the words are `publish.notice_gone_why`). A background new start keeps them as
+`notices` in `NEW_START_UNSAID_META`, so the next foreground sync says the same split, and status counts no notice
+as a page removed. Tests: `test_cli.py::test_a_new_start_counts_a_deletion_notice_it_removed_apart` (the notice
+alone: `0d`; with one more file gone first: `1d` for that file alone; the commit still lists the notice) and
+`test_cli.py::test_a_background_new_start_keeps_the_deletion_notices_it_removed_apart_for_the_next_sync`.
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 

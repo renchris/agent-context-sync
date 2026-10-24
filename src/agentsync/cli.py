@@ -124,7 +124,7 @@ from agentsync.paths import (
     is_under,
     provider_link_resolved,
 )
-from agentsync.publish import Publisher, archive_path
+from agentsync.publish import Publisher, archive_path, notice_gone_why
 from agentsync.slug import collision_key
 from agentsync.text import plural
 
@@ -505,14 +505,16 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # second bracket after the first (B13 round 27 P47); the "started over " prefix install.sh reads stays
         by = " by the background sync" if report.new_manifest_by_job else ""
         pages = plural(report.new_manifest_pages, "existing mirror page") + by
-        if report.new_manifest_removed:  # not every one came back: say how many went (B13 round 26 E10)
-            gone = report.new_manifest_removed
-            back = report.new_manifest_pages - gone
-            whose = "its" if gone == 1 else "their"
-            _out(
-                f"note: a new manifest was started over {pages}; {back} written back, {gone} removed "
-                f"({whose} file is gone or was not converted)"
-            )
+        gone, notices = report.new_manifest_removed, report.new_manifest_notices
+        if gone or notices:  # not every one came back: say how many went (B13 round 26 E10)
+            parts = [f"{report.new_manifest_pages - gone - notices} written back"]
+            if gone:
+                parts.append(
+                    f"{gone} removed ({'its' if gone == 1 else 'their'} file is gone or was not converted)"
+                )
+            if notices:  # no new deletion: its own clause (B13 round 27 P116)
+                parts.append(f"{plural(notices, 'deletion notice')} removed ({notice_gone_why(notices)})")
+            _out(f"note: a new manifest was started over {pages}; {', '.join(parts)}")
         else:
             note = f"note: a new manifest was started over {pages}; every file is converted again"
             _out(note)

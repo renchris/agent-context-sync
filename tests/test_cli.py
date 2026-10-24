@@ -7941,6 +7941,107 @@ def test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers(
         assert f"- D `{rel}`" in section, section
 
 
+@pytest.mark.parametrize("lose_another", [False, True], ids=["notice-only", "notice-and-a-file-gone"])
+def test_a_new_start_counts_a_deletion_notice_it_removed_apart(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str], lose_another: bool
+) -> None:
+    """B13 round 27 P116: a file reported gone leaves a deletion notice (``status: deleted``). The person's
+    new start removed that notice as an orphan, and its commit, CHANGELOG and note counted it as a second
+    deletion of the same file ("1d", a second "- D" line, "1 removed"). The notice's removal is no new
+    deletion: the subject counts only files newly gone, the CHANGELOG and the note say the notice apart, and
+    the commit still removes the page."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    files = sorted(p for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("."))
+    files[0].unlink()
+    for _ in range(2):  # absent from two complete passes: a deletion notice
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    notices = [
+        p.relative_to(repo).as_posix()
+        for p in initialised.layout.mirror.rglob("*.md")
+        if "\nstatus: deleted\n" in p.read_text(encoding="utf-8")
+    ]
+    assert len(notices) == 1, notices
+    (notice,) = notices
+    before = {p.relative_to(repo).as_posix() for p in initialised.layout.mirror.rglob("*.md")}
+    if lose_another:
+        files[1].unlink()
+    _manifest_gone(initialised, heartbeat=False)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr()
+    after = {p.relative_to(repo).as_posix() for p in initialised.layout.mirror.rglob("*.md")}
+    gone = sorted(before - after - {notice})
+    assert notice not in after and len(gone) == int(lose_another), (gone, notice)
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout
+
+    subject = git("log", "-1", "--format=%s")
+    assert f" {len(gone)}d " in subject, subject
+    assert notice in git("show", "--name-status", "--format=", "HEAD"), "the commit removes the notice"
+    month = initialised.layout.changelog_dir / f"{datetime.now(UTC):%Y-%m}.md"
+    text = month.read_text(encoding="utf-8")
+    section = text[text.rindex("\n## ") :]
+    assert f"- D `{notice}`" not in section, section
+    assert f"- removed deletion notice `{notice}` (its file was already reported gone)" in section, section
+    assert text.count(f"- D `{notice}`") == 1, "the file's deletion stays counted once"
+    for rel in gone:
+        assert f"- D `{rel}`" in section, section
+    (note,) = [ln for ln in out.out.splitlines() if ln.startswith("note: a new manifest was started over ")]
+    removed = "1 removed (its file is gone or was not converted), " if lose_another else ""
+    tail = f"; {len(before) - 2 - len(gone)} written back, {removed}1 deletion notice removed "
+    assert note.endswith(tail + "(its file was already reported gone)"), note
+    warned = [ln for ln in out.err.splitlines() if " WARNING " in ln]
+    assert any(
+        f"removed deletion notice {notice} (its file was already reported gone)" in ln for ln in warned
+    )
+    assert len(warned) == 1 + len(gone), warned
+
+
+def test_a_background_new_start_keeps_the_deletion_notices_it_removed_apart_for_the_next_sync(
+    initialised: Config,
+    local_source_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 27 P116 with round 26 E74: a new start the LaunchAgent's poll ran keeps the deletion notices
+    it removed apart in ``NEW_START_UNSAID_META``, so the next foreground sync says the same split as a
+    foreground new start would, and status counts no notice as a page removed."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    files = sorted(p for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("."))
+    files[0].unlink()
+    for _ in range(2):
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    (notice,) = [
+        p.relative_to(repo).as_posix()
+        for p in initialised.layout.mirror.rglob("*.md")
+        if "\nstatus: deleted\n" in p.read_text(encoding="utf-8")
+    ]
+    db = _manifest_gone(initialised, heartbeat=False)
+    monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.poll")
+    assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_OK
+    monkeypatch.delenv("XPC_SERVICE_NAME")
+    with Manifest(db) as m:
+        saved = json.loads(m.get_meta(cycle_mod.NEW_START_UNSAID_META) or "{}")
+    assert saved["orphans"] == [] and saved["notices"] == [notice], saved
+    capsys.readouterr()
+    _rc, lines = _status(cfg, capsys)
+    assert "new start: the background sync started a new manifest; the next sync says so" in lines, lines
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr()
+    (note,) = [ln for ln in said.out.splitlines() if ln.startswith("note: a new manifest was started over ")]
+    assert ", 1 deletion notice removed (its file was already reported gone)" in note, note
+    assert " removed (its file is gone" not in note, note
+    (warned,) = [ln for ln in said.err.splitlines() if " WARNING " in ln]
+    assert (
+        f"removed deletion notice {notice} (its file was already reported gone; by the background" in warned
+    )
+
+
 def test_a_new_start_that_fails_before_publishing_counts_the_pages_it_removed(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
