@@ -3606,7 +3606,13 @@ fallback_sync_stops() { # [late]
 		function trim(t) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", t); return t }
 		function word(t, re) { return match(t, "(^|[^a-z0-9_])" re "([^a-z0-9_]|$)") }
 		# setup_report._claims: may the error line (its what and fix columns, lower case) be the account of the stop
-		function claims(owner, file, t,    s, m, fit, any, ok) {
+		function claims(owner, file, t,    s, m, fit, any, ok, i) {
+			# every blank Python reads as whitespace but a newline ([^\S\n]: the Unicode spaces byte by byte, and
+			# tab, VT, FF, CR and the C0 separators), as link_agent lists them, is a space, as setup_report._claims
+			# reads it since lane RA round 27 P138: a no-break space in "chmod 600" paired in one report only
+			if (!nws) nws = split("\302\205 \302\240 \341\232\200 \342\200\200 \342\200\201 \342\200\202 \342\200\203 \342\200\204 \342\200\205 \342\200\206 \342\200\207 \342\200\210 \342\200\211 \342\200\212 \342\200\250 \342\200\251 \342\200\257 \342\201\237 \343\200\200", wsp, " ")
+			for (i = 1; i <= nws; i++) gsub(wsp[i], " ", t)
+			gsub(/[\011\013\014\015\034\035\036\037]/, " ", t)
 			if (word(t, "skipped: lock held")) return 0
 			# a stop of the person: any other line, whatever its chmod words (round 26 ruling 11 refined again: the
 			# v33 line names no chmod, the one the person runs, or only the exit)

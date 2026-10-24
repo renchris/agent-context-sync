@@ -5840,6 +5840,18 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["2026-10-14T06:01:05.5-04:00 | step 3 | error | exit code 1 | chmod 600 <lock>"],
             ["F4"],
         ),
+        # lane RA round 27 P138: every blank Python reads as whitespace is a space before the chmod words
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod\u00a0700 <lock>"],
+            ["-"],
+        ),
+        (["10:01:00 lock agent refused"], ["10:01:05 | step 3 | error | rc 1 | chmod\u00a0-N <lock>"], ["-"]),
+        (
+            ["10:01:00 lock agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod\u2009600 <lock>"],
+            ["F4"],
+        ),
     ],
     ids=[
         "chmod-after",
@@ -5872,6 +5884,9 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "blank-for-t",
         "no-seconds",
         "agents-offset-fraction",
+        "agents-nbsp-chmod-700",
+        "agents-nbsp-persons-acl",
+        "agents-thin-space-chmod-600",
     ],
 )
 def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does(

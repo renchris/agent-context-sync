@@ -29884,6 +29884,8 @@ in its Installer section under its own heading, as lane RA's D5 does; the outcom
 Amended 2026-10-24, §16.189 P145: thirty cases, not nineteen: eleven stamps in the other forms setup_report reads
 (an offset with and without its colon, two that cross a UTC day, the same second and the second before, an
 offset on a fractional end line, no zone, a blank for the T, no seconds, and an agent's stop under an offset).
+Amended 2026-10-24, §16.189 P138: thirty-three cases, not thirty: three chmod lines with a no-break or a thin space
+(an agent's chmod 700 of a lock, an ACL's chmod -N, and a chmod 600 that pairs), which both reports read alike.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -30828,6 +30830,15 @@ shell's own read of the manifest now (`lost_link_now`, never the link's target),
 fix is the person's, removing or re-pointing the link first`, or `... and is a link to a file that does not
 exist`. Tests: the step 1 table's `LM-link` and `LM-link-gone` rows and
 `test_the_shell_report_names_a_lost_manifests_link_on_its_stop` (unusable, dangling, no link).
+
+**The shell reads the chmod words with Python's whitespace** (P138's shell half, lane RA's item, built here at RA's
+seam note; dated line at §16.179 D79). `claims()` in `fallback_sync_stops` matched `chmod` and its modes with
+`[ \t]` only, while setup_report reads every blank Python's `[^\S\n]` matches as a space (RA's half), so a line with
+a no-break space in `chmod 700 <dir>` was claimed by an agent's lock stop in the shell report only. `claims()` first
+turns each such blank into a space, from the list `link_agent` already uses (the Unicode spaces byte by byte, and
+tab, VT, FF, CR and the C0 separators), not the verifier's shorter list, which missed 18 of Python's 28. Tests: the
+pairing table's `agents-nbsp-chmod-700`, `agents-nbsp-persons-acl` and `agents-thin-space-chmod-600` rows, each
+still checked against `_stop_pairs`.
 
 **A closing status a signal stopped is said** (P14). `loop_next` ran `with_progress "status" loop_status_run ||
 true`, so a status killed by SIGKILL or SIGTERM ended the run 0 on the fallback NEXT with nothing said. It keeps
