@@ -24,6 +24,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -3625,27 +3626,32 @@ def run_checks(
     return results
 
 
-_group_seen: Callable[[str], None] | None = None
-"""Told each check's group as :func:`run_checks` starts it, while :func:`groups_seen` holds it (B13 round 21
-Y22: a doctor the setup report cut off named no check, so a hung one read the same as a busy Mac)."""
+_group_holder = threading.local()
+"""Per thread, ``seen``: told each check's group as :func:`run_checks` starts it, while :func:`groups_seen`
+holds it (B13 round 21 Y22: a doctor the setup report cut off named no check, so a hung one read the same as
+a busy Mac). Per thread, as the hook sets and reads it in the doctor's own thread (B13 round 26 E37: a module
+global let another report's abandoned doctor thread reach this one's callback, or leave its own held)."""
 
 
 def saw_group(group: str) -> None:
-    """Tell :func:`groups_seen`'s callback, if one is held, that the check ``group`` starts (never raises)."""
-    if _group_seen is not None:
+    """Tell :func:`groups_seen`'s callback, if this thread holds one, that the check ``group`` starts (never
+    raises)."""
+    seen = getattr(_group_holder, "seen", None)
+    if seen is not None:
         with contextlib.suppress(Exception):
-            _group_seen(group)
+            seen(group)
 
 
 @contextlib.contextmanager
 def groups_seen(seen: Callable[[str], None]) -> Iterator[None]:
-    """:func:`run_checks` tells ``seen`` each check's group before it runs it, inside the ``with``."""
-    global _group_seen  # noqa: PLW0603 - one report's doctor at a time; the call that cut it off reads it
-    before, _group_seen = _group_seen, seen
+    """:func:`run_checks` tells ``seen`` each check's group before it runs it, inside the ``with``, in this
+    thread."""
+    before = getattr(_group_holder, "seen", None)
+    _group_holder.seen = seen
     try:
         yield
     finally:
-        _group_seen = before
+        _group_holder.seen = before
 
 
 _STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})

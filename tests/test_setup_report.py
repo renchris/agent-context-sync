@@ -8064,7 +8064,35 @@ def test_the_doctor_hook_says_which_check_it_started_last(fake_mac: dict[str, Pa
         hooks.doctor(load_config(fake_mac["config"]))
     assert at == ["skill"], "the CLI's own checks after run_checks' are named too (review)"
     assert hooks.doctor_at() == "", "every check ran: none is named"
-    assert doctor._group_seen is None, "held only while the hook's doctor runs"
+    assert getattr(doctor._group_holder, "seen", None) is None, "held only while the hook's doctor runs"
+
+
+def test_another_threads_doctor_never_reaches_this_ones_group_holder() -> None:
+    """B13 round 26 E37: the holder was a module global, so another test's (or report's) abandoned doctor
+    thread, still inside its ``groups_seen``, left it set here and took this thread's check groups: the
+    hook test above failed in a loaded serial run. The holder is per thread."""
+    theirs: list[str] = []
+    mine: list[str] = []
+    entered, release = threading.Event(), threading.Event()
+
+    def abandoned() -> None:
+        with doctor.groups_seen(theirs.append):
+            entered.set()
+            release.wait(10)
+
+    worker = threading.Thread(target=abandoned, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(10)
+        assert getattr(doctor._group_holder, "seen", None) is None
+        doctor.saw_group("pandoc")  # this thread holds none: nobody is told
+        with doctor.groups_seen(mine.append):
+            doctor.saw_group("skill")
+        assert getattr(doctor._group_holder, "seen", None) is None
+    finally:
+        release.set()
+        worker.join(10)
+    assert theirs == [] and mine == ["skill"], (theirs, mine)
 
 
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
