@@ -30412,6 +30412,8 @@ either window above), the friction section opens with `The `F<n>` ids in the Sum
 line numbers in this log, counting its first line as 1.`, outside the fence. The fence stays raw: numbering it would
 change the issue link's `friction_latest_said` read, the Agent line's redaction and `friction_text`'s read-back, and
 `friction_text` leaves the sentence out when it reads a report back. Test: `test_the_shell_report_says_what_its_f_ids_are`.
+Amended 2026-10-24, §16.189 P106: the sentence adds `; each is cited with its line's time stamp, as written below`,
+and each citation names its line's stamp as the log shows it; the fence stays raw.
 
 **A run a usage error stopped says it read no commit** (E21). `commit_shown` printed a bare `-` when no read was
 tried; it says `not read (this run stopped before it read the commit)`, as setup_report says such a run read none.
@@ -30795,6 +30797,16 @@ keeps the stamp as written. `friction_attempt_errors` reads through it too. Test
 `offset-no-colon`, `offset-same-day`, `offset-day-before`, `offset-same-second`, `offset-second-before`,
 `offset-fraction-end`, `no-zone`, `blank-for-t`, `no-seconds` and `agents-offset-fraction` cases, each still
 checked against `_stop_pairs` (thirty cases).
+
+**The shell report cites each F<n> line with its stamp** (P106; amends §16.184 E4). The shell fallback's friction
+fence is raw (the issue link, the redaction and the read-back parse its lines), so a reader counted up to sixteen
+lines by hand to find `F16`. Numbering the fence (the finder's fix) is measured worse: the issue link lost its
+prompt version and agent, whose patterns are anchored at the line's start, and every read-back from an earlier
+report stacked another number. The fence stays raw; each citation names the line's stamp as the log shows it
+(`RAWSTAMP`, before P145's rewrite): `(F5, the line stamped 2026-10-14T10:05:40Z: the agent's account of it)` in
+the Installer section and `F5 (stamped ...)` in the Summary's outcome line, and `F_IDS_SAID` adds `; each is cited
+with its line's time stamp, as written below`. Tests: the pairing table (each paired line's stamp as written),
+`test_the_shell_report_says_what_its_f_ids_are` and `test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
 
 ### 16.190 Round 27: every link kind at the governance files and the heartbeat, the new start's queued purges, a linked manifest's side files (2026-10-24, wave B13 round 27 lane B)
 

@@ -983,7 +983,7 @@ side_words() { # LIST: sets SIDE_NOUN, SIDE_IS ("is a folder, not a file") and S
 # The friction section's sentence for the F<n> ids the Summary and the Installer section cite (B13 round 26 E4,
 # E32), as setup_report says its own "the F<n> ids in the Summary are these numbers"; friction_text leaves it
 # out when it reads an earlier report's section back.
-F_IDS_SAID="The \`F<n>\` ids in the Summary and the Installer section are line numbers in this log, counting its first line as 1."
+F_IDS_SAID="The \`F<n>\` ids in the Summary and the Installer section are line numbers in this log, counting its first line as 1; each is cited with its line's time stamp, as written below."
 STEP1_ERROR_RE='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step 1 [|] error [|]'
 friction_attempt_stopped() {
 	local f
@@ -3649,6 +3649,7 @@ fallback_sync_stops() { # [late]
 				if (fix == "-") fix = ""
 			} else fix = ""
 			ne++; eat[ne] = at; eline[ne] = FNR; etext[ne] = tolower(trim(rest) " " fix)
+			eraw[ne] = RAWSTAMP != "" ? RAWSTAMP : at # as the friction log shows it, to cite (P106)
 			next
 		}
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
@@ -3670,7 +3671,7 @@ fallback_sync_stops() { # [late]
 				for (e = 1; e <= ne; e++) {
 					if ((e in used) || eat[e] < sat[k] || (bound != "" && eat[e] >= bound)) continue
 					if (!claims(sown[k], sfile[k], etext[e])) continue
-					used[e] = 1; fl[k] = "F" eline[e]; break
+					used[e] = 1; fl[k] = "F" eline[e] " " eraw[e]; break
 				}
 			}
 			for (k = 1; k <= ns; k++) print srow[k], (k in fl ? fl[k] : "-")
@@ -3700,7 +3701,10 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	esac
 	[ "$3" != agent ] || whose="the agent's chmod"
 	local told=""
-	case "${5:-}" in F[0-9]*) told=" ($5: the agent's account of it)" ;; esac
+	# the line's id and its stamp as written, which a reader searches for in the log the report copies, not a
+	# number to count lines up to (B13 round 27 P106: the fence stays raw, as the issue link, the redaction and
+	# the read-back parse it)
+	case "${5:-}" in F[0-9]*" "?*) told=" (${5%% *}, the line stamped ${5#* }: the agent's account of it)" ;; F[0-9]*) told=" ($5: the agent's account of it)" ;; esac
 	say "- agentsync sync · step 3 · exited $1 on $what, $why; whether a later sync ended 0: not read by this shell fallback; the fix is $whose$told"
 }
 # The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
@@ -3817,7 +3821,7 @@ fallback_outcome_line() {
 		# B95); a step 3 error line the agent logged may be its own account of one of them (round 24 ruling 9)
 		k="$(fallback_sync_stops)"
 		# the agent's error lines the stops claim (ruling 11), by their friction line: each is its stop's account
-		paired="$(printf '%s\n' "$k" | LC_ALL=C awk '$5 ~ /^F[0-9]+$/ { f[++n] = $5 }
+		paired="$(printf '%s\n' "$k" | LC_ALL=C awk '$5 ~ /^F[0-9]+$/ { t = $0; sub(/^([^ ]+ ){5}/, "", t); f[++n] = $5 (NF > 5 ? " (stamped " t ")" : "") }
 			END { for (i = 1; i <= n; i++) printf "%s%s", (i == 1 ? "" : i == n ? " and " : ", "), f[i]; if (n) printf "\t%d", n }')"
 		# a stop whose fix is the person's: the agentsync report computes "failed at step 3" when no later sync
 		# ended 0 after it (ruling 10), which this shell cannot read, so the line says the rule, never the
@@ -4737,7 +4741,9 @@ friction_text() {
 	if [ -f "$f" ]; then
 		head -c 262144 "$f"
 	elif [ -f "$REPORT_PATH" ]; then
-		LC_ALL=C awk -v said="$F_IDS_SAID" '/^## / { found = ($0 == "## Agent friction log"); next } found && $0 != said { print }' "$REPORT_PATH" |
+		# the sentence by its opening, so a report an earlier install.sh wrote, before P106 extended it, reads back
+		# without it too
+		LC_ALL=C awk -v said="${F_IDS_SAID%% are line numbers*}" '/^## / { found = ($0 == "## Agent friction log"); next } found && index($0, said " are line numbers") != 1 { print }' "$REPORT_PATH" |
 			LC_ALL=C grep -v '^~~~' |
 			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi

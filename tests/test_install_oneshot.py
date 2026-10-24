@@ -5857,12 +5857,15 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
     installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
     listed = [ln for ln in installer.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
     assert len(listed) == len(stops), installer
+    # round 27 P106: each cited line by its stamp as written too, which the reader searches for
+    raw = {f: log[int(f[1:]) - 4].split(" | ", 1)[0] for f in told if f != "-"}
     for line, f in zip(listed, told, strict=True):
-        tail = f" ({f}: the agent's account of it)"
-        assert line.endswith(tail) is (f != "-"), (line, f)
-        assert ": the agent's account of it)" in line or f == "-", line
+        if f == "-":
+            assert "the agent's account of it)" not in line, line
+        else:
+            assert line.endswith(f" ({f}, the line stamped {raw[f]}: the agent's account of it)"), (line, f)
     outcome = _summary(text)[2]
-    paired = [f for f in told if f != "-"]
+    paired = [f"{f} (stamped {raw[f]})" for f in told if f != "-"]
     assert ("there is the agent's account" in outcome or "there are the agent's account" in outcome) is bool(
         paired
     ), outcome
@@ -5953,8 +5956,8 @@ def test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart(env: dict
     lines = [ln for ln in block.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
     assert lines == [
         "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
-        "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's (F5: "
-        "the agent's account of it)"
+        "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's (F5, "
+        "the line stamped 2026-10-14T10:05:40Z: the agent's account of it)"
     ], installer
     assert "during this attempt:" not in installer, installer
     assert _summary(text)[2] == NOT_COMPUTED, "no outcome reads it"
@@ -5974,10 +5977,10 @@ def test_the_shell_report_says_what_its_f_ids_are(env: dict[str, str], cited: bo
     section = text.split("\n## Agent friction log\n\n", 1)[1].split("\n## ", 1)[0]
     said = (
         "The `F<n>` ids in the Summary and the Installer section are line numbers in this log, counting its "
-        "first line as 1."
+        "first line as 1; each is cited with its line's time stamp, as written below."
     )
     assert section.startswith(f"{said}\n\n~~~text\n") is cited, section
-    assert ("(F5: the agent's account of it)" in text) is cited
+    assert ("(F5, the line stamped 2026-10-14T10:05:40Z: the agent's account of it)" in text) is cited
     fence = section.split("~~~text\n", 1)[1].split("\n~~~", 1)[0].splitlines()
     assert fence[4].startswith("2026-10-14T10:05:40Z | step 3 | error | "), fence  # F5, its 5th line
     fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
