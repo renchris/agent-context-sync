@@ -3649,7 +3649,7 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note="" agent hdr=0 choose why bracket stops k paired
+	local stated="" n note="" agent hdr=0 choose why bracket stops k paired persons=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
@@ -3695,6 +3695,11 @@ fallback_outcome_line() {
 		# the agent's error lines the stops claim (ruling 11), by their friction line: each is its stop's account
 		paired="$(printf '%s\n' "$k" | LC_ALL=C awk '$5 ~ /^F[0-9]+$/ { f[++n] = $5 }
 			END { for (i = 1; i <= n; i++) printf "%s%s", (i == 1 ? "" : i == n ? " and " : ", "), f[i]; if (n) printf "\t%d", n }')"
+		# a stop whose fix is the person's: the agentsync report computes "failed at step 3" when no later sync
+		# ended 0 after it (ruling 10), which this shell cannot read, so the line says the rule, never the
+		# outcome; paired or not, as ruling 10 does not ask (B13 round 26 E66)
+		[ -z "$(printf '%s\n' "$k" | LC_ALL=C awk '$3 == "person"')" ] ||
+			persons="; the agentsync report reads a stop whose fix is the person's as failed at step 3 unless a later sync ended 0, which this shell fallback does not read (setup-feedback.md, Failed at step N)"
 		k="$(printf '%s' "$k" | LC_ALL=C awk 'END { print NR }')"
 		stops=""
 		case "${k:-0}" in
@@ -3710,15 +3715,15 @@ fallback_outcome_line() {
 			*) paired="; the step 3 error lines ${paired%$'\t'*} there are the agent's account of ${paired##*$'\t'} of them" ;;
 			esac
 			[ "$k" != 1 ] || paired="${paired/ of one of them/ of it}"
-			[ -z "$stops" ] || choose="$choose; $stops$paired"
+			[ -z "$stops" ] || choose="$choose; $stops$paired$persons"
 		elif ! attempt_ran_no_install; then
 			if [ -n "$stops" ]; then
-				choose=", and the friction log has no step line for it; $stops, so an install run's exit 0 alone is not the Outcome"
+				choose=", and the friction log has no step line for it; $stops, so an install run's exit 0 alone is not the Outcome$persons"
 			else
 				choose=", and the friction log has no step line for it; the Outcome is yours to choose from the Installer section, which has this attempt's install runs"
 			fi
 		else
-			choose=", and the friction log has no step line for it; the Outcome is yours to choose${stops:+; $stops}"
+			choose=", and the friction log has no step line for it; the Outcome is yours to choose${stops:+; $stops$persons}"
 		fi
 		say "- outcome: not computed (this shell fallback computes none for this attempt$choose; the link fills Run type, and Prompt version and Agent where the latest attempt states them)"
 		say "- run: $(run_type_label) (computed: $(run_type_why))"

@@ -5407,6 +5407,13 @@ def test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them(
     assert outcome == NO_STEP_LINE.format(where), outcome
 
 
+PERSONS_STOP_RULE = (
+    "; the agentsync report reads a stop whose fix is the person's as failed at step 3 unless a later sync "
+    "ended 0, which this shell fallback does not read (setup-feedback.md, Failed at step N)"
+)
+"""The shell report's uncomputed outcome, when a step-3 stop it lists is the person's: ruling 10's rule, which
+the agentsync report computes from the runs table this shell cannot read (B13 round 26 E66)."""
+
 _STOP_LOCK = (
     "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
     "whether a later sync ended 0: not read by this shell fallback; the fix is the agent's chmod"
@@ -5473,10 +5480,11 @@ def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
         assert "sync-stops.log" not in text, text
         return
     said = "1 step-3 sync stop" if counted == 1 else f"{counted} step-3 sync stops"
+    persons = PERSONS_STOP_RULE if "owner=person" in (stops or "") else ""  # round 26 E66
     assert outcome == NO_STEP_LINE.format("").replace(
         "the Outcome is yours to choose",
         f"agentsync logged {said} in sync-stops.log beside install.log (the Installer section lists "
-        f"{'it' if counted == 1 else 'them'}), so an install run's exit 0 alone is not the Outcome",
+        f"{'it' if counted == 1 else 'them'}), so an install run's exit 0 alone is not the Outcome{persons}",
     ), outcome
     installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
     listed = [ln for ln in installer.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
@@ -5496,6 +5504,40 @@ def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
         ), installer
     assert len(listed) == counted, installer
     assert "ended 0 after" not in text and "Agent friction log (the Installer" not in text
+
+
+@pytest.mark.parametrize("owner", ["person", "agent"])
+@pytest.mark.parametrize("where", ["step-lines", "install-runs", "no-install"])
+def test_the_shell_reports_outcome_says_ruling_10s_rule_for_a_persons_stop(
+    env: dict[str, str], owner: str, where: str
+) -> None:
+    """B13 round 26 E66: a step 3 that ended on the person's stop is "failed at step 3" in the agentsync
+    report (ruling 10, when no later sync ended 0), while the shell's uncomputed outcome named the stop and
+    left the Outcome to the reader, who would pick "worked with help" from the step lines. The shell cannot
+    read the runs table, so it says the rule, in each of its three uncomputed lines, for a person's stop
+    paired or not; an agent's stop gets no such clause."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    step = "2026-10-14T10:01:05Z | step 3 | error | agentsync sync exited 1 | the person restores it\n"
+    friction_path(env).write_text(
+        _PAIR_HEAD + (step if where == "step-lines" else "") + "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    if where != "no-install":
+        (setup / "install.log").write_text(
+            "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+            "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+        )
+    (setup / "sync-stops.log").write_text(
+        f"2026-10-14T10:01:00Z sync-stop file=manifest rc=1 owner={owner} kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    outcome = _summary(report_path(env).read_text())[2]
+    assert outcome.startswith("- outcome: not computed ("), outcome
+    assert "agentsync logged 1 step-3 sync stop in sync-stops.log" in outcome, outcome
+    assert (PERSONS_STOP_RULE in outcome) is (owner == "person"), outcome
+    assert "failed at step 3 (" not in outcome, "the rule, never a computed outcome"
+    if owner == "person" and where == "step-lines":  # paired, then the rule
+        assert f"there is the agent's account of it{PERSONS_STOP_RULE}; the link fills " in outcome, outcome
 
 
 def test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write(
