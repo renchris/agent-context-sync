@@ -30752,7 +30752,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52; P123 and P101.
 
@@ -30843,6 +30843,20 @@ sync stop logged after attempt N's end line: the person's to fix` (no bracket in
 verifier's `standing at this report` reworded to plain English). Tests:
 `test_an_earlier_attempt_that_ended_on_the_persons_stop_is_never_recast_as_worked_with_help` and
 `test_a_persons_fail_after_a_stop_logged_after_the_end_line_says_when_it_came`.
+
+**The chmod words read one whitespace class in both reports** (P138; the verifier's fix, as narrowing Python's
+`\s` alone would move it to the shell's wrong reading). install.sh's `claims()` reads the chmod words with
+`[ \t]`, the report's `_CHMOD_MODE_RE` and `_PERSONS_CHMOD_RE` with `\s`, which a no-break space, U+202F, U+3000, a
+vertical tab and a form feed match too, so `ran chmod<U+00A0>700 <dir>` gave its line to a lock stop in the shell
+report and to the next stop in this one. `_claims` now turns every horizontal space into an ASCII one (`[^\S\n]`)
+before the two patterns, which read `[ \t]` and `[^ \t]`, the shell's class. Measured: no input reads differently in
+this report than before (Python's `\s` already took those spaces as spaces), so the test pins its reading and
+passes on the code before it (a mutation that drops the normalization and keeps `[ \t]` fails it); the two reports
+agree once install.sh's `claims()` turns every other character `[^\S\n]` covers into an ASCII space (\r, \v, \f,
+\x1c-\x1f, U+0085, U+00A0, U+1680, U+2000-U+200A, U+2028, U+2029, U+202F, U+205F, U+3000: `link_agent`'s list,
+not the verifier's narrower eight, which leaves a thin space splitting the reports), lane RB's file, not changed here;
+at this commit it has none. Test:
+`test_a_chmod_joined_to_its_mode_by_another_space_pairs_as_with_an_ascii_one`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

@@ -5465,6 +5465,44 @@ def test_every_step_3_stop_claims_the_agents_line_that_names_its_fix(fake_mac: d
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_a_chmod_joined_to_its_mode_by_another_space_pairs_as_with_an_ascii_one(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 27 P138: install.sh's claims() reads the chmod words with ``[ \\t]`` while the report's
+    patterns read ``\\s``, which a no-break space (and U+202F, U+3000, a vertical tab) matches, so the two
+    reports paired a line with different stops. The report reads one whitespace class, ``[ \\t]``, after
+    turning every other horizontal space into an ASCII one: a line reads as its ASCII-spaced twin."""
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    lock = setup_report._SyncStop(at, "lock", "agent", None)
+    folder = setup_report._SyncStop(at, "state-folder", "agent", None)
+    nbsp = chr(0xA0)
+    for space in (nbsp, chr(0x202F), chr(0x2007), chr(0x3000), "\v", "\f", "\t"):
+        for stop, said, claimed in (
+            (
+                lock,
+                "agentsync sync exited 1; ran chmod{s}700 <dir>",
+                False,
+            ),  # a folder's mode, not the lock's
+            (lock, "agentsync sync exited 1; ran chmod{s}600 <lock>", True),
+            (lock, "agentsync sync exited 1; the person removes the ACL: chmod{s}-N <p>", False),
+            (folder, "agentsync sync exited 1; the person runs chmod{s}700{s}<p> first", False),
+            (folder, "agentsync sync exited 1; ran chmod{s}700 <dir>", True),
+        ):
+            what = said.format(s=space)
+            event = setup_report.FrictionEvent(9, None, 3, "error", what, "-")
+            twin = setup_report.FrictionEvent(9, None, 3, "error", said.format(s=" "), "-")
+            assert setup_report._claims(stop, event) is claimed, (repr(space), what)
+            assert setup_report._claims(stop, twin) is claimed, (repr(space), what)
+    # seed 34: an agent lock stop, a person's -wal stop, then a no-break-spaced chmod 700: the -wal stop's
+    stops = _stop_line("40", "lock") + _stop_line("52", "manifest-wal", "person", "misplaced")
+    summary = _two_records(
+        fake_mac, _step3_error("54", f"agentsync sync exited 1; ran chmod{nbsp}700 <dir>"), stops
+    )
+    [lock_item, wal_item] = [ln for ln in _items_of(summary) if "sync · step 3" in ln]
+    assert "account of it" not in lock_item and wal_item.endswith("(F4: the agent's account of it)"), summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason(
     fake_mac: dict[str, Path],
 ) -> None:

@@ -2865,13 +2865,17 @@ def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str], *, earli
 
 _SKIPPED_RE = re.compile(r"\bskipped: lock held\b", re.IGNORECASE)
 _CHMOD_RE = re.compile(r"\bchmod\b", re.IGNORECASE)
-_CHMOD_MODE_RE = re.compile(r"\bchmod\s+(?:-[A-Za-z]+\s+)*0?([0-7]{3})\b", re.IGNORECASE)
+_CHMOD_MODE_RE = re.compile(r"\bchmod[ \t]+(?:-[A-Za-z]+[ \t]+)*0?([0-7]{3})\b", re.IGNORECASE)
 _PERSONS_CHMOD_RE = re.compile(
-    r"\bchmod\s+(?:-R\s+)?(?:-R?N|u\+rwx)\s+\S+|\bthe person runs chmod\s+0?[0-7]{3}\s+\S+", re.IGNORECASE
+    r"\bchmod[ \t]+(?:-R[ \t]+)?(?:-R?N|u\+rwx)[ \t]+[^ \t]+"
+    r"|\bthe person runs chmod[ \t]+0?[0-7]{3}[ \t]+[^ \t]+",
+    re.IGNORECASE,
 )
 """The chmods doctor gives the person, never the agent (B13 round 26 E33, E53): an ACL's ``chmod -N <path>``
 (``_search_fix``, ``_parent_fix``), a folder above's ``chmod u+rwx <above>`` and "the person runs chmod 700
-<p> first". Bounded to the command and its path, so "...; ran chmod 600 x" after it is still the agent's."""
+<p> first". Bounded to the command and its path, so "...; ran chmod 600 x" after it is still the agent's.
+Both read the shell report's whitespace, ``[ \\t]`` (install.sh's ``claims()``), after :func:`_claims` turns
+every other horizontal space into an ASCII one, so the two reports pair a line alike (B13 round 27 P138)."""
 
 
 def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
@@ -2883,7 +2887,7 @@ def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
     :data:`_PERSONS_CHMOD_RE`, is none: E33, E53), a person-owned stop any line whatever its chmod words ("no
     chmod was run", the person's own chmod quoted, "agentsync sync returned 1": E8, E33, E53, E68), and a
     "skipped: lock held" line, which writes no sync-stops.log line, neither."""
-    text = f"{error.what} {error.fix}"
+    text = re.sub(r"[^\S\n]", " ", f"{error.what} {error.fix}")  # B13 round 27 P138: a no-break space too
     if _SKIPPED_RE.search(text):
         return False
     if stop.owner != "agent":
