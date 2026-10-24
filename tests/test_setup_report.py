@@ -9958,7 +9958,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not "
         f"damage; the error above names it): the fix is the agent's: run chmod 700 {folder} once, then, in "
         "the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and "
-        "each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: x\n"
+        "each chmod 600 or chmod 700 that is the whole fix of one of its [FAIL] lines for a path in that "
+        "folder (a fix that starts 'the person', even one that names a chmod 700 first, stays theirs), then "
+        "re-run: x\n"
     )
     # B13 round 23 A59: lane B's line for a state folder this account cannot write takes the same words,
     # "could not write", and the same one pass

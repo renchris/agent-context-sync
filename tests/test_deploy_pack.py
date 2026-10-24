@@ -8074,10 +8074,13 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
         in step2
     )
     # B13 round 22 Z59, Z8: install.sh's status step names the chmods of any state check; Z81: a folder's NEXT
-    # adds the status the grant's "if the NEXT: line also says to run" reads
-    assert "~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name" in (
-        SCRIPTS[0].read_text(encoding="utf-8")
-    )
+    # adds the status the grant's "if the NEXT: line also says to run" reads; round 26 E54: only a chmod that
+    # is a [FAIL] line's whole fix, so doctor's "the person runs chmod 700 ... first" stays the person's
+    assert (
+        "~/.local/bin/agentsync status and each chmod 600 or chmod 700 that is the whole fix of one of its "
+        "[FAIL] lines for a path in that folder (a fix that starts 'the person', even one that names a chmod "
+        "700 first, stays theirs)"
+    ) in SCRIPTS[0].read_text(encoding="utf-8")
     assert r"(state_dir(\\.[a-z_]+)?|lock|heartbeat|governance\\.[a-z_]+)" in SCRIPTS[0].read_text(
         encoding="utf-8"
     )
@@ -8544,7 +8547,8 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
 
 def test_the_guides_step_2_next_quotes_the_folders_same_pass_chmod() -> None:
     """B13 round 23 A70: since round 22 Z81 step 2's config-step NEXT for `chmod 700` of the state folder has
-    the agent run status and each chmod its [FAIL] lines name for a path in that folder, in the same pass,
+    the agent run status and each chmod that is a [FAIL] line's whole fix for a path in that folder (round 26
+    E54), in the same pass,
     before the re-run; only `chmod 600` keeps `run <fix> once, then re-run:`. The guide quoted the file's NEXT
     with `or chmod 700 <folder>` put in, as if the folder's had the same form. It quotes each, read from
     install.sh's NEXT lines."""

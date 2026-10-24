@@ -8298,7 +8298,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		fix="$(state_open_fix)"
 		case "$fix" in
 		"chmod 700 "*) # the folder's mode hides its files' modes: status names their chmods once it is opened (Z81)
-			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then, in the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"
+			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then, in the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 that is the whole fix of one of its [FAIL] lines for a path in that folder (a fix that starts 'the person', even one that names a chmod 700 first, stays theirs), then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"
 			;;
 		"chmod 600 "*)
 			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"

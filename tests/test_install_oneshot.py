@@ -9480,8 +9480,9 @@ STATE_CHMOD_FOLDER_NEXT = (
     "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
     "the error above names it): the fix is the agent's: run {fix} once, then, in the same pass, since that "
     "folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 "
-    "its [FAIL] lines name for a path in that folder, then re-run: {rerun}; if the re-run names the same "
-    "chmod again, show the person the error, log it as a step 2 error and go on to the report"
+    "that is the whole fix of one of its [FAIL] lines for a path in that folder (a fix that starts 'the "
+    "person', even one that names a chmod 700 first, stays theirs), then re-run: {rerun}; if the re-run "
+    "names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"
 )
 """The same for the state folder's chmod 700 (B13 round 22 Z81): its files' modes cannot be read while it is
 shut, so status names their chmods in the same pass, once the folder is open."""
@@ -9708,6 +9709,55 @@ def test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass(
     subprocess.run(["/bin/bash", "-c", named[0]], env=env, check=True)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_shut_folder_holding_a_shut_side_folder_leaves_its_opening_chmod_to_the_person(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 26 E54, with the real agentsync: a state folder at 0000 holding a 0000 folder where the
+    -shm belongs. Step 2's NEXT gives the agent the folder's chmod 700 and, in the same pass, "each chmod 600
+    or chmod 700 its [FAIL] lines name for a path in that folder"; once the folder is open, status's
+    state_dir.files fix reads "the person runs chmod 700 <shm> first, ...; then moves <shm> aside" (doctor's
+    D72), which that rule handed the agent. The NEXT takes only a chmod that is a [FAIL] line's whole fix,
+    and says a fix that starts "the person" stays the person's, as doctor says."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    shm = db.with_name("manifest.sqlite-shm")
+    shm.unlink(missing_ok=True)
+    shm.mkdir(0)
+    db.parent.chmod(0)
+    try:
+        cp = install_sh(env, str(wheel))
+        db.parent.chmod(0o700)
+        status = subprocess.run(
+            [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    finally:
+        db.parent.chmod(0o700)
+        shm.chmod(0o700)
+        shm.rmdir()
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    fix = "chmod 700 ~/'Library/Application Support/agentsync'"
+    assert last_line(cp).startswith(STATE_CHMOD_FOLDER_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    assert "(a fix that starts 'the person', even one that names a chmod 700 first, stays theirs)" in (
+        last_line(cp)
+    )
+    [files] = [ln for ln in status.stdout.splitlines() if ln.startswith("[FAIL] state_dir.files ")]
+    assert "the person runs chmod 700 " in files and "manifest.sqlite-shm" in files, files
+    # no [FAIL] line's whole fix is a chmod: nothing in that folder is the agent's to run
+    assert not [ln for ln in status.stdout.splitlines() if ln.startswith("[FAIL] ") and "(fix: chmod " in ln]
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm-in-use", "wal-with-frames"])

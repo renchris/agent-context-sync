@@ -687,9 +687,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   is the agent's: run chmod 600 <file> once, then re-run: ...` (with the -wal and -shm its mode refuses too, as
   status's `state_dir.files` names them); for the folder, `... run chmod 700 <folder> once, then, in the same
   pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or
-  chmod 700 its [FAIL] lines name for a path in that folder, then re-run: ...` (round 22 Z81: a shut folder hides
+  chmod 700 that is the whole fix of one of its [FAIL] lines for a path in that folder (a fix that starts 'the
+  person', even one that names a chmod 700 first, stays theirs), then re-run: ...` (round 22 Z81: a shut folder hides
   its files' modes, so one pass takes the folder's chmod and then its files'; round 23 A70: this page quoted the
-  folder's NEXT as the file's with `chmod 700 <folder>` put in); or the person's for
+  folder's NEXT as the file's with `chmod 700 <folder>` put in; B13 round 26 E54: a fix that starts "the person
+  runs chmod 700", doctor's for a shut folder at a side file, read as the agent's chmod); or the person's for
   `state-refused`. A -wal or -shm, the lock, the heartbeat or a governance file stops step 2 past its config step,
   at its status step: when every [FAIL] that stops it there is such a state check whose fix is this account's
   chmod 600 or chmod 700 of paths in the state folder, its `NEXT:` names them the same way (`agentsync's state folder
