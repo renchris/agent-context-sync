@@ -29310,9 +29310,10 @@ Test: `test_a_governance_folder_this_account_cannot_write_into_fails_status_with
 O_NONBLOCK (ENXIO or a non-regular fstat is `<path> is a fifo, not the state file`, the person's move);
 `governance._open_audit` does the same before a hold, its release or a queued purge writes. Test:
 `test_a_fifo_where_the_audit_trail_belongs_fails_status_and_stops_a_hold_without_a_hang`.
-Amended 2026-10-23, §16.187 E57 (by §16.180 D41, D22): the detail reads `<audit> is <kind>, not a file (the audit
-trail)` (`governance.audit_not_a_file`), never "not the state file", and its fix `the person moves <path> aside,
-keeping a copy`.
+Amended 2026-10-23, §16.187 E57 (by §16.180 D41, D22): D41 and D22 made the detail `<audit> is <kind>, not a file
+(the audit trail)` (`governance.audit_not_a_file`), never "not the state file", with the fix `the person moves <path>
+aside, keeping a copy`; round 26's E18 (§16.185) writes it `<audit> is <kind>, not a file: the audit trail belongs
+there`.
 
 **B64, B65: a dangling manifest link, and a 0400 file on a read-only volume.** A symlink to a missing file is judged
 by what a sync does through it (`doctor.dangling_target`), never as an ACL: into a folder the sync can write, no FAIL;
