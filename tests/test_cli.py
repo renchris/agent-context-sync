@@ -8328,6 +8328,7 @@ def test_the_queued_purge_words_count_with_agreement_and_status_says_the_sentenc
     assert governance.kept_escalations(2).startswith("2 label-escalation purges stay queued")
 
 
+@pytest.mark.skipif(not manifest_mod._UNREAD_IS_LOST, reason="P111 lands with install.sh's copies")
 @pytest.mark.parametrize("what", ["damaged JSON", "a fifo", "a folder"])
 def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
     initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, what: str
