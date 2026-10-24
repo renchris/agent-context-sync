@@ -3624,6 +3624,9 @@ class _Facts:
     # lines of the evidence parts that say the manifest is missing though earlier syncs recorded (B13 round 24
     # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
     evidence_lost: int = 0
+    # the lost manifest is a link into a folder that is missing or refuses a write, by the report's own read
+    # (B13 round 26 E3, E14): its fix removes or re-points the link first
+    lost_link: bool = False
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
     evidence_damage_failed: bool = (
         False  # Doctor has a state_dir.manifest FAIL only the evidence read gave (X80)
@@ -9143,6 +9146,7 @@ def _evidence(r: _Run) -> list[str]:
     unmeasured = [line for line in out if "not measured" in line]
     r.facts.evidence = len(unmeasured)
     r.facts.evidence_lost = out.count(_LOST_MANIFEST_LINE)  # B13 round 24 ruling 7
+    r.facts.lost_link = bool(r.facts.evidence_lost) and _lost_link(r.config)  # B13 round 26 E3, E14
     for line in unmeasured:
         m = _NOT_MEASURED_WHY_RE.search(line)
         r.facts.evidence_why[m.group(1) if m is not None else "time limit"] += 1
@@ -9192,6 +9196,16 @@ _STATE_LOST_EVIDENCE = (
 """The evidence line's clause for :data:`_LOST_MANIFEST_LINE` lines (B13 round 24 ruling 7; B4, B9, B25, B49):
 they were not measured, the person's, in ``doctor.LOST_MANIFEST_FIX``'s two moves, with no advice to write the
 report again when idle, which cannot bring a manifest back."""
+_STATE_LOST_LINK_EVIDENCE = (
+    "not measured, as the state file is a link into a folder that is missing or refuses a write, and "
+    "missing though heartbeat.json records earlier passes: a report written after the person removes or "
+    "re-points the link, then restores the file or moves heartbeat.json aside so the next sync starts a new "
+    "manifest, measures them (see Doctor's state_dir.manifest line)"
+)
+""":data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link into a missing or unwritable folder (B13
+round 26 E3, E14; ``r.facts.lost_link``): neither move works through the link, so doctor's fix (B13 round 25
+D71) removes it first, or a link pointed at a folder that exists works again. Never the link's target: it is a
+path."""
 
 
 def _evidence_line(r: _Run) -> str:
@@ -9207,7 +9221,7 @@ def _evidence_line(r: _Run) -> str:
     # B13 round 24 ruling 7: the parts a lost manifest kept from being read were not measured, said first
     said_lost = (
         f'{_plural(lost, "line")} at the end of Status {"says" if lost == 1 else "say"} "manifest: missing": '
-        + _STATE_LOST_EVIDENCE
+        + (_STATE_LOST_LINK_EVIDENCE if r.facts.lost_link else _STATE_LOST_EVIDENCE)
     )
     if count == 0:
         if lost:
@@ -10877,6 +10891,27 @@ aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doc
 :data:`_STATE_UNREAD_WORDS`: the file is missing, not damaged, and its fix differs."""
 
 
+_STATE_LOST_LINK_WORDS = (
+    "from the state file that is a link into a folder that is missing or refuses a write, and missing though "
+    "heartbeat.json records earlier passes"
+)
+""":data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a missing or unwritable folder (B13 round
+26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the bucket keeps the
+lost manifest's decision and names the link its fix removes first."""
+
+
+def _lost_link(c: Config | None) -> bool:
+    """Whether the manifest is lost (:func:`_manifest_lost_at`) and a link into a folder that is missing or
+    refuses a write (:func:`_dangling_state`): the report's own read, never doctor's words, which hold the
+    link's target (B13 round 26 E3, E14). False when the read fails."""
+    if c is None:
+        return False
+    try:
+        return _manifest_lost_at(c) and expand(c.state_paths.db) in _dangling_state(c)
+    except Exception:
+        return False
+
+
 def _manifest_lost_at(c: Config) -> bool:
     """Whether the manifest is lost (``manifest.manifest_lost``, the test doctor FAILs it on), read lazily as
     the evidence read does; False when the installed build has no such test, or the read fails."""
@@ -10914,6 +10949,7 @@ class _DoctorSort:
     from_notfile: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D23, D78)
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
     from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
+    lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -11266,6 +11302,11 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         and _manifest_lost_at(r.config)
     )
     from_lost: list[str] = []
+    lost_words = (
+        _STATE_LOST_LINK_WORDS
+        if lost and r.config is not None and _lost_link(r.config)
+        else _STATE_LOST_WORDS
+    )
     shut = (
         ""
         if notfolder or unreadable or notfile or lost or r.config is None
@@ -11326,7 +11367,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             continue
         if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
             from_lost.append(f"{name} FAIL{_PERSONS}")
-            fails.append((name, _STATE_LOST_WORDS))
+            fails.append((name, lost_words))
             continue
         # B13 round 25 D34: doctor's B64 FAIL, by the report's own read and the file's name in its line (the
         # lost manifest's FAIL above comes first)
@@ -11458,6 +11499,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_notfile,
         from_side,
         from_dangling,
+        lost_words,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -11549,7 +11591,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
-            f"{_STATE_LOST_WORDS} ({_plural(len(sort.from_lost), 'check')}): " + ", ".join(sort.from_lost)
+            f"{sort.lost_words} ({_plural(len(sort.from_lost), 'check')}): " + ", ".join(sort.from_lost)
         )
     if from_shut:  # B13 round 20 X28
         parts.append(f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
@@ -12701,6 +12743,14 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "after it was moved aside or the state file put back"
             )
         if ln.startswith("error: state: ") and _state_lost() in ln:  # B13 round 23 A29: the person decides
+            if " is a symlink to " in ln:  # B13 round 26 E3, E14: the run's own line, the link fixed by now
+                return (
+                    " on agentsync's state file, a link into a folder that is missing or refuses a write, "
+                    "which is missing though heartbeat.json records earlier passes: the person's to fix, "
+                    "removing or re-pointing the link first",
+                    "after the link was removed or pointed at a folder that exists, and the file restored "
+                    "or heartbeat.json moved aside",
+                )
             return (
                 " on agentsync's state file, which is missing though heartbeat.json records earlier passes: "
                 "the person's to fix",

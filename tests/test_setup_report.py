@@ -9900,6 +9900,17 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "person's to fix",
             "the file was restored or heartbeat.json moved aside",
         ),
+        (  # B13 round 26 E3, E14: doctor's one FAIL for a lost manifest that is a link into a gone folder
+            # (B13 round 25 D71), by the run's own line: its fix removes or re-points the link first
+            f"error: state: {db} is a symlink to /Users/x/gone/manifest.sqlite, whose folder does not "
+            f"exist or refuses a write, and {manifest_mod.LOST_MANIFEST} (fix: the person removes the "
+            "link first: rm x)",
+            "on agentsync's state file, a link into a folder that is missing or refuses a write, which is "
+            "missing though heartbeat.json records earlier passes: the person's to fix, removing or "
+            "re-pointing the link first",
+            "the link was removed or pointed at a folder that exists, and the file restored or "
+            "heartbeat.json moved aside",
+        ),
         # lane B's words (round 23 ruling 4, A46): the kind of a symlink, and a folder above the state folder
         (
             f"error: state: {db} is a symlink to a folder, not the state file (fix: {doctor.MANIFEST_FIX})",
@@ -13769,6 +13780,37 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
         "decides: see Doctor's state_dir.manifest line)"
     ), section(text, "Environment")
 
+    # B13 round 26 E3, E14: the lost manifest a link into a folder that is gone; the bucket, the outcome's
+    # cause and the evidence name the link the person removes or re-points first, never its target
+    gone = tmp_path / "contoso-gone"
+    db.symlink_to(gone / "manifest.sqlite")
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    link = (
+        "from the state file that is a link into a folder that is missing or refuses a write, and missing "
+        "though heartbeat.json records earlier passes"
+    )
+    assert f" · {link} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
+        summary, "- doctor: "
+    ), summary
+    assert f"1 doctor FAIL with a known cause, {link}: state_dir.manifest" in _line(summary, "- **outcome: ")
+    status = section(text, "Status")
+    assert status.count(setup_report._LOST_MANIFEST_LINE) == lost, status  # the lost count is unchanged
+    assert _line(summary, "- evidence: ") == (
+        f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
+        "file is a link into a folder that is missing or refuses a write, and missing though heartbeat.json "
+        "records earlier passes: a report written after the person removes or re-points the link, then "
+        "restores the file or moves heartbeat.json aside so the next sync starts a new manifest, measures "
+        "them (see Doctor's state_dir.manifest line)"
+    ), summary
+    assert "contoso-gone" not in summary, summary
+    # a link into a folder that exists: the plain lost words (doctor's B64 FAILs no such link)
+    gone.mkdir(mode=0o700)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "link into a folder" not in section(text, "Summary"), section(text, "Summary")
+    db.unlink()
+    gone.rmdir()
+
     heartbeat = expand(load_config(cfg).state_paths.heartbeat)
     heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))
     assert not manifest_mod.manifest_lost(db)
@@ -13779,7 +13821,9 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     )
     ocr = section(text, "Status").split("### OCR", 1)[1].split("###", 1)[0]
     # B13 round 26 E1: the sync's mirror page is still there, so a new manifest starts over it
-    assert ocr.count("- no manifest yet (the next sync starts a new one over 1 existing mirror page;") == 1, ocr
+    assert ocr.count("- no manifest yet (the next sync starts a new one over 1 existing mirror page;") == 1, (
+        ocr
+    )
 
 
 def test_no_manifest_over_existing_mirror_pages_says_a_new_one_starts_over_them(
@@ -14132,7 +14176,11 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     _rc, text, _ = report(tmp_path, cfg)
     db.unlink()
     line = _line(section(text, "Summary"), "- doctor: ")
-    assert "link into a folder" not in line and "state_dir.manifest FAIL (the person's" in line, line
+    assert "from a state file that is a link" not in line and "state_dir.manifest FAIL (the person's" in line
+    assert (
+        "from the state file that is a link into a folder that is missing or refuses a write, and missing"
+        in (line)
+    ), line  # B13 round 26 E3, E14: the lost manifest's one bucket, which names the link
 
 
 @pytest.mark.usefixtures("clean_doctor")
