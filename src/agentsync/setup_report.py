@@ -2698,6 +2698,7 @@ class _SyncStop:
     kind: str = "refused"  # why it stopped: refused, misplaced or lost (B13 round 24 B82; ruling 7)
     unread: str = ""  # why the runs table was not read, when the report's own read knows (B13 round 25 D4)
     link: str = ""  # a lost manifest's link now, by the report's own read (B13 round 27 P127): _STOP_LINKS
+    shape: str = ""  # what a misplaced stop's file is now, by doctor's FAIL (B13 round 27 P18): _stop_shape
 
     @property
     def what(self) -> str:
@@ -10249,12 +10250,54 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     # the link now (never the stop record: an older reader takes a new kind for "refused"); an earlier
     # attempt's, or one a sync ended 0 after, is of a time the read says nothing of
     link = _lost_link_kind(r.config) if nxt is None and stops else ""
-    return [
+    stops = [
         dataclasses.replace(s, link=link)
         if link and s.file == "manifest" and s.kind == "lost" and s.owner == "person" and s.ended_ok is None
         else s
         for s in stops
     ]
+    # B13 round 27 P18: the latest attempt's open misplaced stop, as doctor's FAIL names its file now, so the
+    # outcome and Items say what the bucket and Doctor say; under the same guards as the link's
+    if nxt is not None or r.config is None:
+        return stops
+    return [
+        dataclasses.replace(s, shape=_stop_shape(r, s)) if s.kind == "misplaced" and s.ended_ok is None else s
+        for s in stops
+    ]
+
+
+def _stop_shape(r: _Run, stop: _SyncStop) -> str:
+    """What doctor's FAIL says is at ``stop``'s file now, in its own kind words ("a folder", "a fifo", "a
+    symlink loop"), from its ``<path> is <kind>, not a file`` (``not the state file`` for the manifest, ``not
+    a folder`` for the state folder itself, never a folder above it); "" when no FAIL says, or the governance
+    files' say two kinds (B13 round 27 P18)."""
+    if r.config is None:
+        return ""
+    sp = r.config.state_paths
+    gov = sp.root / "governance"
+    files = {
+        "manifest": [sp.db],
+        "manifest-wal": [sp.db.with_name(sp.db.name + "-wal")],
+        "manifest-shm": [sp.db.with_name(sp.db.name + "-shm")],
+        "lock": [sp.lock],
+        "heartbeat": [sp.heartbeat],
+        "holds": [gov / "holds.json"],
+        "governance": [gov / "purge-queue.json", gov / "suppressed.json", gov / "audit.jsonl"],
+        "state-folder": [sp.root],
+    }.get(stop.file, [])
+    what = "a folder" if stop.file == "state-folder" else "(?:a file|the state file)"
+    kinds = {
+        m.group("kind")
+        for p in files
+        for tag, _name, detail in r.facts.doctor_problems
+        if tag == "FAIL"
+        and (
+            m := re.match(
+                rf"{re.escape(str(expand(p)))} is (?P<kind>a [a-z ]+?), not {what}(?![,\w])", detail
+            )
+        )
+    }
+    return kinds.pop() if len(kinds) == 1 else ""
 
 
 def _measured_stops(r: _Run, lo: datetime, hi: datetime, until: datetime | None = None) -> list[_SyncStop]:
@@ -10364,6 +10407,8 @@ def _stop_which(stop: _SyncStop) -> str:
     round 27 P127, P19): the outcome and Items say what the bucket and evidence say. Never the link's
     target."""
     which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    if stop.kind == "misplaced" and stop.shape:  # B13 round 27 P18: doctor's kind, in the past tense
+        which = f"which was {stop.shape}, not {'a folder' if stop.file == 'state-folder' else 'a file'}"
     link = _STOP_LINKS.get(stop.link)
     return f"{which} and is {link}" if link else which
 

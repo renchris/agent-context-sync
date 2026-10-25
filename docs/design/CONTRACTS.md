@@ -28952,6 +28952,9 @@ is the person's` or `the fix is the agent's chmod`; "after the person's fix" sta
 cause (an ACL, a privacy setting) is not named: the log does not record it. Tests:
 `test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind` and
 `test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
+Amended 2026-10-24, §16.188 P18: the latest attempt's `misplaced` stop that no sync ended 0 after takes doctor's
+kind for its file when a FAIL names it, `which was a folder, not a file` (`which was a file, not a folder` for the
+state folder); `which was not where or what it should be` stays where no FAIL says.
 
 **A failed run after a stopped copy's end line is not its outcome** (B20; amends §16.152 Y19). Y19's guard sat
 only in `compute_outcome`'s rc 0 branch, so a stand-alone install.sh run after the end line of a copy the
@@ -30766,9 +30769,10 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120 and P37, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`,
-with the hunks of other lanes' files the items need (named below). Items that describe one defect are built once:
-P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
+P102, P115, P26, P13, P104, P20, P120, P37 and P18, in `src/agentsync/setup_report.py` and
+`tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
+one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
+defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30977,6 +30981,20 @@ share one `_MISPLACED_ROLES` word, and the roles were made unique before the wor
 words now count the files: one file is `from <its role> that is not a file`, two or more are `from state files that
 are not files`. Test: `test_two_governance_files_that_are_not_files_read_as_two` (a folder at purge-queue.json and a
 fifo at suppressed.json).
+
+**A stop's file is named as Doctor names it** (P18; amends §16.171 B16). A folder at agentsync.lock read `exited 1
+on agentsync's lock file, which was not where or what it should be` in the outcome and Items, from the stop
+record's `kind=misplaced`, while the bucket said `that is not a file` and Doctor `is a folder, not a file`. The
+latest attempt's misplaced stop that no sync ended 0 after now takes doctor's kind (`_SyncStop.shape`, set in
+`_step3_stops` by `_stop_shape`, under the guards of P127's link): a FAIL whose detail reads `<the stop's file> is
+<kind>, not a file` (`not the state file` for the manifest; `not a folder` for the state folder itself, never a
+folder above it), one kind only (the three governance files of `file=governance` must agree), so the line reads
+`which was a folder, not a file`, in the past tense. An earlier attempt's stop, one a sync ended 0 after, and one
+no FAIL names keep the record's words. The stop log is unchanged (no new field for cli.py to write), so the shell
+fallback, which reads no doctor, keeps its words. Test:
+`test_a_step_3_stop_on_a_folder_at_the_lock_names_it_as_doctor_does` (and its case with no lock FAIL), and
+`test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt` (a stop a later sync ended 0 after,
+and an earlier attempt's, keep the record's words).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

@@ -5959,6 +5959,102 @@ def test_a_step_3_stop_on_a_lost_manifest_link_names_the_link(
     assert "link" not in _items_of(summary)[0], summary
 
 
+def test_a_step_3_stop_on_a_folder_at_the_lock_names_it_as_doctor_does(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 P18: a folder at agentsync.lock was named two ways in one report: the outcome and Items
+    said the stop's file "was not where or what it should be" (the stop record's ``kind=misplaced``), while
+    the bucket said "that is not a file" and Doctor "is a folder, not a file". The latest attempt's open stop
+    takes doctor's kind, in the past tense; with no such FAIL the words stay the record's."""
+    real = cli._status_checks
+    keep = {"lock"}
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name in keep
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    v6_install_log(fake_mac)
+    said = "agentsync sync exited 1: agentsync.lock is a folder; the fix is the person's"
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY)
+    )
+    stop = _stop_line("50", "lock", "person", "misplaced")
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(stop, encoding="utf-8")
+    lock = expand(load_config(fake_mac["config"]).state_paths.lock)
+    lock.unlink(missing_ok=True)
+    lock.mkdir()
+    try:
+        summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+        keep.clear()
+        plain = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    finally:
+        lock.rmdir()
+    first = summary.strip().splitlines()[0]
+    assert first.startswith(
+        "- **outcome: failed at step 3** (computed: install.sh exit 0; a sync at step 3 exited 1 on "
+        "agentsync's lock file, which was a folder, not a file, and no later sync ended 0: the person's to "
+        "fix"
+    ), first
+    assert _items_of(summary)[0].startswith(
+        "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which was a folder, not a file; "
+    ), summary
+    assert " · from agentsync's lock file that is not a file (1 check): lock FAIL" in _line(
+        summary, "- doctor: "
+    ), summary
+    assert "not where or what it should be" not in summary, summary
+    # no doctor FAIL names the lock's kind: the stop record's words
+    assert "agentsync's lock file, which was not where or what it should be" in plain, plain
+    assert "which was a folder" not in plain, plain
+
+
+def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 27 P18's guards: doctor shows the state now, so only the latest attempt's stop that no sync
+    ended 0 after takes its kind; one a later sync ended 0 after, and an earlier attempt's, keep the stop
+    record's words, as a later state could name a different thing."""
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0  # its ok run starts after the stop
+    v6_install_log(fake_mac)
+    said = "agentsync sync exited 1: agentsync.lock is a folder; the fix is the person's"
+    first = _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY)
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(
+        _stop_line("50", "lock", "person", "misplaced"), encoding="utf-8"
+    )
+    lock = expand(load_config(fake_mac["config"]).state_paths.lock)
+    fail = ("FAIL", "lock", f"{lock} is a folder, not a file: the lock belongs there (fix: x)")
+
+    def stops(text: str, index: int) -> list[setup_report._SyncStop]:
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+        r.friction = setup_report.read_friction(write_friction(fake_mac, text))
+        r.facts.doctor_problems.append(fail)
+        return setup_report._step3_stops(r, index)
+
+    record = "which was not where or what it should be"
+    # a later sync ended 0 after the stop: the record's words
+    [stop] = stops(first, 0)
+    assert stop.ended_ok is not None and stop.shape == "", stop
+    assert record in setup_report._sync_stop_line(stop)
+    conn = sqlite3.connect(expand(load_config(fake_mac["config"]).state_paths.db))
+    try:
+        conn.execute("UPDATE runs SET started_at = '2026-09-29T10:00:40Z' WHERE status = 'ok'")
+        conn.commit()
+    finally:
+        conn.close()
+    # none did: doctor's kind
+    [stop] = stops(first, 0)
+    assert stop.ended_ok is None and stop.shape == "a folder", stop
+    assert "which was a folder, not a file; " in setup_report._sync_stop_line(stop)
+    # the same open stop in an earlier attempt: the record's words
+    write_install_log(fake_mac, start="2026-09-30T10:00:00Z", run="20260930T100000Z-77", append=True)
+    [stop] = stops(first + V12_HAPPY.replace("2026-09-29T", "2026-09-30T"), 0)
+    assert stop.ended_ok is None and stop.shape == "", stop
+    assert record in setup_report._sync_stop_line(stop)
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)
