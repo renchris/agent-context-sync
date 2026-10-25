@@ -1809,7 +1809,9 @@ def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: di
         "[FAIL] state_dir.manifest — ~/agent-context/state/manifest.sqlite is a symlink to nothing (fix: the "
         "person points the link at an existing file or removes it: rm ~/agent-context/state/manifest.sqlite)"
     )
-    for owner, private in (("IT", True), ("HR", False), ("RM", True)):
+    # B13 round 28 I7: a value in capitals is cut as written, so "IT" and "RM", quoted nowhere here, cut
+    # neither the pronoun nor doctor's "rm" and leave the report public; quoted, they make it private
+    for owner, private in (("IT", False), ("HR", False), ("RM", False), ("It", True), ("rm", True)):
         cfg.write_text(
             f'[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "{owner}"\n\n' + plain,
             encoding="utf-8",
@@ -1832,7 +1834,13 @@ def test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so(
     which the section does not print, gets no such sentence; "HR", no word the report prints, no line."""
     cfg = fake_mac["config"]
     plain = cfg.read_text(encoding="utf-8")
-    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | Page said hold | -\n")
+    # B13 round 28 I7: "IT" is cut as written, so a line quotes it here to make the report private
+    write_friction(
+        fake_mac,
+        V6_HAPPY
+        + "2026-09-29T10:01:20Z | step 3 | deviation | Page said hold | -\n"
+        + "2026-09-29T10:01:21Z | step 3 | deviation | IT said hold | -\n",
+    )
     for reason, private in (("IT", True), ("HR", False), ("Page", True)):
         cfg.write_text(
             f'[governance]\nhold = true\nhold_reason = "{reason}"\nhold_owner = "Avery Quill"\n\n' + plain,
@@ -1849,9 +1857,60 @@ def test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so(
         assert ("This Redaction section is not cut" in redaction) is (reason == "IT"), redaction
         assert ("Private only: a hold's" in redaction) is private, redaction
         if reason == "IT":
-            assert not re.search(r"(?i)(?<![a-z])it(?![a-z])", body), [
-                ln for ln in body.splitlines() if re.search(r"(?i)(?<![a-z])it(?![a-z])", ln)
-            ]
+            # B13 round 28 I7: the value as written is cut, never the pronoun of the report's own prose, nor
+            # its own fixed "IT" phrases (the IT draft's line)
+            assert "<value> said hold" in body and "IT said hold" not in body, body
+            assert re.search(r"(?<![A-Za-z])[Ii]t(?![A-Za-z])", body), body
+            assert "<value> draft" not in body, body
+
+
+def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun(fake_mac: dict[str, Path]) -> None:
+    """B13 round 28 I7: with `hold all --reason IT`, the report cut the pronoun "it" in its own fixed prose
+    (19 lines). An initialism written all in capitals is cut as written: with no quote of it, the body keeps
+    every "it" and has no <value> from one; a friction line "IT said hold" is cut there and the report is
+    private only. A value not all capitals ("Do") keeps the folded cut."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text(f'[governance]\nhold = true\nhold_reason = "IT"\nhold_owner = "Avery Quill"\n\n{plain}')
+    write_friction(fake_mac, V6_HAPPY)
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    lines = [ln for ln in body.splitlines() if re.search(r"(?<![A-Za-z])it(?![A-Za-z])", ln)]
+    assert lines and not [ln for ln in lines if "<value>" in ln], lines
+    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | IT said hold | -\n")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert "<value> said hold" in body and "IT said hold" not in body, body
+    assert red.private_only and setup_report.issue_link(text) is None
+    assert [ln for ln in body.splitlines() if re.search(r"(?<![A-Za-z])it(?![A-Za-z])", ln)], body
+    red = setup_report.Redactor()
+    red.add("value", "Do", ignore_case=True)
+    assert red.redact("do it, Do") == "<value> it, <value>"
+    # every literal of the report's that holds "IT" reads whole under the exact cut (its fixed phrases)
+    tree = ast.parse(Path(setup_report.__file__).read_text(encoding="utf-8"))
+    skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
+    skipped |= {
+        id(leaf)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "_FIXED_CAPS_PHRASES" for t in node.targets)
+        for leaf in ast.walk(node.value)
+    }
+    caps = re.compile(r"(?<![A-Za-z])IT(?![A-Za-z])")
+    literals = {
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and id(n) not in skipped
+        and caps.search(n.value)
+    }
+    assert literals
+    red = setup_report.Redactor()
+    red.add("value", "IT", ignore_case=False)
+    assert [t for t in literals if red.redact(t) != t] == [] and not red.private_only
+    for phrase, rx in zip(setup_report._FIXED_CAPS_PHRASES, setup_report._FIXED_CAPS_RES, strict=True):
+        assert any(rx.search(t) for t in literals), f"{phrase!r} is no fixed text of the report's"
 
 
 def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -> None:

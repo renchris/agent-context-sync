@@ -1245,14 +1245,20 @@ list, so a quoted value stays cut (D80's rule fails safe); ``#`` stands for a co
 images line's ``3 files: 3 with a page``, whose ``with a page`` alone is too short to be one). A test keeps
 every literal of this module that holds the word inside one."""
 _FIXED_VALUE_RES = tuple(re.compile(re.escape(p).replace(r"\#", r"\d+")) for p in _FIXED_VALUE_PHRASES)
-_FIXED_VALUE_REACH = max(map(len, _FIXED_VALUE_PHRASES)) + 20  # the counts' digits
+_FIXED_CAPS_PHRASES = ("IT request", "IT-draft line", "IT draft: ", "left for IT", "(for IT: ")
+"""The report's own fixed phrases that hold "IT" in capitals, the one two-letter initialism of
+:data:`_TWO_LETTER_WORDS` it prints so: a hold value "IT" is cut as written (B13 round 28 I7), so the IT
+draft's line and the IT request's words would read "<value> draft"; a match inside one is the report's word,
+as :data:`_FIXED_VALUE_PHRASES` are. A test keeps every literal of this module that holds it inside one."""
+_FIXED_CAPS_RES = tuple(re.compile(re.escape(p)) for p in _FIXED_CAPS_PHRASES)
+_FIXED_VALUE_REACH = max(map(len, (*_FIXED_VALUE_PHRASES, *_FIXED_CAPS_PHRASES))) + 20  # the counts' digits
 
 
 def _in_fixed_phrase(m: re.Match[str]) -> bool:
     """Whether ``m`` sits inside one of :data:`_FIXED_VALUE_PHRASES` written out in full around it."""
     text, start, end = m.string, m.start(), m.end()
     lo, hi = max(0, start - _FIXED_VALUE_REACH), min(len(text), end + _FIXED_VALUE_REACH)
-    found = (f for rx in _FIXED_VALUE_RES for f in rx.finditer(text, lo, hi))
+    found = (f for rx in (*_FIXED_VALUE_RES, *_FIXED_CAPS_RES) for f in rx.finditer(text, lo, hi))
     return any(f.start() <= start and end <= f.end() for f in found)
 
 
@@ -4834,7 +4840,11 @@ def _build_redactor(r: _Run) -> Redactor:
         for sha in _docs_commits(r):
             red.add_commit(sha)
     for value in _hold_values(r):
-        red.add("value", value, ignore_case=True)
+        # B13 round 28 I7: a two-letter initialism written all in capitals ("IT", "RM") is cut as written, so
+        # the pronoun "it" of the report's own prose stays; a quoted "IT" is still cut, and still makes the
+        # report private only. Any other value keeps the folded match
+        exact = len(_norm(value)) == 2 and value.strip().isupper() and _norm(value) in _TWO_LETTER_WORDS
+        red.add("value", value, ignore_case=not exact)
     # Last: where a state file's link (or the docs repo's) points, outside this home, which doctor's FAIL and
     # the init error print whole, as the person repairs by it: a volume's or a folder's name can name the
     # company ("/Volumes/Contoso Drive"); exact values, longest first, so a path with spaces is one (E2)
