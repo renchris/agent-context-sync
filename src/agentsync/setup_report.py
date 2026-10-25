@@ -12024,8 +12024,14 @@ def _shut_whose(c: Config, shut: str) -> str:
         refused: list[Path] = []
         with contextlib.suppress(OSError):  # a folder that cannot be searched has no file to stat
             refused = doctor.refused_state_files(c)  # B13 round 23 A44: doctor's one list
-        # a file another account owns in a folder this one shut by its mode is the person's still (review)
-        fixes += [doctor.state_path_fix(root, p) for p in refused or ([] if fixes else [db])]
+        # a file another account owns in a folder this one shut by its mode is the person's still (review);
+        # each at its resolved path against its resolved folder, as doctor's state_dir.files FAIL judges it: a
+        # -wal or -shm beside a linked manifest's target is in the target's folder (B13 round 28 I52, lane B's
+        # own_path_fix, read through getattr for an older build, whose fallback is the same judgment)
+        own = getattr(doctor, "own_path_fix", None) or (
+            lambda p: doctor.state_path_fix(Path(os.path.realpath(p)).parent, Path(os.path.realpath(p)))
+        )
+        fixes += [own(p) for p in refused or ([] if fixes else [db])]
         return _PERSONS if any(doctor.is_persons_fix(f) for f in fixes) else _AGENTS
     except Exception:
         return _PERSONS

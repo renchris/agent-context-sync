@@ -15284,6 +15284,41 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_shut_side_at_a_linked_manifests_target_is_the_agents_chmod(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I52 (the report's half; lane B's ``doctor.own_path_fix``): with manifest.sqlite a link
+    to a file in another folder of this account's, a -wal there at mode 0000 is this account's own chmod at
+    its resolved path, as doctor's state_dir.files FAIL says; the report judged it against the state folder
+    and called it the person's. The target itself at 0000 is the agent's too, and so is it with a doctor that
+    lacks own_path_fix (an older build)."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    db = expand(config.state_paths.db)
+    store = tmp_path / "store"
+    store.mkdir(mode=0o700)
+    target = store / db.name
+    for suffix in ("", "-wal", "-shm"):
+        side = db.with_name(db.name + suffix)
+        if side.exists():
+            side.rename(store / side.name)
+    db.symlink_to(target)
+    wal = target.with_name(target.name + "-wal")
+    wal.touch()
+    for shut in (wal, target):
+        shut.chmod(0)
+        try:
+            assert setup_report._shut_whose(config, "file") == setup_report._AGENTS, shut.name
+            with monkeypatch.context() as m:
+                m.delattr(doctor, "own_path_fix", raising=False)
+                assert setup_report._shut_whose(config, "file") == setup_report._AGENTS, shut.name
+        finally:
+            shut.chmod(0o600)
+
+
 def test_a_side_link_beside_a_linked_manifest_is_no_side_and_the_targets_sides_are_judged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
