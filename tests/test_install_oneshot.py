@@ -8858,9 +8858,9 @@ def misplaced_tail(role: str) -> str:
         "PM-older",
         "PM-folder-older",
         "PM-fixed",
-        "PM-ro",
-        "PM-ro-mode",
-        "PM-ro-wal",
+        pytest.param("PM-ro", marks=pytest.mark.timing),  # its shim slows the 5 s probe
+        pytest.param("PM-ro-mode", marks=pytest.mark.timing),  # its shim slows the 5 s probe
+        pytest.param("PM-ro-wal", marks=pytest.mark.timing),  # its shim slows the 5 s probe
         "NR",
         "NR-mode",
         "NR-link",
