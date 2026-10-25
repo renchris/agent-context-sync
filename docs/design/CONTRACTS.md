@@ -31547,6 +31547,8 @@ tail and step 2 NEXT for a manifest that is a symlink to a file that does not ex
 several, not measured). E3's report outcome is left out on purpose: the guide gives no step 2 state outcome of the
 report's, the plain lost manifest's included. Test: `test_the_guide_gives_round_26s_new_installer_and_report_outputs`,
 which reads each from install.sh and `setup_report._again_reason`.
+Amended 2026-10-25, §16.197 I102: the guide gives the report's step 2 state outcomes now, E3's link form included;
+leaving them out was a gap, not a reason a build makes things worse.
 
 **The redaction legend gives every unnumbered kind** (P61; dated line at §16.185 E2). The `<path>` row gives E2's
 link target outside home (the agentsync report only; E2 has no shell half), and the count sentence lists the 11
@@ -32199,3 +32201,14 @@ pattern found in one-line spans (199 matches with `install.sh`'s 91) the new one
 Python's must be fixed-width. Test: `test_contracts.py::test_guides_name_only_options_that_parse`, with a wrapped
 stale option, a prose case, a fenced block, a `$(...)` span, a span left open in a list item, a fence-like
 span, an escaped backtick and a `sudo` command (cases the reviewer found).
+
+**The guide gives the report's step 2 state outcomes** (I102; dated line at §16.192 P60). The "Failed at step N"
+bullet quoted step 3's computed outcome whole and step 2's only as `failed at step 2`, though `compute_outcome`
+names what the config step met (`_outcome_cause`, `_state_open_words`). It gives each family as a pattern: a file
+that is not a file (`... at its config step on <what>, which is <kind>, not a file: the person's to fix`, the six
+nouns of `_MISPLACED_ROLES` and the state file's; P110, P126), a side at the status step (`_side_words`), the lost
+manifest with its two link forms and `_LINK_FIRST` (E3, E19, P121), the unread heartbeat's (ruling 21, lane RA's
+`_LOST_FACTS` and its heartbeat-first fix) and a manifest too short (lane B's I92, in lane RA's words). Built after
+lane RA's ruling 21 and 22 words landed, as the verifier asked. P60's test docstring drops its "left out on
+purpose" sentence. Test: `test_the_guide_gives_the_reports_step_2_state_outcomes`, which makes each form from
+`setup_report`.

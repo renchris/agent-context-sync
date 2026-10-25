@@ -6432,9 +6432,8 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
     for round 25: E19's step 1 tail and step 2 NEXT for a manifest link to a file that does not exist in a
     folder a sync can write, and E67's reason for an agent's stop that came back after the agent's chmod (one,
     several, and not measured). Each is read from the code that prints it, with a count or a file put back as
-    the guide's N and <what>. E3's report outcome is left out on purpose: the guide gives no step 2 state
-    outcome. B13 round 28 I84: the guide's several-stops quote held for two only; three or more say "the
-    later ones"."""
+    the guide's N and <what>. B13 round 28 I84: the guide's several-stops quote held for two only; three or
+    more say "the later ones". I102 gives the report's step 2 state outcomes, which this left out."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6748,6 +6747,45 @@ def test_the_guides_summary_sync_row_gives_the_new_starts_clause() -> None:
     assert "`by the background sync` after `pages`" in row and "B13 round 27 P115" in row
     assert row.index(clause) < row.index("then status's count of sources with a complete baseline")
     assert "the clause can add up to five parts" in row
+
+
+def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
+    """B13 round 28 I102: the guide gave the step 3 computed outcome in full and of step 2 only "failed at
+    step 2", while the report names what the config step met (a file that is not a file, a side at the status
+    step, the lost manifest, its links, the unread heartbeat, a manifest too short). Each form is made from
+    `setup_report`'s own words and the guide quotes it."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    source = inspect.getsource(setup_report)
+    rc = 'detail = f"install.sh exited {last.rc} at its config step{config_cause}"'
+    assert rc in source and 'f"install.sh exited {last.rc} at its status step{config_cause}"' in source
+    assert 'return f" on {noun}, which is {what}: the person\'s to fix", "after it was moved aside"' in source
+    misplaced = (
+        "install.sh exited 1 at its config step on <what>, which is <kind>, not a file: the person's to fix"
+    )
+    assert f"`failed at step 2 (computed: {misplaced})`" in page
+    for noun in ("agentsync's state file", *setup_report._MISPLACED_ROLES.values()):
+        assert f"`{noun}`" in page, noun
+    side = "install.sh exited 1 at its status step" + setup_report._side_words("shm", "a folder")
+    assert f"`{side}`" in page and f"(`{setup_report._SIDE_ROLE['wal']}` for the -wal;" in page
+    lost_source = 'return f" on agentsync\'s state file, which is {fact}: {whose}", f"after {moved}"'
+    assert lost_source in source and 'else "the person\'s to fix"' in source
+    facts = setup_report._LOST_FACTS
+    lost = f"install.sh exited 1 at its config step on agentsync's state file, which is {facts['records']}"
+    assert f"`{lost}: the person's to fix`" in page
+    flat = " ".join(source.split())
+    for link in (
+        'and is a link to a file that does not " f"exist: {whose}"',
+        'and is a link into a folder that does not " f"exist or refuses a write: {whose}, removing',
+    ):
+        assert link in flat, link
+    assert "`, and is a link to a file that does not exist` before the colon" in page
+    assert "`, and is a link into a folder that does not exist or refuses a write` and then ends" in page
+    assert f"`{setup_report._LINK_FIRST}`" in page
+    unread = "heartbeat.json's fix first, then the file's, the person's"
+    assert f'"{unread}"\n                if unread' in source
+    assert f"`{facts['unread']}: {unread}`" in page and f"`{facts['short']}`" in page
 
 
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:

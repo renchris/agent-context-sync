@@ -410,6 +410,25 @@ install.log (a `--list-folders` run is not an install run):
   table lives in the missing file) counts only while doctor shows a `[FAIL]` in a person's bucket, and then reads
   `a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and doctor's
   state_dir.manifest FAIL still stands: the person's to fix` (B13 round 25 ruling 10; B13 round 26 E69).
+  A step 2 that stopped on the state names what it met, as install.sh does. Something that is not a file where a
+  state file belongs reads
+  `failed at step 2 (computed: install.sh exited 1 at its config step on <what>, which is <kind>, not a file: the person's to fix)`,
+  where <what> is the Doctor bucket's noun for the file
+  (`agentsync's state file`, `agentsync's lock file`, `agentsync's heartbeat file`, `agentsync's hold list`,
+  `agentsync's purge queue`, `agentsync's suppression list` or `agentsync's audit trail`) and <kind> is what sits
+  there (a folder, a fifo, a symlink to nothing, a symlink loop; `which is not a regular file` when no kind is
+  known; B13 round 27 P110, P126). At the manifest's -wal or -shm, which lets init run, the step is the status
+  step:
+  `install.sh exited 1 at its status step on the state file's shared-memory file, which is a folder, not a file: the person's to fix`
+  (`the state file's write-ahead log` for the -wal; B13 round 25 ruling 12). A lost manifest reads
+  `install.sh exited 1 at its config step on agentsync's state file, which is missing though heartbeat.json records earlier passes: the person's to fix`;
+  a link there adds `, and is a link to a file that does not exist` before the colon, or
+  `, and is a link into a folder that does not exist or refuses a write` and then ends
+  `, removing or re-pointing the link first` (B13 round 26 E3, E19; round 27 P121). Beside a heartbeat.json that
+  cannot be read the file is
+  `missing beside a heartbeat.json that cannot be read: heartbeat.json's fix first, then the file's, the person's`
+  (B13 round 28 ruling 21), and a manifest too short to be one is
+  `empty or too short to be a manifest though heartbeat.json records earlier passes` (B13 round 28 I92).
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
   line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
