@@ -1690,9 +1690,9 @@ output_word() {
 # the report says it ("it"), so the report is private only (B13 round 26 E72); "HR" is no such word.
 two_letter_word() {
 	case "$1" in
-	ad | ai | an | as | at | be | bf | bv | by | bz | cd | cf | cr | cs | db | dd | df | do | ds | dt | en | eq | fa | fc | ff | fm | gh | go | gp | gz) return 0 ;;
-	id | if | im | in | is | it | js | kt | lc | ls | mb | md | ml | mp | ms | mv | my | nf | no | nr | oe | of | ok | on | or | os | ps | py | rb | rc) return 0 ;;
-	rd | re | ro | rw | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | xm | xz | ya | za) return 0 ;;
+	ad | ai | an | as | at | be | bf | bv | by | bz | ca | cd | cf | cr | cs | db | dd | df | do | ds | dt | en | eq | fa | fc | ff | fm | gb | gc | gh | go | gp) return 0 ;;
+	gz | id | if | im | in | is | it | js | kt | lc | ld | le | ls | mb | md | ml | mp | ms | mv | my | nf | no | np | nr | oe | of | ok | on | or | os | ou | ps) return 0 ;;
+	py | rb | rc | rd | re | rm | ro | rw | rx | sh | sm | so | sw | sz | ta | to | tr | ts | tz | up | us | uv | vb | vn | wc | we | xm | xz | ya | za) return 0 ;;
 	esac
 	return 1
 }

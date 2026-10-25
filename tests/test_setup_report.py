@@ -1717,12 +1717,18 @@ def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: di
         "note: the owner said the hold stays on\n",
         encoding="utf-8",
     )
-    for owner, private in (("IT", True), ("HR", False)):
+    # B13 round 27 P39: "RM" is doctor's word, in its fix of a link the report prints
+    rm = (
+        "[FAIL] state_dir.manifest — ~/agent-context/state/manifest.sqlite is a symlink to nothing (fix: the "
+        "person points the link at an existing file or removes it: rm ~/agent-context/state/manifest.sqlite)"
+    )
+    for owner, private in (("IT", True), ("HR", False), ("RM", True)):
         cfg.write_text(
             f'[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "{owner}"\n\n' + plain,
             encoding="utf-8",
         )
-        text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        hooks = setup_report.ReportHooks(doctor=lambda config: ["[ok  ] python — fine", rm])
+        text, red = setup_report.build_report(cfg, hooks=hooks)
         assert red.private_only is private, (owner, section(text, "Redaction"))
         assert (setup_report.issue_link(text) is None) is private, owner
         if private:
@@ -1768,6 +1774,34 @@ def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -
             text = re.sub(r"\$\([^)]*\)|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*", " ", quoted)
             printed |= {w.lower() for w in two.findall(url.sub(" ", text))}
     assert printed <= setup_report._TWO_LETTER_WORDS, sorted(printed - setup_report._TWO_LETTER_WORDS)
+    # B13 round 27 P39: the report embeds doctor's, status's and the loop's own lines (ReportHooks), so their
+    # modules' literals count too ("rm" in doctor's fix of a link, "subject.OU"); each skip is a literal never
+    # printed: an environment variable's name, a strftime code, --help text ("gc" is printed: governance's
+    # "has .keep packs that gc never prunes")
+    never = {
+        "ops/doctor.py": set(),
+        "loop.py": set(),
+        "cli.py": {"dz", "ex", "op", "tm", "vv"},
+        "governance.py": {"tm"},
+    }
+    for module, skip in never.items():
+        tree = ast.parse((root / "src" / "agentsync" / module).read_text(encoding="utf-8"))
+        loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+        words = {
+            w.lower()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose
+            for w in two.findall(url.sub(" ", node.value))
+        }
+        assert skip <= words, (module, sorted(skip - words))  # a skip no literal needs any more goes
+        left = words - skip - setup_report._TWO_LETTER_WORDS
+        assert not left, (module, sorted(left))
+    # a hold owner "GC", cut from governance's own error line, reads back: the report is private only
+    red = setup_report.Redactor()
+    red.add("value", "GC", ignore_case=True)
+    said = "error: x: has .keep packs that gc never prunes; remove them first"
+    assert red.redact(said) == "error: x: has .keep packs that <value> never prunes; remove them first"
+    assert red.private_only
 
 
 def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(

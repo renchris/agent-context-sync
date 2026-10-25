@@ -30769,7 +30769,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120, P37, P18 and P38, in `src/agentsync/setup_report.py` and
+P102, P115, P26, P13, P104, P20, P120, P37, P18, P38 and P39, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
 defects built in one commit.
@@ -31004,6 +31004,18 @@ document name in a log line, a --source-local argument or an exclude entry, cut 
 `_redaction_section` shows the item whenever the body shows `<path>`, as the shell's `legend_kinds` greps its body.
 Only a replaced link target is counted (`path N` in the kinds stays a count of replacements). Test:
 `test_the_path_legend_item_names_every_use_of_path`.
+
+**The two-letter words include doctor's, status's and the loop's** (P39). E72's `_TWO_LETTER_WORDS` and its test
+read only setup_report's and install.sh's literals, while the report embeds doctor's, status's and the loop's
+own lines (`ReportHooks`): a hold owner "RM" was cut from doctor's `rm <path>` fix of a link, which reads back,
+and the report stayed public. Both lists (`_TWO_LETTER_WORDS` and install.sh's `two_letter_word`, a one-list hunk
+the equality test needs) add `ca`, `gb`, `gc`, `ld`, `le`, `np`, `ou`, `rm` and `rx`, each one a printed literal
+of ops/doctor.py, loop.py, cli.py or governance.py (`gc` in its `has .keep packs that gc never prunes` error). The
+test now also scans those four modules, with a skip set per module for literals never printed (cli.py's `dz`, a
+strftime code, `ex`, `op` and `vv` of its `--help` text, and `tm` of the environment variable
+`AGENTSYNC_TM_EXCLUDE` in cli.py and governance.py), which fails when a skip is no longer needed. Runtime text such as an OS error's words cannot be listed,
+the same limit `report_words()` has. Tests: `test_the_two_letter_words_are_every_two_letter_word_either_report_prints`
+(with its "GC" row) and the "RM" row of `test_a_two_letter_hold_value_the_report_prints_makes_it_private`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
