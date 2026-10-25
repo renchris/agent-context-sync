@@ -15448,8 +15448,27 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
     _rc, text, _ = report(tmp_path, cfg)
     assert "is a symlink to <path>, whose folder" in text, text
     assert "Fabrikam Vault" not in text, text
+    # B13 round 28 I55: the agent's own words after the target (a ";" and the row's "|"), no link on disk
+    rows = [
+        "agentsync sync exited 1: manifest.sqlite is a symlink to /Volumes/Fabrikam Vault/m.sqlite; no chmod "
+        "was run",
+        "the docs repo is a symlink to /Volumes/Fabrikam Docs2/agent-context",
+    ]
+    friction = V12_HAPPY
+    for n, said in enumerate(rows):
+        friction = _insert_before("2026-09-29T10:01:10Z | end", _step3_error(f"5{n}", said), friction)
+    write_friction(fake_mac, friction)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "Fabrikam Vault" not in text and "Fabrikam Docs2" not in text, text
+    assert setup_report._said_link_targets([_step3_error("50", rows[0])]) == [
+        "/Volumes/Fabrikam Vault/m.sqlite"
+    ]
+    # a ";" or "|" with no space beside it is the path's own (the review of I55)
+    assert setup_report._said_link_targets(
+        [f"{db} is a symlink to /Volumes/team;archive|b/m.sqlite | -"]
+    ) == ["/Volumes/team;archive|b/m.sqlite"]
     # a target too short to be a path of its own registers nothing
-    for said in ("/", "/x", "/x/"):
+    for said in ("/", "/x", "/x/", "/x; y", "/x | -"):
         assert setup_report._said_link_targets([f"error: state: {db} is a symlink to {said}"]) == []
     assert setup_report._said_link_targets([f"{db} is a symlink to {old} (fix: x)"]) == [old]
 

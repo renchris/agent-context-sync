@@ -4871,10 +4871,15 @@ def _link_targets(r: _Run) -> list[str]:
     return sorted(found, key=len, reverse=True)
 
 
-_SAID_LINK_RE = re.compile(r"is a symlink to (/.+?)(?=, whose folder |, which does not exist|\s*\(fix:|$)")
+_SAID_LINK_RE = re.compile(
+    r"is a symlink to (/.+?)(?=, whose folder |, which does not exist|\s*\(fix:|;\s|\s+\||\s*$)"
+)
 """A link's target in doctor's three forms (B13 round 27 P34): ``... whose folder does not exist or refuses a
 write`` (``DANGLING_UNUSABLE``), ``..., which does not exist; the manifest ...`` and the docs repo's bare
-``<repo> is a symlink to <target>``."""
+``<repo> is a symlink to <target>``. A target also ends at a ``; `` or a `` |``: the agent's own words in a
+friction row (``...; no chmod was run | -``) follow it there, and the whole rest of the row was registered as
+the value, so the target alone printed whole wherever the row was quoted (B13 round 28 I55). A ``;`` or ``|``
+with no space beside it is part of the path, which may hold one."""
 
 
 def _said_link_targets(lines: Iterable[str]) -> list[str]:
