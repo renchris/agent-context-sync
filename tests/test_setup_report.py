@@ -6331,6 +6331,38 @@ def test_a_stop_after_the_end_line_takes_the_words_now_as_the_one_before_it(
         )
 
 
+def test_a_stop_on_a_side_beside_a_linked_manifests_target_takes_doctors_kind(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 28 I59: P18's stop shape read the -wal and -shm beside manifest.sqlite, so beside a manifest
+    linked into another folder, where sqlite keeps them beside the target (P42) and doctor's FAIL names that
+    path, a folder at the target's -shm left the stop "not where or what it should be". It reads the sides
+    where doctor names them."""
+    cfg = fake_mac["config"]
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    store = tmp_path / "store"
+    store.mkdir(mode=0o700)
+    for suffix in ("", "-wal", "-shm"):
+        side = db.with_name(db.name + suffix)
+        if side.exists():
+            side.rename(store / side.name)
+    db.symlink_to(store / db.name)
+    shm = next(p for p in doctor.manifest_sides(db) if p.name.endswith("-shm"))
+    assert shm.parent == store.resolve() or shm.parent == store, shm
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    detail = f"{shm} is a folder, not a file: the state file's shared-memory file belongs there (fix: x)"
+    r.facts.doctor_problems.append(("FAIL", "state_dir.files", detail))
+    stop = setup_report._SyncStop(
+        at=datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), file="manifest-shm", owner="person", ended_ok=None
+    )
+    stop = dataclasses.replace(stop, kind="misplaced")
+    assert setup_report._stop_shape(r, stop) == "a folder"
+    assert "which was a folder, not a file" in setup_report._sync_stop_line(
+        dataclasses.replace(stop, shape=setup_report._stop_shape(r, stop))
+    )
+
+
 def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
     fake_mac: dict[str, Path],
 ) -> None:

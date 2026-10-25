@@ -10622,10 +10622,19 @@ def _stop_shape(r: _Run, stop: _SyncStop) -> str:
         return ""
     sp = r.config.state_paths
     gov = sp.root / "governance"
+    # B13 round 28 I59: the sides where sqlite keeps them (doctor's ``manifest_sides``: beside a linked
+    # manifest's target, none for a loop), whose FAIL names that path; beside the file on an older build
+    sides = {s: sp.db.with_name(sp.db.name + s) for s in ("-wal", "-shm")}
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        sides = {doctor.side_suffix(p): p for p in doctor.manifest_sides(expand(sp.db))}
+    except Exception:
+        pass
     files = {
         "manifest": [sp.db],
-        "manifest-wal": [sp.db.with_name(sp.db.name + "-wal")],
-        "manifest-shm": [sp.db.with_name(sp.db.name + "-shm")],
+        "manifest-wal": [sides["-wal"]] if "-wal" in sides else [],
+        "manifest-shm": [sides["-shm"]] if "-shm" in sides else [],
         "lock": [sp.lock],
         "heartbeat": [sp.heartbeat],
         "holds": [gov / "holds.json"],
