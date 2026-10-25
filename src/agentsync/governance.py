@@ -878,7 +878,7 @@ def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datet
         )
         audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
     record_holds(state_dir, (h.scope for h in holds))  # outside governance/ too (I89)
-    log.warning("governance: %s", hold.describe())
+    log.info("governance: %s", hold.describe())  # the CLI prints it once, on stdout (B13 round 28 I47)
     return hold
 
 
@@ -903,7 +903,7 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
         )
         audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
     record_holds(state_dir, (h.scope for h in keep))
-    log.warning("governance: hold %s released by %s", s, owner)
+    log.info("governance: hold %s released by %s", s, owner)  # the audit trail records it (I47)
     return True
 
 
@@ -3320,6 +3320,10 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
     )
 
 
+_SAID_UNJUDGED: set[tuple[str, str]] = set()
+"""The (manifest path, cause) pairs :func:`partition_purges` warned of in this process (B13 round 28 I43)."""
+
+
 def partition_purges(
     state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
@@ -3366,7 +3370,14 @@ def partition_purges(
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error):
-        log.warning("governance: cannot tell which queued purges stay queued: %s", _unjudged_cause(db))
+        cause = _unjudged_cause(db)
+        key = (str(db), cause)
+        # once per manifest and cause in a process: status reads the queue in four places, and printed the
+        # same timestamped WARNING four times before its NEXT (B13 round 28 I43); the rest at DEBUG
+        (log.debug if key in _SAID_UNJUDGED else log.warning)(
+            "governance: cannot tell which queued purges stay queued: %s", cause
+        )
+        _SAID_UNJUDGED.add(key)
         return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
     return [q for q, why in zip(entries, whys, strict=True) if not why], [
         (q, why) for q, why in zip(entries, whys, strict=True) if why

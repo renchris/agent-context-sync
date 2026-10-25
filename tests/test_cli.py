@@ -9289,6 +9289,52 @@ def test_a_queue_run_over_a_manifest_it_cannot_open_warns_once_in_words(
     assert "PurgeSelector(" not in warned[0] and str(Path.home()) not in warned[0], warned
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_status_over_a_manifest_it_cannot_open_warns_of_the_queue_once(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I43: status over a 0000 manifest with queued purges printed the same timestamped
+    "cannot tell which queued purges" WARNING four times before its NEXT (P25 fixed only the queue run).
+    Once; the purge_queue line still names state_dir.files."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    for n in range(3):
+        sel = governance.PurgeSelector(source_id="source", stable_id=f"contoso-{n}")
+        assert governance.enqueue_purge(root, sel, governance.PurgeReason.LABEL_ESCALATION)
+    db = expand(initialised.state_paths.db)
+    db.chmod(0o000)
+    try:
+        capsys.readouterr()
+        _rc, out = _status(cfg, capsys)
+        err = capsys.readouterr().err
+        cli.main(["status", "--config", cfg])
+        err += capsys.readouterr().err
+    finally:
+        db.chmod(0o600)
+    assert err.count("cannot tell which queued purges") <= 1, err
+    assert any("governance.purge_queue" in ln and "state_dir.files" in ln for ln in out), out
+
+
+def test_a_hold_and_its_release_print_their_result_once(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I47: `hold` and `hold --release` printed their result twice, a timestamped WARNING
+    logger line on stderr and the same text on stdout. stdout alone carries it; the audit trail records
+    both."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    said = capsys.readouterr()
+    assert (
+        said.out.startswith("hold all (state): matter 8 — set by Contoso Legal") and "WARNING" not in said.err
+    )
+    assert cli.main(["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    said = capsys.readouterr()
+    assert "hold all: released" in said.out and "WARNING" not in said.err, said
+    actions = [r["action"] for r in governance.read_audit(expand(initialised.state_paths.root))]
+    assert actions[-2:] == ["hold-set", "hold-released"]
+
+
 def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
