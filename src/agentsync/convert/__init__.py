@@ -7,6 +7,7 @@ import hashlib
 import logging
 from pathlib import Path
 
+from agentsync.convert._common import _pathless
 from agentsync.convert.base import Converter, options_hash
 from agentsync.convert.cache import ConverterCache, action_key
 from agentsync.convert.registry import Registry
@@ -47,9 +48,12 @@ def _suffix(name: str) -> str:
     return low[dot:] if dot > 0 else ""
 
 
-def _reason(exc: BaseException) -> str:
-    """One-line, bounded, deterministic reason text for a stub page."""
+def _reason(exc: BaseException, src: Path | None = None, name: str = "") -> str:
+    """One-line, bounded, deterministic reason text for a stub page; with ``src``, free of the staged path
+    and the home folder (``_common._pathless``, B13 round 28 I39)."""
     text = " ".join(str(exc).split()) or type(exc).__name__
+    if src is not None:
+        text = _pathless(text, src, name or src.name)
     return text if len(text) <= _REASON_MAX else text[: _REASON_MAX - 1] + "…"
 
 
@@ -230,7 +234,7 @@ def convert_file(
         suffix = _suffix(name) or "files without an extension"
         return make(ConversionStatus.REFUSED, reason=NO_CONVERTER_PREFIX + suffix)
     except UnreadableSourceError as exc:
-        result = make(ConversionStatus.UNREADABLE, reason=_reason(exc))
+        result = make(ConversionStatus.UNREADABLE, reason=_reason(exc, src, name))
     except Exception as exc:
         # Imported here: ``python -m agentsync.convert.ocr`` and ``python -m agentsync.convert.media``
         # (scripts/install.sh) import this package first, and must not find the module they are about to run
@@ -272,8 +276,9 @@ def convert_file(
                 registry=plain,
                 cache=cache,
             )
-        log.info("conversion of %s by %s failed: %s", name, conv.converter_id, _reason(exc))
-        return make(ConversionStatus.FAILED, reason=f"{CONVERSION_FAILED}: {_reason(exc)}")
+        why = _reason(exc, src, name)
+        log.info("conversion of %s by %s failed: %s", name, conv.converter_id, why)
+        return make(ConversionStatus.FAILED, reason=f"{CONVERSION_FAILED}: {why}")
     else:
         problem = _validate(units)
         if problem is not None:

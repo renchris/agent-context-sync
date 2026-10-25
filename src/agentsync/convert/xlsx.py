@@ -18,11 +18,13 @@ from agentsync.convert._common import (
     _ascii_slug,
     _cell,
     _check_ooxml_container,
+    _check_ooxml_family,
     _csv_bytes,
     _dist_version,
     _escape_line,
     _gfm_table,
     _join_limited,
+    _stub_with_a_path,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
@@ -573,6 +575,11 @@ class XlsxConverter:
         """Version as run (emitter version + underlying library/tool version)."""
         return f"{_EMITTER_VERSION}+openpyxl-{_dist_version('openpyxl')}"
 
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True only for a stub an older build wrote a staging or home path into (``_stub_with_a_path``, B13
+        round 28 I39): an unchanged file is never converted again, so only this reads it again, once."""
+        return reason is not None and _stub_with_a_path(reason)
+
     def options(self) -> Mapping[str, OptionValue]:
         """Normalised options hashed into options_hash."""
         return {
@@ -585,6 +592,7 @@ class XlsxConverter:
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
         _check_ooxml_container(src)
+        _check_ooxml_family(src, "spreadsheet", "a workbook")
         if src.stat().st_size > self._cfg.xlsx_stream_threshold_bytes:
             return self._convert_streaming(src)
         wb = _load(src, data_only=True, read_only=False)

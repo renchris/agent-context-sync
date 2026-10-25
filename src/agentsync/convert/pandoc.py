@@ -38,8 +38,10 @@ from agentsync.convert._common import (
     _cap_body,
     _check_odf_container,
     _check_ooxml_container,
+    _check_ooxml_family,
     _decode_text,
     _first_line,
+    _stub_with_a_path,
     _summary_from_markdown,
     _title_from_markdown,
 )
@@ -747,9 +749,10 @@ class PandocConverter:
         """True when the page this converter wrote under version ``produced`` is worth reading the file
         again for: it was written without OCR and there is an engine now, or it was written by the field
         build of OCR (``image._field_build``; engine or not, and for ``.rtf`` and ``.html`` too, whose
-        version that build changed).  Never for a stub (``reason`` is the stub's)."""
+        version that build changed).  A stub (``reason`` is the stub's) only when an older build wrote a
+        staging or home path into it (``_stub_with_a_path``, B13 round 28 I39)."""
         if reason is not None:
-            return False
+            return _stub_with_a_path(reason)
         return _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced))
 
     def _with_picture_text(self, engine: OcrEngine, src: Path, fmt: str, name: str) -> tuple[str, int, bool]:
@@ -783,6 +786,7 @@ class PandocConverter:
             raise ConversionError(f"pandoc-gfm does not handle {suffix or 'files without an extension'}")
         if fmt == "docx":
             _check_ooxml_container(src)
+            _check_ooxml_family(src, "word", "a Word document")
         elif fmt == "odt":
             _check_odf_container(src)
         placed, cut = 0, False

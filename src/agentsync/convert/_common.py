@@ -83,6 +83,92 @@ def _check_ooxml_container(src: Path) -> None:
         raise ConversionError("not an OOXML package (not a ZIP container)")
 
 
+_CONTENT_TYPES_MAX = 1 << 20
+_MAIN_TYPE_RE = re.compile(
+    rb"ContentType=[\"']application/vnd\.(?:openxmlformats-officedocument\.(wordprocessingml|spreadsheetml"
+    rb"|presentationml)|ms-(word|excel|powerpoint))\.[^\"']*\.main(?:\+xml)?[\"']"
+)
+_FAMILY_OF = {
+    b"wordprocessingml": "word",
+    b"word": "word",
+    b"spreadsheetml": "spreadsheet",
+    b"excel": "spreadsheet",
+    b"presentationml": "presentation",
+    b"powerpoint": "presentation",
+}
+_FAMILY_NOUN = {
+    "word": "a Word document",
+    "spreadsheet": "an Excel workbook",
+    "presentation": "a PowerPoint deck",
+}
+
+
+def _ooxml_family(src: Path) -> str | None:
+    """The Office family of an OOXML package's main part, read from ``[Content_Types].xml``: ``word``,
+    ``spreadsheet`` or ``presentation`` (macro, template and slideshow types included).  None when it cannot
+    be told: no such part, one too large, a damaged package, no main type, or main types of two families."""
+    try:
+        with zipfile.ZipFile(src) as zf:
+            info = zf.getinfo("[Content_Types].xml")
+            if info.file_size > _CONTENT_TYPES_MAX:
+                return None
+            types = zf.read(info)
+    except Exception:  # KeyError, BadZipFile, OSError, an encrypted member, a compression zipfile lacks
+        return None
+    families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}
+    return families.pop() if len(families) == 1 else None
+
+
+def _check_ooxml_family(src: Path, family: str, noun: str) -> None:
+    """Raise UnreadableSourceError when ``src``'s main part is of another Office family than ``family`` (a
+    Word document named ``.potx``, B13 round 28 I39): one stub, cached, never retried, which the setup
+    report classes "not the type its name says".  Fixed words, the family noun only.  A family that cannot
+    be told, or the converter's own one under another main type (a template, a macro deck), passes."""
+    found = _ooxml_family(src)
+    if found is not None and found != family:
+        raise UnreadableSourceError(
+            f"not-ooxml: {_FAMILY_NOUN[found]}, not {noun} (not the type its name says)"
+        )
+
+
+def _pathless(text: str, src: Path, name: str) -> str:
+    """``text`` with ``src`` as ``name``, its folder dropped before any other file in it, and the home folder
+    as ``~``: a library's error names the staged file (``~/Library/Application Support/agentsync/staging/…``),
+    and a stub's reason goes into the page, ``_sync/QUARANTINE.tsv`` and the manifest (B13 round 28 I39)."""
+    for path in _forms(src):
+        text = text.replace(str(path), name)
+    for folder in _forms(src.parent):
+        if len(str(folder)) > 1:
+            text = text.replace(str(folder) + "/", "")
+    try:
+        home = Path.home()
+    except (RuntimeError, KeyError, OSError):  # no HOME and no password entry: nothing to fold
+        return text
+    for form in reversed(_forms(home)):  # the resolved form first: it may be the longer one
+        if len(str(form)) > 1:
+            text = text.replace(str(form), "~")
+    return text
+
+
+def _forms(path: Path) -> list[Path]:
+    """``path`` and its resolved form when that differs (``/var`` is ``/private/var``); a resolve that fails
+    (a link loop) leaves ``path`` alone, as ``_pathless`` runs inside ``convert_file``'s error handling."""
+    try:
+        real = path.resolve()
+    except (OSError, RuntimeError):
+        return [path]
+    return [path] if real == path else [path, real]
+
+
+def _stub_with_a_path(reason: str) -> bool:
+    """True for a stub whose reason holds a staging or home path, which an older build wrote and
+    ``convert_file`` now keeps out (``_pathless``; B13 round 28 I39): its converter's ``outdated`` reads it
+    again.  A failed conversion is never cached, so the re-read converts it anew; what it writes holds no
+    path, and a source's re-reads are done once a build (``cycle._REREAD_META``), so it is read once."""
+    home = str(Path.home())
+    return "/staging/" in reason or (len(home) > 1 and home in reason)
+
+
 def _check_odf_container(src: Path) -> None:
     """Raise UnreadableSourceError for a password-protected ODF package, ConversionError for a non-ZIP."""
     if not zipfile.is_zipfile(src):

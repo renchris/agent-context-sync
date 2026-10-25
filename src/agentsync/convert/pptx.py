@@ -23,11 +23,13 @@ from agentsync.convert._common import (
     _cap_body,
     _cell,
     _check_ooxml_container,
+    _check_ooxml_family,
     _dist_version,
     _escape_line,
     _first_line,
     _gfm_table,
     _join_limited,
+    _stub_with_a_path,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.image import (
@@ -439,10 +441,10 @@ class PptxConverter:
     def outdated(self, produced: str, reason: str | None = None) -> bool:
         """True when the page this converter wrote under version ``produced`` is worth reading the deck
         again for: it was written without OCR and there is an engine now, or it was written by the field
-        build of OCR (``image._field_build``; engine or not).  Never for a stub (``reason`` is the
-        stub's)."""
+        build of OCR (``image._field_build``; engine or not).  A stub (``reason`` is the stub's) only when an
+        older build wrote a staging or home path into it (``_stub_with_a_path``, B13 round 28 I39)."""
         if reason is not None:
-            return False
+            return _stub_with_a_path(reason)
         return _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced))
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
@@ -451,6 +453,7 @@ class PptxConverter:
         With an OCR engine the helper works in a folder made beside ``src``, and OcrError (fixed wording)
         means the engine failed on a deck that converts without it."""
         _check_ooxml_container(src)
+        _check_ooxml_family(src, "presentation", "a deck")
         from pptx import Presentation  # noqa: PLC0415 - heavy import, only when a deck is converted
 
         try:
