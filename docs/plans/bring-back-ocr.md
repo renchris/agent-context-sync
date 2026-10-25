@@ -1855,6 +1855,32 @@ line first in every prompt) on this section's landed tip, BASE `f04c61db`, ids I
 outputs `round28/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane
 changed the prompt.
 
+### B13 round 28: v33 rehearsal, cross-lane review, harvest (2026-10-25)
+
+Run `wf_1ea50d66-9f0` on `519b847c` (120 agents, 0 errors, 84 minutes; every prompt opened with the guard line, and
+every finder's report is its own). All six scenarios pass their EXPECTED; no name leaks. 109 findings, 104 confirmed
+(1 turn, 26 wrong, 77 small), 5 refused. None needs prompt text: v33 stays the prompt to paste. Most wrongs sit on
+round 27's own new paths. The hold list still has readers ruling 15 did not reach: governance/ itself as a link to
+nothing, a damaged or wrong-shaped hold list, and holds the audit trail records but holds.json lacks; in two probes a
+page under a hold on `all` was erased (I87, I88: data integrity). An empty manifest made after the new start reopens
+P40's blind purge (I61, I92). P111, now live, is still worded as "heartbeat.json records earlier passes" in every
+reader. A `.url` whose URL carries a password is published with it (I40). The one turn (I52) is the ownership rule
+at a linked manifest's target. Lead rulings for round 28 (in `lanes/COMMON27.md`), all code-only: (19) a hold is
+never lost to a reader; (20) no blind purge from a manifest that knows nothing; (21) the lost-unread heartbeat is
+said as that, with its own fix, everywhere; (22) a secret in a file's text is never published, each governance file
+has one name, and the ownership rule holds at a linked manifest's target.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104 over rounds 2 and 4 to 28; turns 0 for seven rounds, then 1, 2, 0, 0, 2, 0, 0, 2, 1; wrongs as before,
+then 25, 26.
+
+Lanes (`--account auto`, CONTRACTS §16.193 to §16.197, brief `lanes/COMMON27.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r28-land.lock`; scratch under `round28/`; back-channel
+pane 271 or its successor): RA 29 (the report: ruling 21's half, the purge queue over a new start, the settling
+pages), B 23 (ruling 19 first, then 20 and 21's doctor words), RB 24 (I52 first, one name per governance file,
+ruling 21's tails), E 10 (I40 and I39 first, the new start's runs and kept pages, Finder order), D 17 (the guides,
+CONTRACTS records, ship-land's header). Lead: I97 (the harvest's umbrella note, built as I87 to I96).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

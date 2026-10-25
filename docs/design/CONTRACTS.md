@@ -31513,3 +31513,23 @@ listed and released exit 0; the two dry runs exit 1). Test: `test_the_records_pa
 the end line` after an in-window stop's count and as `N step-3 sync stop(s) agentsync logged after the end line`
 when the window has none; the shell report has no Items list and lists the block in its Installer section. Test:
 `test_the_guide_gives_round_25s_new_report_and_installer_outputs`, extended.
+
+### 16.193 Round 28: setup report: the lost-unread heartbeat, the purge queue over a new start and the settling pages (2026-10-25, wave B13 round 28 lane RA)
+
+Reserved for round 28 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 28").
+
+### 16.194 Round 28: the installer's turn at a linked manifest's target, one name per governance file, and the lost-unread tails (2026-10-25, wave B13 round 28 lane RB)
+
+Reserved for round 28 lane RB of B13.
+
+### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
+
+Reserved for round 28 lane B of B13.
+
+### 16.196 Round 28: a password in a .url, staging paths in conversion errors, the new start's runs and kept pages, Finder order (2026-10-25, wave B13 round 28 lane E)
+
+Reserved for round 28 lane E of B13.
+
+### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
+
+Reserved for round 28 lane D of B13.
