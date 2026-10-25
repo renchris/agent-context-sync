@@ -31737,6 +31737,16 @@ docs/deploy/setup-feedback.md says so. Tests: the `lock-fifo`, `lock-filelink`, 
 `lock-fifo` and `holds-fifo` cases of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file`
 (the error above names the same kind).
 
+**Two side files of one kind, and each to move** (I29, I30). With a folder at both the -wal and the -shm, step 1 and
+step 2 said `which are a folder and a folder, not files`, and step 1's tail said `they move it aside` and `prints it
+on its state_dir.files line` of two files, while step 2's NEXT says `move each aside` (moving one alone leads to a
+second stop). `side_words` says one kind once, in the plural (`are both folders, not files`; `are not regular files`
+for two of something else; different kinds stay `are a folder and a fifo, not files`), and step 1's tail for two
+says `fixing them is the person's (keeping a copy, they move each aside...), and ~/.local/bin/agentsync status prints
+each on its state_dir.files lines`; one side's words are unchanged. docs/deploy/setup-feedback.md says so. Tests: the
+step 1 table's `SN-both-folders` row and changed `SN-both` tail, and the `wal-folder shm-folder` case of
+`test_step_2_names_both_sides_that_are_not_files` (moving both ends it).
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,

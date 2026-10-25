@@ -972,7 +972,7 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK and MISP
 # neither). Both, when both are not files: init's error names the first, and moving that one alone led to a
 # second stop on the other. The generic words when the list is empty (an installed build that cannot say).
 side_words() { # LIST: sets SIDE_NOUN, SIDE_IS ("is a folder, not a file") and SIDE_N (how many it names)
-	local s k r sides="" roles="" kinds="" what=""
+	local s k r sides="" roles="" kinds="" what="" same=1
 	SIDE_N=0
 	for s in $1; do
 		k="${s#*-}"
@@ -986,13 +986,17 @@ side_words() { # LIST: sets SIDE_NOUN, SIDE_IS ("is a folder, not a file") and S
 		*) continue ;;
 		esac
 		SIDE_N=$((SIDE_N + 1))
+		[ -z "$what" ] || [ "$what" = "$k" ] || same=0
 		sides="${sides:+$sides and the }$s" roles="${roles:+$roles and }its $r" kinds="${kinds:+$kinds and }$k" what="$k"
 	done
 	SIDE_NOUN="the $sides of agentsync's state file ($roles)"
-	case "$SIDE_N/$what" in
+	# two of one kind said once, in the plural: "are a folder and a folder" read as a slip (B13 round 28 I29)
+	case "$SIDE_N/$same/$what" in
 	0/*) SIDE_NOUN="the -wal or -shm of agentsync's state file" SIDE_IS="is a folder or something else that is not a file" ;;
-	1/"something else") SIDE_IS="is not a regular file" ;;
+	1/*/"something else") SIDE_IS="is not a regular file" ;;
 	1/*) SIDE_IS="is $kinds, not a file" ;;
+	*/1/"something else") SIDE_IS="are not regular files" ;;
+	*/1/*) SIDE_IS="are both ${what#a }s, not files" ;;
 	*) SIDE_IS="are $kinds, not files" ;;
 	esac
 }
@@ -7376,7 +7380,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" sfix="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7656,7 +7660,11 @@ list_folders() {
 		side_words "$codd"
 		stopsat="at its config step"
 		[ "$cside" != side-status ] || stopsat="$STOPS_BOTH"
-		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops $stopsat on $SIDE_NOUN, which $SIDE_IS (not damage): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		# both, when both are not files: each named, as step 2's NEXT names them (B13 round 28 I30: "move it
+		# aside" left the second for a second stop)
+		sfix="fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
+		[ "$SIDE_N" -le 1 ] || sfix="fixing them is the person's (keeping a copy, they move each aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints each on its state_dir.files lines"
+		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops $stopsat on $SIDE_NOUN, which $SIDE_IS (not damage): $sfix" ;; esac
 		# a lock, heartbeat or governance file that is not a file, by the installed doctor.state_not_a_file: init
 		# stops on it, add-source opens past it (measured both ways; B13 round 27 ruling 16: P113, P125, P142)
 		misplaced_words "${crole#role-}" "$cmis" || MISPLACED_NOUN="$fnoun" MISPLACED_CHECK="lock, heartbeat or governance"

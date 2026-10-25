@@ -775,8 +775,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   they open it first, as status says), and ~/.local/bin/agentsync status prints it on its state_dir.files line`,
   where `<the side>` and `<is what>` name each side that is not a file and what is there (`the -shm of agentsync's
   state file (its shared-memory file)`, `is a folder, not a file`; with both, `the -wal and the -shm of agentsync's
-  state file (its write-ahead log and its shared-memory file)`, `are a folder and a fifo, not files`; B13 round 27
-  P21, P119, lane RB: it said `the -wal or -shm ... is a folder or something else that is not a file`), and `<at
+  state file (its write-ahead log and its shared-memory file)`, `are a folder and a fifo, not files`, or `are both
+  folders, not files` for two of one kind, and then `fixing them is the person's (keeping a copy, they move each
+  aside; ...), and ~/.local/bin/agentsync status prints each on its state_dir.files lines`, as step 2's `NEXT:`
+  says; B13 round 27 P21, P119, lane RB: it said `the -wal or -shm ... is a folder or something else that is not a
+  file`; B13 round 28 I29, I30: `are a folder and a folder` and `move it aside` of two), and `<at
   its step>` is `at its config step`, or, for a folder at the -shm this account can read, `at its config step (at
   its status step when it adds a folder with --source-local)`: init stops on it since lane B's round 26 E65, and
   add-source alone opens past it (B13 round 27 ruling 16: P15, P56, P114, measured both ways; round 26 E15 measured

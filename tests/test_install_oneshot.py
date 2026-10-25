@@ -8914,6 +8914,10 @@ def side_named(odd: str) -> tuple[str, str, int]:
     sides = " and the ".join(f"-{s}" for s, _k in pairs)
     roles = " and ".join(f"its {SIDE_ROLES[s]}" for s, _k in pairs)
     noun = f"the {sides} of agentsync's state file ({roles})"
+    if len(pairs) > 1 and len(set(kinds)) == 1:  # B13 round 28 I29: one kind said once, in the plural
+        if kinds[0] == "something else":
+            return noun, "are not regular files", len(pairs)
+        return noun, f"are both {kinds[0].removeprefix('a ')}s, not files", len(pairs)
     if len(pairs) > 1:
         return noun, f"are {' and '.join(kinds)}, not files", len(pairs)
     return (
@@ -8928,12 +8932,19 @@ def side_tail(odd: str, *, both: bool = False) -> str:
     E65 stops on every one, or on both paths (``both``) for a folder at the -shm this account can read, which
     add-source alone opens past (B13 round 27 ruling 16: P15, P56, P114; round 26 E15 measured it before
     E65)."""
-    noun, is_, _n = side_named(odd)
-    return (
-        f"; step 2 stops {STOPS_BOTH if both else 'at its config step'} on {noun}, which {is_} (not damage): "
-        f"fixing that is the person's (keeping a copy, they move it aside{SHUT_OPEN}), and "
-        "~/.local/bin/agentsync status prints it on its state_dir.files line"
-    )
+    noun, is_, n = side_named(odd)
+    if n > 1:  # B13 round 28 I30: both, each named, as step 2's NEXT names them
+        fix = (
+            f"fixing them is the person's (keeping a copy, they move each aside{SHUT_OPEN}), and "
+            "~/.local/bin/agentsync status prints each on its state_dir.files lines"
+        )
+    else:
+        fix = (
+            f"fixing that is the person's (keeping a copy, they move it aside{SHUT_OPEN}), and "
+            "~/.local/bin/agentsync status prints it on its state_dir.files line"
+        )
+    at = STOPS_BOTH if both else "at its config step"
+    return f"; step 2 stops {at} on {noun}, which {is_} (not damage): {fix}"
 
 
 MISPLACED_CHECKS = {
@@ -9021,6 +9032,7 @@ def misplaced_tail(role: str, kind: str = "folder") -> str:
         "SN-beside-link-shm",
         "SN-target-shm",
         "SN-both",
+        "SN-both-folders",
         "SW",
         "SW-bare",
         "SW-wal",
@@ -9109,6 +9121,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-dangling": "state-side-notfile",  # round 26 E62: any link at a side stops init
         "SN-wal-filelink": "state-side-notfile",
         "SN-both": "state-side-notfile",
+        "SN-both-folders": "state-side-notfile",
         "SN-target-shm": "state-side-notfile",
         "SW": "state-dir-write",
     }.get(state, "state-access")
@@ -9219,6 +9232,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             elif state == "SN-both":  # round 27 P21, P119: both are named
                 wal.mkdir(0o700)
                 os.mkfifo(shm, 0o644)
+            elif state == "SN-both-folders":  # round 28 I29, I30: one kind said once, each moved
+                wal.mkdir(0o700)
+                shm.mkdir(0o700)
             else:
                 shm.mkdir({"SN-shm-shut": 0, "SN-shm-0500": 0o500}.get(state, 0o700))
         elif state.startswith("SW"):  # round 24 B12: a 0500 state folder, with both side files or not
@@ -9296,6 +9312,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "SN-shm-dangling": "shm-symlink",
         "SN-wal-filelink": "wal-symlink",
         "SN-both": "wal-folder shm-fifo",
+        "SN-both-folders": "wal-folder shm-folder",
         "SN-target-shm": "shm-folder",
     }.get(state)
     if odd is not None:  # ruling 16: a folder it can read at the -shm stops init; add-source opens past it
@@ -11260,11 +11277,13 @@ def test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read(
     assert again.returncode == 0, again.stdout + again.stderr
 
 
-def test_step_2_names_both_sides_that_are_not_files(real_env: dict[str, str], wheel: Path) -> None:
+@pytest.mark.parametrize("odd", ["wal-folder shm-fifo", "wal-folder shm-folder"])
+def test_step_2_names_both_sides_that_are_not_files(real_env: dict[str, str], wheel: Path, odd: str) -> None:
     """B13 round 27 P21, P119 (rehearsal probes shm, both, FIFO, SSW), with the real agentsync: step 2's NEXT
     said "the -wal or -shm ... is a folder or something else", while init's error names the first; with a
     folder at the -wal and a fifo at the -shm, moving the one the error named led to a second stop on the
-    other. The NEXT names each side and what is there; moving both aside, as it says, ends it."""
+    other. The NEXT names each side and what is there; moving both aside, as it says, ends it. B13 round 28
+    I29, I30: two folders are "both folders", and step 1 says to move each aside, as step 2 does."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -11276,14 +11295,17 @@ def test_step_2_names_both_sides_that_are_not_files(real_env: dict[str, str], wh
     for side in (wal, shm):
         side.unlink(missing_ok=True)
     wal.mkdir(0o700)
-    os.mkfifo(shm, 0o644)
+    if odd.endswith("folder"):
+        shm.mkdir(0o700)
+    else:
+        os.mkfifo(shm, 0o644)
     listed = install_sh(env, "--list-folders")
-    assert last_line(listed).endswith(side_tail("wal-folder shm-fifo")), last_line(listed)
+    assert last_line(listed).endswith(side_tail(odd)), last_line(listed)
     cp = install_sh(env, str(wheel))
     assert cp.returncode == 1, cp.stdout + cp.stderr
-    assert last_line(cp).startswith(side_next("wal-folder shm-fifo", f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert last_line(cp).startswith(side_next(odd, f"{INSTALL_SH} {wheel}")), last_line(cp)
     wal.rmdir()
-    shm.unlink()
+    shm.rmdir() if shm.is_dir() else shm.unlink()
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

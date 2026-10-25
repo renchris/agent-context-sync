@@ -7151,6 +7151,9 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     [lfix] = re.findall(r'^\t\tlwhat="" lfix="([^"$]*)"$', script, re.M)
     lfact = re.findall(r'^\t\tlfact="([^"$]*)"$', script, re.M)[0]
     shown.update({"$lwhat": "", "$lfact": lfact, "$lfix": lfix})
+    # B13 round 28 I30: the side tail's fix, one side's words (the guide quotes them; two sides say "each")
+    sfix = re.findall(r'^\t\tsfix="([^"]*)"$', script, re.M)[0]
+    shown = {"$sfix": sfix.replace("$SHUT_OPEN", shut), **shown}
     for word, tail in opened:
         said = tail
         for var, words in shown.items():
