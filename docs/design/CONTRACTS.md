@@ -31658,7 +31658,22 @@ clause, so the counts add up. Test: the I54 rows of `test_the_sync_line_counts_t
 
 ### 16.194 Round 28: the installer's turn at a linked manifest's target, one name per governance file, and the lost-unread tails (2026-10-25, wave B13 round 28 lane RB)
 
-Reserved for round 28 lane RB of B13.
+Lane RB's round 28 items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
+verifier's corrected fix built): I52, I3, I15, I34, I44, I57, I86, I100, I5, I33, I56, I4, I17, I14, I6, I20, I21,
+I29, I30, I35, I36, I60, I96 and I106, all in `scripts/install.sh` and `tests/test_install_oneshot.py`.
+
+**The ownership rule at a linked manifest's target** (I52, the round's turn; ruling 22). With manifest.sqlite a
+link to `~/store/manifest.sqlite` and the target's -wal (or the target itself) at 0000, status's state_dir.files FAIL
+gives the agent's `chmod 600 ~/'store/manifest.sqlite-wal'`, while step 1's probe said `state-refused` and step 2's
+`state_open_fix` said `refused`, the person's: both judged the file with `doctor.state_path_fix(<state folder>,
+<file>)`, whose `relative_to` fails outside the state folder, so it returned the state folder's ACL fix. Each
+manifest, -wal and -shm is now judged at its resolved path against its resolved folder, as doctor's FAIL is, with lane
+B's `doctor.own_path_fix` and, for an installed build that lacks it, the same judge inlined
+(`state_path_fix(realpath(p).parent, realpath(p))`); the state folder keeps its own. A plain manifest's resolved
+folder is the state folder, so its words are unchanged. Tests: the `PL-wal` and `PL-db` rows of
+`test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open` and
+`test_a_linked_manifests_target_this_account_cannot_open_is_the_agents_chmod_at_steps_1_and_2` (the chmod step 2
+names, run, ends it).
 
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 

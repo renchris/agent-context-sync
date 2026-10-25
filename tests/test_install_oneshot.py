@@ -8972,6 +8972,8 @@ def misplaced_tail(role: str) -> str:
         "SW",
         "SW-bare",
         "SW-wal",
+        "PL-wal",
+        "PL-db",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -9172,6 +9174,16 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.write_bytes(b"")
                 f.chmod(0o600)
             db.parent.chmod(0o500)
+        elif state.startswith("PL-"):  # round 28 I52: a linked manifest whose target, outside, is shut
+            for f in (wal, shm):
+                f.unlink(missing_ok=True)
+            store = Path(env["HOME"]) / "store"
+            store.mkdir()
+            db.rename(store / db.name)
+            db.symlink_to(store / db.name)
+            shut = store / (db.name + ("-wal" if state == "PL-wal" else ""))
+            shut.touch()
+            shut.chmod(0)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
@@ -9200,6 +9212,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             if f.exists():
                 subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
                 f.chmod(0o600)
+        for f in (Path(env["HOME"]) / "store").glob("*"):
+            f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
     if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo") or state.startswith(
@@ -11041,6 +11055,50 @@ def test_step_2_judges_a_linked_manifests_sides_beside_its_target(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert last_line(cp).startswith(side_next("shm-folder", f"{INSTALL_SH} {wheel}")), last_line(cp)
     moved.with_name("moved.sqlite-shm").rmdir()  # moved aside, as the words say
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+@pytest.mark.parametrize("shut", ["wal", "db"])
+def test_a_linked_manifests_target_this_account_cannot_open_is_the_agents_chmod_at_steps_1_and_2(
+    real_env: dict[str, str], wheel: Path, shut: str
+) -> None:
+    """B13 round 28 I52 (the round's turn), with the real agentsync: manifest.sqlite a link to
+    ~/store/manifest.sqlite, and the target's -wal (or the target itself) at 0000. Status gives the agent's
+    chmod 600 of that file, as the ownership rule says, while step 1 said "no change of that folder's or
+    file's mode fixes that" and step 2's NEXT "fixing that is the person's": both judged the file against the
+    state folder, outside of which it lies, and got the state folder's ACL fix. Each file is now judged at its
+    resolved path against its resolved folder, as doctor's state_dir.files FAIL does; running the chmod step
+    2 names ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for end in ("-wal", "-shm"):
+        db.with_name(db.name + end).unlink(missing_ok=True)
+    store = Path(env["HOME"]) / "store"
+    store.mkdir()
+    db.rename(store / db.name)
+    db.symlink_to(store / db.name)
+    target = store / (db.name + ("-wal" if shut == "wal" else ""))
+    target.touch()
+    target.chmod(0)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+    finally:
+        target.chmod(0o600)
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-access"]), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    fix = f"chmod 600 ~/'store/{target.name}'"
+    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    target.chmod(0)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)  # the agent's chmod, as the NEXT names it
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

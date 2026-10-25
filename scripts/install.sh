@@ -6952,6 +6952,15 @@ except ImportError:  # an older agentsync: a mode that refuses this account is f
         return "chmod"
 
 
+try:  # a manifest, -wal or -shm judged at its resolved path, against its resolved folder (lane B round 28 I52)
+    from agentsync.ops.doctor import own_path_fix
+except ImportError:  # an older build: the same judge, inlined
+
+    def own_path_fix(p):
+        r = Path(os.path.realpath(p))
+        return state_path_fix(r.parent, r)
+
+
 # a state folder, manifest, -wal or -shm this account cannot open: another account owns one, or it lacks read
 # and write (and search, for the folder) for this one; its probes below could not open it either. The folder
 # and the manifest stop the config step; a -wal or -shm only a status or a sync that writes it. One of this
@@ -7126,8 +7135,10 @@ for p in () if notdir else (db.parent, db, *sides):
             fix = ""
         elif word == "state-side-":
             fix = "chmod"
-        else:
+        elif p == db.parent:
             fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
+        else:  # beside the target of a linked manifest, where sqlite keeps them, as the state_dir.files FAIL
+            fix = own_path_fix(p)  # of doctor judges it: its folder is no state folder (B13 round 28 I52)
         ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
         if ok and p == db.parent and os.access(p, os.R_OK | os.X_OK) and all(
             f.is_file() and not f.is_symlink() and f.stat().st_uid == os.getuid() and os.access(f, os.R_OK | os.W_OK)
@@ -8361,6 +8372,14 @@ from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
 root = Path(os.path.realpath(db.parent))
+try:  # a manifest, -wal or -shm judged at its resolved path, against its resolved folder, as the
+    from agentsync.ops.doctor import own_path_fix  # state_dir.files FAIL of doctor does (round 28 I52)
+except ImportError:  # an older build: the same judge, inlined
+
+    def own_path_fix(p):
+        r = Path(os.path.realpath(p))
+        return state_path_fix(r.parent, r)
+
 try:  # where sqlite keeps the -wal and -shm: beside a linked manifest target (doctor.manifest_sides, ruling 18)
     from agentsync.ops.doctor import manifest_sides
 except ImportError:  # an older build: beside the manifest, as it judges them
@@ -8402,10 +8421,13 @@ for p, want in ((db.parent, 0o700), (db, 0o600)):
     else:
         if os.access(p, os.R_OK | os.W_OK | (os.X_OK if want == 0o700 else 0)):
             continue
-    fix = state_path_fix(root, Path(os.path.realpath(p))) if mode_refuses(p, want) else ""
+    # a linked manifest and its sides at their target, outside the state folder: there, the fix of the state
+    # folder was the ACL words of the person, while status gives the chmod 600 of the agent (B13 round 28 I52)
+    judge = (lambda q: state_path_fix(root, Path(os.path.realpath(q)))) if want == 0o700 else own_path_fix
+    fix = judge(p) if mode_refuses(p, want) else ""
     if fix.startswith("chmod 600 "):  # with the -wal and -shm its mode refuses, as state_dir.files names them
         for side in sides:
-            more = state_path_fix(root, Path(os.path.realpath(side))) if mode_refuses(side, 0o600) else ""
+            more = own_path_fix(side) if mode_refuses(side, 0o600) else ""
             if more.startswith("chmod 600 "):
                 fix += " " + more[len("chmod 600 ") :]
     print(fix if fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
@@ -8424,7 +8446,7 @@ else:  # the folder and the manifest open: a -wal or -shm this account cannot op
         else:
             if os.access(side, os.R_OK):  # one it can read is opened past (Y57), as step 1 judges it
                 continue
-        more = state_path_fix(root, Path(os.path.realpath(side))) if mode_refuses(side, 0o600) else ""
+        more = own_path_fix(side) if mode_refuses(side, 0o600) else ""
         if not more.startswith("chmod 600 "):
             fix = "refused"
             break
