@@ -8699,13 +8699,16 @@ def _queue_upstream(config: Config, rel: str | None, stable_id: str | None = Non
     return q
 
 
+@pytest.mark.parametrize("between", ["nothing", "add-source", "init", "sync --mode dry_run"])
 def test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it(
-    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, between: str
 ) -> None:
     """B13 round 27 P40 (ruling 17): after the person's new start (heartbeat.json aside), an upstream
     deletion queued for a file still listed read runnable, status invited `purge --queue`, and the run erased
     the page and its history. It is "not judged yet" until the next sync builds a manifest: no wait, no
-    invitation, the run leaves it and the repo as they are; then it stays queued, its file listed."""
+    invitation, the run leaves it and the repo as they are; then it stays queued, its file listed. B13 round
+    28 I61 (ruling 20): an empty manifest that add-source, init or a dry-run sync made in between is the new
+    start's too, never one that holds no such file."""
     cfg = _synced(initialised)
     repo = initialised.docs_repo
     page = "mirror/source/projects/sample.txt.md"
@@ -8713,6 +8716,14 @@ def test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it(
     ((_q, why),) = governance.partition_purges(initialised.state_paths)[1]
     assert why.startswith("stays queued: the manifest lists the file as live"), why
     _new_start(initialised, tmp_path)
+    if between != "nothing":
+        argv = {
+            "add-source": ["add-source", str(initialised.sources[0].path)],
+            "init": ["init"],
+            "sync --mode dry_run": ["sync", "--mode", "dry_run"],
+        }[between]
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+        assert expand(initialised.state_paths.db).is_file()
     runnable, kept = governance.partition_purges(initialised.state_paths)
     assert not runnable and [w for _q, w in kept] == [governance.NEW_START_NOTE], kept
     step = loop.next_step(initialised)
@@ -8970,6 +8981,63 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
     hb.rename(tmp_path / "heartbeat.kept")  # the fix, followed
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert db.exists()
+
+
+@pytest.mark.parametrize("body", [b"", b"x"])
+def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_never_a_new_start(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, body: bytes
+) -> None:
+    """B13 round 28 I92 (ruling 20): manifest.sqlite as 0 bytes or 1 byte beside a heartbeat that records
+    passes passed status, `purge --queue` ran a queued label escalation blind and erased a current page, and
+    a sync started a new manifest over the mirror unasked: SQLite opens such a file as a new database. It is
+    lost, "empty or too short", with the damaged manifest's fix (it aside with heartbeat.json); purge and sync
+    refuse; following the fix starts the new manifest."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db = expand(sp.db)
+    page = "mirror/source/projects/sample.txt.md"
+    sel = governance.PurgeSelector.parse(f"docs={page}", source_id=None)
+    assert governance.enqueue_purge(expand(sp.root), sel, governance.PurgeReason.LABEL_ESCALATION)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.write_bytes(body)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and f"{db} {manifest_mod.LOST_MANIFEST_EMPTY}" in failed, failed
+    assert doctor.MANIFEST_FIX in failed, failed
+    assert "manifest: empty or too short (earlier syncs recorded; " in "\n".join(out), out
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], "no purge is invited"
+    for argv in (["purge", "--queue"], ["sync"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        assert manifest_mod.LOST_MANIFEST_EMPTY in capsys.readouterr().err, argv
+    assert db.read_bytes() == body, "no new manifest over earlier passes"
+    assert _page_kept(initialised, page)
+    db.rename(tmp_path / "manifest.kept")  # the fix, followed: it aside, and heartbeat.json with it
+    expand(sp.heartbeat).rename(tmp_path / "heartbeat.kept")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+def test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keeps_its_own_fail(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I92's controls: with no heartbeat recording a pass, a 0-byte manifest is a first start; 50 bytes of
+    junk keep their own "file is not a database" FAIL."""
+    db = expand(initialised.state_paths.db)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.write_bytes(b"")
+    assert manifest_mod.lost_words(db) is None
+    db.write_bytes(b"j" * 50)
+    hb = expand(initialised.state_paths.heartbeat)
+    hb.write_text('{"source": {"run_id": 3, "last_success_at": "2026-10-01T00:00:00Z"}}\n', encoding="utf-8")
+    assert manifest_mod.lost_words(db) is not None  # under the header: never "not a database" alone
+    db.write_bytes(b"j" * 200)
+    assert manifest_mod.lost_words(db) is None
+    capsys.readouterr()
+    _rc, out = _status(str(initialised.config_path), capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert "file is not a database" in failed, failed
 
 
 def test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass(

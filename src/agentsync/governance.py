@@ -3079,8 +3079,8 @@ def unjudged_purges(n: int, check: str = "state_dir.manifest") -> str:
 
 
 NEW_START_NOTE = (
-    "not judged yet: there is no manifest, so nothing says whether its file is listed or published again; it "
-    "stays queued until the next sync builds the manifest"
+    "not judged yet: no sync has built the manifest, so nothing says whether its file is listed or published "
+    "again; it stays queued until the next sync builds the manifest"
 )
 """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry with no manifest there and none
 lost: the person's new start (heartbeat.json moved aside), since only a sync with a manifest queues these, so
@@ -3219,6 +3219,10 @@ def _kept_queued(db: Path, q: QueuedPurge) -> str:
         Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
         conn = _connect(db)
         try:
+            if _first_run_started(conn) is None:
+                # a manifest no sync has run over (add-source, init or a dry run made it after the new start)
+                # is the new start's, never one that holds no such file (B13 round 28 I61)
+                return NEW_START_NOTE
             return _kept_why(conn, _read_manifest(conn), q)
         finally:
             conn.close()
@@ -3341,8 +3345,10 @@ def partition_purges(
         Manifest(db).close()
         conn = _connect(db)
         try:
-            m = _read_manifest(conn)
             started = _first_run_started(conn)
+            if started is None:  # no sync has run over it: the new start's (B13 round 28 I61)
+                return _unjudged_split(entries, NEW_START_NOTE)
+            m = _read_manifest(conn)
             # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
             # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
             info = {(r["source_id"], r["stable_id"]): (r["state"], bool(r["is_dir"])) for r in m.rows}
