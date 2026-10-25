@@ -13172,6 +13172,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "- no trace: 2 queued ids have no row and are no alias. A re-key leaves an alias, so what took "
         "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
         "history still names for them and takes them off the queue",
+        # B13 round 28 I46: the not-looked-up column's cause
+        "- not looked up: 1 queued purge was not looked up (a selector with no stable id: 1)",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
         "erased) and 1 purge-summary (one per purge that ran) lines",
     ], "what the columns mean for a run of the queue, in counts and fixed words"
@@ -13195,6 +13197,7 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "erases the page and history of the other 1",
         "- no row: 4 queued ids have no row. This manifest has no alias table, so none was looked up as an "
         "alias: an earlier id of a file listed now cannot be told from one a purge took away",
+        "- not looked up: 1 queued purge was not looked up (a selector with no stable id: 1)",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
         "erased) and 1 purge-summary (one per purge that ran) lines",
     ]

@@ -8515,6 +8515,65 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
         assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
 
 
+def _purge_section(config: Config) -> str:
+    """The setup report's Purge queue section, built as ``agentsync setup-report`` builds it."""
+    text, _red = setup_report.build_report(config.config_path, hooks=cli._report_hooks())
+    return text.split("### Purge queue", 1)[1].split("\n### ", 1)[0]
+
+
+def test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """B13 round 28 I2, I13: after the new start, the report's Purge queue section said a queued purge the
+    new manifest names nothing for was taken by "a purge that already ran, or an erasure" and that a run
+    "takes them off the queue", while status and `purge --queue` keep it queued (P112). It says so in
+    governance's own words; an erasure request queued before the new start is not called not resolvable,
+    and its no-trace line names the new start as a cause."""
+    cfg = _synced(initialised)
+    _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    erasure = governance.PurgeSelector(stable_id="contoso-volume:retired-0043", source_id="source")
+    import datetime as dt  # noqa: PLC0415
+
+    ago = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=5)
+    assert governance.enqueue_purge(
+        initialised.state_paths.root, erasure, governance.PurgeReason.ERASURE_REQUEST, now=ago
+    )
+    _new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    part = _purge_section(initialised)
+    assert f"- not resolvable after a new start: {governance.unresolved_purges(1)}" in part, part
+    assert "- no trace: 1 queued id has no row and is no alias." in part, part
+    assert "a purge that already ran, an erasure, or a new start (an entry queued before" in part, part
+    assert part.count("takes them off the queue") == 1, part
+
+
+def test_the_reports_purge_queue_over_no_manifest_gives_the_queues_own_judgment(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """B13 round 28 I46: over the new start (no manifest), the report's Purge queue section said its columns
+    were "what the manifest holds now" and counted every purge "not looked up" with no note why. It says no
+    id was looked up and why, gives governance's own judgment (the new start's wait), and counts the not
+    looked up ones by cause; over a lost manifest, the unjudged words and never the new start's."""
+    _synced(initialised)
+    _queue_upstream(initialised, "projects/sample.txt")
+    db = expand(initialised.state_paths.db)
+    kept = tmp_path / "kept.sqlite"
+    db.rename(kept)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    part = _purge_section(initialised)  # heartbeat.json kept: a lost manifest
+    assert "the manifest holds now" not in part, part
+    assert governance.new_start_purges(1) not in part, part
+    assert "- not looked up: 1 queued purge was not looked up (no manifest could be read" in part, part
+    _runnable, held = governance.partition_purges(initialised.state_paths)
+    assert all(f"- {line}" in part for line in governance.kept_lines(held)), part
+    _new_start(initialised, tmp_path)
+    part = _purge_section(initialised)
+    assert "No queued id was looked up: there is no manifest to look them up in." in part, part
+    assert f"- {governance.new_start_purges(1)}" in part and "the manifest holds now" not in part, part
+    assert "- not looked up: 1 queued purge was not looked up (no manifest could be read" in part, part
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize("dlp", [False, True], ids=["kept only", "with a DLP entry"])
 def test_over_a_manifest_this_account_cannot_open_purge_refuses_and_names_the_fail_that_is_there(
