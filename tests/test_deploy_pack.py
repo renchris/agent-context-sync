@@ -6543,6 +6543,39 @@ def test_records_round_26_changed_point_to_the_change() -> None:
     assert text.count(replaced) == 2
 
 
+def test_the_p53_line_says_only_resolve_faileds_docstring_names_the_readers() -> None:
+    """B13 round 28 I73: §16.191 P53's dated line at §16.186 E48 said the `RESOLVE_FAILED` and
+    `_check_speech` docstrings both name both readers (doctor's fix and the report's bucket), and
+    `_check_speech`'s names neither. The line says what each docstring holds, read from both, and a §16.197
+    line records the correction."""
+    import ast  # noqa: PLC0415
+
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    tree = ast.parse(inspect.getsource(speech))
+    [doc] = [
+        nxt.value.value
+        for node, nxt in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Assign)
+        and [getattr(t, "id", "") for t in node.targets] == ["RESOLVE_FAILED"]
+        and isinstance(nxt, ast.Expr)
+        and isinstance(nxt.value, ast.Constant)
+    ]
+    resolve = " ".join(doc.split())
+    check = " ".join((doctor._check_speech.__doc__ or "").split())
+    assert "Doctor's fix keys on these words" in resolve and "``_helpers_again``" in resolve
+    assert "Command Line Tools" in resolve and "Command Line Tools update" in check
+    assert "_helpers_again" not in check and "_resolve_again_fix" not in check
+    claims, _bare, _held_at, unheld = _dated_line_scan()
+    assert unheld == [] and ("16.197", ["I73"], "16.186", "E48") in claims
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert (
+        "The `RESOLVE_FAILED` docstring now names both readers, and it and `_check_speech`'s name the"
+        " toolchain fix." in text
+    )
+    assert "The `RESOLVE_FAILED` and `_check_speech` docstrings now name both readers" not in text
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

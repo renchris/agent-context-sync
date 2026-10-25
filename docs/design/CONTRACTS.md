@@ -30628,8 +30628,10 @@ docs/deploy/README.md, README.md's "Placing the speech models", it-request.md's 
 say the speech helper needs Swift 6.0 or later (Command Line Tools 16 or later, on macOS 14.5 or later).
 Amended 2026-10-24, §16.191 P53: "doctor is its only reader" was wrong when it landed: `setup_report._helpers_again`
 (§16.183 E34) also keys on the `RESOLVE_FAILED` head, and filed a `TOOLS_TOO_OLD` warn under "install.sh builds it
-again" until lane RA's round 27 P32 and P52 gave it a bucket of its own. The `RESOLVE_FAILED` and `_check_speech`
-docstrings now name both readers and the toolchain fix.
+again" until lane RA's round 27 P32 and P52 gave it a bucket of its own. The `RESOLVE_FAILED` docstring now names
+both readers, and it and `_check_speech`'s name the toolchain fix.
+Amended 2026-10-25, §16.197 I73: the line above said both docstrings name both readers; `_check_speech`'s names
+neither (`doctor._resolve_again_fix`, `setup_report._helpers_again`), as §16.191's own P53 record says.
 
 **An unquoted URL ends only where Git's prefix follows it (E49; `agentsync.convert.ocr`; dated line at §16.181
 D84).** D84 ended an unquoted URL at the first `: `, which may sit inside a path (macOS stores a Finder `/` in a name
@@ -31643,3 +31645,9 @@ before the gate, which `--no-ci` skips as it does the other two, and the header 
 (and a comment `without either CI read`). The header names the three: trunk's runs before the gate and after it,
 and the read-back after the push. Test: `test_ship_land.py::test_no_ci_skips_every_ci_read_as_the_header_says`,
 which also lands under `--no-ci` with a red trunk's gh on PATH and finds it never called.
+
+**The P53 line at E48 says which docstring names the readers** (I73; corrects §16.186 E48). Its dated line said the
+`RESOLVE_FAILED` and `_check_speech` docstrings both name doctor's fix and the report's bucket as readers; only
+`RESOLVE_FAILED`'s does (`speech.py`), and `_check_speech`'s adds the toolchain fix alone. The line now says so, and
+a dated line records what it said. Docs only. Test: `test_the_p53_line_says_only_resolve_faileds_docstring_names_the_readers`,
+which reads both docstrings.
