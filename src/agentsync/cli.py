@@ -1478,14 +1478,18 @@ def _status_lines(config: Config) -> list[str]:
         queued, kept = [], []
     for h in holds:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
-    if queued:
+    if queued and governance.hold_list_unread(config.state_paths.root):
+        # read apart from the holds (P44), so a hold list that cannot be read invites no run here (P131)
+        out.append(
+            f"queued purges: {len(queued)} (not run while the hold list cannot be read: see governance.hold)"
+        )
+    elif queued:
         out.append(
             f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
             f"`{loop.BIN} purge --queue`)"
         )
-    if (
-        kept
-    ):  # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
+    # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
+    if kept:
         out.append(f"queued purges kept: {len(kept)} (the governance.purge_queue line says why)")
     if gov is not None:
         try:

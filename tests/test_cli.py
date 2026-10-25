@@ -1603,7 +1603,9 @@ def test_the_time_machine_line_over_a_shut_state_folder_says_not_checked_once(
     info, warn = sorted(
         cli._time_machine_checks(initialised), key=lambda c: c.severity is doctor.Severity.WARN
     )
-    assert info.detail == doctor.STATE_FOLDER_UNCHECKED, info
+    # a 0700 folder of this account's that still refuses: its one FAIL is state_dir.files (B13 round 27 P122)
+    files_words = doctor.STATE_FOLDER_UNCHECKED.replace("state_dir [FAIL]", "state_dir.files [FAIL]")
+    assert info.detail == files_words, info
     assert warn.severity is doctor.Severity.WARN and warn.detail == f"not excluded from Time Machine: {plain}"
 
 
@@ -4251,7 +4253,9 @@ def test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a
         target.chmod(mode)
     (line,) = [ln for ln in out if ln.startswith("status: cannot read the state: ")]
     what = "a file" if shut == "manifest" else "the state folder"
-    want = f"{what} cannot be opened: Permission denied; the state_dir lines say why"
+    # a shut folder names its one FAIL, state_dir's at 0000 here (B13 round 27 P122); a file keeps the lines
+    why = "the state_dir lines say why" if shut == "manifest" else "the state_dir [FAIL] line says why"
+    want = f"{what} cannot be opened: Permission denied; {why}"
     assert line == f"status: cannot read the state: {want}", line
     if shut != "manifest":  # the lock, a file, refused because of the folder
         assert words == want, words
