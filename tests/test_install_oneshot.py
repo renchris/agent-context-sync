@@ -8799,6 +8799,31 @@ STATE_LOST_HBMODE_NEXT = (
 )
 """Step 2's NEXT for it (ruling 21): the person was asked to choose over a record no one had read."""
 
+SHORT_FIX = (
+    "fixing {it} the person's (keeping a copy, they restore it from a copy they trust, or move it aside and "
+    "heartbeat.json with it, so the next sync starts a new manifest)"
+)
+"""The person's fix for a manifest there but too short to be one, as doctor.lost_fix gives it (lane B round 28
+I92: moving heartbeat.json alone left a file the next sync stops on as no database)."""
+
+STATE_LOST_SHORT_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is empty or too "
+    "short to be a manifest, though heartbeat.json beside it records earlier passes: "
+    + SHORT_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for it (lane B round 28 I92, install.sh's two inlined copies)."""
+
+STATE_LOST_SHORT_NEXT = (
+    "NEXT: agentsync's state file, manifest.sqlite, is empty or too short to be a manifest, though "
+    "heartbeat.json beside it records earlier passes (the error above names it; ~/.local/bin/agentsync "
+    "status prints it and its fix on its state_dir.manifest line): "
+    + SHORT_FIX.format(it="it is")
+    + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
+    "next run is: {rerun}"
+)
+"""Step 2's NEXT for it (I92)."""
+
 LOST_LINK_FIX = (
     "fixing {it} the person's (they remove the link first; then they restore the file from a copy they "
     "trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest)"
@@ -9146,6 +9171,7 @@ def misplaced_tail(role: str, kind: str = "folder") -> str:
         "LM-link-damaged",
         "LM-link-gone-damaged",
         "LM-hbmode",
+        "LM-short",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -9242,6 +9268,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM-link-damaged": "state-lost",
         "LM-link-gone-damaged": "state-lost",
         "LM-hbmode": "state-lost",
+        "LM-short": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -9312,6 +9339,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
             elif state != "LM-none":
                 heartbeat.write_text(json.dumps({"project-alpha": entry}), encoding="utf-8")
+            if state == "LM-short":  # lane B round 28 I92: there, but too short to be a manifest
+                db.write_bytes(b"x" * 10)
             if state == "LM-hbmode":  # round 28 ruling 21: a record no one can read, at a mode of its own
                 heartbeat.chmod(0)
             if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
@@ -9438,6 +9467,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         tail = STATE_LOST_LINK_UNREAD_TAIL
     if state == "LM-hbmode":
         tail = STATE_LOST_HBMODE_TAIL
+    if state == "LM-short":
+        tail = STATE_LOST_SHORT_TAIL
     odd = {  # round 27 P119: which side, and what is there
         "SN-shm": "shm-folder",
         "SN-shm-shut": "shm-folder",
@@ -11031,10 +11062,20 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
         "missing": lambda: None,
         "dangling": lambda: db.symlink_to(state / "gone.sqlite"),
         "dangling-dir": lambda: db.symlink_to(tmp_path / "gone" / "manifest.sqlite"),
-        "live-link": lambda: (state / "live.sqlite").write_bytes(b"") or db.symlink_to(state / "live.sqlite"),
+        "live-link": lambda: (
+            (state / "live.sqlite").write_bytes(b"x" * 100),
+            db.symlink_to(state / "live.sqlite"),
+        ),
         "loop": lambda: db.symlink_to(db),
-        "file": lambda: db.write_bytes(b""),
+        "file": lambda: db.write_bytes(b"x" * 4096),
         "folder": db.mkdir,
+        # lane B round 28 I92: a file under a manifest's 100-byte header beside earlier passes is lost
+        "empty": lambda: db.write_bytes(b""),
+        "short": lambda: db.write_bytes(b"x" * 99),
+        "link-short": lambda: ((state / "cut.sqlite").write_bytes(b"x"), db.symlink_to(state / "cut.sqlite")),
+        "through-file": lambda: (
+            (state / "plain").write_bytes(b"") or db.symlink_to(state / "plain" / "m.sqlite")
+        ),
     }
     # B13 round 27 P111 (ruling 17): a heartbeat.json there that cannot be read is lost all the same, as
     # manifest.lost_words reads it (lane B); none there, or a link to nothing, is a first start
@@ -11060,12 +11101,13 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
             make()
             want = manifest_lost(db)
             assert lost(db) is want, (name, beat)
-            # round 28 I56: the unread heartbeat is a fact apart from the link kind, never dropped beside it
-            link = {"dangling": 3, "dangling-dir": 2}.get(name, 1)
+            # round 28 I56: the unread heartbeat is a fact apart from the link kind, never dropped beside it;
+            # I92 (lane B): 5 for a manifest there but too short to be one
+            link = {"dangling": 3, "dangling-dir": 2, "through-file": 2, "empty": 5, "short": 5}.get(name, 1)
             assert state_lost(db) == ((link, int(beat in unread)) if want else (0, 0)), (name, beat)
-            assert want is (
-                beat in ("record", *unread) and name in ("missing", "dangling", "dangling-dir")
-            ), (
+            # lane B's I92 judges a regular file alone by its size: a link to a short file is judged as before
+            lostable = ("missing", "dangling", "dangling-dir", "through-file", "empty", "short")
+            assert want is (beat in ("record", *unread) and name in lostable), (
                 name,
                 beat,
             )
@@ -11519,6 +11561,37 @@ def test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_
     assert lost.returncode == 1, lost.stdout + lost.stderr
     assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=rerun)), last_line(lost)
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_at_steps_1_and_2(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """Lane B's round 28 I92, install.sh's half, with the real agentsync: an empty manifest beside a heartbeat
+    that records passes, which SQLite would open as a new database, now stops init as lost, while install.sh's
+    two inlined copies read only a missing file. Step 1 predicts the stop, step 2's NEXT gives the damaged
+    manifest's fix, and following it (the file aside and heartbeat.json with it) ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    db.write_bytes(b"")  # SQLite opens it as a new database; 2 to 99 bytes stop init as no database (exit 65)
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(STATE_LOST_SHORT_TAIL), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(STATE_LOST_SHORT_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(
+        cp
+    )
+    db.rename(db.with_name("manifest.sqlite.aside"))  # the person's choice: it aside, heartbeat.json with it
+    heartbeat = db.with_name("heartbeat.json")
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

@@ -773,7 +773,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   status's `NEXT:` leads with it: the tail says `heartbeat.json's mode refuses this account (a mode, not damage), so
   the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still
   missing then, fixing that is the person's (...)`, and step 2's `NEXT:` names the chmod, then the re-run (lane B's
-  I42). A folder, a fifo, a socket or a link where the -wal
+  I42). A manifest that is there but empty or under its 100-byte header, beside a heartbeat.json that records
+  earlier passes, is lost too (lane B's round 28 I92): the tail and the `NEXT:` say `empty or too short to be a
+  manifest, though heartbeat.json beside it records earlier passes` and give the damaged manifest's fix, `keeping a
+  copy, they restore it from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a
+  new manifest`. A folder, a fifo, a socket or a link where the -wal
   or -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod
   words, or none): `state-side-notfile`, `; step 2 stops <at its step> on <the side>, which <is what> (not damage):
   fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,

@@ -7118,13 +7118,20 @@ def lost(p):
     """manifest.manifest_lost, inlined, since the installed build that runs this may predate it (round 24
     ruling 7): no manifest, in a folder this account can use, while heartbeat.json beside it records a pass. A
     symlink to a missing file is a missing manifest, as manifest_lost reads it since round 24 B64 (round 25 D33:
-    this copy predated it, so step 1 predicted no stop for a dangling link)."""
+    this copy predated it, so step 1 predicted no stop for a dangling link). A regular file, not a link,
+    shorter than 100 bytes, the header of a manifest, is lost too, as lane B round 28 I92 reads it (SQLite
+    opens 0 or 1 byte as a new database): lostshort says so, and a link through a file is to nothing."""
+    global lostshort
+    lostshort = False
     try:
-        if not stat.S_ISLNK(p.lstat().st_mode):
+        st = p.lstat()
+        if stat.S_ISLNK(st.st_mode):
+            p.stat()
             return False
-        p.stat()
-        return False
-    except FileNotFoundError:
+        if not stat.S_ISREG(st.st_mode) or st.st_size >= 100:
+            return False
+        lostshort = True
+    except (FileNotFoundError, NotADirectoryError):
         pass
     except OSError:
         return False
@@ -7376,7 +7383,9 @@ elif misplaced:
     pass
 elif (lostdb := lost(db)):  # step 2 reinstalls this checkout, whose init stops on it before any other open (ruling 7):
     words.append("state-lost")  # a shut -wal left beside it would get a chmod that ends nothing (the review)
-    if gone_link(db):
+    if lostshort:  # there, but too short to be one: the damaged manifest fix (lane B round 28 I92)
+        words.append("lost-short")
+    elif gone_link(db):
         words.append("lost-link")  # read apart from the words, as a role- line is (round 25 D79)
     elif db.is_symlink():  # a link to nothing in a folder a sync can write: named as one (round 26 E19)
         words.append("lost-dangling")
@@ -7453,7 +7462,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7559,6 +7568,7 @@ list_folders() {
 				clink="$(LC_ALL=C grep -xE 'lost-(link|dangling)' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cunread="$(LC_ALL=C grep -x 'lost-unread' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				chbmode="$(LC_ALL=C grep -x 'lost-hbmode' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
+				cshort="$(LC_ALL=C grep -x 'lost-short' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cside="$(LC_ALL=C grep -x 'side-status' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
 				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|damaged|symlink-(loop|nothing|file|folder|fifo|socket)|dir-(file|fifo|socket|other|symlink-(loop|nothing|file)))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
@@ -7765,6 +7775,13 @@ list_folders() {
 		lfact="missing though heartbeat.json beside it records earlier passes (not damage, not a mode)"
 		[ -z "$lwhat" ] || lfact="missing, though heartbeat.json beside it records earlier passes (not damage, not a mode)"
 		[ -z "$cunread" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+		# there, but empty or too short to be a manifest: lane B's words and the damaged manifest's fix, moved
+		# aside with heartbeat.json, as doctor.lost_fix gives it (B13 round 28 I92)
+		if [ -n "$cshort" ]; then
+			lfix="keeping a copy, they restore it from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a new manifest"
+			lfact="empty or too short to be a manifest, though heartbeat.json beside it records earlier passes"
+			[ -z "$cunread" ] || lfact="empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+		fi
 		# heartbeat.json is this account's own, at a mode that refuses it: its chmod 600 is the agent's, first, as
 		# status's NEXT leads with it, and only the stop that may follow is the person's (B13 round 28 ruling 21,
 		# lane B's I42: the person was asked to choose over a record no one had read)
@@ -8757,6 +8774,7 @@ state_misplaced() {
 STATE_LOST_LINK="" # 1 once state_lost finds the lost manifest a symlink into a folder gone or refusing a write
 STATE_LOST_DANGLING="" # 1 once state_lost finds it a symlink to nothing in a folder a sync can write (round 26 E19)
 STATE_LOST_UNREAD="" # 1 once state_lost finds heartbeat.json beside it there but unreadable (round 27 P111)
+STATE_LOST_SHORT="" # 1 once state_lost finds it there but under a manifest's header (lane B round 28 I92)
 STATE_LOST_HBFIX="" # its chmod 600, once state_lost finds this account's own at a mode that refuses it (ruling 21)
 # Whether the manifest is lost from a Mac that has synced (manifest.manifest_lost, round 23 A29): none at the
 # config's state path (or a symlink there to a missing file, round 24 B64, round 25 D33), in a folder this account can use, while heartbeat.json beside it records a pass. init
@@ -8776,17 +8794,21 @@ from agentsync.config import load_config
 from agentsync.paths import expand
 
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
-link = False
+link = short = False
 try:
-    # a symlink to a missing file is a missing manifest, as manifest_lost reads it (round 25 D33)
-    if not stat.S_ISLNK(db.lstat().st_mode):
+    # a symlink to a missing file is a missing manifest, as manifest_lost reads it (round 25 D33); a regular file,
+    # not a link, under the 100-byte header is lost too, as lane B round 28 I92 reads it: 5 below
+    st = db.lstat()
+    if stat.S_ISLNK(st.st_mode):
+        link = True
+        db.stat()
         print(0)
         sys.exit(0)
-    link = True
-    db.stat()
-    print(0)
-    sys.exit(0)
-except FileNotFoundError:
+    if not stat.S_ISREG(st.st_mode) or st.st_size >= 100:
+        print(0)
+        sys.exit(0)
+    short = True
+except (FileNotFoundError, NotADirectoryError):
     pass
 except OSError:
     print(0)
@@ -8847,21 +8869,24 @@ lost = unread or any(
 folder = Path(os.path.realpath(db)).parent
 # and last, the chmod 600 of heartbeat.json when that is all that refuses it, by doctor.state_path_fix
 hbfix = hbfix if unread and hbfix.startswith("chmod 600 ") else ""
-print((3 if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else 2) if lost and link else int(lost), int(unread), hbfix)
+code = 5 if lost and short else (3 if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else 2) if lost and link else int(lost)
+print(code, int(unread), hbfix)
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
 	STATE_LOST_LINK=""
 	STATE_LOST_DANGLING=""
 	STATE_LOST_UNREAD=""
 	STATE_LOST_HBFIX=""
+	STATE_LOST_SHORT=""
 	case "$n" in
-	[123]" 1 chmod 600 "*) STATE_LOST_UNREAD=1 STATE_LOST_HBFIX="${n#* 1 }" ;;
-	[123]" 1"*) STATE_LOST_UNREAD=1 ;;
+	[1235]" 1 chmod 600 "*) STATE_LOST_UNREAD=1 STATE_LOST_HBFIX="${n#* 1 }" ;;
+	[1235]" 1"*) STATE_LOST_UNREAD=1 ;;
 	esac
 	n="${n%% *}"
 	[ "$n" != 2 ] || STATE_LOST_LINK=1
 	[ "$n" != 3 ] || STATE_LOST_DANGLING=1
-	[ "$n" = 1 ] || [ "$n" = 2 ] || [ "$n" = 3 ]
+	[ "$n" != 5 ] || STATE_LOST_SHORT=1
+	[ "$n" = 1 ] || [ "$n" = 2 ] || [ "$n" = 3 ] || [ "$n" = 5 ]
 }
 # A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
 # fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
@@ -8934,6 +8959,11 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			lfix="they remove the link first; then $lfix"
 		}
 		[ -z "$STATE_LOST_UNREAD" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+		if [ -n "$STATE_LOST_SHORT" ]; then # there, but too short: the damaged manifest's fix (lane B round 28 I92)
+			lfix="keeping a copy, they restore it from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a new manifest"
+			lfact="empty or too short to be a manifest, though heartbeat.json beside it records earlier passes"
+			[ -z "$STATE_LOST_UNREAD" ] || lfact="empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+		fi
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
 		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's

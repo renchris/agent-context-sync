@@ -31747,6 +31747,20 @@ stops on the missing manifest, fixing that is the person's (...)`. Tests: the st
 `test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod` (the chmod, the re-run's
 lost-manifest NEXT, the person's new start).
 
+**A manifest too short to be one is lost in install.sh's copies too** (lane B's round 28 I92, install.sh's half).
+Lane B's `manifest.lost_words` reads a regular file, not a link, under the 100-byte header beside a
+heartbeat.json that records passes, or cannot be read, as lost (SQLite opens 0 or 1 byte as a new database, so a
+queued escalation ran blind and a sync started a new manifest unasked), with the damaged manifest's fix
+(`doctor.lost_fix`). Step 1's `lost()` and step 2's `state_lost` inline that rule (the installed build may predate
+it), and both now read a link through a file as missing, as `lost_words` does: step 1 adds `lost-short` (no link kind
+beside it) and step 2's probe prints 5. The tail and the NEXT say `empty or too short to be a manifest, though
+heartbeat.json beside it records earlier passes` (or lane B's unread words) and give `keeping a copy, they restore it
+from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a new manifest`; a file
+of 2 to 99 bytes stops init as no database (exit 65), whose NEXT is the person's already, with the same fix.
+docs/deploy/setup-feedback.md says so. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`
+(`empty`, `short`, `link-short`, `through-file`), the step 1 table's `LM-short` row and
+`test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_at_steps_1_and_2` (following the words ends it).
+
 **What is at a misplaced lock, heartbeat or governance file is named** (I20, I35). Step 1's `state-file-notfile` tail
 and step 2's NEXT said `which is a folder or something else that is not a file` for a fifo at the lock or a folder at
 holds.json, while the error line just above, and status, name the kind (`is a fifo, not a file`), as the -wal and
