@@ -5245,7 +5245,9 @@ def _last_rescreen(r: _Run) -> str:
         return "none recorded (no manifest yet)"
     except OSError as exc:
         if isinstance(exc, PermissionError):  # B13 round 22 Z15: the folder's words when it is the folder
-            return f"not read ({_STATE_FOLDER_SHUT if _state_folder_shut(db) else _STATE_SHUT})"
+            return (
+                f"not read ({_state_folder_shut_words(db.parent) if _state_folder_shut(db) else _STATE_SHUT})"
+            )
         if exc.errno in (errno.ENOTDIR, errno.ELOOP):  # B13 round 23 A23: the folder's words when it is one
             return f"not read ({_why_not_read(_not_file_error(db))})"
         return f"not read ({_why_not_read(exc)})"
@@ -7391,7 +7393,17 @@ class _StateGovernanceShutError(Exception):
 
 class _StateFolderShutError(Exception):
     """The state folder, or a folder above it, refuses this account (:func:`_state_folder_shut`): the words
-    name the folder, never the state file (B13 round 22 Z15, Z41; round 22 ruling 3)."""
+    name the folder, never the state file (B13 round 22 Z15, Z41; round 22 ruling 3), and the one Doctor line
+    that says why, as status names it (:func:`_state_folder_shut_words` of ``root``; B13 round 28 I19, I58,
+    I68)."""
+
+    def __init__(self, root: Path | None = None) -> None:
+        super().__init__()
+        self.root = root
+
+    @property
+    def words(self) -> str:
+        return _state_folder_shut_words(self.root)
 
 
 def _page_strings(fm: str) -> tuple[str | None, str | None] | None:
@@ -7497,7 +7509,7 @@ class _Mirror:
             except OSError as exc:
                 if exc.errno in (errno.EACCES, errno.EPERM):
                     if _state_folder_shut(self.db):
-                        raise _StateFolderShutError from exc
+                        raise _StateFolderShutError(self.db.parent) from exc
                     raise ManifestOpenError(str(self.db), exc.errno, exc.strerror) from exc
                 raise
             if opened is None:  # Y70: an open would create its -shm at the file's mode
@@ -7673,7 +7685,46 @@ _STATE_SHUT = "the state file cannot be opened by this account: see Doctor's sta
 which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
 _STATE_FOLDER_SHUT = "the state folder cannot be opened by this account: see Doctor's state_dir lines"
 """The same for a state folder, or a folder above it, that refuses this account (:func:`_state_folder_shut`):
-the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses."""
+the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses. The
+words when the one Doctor line cannot be named (:func:`_state_folder_shut_words`)."""
+
+
+@dataclasses.dataclass(frozen=True)
+class _RootOnly:
+    """The one field of a config's ``state_paths`` doctor's :func:`state_folder_shut_line` reads."""
+
+    root: Path
+
+
+@dataclasses.dataclass(frozen=True)
+class _RootPaths:
+    state_paths: _RootOnly
+
+
+def _state_folder_pointer(root: Path | None) -> str:
+    """``state_dir line`` or ``state_dir.files line``: the one check whose FAIL says why this account cannot
+    look inside the state folder at ``root`` (``doctor.state_folder_shut_line``: the files check for this
+    account's own 0700 folder an ACL or a sandbox refuses, state_dir otherwise), as status names it (B13 round
+    27 P122; round 28 I19, I58, I68: the report said "state_dir lines" over one line, and a fixed "state_dir"
+    would point at an [ok] line). ``state_dir lines`` when no root is known or doctor cannot say (an older
+    build)."""
+    if root is None:
+        return "state_dir lines"
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        line = doctor.state_folder_shut_line(cast(Config, _RootPaths(_RootOnly(root))))
+    except Exception:
+        return "state_dir lines"
+    return f"{line} line" if line in ("state_dir", "state_dir.files") else "state_dir lines"
+
+
+def _state_folder_shut_words(root: Path | None) -> str:
+    """:data:`_STATE_FOLDER_SHUT` pointing at the one Doctor line that says why
+    (:func:`_state_folder_pointer`); the counting reads its opening, which never changes."""
+    return f"the state folder cannot be opened by this account: see Doctor's {_state_folder_pointer(root)}"
+
+
 _STATE_GOVERNANCE_SHUT = (
     "a file in the state folder cannot be opened by this account: see Doctor's governance lines"
 )
@@ -7746,8 +7797,8 @@ def _why_not_read(exc: BaseException) -> str:
         return "the configuration is refused: see Configuration"
     if isinstance(exc, ManifestOpenError):
         return _STATE_SHUT
-    if isinstance(exc, _StateFolderShutError):
-        return _STATE_FOLDER_SHUT
+    if isinstance(exc, _StateFolderShutError):  # B13 round 28 I19, I58, I68: the one line that says why
+        return exc.words
     if isinstance(exc, _StateSideNotFileError):  # B13 round 25 ruling 12 (D20)
         return exc.words
     if isinstance(exc, _StateNotFileError):
@@ -8814,7 +8865,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         # words
         root = expand(config.state_paths.root)
         if isinstance(exc.__cause__, PermissionError) and not os.access(root, os.X_OK):
-            raise _StateFolderShutError from exc
+            raise _StateFolderShutError(root) from exc
         that = _not_a_folder_at(root)  # B13 round 23 A23: not "an unexpected error: GovernanceError"
         if that is not None:
             raise _StateFolderNotFolderError(above=that != root) from exc
@@ -9724,6 +9775,13 @@ def _evidence_line(r: _Run) -> str:
     state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
+    # B13 round 28 I19, I58, I68: the one Doctor line those lines name, when they all name one
+    folder_lines = {
+        w.split("see Doctor's ", 1)[-1]
+        for w in why
+        if w.startswith("the state folder cannot be opened") and "see Doctor's " in w
+    }
+    folder_line = next(iter(folder_lines)) if len(folder_lines) == 1 else "state_dir lines"
     notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
     # B13 round 25 ruling 12 (D20): the -wal is not a file, the person's move aside, never access
     side_whys = [w for w in why if _SIDE_SEE in w and any(w.startswith(v) for v in _SIDE_ROLE.values())]
@@ -9749,7 +9807,7 @@ def _evidence_line(r: _Run) -> str:
         (
             folder,
             "the state folder cannot be opened by this account: a report written after it is fixed measures "
-            "them (see Doctor's state_dir lines)",
+            f"them (see Doctor's {folder_line})",
         ),
         (
             notfile,

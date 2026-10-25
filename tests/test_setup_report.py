@@ -13829,6 +13829,48 @@ def test_the_loop_line_says_a_sync_held_the_state_file_its_hook_waited_on(fake_m
     assert "NEXT: not read (it did not finish in time: a sync held the state file)" in line, line
 
 
+_FOLDER_SHUT_ONE = "the state folder cannot be opened by this account: see Doctor's state_dir line"
+"""B13 round 28 I19, I58, I68: a shut state folder's words name the one Doctor line, as status does."""
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="a macOS ACL")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder an ACL denies")
+def test_a_shut_state_folder_points_at_the_one_doctor_line_that_fails(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 28 I19, I58, I68 (P122's report half): the report said "see Doctor's state_dir lines" where
+    doctor and status name one line. A mode 0000 folder is state_dir's; this account's own 0700 folder an ACL
+    denies a search is state_dir.files' (state_dir is [ok] there): the evidence clause, the secret scan and
+    each "not measured" line name it, and it is the one state_dir* FAIL in Doctor."""
+    cfg = fake_mac["config"]
+    Seed(cfg).close()
+    root = expand(load_config(cfg).state_paths.root)
+    acl = "everyone deny list,search,add_file,add_subdirectory,delete_child"
+    for shut, line in (
+        (lambda: root.chmod(0o000), "state_dir"),
+        (lambda: _chmod_acl(root, acl), "state_dir.files"),
+    ):
+        shut()
+        try:
+            _rc, text, _ = report(tmp_path, cfg)
+        finally:
+            subprocess.run(["/bin/chmod", "-N", str(root)], check=False)
+            root.chmod(0o700)
+        words = f"the state folder cannot be opened by this account: see Doctor's {line} line"
+        assert f"(see Doctor's {line} line)" in _line(section(text, "Summary"), "- evidence: "), line
+        [scan] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
+        assert scan.endswith(f"last re-screen: not read ({words})"), scan
+        status = section(text, "Status")
+        assert f"not measured ({words})" in status and "state_dir lines" not in status, status
+        fails = [ln for ln in section(text, "Doctor").splitlines() if ln.startswith("[FAIL] state_dir")]
+        assert [ln.split(" — ", 1)[0] for ln in fails] == [f"[FAIL] {line}"], fails
+
+
+def _chmod_acl(path: Path, acl: str) -> None:
+    """``chmod +a`` an ACL entry on ``path`` (macOS)."""
+    subprocess.run(["/bin/chmod", "+a", acl, str(path)], check=True)
+
+
 def test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13842,7 +13884,8 @@ def test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere(
     db = expand(load_config(cfg).state_paths.db)
     for target in (db.parent, db):
         # B13 round 22 Z15: the folder's words for the folder (round 22 ruling 3)
-        shut = setup_report._STATE_FOLDER_SHUT if target == db.parent else setup_report._STATE_SHUT
+        # B13 round 28 I19, I58, I68: the one Doctor line that says why, as status names it
+        shut = _FOLDER_SHUT_ONE if target == db.parent else setup_report._STATE_SHUT
         target.chmod(0o000)
         try:
             text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
@@ -13887,13 +13930,13 @@ def test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fault_name
     ), conf
     status = section(text, "Status")
     purge = status.split("### Purge queue", 1)[1].split("###", 1)[0]
-    assert f"not measured ({setup_report._STATE_FOLDER_SHUT})" in purge, purge
+    assert f"not measured ({_FOLDER_SHUT_ONE})" in purge, purge
     assert "the state file cannot be opened" not in status, status
     evidence = _line(section(text, "Summary"), "- evidence: ")
     assert "because the state folder cannot be opened by this account" in evidence, evidence
     assert "another cause" not in evidence, evidence
     [scan] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
-    assert scan.endswith(f"last re-screen: not read ({setup_report._STATE_FOLDER_SHUT})"), scan
+    assert scan.endswith(f"last re-screen: not read ({_FOLDER_SHUT_ONE})"), scan
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
