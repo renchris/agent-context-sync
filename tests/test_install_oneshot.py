@@ -8322,12 +8322,14 @@ def _manifest_rows(
             )
 
 
-def _tool_python_without(env: dict[str, str], module: str, name: str) -> Path:
-    """:func:`_tool_python` whose ``module`` lacks ``name`` when install.sh's ``-c`` code runs: an older
-    agentsync's, or one that cannot run a reader."""
+def _tool_python_without(env: dict[str, str], module: str, *names: str) -> Path:
+    """:func:`_tool_python` whose ``module`` lacks each of ``names`` when install.sh's ``-c`` code runs: an
+    older agentsync's, or one that cannot run a reader. A name this build does not have is skipped, so an
+    older build's set (state_path_fix with the own_path_fix built on it) can be named whole."""
     py = _tool_python(env)
     run = 'exec(compile(sys.argv.pop(1), "<string>", "exec"))'
-    shim = f"import sys, {module} as _m\ndel _m.{name}\ndel _m\n{run}\n"
+    drop = "".join(f'if hasattr(_m, "{n}"):\n    del _m.{n}\n' for n in names)
+    shim = f"import sys, {module} as _m\n{drop}del _m\n{run}\n"
     return _write_exe(
         py,
         "#!/bin/bash\n"
@@ -9050,6 +9052,7 @@ def side_tail(odd: str, *, both: bool = False) -> str:
 MISPLACED_CHECKS = {
     "lock": "lock",
     "heartbeat": "heartbeat",
+    "governance": "governance.hold",
     "holds": "governance.hold",
     "queue": "governance.purge_queue",
     "suppressed": "governance.suppressed",
@@ -9064,6 +9067,9 @@ MISPLACED_IS = {
     "symlink-folder": "is a symlink to a folder, not a file",
     "symlink-loop": "is a symlink loop, not a file",
     "symlink-nothing": "is a symlink to nothing, not a file",
+    "damaged": "is damaged, empty or of the wrong shape, so no command can read it",
+    "dir-file": "is a file, not a folder",
+    "dir-symlink-nothing": "is a symlink to nothing, not a folder",
     "": "is a folder or something else that is not a file",
 }
 """What install.sh's misplaced_words says is there, by the token its probes read with the installed build's
@@ -9071,14 +9077,38 @@ own judge for the role (B13 round 28 I20, I35: the error above said "is a fifo, 
 folder or something else"); the generic words when that build cannot say."""
 
 
+def misplaced_fix(role: str, kind: str) -> str:
+    """The person's fix for it, in lane B's round 28 words (I87, I89, I90): the hold list is put back after
+    its move, a damaged file restored, governance/ put back; never a bare move aside of what holds the
+    holds."""
+    if kind == "damaged":
+        if role == "holds":
+            return (
+                "they restore it from a copy they trust; or, keeping a copy, they move it aside and, before "
+                "any purge, set each hold it held again"
+            )
+        return "they restore it from a copy they trust, or move it aside, keeping a copy"
+    if role == "governance":
+        return (
+            "they put the real governance folder (the one holding holds.json and audit.jsonl) back, from "
+            "wherever it was moved or from a copy; only where none was ever kept, they move it aside, "
+            "keeping a copy"
+        )
+    if role == "holds":
+        back = "then put the hold list back from a copy they trust"
+        return f"keeping a copy, they move it aside, {back}{SHUT_OPEN}"
+    return f"keeping a copy, they move it aside{SHUT_OPEN}"
+
+
 def misplaced_tail(role: str, kind: str = "folder") -> str:
     """Step 1's tail for a lock, heartbeat or governance file that is not a regular file where one belongs,
     which init stops on and add-source opens past (B13 round 27 ruling 16: P113, P125, P142), naming what is
     there (B13 round 28 I20, I35)."""
     return (
-        f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which {MISPLACED_IS[kind]} (not damage, not a "
-        f"mode): fixing that is the person's (keeping a copy, they move it aside{SHUT_OPEN}), and "
-        f"~/.local/bin/agentsync status prints it on its {MISPLACED_CHECKS[role]} line"
+        f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which {MISPLACED_IS[kind]} "
+        f"({'not a mode' if kind == 'damaged' else 'not damage, not a mode'}): fixing that is the person's "
+        f"({misplaced_fix(role, kind)}), and ~/.local/bin/agentsync status prints it on its "
+        f"{MISPLACED_CHECKS[role]} line"
     )
 
 
@@ -9236,8 +9266,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             _tool_python_read_only(env, db.parent)
         elif state == "LM-older":
             _tool_python_without(env, "agentsync.manifest", "manifest_lost")
-        elif state.endswith("-older"):
-            _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
+        elif state.endswith("-older"):  # a build before state_path_fix, so before own_path_fix too
+            _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix", "own_path_fix")
         else:
             _tool_python(env)
         if state in ("PM", "PM-fixed", "PM-older"):
@@ -11152,8 +11182,8 @@ def misplaced_status_next(role: str, rerun: str, kind: str = "folder") -> str:
     check = MISPLACED_CHECKS[role]
     return (
         f"NEXT: {FILE_NOUNS[role]} {MISPLACED_IS[kind]} (the [FAIL] {check} line above names it and its "
-        "fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's (keeping a copy, "
-        f"they move it aside{SHUT_OPEN}), not a step for the agent, so show them those lines and go on to "
+        "fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's "
+        f"({misplaced_fix(role, kind)}), not a step for the agent, so show them those lines and go on to "
         f"the report; once it is fixed, the next run is: {rerun}"
     )
 
@@ -11187,7 +11217,7 @@ def misplaced_next(role: str, rerun: str, kind: str = "folder") -> str:
     return (
         f"NEXT: {FILE_NOUNS[role]} {MISPLACED_IS[kind]} (the error above names "
         f"it; ~/.local/bin/agentsync status prints it and its fix on its {check} line): fixing it is the "
-        f"person's (keeping a copy, they move it aside{SHUT_OPEN}), not a step for the agent, so show them "
+        f"person's ({misplaced_fix(role, kind)}), not a step for the agent, so show them "
         f"the error and go on to the report; once it is fixed, the next run is: {rerun}"
     )
 
@@ -11273,6 +11303,46 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
     path.unlink() if case.endswith("-fifo") else path.rmdir()  # the person moves it aside
     if kept.exists():
         kept.rename(path)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+@pytest.mark.parametrize("case", ["holds-damaged", "governance-file"])
+def test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one(
+    real_env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """Lane B's round 28 I88, I89, I90 (ruling 19), install.sh's words, with the real agentsync: init now
+    stops on a hold list of the wrong shape and on governance/ that is not a folder, and status gives the
+    person's fix in lane B's words (restore the hold list, or set each hold again; put the real governance
+    folder back). install.sh's step 1 tail and step 2 NEXT said "a folder or something else that is not a
+    file" and "move it aside", false of a regular file and a bare move aside lane B forbids. They name what is
+    there and lane B's fix; following it ends the stop."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    gov = root / "governance"
+    gov.mkdir(0o700, exist_ok=True)
+    role, token = ("holds", "damaged") if case == "holds-damaged" else ("governance", "dir-file")
+    kept = root / "governance.kept"
+    if role == "holds":
+        (gov / "holds.json").write_text("[]", encoding="utf-8")
+    else:
+        gov.rename(kept)
+        gov.write_text("", encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(misplaced_tail(role, token)), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(misplaced_next(role, f"{INSTALL_SH} {wheel}", token)), last_line(cp)
+    if role == "holds":  # "they restore it from a copy they trust"
+        (gov / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    else:  # "they put the real governance folder ... back"
+        gov.unlink()
+        kept.rename(gov)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 
@@ -11733,8 +11803,8 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     made = {
         root / "agentsync.lock": b"",
         root / "heartbeat.json": b"{}",
-        gov / "holds.json": b"{}",
-        gov / "purge-queue.json": b"[]",
+        gov / "holds.json": b'{"holds": []}',  # the shapes agentsync writes (lane B round 28 I90)
+        gov / "purge-queue.json": b'{"queue": []}',
         gov / "suppressed.json": b"{}",
         gov / "audit.jsonl": b"",
     }
@@ -11812,13 +11882,18 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
                 path.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
+    # lane B's round 28 I88, I89, I90: governance/ that is a file, and a hold list of the wrong shape (the
+    # linked system file reads as no hold list), stop init now, so step 1 predicts that stop, in lane B's fix
+    misplaced = {"gov-file": ("governance", "dir-file"), "foreign-holds": ("holds", "damaged")}
+    misplaced["foreign-holds-sticky"] = ("holds", "damaged")
+    if case in misplaced:
+        assert last_line(cp).endswith(misplaced_tail(*misplaced[case])), last_line(cp)
+        assert logged.endswith(" config_err=state-file-notfile"), logged
+        return
     if case in (
         "missing",
-        "gov-file",
         "read-alone",
         "foreign-heartbeat",
-        "foreign-holds",
-        "foreign-holds-sticky",
     ):
         assert last_line(cp).endswith("(none is needed)"), last_line(cp)
         assert "config_err" not in logged, logged
@@ -11870,6 +11945,10 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "holds-devnull",
         "holds-dangling-older",
         "queue-filelink-older",
+        "holds-damaged",
+        "queue-damaged",
+        "governance-file",
+        "governance-dangling",
     ],
 )
 def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file(
@@ -11896,16 +11975,20 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
     path = {
         "lock": lock,
         "heartbeat": heartbeat,
+        "governance": gov,
         "holds": gov / "holds.json",
         "queue": gov / "purge-queue.json",
         "suppressed": gov / "suppressed.json",
         "audit": gov / "audit.jsonl",
     }[case.split("-", maxsplit=1)[0] if case != "older" else "lock"]
-    path.unlink(missing_ok=True)
+    if path == gov:
+        gov.rmdir()
+    else:
+        path.unlink(missing_ok=True)
     if case.endswith("-fifo"):
         os.mkfifo(path, 0o600)
-    elif case.endswith("-filelink"):
-        root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
+    elif case.endswith("-filelink"):  # a working link to a hold list of the shape agentsync writes
+        root.joinpath("elsewhere.json").write_text('{"holds": []}', encoding="utf-8")
         path.symlink_to(root / "elsewhere.json")
     elif case == "queue-filelink-older":  # a link through a file: a file where a folder on its way belongs
         root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
@@ -11919,6 +12002,10 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         path.symlink_to(root / "nothing-here.json")
     elif case.endswith("-devnull"):  # a kind with no fixed word ("a symlink to not a regular file")
         path.symlink_to("/dev/null")
+    elif case.endswith("-damaged"):  # round 28 I90: a regular file it cannot read, of a wrong-typed shape
+        path.write_text('{"holds": "all"}' if case.startswith("holds") else '{"queue": 3}', encoding="utf-8")
+    elif case == "governance-file":  # round 28 I88, I89: governance/ itself not a folder
+        path.write_text("", encoding="utf-8")
     else:
         path.mkdir(0o700)
     if case == "lock-folder-lost":  # a lost manifest beside it: init stops on the lock first
@@ -11950,6 +12037,10 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         "holds-loop": "symlink-loop",
         "holds-dangling": "symlink-nothing",
         "holds-dangling-older": "symlink-nothing",
+        "holds-damaged": "damaged",
+        "queue-damaged": "damaged",
+        "governance-file": "dir-file",
+        "governance-dangling": "dir-symlink-nothing",
         "queue-filelink-older": "symlink-nothing",
         "holds-devnull": "",  # what no fixed word says keeps the generic words
     }.get(case, "folder")

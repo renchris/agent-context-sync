@@ -31818,6 +31818,26 @@ reader that fails costs no other word. Tests: the `holds-dangling-older` and `qu
 tool interpreter whose installed judge finds nothing while the checkout read runs untouched; `older` (neither can say)
 still says nothing.
 
+**governance/ itself, a damaged governance file and the hold list's fix, in lane B's words** (ruling 19, install.sh's
+half of lane B's I87, I88, I89 and I90). Lane B's `doctor.state_not_a_file` now also returns governance/ when it is
+not a folder (a file, a fifo, a link to nothing, a loop; under the `governance.hold` check) and a governance file that
+is a regular file agentsync cannot read (damaged JSON, empty, the wrong shape), and its fixes never move the hold list
+or governance/ aside bare: a page under a hold on `all` was erased that way. install.sh's misplaced words read
+governance/ as the role `governance` (`agentsync's governance folder`), asks for a damaged file as init does (`damaged=True`, an older build without it asked without), its kind by lane B's `governance_dir_kind`
+(`is a file, not a folder`, `is a symlink to nothing, not a folder`...), and a regular file a governance judge passes
+as `damaged` (`is damaged, empty or of the wrong shape, so no command can read it`, `(not a mode)`, never "not
+damage"). `misplaced_words` now sets the fix too: the hold list `keeping a copy, they move it aside, then put the hold
+list back from a copy they trust`; a damaged hold list `they restore it from a copy they trust; or, keeping a copy,
+they move it aside and, before any purge, set each hold it held again`; another damaged file `they restore it from a
+copy they trust, or move it aside, keeping a copy`; governance/ `they put the real governance folder (the one holding
+holds.json and audit.jsonl) back, from wherever it was moved or from a copy; only where none was ever kept, they move
+it aside, keeping a copy`, in step 1's tail, step 2's NEXT and the status step's. The tests' governance fixtures take
+the shapes agentsync writes (`{"holds": []}`, `{"queue": []}`), and an older build's stub drops `own_path_fix` with
+`state_path_fix`. Tests: the `holds-damaged`, `queue-damaged`, `governance-file` and `governance-dangling` cases of the
+step 1 misplaced test, the `gov-file` and `foreign-holds` cases of the status-step one (both stop init now), and
+`test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one` (following the words
+ends it).
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,

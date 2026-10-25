@@ -7157,6 +7157,10 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     # B13 round 28 I30: the side tail's fix, one side's words (the guide quotes them; two sides say "each")
     sfix = re.findall(r'^\t\tsfix="([^"]*)"$', script, re.M)[0]
     shown = {"$sfix": sfix.replace("$SHUT_OPEN", shut), **shown}
+    # lane B's round 28 I87 to I90: the misplaced file's reason and fix, a lock's words (the guide's quote)
+    [why] = re.findall(r'^\tMISPLACED_WHY="([^"$]*)" MISPLACED_FIX="', script, re.M)
+    [mfix] = re.findall(r'^\tMISPLACED_WHY="[^"$]*" MISPLACED_FIX="([^"]*)"$', script, re.M)
+    shown = {"$MISPLACED_WHY": why, "$MISPLACED_FIX": mfix.replace("$SHUT_OPEN", shut), **shown}
     for word, tail in opened:
         said = tail
         for var, words in shown.items():

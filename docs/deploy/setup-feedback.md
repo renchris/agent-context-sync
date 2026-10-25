@@ -812,7 +812,12 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   a file`, `is a fifo, not a file`, `is a symlink to a folder, not a file`, `is a symlink loop, not a file`, `is a
   symlink to nothing, not a file`; `is a symlink, not a file` for a link to a file at the lock, which opens no
   link), and `is a folder or something else that is not a file` from a build that cannot say (B13 round 28 I20,
-  I35). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
+  I35). Since lane B's round 28 I88 to I90 it also stops on governance/ that is not a folder (`<file>` is
+  `agentsync's governance folder`, `<is what>` `is a file, not a folder` and so on, under `governance.hold`) and on a
+  governance file it cannot read (`is damaged, empty or of the wrong shape, so no command can read it`, with `(not a
+  mode)`), and the fix is lane B's: the hold list goes aside `then put the hold list back from a copy they trust`; a
+  damaged hold list is restored, or moved aside with each hold set again before any purge; governance/ is put back
+  from wherever it was moved, never moved aside bare. That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
   rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another
   account's, the `sudo chown`) to run first; only then, since B13 round 26 E16 (CONTRACTS §16.184): said of a folder
   this account can open, a fifo or a link, it sent the person looking for a step status does not name. A state folder of this
