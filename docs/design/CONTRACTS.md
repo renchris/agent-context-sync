@@ -31720,6 +31720,51 @@ contract: `test_a_working_hold_list_still_passes`'s "nothing" is a hold list nev
 hold is I87's lost hold), and `test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_runnable_one`
 gives the held entry a note, not a wait.
 
+**I61, I92: no blind purge from a manifest that knows nothing (`agentsync.governance`, `agentsync.manifest`,
+`agentsync.ops.doctor`, `agentsync.cli`; ruling 20).** After the new start, add-source, init or a dry-run sync left
+an empty manifest, which P40's guard (no file there) passed, and `purge --queue` erased a listed file's page and
+history. `_kept_queued` and `partition_purges` keep an upstream deletion or label escalation with `NEW_START_NOTE`
+while the manifest records no run (`_first_run_started` is None); the note now reads `not judged yet: no sync has
+built the manifest, so nothing says whether its file is listed or published again; it stays queued until the next
+sync builds the manifest`. A regular file (or a link to one) where manifest.sqlite belongs that is shorter than
+SQLite's 100-byte header (`manifest.MANIFEST_MIN_BYTES`), beside a heartbeat that records passes or cannot be read,
+is lost: `manifest.LOST_MANIFEST_EMPTY` (`is empty or too short to be a manifest, but heartbeat.json records
+earlier passes`) or `LOST_MANIFEST_EMPTY_UNREAD`, both in `LOST_MANIFEST_SHORT` and `LOST_MANIFEST_WORDS`; SQLite
+opens 0 or 1 byte as a new database, so a sync started a new manifest unasked and a queued purge ran blind. Its fix
+is the damaged manifest's (`doctor.lost_fix`: `MANIFEST_FIX`, it aside and heartbeat.json with it), since a 2 to 99
+byte file left in place stops the next sync on "file is not a database"; status says `manifest: empty or too short
+(...)`; `ManifestLostError` carries EINVAL, not ENOENT, for it. Tests:
+`test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it` (now over add-source, init and `sync
+--mode dry_run`), `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_never_a_new_start`,
+`test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keeps_its_own_fail`.
+
+**I62, I32, I42: the lost-unread heartbeat (`agentsync.ops.doctor`, `agentsync.cli`; ruling 21).** I62 and I32 are
+one defect, built once. Beside a lost manifest whose heartbeat.json cannot be read (damaged JSON, a fifo, a link
+through a file, a loop), the heartbeat warn promised "the next completed pass rewrites it" while every sync refuses;
+it now ends `doctor.HEARTBEAT_LOST_TAIL` (`no pass runs until the person decides on the lost manifest beside it (the
+state_dir.manifest [FAIL] line says how), and either of its moves replaces this file`), a WARN with no fix of its
+own, so NEXT stays on the manifest; a folder there keeps its own FAIL. I42: when the heartbeat FAIL's fix is exactly
+`chmod 600 <heartbeat.json>` (this account's own file at a refusing mode) and the manifest FAIL ends in a lost-unread
+word (`doctor.LOST_UNREAD`), status's NEXT leads with that chmod, the agent's (`cli._heartbeat_chmod_first`): after
+it the manifest reads `records earlier passes`, the person's, or a first start. Tests:
+`test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost` (now five kinds),
+`test_a_heartbeat_shut_by_its_own_mode_beside_a_lost_manifest_takes_the_agents_chmod_first`.
+
+**I25, I49, I16, I50, I70, I67: status, doctor and the commands.** I25 and I49 are one defect, built once:
+`doctor.governance_check(path)` names the check that FAILs a governance file, for status's `status: cannot read
+the state: <role> is not a file; the <check> [FAIL] line says why` (never "its governance [FAIL] line", which names
+no check; the prefix the report keys on is kept) and for `state_not_a_file`. I16: `state_not_a_file` judges every
+side, the -wal first, past an openable -wal fifo only (P49), so a folder at the -shm beside one stops init at its
+config step. I50: the lost manifest's link into an unusable folder reads `<db> is a symlink to <target>, whose
+folder does not exist or refuses a write; the manifest is missing, but heartbeat.json records earlier passes`, the
+file's fact in its own clause, the ending the readers key on kept. I70: `_says_why` builds its files set before
+the state-folder gate, so a linked manifest's target or side outside the state folder points at the state_dir
+lines. I67: the "worded for upstream deletions only" guard rejects any note naming an upstream deletion, since
+`KEPT_PURGES` is only the plural tail. Tests: `test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file`,
+`test_an_openable_wal_fifo_never_hides_a_folder_at_the_shm`,
+`test_a_linked_manifests_side_outside_the_state_folder_points_at_the_state_dir_lines`, the D71 pin in
+`test_ops_doctor.py`, and `test_review_fixes.py`'s label-escalation queue test.
+
 **I52 (doctor's half): `doctor.own_path_fix`.** `state_path_fix` of a state file at its resolved path against its
 resolved folder, so a -wal or -shm beside a linked manifest's target takes its fix there; `refused_files_fix`'s
 chmod names each file by its own path and its person's branch is `own_path_fix`. Lane RB's install.sh and lane RA's
