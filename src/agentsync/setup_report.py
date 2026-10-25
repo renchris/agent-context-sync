@@ -5658,6 +5658,18 @@ steps -> the Installer table's words, as :data:`_HELPERS_NOTE_WORDS` (B13 round 
 (fail-lines)``). A note none of these is shown as it is; install.log keeps its tokens."""
 
 
+def _closing_stopped(v: dict[str, str] | None) -> str | None:
+    """How a signal stopped install.sh's closing status, from its report step's ``closing_status=<rc>``
+    (install.sh's ``LOOP_STOPPED``, B13 round 27 P14): ``stopped by SIGKILL (signal 9)``, in the converters'
+    words (:func:`_exited`); None when the field is not there, or not a shell's signal exit (128 + N), so a
+    hand-edited or garbled value is never echoed (B13 round 28 I27: no report read it, so a later report
+    showed the run as a plain exit 0 and its report step as plain done)."""
+    raw = (v or {}).get("closing_status", "")
+    if not raw.isdigit() or not 128 < int(raw) < 128 + 65:
+        return None
+    return _exited(128 - int(raw)).removeprefix("was ")
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
     """A run's steps as the Installer table's rows. With ``sign_in`` the run is the list whose sign-in step 1
     asked for, and the attempt went on (:func:`_sign_in_run`): its failed list-folders row reads ``stopped``,
@@ -5706,6 +5718,10 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             said = _helpers_note(said)
         elif name in _STEP_NOTE_WORDS:
             said = _STEP_NOTE_WORDS[name].get(said, said)
+        stopped = _closing_stopped(v) if name == "report" else None
+        if stopped is not None:  # B13 round 28 I27: install.sh's own note's words, "may be missing"
+            closing = f"the closing status was {stopped} before it finished, so its NEXT line may be missing"
+            said = f"{said}; {closing}" if said else closing
         note = ": ".join(part for part in (said, counts) if part)
         if sign_in is not None and name == "list-folders":
             note = f"{note}; {sign_in}" if note else sign_in
@@ -13316,6 +13332,9 @@ def _install_line(
     status = (
         _exit_text(last, r.install_runs) if last.rc is not None else f"has no end line ({_open_state(last)})"
     )
+    closing = _closing_stopped(last.step("report"))
+    if closing is not None:  # B13 round 28 I27: the exit is kept, so the stop is said beside it
+        status += f", its closing status {closing}"
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
     # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33)

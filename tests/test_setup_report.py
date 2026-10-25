@@ -6375,6 +6375,39 @@ def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
     assert record in setup_report._sync_stop_line(stop)
 
 
+def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 28 I27 (P14's report half): install.log's report step records closing_status=137 when a
+    signal stopped install.sh's closing status, but no report read it, so a later report showed the run as a
+    plain exit 0 and its report step as plain done. The report step's row and the Summary's install.sh line
+    say it in the converters' words; no field, or one that is no signal exit, reads as before."""
+    write_friction(fake_mac, V6_HAPPY)
+    log = v6_install_log(fake_mac)
+    plain = log.read_text(encoding="utf-8")
+    report_step = "step=report seconds=2 rc=0 result=done note=agentsync"
+    assert report_step in plain
+    for field, words in (
+        ("137", "stopped by SIGKILL (signal 9)"),
+        ("143", "stopped by SIGTERM (signal 15)"),
+        ("", None),
+        ("1", None),
+        ("abc", None),
+    ):
+        tail = f" closing_status={field}" if field else ""
+        log.write_text(plain.replace(report_step, report_step + tail), encoding="utf-8")
+        text, summary = summary_of(fake_mac)
+        [row] = [ln for ln in section(text, "Installer").splitlines() if ln.startswith("| report ")]
+        line = _line(summary, "- install.sh: ")
+        if words is None:
+            assert "closing status" not in row and "closing status" not in line, (field, row, line)
+            continue
+        assert f"the closing status was {words} before it finished, so its NEXT line may be missing" in row, (
+            row
+        )
+        assert f"the last exit 0 after 57s, its closing status {words}" in line, line
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)
