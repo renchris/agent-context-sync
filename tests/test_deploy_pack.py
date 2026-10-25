@@ -6608,6 +6608,28 @@ def test_the_round_27_ra_record_says_rb_built_install_shs_halves() -> None:
     )  # P138's: claims() reads a no-break space
 
 
+def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check() -> None:
+    """B13 round 28 I71: it-request.md gave the speech downloads only "Where developer tools with Swift 6.0 or
+    later are installed", but behind a proxy `speech._compile` seeds the 87 MB NemoTextProcessing file
+    (`_seed`, a curl through that proxy) before `swift package resolve`, the step that finds a too-old Swift,
+    so such a Mac fetches it too, once. The page says so; the order is read from `_compile`, and `_seed`'s
+    early return without a proxy from its source."""
+    it_request = " ".join(_page("docs/deploy/it-request.md").split())
+    assert (
+        "Behind a proxy (`HTTPS_PROXY` or `ALL_PROXY` in the environment, or git's http.proxy setting), the"
+        " installer fetches the 87 MB file through that proxy before SwiftPM checks the Swift version, so a"
+        " Mac with Swift older than 6.0 fetches it too. It fetches it once and keeps it in the speech"
+        " helper's cache. The helper is still not built, and the FluidAudio repository is not fetched."
+        in it_request
+    )
+    compile_ = inspect.getsource(speech._compile)
+    assert compile_.index("_seed(") < compile_.index('"resolve"]')
+    seed = inspect.getsource(speech._seed)
+    assert "if final.exists():\n        return" in seed  # once: a file already seeded is kept
+    assert 'if proxy == "" or (proxy is None and not _shell(_PROXIES)):\n        return' in seed
+    assert set(speech._PROXIES) == {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

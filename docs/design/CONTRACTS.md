@@ -31665,3 +31665,14 @@ had built them (§16.189); a third, P127's shell half "routed to RB", named no r
 three points to RB's record now, and a dated line at each says what it read; "not built here" stays, true of RA's
 commits. Docs only. Test:
 `test_the_round_27_ra_record_says_rb_built_install_shs_halves`.
+
+**The IT request says a proxy fetches the 87 MB file before the Swift check** (I71; `docs/deploy/it-request.md`).
+Round 27 P55 gave the speech downloads only "Where developer tools with Swift 6.0 or later are installed", but
+behind a proxy (`HTTPS_PROXY` or `ALL_PROXY` in the environment, `speech._PROXIES`, or git's `http.proxy`)
+`speech._compile` runs `_seed`, a curl of
+`NEMO_URL` through it, before `swift package resolve`, the step that finds a too-old Swift: such a Mac fetches the
+file too, once (`_seed` returns when the file is there, and `ocr._prune` keeps it), and builds no helper and fetches
+no FluidAudio repository. The page says so, the verifier's doc fix; the optional code guard (a manifest-only
+SwiftPM step before `_seed`) is not built, as the page is now true and the step order the speech tests assert
+stays. Test: `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which reads the order
+from `_compile`.

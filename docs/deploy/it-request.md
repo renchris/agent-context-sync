@@ -200,17 +200,20 @@ What the user reports, and what IT does about it:
   download redirects. The User-Agent is `NONISV|agentsync|agentsync/<version>`, so SharePoint logs identify the
   traffic.
 - **Installation downloads:** uv, and the Python 3.11 it installs when the Mac has none, from `astral.sh`,
-  `releases.astral.sh` and `github.com`; Python packages from `pypi.org` and `files.pythonhosted.org`. Where
-  developer tools with Swift 6.0 or later are installed (Command Line Tools or Xcode 16 or later), the installer
-  also builds the on-device speech helper, which fetches two things from GitHub: the FluidAudio library's whole git
-  repository from `github.com` (`FluidInference/FluidAudio`, pinned to commit `04e363c`; a few hundred MB), and a
-  prebuilt third-party binary that FluidAudio links, `NemoTextProcessing.xcframework.zip` from the
-  `FluidInference/text-processing-rs` release v0.3.1 (87 MB, a compiled Rust library). SwiftPM refuses that file
-  unless it matches the SHA-256 checksum pinned in FluidAudio's manifest at that commit. GitHub serves release files
-  from `release-assets.githubusercontent.com`, so a proxy that allows only `github.com` blocks this one; the speech
-  helper is then not built, and nothing else depends on it. An install that finds `[convert] recordings = false` in
-  `~/agent-context/sources.toml` builds no speech helper and fetches neither; on a new Mac, write that file with
-  just that table before installing (setup keeps it). No speech model is ever downloaded.
+  `releases.astral.sh` and `github.com`; Python packages from `pypi.org` and `files.pythonhosted.org`. Where developer
+  tools with Swift 6.0 or later are installed (Command Line Tools or Xcode 16 or later), the installer also builds the
+  on-device speech helper, which fetches two things from GitHub: the FluidAudio library's whole git repository from
+  `github.com` (`FluidInference/FluidAudio`, pinned to commit `04e363c`; a few hundred MB), and a prebuilt third-party
+  binary that FluidAudio links, `NemoTextProcessing.xcframework.zip` from the `FluidInference/text-processing-rs`
+  release v0.3.1 (87 MB, a compiled Rust library). Behind a proxy (`HTTPS_PROXY` or `ALL_PROXY` in the environment, or
+  git's http.proxy setting), the installer fetches the 87 MB file through that proxy before SwiftPM checks the Swift
+  version, so a Mac with Swift older than 6.0 fetches it too. It fetches it once and keeps it in the speech helper's
+  cache. The helper is still not built, and the FluidAudio repository is not fetched. SwiftPM refuses that file unless
+  it matches the SHA-256 checksum pinned in FluidAudio's manifest at that commit. GitHub serves release files from
+  `release-assets.githubusercontent.com`, so a proxy that allows only `github.com` blocks this one; the speech helper
+  is then not built, and nothing else depends on it. An install that finds `[convert] recordings = false` in
+  `~/agent-context/sources.toml` builds no speech helper and fetches neither; on a new Mac, write that file with just
+  that table before installing (setup keeps it). No speech model is ever downloaded.
 - **Credentials:** the MSAL token cache is kept in the user's login Keychain (service `agentsync`), or by the broker.
   Nothing lands on disk in plaintext unless the Keychain is unavailable, in which case a 0600 file is used and a
   warning is logged.
