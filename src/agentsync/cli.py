@@ -109,6 +109,8 @@ from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import (
     ACCESS_ERRNOS,
     LOST_MANIFEST,
+    LOST_MANIFEST_EMPTY,
+    LOST_MANIFEST_SHORT,
     LOST_MANIFEST_WORDS,
     Manifest,
     lost_words,
@@ -1521,12 +1523,18 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
         out.append(f"launcher: {event}")
     db = config.state_paths.db
     lost = lost_words(expand(db))
+    # a file there but too short is "empty or too short", never "missing" (B13 round 28 I92)
+    state = "empty or too short" if lost in LOST_MANIFEST_SHORT else "missing"
     if lost == LOST_MANIFEST:  # never "no sync has run" over a heartbeat that records passes (A29)
         out.append("manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)")
         return out
+    if lost == LOST_MANIFEST_EMPTY:
+        decides = "the person decides: see state_dir.manifest"
+        out.append(f"manifest: empty or too short (earlier syncs recorded; {decides})")
+        return out
     if lost is not None:  # a heartbeat.json that cannot be read rules no earlier sync out (B13 round 27 P111)
         unread = "heartbeat.json cannot be read; the person decides: see state_dir.manifest"
-        out.append(f"manifest: missing ({unread})")
+        out.append(f"manifest: {state} ({unread})")
         return out
     if doctor.manifest_refused(expand(db)):
         # a link to nothing in a folder it cannot use, or a loop: never "the next sync starts a new one"

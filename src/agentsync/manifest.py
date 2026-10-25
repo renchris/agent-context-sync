@@ -809,8 +809,29 @@ LOST_MANIFEST_UNREAD = (
 """:data:`LOST_MANIFEST` when heartbeat.json is there but cannot be read (damaged JSON, a fifo, a folder, a
 link that reaches no file, a mode): still lost, never a first start (B13 round 27 P111; ruling 17)."""
 
-LOST_MANIFEST_WORDS = (LOST_MANIFEST, LOST_MANIFEST_UNREAD)
+LOST_MANIFEST_EMPTY = "is empty or too short to be a manifest, but heartbeat.json records earlier passes"
+""":data:`LOST_MANIFEST` of a regular file shorter than SQLite's 100-byte header (0 or 1 byte, a cut-short
+copy): SQLite opens 0 or 1 byte as a new empty database, so a sync started a new manifest over the history
+with no word, and a queued purge ran blind and erased a current page (B13 round 28 I92). No manifest that went
+through :func:`_connect` is that short: WAL mode writes page 1 (4096 bytes) at once. Its fix is the damaged
+manifest's (``doctor.MANIFEST_FIX``: restore it, or move it aside and heartbeat.json with it), since a 2 to 99
+byte file left in place stops the next sync on "file is not a database"."""
+
+LOST_MANIFEST_EMPTY_UNREAD = (
+    "is empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes "
+    "cannot be ruled out"
+)
+""":data:`LOST_MANIFEST_EMPTY` beside a heartbeat.json that cannot be read (B13 round 28 I92, as P111)."""
+
+LOST_MANIFEST_SHORT = (LOST_MANIFEST_EMPTY, LOST_MANIFEST_EMPTY_UNREAD)
+"""The lost words of a manifest that is there but too short (:data:`LOST_MANIFEST_EMPTY`)."""
+
+LOST_MANIFEST_WORDS = (LOST_MANIFEST, LOST_MANIFEST_UNREAD, *LOST_MANIFEST_SHORT)
 """Every ending of a lost manifest's line, for the readers that key on it."""
+
+MANIFEST_MIN_BYTES = 100
+"""SQLite's header size: a regular file shorter than this where the manifest belongs is no manifest that ever
+synced (:data:`LOST_MANIFEST_EMPTY`)."""
 
 
 def manifest_lost(db_path: Path) -> bool:
@@ -827,12 +848,20 @@ def lost_words(db_path: Path) -> str | None:
     there but cannot be read (not a regular file, not JSON, not an object, refused) cannot rule earlier passes
     out: :data:`LOST_MANIFEST_UNREAD`, the same person's fix, never a new manifest started over it (B13 round
     27 P111: a damaged heartbeat read as no record, and the sync started one with no word to the person).
-    None otherwise: a readable heartbeat with no pass, or none there, is a first start."""
+    None otherwise: a readable heartbeat with no pass, or none there, is a first start. A regular file, never
+    a link, shorter than :data:`MANIFEST_MIN_BYTES` beside such a heartbeat is lost too,
+    :data:`LOST_MANIFEST_EMPTY` (B13 round 28 I92). A link is judged by its target's presence alone, as
+    before: install.sh's inlined copies read it so."""
+    short = False
     try:
-        if not stat.S_ISLNK(db_path.lstat().st_mode):
-            return None
-        db_path.stat()  # a symlink to a missing file is a missing manifest: a sync would start a new one
-        return None  # through it, the A29 hazard by a link (B13 round 24 B64)
+        st = db_path.lstat()
+        if not stat.S_ISLNK(st.st_mode):
+            if not stat.S_ISREG(st.st_mode) or st.st_size >= MANIFEST_MIN_BYTES:
+                return None
+            short = True  # SQLite opens 0 or 1 byte as a new database: judged by the heartbeat below (I92)
+        else:
+            db_path.stat()  # a symlink to a missing file is a missing manifest: a sync would start a new one
+            return None  # through it, the A29 hazard by a link (B13 round 24 B64)
     except (
         FileNotFoundError,
         NotADirectoryError,
@@ -851,11 +880,11 @@ def lost_words(db_path: Path) -> str | None:
         text = read_regular_text(heartbeat)
         data = json.loads(text) if text is not None else None
     except (OSError, ValueError):  # there, but no read: earlier passes cannot be ruled out (P111)
-        return LOST_MANIFEST_UNREAD
+        return LOST_MANIFEST_EMPTY_UNREAD if short else LOST_MANIFEST_UNREAD
     if text is None:  # a link to nothing: no heartbeat
         return None
     if not isinstance(data, dict):
-        return LOST_MANIFEST_UNREAD
+        return LOST_MANIFEST_EMPTY_UNREAD if short else LOST_MANIFEST_UNREAD
     passed = any(
         isinstance(entry, dict)
         and (
@@ -863,7 +892,9 @@ def lost_words(db_path: Path) -> str | None:
         )
         for entry in data.values()
     )
-    return LOST_MANIFEST if passed else None
+    if not passed:
+        return None
+    return LOST_MANIFEST_EMPTY if short else LOST_MANIFEST
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -874,8 +905,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     Mac that has synced (:func:`manifest_lost`) is never created anew: the person decides, by restoring it or
     moving heartbeat.json aside (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29)."""
     lost = lost_words(db_path)
-    if lost is not None:
-        raise ManifestLostError(f"{db_path} {lost}", errno.ENOENT, reason=lost)
+    if lost is not None:  # a file that is there but too short is no ENOENT (I92)
+        code = errno.EINVAL if lost in LOST_MANIFEST_SHORT else errno.ENOENT
+        raise ManifestLostError(f"{db_path} {lost}", code, reason=lost)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)

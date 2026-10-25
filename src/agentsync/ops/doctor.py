@@ -51,7 +51,7 @@ from agentsync.errors import AgentSyncError, ConfigError, ConversionError, Manif
 from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
-from agentsync.manifest import LOST_MANIFEST, Manifest, lost_words, manifest_lost
+from agentsync.manifest import LOST_MANIFEST, LOST_MANIFEST_SHORT, Manifest, lost_words, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import (
@@ -2128,7 +2128,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         target = dangling_target(expand(sp.db))
         what = f"is a symlink to {target}, which does not exist; the manifest " if target is not None else ""
         lost = lost_words(expand(sp.db)) or LOST_MANIFEST  # an unread heartbeat says so (P111)
-        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {what}{lost}", fix=LOST_MANIFEST_FIX))
+        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {what}{lost}", fix=lost_fix(lost)))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600
@@ -2164,6 +2164,14 @@ LOST_MANIFEST_FIX = (
 starts a new one over that history, so moving heartbeat.json aside is the person's confirmation (B13 round
 23 A29: status said "no manifest yet" and "no sync has run", and the sync it pointed to quietly started over,
 converting every file again and dropping the empty-folder alarm and the deletion hold)."""
+
+
+def lost_fix(lost: str) -> str:
+    """The person's fix of a lost manifest by its words (``manifest.lost_words``): :data:`LOST_MANIFEST_FIX`,
+    or for a manifest that is there but too short (``LOST_MANIFEST_SHORT``) the damaged manifest's
+    :data:`MANIFEST_FIX`, which moves it aside with heartbeat.json: moving heartbeat.json alone left a 2 to
+    99 byte file the next sync stops on as "file is not a database" (B13 round 28 I92)."""
+    return MANIFEST_FIX if lost in LOST_MANIFEST_SHORT else LOST_MANIFEST_FIX
 
 
 def unreadable_code(exc: sqlite3.Error) -> bool:
