@@ -9327,6 +9327,28 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     assert held in lines, lines
 
 
+def test_a_linked_manifests_side_outside_the_state_folder_points_at_the_state_dir_lines(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """B13 round 28 I70: P42's manifest_sides entries in _says_why sat behind the gate that returns None for
+    any path outside the state folder, so a refused -wal beside a linked manifest's target there pointed at
+    no line, while state_dir.files judges it. It points at the state_dir lines; a target inside the state
+    folder still does, and any other outside path still names none."""
+    db = expand(initialised.state_paths.db)
+    store = tmp_path / "store"
+    store.mkdir()
+    target = store / "manifest.sqlite"
+    target.write_bytes(b"")
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.unlink(missing_ok=True)
+    db.symlink_to(target)
+    wal = store / "manifest.sqlite-wal"
+    exc = PermissionError(errno.EACCES, "Permission denied", str(wal))
+    assert cli._says_why(initialised, wal) == "the state_dir lines say why"
+    assert cli._unread_words(exc, config=initialised).endswith("the state_dir lines say why")
+    assert cli._says_why(initialised, tmp_path / "elsewhere.txt") is None
+
+
 def test_an_openable_wal_fifo_never_hides_a_folder_at_the_shm(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

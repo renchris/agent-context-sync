@@ -1707,9 +1707,11 @@ def _says_why(config: Config | None, filename: object) -> str | None:
         return Path(os.path.realpath(expand(p)))
 
     root, path = real(sp.root), Path(os.path.realpath(os.fsdecode(filename)))
-    if not (path == root or path.is_relative_to(root)):
-        return None
     files = {real(sp.db), *(real(side) for side in doctor.manifest_sides(expand(sp.db)))}  # P42
+    if not (path == root or path.is_relative_to(root)):
+        # a linked manifest's target, or a side beside it, outside the state folder: state_dir.files judges
+        # it there, so its line says why; any other path outside no line judges (B13 round 28 I70)
+        return "the state_dir lines say why" if path in files else None
     if doctor.state_folder_shut(config):  # its one FAIL, named (B13 round 27 P122)
         return doctor.state_folder_says_why(config)
     if path == root or path in files | {real(sp.token_cache_fallback)}:
