@@ -1753,11 +1753,13 @@ def _unread_words(
         # read: state_dir's one FAIL, the person's, says why, never "GovernanceError: ... [Errno 20]" (B13
         # round 23 A22, A33; round 23 ruling 4)
         return "the state folder is not a folder; the state_dir line says why"
-    if isinstance(exc, governance.GovernanceDamagedError):  # no class name (B13 round 28 I90)
-        return f"{exc.role} cannot be read; its governance [FAIL] line says why"
-    if isinstance(exc, governance.GovernanceNotAFileError):  # no class name (B13 round 26 E43)
+    if isinstance(exc, governance.GovernanceUnreadError):  # no class name (B13 round 26 E43; round 28 I90)
+        # the check by the error's own file, never "its governance [FAIL] line", which names no check (I25)
+        says = f"the {doctor.governance_check(exc.path)} [FAIL] line says why"
+        if isinstance(exc, governance.GovernanceDamagedError):
+            return f"{exc.role} cannot be read; {says}"
         what = "a folder" if exc.role == governance.GOVERNANCE_DIR_ROLE else "a file"  # I89
-        return f"{exc.role} is not {what}; its governance [FAIL] line says why"
+        return f"{exc.role} is not {what}; {says}"
     if isinstance(exc, StateUnreadableError):
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it

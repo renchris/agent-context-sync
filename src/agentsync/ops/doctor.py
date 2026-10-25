@@ -1846,6 +1846,14 @@ _GOVERNANCE_CHECKS = {
 """The status check that FAILs each governance file that is not a file (B13 round 26 E43)."""
 
 
+def governance_check(path: Path) -> str:
+    """The status check that FAILs the governance file at ``path`` (:data:`_GOVERNANCE_CHECKS`), or
+    governance.hold for governance/ itself and any other path: one name for status's FAIL, its "cannot read
+    the state" pointer and every command's line, so they never drift (B13 round 28 I25, I49: the pointer said
+    "its governance [FAIL] line", a check that does not exist)."""
+    return _GOVERNANCE_CHECKS.get(path.name, "governance.hold")
+
+
 def state_not_a_file(
     config: Config, *, manifest: bool = True, damaged: bool = False
 ) -> tuple[Path, CheckResult] | None:
@@ -1898,8 +1906,7 @@ def state_not_a_file(
             # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
             odd = governance.governance_damaged(expand(sp.root))
         if odd is not None:
-            name = _GOVERNANCE_CHECKS.get(odd.path.name, "governance.hold")
-            return odd.path, _bad(name, odd.detail, fix=odd.fix)
+            return odd.path, _bad(governance_check(odd.path), odd.detail, fix=odd.fix)
     except Exception:  # the error path: never a second error over the first
         return None
     return None

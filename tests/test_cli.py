@@ -9294,7 +9294,8 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
 ) -> None:
     """B13 round 27 P44: one try read the holds and the queue, so a folder at purge-queue.json dropped the
     HOLD lines status had read, and a folder at holds.json dropped sources.toml's own hold. Each read keeps
-    its own line."""
+    its own line. B13 round 28 I25, I49 (one defect): its pointer names the check that FAILs that file,
+    never "its governance [FAIL] line", which names no check."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
     assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
@@ -9302,7 +9303,14 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     _make_not_a_file(queue, "a folder")
     lines = cli._status_lines(initialised)
     assert any(ln.startswith("HOLD: hold all (state): matter 8") for ln in lines), lines
-    assert any(ln.startswith("status: cannot read the state: the purge queue is not a file") for ln in lines)
+    unread = (
+        "status: cannot read the state: the purge queue is not a file; the governance.purge_queue [FAIL] line"
+    )
+    assert any(ln.startswith(unread) for ln in lines), lines
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert any(ln.startswith("[FAIL] governance.purge_queue ") for ln in out), out
+    assert not [ln for ln in out if "its governance [FAIL]" in ln], out
     queue.rmdir()
     text = initialised.config_path.read_text(encoding="utf-8")
     initialised.config_path.write_text(
@@ -9313,6 +9321,10 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     _make_not_a_file(governance._holds_file(root), "a folder")
     lines = cli._status_lines(load_config(initialised.config_path))
     assert any(ln.startswith("HOLD: hold all (config)") for ln in lines), lines
+    held = (
+        "status: cannot read the state: the hold list is not a file; the governance.hold [FAIL] line says why"
+    )
+    assert held in lines, lines
 
 
 def test_a_fifo_at_the_wal_this_account_cannot_open_stops_every_command_first(
