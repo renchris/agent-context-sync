@@ -25691,7 +25691,9 @@ gate. Other files that drive recordings through `fake_media` keep the field's li
 `test_convert_recording.py::test_a_test_marked_real_limit_keeps_the_fields_limit`. **Amended 2026-10-20, §16.157
 Y68:** the bound is now well under the ci job's 45 minutes, `timeout-minutes` in ci.yml, raised from 40 after one
 job took 33:53. **Amended 2026-10-23, §16.182 D83:** the bound is now well under the ci job's 50 minutes,
-`timeout-minutes` in ci.yml, raised from 45 after round 24's slowest job took 36:24.
+`timeout-minutes` in ci.yml, raised from 45 after round 24's slowest job took 36:24. **Amended 2026-10-25,
+§16.197 I99:** the bound is now well under the ci job's 60 minutes, `timeout-minutes` in ci.yml, raised from 50
+after a job took 49:59.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -31711,3 +31713,13 @@ than one", and `_again_reason` says `the later ones` past two. The guide keeps t
 word, says "for two", and gives `the later ones after` for three or more: the verifier's fix, as cutting the span
 to name both would turn the P60 pin red and lose the words a reader matches. Test:
 `test_the_guide_gives_round_26s_new_installer_and_report_outputs`, extended with three stops.
+
+**CI's time is the time of round 27's jobs, and the limit is 60** (I99; dated line at §16.144 W70). The nine ci jobs
+from f04c61db to d1f72d6f (round 27's eight and round 28's first, read with `gh run view --json jobs`, all green on
+attempt 1) took 26:53 to 40:01, five past CLAUDE.md's 37 (the verifier counted four of the eight, the finder
+three), but one: 49:59 on d1f72d6f, a docs-only commit, pytest's step 49:26 at 6050 tests, one second under the
+limit of 50. CLAUDE.md gives `about 18 to 40 minutes` with that job beside the range, as round 21 Y68 gave a 33:53
+one, `docs/lanes/COMMON.md` says the same, and `timeout-minutes` is 60, 10 minutes above the slowest job seen, the
+margin the test keeps; ci.yml's note adds a sentence after D83's, which keeps the 50 it set, and the recording
+tests' bound (`_wide_limit`'s docstring and the dated line at W70) names 60. Test:
+`test_claude_md_gives_cis_time_and_its_limit`.
