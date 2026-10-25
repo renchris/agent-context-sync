@@ -15577,9 +15577,20 @@ def test_the_side_files_have_doctors_names_in_every_reader(
             there.rmdir()
     line = _line(section(text, "Summary"), "- doctor: ")
     assert (
+        # B13 round 28 I8: one check named once, its count in words, as the outcome beside it says it
         " · from the state file's write-ahead log and shared-memory file, which are not files (2 checks): "
-        "state_dir.files FAIL (the person's; see Doctor), state_dir.files FAIL (the person's; see Doctor) · "
+        "state_dir.files FAIL twice (the person's; see Doctor) · "
     ) in line, line
+    assert "state_dir.files twice" in _line(section(text, "Summary"), "- **outcome: "), section(
+        text, "Summary"
+    )
+    # every bucket folds alike; two owners stay two, and three read "3 times"
+    assert setup_report._fold(["a FAIL (x)", "b warn (y)", "a FAIL (x)", "a FAIL (z)"]) == [
+        "a FAIL twice (x)",
+        "b warn (y)",
+        "a FAIL (z)",
+    ]
+    assert setup_report._fold(["c warn (y)"] * 3) == ["c warn 3 times (y)"]
     assert "a side file of the state file" not in text, [
         ln for ln in text.splitlines() if "a side file" in ln
     ]

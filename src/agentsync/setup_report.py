@@ -12404,6 +12404,18 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     return sort
 
 
+def _fold(entries: Sequence[str]) -> list[str]:
+    """A bucket's entries with each repeated one named once, its count in words after its tag and before its
+    owner's bracket ("state_dir.files FAIL twice (the person's; see Doctor)"), in first-seen order, as the
+    outcome's known-cause reason counts it (B13 round 28 I8; round 27 P102): two FAILs of one check read as
+    one name twice beside an outcome that folds them. Only whole equal entries fold: two owners stay two."""
+    out: list[str] = []
+    for entry, k in Counter(entries).items():
+        count = "twice" if k == 2 else f"{k} times"
+        out.append(entry if k == 1 else re.sub(r" (FAIL|warn)\b", rf" \1 {count}", entry, count=1))
+    return out
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None and r.facts.doctor_cut_off is not None:
@@ -12452,65 +12464,73 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if from_stop:
         parts.append(
             f"{_STOP_WORDS} ({_plural(len(from_stop), 'check')}): "
-            + ", ".join(f"{n} FAIL" for n in from_stop)
+            + ", ".join(_fold([f"{n} FAIL" for n in from_stop]))
         )
     if from_gone:
         parts.append(
             # the number counts checks, as every other bucket's does; the folder count is in the words, as the
             # folders line says it (B13 round 15 S12, S27)
             f"{sort.gone_words} ({_plural(len(from_gone), 'check')}): "
-            + ", ".join(f"{n} FAIL" for n in from_gone)
+            + ", ".join(_fold([f"{n} FAIL" for n in from_gone]))
         )
     if from_config:
         parts.append(
             f"{_CONFIG_WORDS} ({_plural(len(from_config), 'check')}): "
-            + ", ".join(f"{n} FAIL" for n in from_config)
+            + ", ".join(_fold([f"{n} FAIL" for n in from_config]))
             + " (see Configuration)"
         )
     if from_remote:
         parts.append(
             f"{_REMOTE_WORDS}, the person's to remove or allow "
-            f"({_plural(len(from_remote), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_remote)
+            f"({_plural(len(from_remote), 'check')}): " + ", ".join(_fold([f"{n} FAIL" for n in from_remote]))
         )
     if from_state:
-        parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
+        parts.append(
+            f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(_fold(from_state))
+        )
     if sort.from_notfile:  # B13 round 25 ruling 12 (D23, D78)
         parts.append(
             f"{_STATE_NOT_FILE_WORDS} ({_plural(len(sort.from_notfile), 'check')}): "
-            + ", ".join(sort.from_notfile)
+            + ", ".join(_fold(sort.from_notfile))
         )
     if sort.from_dangling:  # B13 round 25 D34
         parts.append(
             f"{_DANGLING_WORDS} ({_plural(len(sort.from_dangling), 'check')}): "
-            + ", ".join(sort.from_dangling)
+            + ", ".join(_fold(sort.from_dangling))
         )
     if sort.from_side:  # B13 round 25 ruling 12 (D4, D9, D20, D78)
         parts.append(
-            f"{sort.side_words} ({_plural(len(sort.from_side), 'check')}): " + ", ".join(sort.from_side)
+            f"{sort.side_words} ({_plural(len(sort.from_side), 'check')}): "
+            + ", ".join(_fold(sort.from_side))
         )
     if sort.from_misplaced:  # B13 round 26 ruling 13
         parts.append(
             f"{sort.misplaced_words} ({_plural(len(sort.from_misplaced), 'check')}): "
-            + ", ".join(sort.from_misplaced)
+            + ", ".join(_fold(sort.from_misplaced))
         )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
-            f"{sort.lost_words} ({_plural(len(sort.from_lost), 'check')}): " + ", ".join(sort.from_lost)
+            f"{sort.lost_words} ({_plural(len(sort.from_lost), 'check')}): "
+            + ", ".join(_fold(sort.from_lost))
         )
     if from_shut:  # B13 round 20 X28
-        parts.append(f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
+        parts.append(
+            f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(_fold(from_shut))
+        )
     if sort.from_notfolder:  # B13 round 23 A23
         parts.append(
             f"{_NOT_FOLDER_WORDS} ({_plural(len(sort.from_notfolder), 'check')}): "
-            + ", ".join(sort.from_notfolder)
+            + ", ".join(_fold(sort.from_notfolder))
         )
     if sort.from_refused:  # B13 round 21 Y45
         parts.append(
-            f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): " + ", ".join(sort.from_refused)
+            f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): "
+            + ", ".join(_fold(sort.from_refused))
         )
     if sort.from_loose:  # B13 round 23 A49
         parts.append(
-            f"{_STATE_LOOSE_WORDS} ({_plural(len(sort.from_loose), 'check')}): " + ", ".join(sort.from_loose)
+            f"{_STATE_LOOSE_WORDS} ({_plural(len(sort.from_loose), 'check')}): "
+            + ", ".join(_fold(sort.from_loose))
         )
     if from_helpers:
         one = len(from_helpers) == 1
