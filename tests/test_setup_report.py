@@ -1665,6 +1665,93 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
     assert "Private only:" not in text and setup_report.issue_link(text) is not None
 
 
+def test_a_one_word_hold_value_stays_in_the_reports_own_fixed_phrases() -> None:
+    """B13 round 27 P107: with a hold value of "Page", every "page" of the report's own fixed text became
+    <value> ("past the OCR <value> limit", "past the <value> + picture limit"), and those lines no longer
+    read. The cut stays whole-text and case-folded (D80), but a match inside one of the report's exact fixed
+    phrases (:data:`setup_report._FIXED_VALUE_PHRASES`) is left as written and makes nothing private; a
+    quoted value is still cut, and the report is then private only."""
+    fixed = (
+        "- 0 that say pages past the OCR page limit were not read · 0 conversions\n"
+        "| run | past the page + picture limit | pages added + changed |\n"
+        "`pages added + changed` is every page the run added or changed, whatever the cause\n"
+    )
+    red = setup_report.Redactor()
+    red.add("value", "Page", ignore_case=True)
+    assert red.redact(fixed) == fixed
+    assert not red.value_word_shown and not red.private_only
+    quoted = red.redact(fixed + "note: Page said the hold stays on, page by page\n")
+    assert quoted.startswith(fixed), quoted
+    assert quoted.endswith("note: <value> said the hold stays on, <value> by <value>\n"), quoted
+    assert red.value_word_shown and red.private_only
+    # every literal of the report's that holds the word reads whole, as the line it is built into where it is
+    # a part of one; each phrase is in one of them, so a reworded line drops out of the list
+    tree = ast.parse(Path(setup_report.__file__).read_text(encoding="utf-8"))
+    skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
+    skipped |= {
+        id(leaf)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(t, ast.Name) and t.id in ("_FIXED_VALUE_PHRASES", "_JOINED_WORD_LIST")
+            for t in node.targets
+        )
+        for leaf in ast.walk(node.value)
+    }
+    page = re.compile(r"(?i)(?<![a-z])page(?![a-z])")
+    literals = {
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and id(n) not in skipped
+        and page.search(n.value)
+    }
+    with_a_page = setup_report._IMAGE_OUTCOMES[0]
+    built = {  # a part, as the line it is built into prints it
+        with_a_page: [
+            f"- images: {setup_report._plural(3, 'file')}: 3 {with_a_page} · 1 no-text stub",
+            f"- images: {setup_report._plural(1, 'file')}: 1 {with_a_page}",
+        ],
+        "its page": ["2 reads again (1 of them could not be converted and kept its page)"],
+        "their page": ["3 reads again (2 of them could not be converted and kept their page)"],
+        "page": [f"- engine identities on pages: Contoso OCR 2 ({setup_report._plural(1, 'page')})"],
+    }
+    never = {"over the ocr page limit", "ocr_page_cap"}  # a lower-cased test of a line, a counter's key
+    assert never <= literals and set(built) <= literals
+    texts = [t for lit in literals - never for t in built.get(lit, [lit])]
+    red = setup_report.Redactor()
+    red.add("value", "Page", ignore_case=True)
+    assert [t for t in texts if red.redact(t) != t] == []
+    assert not red.private_only
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    for phrase, rx in zip(setup_report._FIXED_VALUE_PHRASES, setup_report._FIXED_VALUE_RES, strict=True):
+        assert any(rx.search(t) for t in texts), f"{phrase!r} is no fixed text of the report's"
+        # the shell report prints none of them, so its flag-h cut needs no such list to match this one
+        assert not rx.search(shell), phrase
+
+
+@pytest.mark.usefixtures("roomy_budget")
+def test_a_page_hold_cuts_no_fixed_line_of_a_built_report(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """B13 round 27 P107: a report built for a "Page" hold whose value no line quotes cuts none of its own
+    lines and stays public; the same report with the value quoted cuts that line alone, and is private."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text('[governance]\nhold = true\nhold_reason = "Page"\nhold_owner = "Avery Quill"\n\n' + plain)
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert "page" in body.lower(), "the built report holds no fixed line with the word"
+    assert "<value>" not in body, [ln for ln in body.splitlines() if "<value>" in ln]
+    assert "Private only: a hold's" not in text and setup_report.issue_link(text) is not None
+    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | Page said hold | -\n")
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert [ln for ln in body.splitlines() if "<value>" in ln] and "Page said" not in body
+    assert "Private only: a hold's" in text and setup_report.issue_link(text) is None
+
+
 def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: dict[str, Path]) -> None:
     """B13 round 27 P104: a private-only report (a hold's one-word value it would print) still copied an
     earlier run's `issue link (review the report first): https://github.com/.../issues/new?...` line from
@@ -1680,7 +1767,7 @@ def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: d
     )
     (fake_mac["setup"] / "install.out").write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
-        f"{link}\n{next_line}\n",
+        f"note: Page said the hold stays on\n{link}\n{next_line}\n",  # quoted: P107 leaves fixed text whole
         encoding="utf-8",
     )
     cfg.write_text('[governance]\nhold = true\nhold_reason = "Page"\nhold_owner = "Mark"\n\n' + plain)

@@ -1208,6 +1208,48 @@ def _short_word(form: str) -> bool:
     return low in _SHORT_WORDS or (form.isupper() and low in _SHORT_CAPS)
 
 
+_FIXED_VALUE_PHRASES = (
+    "over the OCR page limit",
+    "past the OCR page limit",
+    "past the page + picture limit",
+    "is every page the run added or changed",
+    "changes no page",
+    "has a page from before OCR",
+    "documents whose page has no OCR identity",
+    "such as a page of",
+    "kept its page",
+    "kept their page",
+    "whose page could not be read",
+    "its own page was made from",
+    "files still without a page",
+    "file has a page",
+    "files with a page",
+    "erases the page and history",
+    "erase that file's page and its history",
+    "as its stub page says",
+    "existing mirror page",
+    "file: # with a page",
+    "files: # with a page",
+    "(1 page)",
+)
+"""The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
+value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
+it is left as written and makes nothing private (:func:`_in_fixed_phrase`). Exact phrases only, never a word
+list, so a quoted value stays cut (D80's rule fails safe); ``#`` stands for a count the line prints (the
+images line's ``3 files: 3 with a page``, whose ``with a page`` alone is too short to be one). A test keeps
+every literal of this module that holds the word inside one."""
+_FIXED_VALUE_RES = tuple(re.compile(re.escape(p).replace(r"\#", r"\d+")) for p in _FIXED_VALUE_PHRASES)
+_FIXED_VALUE_REACH = max(map(len, _FIXED_VALUE_PHRASES)) + 20  # the counts' digits
+
+
+def _in_fixed_phrase(m: re.Match[str]) -> bool:
+    """Whether ``m`` sits inside one of :data:`_FIXED_VALUE_PHRASES` written out in full around it."""
+    text, start, end = m.string, m.start(), m.end()
+    lo, hi = max(0, start - _FIXED_VALUE_REACH), min(len(text), end + _FIXED_VALUE_REACH)
+    found = (f for rx in _FIXED_VALUE_RES for f in rx.finditer(text, lo, hi))
+    return any(f.start() <= start and end <= f.end() for f in found)
+
+
 def _a_whole_word(m: re.Match[str]) -> bool:
     """Whether ``m`` stands as a word of its own: what is on each side of it is the text's edge, a space or
     sentence punctuation, never a path separator, a ``~`` or another word character (B13 round 19 W17). A
@@ -1623,6 +1665,10 @@ class Redactor:
                 and _a_whole_word(m)
             ):
                 self.agent_kept = self.agent_kept or self._counting
+                return text
+            if (  # B13 round 27 P107: the report's own fixed phrase, not the value
+                placeholder == "<value>" and _bare(text).lower() in self._value_words and _in_fixed_phrase(m)
+            ):
                 return text
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1

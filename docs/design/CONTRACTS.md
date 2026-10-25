@@ -30769,7 +30769,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120, P37, P18, P38 and P39, in `src/agentsync/setup_report.py` and
+P102, P115, P26, P13, P104, P20, P120, P37, P18, P38, P39 and P107, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
 defects built in one commit.
@@ -31016,6 +31016,21 @@ strftime code, `ex`, `op` and `vv` of its `--help` text, and `tm` of the environ
 `AGENTSYNC_TM_EXCLUDE` in cli.py and governance.py), which fails when a skip is no longer needed. Runtime text such as an OS error's words cannot be listed,
 the same limit `report_words()` has. Tests: `test_the_two_letter_words_are_every_two_letter_word_either_report_prints`
 (with its "GC" row) and the "RM" row of `test_a_two_letter_hold_value_the_report_prints_makes_it_private`.
+
+**A one-word hold value stays in the report's own fixed phrases** (P107). With a hold value of "Page", D80's
+whole-text, case-folded cut turned every "page" of the report's fixed text into `<value>` (`past the OCR <value>
+limit`, `past the <value> + picture limit`), and those lines no longer read. The cut and the private-only rule are
+unchanged, but `Redactor._replace` leaves a value word as written where it sits inside one of the report's exact
+fixed phrases (`_FIXED_VALUE_PHRASES`, every one that holds "page", the value the rehearsal measured; `#` stands
+for a count, as in the images line's `3 files: 3 with a page`, whose `with a page` alone is too short to be one),
+and such a match counts nothing and makes nothing private. Exact phrases, never a word list: a quoted value is still cut, and the
+report is then private only, so D80 still fails safe. A report whose only copy of the word is in those phrases is
+public, as no value stands in it; P104's test now quotes the value to stay private only. install.sh prints none of
+the phrases, so its flag-h cut needs no copy of the list (asserted). Test:
+`test_a_one_word_hold_value_stays_in_the_reports_own_fixed_phrases`, which redacts every literal of setup_report's
+that holds the word (a part, such as `their page`, as the line it is built into) and finds none cut, and keeps
+each phrase in one of them; and `test_a_page_hold_cuts_no_fixed_line_of_a_built_report` (a built report for a
+"Page" hold cuts none of its lines and stays public; with the value quoted it cuts that line and is private).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
