@@ -537,6 +537,45 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "error: Failed to clone repository https://git.contoso.com/srv/Q3: error: Q4 Plans/Kit.git",
         "error: Failed to clone repository <url>: error: Q4 Plans/Kit.git",
     ),
+    # B13 round 28 I104: a URLSession cause at the line's end ends an unquoted URL, as Git's prefix does
+    **{
+        f"an unquoted URL keeps the URLSession cause {cause!r}": (
+            f"error: Failed to clone repository {url}: {cause}.",
+            f"error: Failed to clone repository <url>: {cause}.",
+        )
+        for url, cause in zip(
+            (
+                "https://git.contoso.com/Kit.git",
+                "ssh://git@git.contoso.com/Kit.git",
+                "https://git.contoso.com/srv/Kit.git",
+                "ssh://git@git.contoso.com/srv/Kit.git",
+                "https://git.contoso.com/Kit",
+            ),
+            ocr._URL_CAUSES,
+            strict=True,
+        )
+    },
+    "a folder named like a URLSession cause at the line's end ends the URL, by design": (
+        "error: Failed to clone repository https://git.contoso.com/srv/Q3: The request timed out",
+        "error: Failed to clone repository <url>: The request timed out",
+    ),
+    "a URLSession cause mid-path is still a path": (
+        "error: https://git.contoso.com/srv/The request timed out/x: y",
+        "error: https:<path>",
+    ),
+    "a cause that is neither Git's prefix nor URLSession's is a path": (
+        "error: https://git.contoso.com/Kit.git: Permission denied",
+        "error: https:<path>",
+    ),
+    # B13 round 28 I72: any scheme but file://, and a URL right after "<" is a path
+    "a git URL whose path holds a Git prefix ends at it as https does": (
+        "error: repository git://git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git",
+        "error: repository <url>: fatal: Q4 Plans/Kit.git",
+    ),
+    "a URL right after an angle bracket is a path": (
+        "error: <https://git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git>",
+        "error: <https:<path>",
+    ),
     "two Git commands keep both causes": (
         "error: Git command 'git -C HOME/a fetch' failed: fatal: first cause; "
         "Git command 'git -C /b clone' failed: fatal: second cause",

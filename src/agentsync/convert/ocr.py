@@ -93,6 +93,15 @@ _ERRORS = frozenset(
     {"not an image", "unsupported image type", "no frames", "too large", "not readable", "recognition failed"}
 )
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
+_URL_CAUSES = (
+    "The network connection was lost",
+    "The request timed out",
+    "Could not connect to the server",
+    "The Internet connection appears to be offline",
+    "A server with the specified hostname could not be found",
+)
+"""URLSession's causes, each of which ends an unquoted URL before it at the line's end, as Git's prefix does
+(``<url>: The request timed out.``; B13 round 28 I104)."""
 _PATH_RE = re.compile(
     # a quoted URL: to its own closing quote (B39), one that ends a word: a URL may hold an apostrophe (D51)
     r"(?P<uq>['\"])[A-Za-z][\w+.-]*://[^'\"\s]*(?P=uq)(?=[:;,.)\]]?(?:\s|$))"
@@ -101,7 +110,9 @@ _PATH_RE = re.compile(
     # so is a quoted URL that is no word of its own (a space inside). The file:// guard and the quote
     # lookbehind matter only for a URL that holds ": " (B13 round 25 D84; round 26 E49, E50)
     r"|(?<![\w.<~/'\"])(?P<url>(?![Ff][Ii][Ll][Ee]:)[A-Za-z][\w+.-]*://[^\s'\"]+?)"
-    r"(?=: (?:fatal|error|warning|remote): |[:;,.)]?$)"
+    r"(?=: (?:fatal|error|warning|remote): |: (?:"
+    + "|".join(map(re.escape, _URL_CAUSES))
+    + r")\.?$|[:;,.)]?$)"
     r"|(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
     r"|(?<![\w.<])~?/\S.*?(?=:\d+:\d+: |$)"  # an unquoted one: to a compiler's line:column, else to the end
 )
@@ -199,17 +210,23 @@ def _plain(text: str | bytes) -> str:
     A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
     but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote, and a
     quoted URL through its own, one followed by a space or the line's end, perhaps after a stop or a colon,
-    as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL is ``<url>`` where ``: `` and Git's
-    own prefix (``fatal:``, ``error:``, ``warning:``, ``remote:``) follow it (``<url>: fatal: <cause>``) or
-    the line ends, but a ``file://`` one; one that runs into a space, or into any other ``: ``, is a path, as
-    a raw space may be part of it (D84; round 26 E49).  So an unquoted http(s) or ssh URL whose own path
-    holds ``: `` and Git's prefix (a Finder ``/`` kept as ``:``: ``.../Q3: fatal: Q4 Plans/Kit.git``) ends
-    there, and the rest of that folder name stays as the cause, by design: it cannot be told from Git's
-    ``<url>: fatal: <cause>``, and ending only where no ``/`` follows would drop real causes (``fatal:
-    repository '<url>' not found``); only a ``file://`` or a quoted URL holding it is a path (round 26 E50;
-    round 27 P54).  SwiftPM's ``Git command '...' failed: <cause>`` keeps its cause: the command (``git -C``
-    and SwiftPM's cache), up to its own ``' failed:`` (a folder's apostrophe is followed by no such words), is
-    ``<command>``, each of two on one line (B13 round 24 B39, round 25 D84)."""
+    as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL of any scheme but ``file://``
+    (http(s), ssh, git, ...) is ``<url>`` where ``: `` and Git's own prefix (``fatal:``, ``error:``,
+    ``warning:``, ``remote:``) follow it (``<url>: fatal: <cause>``), where ``: `` and one of URLSession's
+    causes (:data:`_URL_CAUSES`) end the line (``<url>: The request timed out.``; B13 round 28 I104), or where
+    the line ends; one that runs into a space, or into any other ``: ``, is a path, as a raw space may be part
+    of it (D84; round 26 E49), so any other cause with no Git prefix reads ``https:<path>`` (no tool has been
+    measured printing an unquoted URL before a URLSession cause: SwiftPM's binary-target download quotes its
+    URL).  So an unquoted URL whose own path holds ``: `` and Git's prefix (a Finder ``/`` kept as ``:``:
+    ``.../Q3: fatal: Q4 Plans/Kit.git``), or ends in a folder named ``Q3: <cause>``, ends there, and the rest
+    of that folder name stays as the cause, by design: it cannot be told from Git's ``<url>: fatal: <cause>``,
+    and ending only where no ``/`` follows would drop real causes (``fatal: repository '<url>' not found``);
+    only a ``file://`` URL, a quoted one, or one written right after ``<``, ``~`` or ``/`` (``<https://...>``)
+    is a path (round 26 E50; round 27 P54; round 28 I72).  A letter, a digit or a ``.`` before a URL is part
+    of its scheme, so that URL still ends at Git's prefix.  SwiftPM's ``Git command '...' failed: <cause>``
+    keeps its cause: the command (``git -C`` and SwiftPM's cache), up to its own ``' failed:`` (a folder's
+    apostrophe is followed by no such words), is ``<command>``, each of two on one line (B13 round 24 B39,
+    round 25 D84)."""
     s = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")
