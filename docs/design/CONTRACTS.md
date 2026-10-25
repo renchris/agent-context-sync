@@ -30853,6 +30853,8 @@ release with Swift <n> or later, then run install.sh again)`, doctor's words wit
 `speech.TOOLS_TOO_OLD_RE` lazily (`_tools_too_old_re`, the copy `_TOOLS_TOO_OLD_COPY` for a build without it) and
 quotes doctor's opening, up to `or later`, as `_NEWER_SWIFT_FIX_COPY`; a test keeps both equal to their sources. Test:
 `test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run`.
+Amended 2026-10-25, §16.193 I74: `_tools_too_old_re` and `_TOOLS_TOO_OLD_COPY` are gone; the report reads
+`speech.TOOLS_TOO_OLD_RE` itself, as it and the speech module always ship in one build.
 
 **An earlier attempt is never recast as "worked with help"** (P123, P101: two defects, built in one commit, ruling
 10; amends §16.178 D5, P101's half).
@@ -30921,6 +30923,8 @@ between checks, the one-FAIL words unchanged), and the known-cause reason names 
 words, `state_dir.files twice` (`<check> <n> times` past two): no `×`, bracket or second `; ` inside an outcome
 reason (rulings M24, Y32). Test: the P102 rows of
 `test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step`.
+Amended 2026-10-25, §16.193 I8: the Doctor line's buckets name a repeated entry once the same way, `state_dir.files
+FAIL twice (the person's; see Doctor)` (`_fold`); the stop reason keeps its count-first form.
 
 **The sync line counts the pages a new start removed** (P115; round 26 E10's report half, ruling 14). The CLI's
 `note: a new manifest was started over 13 existing mirror pages; 11 written back, 2 removed (their file is gone or
@@ -30934,6 +30938,10 @@ files were already reported gone)` after it, the `R removed` part left out at 0;
 note's end or after `pages` (lane B's P47) reads `... mirror pages by the background sync: ...`. A note that every
 file is converted again, one of an earlier run and one of an earlier sync add nothing. The count is the CLI's, so the
 report and the CLI never disagree. Test: `test_the_sync_line_counts_the_pages_a_new_start_removed`.
+Amended 2026-10-25, §16.193 I54, I63: lane E's P117 clause after the notices reads too, `, N kept for a file still
+settling` (`files` past one), and a note with only kept pages adds the part, so written back, removed, notices and
+kept add up to the pages; the source opens its own bracket after a clause with none: `12 written back, 1 kept for a
+file still settling (install.out)`.
 
 **Over a new start the evidence line counts "no manifest yet" apart** (P26; amends the evidence-line paragraph of
 the setup report's Status parts with a dated line). `r.facts.evidence` counts only lines that say `not measured`, so
@@ -31198,6 +31206,10 @@ the sync itself finished, and install.log's `step=report` line adds `closing_sta
 catalog of the closing lines, so install.sh's header says it. Test:
 `test_a_closing_status_a_signal_stopped_is_said_and_logged` (SIGKILL, SIGTERM, and a status that exits 1 on a
 `[FAIL]` line, which says nothing).
+Amended 2026-10-25, §16.193 I27: the agentsync report reads the field: the report step's row adds `the closing
+status was stopped by SIGKILL (signal 9) before it finished, so its NEXT line may be missing`, and the Summary's
+install.sh line `, its closing status stopped by SIGKILL (signal 9)` after the exit; only a signal exit (128 + N)
+is read, never echoed.
 
 **Every friction stamp setup_report reads, the shell reads** (P145; amends §16.184 E77; dated line at §16.179 D79).
 The shell's readers took `...:SSZ` and, since E77, a fraction, while `_ISO_TIME` and `parse_time` read an offset
@@ -31535,7 +31547,112 @@ when the window has none; the shell report has no Items list and lists the block
 
 ### 16.193 Round 28: setup report: the lost-unread heartbeat, the purge queue over a new start and the settling pages (2026-10-25, wave B13 round 28 lane RA)
 
-Reserved for round 28 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 28").
+Lane RA's round 28 items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
+verifier's corrected fix built): I95, I1, I28, I41, I53, I64, I76, I2, I13, I46, I18, I45, I54, I63, I55, I7, I8, I9,
+I10, I19, I27, I31, I37, I38, I51, I58, I59, I68 and I74, with I52's report half and ruling 22's report names, in
+`src/agentsync/setup_report.py`, `tests/test_setup_report.py` and `tests/test_cli.py`, and one hunk of
+`src/agentsync/cli.py` (I18). Items that describe one defect are built once: I95, I1, I28, I41, I53, I64 and I76;
+I2 and I13; I54 and I63; I9 and I37; I10, I38 and I51; I19, I58 and I68. A dated line this round writes reads
+`Amended 2026-10-25, §16.193 I<n>`.
+
+**A lost manifest beside a heartbeat.json that cannot be read says so** (I95, I1, I28, I41, I53, I64, I76; ruling
+21, lane B's P111 report half). The report keyed every lost-manifest word on `manifest_lost`'s yes or no, so over a
+damaged, fifo or folder heartbeat.json it said `records earlier passes` and `earlier syncs recorded`, put doctor's
+heartbeat warn in `unexpected`, and step 2's outcome over the sync's `LOST_MANIFEST_UNREAD` line named no cause.
+`_manifest_lost_kind` reads `manifest.lost_words` (`records`, `unread` or none; an older build's `manifest_lost` is
+`records`), and the unread case has its own words: the bucket `from the state file that is missing beside a
+heartbeat.json that cannot be read` (the link forms after it), the Status part line `- manifest: missing
+(heartbeat.json cannot be read; the person decides: see Doctor's state_dir.manifest line)` (status's words, counted
+as lost and state-wide), an evidence clause with heartbeat.json's fix first, the re-screen `not read (the manifest is
+missing and heartbeat.json cannot be read; ...)`, an open step 3 stop's `which was missing beside a heartbeat.json
+that could not be read`, and the outcome `on agentsync's state file, which is missing beside a heartbeat.json that
+cannot be read: heartbeat.json's fix first, then the file's, the person's`, `after heartbeat.json was fixed or moved
+aside, or the file restored`, matched on `_STATE_LOST_UNREAD_COPY` (a test keeps it equal to the source). Doctor's
+`heartbeat` warn joins the lost bucket, keyed on the report's own read; a folder at heartbeat.json stays doctor's
+FAIL in the misplaced bucket. Test: `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`, and the
+unread row of the config-step words table.
+
+**A manifest too short to be one is never called missing** (lane B's I92 seam, ruling 20). Lane B's
+`LOST_MANIFEST_EMPTY` and its unread twin join `LOST_MANIFEST_WORDS` for a manifest.sqlite under SQLite's 100-byte
+header beside earlier passes, which status calls `empty or too short`. `_manifest_lost_kind` names them `short`
+and `short-unread`, read by name so an older build never matches, and the bucket (`from the state file that is
+empty or too short to be a manifest though heartbeat.json records earlier passes`), the Status part line
+(`- manifest: empty or too short (...)`), the evidence (the damaged manifest's moves, both files aside), the
+re-screen, step 2's outcome (`_lost_kind_of`) and the stop words say so. Test:
+`test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing`, which gives lane B's names
+only while the build lacks them.
+
+**The purge queue section over a new start gives governance's judgment** (I2, I13, I46). After the new start the
+`no trace` line blamed a not-resolvable purge on `a purge that already ran, or an erasure` and said a run takes it
+off the queue, while status and `purge --queue` keep it queued (round 27 P112). `_purge_unresolved` asks
+`governance._unresolved` on a read-only connection (nothing created or migrated) and the section says
+`governance.unresolved_purges`' words; another entry with no row queued before the manifest's first run names `a new
+start` among the causes. With no manifest to read, the intro says no id was looked up and why, and
+`governance.kept_lines` of `partition_purges` follows (the new start's wait, a lost manifest's unjudged words); a
+counted `not looked up` line names each cause (no manifest, the evidence time, the lookup cap, no stable id). Tests:
+`test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable`,
+`test_the_reports_purge_queue_over_no_manifest_gives_the_queues_own_judgment`.
+
+**The report's Status says why a queued purge is kept** (I18). `queued purges kept: 1 (the governance.purge_queue
+line says why)` pointed at an [ok] line the report's Doctor never prints. `_status_lines(checks_beside=False)`, the
+report's status hook only, gives `governance.kept_lines`' sentence there; `agentsync status` keeps the pointer. Test:
+`test_the_reports_status_says_why_a_queued_purge_is_kept_where_doctor_prints_no_ok_line`.
+
+**A queue warn the hold list causes sits with the hold list's FAIL** (I45). Doctor's `governance.purge_queue` warn
+`not run while the hold list cannot be read` was `unexpected` beside a hold list that is not a file. Keyed on
+`governance.hold_list_unread` and doctor's phrase, it joins the bucket that took governance.hold's FAIL (misplaced or
+refused); an older doctor's warn, or a readable hold list, keeps it where it was. Test:
+`test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fail`.
+
+**Each governance file is named as doctor names it** (ruling 22's report half, with lane RB's I3). `_MISPLACED_ROLES`
+says `agentsync's purge queue`, `agentsync's suppression list` and `agentsync's audit trail`
+(`governance.GOVERNANCE_ROLES`), never `a governance file in the state folder`. Test: the P37 test's ruling 22 rows.
+
+**A shut side at a linked manifest's target is the agent's chmod** (I52's report half, lane B's `doctor.own_path_fix`).
+`_shut_whose` judges each refused file at its resolved path against its resolved folder, inline on a build without
+it. Test: `test_a_shut_side_at_a_linked_manifests_target_is_the_agents_chmod`.
+
+**A link target the agent's words name is cut** (I55). `_SAID_LINK_RE` ends a target at `; ` or ` |` too, so a step
+3 row's `... is a symlink to <target>; no chmod was run | -` registers the target, not the rest of the row; a `;` or
+`|` with no space beside it stays part of the path. Test: the I55 rows of
+`test_a_link_target_only_the_runs_own_text_names_is_redacted`.
+
+**A two-letter hold value in capitals is cut as written** (I7). With `hold_reason = "IT"` every pronoun `it` became
+`<value>`. A two-letter initialism of `_TWO_LETTER_WORDS` written all in capitals is registered case-sensitively: a
+quoted `IT` is still cut and the report private only, the report's own capital phrases are kept
+(`_FIXED_CAPS_PHRASES`, which a test walks against every literal), and a report quoting it nowhere is public. The
+shell report's half is lane RB's. Test: `test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun`.
+
+**A stop logged after the end line takes the words now** (I9, I37). `_with_now_words` gives the latest attempt's open
+stops the lost link's words, the unread heartbeat's and doctor's shape, before and after the end line alike. Test:
+`test_a_stop_after_the_end_line_takes_the_words_now_as_the_one_before_it`.
+
+**The legend's `<path>` item stands only for a `<path>` that replaced something** (I10, I38, I51). P38's body test
+runs on the body without `_OWN_PATH_PHRASES`, the Installer note's and the Recent errors header's own words. Test:
+the I10 rows of `test_the_path_legend_item_names_every_use_of_path`.
+
+**A shut state folder points at the one Doctor line** (I19, I58, I68; round 27 P122's report half).
+`_StateFolderShutError` carries the folder, and the not-measured lines, the secret scan and the evidence clause say
+`see Doctor's state_dir line` or `state_dir.files line`, as `doctor.state_folder_shut_line` names it, `state_dir
+lines` when doctor cannot say. Test: `test_a_shut_state_folder_points_at_the_one_doctor_line_that_fails`.
+
+**With both side files not files, the listing warn names both** (I31). Test: the I31 rows of
+`test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access`.
+
+**A stop on a side beside a linked manifest's target takes doctor's kind** (I59). `_stop_shape` reads the sides
+through `doctor.manifest_sides`. Test: `test_a_stop_on_a_side_beside_a_linked_manifests_target_takes_doctors_kind`.
+
+**The sync line keeps the settling pages** (I54, I63; amends §16.188 P115). `_NEW_START_RE` reads lane E's P117
+clause, so the counts add up. Test: the I54 rows of `test_the_sync_line_counts_the_pages_a_new_start_removed`.
+
+**The Doctor line folds a repeated check** (I8; amends §16.188 P102). Test: the I8 rows of
+`test_the_side_files_have_doctors_names_in_every_reader`.
+
+**The report reads install.log's closing status** (I27; amends §16.189 P14). Test:
+`test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`.
+
+**The speech cause has no dead copy** (I74; amends §16.188 P32). Test: the I74 row of
+`test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run`.
 
 ### 16.194 Round 28: the installer's turn at a linked manifest's target, one name per governance file, and the lost-unread tails (2026-10-25, wave B13 round 28 lane RB)
 
