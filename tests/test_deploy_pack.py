@@ -6654,6 +6654,41 @@ def test_the_guide_says_a_late_stop_says_when_a_persons_fail_came() -> None:
     assert "The shell fallback report adds no such clause." in page
 
 
+def test_the_guides_path_row_gives_exclude_entries_and_a_removed_links_target() -> None:
+    """B13 round 28 I82: the `<path>` row gave a state file's or the docs repo's link target only while it
+    is a symlink, but since round 27 P34 the report also cuts a target that install.out, the friction log or
+    the log folder names once the link is removed, and both reports print an exclude line's entries other than
+    agentsync's own globs as `"<path>"`. The row gives both; the forms are made by the report's own code, and
+    the shell's from install.sh's awk."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| `<path>` |")]
+    both = row[: row.index("in the shell fallback report")]
+    agentsync_only = row[row.index("in the agentsync report only") :]
+
+    def cut(line: str) -> str:
+        return setup_report._EXCLUDE_LIST_RE.sub(setup_report._exclude_placeholder, line)
+
+    listed = cut('exclude = ["/Contoso Plans/", "notes.txt", "*.tmp"] in [[source]]')
+    assert listed == 'exclude = ["/<path>/", "<path>", "*.tmp"] in [[source]]'
+    assert cut('exclude = ["/Contoso') == "exclude = [<path>]"
+    assert cut("exclude = [1, 2] in [[source]]") == "exclude = [<path>] in [[source]]"
+    assert (
+        'in both reports, each entry of an exclude line other than agentsync\'s own globs (`"<path>"`, or'
+        ' `"/<path>/"` for a folder anchored at the source root; a list that is cut is `exclude = [<path>]`,'
+        " one whose entries do not parse `exclude = [<path>] in [[source]]`)" in both
+    )
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'return "\\"/<path>/\\""' in install and 'out = out "exclude = [<path>]"' in install
+    said = "error: /Users/a/x is a symlink to /Volumes/Contoso Drive/m.sqlite, which does not exist"
+    assert setup_report._said_link_targets([said]) == ["/Volumes/Contoso Drive/m.sqlite"]
+    assert (
+        "and, since B13 round 27 P34, any target outside the home folder that install.out, the friction log"
+        " or the log folder's files name (`... is a symlink to <target>`), even once the link is removed"
+        in agentsync_only
+    )
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

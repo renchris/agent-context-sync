@@ -31685,3 +31685,13 @@ with
 It says no outcome kind reads the stop, gives that clause (`N sync stops` for more than one) and that the
 shell fallback report adds none. Test: `test_the_guide_says_a_late_stop_says_when_a_persons_fail_came`, which reads
 the clause from `compute_outcome`.
+
+**The `<path>` row gives exclude entries and a removed link's target** (I82; `docs/deploy/setup-feedback.md`). The
+row gave a state file's or the docs repo's target outside home only while it is a symlink; since round 27 P34
+`_said_link_targets` also cuts any target outside home that install.out, the friction log or the log folder's files
+name after `is a symlink to`, once the link is removed, and both reports print each exclude entry other than agentsync's own globs as `"<path>"` (`"/<path>/"`
+for a root-anchored folder, `exclude = [<path>]` for a cut list, `exclude = [<path>] in [[source]]` for one whose
+entries do not parse), which the report's legend names and the row did not. The row says both, the exclude entries
+in its both-reports part and the said target in its agentsync-only part, with every substring the older row tests
+pin kept. Test: `test_the_guides_path_row_gives_exclude_entries_and_a_removed_links_target`, which makes each form
+with `_exclude_placeholder` and `_said_link_targets`.
