@@ -8946,14 +8946,28 @@ MISPLACED_CHECKS = {
 }
 
 
-def misplaced_tail(role: str) -> str:
+MISPLACED_IS = {
+    "folder": "is a folder, not a file",
+    "fifo": "is a fifo, not a file",
+    "symlink-file": "is a symlink, not a file",
+    "symlink-folder": "is a symlink to a folder, not a file",
+    "symlink-loop": "is a symlink loop, not a file",
+    "symlink-nothing": "is a symlink to nothing, not a file",
+    "": "is a folder or something else that is not a file",
+}
+"""What install.sh's misplaced_words says is there, by the token its probes read with the installed build's
+own judge for the role (B13 round 28 I20, I35: the error above said "is a fifo, not a file" and the words "a
+folder or something else"); the generic words when that build cannot say."""
+
+
+def misplaced_tail(role: str, kind: str = "folder") -> str:
     """Step 1's tail for a lock, heartbeat or governance file that is not a regular file where one belongs,
-    which init stops on and add-source opens past (B13 round 27 ruling 16: P113, P125, P142)."""
+    which init stops on and add-source opens past (B13 round 27 ruling 16: P113, P125, P142), naming what is
+    there (B13 round 28 I20, I35)."""
     return (
-        f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which is a folder or something else that is not "
-        "a "
-        f"file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it "
-        f"aside{SHUT_OPEN}), and ~/.local/bin/agentsync status prints it on its {MISPLACED_CHECKS[role]} line"
+        f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which {MISPLACED_IS[kind]} (not damage, not a "
+        f"mode): fixing that is the person's (keeping a copy, they move it aside{SHUT_OPEN}), and "
+        f"~/.local/bin/agentsync status prints it on its {MISPLACED_CHECKS[role]} line"
     )
 
 
@@ -11025,13 +11039,13 @@ def test_the_installers_governance_nouns_are_doctors_roles() -> None:
     assert "agentsync's governance file " not in text
 
 
-def misplaced_next(role: str, rerun: str) -> str:
+def misplaced_next(role: str, rerun: str, kind: str = "folder") -> str:
     """Step 2's NEXT for a lock, heartbeat or governance file that is not a regular file where one belongs,
     which init stops on (B13 round 27 ruling 16: P22, P124, P57, P110: it was fail's generic "fix the error
-    above, then re-run")."""
+    above, then re-run"), naming what is there (B13 round 28 I20, I35)."""
     check = MISPLACED_CHECKS[role]
     return (
-        f"NEXT: {FILE_NOUNS[role]} is a folder or something else that is not a file (the error above names "
+        f"NEXT: {FILE_NOUNS[role]} {MISPLACED_IS[kind]} (the error above names "
         f"it; ~/.local/bin/agentsync status prints it and its fix on its {check} line): fixing it is the "
         f"person's (keeping a copy, they move it aside{SHUT_OPEN}), not a step for the agent, so show them "
         f"the error and go on to the report; once it is fixed, the next run is: {rerun}"
@@ -11039,7 +11053,7 @@ def misplaced_next(role: str, rerun: str) -> str:
 
 
 @pytest.mark.parametrize(
-    "case", ["lock-folder", "lock-fifo", "heartbeat-folder", "holds-folder", "audit-folder"]
+    "case", ["lock-folder", "lock-fifo", "heartbeat-folder", "holds-folder", "holds-fifo", "audit-folder"]
 )
 def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file(
     real_env: dict[str, str], wheel: Path, case: str
@@ -11075,12 +11089,14 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
         os.mkfifo(path, 0o600)
     else:
         path.mkdir(0o700)
+    token = case.split("-", maxsplit=1)[1]  # round 28 I20, I35: named as the error above names it
     listed = install_sh(env, "--list-folders")
-    assert last_line(listed).endswith(misplaced_tail(role)), last_line(listed)
+    assert last_line(listed).endswith(misplaced_tail(role, token)), last_line(listed)
     cp = install_sh(env, str(wheel))
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert "error: agentsync init failed" in cp.stderr, cp.stderr
-    assert last_line(cp).startswith(misplaced_next(role, f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert last_line(cp).startswith(misplaced_next(role, f"{INSTALL_SH} {wheel}", token)), last_line(cp)
+    assert f"is a {token}, not a file" in cp.stderr, cp.stderr  # the error above says the same
     assert "fix the error above" not in last_line(cp), last_line(cp)
     kind = "a fifo" if case.endswith("-fifo") else "a folder"
     report = (Path(env["HOME"]) / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
@@ -11090,7 +11106,7 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
         f"which is {kind}, not a file: the person's to fix)"
     ) in report, [ln for ln in report.splitlines() if "outcome" in ln]
     # round 28 ruling 22 (I57): one run names the file one way, the NEXT as the report's outcome
-    said = last_line(cp).removeprefix("NEXT: ").split(" is a folder or something else", 1)[0]
+    said = last_line(cp).removeprefix("NEXT: ").split(f" {MISPLACED_IS[token]}", 1)[0]
     outcome = re.search(r"at its config step on (.+?), which is ", report)
     assert outcome is not None and outcome.group(1) == said, (said, outcome)
     beta = folder.parent / "Beta"
@@ -11649,6 +11665,11 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "heartbeat-fifo",
         "holds-filelink",
         "older",
+        "holds-fifo",
+        "holds-linkdir",
+        "holds-loop",
+        "holds-dangling",
+        "holds-devnull",
     ],
 )
 def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file(
@@ -11686,6 +11707,15 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
     elif case.endswith("-filelink"):
         root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
         path.symlink_to(root / "elsewhere.json")
+    elif case.endswith("-linkdir"):  # round 28 I35: a link to a folder, named as status names it
+        root.joinpath("elsewhere").mkdir(0o700)
+        path.symlink_to(root / "elsewhere")
+    elif case.endswith("-loop"):
+        path.symlink_to(path)
+    elif case.endswith("-dangling"):
+        path.symlink_to(root / "nothing-here.json")
+    elif case.endswith("-devnull"):  # a kind with no fixed word ("a symlink to not a regular file")
+        path.symlink_to("/dev/null")
     else:
         path.mkdir(0o700)
     if case == "lock-folder-lost":  # a lost manifest beside it: init stops on the lock first
@@ -11707,7 +11737,16 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         assert "config_err" not in logged, logged
         return
     role = case.split("-", maxsplit=1)[0]
-    assert last_line(cp).endswith(misplaced_tail(role)), last_line(cp)
+    token = {  # round 28 I20, I35: what is there, as the error line above names it
+        "lock-fifo": "fifo",
+        "lock-filelink": "symlink-file",
+        "holds-fifo": "fifo",
+        "holds-linkdir": "symlink-folder",
+        "holds-loop": "symlink-loop",
+        "holds-dangling": "symlink-nothing",
+        "holds-devnull": "",  # what no fixed word says keeps the generic words
+    }.get(case, "folder")
+    assert last_line(cp).endswith(misplaced_tail(role, token)), last_line(cp)
     assert logged.endswith(" config_err=state-file-notfile"), logged
 
 

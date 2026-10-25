@@ -31720,6 +31720,23 @@ says so. Tests: the step 1 table's `LM-link-damaged` and `LM-link-gone-damaged` 
 `test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2` (following the words ends
 it).
 
+**What is at a misplaced lock, heartbeat or governance file is named** (I20, I35). Step 1's `state-file-notfile` tail
+and step 2's NEXT said `which is a folder or something else that is not a file` for a fifo at the lock or a folder at
+holds.json, while the error line just above, and status, name the kind (`is a fifo, not a file`), as the -wal and
+-shm tails have since round 27 P119. Both probes now read the kind with the judge the installed build uses for that
+role, never a copy of it: `doctor.own_kind` for the lock (a link read as itself), a folder for the heartbeat (the
+only case `heartbeat_not_a_file` FAILs) and `doctor.governance_file_kind` for a governance file, and pass it as one
+fixed token (step 1's `misodd-<token>` line, read apart as `sideodd-` is; step 2's second field), never the check's
+detail, which quotes a path. `misplaced_words ROLE KIND` sets `MISPLACED_IS`: `is a folder, not a file`, `is a fifo,
+not a file`, `is a symlink to a folder, not a file`, `is a symlink loop, not a file`, `is a symlink to nothing, not a
+file`, `is a symlink, not a file` for a link to a file at the lock (never "a symlink to a file, not a file"), `is not
+a regular file`, and the generic words when the build cannot say or the kind has no fixed word (a link to a device).
+docs/deploy/setup-feedback.md says so. Tests: the `lock-fifo`, `lock-filelink`, `holds-fifo`, `holds-linkdir`,
+`holds-loop`, `holds-dangling` and `holds-devnull` (generic) cases of
+`test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file`, and the
+`lock-fifo` and `holds-fifo` cases of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file`
+(the error above names the same kind).
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,

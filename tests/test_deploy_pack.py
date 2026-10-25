@@ -7138,6 +7138,7 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "$fnoun": "<file>",
         "$MISPLACED_NOUN": "<file>",
         "$MISPLACED_CHECK": "<check>",
+        "$MISPLACED_IS": "<is what>",  # B13 round 28 I20, I35
         "$stopsat": "<at its step>",
         "$SIDE_NOUN": "<the side>",
         "$SIDE_IS": "<is what>",

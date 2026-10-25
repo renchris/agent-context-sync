@@ -941,7 +941,20 @@ STOPS_BOTH="at its config step (at its status step when it adds a folder with --
 # list, the audit trail), as its error line, status and the report name it (B13 round 28 ruling 22: I3, I15,
 # I34, I44, I57, I86, I100: holds.json had two names in one run, the old one beside "the hold list"). 1
 # for a role it does not know.
-misplaced_words() { # ROLE: sets MISPLACED_NOUN and MISPLACED_CHECK
+misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK and MISPLACED_IS
+	# what is there, from the fixed token the probes read with the installed build's own judge for that role,
+	# as the error line above names it (B13 round 28 I20, I35); the generic words when that build cannot say.
+	# A link to a file at the lock is no lock (it opens with O_NOFOLLOW): "a symlink", never "a symlink to a
+	# file, not a file"
+	case "${2:-}" in
+	folder | fifo | socket) MISPLACED_IS="is a $2, not a file" ;;
+	symlink-loop) MISPLACED_IS="is a symlink loop, not a file" ;;
+	symlink-nothing) MISPLACED_IS="is a symlink to nothing, not a file" ;;
+	symlink-file) MISPLACED_IS="is a symlink, not a file" ;;
+	symlink-folder | symlink-fifo | symlink-socket) MISPLACED_IS="is a symlink to a ${2#symlink-}, not a file" ;;
+	other) MISPLACED_IS="is not a regular file" ;;
+	*) MISPLACED_IS="is a folder or something else that is not a file" ;;
+	esac
 	case "$1" in
 	lock) MISPLACED_NOUN="agentsync's lock file" MISPLACED_CHECK=lock ;;
 	heartbeat) MISPLACED_NOUN="agentsync's heartbeat file" MISPLACED_CHECK=heartbeat ;;
@@ -7227,7 +7240,40 @@ if access in ("state-side-access", "state-dir-write") and checked in ("state-fil
 # Judged by doctor.state_not_a_file of the installed build, never re-implemented here: its first finding,
 # the manifest and its sides included, so a side or a manifest init stops on first keeps its own word below;
 # nothing when that build lacks it or it raises
-misplaced = None
+misplaced = misodd = None
+
+
+def misplaced_kind(role, path):
+    """What is there, by the judge the installed build uses for that role (own_kind for the lock, a folder
+    for the heartbeat, governance_file_kind for a governance file), as one fixed token, never the detail
+    of the check, which quotes a path; None when that build lacks the judge or it raises (B13 round 28 I20,
+    I35: the words said a folder or something else while the error above named the kind)."""
+    try:
+        from agentsync.ops import doctor as judge
+
+        kind = (
+            judge.own_kind(path)
+            if role == "lock"
+            else "a folder"
+            if role == "heartbeat"
+            else judge.governance_file_kind(path)
+        )
+    except Exception:
+        return None
+    return {
+        "a folder": "folder",
+        "a fifo": "fifo",
+        "a socket": "socket",
+        "not a regular file": "other",
+        "a symlink loop": "symlink-loop",
+        "a symlink to nothing": "symlink-nothing",
+        "a symlink to a file": "symlink-file",
+        "a symlink to a folder": "symlink-folder",
+        "a symlink to a fifo": "symlink-fifo",
+        "a symlink to a socket": "symlink-socket",
+    }.get(kind)
+
+
 if not notdir:
     try:
         from agentsync.ops.doctor import state_not_a_file
@@ -7244,8 +7290,11 @@ if not notdir:
             "governance.suppressed": "suppressed",
             "governance.audit": "audit",
         }.get(getattr(found[1], "name", None))
+        misodd = misplaced and misplaced_kind(misplaced, found[0])
 if misplaced:
     checked, role = "state-file-notfile", misplaced  # its role- line, as the status-step files give theirs
+    if misodd:
+        words.append("misodd-" + misodd)  # read apart from the words, as sideodd- is (B13 round 28 I20, I35)
 if notdir:
     words.append("state-notdir")
 elif misplaced:
@@ -7327,7 +7376,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7430,6 +7479,7 @@ list_folders() {
 				cunread="$(LC_ALL=C grep -x 'lost-unread' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cside="$(LC_ALL=C grep -x 'side-status' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
+				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|symlink-(loop|nothing|file|folder|fifo|socket))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
 			fi
 		fi
 	fi
@@ -7609,8 +7659,8 @@ list_folders() {
 		case ",$cerr," in *",state-side-notfile,"*) stail="; step 2 stops $stopsat on $SIDE_NOUN, which $SIDE_IS (not damage): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		# a lock, heartbeat or governance file that is not a file, by the installed doctor.state_not_a_file: init
 		# stops on it, add-source opens past it (measured both ways; B13 round 27 ruling 16: P113, P125, P142)
-		misplaced_words "${crole#role-}" || MISPLACED_NOUN="$fnoun" MISPLACED_CHECK="lock, heartbeat or governance"
-		case ",$cerr," in *",state-file-notfile,"*) stail="; step 2 stops $STOPS_BOTH on $MISPLACED_NOUN, which is a folder or something else that is not a file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its $MISPLACED_CHECK line" ;; esac
+		misplaced_words "${crole#role-}" "$cmis" || MISPLACED_NOUN="$fnoun" MISPLACED_CHECK="lock, heartbeat or governance"
+		case ",$cerr," in *",state-file-notfile,"*) stail="; step 2 stops $STOPS_BOTH on $MISPLACED_NOUN, which $MISPLACED_IS (not damage, not a mode): fixing that is the person's (keeping a copy, they move it aside$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its $MISPLACED_CHECK line" ;; esac
 		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest$SHUT_OPEN), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		# a lost manifest that is a symlink into a folder that is gone or refuses a write: the link goes first, as
 		# status's fix says (round 25 D79: D-L1c; lane B's D71), or moving heartbeat.json aside leads to a second stop
@@ -8601,9 +8651,11 @@ print(" ".join([str(int(bool(odd)))] + odd))
 # re-implements the kinds; false when the installed build lacks the function, it raises or finds none (the
 # generic NEXT stays). -I: nothing from the folder this runs in is imported.
 STATE_MISPLACED=""
+STATE_MISPLACED_KIND="" # what is there, in a fixed token (folder, fifo, symlink-loop...), or empty
 state_misplaced() {
 	local n=""
 	STATE_MISPLACED=""
+	STATE_MISPLACED_KIND=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
 import sys
@@ -8620,11 +8672,46 @@ roles = {
     "governance.suppressed": "suppressed",
     "governance.audit": "audit",
 }
-print(roles.get(getattr(found[1], "name", None), "-") if found is not None else "-")
+role = roles.get(getattr(found[1], "name", None), "-") if found is not None else "-"
+
+
+def misplaced_kind(role, path):
+    """What is there, by the judge the installed build uses for that role (own_kind for the lock, a folder
+    for the heartbeat, governance_file_kind for a governance file), as one fixed token, never the detail
+    of the check, which quotes a path; None when that build lacks the judge or it raises (B13 round 28 I20,
+    I35: the words said a folder or something else while the error above named the kind)."""
+    try:
+        from agentsync.ops import doctor as judge
+
+        kind = (
+            judge.own_kind(path)
+            if role == "lock"
+            else "a folder"
+            if role == "heartbeat"
+            else judge.governance_file_kind(path)
+        )
+    except Exception:
+        return None
+    return {
+        "a folder": "folder",
+        "a fifo": "fifo",
+        "a socket": "socket",
+        "not a regular file": "other",
+        "a symlink loop": "symlink-loop",
+        "a symlink to nothing": "symlink-nothing",
+        "a symlink to a file": "symlink-file",
+        "a symlink to a folder": "symlink-folder",
+        "a symlink to a fifo": "symlink-fifo",
+        "a symlink to a socket": "symlink-socket",
+    }.get(kind)
+
+
+print(role, (role != "-" and misplaced_kind(role, found[0])) or "")
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
-	misplaced_words "$n" || return 1
-	STATE_MISPLACED="$n"
+	STATE_MISPLACED_KIND="${n#* }"
+	misplaced_words "${n%% *}" "$STATE_MISPLACED_KIND" || return 1
+	STATE_MISPLACED="${n%% *}"
 }
 STATE_LOST_LINK="" # 1 once state_lost finds the lost manifest a symlink into a folder gone or refusing a write
 STATE_LOST_DANGLING="" # 1 once state_lost finds it a symlink to nothing in a folder a sync can write (round 26 E19)
@@ -8774,10 +8861,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	fi
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
-	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED"; then
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED" "$STATE_MISPLACED_KIND"; then
 		# init's not-a-file guard runs before it opens anything, so ahead of the lost manifest and the owner's
 		# (B13 round 27 ruling 16)
-		FAIL_NEXT="$MISPLACED_NOUN is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		FAIL_NEXT="$MISPLACED_NOUN $MISPLACED_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_lost; then
 		# a symlink to nothing in a folder a sync can write: named as one, the same fix (round 26 E19); a symlink
 		# into a folder that is gone or refuses a write: the link goes first (round 25 D79: D-L1c); heartbeat.json

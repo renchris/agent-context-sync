@@ -792,15 +792,19 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   agentsync's own `doctor.state_not_a_file` finds first, never a copy of its kinds, and nothing from a build without
   it), which init stops on before it opens anything and add-source opens past, is the person's, judged first after
   `state-notdir` (`<file>` and `<check>` as below): `state-file-notfile`, `; step 2 stops at its config step (at
-  its status step when it adds a folder with --source-local) on <file>, which is a folder or something else that is
-  not a file (not damage, not a mode): fixing that is the person's (keeping a copy, they move it aside; if status
-  names a folder shut to this account, they open it first, as status says), and ~/.local/bin/agentsync status prints
-  it on its <check> line` (`<check>` is `lock`, `heartbeat`, `governance.hold`, `governance.purge_queue`,
-  `governance.suppressed` or `governance.audit`), and step 2's config step its own `NEXT:` (`<file> is a folder or
-  something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix
-  on its <check> line): fixing it is the person's (...), not a step for the agent, so show them the error and go on
-  to the report; ...`), where it said `fix the error above` (B13 round 27 ruling 16, the round's two turns: P22,
-  P124, P57, P110, P113, P125, P142). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
+  its status step when it adds a folder with --source-local) on <file>, which <is what> (not damage, not a mode):
+  fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,
+  they open it first, as status says), and ~/.local/bin/agentsync status prints it on its <check> line` (`<check>`
+  is `lock`, `heartbeat`, `governance.hold`, `governance.purge_queue`, `governance.suppressed` or
+  `governance.audit`), and step 2's config step its own `NEXT:` (`<file> <is what> (the error above names it;
+  ~/.local/bin/agentsync status prints it and its fix on its <check> line): fixing it is the person's (...), not a
+  step for the agent, so show them the error and go on to the report; ...`), where it said `fix the error above`
+  (B13 round 27 ruling 16, the round's two turns: P22, P124, P57, P110, P113, P125, P142). `<is what>` names what
+  is there as the error line above does, read with the installed build's own judge for that file (`is a folder, not
+  a file`, `is a fifo, not a file`, `is a symlink to a folder, not a file`, `is a symlink loop, not a file`, `is a
+  symlink to nothing, not a file`; `is a symlink, not a file` for a link to a file at the lock, which opens no
+  link), and `is a folder or something else that is not a file` from a build that cannot say (B13 round 28 I20,
+  I35). That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
   rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another
   account's, the `sudo chown`) to run first; only then, since B13 round 26 E16 (CONTRACTS §16.184): said of a folder
   this account can open, a fifo or a link, it sent the person looking for a step status does not name. A state folder of this
