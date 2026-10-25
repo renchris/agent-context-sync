@@ -6741,6 +6741,10 @@ def test_the_guides_summary_sync_row_gives_the_new_starts_clause() -> None:
     assert f"a clause in the CLI's own words, {clause} (`its` for one;" in row
     assert "`, D deletion notices removed (their files were already reported gone)`" in row
     assert "`1 deletion notice removed (its file was already reported gone)` for one" in row
+    # B13 round 28 I54, I63 (lane RA): lane E's P117 kept clause, after which the source opens its own bracket
+    assert "f\", {settling} kept for {'a file' if settling == 1 else 'files'} still settling\"" in source
+    assert "`, S kept for files still settling` (`a file` for one" in row and "`(install.out)`" in row
+    assert "or kept a page for a file still settling, a clause" in row
     assert "`by the background sync` after `pages`" in row and "B13 round 27 P115" in row
     assert row.index(clause) < row.index("then status's count of sources with a complete baseline")
     assert "the clause can add up to five parts" in row

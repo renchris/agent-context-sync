@@ -32163,7 +32163,9 @@ own (joined by ` · `) for what install.out's new-start note says that sync remo
 with
 its deletion-notice part, `by the background sync` and `install.out's last sync line` when the line is borrowed.
 The row's list of clauses gives it there; "up to five parts" stays, as the verifier found the clause is no part of
-the converted clause and carries its own tag. Test: `test_the_guides_summary_sync_row_gives_the_new_starts_clause`.
+the converted clause and carries its own tag. After lane RA's I54 and I63 (b30acc7dd) it also gives lane E's
+`, S kept for files still settling` part, after which the source opens its own bracket, and says a kept-only note
+counts. Test: `test_the_guides_summary_sync_row_gives_the_new_starts_clause`.
 
 **The guide's quote for several came-back stops gives three or more** (I84; `docs/deploy/setup-feedback.md`). It
 quoted `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for the earlier, ...` for "more
