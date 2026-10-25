@@ -9530,6 +9530,43 @@ def test_a_hold_and_its_release_print_their_result_once(
     assert actions[-2:] == ["hold-set", "hold-released"]
 
 
+def _queue_three_then_new_start(config: Config, tmp: Path) -> None:
+    for n in range(3):
+        _queue_upstream(config, None, stable_id=f"contoso-{n}")
+    _new_start(config, tmp)
+
+
+def _queue_run_warnings(config: Config, caplog: pytest.LogCaptureFixture) -> list[str]:
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="agentsync.governance"):
+        reps = governance.run_purge_queue(config)
+    assert [bool(r.not_run) for r in reps] == [True, True, True], reps
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_a_queue_run_after_the_new_start_warns_once_counted_never_once_per_entry(
+    initialised: Config, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """B13 round 28 I65 (P25's class): after the new start a queue run logged one full WARNING per entry
+    ("not judged yet: ..."), which P25 had fixed for "not judged: ". One WARNING, counted."""
+    _synced(initialised)
+    _queue_three_then_new_start(initialised, tmp_path)
+    warned = _queue_run_warnings(initialised, caplog)
+    assert warned == [f"governance: {governance.new_start_purges(3)}"], warned
+
+
+def test_a_queue_run_that_keeps_entries_until_their_id_is_found_warns_once_counted(
+    initialised: Config, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """B13 round 28 I65 (P112's kind): after the new start and a sync, a queue run that kept 3 entries whose
+    id reaches nothing logged one full WARNING per entry. One WARNING, counted."""
+    cfg = _synced(initialised)
+    _queue_three_then_new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    warned = _queue_run_warnings(initialised, caplog)
+    assert warned == [f"governance: {governance.unresolved_purges(3)}"], warned
+
+
 def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

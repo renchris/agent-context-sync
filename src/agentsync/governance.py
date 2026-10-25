@@ -3669,6 +3669,8 @@ def run_purge_queue(
         )  # indexes in ``queue`` of the later entries a verified purge of this run did
         queue = pending_purges(sp.root)
         unjudged = 0  # entries no manifest read could judge: said once, with the cause
+        new_start = 0  # the new start's entries, and those kept until their id is found: one counted
+        unresolved = 0  # WARNING per kind after the loop, as P25 (B13 round 28 I65)
 
         def not_run(q: QueuedPurge, why: str) -> None:
             reports.append(
@@ -3697,8 +3699,12 @@ def run_purge_queue(
             if why and not probe:
                 if why.startswith("not judged: "):
                     unjudged += 1  # one WARNING for the run, with its cause, after the loop (P25)
+                elif why == NEW_START_NOTE:
+                    new_start += 1  # one counted WARNING after the loop (P40; I65)
+                elif why.startswith(UNRESOLVED_HEAD):
+                    unresolved += 1  # one counted WARNING after the loop (P112; I65)
                 else:
-                    log.warning("governance: %s", why)
+                    log.warning("governance: %s", why)  # a judged note names its own rows: said per entry
                 not_run(q, why)
                 continue
             seed = _stored_ids(q)
@@ -3717,9 +3723,8 @@ def run_purge_queue(
                         now=now,
                     )
                     if _targets_nothing(dry, seed) and not _erased_before(sp.root, q):
-                        note = unresolved_note(q)
-                        log.warning("governance: %s", note)
-                        not_run(dataclasses.replace(q, found_nothing=True), note)
+                        unresolved += 1  # one counted WARNING after the loop (P112; I65)
+                        not_run(dataclasses.replace(q, found_nothing=True), unresolved_note(q))
                         continue
                 rep = (
                     dry
@@ -3805,6 +3810,10 @@ def run_purge_queue(
                 )
         if not dry_run:
             _write_queue(sp.root, remaining)
+        if new_start:
+            log.warning("governance: %s", new_start_purges(new_start))
+        if unresolved:
+            log.warning("governance: %s", unresolved_purges(unresolved))
         if unjudged:
             log.warning(
                 "governance: cannot judge %s: %s",
