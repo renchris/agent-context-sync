@@ -7382,6 +7382,11 @@ class _StateSideNotFileError(_NoStateError):
         return f"{_side_role(self.side)} is not a file: {_SIDE_SEE}"
 
 
+def _wal_first(side: Path) -> bool:
+    """The sort key that puts a -wal before an -shm, in doctor's order (B13 round 28 I31)."""
+    return not side.name.endswith("-wal")
+
+
 def _side_role(side: Path) -> str:
     """:data:`_SIDE_ROLE`'s words for the side file at ``side`` (``manifest.sqlite-wal``)."""
     suffix = side.name.rsplit("-", 1)[-1]
@@ -12404,8 +12409,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             elif notfile:  # B13 round 25 ruling 12 (D23, D78): not a file, not unreadable
                 from_notfile.append(f"{name} warn (not judged: the state file is not a file)")
             elif side_read and not shut:  # B13 round 25 ruling 12 (D20)
-                what = _side_role(side_at) if side_at is not None else "a side file of the state file"
-                from_side.append(f"{name} warn (not judged: {what} is not a file)")
+                # B13 round 28 I31: both side files when both are not files, as the bucket names them
+                roles = list(dict.fromkeys(_side_role(p) for p in sorted(sidecars, key=_wal_first)))
+                if len(roles) == 2:
+                    said = "the state file's write-ahead log and shared-memory file are not files"
+                else:
+                    one = roles[0] if roles else _side_role(side_at) if side_at is not None else ""
+                    said = f"{one or 'a side file of the state file'} is not a file"
+                from_side.append(f"{name} warn (not judged: {said})")
             elif lost:  # B13 round 24 ruling 7: missing, not unreadable
                 from_lost.append(f"{name} warn (not judged: the state file is missing)")
             elif shut != "folder":

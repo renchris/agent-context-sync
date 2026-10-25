@@ -15453,8 +15453,25 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
     outcome = _line(summary, "- **outcome: ")
     assert "from the state file's write-ahead log that is not a file: state_dir.files" in outcome, outcome
-    # a folder at the -shm: the read is whole, so the parts are measured and the warn is judged
+    # B13 round 28 I31: folders at both: the warn names both side files, as the bucket does; the evidence
+    # names the write-ahead log alone, whose folder breaks the read
     shm = db.with_name(db.name + "-shm")
+    wal.mkdir(mode=0o700)
+    shm.mkdir(mode=0o700)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        wal.rmdir()
+        shm.rmdir()
+    summary = section(text, "Summary")
+    assert (
+        "heartbeat.x warn (not judged: the state file's write-ahead log and shared-memory file are not files)"
+        in _line(summary, "- doctor: ")
+    ), summary
+    evidence = _line(summary, "- evidence: ")
+    assert "because the state file's write-ahead log is not a file: " in evidence, evidence
+    assert "shared-memory" not in evidence, evidence
+    # a folder at the -shm: the read is whole, so the parts are measured and the warn is judged
     shm.mkdir(mode=0o700)
     try:
         assert setup_report._side_breaking_read(db) is None
