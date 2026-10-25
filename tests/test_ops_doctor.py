@@ -4125,3 +4125,34 @@ def test_a_lost_manifest_fails_whatever_else_is_in_the_state_folder(sample_confi
     with pytest.raises(ManifestLostError) as raised:
         Manifest(db)
     assert str(raised.value) == f"{db} {LOST_MANIFEST}" and not db.exists()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_linked_manifests_side_takes_its_chmod_at_the_targets_folder(
+    sample_config: Config, tmp_path: Path
+) -> None:
+    """B13 round 28 I52: beside a manifest linked into another folder, sqlite keeps the -wal beside the
+    target; its chmod named ``<state>/manifest.sqlite-wal``, a path that is not there, and the fix of the
+    target itself was judged against the state folder. ``own_path_fix`` judges each at its resolved path in
+    its resolved folder, and the chmod names the side where it is."""
+    db = expand(sample_config.state_paths.db)
+    store = tmp_path / "store"
+    store.mkdir()
+    target = store / "manifest.sqlite"
+    target.write_bytes(b"")
+    target.chmod(0o600)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.symlink_to(target)
+    wal = store / "manifest.sqlite-wal"
+    wal.write_bytes(b"")
+    wal.chmod(0o400)
+    try:
+        assert doctor.refused_files_fix(sample_config, [wal]) == f"chmod 600 {doctor._shell_path(wal)}"
+        real = Path(os.path.realpath(wal))
+        assert doctor.own_path_fix(wal) == doctor.state_path_fix(real.parent, real)
+        target.chmod(0o000)
+        fix = doctor.own_path_fix(db)
+        assert doctor._shell_path(Path(os.path.realpath(target))) in fix, fix
+    finally:
+        target.chmod(0o600)
+        wal.chmod(0o600)

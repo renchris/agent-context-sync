@@ -1324,12 +1324,21 @@ def refused_files_fix(config: Config, files: Sequence[Path]) -> str:
     chmod leaves none for the next run (B13 round 22 Z80's verifier: one file's fix was the trap of fixing one
     file a run); else the fix of the first that is not, another account's or one an ACL or a read-only volume
     refuses, the person's (:func:`state_path_fix`)."""
-    root = expand(config.state_paths.root)
     for p in files:
         st = p.stat()  # a linked manifest by its target (B13 round 26 E63)
         if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o600 == 0o600 or _read_only(p):
-            return state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(p)))
-    return "chmod 600 " + " ".join(_shell_path(root / p.name) for p in files)
+            return own_path_fix(p)  # the target's own folder, never the state folder's (B13 round 28 I52)
+    # each by its own path, which a chmod follows through a link, as status names it (I52)
+    return "chmod 600 " + " ".join(_shell_path(expand(p)) for p in files)
+
+
+def own_path_fix(path: Path) -> str:
+    """:func:`state_path_fix` of a state file at its resolved path, judged against its resolved folder: a
+    -wal or -shm beside a linked manifest's target lives in the target's folder, so its chmod or the person's
+    fix names it there, never the state folder (B13 round 28 I52; install.sh and the setup report use it,
+    with a fallback for an older build)."""
+    resolved = Path(os.path.realpath(expand(path)))
+    return state_path_fix(resolved.parent, resolved)
 
 
 def _not_a_file(mode: int) -> str | None:
