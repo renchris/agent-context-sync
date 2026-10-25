@@ -6523,7 +6523,11 @@ def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
 
     page = " ".join(_page("docs/deploy/data-governance.md").split())
     [bullet] = re.findall(r"- \*\*Over a lost manifest:\*\* (.*?)(?= - \*\*| ## )", page)
-    assert f"`{manifest.LOST_MANIFEST}`" in bullet
+    # B13 round 28 I69, I77 (one gap): purge stops on either ending, P111's unread heartbeat's too
+    assert manifest.LOST_MANIFEST_UNREAD in manifest.LOST_MANIFEST_WORDS
+    for ending in manifest.LOST_MANIFEST_WORDS:
+        assert f"`{ending}`" in bullet, ending
+    assert "B13 round 27 P111" in bullet
     for word in (
         "`agentsync purge`",
         "`--queue`",

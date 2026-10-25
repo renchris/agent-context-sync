@@ -32212,3 +32212,12 @@ manifest with its two link forms and `_LINK_FIRST` (E3, E19, P121), the unread h
 lane RA's ruling 21 and 22 words landed, as the verifier asked. P60's test docstring drops its "left out on
 purpose" sentence. Test: `test_the_guide_gives_the_reports_step_2_state_outcomes`, which makes each form from
 `setup_report`.
+
+**The records page quotes both lost-manifest endings purge stops on** (I69, I77: one gap, built once;
+`docs/deploy/data-governance.md`). Its "Over a lost manifest" bullet quoted only `manifest.LOST_MANIFEST`, and since
+round 27 P111 `_lost_state_stop` stops purge and compact-history on `LOST_MANIFEST_UNREAD` too (`lost_words`, a
+heartbeat.json there but damaged, not an object, or refused), which status prints: a reader seeing it would take
+the bullet not to apply. The bullet keeps the first quote and adds the second, as the verifiers said (dropping the
+quotes for "(either reason)" would turn P62's pin red and lose the words a reader matches); the same fix covers
+both. Test: `test_the_records_page_says_purge_stops_over_a_lost_manifest`, which now reads every ending in
+`manifest.LOST_MANIFEST_WORDS`.

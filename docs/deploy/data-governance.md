@@ -59,13 +59,16 @@ is a copy that no purge reaches, so exclude it too.
   source when it was narrowed by `--source`.
 - **Erasure or DLP request:** find the item with `agentsync status` or `rg` in `_manifest/`, then run
   `agentsync purge path=… --reason erasure-request` (or `dlp-remediation`).
-- **Over a lost manifest:** while `agentsync status` reports that manifest.sqlite `is missing, but heartbeat.json
-  records earlier passes`, `agentsync purge` (a selector, `--queue`, and the `--dry-run` of either) and
+- **Over a lost manifest:** while `agentsync status` reports that manifest.sqlite
+  `is missing, but heartbeat.json records earlier passes`, or, when heartbeat.json is there but damaged or not a
+  file, that it
+  `is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`,
+  `agentsync purge` (a selector, `--queue`, and the `--dry-run` of either) and
   `agentsync compact-history` stop on that same line, exit 1 and write nothing, because no manifest read can tell a
   current page from a gone one. Queued purges stay queued. Follow status's fix: restore manifest.sqlite from a copy
   you trust, or else move heartbeat.json aside (keeping a copy) so the next sync starts a new manifest; a new start
   converts every file again and forgets the deletions, the deletion breaker's suspended removals and the archive it
-  had recorded. Then run the purge. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14).
+  had recorded. Then run the purge. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27 P111).
 
 ## Legal and records hold
 
