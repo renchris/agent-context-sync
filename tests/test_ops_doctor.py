@@ -1784,7 +1784,9 @@ def test_a_dangling_manifest_link_is_judged_by_what_a_sync_does_never_as_an_acl(
     db.symlink_to(db.parent / "gone" / "manifest.sqlite")
     assert manifest_lost(db)
     (line,) = failed()
-    assert line.name == "state_dir.manifest" and line.detail.endswith(f", and {LOST_MANIFEST}"), line
+    # B13 round 28 I50: the file's own fact in its own clause; the ending the readers key on is kept
+    assert line.name == "state_dir.manifest" and line.detail.endswith(f"; the manifest {LOST_MANIFEST}"), line
+    assert f"{doctor.DANGLING_UNUSABLE}; the manifest is missing" in line.detail, line
     assert line.fix == (
         f"the person removes the link first: rm {doctor._shell_path(db)}; then "
         + doctor.LOST_MANIFEST_FIX.removeprefix("the person ")

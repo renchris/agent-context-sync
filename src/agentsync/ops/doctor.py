@@ -2059,7 +2059,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 # move works through the link (a copy restored follows it into the missing folder, and with
                 # heartbeat.json aside the sync stops on the link) and "rm" alone ends on the lost guard
                 # (B13 round 25 D71); the generic lost line below is not printed beside it
-                detail += f", and {lost_words(expand(sp.db)) or LOST_MANIFEST}"
+                # the file's own fact in its own clause, as E19's line says it; every reader keys on the
+                # ending (LOST_MANIFEST_WORDS) or on DANGLING_UNUSABLE, both kept (B13 round 28 I50)
+                detail += f"; the manifest {lost_words(expand(sp.db)) or LOST_MANIFEST}"
                 fix = (
                     f"the person removes the link first: rm {_shell_path(expand(p))}; then "
                     + LOST_MANIFEST_FIX.removeprefix("the person ")
