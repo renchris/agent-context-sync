@@ -4645,6 +4645,9 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS
     # B13 round 24 B56, B102: the lost manifest's words, matched in the sync's line, are lane B's own
     assert setup_report._STATE_LOST_COPY == f" {manifest_mod.LOST_MANIFEST}" == setup_report._state_lost()
+    # B13 round 28 ruling 21: and its words over a heartbeat.json that cannot be read (P111)
+    unread = setup_report._STATE_LOST_UNREAD_COPY
+    assert unread == f" {manifest_mod.LOST_MANIFEST_UNREAD}" == setup_report._state_lost_unread()
     # B13 round 27 P33, P58: doctor's words for a link into a folder no sync can use, the lost link's key
     copy = setup_report._DANGLING_UNUSABLE_COPY
     assert copy == doctor.DANGLING_UNUSABLE == setup_report._dangling_unusable()
@@ -10681,6 +10684,12 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "person's to fix",
             "the file was restored or heartbeat.json moved aside",
         ),
+        (  # B13 round 28 ruling 21: over a heartbeat.json that cannot be read (P111), its own words
+            f"error: state: {db} {manifest_mod.LOST_MANIFEST_UNREAD} (fix: {doctor.LOST_MANIFEST_FIX})",
+            "on agentsync's state file, which is missing beside a heartbeat.json that cannot be read: "
+            "heartbeat.json's fix first, then the file's, the person's",
+            "heartbeat.json was fixed or moved aside, or the file restored",
+        ),
         (  # B13 round 26 E3, E14: doctor's one FAIL for a lost manifest that is a link into a gone folder
             # (B13 round 25 D71), by the run's own line: its fix removes or re-points the link first
             f"error: state: {db} is a symlink to /Users/x/gone/manifest.sqlite, whose folder does not "
@@ -14809,6 +14818,104 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     assert ocr.count("- no manifest yet (the next sync starts a new one over 1 existing mirror page;") == 1, (
         ocr
     )
+
+
+def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 ruling 21 (I95, I1, I28, I41, I53, I64, I76): with manifest.sqlite gone and heartbeat.json
+    damaged (lane B's P111: still lost, ``manifest.LOST_MANIFEST_UNREAD``), doctor and status said
+    "heartbeat.json beside it cannot be read", while the report's bucket, evidence, Status parts and re-screen
+    said "records earlier passes" and "earlier syncs recorded", doctor's heartbeat warn sat in "unexpected 1",
+    and step 2's outcome over the sync's own line named no cause and no owner. Each now says the file cannot
+    be read, from the report's own read; a fifo there stays in the misplaced bucket (doctor's FAIL)."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.name.startswith("state_dir") or c.name == "heartbeat"
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    sp = load_config(cfg).state_paths
+    db, heartbeat = expand(sp.db), expand(sp.heartbeat)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    heartbeat.write_text("{not json", encoding="utf-8")
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_UNREAD
+    _rc, text, _ = report(tmp_path, cfg)
+    for false in ("records earlier passes", "earlier syncs recorded"):
+        assert false not in text, [ln for ln in text.splitlines() if false in ln]
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from the state file that is missing beside a heartbeat.json that cannot be read (2 checks): "
+    ) in line, line
+    assert "state_dir.manifest FAIL (the person's; see Doctor)" in line, line
+    assert "heartbeat warn (heartbeat.json cannot be read: the state_dir.manifest fix covers it)" in line
+    assert line.endswith(" · unexpected 0"), line
+    status = section(text, "Status")
+    lost = status.count(setup_report._LOST_MANIFEST_UNREAD_LINE)
+    assert lost >= 4 and setup_report._LOST_MANIFEST_LINE not in status, status
+    assert _line(summary, "- evidence: ") == (
+        f'- evidence: {lost} lines at the end of Status say "manifest: missing": '
+        f"{setup_report._STATE_LOST_UNREAD_EVIDENCE}"
+    ), summary
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        "last re-screen: not read (the manifest is missing and heartbeat.json cannot be read; the person "
+        "decides: see Doctor's state_dir.manifest line)"
+    ), section(text, "Environment")
+    # step 2's own line for it, as the sync prints it: the cause, and heartbeat.json's fix first
+    log, out = fake_mac["setup"] / "install.log", fake_mac["setup"] / "install.out"
+    friction = write_friction(fake_mac, retry_friction())
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1).replace(
+            "step=config seconds=1 rc=0 result=done note=add-source",
+            "step=config seconds=1 rc=1 result=failed",
+        ),
+        encoding="utf-8",
+    )
+    out.write_text(
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"error: state: {db} {manifest_mod.LOST_MANIFEST_UNREAD} (fix: {doctor.LOST_MANIFEST_FIX})\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    outcome = _line(section(text, "Summary"), "- **outcome: ")
+    assert outcome.split("(computed: ", 1)[1].startswith(
+        "install.sh exited 1 at its config step on agentsync's state file, which is missing beside a "
+        "heartbeat.json that cannot be read: heartbeat.json's fix first, then the file's, the person's"
+    ), outcome
+    assert "records earlier passes" not in text
+    for made in (log, out, friction):
+        made.unlink()
+    # a fifo at heartbeat.json: doctor's warn (a pass's rename replaces it) is the lost bucket's too; a
+    # folder there is doctor's FAIL, the misplaced bucket's, never the lost one's warn
+    heartbeat.unlink()
+    os.mkfifo(heartbeat, 0o600)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        heartbeat.unlink()
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "heartbeat warn (heartbeat.json cannot be read: " in line and line.endswith(" · unexpected 0"), line
+    assert "records earlier passes" not in text and "earlier syncs recorded" not in text
+    heartbeat.mkdir(mode=0o700)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        heartbeat.rmdir()
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "heartbeat FAIL (the person's; see Doctor)" in line and line.endswith(" · unexpected 0"), line
+    assert "heartbeat warn (heartbeat.json cannot be read" not in line, line
+    assert "records earlier passes" not in text and "earlier syncs recorded" not in text
 
 
 def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(

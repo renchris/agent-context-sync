@@ -2751,6 +2751,8 @@ class _SyncStop:
     unread: str = ""  # why the runs table was not read, when the report's own read knows (B13 round 25 D4)
     link: str = ""  # a lost manifest's link now, by the report's own read (B13 round 27 P127): _STOP_LINKS
     shape: str = ""  # what a misplaced stop's file is now, by doctor's FAIL (B13 round 27 P18): _stop_shape
+    # a lost manifest's heartbeat.json cannot be read now, by the report's own read (B13 round 28 ruling 21)
+    lost_unread: bool = False
 
     @property
     def what(self) -> str:
@@ -3771,6 +3773,7 @@ class _Facts:
     # lines of the evidence parts that say the manifest is missing though earlier syncs recorded (B13 round 24
     # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
     evidence_lost: int = 0
+    lost_unread: bool = False  # B13 round 28 ruling 21: those lines say heartbeat.json cannot be read
     # lines of the evidence parts that say "no manifest yet" over existing mirror pages (a new start), and
     # those pages (B13 round 27 P26): not measured, and no wait measures them, only the next sync; "no sync
     # has run" is not counted
@@ -5205,7 +5208,15 @@ def _last_rescreen(r: _Run) -> str:
     try:
         db.stat()
     except FileNotFoundError:
-        if _manifest_lost_at(r.config):  # B13 round 24 ruling 7 (B4, B34, B49): lost, not a first sync
+        lost = _manifest_lost_kind(r.config)
+        if (
+            lost == "unread"
+        ):  # B13 round 28 ruling 21: never "earlier syncs recorded" over an unread heartbeat
+            return (
+                "not read (the manifest is missing and heartbeat.json cannot be read; the person decides: "
+                "see Doctor's state_dir.manifest line)"
+            )
+        if lost:  # B13 round 24 ruling 7 (B4, B34, B49): lost, not a first sync
             return (
                 "not read (the manifest is missing though earlier syncs recorded; the person decides: see "
                 "Doctor's state_dir.manifest line)"
@@ -7282,7 +7293,17 @@ counts (B13 round 27 P26)."""
 
 class _LostManifestError(_NoManifestError):
     """No manifest, while heartbeat.json beside it records earlier passes: lost, the person's to decide, never
-    "no sync has run" (``manifest.manifest_lost``; B13 round 23 A29)."""
+    "no sync has run" (``manifest.manifest_lost``; B13 round 23 A29). ``unread``: heartbeat.json beside it
+    cannot be read, so earlier passes cannot be ruled out (``manifest.LOST_MANIFEST_UNREAD``), whose line says
+    so as status does (B13 round 28 ruling 21)."""
+
+    def __init__(self, *, unread: bool = False) -> None:
+        super().__init__()
+        self.unread = unread
+
+    @property
+    def lost_line(self) -> str:
+        return _LOST_MANIFEST_UNREAD_LINE if self.unread else _LOST_MANIFEST_LINE
 
 
 class _StateNotFileError(_NoStateError):
@@ -7429,10 +7450,13 @@ class _Mirror:
                 try:
                     st = self.db.stat()
                 except FileNotFoundError:
-                    from agentsync.manifest import manifest_lost  # noqa: PLC0415 - lazy, as the reads above
+                    from agentsync import manifest  # noqa: PLC0415 - lazy, as the reads above
 
-                    if manifest_lost(self.db):
-                        raise _LostManifestError from None
+                    if manifest.manifest_lost(self.db):
+                        # B13 round 28 ruling 21: status's words for an unread heartbeat, told apart
+                        said = getattr(manifest, "lost_words", lambda _db: None)(self.db)
+                        unread = said is not None and said == getattr(manifest, "LOST_MANIFEST_UNREAD", None)
+                        raise _LostManifestError(unread=unread) from None
                     raise _NoManifestError(self.new_pages) from None
                 except NotADirectoryError:  # a file where a folder on its way belongs (A23: the folder's)
                     raise _not_file_error(self.db) from None
@@ -7751,6 +7775,14 @@ _LOST_MANIFEST_LINE = (
 """An evidence part's line for a lost manifest (B13 round 23 A29): status's words for it (lane B's, cli.py's
 ``manifest: missing`` line), its pointer turned to Doctor's state_dir.manifest line, not measured
 (:func:`_evidence_line` counts it as such, B13 round 24 ruling 7)."""
+_LOST_MANIFEST_UNREAD_LINE = (
+    "- manifest: missing (heartbeat.json cannot be read; the person decides: see Doctor's state_dir.manifest "
+    "line)"
+)
+""":data:`_LOST_MANIFEST_LINE` when heartbeat.json beside the missing manifest cannot be read (status's
+``manifest: missing (heartbeat.json cannot be read; ...)``, B13 round 27 P111): never "earlier syncs
+recorded", which that file cannot say (B13 round 28 ruling 21: I1, I28, I41, I53)."""
+_LOST_MANIFEST_LINES = (_LOST_MANIFEST_LINE, _LOST_MANIFEST_UNREAD_LINE)
 _NO_MANIFEST_LINE = "- no manifest yet (no sync has run)"
 
 
@@ -7761,8 +7793,8 @@ def _lines(fn: Callable[[], list[str]]) -> list[str]:
         return fn()
     except _OutOfTimeError:
         return [f"- {NOT_MEASURED}"]
-    except _LostManifestError:
-        return [_LOST_MANIFEST_LINE]
+    except _LostManifestError as exc:
+        return [exc.lost_line]
     except _NoManifestError as exc:
         return [exc.line]
     except Exception as exc:
@@ -9378,7 +9410,8 @@ def _evidence(r: _Run) -> list[str]:
         mirror.close()
     unmeasured = [line for line in out if "not measured" in line]
     r.facts.evidence = len(unmeasured)
-    r.facts.evidence_lost = out.count(_LOST_MANIFEST_LINE)  # B13 round 24 ruling 7
+    r.facts.evidence_lost = sum(out.count(line) for line in _LOST_MANIFEST_LINES)  # B13 round 24 ruling 7
+    r.facts.lost_unread = _LOST_MANIFEST_UNREAD_LINE in out  # B13 round 28 ruling 21
     r.facts.lost_link = bool(r.facts.evidence_lost) and _lost_link(r.config)  # B13 round 26 E3, E14
     r.facts.lost_dangling = bool(r.facts.evidence_lost) and _lost_dangling(r.config)  # B13 round 27 P19
     # B13 round 27 P26: only the lines with the page count, never "no sync has run"
@@ -9419,12 +9452,16 @@ def _state_wide(line: str) -> bool:
     """Whether an evidence part's one fallback line (:func:`_lines`) names a cause the whole state has, which
     every reader of the manifest meets alike: lost, none yet, or a "not measured" cause no wait clears (B13
     round 24 B18, B35). Not the time limit's or a busy file's, which each part meets on its own."""
-    if line in (_LOST_MANIFEST_LINE, _NO_MANIFEST_LINE) or line.startswith("- no manifest yet ("):
+    if line in (*_LOST_MANIFEST_LINES, _NO_MANIFEST_LINE) or line.startswith("- no manifest yet ("):
         return True
     m = re.fullmatch(r"- not measured \(([^()]*)\)", line)
     return m is not None and m.group(1) not in _RETRY_WHYS
 
 
+_LOST_UNREAD = "missing beside a heartbeat.json that cannot be read"
+"""A lost manifest's fact when heartbeat.json beside it cannot be read (``manifest.LOST_MANIFEST_UNREAD``, B13
+round 27 P111): never "though heartbeat.json records earlier passes", which that file cannot say (B13 round 28
+ruling 21: I95, I1, I28, I41, I53, I64, I76). One phrase, so a link's words can follow it with one "and"."""
 _LINK_UNUSABLE = "a link into a folder that does not exist or refuses a write"
 """A lost manifest's link into a folder no sync can use, in doctor's words for the folder (B13 round 26 E3,
 E14; round 27 P103): the bucket, the evidence, the outcome and Items say it after the file's own fact."""
@@ -9467,6 +9504,29 @@ _STATE_LOST_DANGLING_EVIDENCE = (
 link, and the link named as status names it. Never the link's target."""
 
 
+_STATE_LOST_UNREAD_THEN = (
+    "heartbeat.json is fixed or moved aside (see Doctor's heartbeat line), and the person decides if the "
+    "manifest is still lost then, measures them (see Doctor's state_dir.manifest line)"
+)
+_STATE_LOST_UNREAD_EVIDENCE = (
+    f"not measured, as the state file is {_LOST_UNREAD}: a report written after {_STATE_LOST_UNREAD_THEN}"
+)
+""":data:`_STATE_LOST_EVIDENCE` for :data:`_LOST_MANIFEST_UNREAD_LINE` lines (B13 round 28 ruling 21: I1,
+I28, I41, I53, I64, I76): never "records earlier passes", and heartbeat.json's own fix first, then the
+manifest's."""
+_STATE_LOST_UNREAD_LINK_EVIDENCE = (
+    f"not measured, as the state file is {_LOST_UNREAD}, and is {_LINK_UNUSABLE}: a report written after "
+    f"the person removes or re-points the link, and {_STATE_LOST_UNREAD_THEN}"
+)
+""":data:`_STATE_LOST_LINK_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling 21)."""
+_STATE_LOST_UNREAD_DANGLING_EVIDENCE = (
+    f"not measured, as the state file is {_LOST_UNREAD}, and is {_LINK_DANGLING}: a report written after "
+    f"{_STATE_LOST_UNREAD_THEN}"
+)
+""":data:`_STATE_LOST_DANGLING_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling
+21)."""
+
+
 def _evidence_line(r: _Run) -> str:
     """The Summary's line about the evidence parts: whether every one was measured. The person sends one
     report, so a part that ran out of time is said where it is seen first. A line not measured for a cause
@@ -9481,7 +9541,15 @@ def _evidence_line(r: _Run) -> str:
     said_lost = (
         f'{_plural(lost, "line")} at the end of Status {"says" if lost == 1 else "say"} "manifest: missing": '
         + (
-            _STATE_LOST_LINK_EVIDENCE
+            (
+                _STATE_LOST_UNREAD_LINK_EVIDENCE
+                if r.facts.lost_link
+                else _STATE_LOST_UNREAD_DANGLING_EVIDENCE
+                if r.facts.lost_dangling
+                else _STATE_LOST_UNREAD_EVIDENCE
+            )
+            if r.facts.lost_unread  # B13 round 28 ruling 21
+            else _STATE_LOST_LINK_EVIDENCE
             if r.facts.lost_link
             else _STATE_LOST_DANGLING_EVIDENCE
             if r.facts.lost_dangling
@@ -10302,9 +10370,15 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     # the link now (never the stop record: an older reader takes a new kind for "refused"); an earlier
     # attempt's, or one a sync ended 0 after, is of a time the read says nothing of
     link = _lost_link_kind(r.config) if nxt is None and stops else ""
+    # B13 round 28 ruling 21: and whether its heartbeat.json cannot be read now, never "after earlier syncs"
+    unread = nxt is None and bool(stops) and _manifest_lost_kind(r.config) == "unread"
     stops = [
-        dataclasses.replace(s, link=link)
-        if link and s.file == "manifest" and s.kind == "lost" and s.owner == "person" and s.ended_ok is None
+        dataclasses.replace(s, link=link, lost_unread=unread)
+        if (link or unread)
+        and s.file == "manifest"
+        and s.kind == "lost"
+        and s.owner == "person"
+        and s.ended_ok is None
         else s
         for s in stops
     ]
@@ -10459,6 +10533,8 @@ def _stop_which(stop: _SyncStop) -> str:
     round 27 P127, P19): the outcome and Items say what the bucket and evidence say. Never the link's
     target."""
     which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    if stop.kind == "lost" and stop.lost_unread:  # B13 round 28 ruling 21
+        which = "which was missing beside a heartbeat.json that could not be read"
     if stop.kind == "misplaced" and stop.shape:  # B13 round 27 P18: doctor's kind, in the past tense
         which = f"which was {stop.shape}, not {'a folder' if stop.file == 'state-folder' else 'a file'}"
     link = _STOP_LINKS.get(stop.link)
@@ -11384,6 +11460,9 @@ aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doc
 :data:`_STATE_UNREAD_WORDS`: the file is missing, not damaged, and its fix differs."""
 
 
+_STATE_LOST_UNREAD_WORDS = f"from the state file that is {_LOST_UNREAD}"
+""":data:`_STATE_LOST_WORDS` over a heartbeat.json that cannot be read (:func:`_manifest_lost_kind`
+``"unread"``): the same person's decision, after heartbeat.json's own fix (B13 round 28 ruling 21)."""
 _STATE_LOST_LINK_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_UNUSABLE}"
 """:data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a folder that does not exist or refuses a
 write (B13 round 26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the
@@ -11392,6 +11471,15 @@ bucket keeps the lost manifest's decision and names the link its fix removes fir
 _STATE_LOST_DANGLING_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_DANGLING}"
 """:data:`_STATE_LOST_WORDS` for a lost manifest that is a link to nothing in a folder a sync can write (B13
 round 26 E19; round 27 P19; :func:`_lost_dangling`): status names the link, so the bucket does too."""
+
+
+def _lost_bucket_words(kind: str, link: str) -> str:
+    """The Doctor line's bucket for a lost manifest: :data:`_STATE_LOST_WORDS`, or
+    :data:`_STATE_LOST_UNREAD_WORDS` for ``kind`` ``"unread"`` (:func:`_manifest_lost_kind`), with the
+    link's words after the file's fact (:func:`_lost_link_kind`; B13 round 28 ruling 21: a link to nothing
+    can be lost over an unread heartbeat too)."""
+    base = _STATE_LOST_UNREAD_WORDS if kind == "unread" else _STATE_LOST_WORDS
+    return f"{base}, and is {_STOP_LINKS[link]}" if link in _STOP_LINKS else base
 
 
 def _lost_link(c: Config | None) -> bool:
@@ -11432,12 +11520,36 @@ def _lost_link_kind(c: Config | None) -> str:
 def _manifest_lost_at(c: Config) -> bool:
     """Whether the manifest is lost (``manifest.manifest_lost``, the test doctor FAILs it on), read lazily as
     the evidence read does; False when the installed build has no such test, or the read fails."""
-    try:
-        from agentsync.manifest import manifest_lost  # noqa: PLC0415 - lazy, as _ManifestReader's
+    return bool(_manifest_lost_kind(c))
 
-        return bool(manifest_lost(expand(c.state_paths.db)))
+
+def _manifest_lost_kind(c: Config | None) -> str:
+    """Which lost manifest the report's own read finds: ``"unread"`` when ``manifest.lost_words`` returns
+    ``LOST_MANIFEST_UNREAD`` (a heartbeat.json beside it that cannot be read, so earlier passes cannot be
+    ruled out; B13 round 27 P111), ``"records"`` for any other lost manifest (heartbeat.json records earlier
+    passes), ``""`` when it is not lost or the read fails. An installed build without ``lost_words`` reads
+    ``manifest_lost`` as ``"records"``, the only lost manifest it knew. B13 round 28 ruling 21 (I95, I1, I28,
+    I41, I53, I64, I76): every lost-manifest word of the report chooses its ending by this, as status does,
+    never "records earlier passes" over a heartbeat that cannot be read."""
+    if c is None:
+        return ""
+    try:
+        from agentsync import manifest  # noqa: PLC0415 - lazy, as _ManifestReader's
+
+        db = expand(c.state_paths.db)
+        words = getattr(manifest, "lost_words", None)
+        if words is None:
+            return "records" if manifest.manifest_lost(db) else ""
+        said = words(db)
     except Exception:
-        return False
+        return ""
+    if said is None:
+        return ""
+    return (
+        "unread"
+        if said == getattr(manifest, "LOST_MANIFEST_UNREAD", _STATE_LOST_UNREAD_COPY.strip())
+        else ("records")
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -11865,9 +11977,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     )
     from_lost: list[str] = []
     link = _lost_link_kind(r.config) if lost else ""
-    lost_words = {"unusable": _STATE_LOST_LINK_WORDS, "dangling": _STATE_LOST_DANGLING_WORDS}.get(
-        link, _STATE_LOST_WORDS
-    )
+    lost_kind = _manifest_lost_kind(r.config) if lost else ""  # B13 round 28 ruling 21
+    lost_words = _lost_bucket_words(lost_kind, link)
     shut = (
         ""
         if notfolder or unreadable or notfile or lost or r.config is None
@@ -12042,6 +12153,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
             else:  # B13 round 22 Z31: the folder's words for a shut folder
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state folder)")
+            continue
+        if lost_kind == "unread" and tag == "warn" and name == "heartbeat":
+            # B13 round 28 ruling 21 (I1, I32, I95): doctor's warn for the heartbeat.json that cannot be read
+            # has the lost manifest's own cause, never "unexpected"; keyed on the report's own read. Its FAILs
+            # (not a file, a mode) stay with the misplaced and refused buckets above
+            from_lost.append(
+                f"{name} warn (heartbeat.json cannot be read: the state_dir.manifest fix covers it)"
+            )
             continue
         # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
         # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'
@@ -13358,6 +13477,25 @@ def _state_lost() -> str:
     return " " + str(getattr(manifest, "LOST_MANIFEST", _STATE_LOST_COPY.strip()))
 
 
+_STATE_LOST_UNREAD_COPY = (
+    " is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
+)
+"""Lane B's words for a lost manifest beside a heartbeat.json that cannot be read (``manifest.
+LOST_MANIFEST_UNREAD``, B13 round 27 P111): the report's copy for an installed build without them, which a
+test keeps equal to the source (B13 round 28 ruling 21)."""
+
+
+def _state_lost_unread() -> str:
+    """``" " + manifest.LOST_MANIFEST_UNREAD``, or :data:`_STATE_LOST_UNREAD_COPY`, read as
+    :func:`_state_lost` reads lane B's words (B13 round 28 ruling 21: the sync's line for it matched no
+    reader, so step 2's outcome named no cause and no owner)."""
+    try:
+        from agentsync import manifest  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _STATE_LOST_UNREAD_COPY
+    return " " + str(getattr(manifest, "LOST_MANIFEST_UNREAD", _STATE_LOST_UNREAD_COPY.strip()))
+
+
 _DANGLING_UNUSABLE_COPY = "whose folder does not exist or refuses a write"
 """Doctor's words for a link to nothing no sync can create the file through (``doctor.DANGLING_UNUSABLE``,
 B13 round 25 D71's lost-manifest line among them): the report's copy for an installed build without the name,
@@ -13424,30 +13562,42 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             return f" on agentsync's state file, which is {what}: the person's to fix", (
                 "after it was moved aside or the state file put back"
             )
-        if ln.startswith("error: state: ") and _state_lost() in ln:  # B13 round 23 A29: the person decides
+        unread = ln.startswith("error: state: ") and _state_lost_unread() in ln  # B13 round 28 ruling 21
+        if ln.startswith("error: state: ") and (_state_lost() in ln or unread):  # A29: the person decides
             # B13 round 26 E3, E14: the run's own line, the link fixed by now; keyed on doctor's words for a
             # folder no sync can use (B13 round 25 D71), as a link to nothing in a folder a sync can write
-            # (B13 round 26 E19) is a link too, with no step for it (B13 round 27 P33, P58)
+            # (B13 round 26 E19) is a link too, with no step for it (B13 round 27 P33, P58). Over a
+            # heartbeat.json that cannot be read, its own words and heartbeat.json's fix first (ruling 21)
+            fact = _LOST_UNREAD if unread else "missing though heartbeat.json records earlier passes"
+            moved = (
+                "heartbeat.json was fixed or moved aside, or the file restored"
+                if unread
+                else "the file was restored or heartbeat.json moved aside"
+            )
+            whose = (
+                "heartbeat.json's fix first, then the file's, the person's"
+                if unread
+                else "the person's to fix"
+            )
             if " is a symlink to " in ln and _dangling_unusable() in ln:
                 return (
                     # the file's fact first, "missing" once (B13 round 27 P103, P121, P129)
-                    " on agentsync's state file, which is missing though heartbeat.json records earlier "
-                    "passes, and is a link into a folder that does not exist or refuses a write: the "
-                    "person's to fix, removing or re-pointing the link first",
-                    "after the link was removed or pointed at a folder that exists, and the file restored "
-                    "or heartbeat.json moved aside",
+                    f" on agentsync's state file, which is {fact}, and is a link into a folder that does not "
+                    f"exist or refuses a write: {whose}, removing or re-pointing the link first",
+                    "after the link was removed or pointed at a folder that exists, and "
+                    + (
+                        "heartbeat.json fixed or moved aside, or the file restored"
+                        if unread
+                        else "the file restored or heartbeat.json moved aside"
+                    ),
                 )
             if " is a symlink to " in ln:  # E19's: both moves of the plain fix work through the link
                 return (
-                    " on agentsync's state file, which is missing though heartbeat.json records earlier "
-                    "passes, and is a link to a file that does not exist: the person's to fix",
-                    "after the file was restored or heartbeat.json moved aside",
+                    f" on agentsync's state file, which is {fact}, and is a link to a file that does not "
+                    f"exist: {whose}",
+                    f"after {moved}",
                 )
-            return (
-                " on agentsync's state file, which is missing though heartbeat.json records earlier passes: "
-                "the person's to fix",
-                "after the file was restored or heartbeat.json moved aside",
-            )
+            return f" on agentsync's state file, which is {fact}: {whose}", f"after {moved}"
         folder = _STATE_NOT_FOLDER_RE.search(ln.strip())
         if folder is not None:
             where = (
