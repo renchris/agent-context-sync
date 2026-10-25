@@ -965,6 +965,72 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK and MISP
 	*) return 1 ;;
 	esac
 }
+# The lock, heartbeat or governance file that is not a regular file where one belongs, as a build's own
+# doctor.state_not_a_file finds it first, the manifest and its sides included: "<role> <kind>" (role lock,
+# heartbeat, holds, queue, suppressed or audit, "-" for none; kind a fixed token, or empty when that build
+# cannot say), nothing when it cannot run. The installed build's by default; with SRC, a checkout's src
+# folder, that checkout's code throughout, in a process of its own, as step 1 asks it of the build step 2
+# installs (B13 round 28 I96: an older installed build passed a link to nothing at holds.json, so step 1 said
+# "(none is needed)" over the stop step 2 then met). Never re-implements the kinds. -I: nothing from the folder
+# this runs in is imported.
+MISPLACED_PY='
+import os, sys
+from pathlib import Path
+
+if len(sys.argv) > 2:  # a checkout: its own code throughout, before any agentsync import (B13 round 28 I96)
+    if not os.path.isdir(os.path.join(sys.argv[2], "agentsync")):
+        sys.exit(0)
+    sys.path.insert(0, sys.argv[2])
+from agentsync.config import load_config
+from agentsync.ops.doctor import state_not_a_file
+
+found = state_not_a_file(load_config(Path(sys.argv[1])))
+roles = {
+    "lock": "lock",
+    "heartbeat": "heartbeat",
+    "governance.hold": "holds",
+    "governance.purge_queue": "queue",
+    "governance.suppressed": "suppressed",
+    "governance.audit": "audit",
+}
+role = roles.get(getattr(found[1], "name", None), "-") if found is not None else "-"
+
+
+def misplaced_kind(role, path):
+    """What is there, by the judge the build that runs this uses for that role (own_kind for the lock, a
+    folder for the heartbeat, governance_file_kind for a governance file), as one fixed token, never the
+    detail of the check, which quotes a path; None when that build lacks the judge or it raises (B13 round
+    28 I20, I35: the words said a folder or something else while the error above named the kind)."""
+    try:
+        from agentsync.ops import doctor as judge
+
+        kind = (
+            judge.own_kind(path)
+            if role == "lock"
+            else "a folder"
+            if role == "heartbeat"
+            else judge.governance_file_kind(path)
+        )
+    except Exception:
+        return None
+    return {
+        "a folder": "folder",
+        "a fifo": "fifo",
+        "a socket": "socket",
+        "not a regular file": "other",
+        "a symlink loop": "symlink-loop",
+        "a symlink to nothing": "symlink-nothing",
+        "a symlink to a file": "symlink-file",
+        "a symlink to a folder": "symlink-folder",
+        "a symlink to a fifo": "symlink-fifo",
+        "a symlink to a socket": "symlink-socket",
+    }.get(kind)
+
+
+print(role, (role != "-" and misplaced_kind(role, found[0])) or "")'
+misplaced_reader() { # PYTHON [SRC]
+	with_timeout 10 "$1" -I -c "$MISPLACED_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
+}
 # The words for the manifest's -wal and -shm that are not files, from a list such as "wal-folder shm-fifo" (each
 # side, then its kind by its own lstat: folder, fifo, socket, symlink or other) that step 1's probe and step 2's
 # state_side_not_a_file give, so the tail and the NEXT name which side and what is there, as the error line
@@ -6934,7 +7000,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
 # exception, a git call's included, so it cannot take the other words with it). -I: nothing from the folder
 # this runs in is imported.
-config_errors() { # PYTHON
+config_errors() { # PYTHON [MISPLACED: misplaced_reader's line]
 	with_timeout 5 "$1" -I -c '
 import errno, json, os, sqlite3, stat, sys
 from pathlib import Path
@@ -7248,60 +7314,15 @@ if access in ("state-side-access", "state-dir-write") and checked in ("state-fil
 # a lock, heartbeat or governance file that is not a regular file where one belongs (a folder, a fifo, a
 # link...): init stops on it before it opens anything (cli._not_a_file_stop), so ahead of the lost manifest
 # and every access word, while step 1 said "(none is needed)" (B13 round 27 ruling 16: P113, P125, P142).
-# Judged by doctor.state_not_a_file of the installed build, never re-implemented here: its first finding,
+# Judged by doctor.state_not_a_file of this checkout, the build step 2 installs, else of the installed build
+# (misplaced_reader, run apart and passed in; B13 round 28 I96), never re-implemented here: its first finding,
 # the manifest and its sides included, so a side or a manifest init stops on first keeps its own word below;
-# nothing when that build lacks it or it raises
+# nothing when neither build can say
 misplaced = misodd = None
-
-
-def misplaced_kind(role, path):
-    """What is there, by the judge the installed build uses for that role (own_kind for the lock, a folder
-    for the heartbeat, governance_file_kind for a governance file), as one fixed token, never the detail
-    of the check, which quotes a path; None when that build lacks the judge or it raises (B13 round 28 I20,
-    I35: the words said a folder or something else while the error above named the kind)."""
-    try:
-        from agentsync.ops import doctor as judge
-
-        kind = (
-            judge.own_kind(path)
-            if role == "lock"
-            else "a folder"
-            if role == "heartbeat"
-            else judge.governance_file_kind(path)
-        )
-    except Exception:
-        return None
-    return {
-        "a folder": "folder",
-        "a fifo": "fifo",
-        "a socket": "socket",
-        "not a regular file": "other",
-        "a symlink loop": "symlink-loop",
-        "a symlink to nothing": "symlink-nothing",
-        "a symlink to a file": "symlink-file",
-        "a symlink to a folder": "symlink-folder",
-        "a symlink to a fifo": "symlink-fifo",
-        "a symlink to a socket": "symlink-socket",
-    }.get(kind)
-
-
-if not notdir:
-    try:
-        from agentsync.ops.doctor import state_not_a_file
-
-        found = state_not_a_file(config)
-    except Exception:
-        found = None
-    if found is not None:
-        misplaced = {
-            "lock": "lock",
-            "heartbeat": "heartbeat",
-            "governance.hold": "holds",
-            "governance.purge_queue": "queue",
-            "governance.suppressed": "suppressed",
-            "governance.audit": "audit",
-        }.get(getattr(found[1], "name", None))
-        misodd = misplaced and misplaced_kind(misplaced, found[0])
+if not notdir:  # its reader, run apart (misplaced_reader): "<role> <kind>", "-" for none, nothing when it failed
+    mis = (sys.argv[2] if len(sys.argv) > 2 else "").split()
+    if mis and mis[0] != "-":
+        misplaced, misodd = mis[0], (mis[1] if len(mis) > 1 else None)
 if misplaced:
     checked, role = "state-file-notfile", misplaced  # its role- line, as the status-step files give theirs
     if misodd:
@@ -7377,7 +7398,7 @@ if checked:
     words.append(checked)
     words.append("role-" + role)  # read apart from the words: step 1 names the file (B13)
 sys.stdout.write("".join(w + "\n" for w in words))
-' "$CONFIG"
+' "$CONFIG" "${2:-}"
 }
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
@@ -7387,7 +7408,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" sfix="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7482,7 +7503,11 @@ list_folders() {
 				esac
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
-			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
+			# the misplaced file as this checkout's code judges it, the build step 2 installs, else the installed
+			# build's (B13 round 28 I96)
+			cmisread="$(misplaced_reader "$py" "$repo/src")"
+			[ -n "$cmisread" ] || cmisread="$(misplaced_reader "$py")"
+			if config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null; then
 				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused|state-file-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
@@ -8672,57 +8697,7 @@ state_misplaced() {
 	STATE_MISPLACED=""
 	STATE_MISPLACED_KIND=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
-		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import sys
-from pathlib import Path
-from agentsync.config import load_config
-from agentsync.ops.doctor import state_not_a_file
-
-found = state_not_a_file(load_config(Path(sys.argv[1])))
-roles = {
-    "lock": "lock",
-    "heartbeat": "heartbeat",
-    "governance.hold": "holds",
-    "governance.purge_queue": "queue",
-    "governance.suppressed": "suppressed",
-    "governance.audit": "audit",
-}
-role = roles.get(getattr(found[1], "name", None), "-") if found is not None else "-"
-
-
-def misplaced_kind(role, path):
-    """What is there, by the judge the installed build uses for that role (own_kind for the lock, a folder
-    for the heartbeat, governance_file_kind for a governance file), as one fixed token, never the detail
-    of the check, which quotes a path; None when that build lacks the judge or it raises (B13 round 28 I20,
-    I35: the words said a folder or something else while the error above named the kind)."""
-    try:
-        from agentsync.ops import doctor as judge
-
-        kind = (
-            judge.own_kind(path)
-            if role == "lock"
-            else "a folder"
-            if role == "heartbeat"
-            else judge.governance_file_kind(path)
-        )
-    except Exception:
-        return None
-    return {
-        "a folder": "folder",
-        "a fifo": "fifo",
-        "a socket": "socket",
-        "not a regular file": "other",
-        "a symlink loop": "symlink-loop",
-        "a symlink to nothing": "symlink-nothing",
-        "a symlink to a file": "symlink-file",
-        "a symlink to a folder": "symlink-folder",
-        "a symlink to a fifo": "symlink-fifo",
-        "a symlink to a socket": "symlink-socket",
-    }.get(kind)
-
-
-print(role, (role != "-" and misplaced_kind(role, found[0])) or "")
-' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+		n="$(misplaced_reader "$TOOL_PY")"
 	fi
 	STATE_MISPLACED_KIND="${n#* }"
 	misplaced_words "${n%% *}" "$STATE_MISPLACED_KIND" || return 1

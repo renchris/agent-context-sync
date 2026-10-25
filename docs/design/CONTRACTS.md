@@ -31789,6 +31789,20 @@ only the [FAIL] line). Any other mix keeps the generic list, so no other [FAIL] 
 `--source-local` half of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file` (the
 named NEXT; beside a folder at the lock too, the generic list).
 
+**Step 1 predicts the misplaced file with the build step 2 installs** (I96). Step 1's probe asked the installed
+build's `doctor.state_not_a_file`, so under round 26's build a link to nothing at holds.json, a link through a file at
+purge-queue.json or a link into an empty folder at suppressed.json got `(none is needed)`, while step 2 installs this
+checkout and its init stops on each. The judge is now one reader, `misplaced_reader` (`MISPLACED_PY`), which prints
+`<role> <kind>` (`-` for none) and nothing when it cannot run, shared by step 2's `state_misplaced`. Step 1 runs it
+first against this checkout's `src`, in a process of its own whose first statement puts that folder on `sys.path`
+before any agentsync import (inserting it inside `config_errors` loaded nothing new: the installed package's
+`__path__` had already won), then, when that prints nothing (no `src/agentsync`, an import that fails), against the
+installed build as before; `config_errors` takes the line as its second argument and judges nothing of its own, so a
+reader that fails costs no other word. Tests: the `holds-dangling-older` and `queue-filelink-older` cases of
+`test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file`, under a
+tool interpreter whose installed judge finds nothing while the checkout read runs untouched; `older` (neither can say)
+still says nothing.
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,

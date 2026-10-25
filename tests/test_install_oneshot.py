@@ -8337,6 +8337,30 @@ def _tool_python_without(env: dict[str, str], module: str, name: str) -> Path:
     )
 
 
+def _tool_python_older_judge(env: dict[str, str]) -> Path:
+    """:func:`_tool_python` as an older installed agentsync whose doctor.state_not_a_file finds nothing (round
+    26's passed a link to nothing at holds.json), while a read that names a checkout's src folder (its third
+    argument, misplaced_reader's SRC) runs that checkout's code untouched (B13 round 28 I96)."""
+    py = _tool_python(env)
+    shim = (
+        "import sys\n"
+        "code = sys.argv.pop(1)\n"
+        "if len(sys.argv) < 3:\n"
+        "    import agentsync.ops.doctor as _m\n"
+        "    _m.state_not_a_file = lambda *a, **k: None\n"
+        "    del _m\n"
+        'exec(compile(code, "<string>", "exec"))\n'
+    )
+    assert "'" not in shim, "the shim is single-quoted in the wrapper"
+    return _write_exe(
+        py,
+        "#!/bin/bash\n"
+        '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+        'code="$3"\nshift 3\n'
+        f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+    )
+
+
 def _vanished_list(env: dict[str, str]) -> tuple[Path, Path, Path]:
     """CloudStorage with the folders Project Alpha and Project Beta, a config that syncs Alpha alone (the
     inbox beside it): the state of probe CF, Beta's block deleted."""
@@ -11775,6 +11799,8 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "holds-loop",
         "holds-dangling",
         "holds-devnull",
+        "holds-dangling-older",
+        "queue-filelink-older",
     ],
 )
 def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file(
@@ -11812,12 +11838,15 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
     elif case.endswith("-filelink"):
         root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
         path.symlink_to(root / "elsewhere.json")
+    elif case == "queue-filelink-older":  # a link through a file: a file where a folder on its way belongs
+        root.joinpath("elsewhere.json").write_text("{}", encoding="utf-8")
+        path.symlink_to(root / "elsewhere.json" / "purge-queue.json")
     elif case.endswith("-linkdir"):  # round 28 I35: a link to a folder, named as status names it
         root.joinpath("elsewhere").mkdir(0o700)
         path.symlink_to(root / "elsewhere")
     elif case.endswith("-loop"):
         path.symlink_to(path)
-    elif case.endswith("-dangling"):
+    elif case.endswith(("-dangling", "-dangling-older")):
         path.symlink_to(root / "nothing-here.json")
     elif case.endswith("-devnull"):  # a kind with no fixed word ("a symlink to not a regular file")
         path.symlink_to("/dev/null")
@@ -11827,6 +11856,8 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         db.unlink()
     if case == "older":
         _tool_python_without(env, "agentsync.ops.doctor", "state_not_a_file")
+    elif case.endswith("-older"):  # round 28 I96: judged by the checkout step 2 installs, not the older build
+        _tool_python_older_judge(env)
     else:
         _tool_python(env)
     try:
@@ -11849,6 +11880,8 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         "holds-linkdir": "symlink-folder",
         "holds-loop": "symlink-loop",
         "holds-dangling": "symlink-nothing",
+        "holds-dangling-older": "symlink-nothing",
+        "queue-filelink-older": "symlink-nothing",
         "holds-devnull": "",  # what no fixed word says keeps the generic words
     }.get(case, "folder")
     assert last_line(cp).endswith(misplaced_tail(role, token)), last_line(cp)
