@@ -382,8 +382,12 @@ install.log (a `--list-folders` run is not an install run):
   install.log after this attempt's end line (they do not change the outcome):`. Each is paired with the agent's line
   for it by the same order rule, and that line leaves the Agent friction list; the agentsync report's friction line
   counts it (`N more logged after the end line`) after an in-window stop's count, or as `N step-3 sync stop(s)
-  agentsync logged after the end line` when the window has none (B13 round 27 P64). No outcome reads it (B13
-  round 25 D5; round 26 E7, E76, E35, E58).
+  agentsync logged after the end line` when the window has none (B13 round 27 P64). No outcome kind reads it (B13
+  round 25 D5; round 26 E7, E76, E35, E58), but in the agentsync report a doctor-FAIL reason with a known cause,
+  whose FAILs are all the person's, ends
+  `, still standing when this report ran, after a sync stop logged after attempt N's end line: the person's to fix`
+  (`N sync stops` for more than one) when a stop whose fix is the person's was logged after the end line, so the reason says when the FAILs came and whose they are (B13 round 27
+  P101). The shell fallback report adds no such clause.
 - **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
   is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
   error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a

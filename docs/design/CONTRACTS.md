@@ -31676,3 +31676,12 @@ no FluidAudio repository. The page says so, the verifier's doc fix; the optional
 SwiftPM step before `_seed`) is not built, as the page is now true and the step order the speech tests assert
 stays. Test: `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which reads the order
 from `_compile`.
+
+**The guide says a late stop's reason says when the person's FAIL came** (I81; `docs/deploy/setup-feedback.md`).
+The guide said "No outcome reads it" of a step 3 stop logged after the end line, and since round 27 P101
+`compute_outcome` ends a known-cause reason, when its FAILs are all the person's and such a stop is the person's,
+with
+`, still standing when this report ran, after a sync stop logged after attempt N's end line: the person's to fix`.
+It says no outcome kind reads the stop, gives that clause (`N sync stops` for more than one) and that the
+shell fallback report adds none. Test: `test_the_guide_says_a_late_stop_says_when_a_persons_fail_came`, which reads
+the clause from `compute_outcome`.

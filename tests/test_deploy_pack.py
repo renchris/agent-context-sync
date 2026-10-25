@@ -6630,6 +6630,30 @@ def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check()
     assert set(speech._PROXIES) == {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
 
 
+def test_the_guide_says_a_late_stop_says_when_a_persons_fail_came() -> None:
+    """B13 round 28 I81: the guide said "No outcome reads it" of a stop logged after the end line, and since
+    round 27 P101 `compute_outcome` ends a known-cause reason whose FAILs are all the person's with when it
+    came. The guide says no outcome kind reads it and gives the clause, read from `compute_outcome`'s
+    source with the count and attempt put back as the guide's; the shell report has no such clause."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    source = inspect.getsource(setup_report.compute_outcome)
+    [head, tail] = re.findall(r'f"(, still standing[^"]*)"\s+f"(\{attempt\.number\}[^"]*)"', source)[0]
+    clause = (head + tail).replace("{after}", "a sync stop").replace("{attempt.number}", "N")
+    assert '"a sync stop" if len(late) == 1 else f"{len(late)} sync stops"' in source
+    assert clause == (
+        ", still standing when this report ran, after a sync stop logged after attempt N's end line:"
+        " the person's to fix"
+    )
+    assert f"`{clause}` (`N sync stops` for more than one)" in page
+    assert "No outcome reads it" not in page
+    assert "No outcome kind reads it (B13 round 25 D5; round 26 E7, E76, E35, E58)" in page
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "still standing when this report ran" not in install
+    assert "The shell fallback report adds no such clause." in page
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
