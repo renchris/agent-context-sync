@@ -6,6 +6,7 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 from __future__ import annotations
 
 import ast
+import contextlib
 import dataclasses
 import functools
 import itertools
@@ -15198,6 +15199,90 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
     assert "heartbeat FAIL (the person's; see Doctor)" in line and line.endswith(" · unexpected 0"), line
     assert "heartbeat warn (heartbeat.json cannot be read" not in line, line
     assert "records earlier passes" not in text and "earlier syncs recorded" not in text
+
+
+def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lane B's B13 round 28 I92 (ruling 20), the report's half: a manifest.sqlite cut to 0 bytes beside a
+    heartbeat.json that records passes is lost (``manifest.LOST_MANIFEST_EMPTY``), and status says "empty or
+    too short". The report's lost words said "missing" of a file that is there. Its bucket, Status part
+    lines, evidence, re-screen and step 2's outcome say it is empty or too short, with the damaged manifest's
+    moves. Lane B's names are given here only while this build lacks them."""
+    empty = "is empty or too short to be a manifest, but heartbeat.json records earlier passes"
+    if not hasattr(manifest_mod, "LOST_MANIFEST_EMPTY"):  # until lane B's I92 lands
+        real = manifest_mod.lost_words
+
+        def lost_words(db_path: Path) -> str | None:
+            with contextlib.suppress(OSError):
+                if db_path.is_file() and db_path.stat().st_size < 100 and real(db_path.with_name("gone")):
+                    return empty
+            return real(db_path)
+
+        monkeypatch.setattr(manifest_mod, "LOST_MANIFEST_EMPTY", empty, raising=False)
+        monkeypatch.setattr(manifest_mod, "LOST_MANIFEST_EMPTY_UNREAD", "x-unread", raising=False)
+        monkeypatch.setattr(manifest_mod, "lost_words", lost_words)
+    words = manifest_mod.LOST_MANIFEST_EMPTY
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(tmp_path / "kept.sqlite")
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.write_bytes(b"")
+    assert setup_report._manifest_lost_kind(load_config(cfg)) == "short"
+    fail = f"[FAIL] state_dir.manifest — {db} {words} (fix: {doctor.MANIFEST_FIX})"
+    text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", fail])
+    fact = "empty or too short to be a manifest though heartbeat.json records earlier passes"
+    assert f" · from the state file that is {fact} (1 check): state_dir.manifest FAIL (the person's" in _line(
+        summary, "- doctor: "
+    ), summary
+    status = section(text, "Status")
+    lost = status.count(setup_report._LOST_SHORT_LINE)
+    assert lost >= 4 and "manifest: missing" not in text, status
+    assert _line(summary, "- evidence: ") == (
+        f'- evidence: {lost} lines at the end of Status say "manifest: empty or too short": '
+        f"{setup_report._STATE_LOST_SHORT_EVIDENCE}"
+    ), summary
+    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
+        "last re-screen: not read (the manifest is empty or too short though earlier syncs recorded; the "
+        "person decides: see Doctor's state_dir.manifest line)"
+    )
+    # step 2's own line for it: the cause and the damaged manifest's moves
+    line = f"error: state: {db} {words} (fix: {doctor.MANIFEST_FIX})"
+    assert setup_report._lost_kind_of(line) == "short"
+    log, out = fake_mac["setup"] / "install.log", fake_mac["setup"] / "install.out"
+    write_friction(fake_mac, retry_friction())
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1).replace(
+            "step=config seconds=1 rc=0 result=done note=add-source",
+            "step=config seconds=1 rc=1 result=failed",
+        ),
+        encoding="utf-8",
+    )
+    out.write_text(
+        f"# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n{line}\n",
+        encoding="utf-8",
+    )
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", fail])
+    outcome = _line(summary, "- **outcome: ")
+    assert outcome.split("(computed: ", 1)[1].startswith(
+        f"install.sh exited 1 at its config step on agentsync's state file, which is {fact}: the person's to "
+        "fix"
+    ), outcome
+    assert "missing" not in outcome, outcome
+    # the stop words for it, by the report's own read now
+    stop = setup_report._SyncStop(
+        at=datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), file="manifest", owner="person", ended_ok=None
+    )
+    stop = dataclasses.replace(stop, kind="lost", lost_kind="short")
+    assert "which was empty or too short to be a manifest after earlier syncs" in (
+        setup_report._sync_stop_line(stop)
+    )
 
 
 def test_a_lost_manifests_listing_warn_is_not_judged_beside_a_loop_wait(
