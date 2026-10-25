@@ -83,6 +83,7 @@ from agentsync.cycle import (
     UNRECORDED_LOCK_HOLDER,
     _acquire_waiting,
     _holds_home,
+    _kept_by_source,
     _tighten_own_paths,
     quiet_lock_wait,
     run_cycle,
@@ -1541,6 +1542,7 @@ def _status_lines(config: Config) -> list[str]:
             "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
         )
         out += _new_start_unsaid_line(config, manifest.get_meta(NEW_START_UNSAID_META))
+        out += _new_start_kept_lines(_kept_by_source(config, manifest))
         statuses = source_statuses(config, manifest, now=datetime.now(UTC), quiet=True)
         absent = manifest.absent_counts()  # not in SourceStatus: that feeds the committed snapshot
     try:
@@ -1881,6 +1883,17 @@ def _new_start_unsaid_line(config: Config, raw: str | None) -> list[str]:
     return [
         f"new start: the background sync started a new manifest and removed {removed} it did not write back; "
         "the next sync names them"
+    ]
+
+
+def _new_start_kept_lines(kept: dict[str, list[str]]) -> list[str]:
+    """Status's line per source for the pages a new start kept for files still settling, which no shard
+    lists until their file's pass converts it (B13 round 27 P117); read-only, it never clears the key (B13
+    round 28 I108)."""
+    return [
+        f"new start: {plural(len(pages), 'page')} kept for files still settling in {sid}; its next complete "
+        "pass converts or removes them"
+        for sid, pages in sorted(kept.items())
     ]
 
 

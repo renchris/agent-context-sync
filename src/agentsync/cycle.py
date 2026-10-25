@@ -1508,14 +1508,21 @@ def _kept_pages(config: Config, manifest: Manifest) -> set[str]:
     """Every page a new start kept for a file still settling (:data:`_NEW_START_KEPT_META`) that its source's
     next complete pass has not swept yet: only that pass removes one, and counts it, never the repair after a
     crash or a moved HEAD, which would remove it with no count (B13 round 27 P117)."""
-    out: set[str] = set()
+    return {rel for pages in _kept_by_source(config, manifest).values() for rel in pages}
+
+
+def _kept_by_source(config: Config, manifest: Manifest) -> dict[str, list[str]]:
+    """:func:`_kept_pages` by source id, each source that has one; a value that is not a JSON list keeps
+    none.  Read-only: status counts them from it (B13 round 28 I108)."""
+    out: dict[str, list[str]] = {}
     for src in config.sources:
         try:
-            out.update(
-                str(rel) for rel in json.loads(manifest.get_meta(_NEW_START_KEPT_META + src.id) or "[]")
-            )
+            raw = json.loads(manifest.get_meta(_NEW_START_KEPT_META + src.id) or "[]")
         except (ValueError, TypeError):
             continue
+        pages = [str(rel) for rel in raw] if isinstance(raw, list) else []
+        if pages:
+            out[src.id] = pages
     return out
 
 
