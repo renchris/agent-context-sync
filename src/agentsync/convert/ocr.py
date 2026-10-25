@@ -202,10 +202,14 @@ def _plain(text: str | bytes) -> str:
     as a URL may hold an apostrophe (B13 round 25 D51).  An unquoted URL is ``<url>`` where ``: `` and Git's
     own prefix (``fatal:``, ``error:``, ``warning:``, ``remote:``) follow it (``<url>: fatal: <cause>``) or
     the line ends, but a ``file://`` one; one that runs into a space, or into any other ``: ``, is a path, as
-    a raw space may be part of it (D84; round 26 E49).  SwiftPM's ``Git command '...' failed: <cause>`` keeps
-    its cause: the command (``git -C`` and SwiftPM's cache), up to its own
-    ``' failed:`` (a folder's apostrophe is followed by no such words), is ``<command>``, each of two on one
-    line (B13 round 24 B39, round 25 D84)."""
+    a raw space may be part of it (D84; round 26 E49).  So an unquoted http(s) or ssh URL whose own path
+    holds ``: `` and Git's prefix (a Finder ``/`` kept as ``:``: ``.../Q3: fatal: Q4 Plans/Kit.git``) ends
+    there, and the rest of that folder name stays as the cause, by design: it cannot be told from Git's
+    ``<url>: fatal: <cause>``, and ending only where no ``/`` follows would drop real causes (``fatal:
+    repository '<url>' not found``); only a ``file://`` or a quoted URL holding it is a path (round 26 E50;
+    round 27 P54).  SwiftPM's ``Git command '...' failed: <cause>`` keeps its cause: the command (``git -C``
+    and SwiftPM's cache), up to its own ``' failed:`` (a folder's apostrophe is followed by no such words), is
+    ``<command>``, each of two on one line (B13 round 24 B39, round 25 D84)."""
     s = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")

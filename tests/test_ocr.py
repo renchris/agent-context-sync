@@ -528,6 +528,15 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "error: cannot open 'https://contoso.sharepoint.com/sites/Q3: fatal: Q4 Plans/x' now",
         "error: cannot open 'https:<path>",
     ),
+    # B13 round 27 P54: an unquoted http(s) or ssh URL whose path holds a Git prefix ends there, by design
+    "an unquoted URL whose path holds a Git prefix ends at it": (
+        "error: Failed to clone repository ssh://git@git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git",
+        "error: Failed to clone repository <url>: fatal: Q4 Plans/Kit.git",
+    ),
+    "an unquoted https URL whose path holds a Git prefix ends at it too": (
+        "error: Failed to clone repository https://git.contoso.com/srv/Q3: error: Q4 Plans/Kit.git",
+        "error: Failed to clone repository <url>: error: Q4 Plans/Kit.git",
+    ),
     "two Git commands keep both causes": (
         "error: Git command 'git -C HOME/a fetch' failed: fatal: first cause; "
         "Git command 'git -C /b clone' failed: fatal: second cause",

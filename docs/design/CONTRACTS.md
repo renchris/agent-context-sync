@@ -30603,6 +30603,10 @@ then a word end): a folder `Q3: fatal Plans` still leaked, and the last three ar
 followed by a cause with no Git prefix (`: Permission denied`) reads `https:<path>` as before D84: the cause is
 lost, nothing leaks. Tests: two cases in `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path`
 (`Q3: Q4 Plans`, `Q3: fatal Plans`).
+Amended 2026-10-24, §16.191 P54: "anything else runs to the end of the line as a path" leaves one case out: an
+http(s) or ssh URL whose own path holds `: ` and Git's prefix (`…/Q3: fatal: Q4 Plans/Kit.git`) ends at that
+prefix, and the rest of the folder name stays visible as the cause, by design (no end rule tells it from Git's
+`<url>: fatal: <cause>`); only a `file://` or a quoted URL holding it is a path (E50). Two cases pin it.
 
 **The URL guards are each pinned by a case (E50; `agentsync.convert.ocr`; dated line at §16.181 D84).** D84's
 `file://` exclusion (in any case) and the quote in the URL's lookbehind were pinned by no case: removing either,
@@ -31016,6 +31020,18 @@ sync, which counts those still listed as kept and one a complete pass swept, its
 the note's clause; a refused read keeps it listed, then the file settles and its row owns the page; or the file is
 deleted and the next pass counts `1d`; a commit agentsync did not make leaves it kept; a background new start's kept
 page whose file is then deleted is counted removed by the next foreground sync).
+
+**An unquoted URL whose path holds a Git prefix ends at it, by design (P54; `agentsync.convert.ocr`; dated line
+at §16.186 E49).** E49 ends an unquoted URL at `: ` only where Git's prefix follows. An http(s) or ssh URL whose
+own path holds one (a Finder `/` kept as `:`: `ssh://git@git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git`) ends
+there, and the rest of the folder name stays as the cause: `<url>: fatal: Q4 Plans/Kit.git` (measured; the https
+form with `: error: ` and `: remote: … : fatal: x` alike). No end rule can tell that folder from Git's own `<url>:
+fatal: <cause>`. Not built: the finder's rule (end at the prefix only when no `/` follows before the line's end),
+prototyped against all 24 TOOL_MESSAGES cases, fails `an unquoted URL keeps the cause after it` and turns Git's
+`…Kit.git: fatal: repository 'https://git.contoso.com/Kit.git/' not found` into `https:<path>`, the cause D84 was
+written to keep. The `_plain` docstring says so, and two cases pin the leftover, so a later rule change has to say
+it changes it: `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (`an unquoted URL whose path
+holds a Git prefix ends at it`, and its https form). Only a `file://` or a quoted URL holding one is a path (E50).
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 
