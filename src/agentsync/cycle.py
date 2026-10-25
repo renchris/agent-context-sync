@@ -2137,6 +2137,7 @@ class _Cycle:
                     self.changes,
                     self._report(None),
                     removed_notices=[(self._page_source(rel), rel) for rel in self._notices_gone],
+                    source_ids=self._subject_sources(),
                 )
             self.lock.beat(LockStage.LAND_GATE)
             dirty = gitops.has_changes(self.repo)
@@ -2328,6 +2329,14 @@ class _Cycle:
         gone = self._not_written_back()
         self._orphans_gone = [rel for rel in gone if rel not in self._fresh_notices]
         self._notices_gone = [rel for rel in gone if rel in self._fresh_notices]
+
+    def _subject_sources(self) -> list[str]:
+        """The sources the commit subject and its CHANGELOG line both name: each with a page change, each
+        whose committed shard changed (a file kept settling at a new start, a deferred one: its shard lists
+        it, so the subject names it, ``tests/test_e2e.py``), and each whose deletion notice was removed (B13
+        round 28 I23: the CHANGELOG left out shard-only sources and the subject notice-only ones)."""
+        notices = {self._page_source(rel) for rel in self._notices_gone}
+        return sorted({c.source_id for c in self.changes} | self.shard_sources | notices)
 
     def _page_source(self, rel: str) -> str:
         """The source id a mirror page sits under (``mirror`` for one under no configured source)."""
@@ -3518,7 +3527,7 @@ class _Cycle:
             log.info("no content change: no commit")
             return None
         self.publisher.write_state_snapshot(statuses)
-        source_ids = sorted({c.source_id for c in self.changes} | self.shard_sources)
+        source_ids = self._subject_sources()
         notes = [f"{a.src.id}: {alarm}" for a in self.accs.values() for alarm in a.alarms]
         by_source = Counter(self._page_source(rel) for rel in self._notices_gone)
         notes += [

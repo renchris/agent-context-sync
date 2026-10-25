@@ -2010,12 +2010,15 @@ class Publisher:
         report: CycleReport,
         *,
         removed_notices: Sequence[tuple[str, str]] = (),
+        source_ids: Sequence[str] | None = None,
     ) -> None:
         """Append one section to ``CHANGELOG/<yyyy-mm>.md`` (A|M|R|D per path, counts, breaker state) and
         regenerate CHANGELOG.md as the index of the last 30 days.  Called only when ``changes`` or
         ``removed_notices`` is non-empty. ``removed_notices`` is ``(source_id, page)`` for each deletion
         notice a new start removed: no new deletion, so no ``D`` line, but a line of its own, as a commit that
-        removes a page always has one (B13 round 27 P116).
+        removes a page always has one (B13 round 27 P116). ``source_ids``: the sources the run's commit
+        subject names (``_Cycle._subject_sources``), so the heading and the index line read as the subject
+        does (B13 round 28 I23); without it, the sources of ``changes`` and ``removed_notices``.
         """
         if not changes and not removed_notices:
             return
@@ -2029,7 +2032,11 @@ class Publisher:
         if any(line.startswith(marker) for line in existing.splitlines()):
             log.info("CHANGELOG already has run %d; not appending twice", run_id)
         else:
-            sources = sorted({c.source_id for c in changes} | {sid for sid, _page in removed_notices})
+            sources = (
+                sorted(source_ids)
+                if source_ids is not None
+                else sorted({c.source_id for c in changes} | {sid for sid, _page in removed_notices})
+            )
             section = [marker + gitops.commit_subject(changes, sources), "", f"- mode: {report.mode.value}"]
             per_source: dict[str, list[MirrorChange]] = {}
             for c in changes:

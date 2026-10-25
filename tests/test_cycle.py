@@ -1321,12 +1321,23 @@ def test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling(
     ahead[0] = 0
     if later == "by-job-deleted":
         monkeypatch.setenv("XPC_SERVICE_NAME", f"{config.launchd_label_prefix}.poll")
+    if later == "settles":  # another source adds a page in the new start's run (B13 round 28 I23)
+        (local_source_dir / "contoso-new-start.txt").write_text(
+            "Contoso after the new start\n", encoding="utf-8"
+        )
     report = run(config)
     assert report.exit_code == 0, report
     assert report.new_manifest_pages and report.new_manifest_removed == 0, report
     assert report.new_manifest_kept == 1, report
     assert (repo / page_rel).is_file() and gitops.file_at(repo, "HEAD", page_rel) is not None
     assert " 0d " in gitops.run_git(repo, "log", "-1", "--format=%s ").stdout
+    if later == "settles":  # the kept page's source, whose shard alone changed, is named in both
+        subject = gitops.run_git(repo, "log", "-1", "--format=%s").stdout.strip()
+        index = config.layout.changelog_md.read_text(encoding="utf-8")
+        marker = f" · run {report.run_id} · "
+        (line,) = [ln for ln in index.splitlines() if marker in ln]
+        assert line.split(marker, 1)[1].split(" — [", 1)[0] == subject, (line, subject)
+        assert subject.endswith(",inbox") or ",inbox," in subject or " inbox" in subject, subject
     with Manifest(db) as m:
         assert json.loads(m.get_meta("new_start_kept:inbox") or "[]") == [page_rel]
     out = io.StringIO()
