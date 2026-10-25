@@ -2676,7 +2676,7 @@ _SYNC_STOP_FILES = {
     "manifest-shm": _SIDE_ROLE["shm"],
     "lock": "agentsync's lock file",
     "heartbeat": "agentsync's heartbeat file",
-    "holds": "agentsync's holds file",
+    "holds": "agentsync's hold list",
     "governance": "a governance file in the state folder",
     "state-folder": "agentsync's state folder",
 }
@@ -11102,7 +11102,7 @@ def _helpers_timed_out(c: Config) -> dict[str, str]:
 _MISPLACED_ROLES = {
     "lock": "agentsync's lock file",
     "heartbeat": "agentsync's heartbeat file",
-    "governance.hold": "agentsync's holds file",
+    "governance.hold": "agentsync's hold list",
     "governance.purge_queue": "a governance file in the state folder",
     "governance.suppressed": "a governance file in the state folder",
     "governance.audit": "a governance file in the state folder",

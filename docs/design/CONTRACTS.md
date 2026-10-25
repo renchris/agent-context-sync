@@ -30766,8 +30766,8 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104 and P20, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the
-hunks of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and
+P102, P115, P26, P13, P104, P20 and P120, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with
+the hunks of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and
 P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
@@ -30961,6 +30961,15 @@ lines stay as the older builds' reports they stand for. Not changed: the sibling
 `INSTRUCTION_KINDS` (literal tokens such as `fix:`, which a plural would break) and `_kind_counts` (any word an
 agent logs as a kind, and `finished`). Tests: the friction lines of the Summary tests in `tests/test_setup_report.py`,
 for example `0 errors (F15, F16)` and `2 deviations` (red at the old words).
+
+**The hold list is named as doctor names it** (P120). The report called governance/holds.json "agentsync's holds
+file" in its Doctor bucket (`_MISPLACED_ROLES["governance.hold"]`) and its step 3 stop lines
+(`_SYNC_STOP_FILES["holds"]`), while doctor, status and the error beside them say "the hold list"
+(`governance.GOVERNANCE_ROLES`). All three report places, the shell report's `fallback_sync_stop_line` included
+(a one-word hunk of scripts/install.sh), now say "agentsync's hold list", so the report names the file one way and
+its bucket words stay the stop line's. Test: `test_the_hold_list_is_named_as_doctor_names_it_in_every_reader`,
+which also keeps every `_MISPLACED_ROLES` word equal to the stop line's for the same file and the shell
+fallback's words equal to `_SYNC_STOP_FILES`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

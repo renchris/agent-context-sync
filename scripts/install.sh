@@ -3716,7 +3716,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	manifest-shm) what="the state file's shared-memory file" ;;
 	lock) what="agentsync's lock file" ;;
 	heartbeat) what="agentsync's heartbeat file" ;;
-	holds) what="agentsync's holds file" ;;
+	holds) what="agentsync's hold list" ;;
 	governance) what="a governance file in the state folder" ;;
 	state-folder) what="agentsync's state folder" ;;
 	*) what="a state file" ;;

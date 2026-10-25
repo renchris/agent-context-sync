@@ -15021,6 +15021,44 @@ def test_a_lock_heartbeat_or_governance_file_that_is_not_a_file_is_the_persons(
     assert _line(summary, "- doctor: ").endswith("unexpected 1: lock FAIL"), summary
 
 
+def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dict[str, Path]) -> None:
+    """B13 round 27 P120: the report called governance/holds.json "agentsync's holds file" in its Doctor
+    bucket and its step 3 stop lines, while doctor, status and the error beside them say "the hold list". One
+    noun, doctor's role with "agentsync's" for "the", in the bucket, the stop line and the shell report's
+    fallback; the bucket's words are the stop line's wherever the stop log has the role."""
+    role = governance.GOVERNANCE_ROLES["holds.json"]
+    noun = "agentsync's " + role.removeprefix("the ")
+    assert setup_report._SYNC_STOP_FILES["holds"] == noun
+    for check, file in (("lock", "lock"), ("heartbeat", "heartbeat"), ("governance.hold", "holds")):
+        assert setup_report._MISPLACED_ROLES[check] == setup_report._SYNC_STOP_FILES[file]
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    for file, words in setup_report._SYNC_STOP_FILES.items():
+        assert f'\t{file}) what="{words}" ;;' in shell, file
+    stop = setup_report._SyncStop(
+        datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "holds", "person", None, kind="misplaced"
+    )
+    assert f" on {noun}, which was " in setup_report._sync_stop_line(stop)
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    holds = root / "governance" / "holds.json"
+    holds.parent.mkdir(parents=True, exist_ok=True)
+    holds.unlink(missing_ok=True)
+    holds.mkdir()
+    fail = (
+        f"[FAIL] governance.hold — {holds} is a folder, not a file: {role} belongs there (fix: the person "
+        f"moves {holds} aside, keeping a copy)"
+    )
+    try:
+        _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", fail])
+    finally:
+        holds.rmdir()
+    assert f" · from {noun} that is not a file (1 check): governance.hold FAIL" in _line(
+        summary, "- doctor: "
+    ), summary
+    assert "holds file" not in summary, summary
+
+
 def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
