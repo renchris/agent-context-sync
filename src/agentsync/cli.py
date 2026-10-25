@@ -505,15 +505,21 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # second bracket after the first (B13 round 27 P47); the "started over " prefix install.sh reads stays
         by = " by the background sync" if report.new_manifest_by_job else ""
         pages = plural(report.new_manifest_pages, "existing mirror page") + by
-        gone, notices = report.new_manifest_removed, report.new_manifest_notices
-        if gone or notices:  # not every one came back: say how many went (B13 round 26 E10)
-            parts = [f"{report.new_manifest_pages - gone - notices} written back"]
+        gone, notices, kept = (
+            report.new_manifest_removed,
+            report.new_manifest_notices,
+            report.new_manifest_kept,
+        )
+        if gone or notices or kept:  # not every one came back: say how many went (B13 round 26 E10)
+            parts = [f"{report.new_manifest_pages - gone - notices - kept} written back"]
             if gone:
                 parts.append(
                     f"{gone} removed ({'its' if gone == 1 else 'their'} file is gone or was not converted)"
                 )
             if notices:  # no new deletion: its own clause (B13 round 27 P116)
                 parts.append(f"{plural(notices, 'deletion notice')} removed ({notice_gone_why(notices)})")
+            if kept:  # present, so no deletion: put back for the next pass (B13 round 27 P117)
+                parts.append(f"{kept} kept for {'a file' if kept == 1 else 'files'} still settling")
             _out(f"note: a new manifest was started over {pages}; {', '.join(parts)}")
         else:
             note = f"note: a new manifest was started over {pages}; every file is converted again"

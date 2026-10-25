@@ -878,6 +878,7 @@ class ScanResult:
     # under the root would wait too; the cycle fetches, rewrites and removes nothing for the source this pass
     listing_held: bool = False
     withheld: tuple[str, ...] = ()  # 2026-10-12 (§16.56 F86)
+    withheld_paths: tuple[str, ...] = ()  # 2026-10-24 (§16.191 P117): their paths, for a new start
 
 @dataclass(frozen=True, slots=True)
 class FetchResult:
@@ -1057,6 +1058,7 @@ class CycleReport:
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
     new_manifest_removed: int = 0  # 2026-10-23 (§16.185 E10): of those, the ones this run did not write back
     new_manifest_notices: int = 0  # 2026-10-24 (§16.191 P116): of those, the deletion notices
+    new_manifest_kept: int = 0  # 2026-10-24 (§16.191 P117): kept for files still settling
     new_manifest_by_job: bool = False  # 2026-10-23 (§16.185 E74): the background job's new start, said by this run
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
@@ -30991,6 +30993,29 @@ counts (`…; 17 written back, 1 deletion notice removed (its file was already r
 as a page removed. Tests: `test_cli.py::test_a_new_start_counts_a_deletion_notice_it_removed_apart` (the notice
 alone: `0d`; with one more file gone first: `1d` for that file alone; the commit still lists the notice) and
 `test_cli.py::test_a_background_new_start_keeps_the_deletion_notices_it_removed_apart_for_the_next_sync`.
+
+**A new start keeps the page of an inbox file still settling (P117; `agentsync.cycle`, `agentsync.arm_local`,
+`agentsync.gitops`, `agentsync.cli`).** The new start's repair unlinks every orphan page before any walk. Under
+`sync --mode poll` (no settle wait), an inbox file whose ctime was new was withheld as still settling, neither
+published nor seen absent, so its page was counted as removed (the commit's `d`, a `- D` line, a "not written back"
+WARNING, the note's "removed"), and the next pass added it back (measured: `sync: 0a 0m 0r 1d inbox`, then `1a`). A
+plain sync whose settle budget runs out, or a future-dated file, does the same. Not the finder's "keep the page
+through the repair": nothing would ever sweep a kept page whose file is then deleted, since only the repair removes
+orphans. `ScanResult.withheld_paths` now carries the withheld paths beside their ids. Once publishing is done,
+`Cycle._keep_settling` reads each page not written back from HEAD; one whose frontmatter names that source and a
+withheld stable id or path is put back from HEAD with its `.files` folder (`gitops.restore_from_head`), left out of
+the one list and the `D` changes, and listed under the manifest meta `new_start_kept:<source id>`. The source's next
+complete pass (`Cycle._sweep_kept`) removes any listed page no row owns then, counted as a deletion with its own
+WARNING, and clears the key; a file that settled is published over its kept page, and one the pass listed but did
+not convert yet (a refused read, a deferred online-only file) keeps its page listed for the next pass. The repair
+after a crash or a moved HEAD counts the listed pages as owned (`_kept_pages`), so only that sweep ever removes one,
+and counts it. The note gives the kept pages their own clause (`…; 18 written back, 1 kept for a file still
+settling`; `CycleReport.new_manifest_kept`), and a background new start saves them (`kept`) for the next foreground
+sync, which counts those still listed as kept and one a complete pass swept, its file gone, as removed. Test:
+`test_cycle.py::test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling` (kept in HEAD with `0d` and
+the note's clause; a refused read keeps it listed, then the file settles and its row owns the page; or the file is
+deleted and the next pass counts `1d`; a commit agentsync did not make leaves it kept; a background new start's kept
+page whose file is then deleted is counted removed by the next foreground sync).
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 

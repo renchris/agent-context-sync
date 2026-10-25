@@ -47,7 +47,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill, tm_exclude
@@ -302,6 +302,10 @@ NEW_START_UNSAID_META = "new_manifest_unsaid"
 [rel, ...], "notices": [rel, ...]}``, whose note and WARNINGs reached only the poll log; the next foreground
 sync says them once and clears it, and status counts it read-only (B13 round 26 E74). ``notices`` holds the
 deletion notices it removed, said apart (B13 round 27 P116)."""
+_NEW_START_KEPT_META = "new_start_kept:"
+"""Manifest meta ``new_start_kept:<source id>``: a JSON list of the mirror pages a new start's reset removed
+and put back from HEAD, each the page of a file the source's walk withheld as still settling; the source's
+next complete pass removes any no row owns then, counted as a deletion, and clears it (B13 round 27 P117)."""
 _SECRET_WAITING_META = "secret_rescreen_waiting"
 """Manifest meta: a JSON list of ``[source_id, stable_id]``, the credential stubs that were online-only when
 the rules moved; each is marked for the re-screen once it is on this Mac again."""
@@ -1482,6 +1486,21 @@ def unowned_mirror_pages(config: Config, owned: frozenset[str] = frozenset()) ->
     return out
 
 
+def _kept_pages(config: Config, manifest: Manifest) -> set[str]:
+    """Every page a new start kept for a file still settling (:data:`_NEW_START_KEPT_META`) that its source's
+    next complete pass has not swept yet: only that pass removes one, and counts it, never the repair after a
+    crash or a moved HEAD, which would remove it with no count (B13 round 27 P117)."""
+    out: set[str] = set()
+    for src in config.sources:
+        try:
+            out.update(
+                str(rel) for rel in json.loads(manifest.get_meta(_NEW_START_KEPT_META + src.id) or "[]")
+            )
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 def _deletion_notice(page: Path) -> bool:
     """True when the page's frontmatter says ``status: deleted`` (a deletion notice: its file was already
     reported gone) or ``status: archived``, as ``cli._is_tombstone`` and the purge's history walk read it."""
@@ -1567,7 +1586,8 @@ def _repair_outputs(
             else:
                 changes += redone
     if config.layout.mirror.is_dir():
-        for rel in unowned_mirror_pages(config, frozenset(o.output_path for o in manifest.iter_outputs())):
+        owned = {o.output_path for o in manifest.iter_outputs()} | _kept_pages(config, manifest)  # P117
+        for rel in unowned_mirror_pages(config, frozenset(owned)):
             page = repo / rel
             level = logging.DEBUG if quiet else logging.WARNING
             log.log(level, "repair: removing orphan mirror page %s", rel)
@@ -1945,6 +1965,11 @@ class _Cycle:
         self._orphans_gone: list[str] | None = None  # of those, the ones this run did not write back (E10)
         self._fresh_notices: set[str] = set()  # those pages that were deletion notices (P116)
         self._notices_gone: list[str] = []  # of the pages not written back, the deletion notices (P116)
+        # per source: the stable ids and paths its walk withheld as still settling, and the pages a new start
+        # kept for them (P117)
+        self._withheld: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
+        self._kept_settling: list[str] = []
+        self._swept: set[str] = set()  # kept pages this run's complete passes removed, said there (P117)
         self._fresh_orphans: list[
             str
         ] = []  # those pages, each said at DEBUG: any not written back is a WARNING
@@ -2154,6 +2179,7 @@ class _Cycle:
                 new_manifest_pages=self.new_manifest_pages,
                 new_manifest_removed=len(self._orphans_gone or []),
                 new_manifest_notices=len(self._notices_gone),
+                new_manifest_kept=len(self._kept_settling),
             )
         if self.heartbeat_refused is not None:
             return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
@@ -2188,6 +2214,7 @@ class _Cycle:
                         "pages": self.new_manifest_pages,
                         "orphans": sorted(gone),
                         "notices": sorted(self._notices_gone),  # said apart (P116)
+                        "kept": sorted(self._kept_settling),  # for files still settling (P117)
                     }
                     self.manifest.set_meta(NEW_START_UNSAID_META, json.dumps(saved, sort_keys=True))
                 return report
@@ -2201,6 +2228,13 @@ class _Cycle:
             pages = int(saved.get("pages", 0))
             missing = [rel for rel in saved.get("orphans", []) if not (self.repo / rel).is_file()]
             notices = [rel for rel in saved.get("notices", []) if not (self.repo / rel).is_file()]
+            # a fresh look at the kept pages (P117): one still listed is kept; one a complete pass swept as
+            # its file had gone is removed; one it found owned was written back
+            listed = _kept_pages(self.config, self.manifest)
+            kept = [rel for rel in saved.get("kept", []) if rel in listed]
+            swept = [
+                rel for rel in saved.get("kept", []) if rel not in listed and not (self.repo / rel).is_file()
+            ]
         except (AgentSyncError, sqlite3.Error, ValueError, TypeError, AttributeError) as exc:
             log.debug("new start note: %s", exc)
             return report
@@ -2208,6 +2242,11 @@ class _Cycle:
             log.warning(
                 "repair: removed orphan mirror page %s (not written back by the background sync)", rel
             )
+        for rel in swept:  # this run's sweep already said those it removed
+            if rel not in self._swept:
+                log.warning(
+                    "repair: removed orphan mirror page %s (kept at the new start; no file holds it now)", rel
+                )
         for rel in notices:
             log.warning(
                 "repair: removed deletion notice %s (%s; by the background sync)", rel, notice_gone_why()
@@ -2217,14 +2256,54 @@ class _Cycle:
         return dataclasses.replace(
             report,
             new_manifest_pages=pages,
-            new_manifest_removed=len(missing),
+            new_manifest_removed=len(missing) + len(swept),
             new_manifest_notices=len(notices),
+            new_manifest_kept=len(kept),
             new_manifest_by_job=True,
         )
 
     def _not_written_back(self) -> list[str]:
         """The pages a new manifest's reset removed that this run has not written back."""
         return [rel for rel in self._fresh_orphans if not (self.repo / rel).is_file()]
+
+    def _keep_settling(self) -> None:
+        """Put back from HEAD each page a new start's reset removed whose file a walk of its source withheld
+        as still settling (``sync --mode poll``, a spent settle budget, a future-dated file): the file is
+        there, so its page is no deletion, and the next pass would add it back. Matched by the page's own
+        frontmatter in HEAD (its source, and its stable id or path). Each kept page is listed under
+        :data:`_NEW_START_KEPT_META`, which the source's next complete pass sweeps (B13 round 27 P117)."""
+        if not self._withheld or not self._fresh_orphans:
+            return
+        kept: dict[str, list[str]] = {}
+        for rel in self._not_written_back():
+            sid = self._page_source(rel)
+            held = self._withheld.get(sid)
+            if held is None or rel in self._fresh_notices:
+                continue
+            ids, paths = held
+            try:
+                data = gitops.file_at(self.repo, "HEAD", rel)
+                front, _body = parse_frontmatter(data.decode("utf-8")) if data is not None else ({}, "")
+            except (AgentSyncError, FrontmatterError, UnicodeDecodeError):
+                continue
+            shown = front.get("source_path")
+            if front.get("source_id") != sid or not (
+                front.get("stable_id") in ids or shown in paths or shown in {redacted_path(p) for p in paths}
+            ):
+                continue
+            kept.setdefault(sid, []).append(rel)
+        for sid, rels in sorted(kept.items()):
+            sidecars = [PurePosixPath(rel).with_suffix(".files").as_posix() for rel in rels]
+            try:
+                gitops.restore_from_head(self.repo, [*rels, *sidecars])
+            except AgentSyncError as exc:  # the pages stay removed, and are counted so
+                log.warning(
+                    "repair: the pages of %s's files still settling could not be put back: %s", sid, exc
+                )
+                continue
+            restored = sorted(rel for rel in rels if (self.repo / rel).is_file())
+            self.manifest.set_meta(_NEW_START_KEPT_META + sid, json.dumps(restored))
+            self._kept_settling += restored
 
     def _split_gone(self) -> None:
         """Set the one list from a fresh look at the pages not written back, the deletion notices apart."""
@@ -2244,6 +2323,7 @@ class _Cycle:
         CLI's note, so they never disagree; the pages written back are no change. A page that was already a
         deletion notice is no new deletion: it goes in ``_notices_gone``, said by its own CHANGELOG line,
         commit-body note, WARNING and note clause, never in the ``d`` count (B13 round 27 P116)."""
+        self._keep_settling()
         self._split_gone()
         for rel in self._orphans_gone or []:
             self.changes.append(MirrorChange(ChangeOp.DELETED, rel, self._page_source(rel), ""))
@@ -3704,6 +3784,8 @@ class _Cycle:
     def _sync_source(self, src: SourceConfig, arm: SourceArm, acc: _SourceAcc, fp_changed: set[str]) -> None:
         with _gc_paused():
             scan, pc, rows, fast_ids, restamp = self._scan_and_classify(src, arm, fp_changed)
+            if scan.withheld or scan.withheld_paths:  # a new start keeps their pages (P117)
+                self._withheld[src.id] = (frozenset(scan.withheld), frozenset(scan.withheld_paths))
             items = {it.stable_id: it for it in scan.items}
             slow_verdicts = (
                 [c for c in pc.verdicts if c.stable_id not in fast_ids] if fast_ids else pc.verdicts
@@ -3859,6 +3941,57 @@ class _Cycle:
         self._removals(
             src, pc, rows_before, acc, items, complete_full=complete_full, out_of_scope=outside, judged=judged
         )
+        if complete_full:
+            self._sweep_kept(src)
+
+    def _sweep_kept(self, src: SourceConfig) -> None:
+        """A complete pass of a source a new start kept pages for (:data:`_NEW_START_KEPT_META`): each such
+        page no row owns now, whose file this pass did not list either (gone, or converted to another
+        page), is removed and counted as a deletion, so no kept page stays unowned for ever. A page whose file
+        the pass listed but did not convert yet (a deferred online-only file, a spent byte budget, a recording
+        left waiting) stays listed for the next one (B13 round 27 P117)."""
+        key = _NEW_START_KEPT_META + src.id
+        raw = self.manifest.get_meta(key)
+        if not raw:
+            return
+        try:
+            kept = [str(rel) for rel in json.loads(raw)]
+        except (ValueError, TypeError):
+            kept = []
+        outputs = list(self.manifest.iter_outputs(source_id=src.id))
+        owned = {o.output_path for o in outputs}
+        converted = {o.stable_id for o in outputs}
+        listed = [
+            row
+            for row in self.manifest.iter_items(src.id, states=_PRESENT)
+            if row.last_seen_run == self.run_id and not row.is_dir and row.stable_id not in converted
+        ]
+        ids = {row.stable_id for row in listed} | {
+            self.manifest.durable_id(src.id, r.stable_id) for r in listed
+        }
+        paths = {row.rel_path for row in listed} | {redacted_path(row.rel_path) for row in listed}
+        waiting: list[str] = []
+        for rel in kept:
+            page = self.repo / rel
+            if rel in owned or page.is_symlink() or not page.is_file():
+                continue
+            try:
+                front, _body = parse_frontmatter(page.read_text(encoding="utf-8"))
+            except (OSError, FrontmatterError, UnicodeDecodeError):
+                front = {}
+            if front.get("stable_id") in ids or front.get("source_path") in paths:
+                waiting.append(rel)  # its file is there, not converted yet: kept for the next pass
+                continue
+            log.warning(
+                "repair: removed orphan mirror page %s (kept at the new start; no file holds it now)", rel
+            )
+            page.unlink()
+            sidecars = page.with_suffix(".files")
+            if sidecars.is_dir() and not sidecars.is_symlink():
+                shutil.rmtree(sidecars)
+            self._swept.add(rel)
+            self.changes.append(MirrorChange(ChangeOp.DELETED, rel, src.id, ""))
+        self.manifest.set_meta(key, json.dumps(waiting) if waiting else "")
 
     def _note_roots(self, fp_changed: set[str]) -> None:
         """Record the first run of each local or inbox source under the ``path`` it has now

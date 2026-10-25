@@ -238,6 +238,9 @@ class ScanResult:
     # stable ids an inbox walk listed but held back (changed within quiescence_s): present, so the cycle
     # stamps their rows seen, though neither new nor changed this pass
     withheld: tuple[str, ...] = ()
+    # and their paths relative to the source root: a new start keeps the page of each for the next pass
+    # rather than count it removed (B13 round 27 P117)
+    withheld_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -529,6 +532,9 @@ class CycleReport:
     # of those, the deletion notices it removed: no new deletion, never in the commit's d count, said in their
     # own clause (B13 round 27 P116)
     new_manifest_notices: int = 0
+    # of those, the pages of files a walk withheld as still settling, put back for the next pass: no deletion
+    # (B13 round 27 P117)
+    new_manifest_kept: int = 0
     # the new start was the background job's, said by this foreground run (B13 round 26 E74)
     new_manifest_by_job: bool = False
 

@@ -61,7 +61,7 @@ from agentsync.convert.recording import Allowance, RecordingConverter, Recording
 from agentsync.convert.registry import Registry
 from agentsync.convert.speech import SpeechEngine
 from agentsync.cycle import RecoveryAction, recover, run_cycle
-from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError
+from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError, MaterialiseError
 from agentsync.frontmatter import parse_frontmatter, render_frontmatter
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
@@ -1273,6 +1273,107 @@ def test_an_atomic_re_export_converts_within_one_interactive_sync(
     assert report.exit_code == 0, report
     assert len(sleeps) == 1
     assert "second version" in page(config.docs_repo, page_rel)[1]
+
+
+@pytest.mark.parametrize("later", ["settles", "deleted", "head-moves", "by-job-deleted"])
+def test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, later: str
+) -> None:
+    """B13 round 27 P117: the person's new start under ``sync --mode poll`` removed the page of an inbox file
+    the walk withheld as still settling (its ctime new), counted it in the commit's ``d``, the CHANGELOG and
+    the note as removed, and the next pass added it back. The page is put back from HEAD and kept for the
+    next pass, which owns it once the file settles; a file deleted meanwhile is removed then, and counted.
+    The repair after a moved HEAD never removes a kept page (it would count nothing), and after a background
+    new start the next foreground sync counts a kept page it removed as removed."""
+    ahead = [600 * 1_000_000_000]
+    refuse = [False]
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: time.time_ns() + ahead[0]
+
+        def fetch(self, item: Any, dest_dir: Path, budget: Any) -> Any:
+            if refuse[0]:
+                raise MaterialiseError(item.rel_path, errno.EBUSY, "the file is busy")
+            return super().fetch(item, dest_dir, budget)
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    update = inbox / "contoso-update.md"
+    update.write_text("# Update\n\nContoso status\n", encoding="utf-8")
+    config = config_with(
+        tmp_path, local_source_dir, INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "")
+    )
+    repo = config.docs_repo
+    page_rel = "mirror/inbox/contoso-update.md"
+    assert run(config).exit_code == 0
+    assert gitops.file_at(repo, "HEAD", page_rel) is not None
+
+    db = config.state_paths.db
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    heartbeat = config.state_paths.heartbeat
+    if heartbeat.exists():
+        heartbeat.rename(heartbeat.with_name("heartbeat.kept.json"))
+    os.utime(update)  # its ctime is now: withheld at the real clock
+    ahead[0] = 0
+    if later == "by-job-deleted":
+        monkeypatch.setenv("XPC_SERVICE_NAME", f"{config.launchd_label_prefix}.poll")
+    report = run(config)
+    assert report.exit_code == 0, report
+    assert report.new_manifest_pages and report.new_manifest_removed == 0, report
+    assert report.new_manifest_kept == 1, report
+    assert (repo / page_rel).is_file() and gitops.file_at(repo, "HEAD", page_rel) is not None
+    assert " 0d " in gitops.run_git(repo, "log", "-1", "--format=%s ").stdout
+    with Manifest(db) as m:
+        assert json.loads(m.get_meta("new_start_kept:inbox") or "[]") == [page_rel]
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        cli._print_report(report)
+    (note,) = [
+        ln for ln in out.getvalue().splitlines() if ln.startswith("note: a new manifest was started over ")
+    ]
+    assert note.endswith(
+        f"; {report.new_manifest_pages - 1} written back, 1 kept for a file still settling"
+    ), note
+
+    if later == "head-moves":  # a commit agentsync did not make: the next run's recovery repairs the mirror
+        (repo / "topics" / "contoso-notes.md").write_text("# Notes\n\nContoso\n", encoding="utf-8")
+        gitops.run_git(repo, "add", "topics/contoso-notes.md")
+        gitops.run_git(repo, "commit", "-q", "-m", "notes")
+        assert run(config).exit_code == 0
+        assert (repo / page_rel).is_file(), "the repair keeps a kept page"
+        with Manifest(db) as m:
+            assert json.loads(m.get_meta("new_start_kept:inbox") or "[]") == [page_rel]
+    if later.endswith("deleted"):
+        update.unlink()
+    monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
+    ahead[0] = 600 * 1_000_000_000
+    if later == "settles":  # a complete pass that lists the file but cannot read it yet keeps the page
+        refuse[0] = True
+        run(config)
+        refuse[0] = False
+        assert (repo / page_rel).is_file(), "a file listed and not converted yet keeps its page"
+        with Manifest(db) as m:
+            assert json.loads(m.get_meta("new_start_kept:inbox") or "[]") == [page_rel]
+    report = run(config)
+    assert report.exit_code == 0, report
+    subject = gitops.run_git(repo, "log", "-1", "--format=%s ").stdout
+    inbox_counts = gitops.run_git(repo, "log", "-1", "--format=%b").stdout
+    if later == "by-job-deleted":  # the background start's note, said now: the kept page counts as removed
+        assert report.new_manifest_by_job and report.new_manifest_removed == 1, report
+        assert report.new_manifest_kept == 0, report
+    if not later.endswith("deleted"):
+        assert (repo / page_rel).is_file() and "inbox: " not in inbox_counts, inbox_counts
+        with Manifest(db) as m:
+            assert page_rel in {o.output_path for o in m.iter_outputs(source_id="inbox")}
+    else:
+        assert not (repo / page_rel).exists() and " 1d " in subject, subject
+        assert "inbox: 0a 0m 0r 1d" in inbox_counts, inbox_counts
+    with Manifest(db) as m:
+        assert not m.get_meta("new_start_kept:inbox")
 
 
 def test_one_interactive_sync_waits_at_most_60s_over_every_inbox(

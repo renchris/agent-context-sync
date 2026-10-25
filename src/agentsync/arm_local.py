@@ -1505,6 +1505,7 @@ class InboxArm(LocalArm):
             unknown_dirs=stats.unknown_dirs,
             alarms=tuple(alarms),
             withheld=tuple(withheld_ids),
+            withheld_paths=tuple(withheld),
         )
 
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:

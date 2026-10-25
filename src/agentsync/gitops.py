@@ -497,6 +497,18 @@ def restore_generated(repo: Path, *, quiet: bool = False) -> None:
     log.log(logging.DEBUG if quiet else logging.WARNING, "restored generated paths of %s to HEAD", repo)
 
 
+def restore_from_head(repo: Path, paths: Sequence[str]) -> list[str]:
+    """``git checkout HEAD -- <paths>`` for each of ``paths`` (repo-relative files or folders) HEAD holds; the
+    ones restored, in the order given."""
+    if not paths or head_sha(repo) is None:
+        return []
+    in_head = run_git(repo, "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", *_literal(paths)).stdout
+    matched = _matching_specs([p for p in in_head.split("\0") if p], paths)
+    if matched:
+        run_git(repo, "checkout", "-q", "HEAD", "--", *_literal(matched))
+    return matched
+
+
 def tag_published(repo: Path, sha: str) -> None:
     """Force-move the lightweight ``published`` tag to ``sha`` (the tree readers should consume)."""
     run_git(repo, "tag", "-f", PUBLISHED_TAG, f"{sha}^{{commit}}")
