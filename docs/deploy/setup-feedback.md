@@ -753,18 +753,22 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `NEXT:` (`agentsync's state file, manifest.sqlite, is missing, though heartbeat.json beside it records earlier
   passes (...): fixing it is the person's (...), not a step for the agent, so show them the error and go on to the
   report; ...`), where it said `fix the error above` (round 24 ruling 7). When manifest.sqlite is a symlink into a folder
-  that does not exist or refuses a write, the tail names the link (`... manifest.sqlite, which is missing though
-  heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or refuses a
-  write ...`, the file's own fact first since B13 round 27 P121) and
+  that does not exist or refuses a write, the tail names the link (`... manifest.sqlite, which is a symlink into a
+  folder that does not exist or refuses a write, and is missing, though heartbeat.json beside it records earlier
+  passes ...`, the link first, as step 2's `NEXT:` and the error line name it, since B13 round 28 I4, I17, I33: B13
+  round 27 P121's order, the file's own fact first, read as though heartbeat.json were the link) and
   its fix starts `they remove the link first; then they restore the file ...`, and so does step 2's `NEXT:` (`... is a
   symlink into a folder that does not exist or refuses a write, and is missing, though heartbeat.json ...`), since
   neither move works through the link (B13 round 25 D79, CONTRACTS §16.179, as doctor's state_dir.manifest fix names
   `rm` first; round 26 E58). When manifest.sqlite is a symlink to a file that does not exist, in a folder a sync can
-  write, the tail names the link too (`... manifest.sqlite, which is missing though heartbeat.json beside it records
-  earlier passes and is a symlink to a file that does not exist ...`, the file's own fact first since B13 round 27
-  P121) and ruling 7's fix stays, with no `rm` first, as it
+  write, the tail names the link too (`... manifest.sqlite, which is a symlink to a file that does not exist, and is
+  missing, though heartbeat.json beside it records earlier passes ...`, the link first since B13 round 28 I4, I17,
+  I33) and ruling 7's fix stays, with no `rm` first, as it
   works through a link into a folder a sync can write (round 25 D79); step 2's `NEXT:` reads `... is a symlink to a file that does not
-  exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). A folder, a fifo, a socket or a link where the -wal
+  exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). Beside a heartbeat.json that cannot be read,
+  the tail and the `NEXT:` say `missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be
+  ruled out` for a link of either kind as for a missing file, never `records earlier passes`, and give no `(not
+  damage, not a mode)`, since damaged JSON or a mode is one of its causes (B13 round 28 ruling 21: I5, I33, I56). A folder, a fifo, a socket or a link where the -wal
   or -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod
   words, or none): `state-side-notfile`, `; step 2 stops <at its step> on <the side>, which <is what> (not damage):
   fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,

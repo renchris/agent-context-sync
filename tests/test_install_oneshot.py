@@ -8681,12 +8681,12 @@ LOST_UNREAD = "is missing, and heartbeat.json beside it cannot be read, so earli
 """Lane B's manifest.LOST_MANIFEST_UNREAD (B13 round 27 P111, ruling 17)."""
 
 STATE_LOST_UNREAD_TAIL = (
-    f"; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which {LOST_UNREAD} (not "
-    "damage, not a mode): "
+    f"; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which {LOST_UNREAD}: "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
-"""Step 1's tail for a lost manifest beside a heartbeat.json that cannot be read (round 27 P111)."""
+"""Step 1's tail for a lost manifest beside a heartbeat.json that cannot be read (round 27 P111), with no
+"(not damage, not a mode)" since B13 round 28 I5, I33: damaged JSON or a mode is one of its causes."""
 
 STATE_LOST_UNREAD_NEXT = (
     f"NEXT: agentsync's state file, manifest.sqlite, {LOST_UNREAD} (the error above names it; "
@@ -8705,14 +8705,28 @@ LOST_LINK_FIX = (
 write, as status's (lane B's round 25 D71): heartbeat.json aside alone leaves a link no sync can create the
 manifest through (B13 round 25 D79: D-L1c)."""
 
+LINK_GONE = "a symlink into a folder that does not exist or refuses a write"
+LINK_DANGLING = "a symlink to a file that does not exist"
+LINK_RECORDS = "missing, though heartbeat.json beside it records earlier passes"
+LINK_UNREAD = LOST_UNREAD.removeprefix("is ")
+
 STATE_LOST_LINK_TAIL = (
-    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though "
-    "heartbeat.json beside it records earlier passes and is a symlink into a folder that does not exist or "
-    "refuses a write (not damage, not a mode): "
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
+    f"{LINK_GONE}, and is {LINK_RECORDS} (not damage, not a mode): "
     + LOST_LINK_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
-"""Step 1's tail for it (D79)."""
+"""Step 1's tail for it (D79), the link named first, as step 2's NEXT names it (B13 round 28 I4, I17, I33:
+"records earlier passes and is a symlink" made heartbeat.json the link)."""
+
+STATE_LOST_LINK_UNREAD_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
+    f"{LINK_GONE}, and is {LINK_UNREAD}: "
+    + LOST_LINK_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""The same beside a heartbeat.json that cannot be read (B13 round 28 I56: it said "records earlier
+passes")."""
 
 STATE_LOST_LINK_NEXT = (
     "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
@@ -8725,9 +8739,8 @@ STATE_LOST_LINK_NEXT = (
 """Step 2's NEXT for it (D79)."""
 
 STATE_LOST_DANGLING_TAIL = (
-    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is missing though "
-    "heartbeat.json beside it records earlier passes and is a symlink to a file that does not exist (not "
-    "damage, not a mode): "
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
+    f"{LINK_DANGLING}, and is {LINK_RECORDS} (not damage, not a mode): "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8743,6 +8756,27 @@ STATE_LOST_DANGLING_NEXT = (
     "next run is: {rerun}"
 )
 """Step 2's NEXT for it (E19)."""
+
+STATE_LOST_DANGLING_UNREAD_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
+    f"{LINK_DANGLING}, and is {LINK_UNREAD}: "
+    + LOST_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail for a dangling manifest link beside a heartbeat.json that cannot be read (B13 round 28
+I56)."""
+
+
+def lost_link_unread_next(link: str, rerun: str) -> str:
+    """Step 2's NEXT for a lost manifest that is a link (``LINK_GONE`` or ``LINK_DANGLING``) beside a
+    heartbeat.json that cannot be read: both facts, the link's own fix kept (B13 round 28 I56)."""
+    fix = (LOST_LINK_FIX if link == LINK_GONE else LOST_FIX).format(it="it is")
+    return (
+        f"NEXT: agentsync's state file, manifest.sqlite, is {link}, and is {LINK_UNREAD} (the error above "
+        "names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+        f"{fix}, not a step for the agent, so show them the error and go on to the report; once it is fixed, "
+        f"the next run is: {rerun}"
+    )
 
 
 SIDE_STOPS = (
@@ -8954,6 +8988,8 @@ def misplaced_tail(role: str) -> str:
         "LM-link-gone",
         "LM-damaged",
         "LM-fifo",
+        "LM-link-damaged",
+        "LM-link-gone-damaged",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -9046,6 +9082,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM-link-gone": "state-lost",
         "LM-damaged": "state-lost",
         "LM-fifo": "state-lost",
+        "LM-link-damaged": "state-lost",
+        "LM-link-gone-damaged": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -9111,7 +9149,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             heartbeat = db.parent / "heartbeat.json"
             if state == "LM-fifo":  # round 27 P111: there, but no record can be read
                 os.mkfifo(heartbeat, 0o600)
-            elif state == "LM-damaged":
+            elif state.endswith("-damaged"):
                 heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
             elif state != "LM-none":
                 heartbeat.write_text(json.dumps({"project-alpha": entry}), encoding="utf-8")
@@ -9120,9 +9158,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 wal.chmod(0)
             # round 25 D33: a symlink to a missing file is a lost manifest, as manifest_lost reads it since
             # round 24 B64; one to the manifest moved elsewhere is not
-            if state == "LM-link":
+            if state in ("LM-link", "LM-link-damaged"):
                 db.symlink_to(db.with_name("gone.sqlite"))
-            elif state == "LM-link-gone":  # round 25 D79 (D-L1c): into a folder that does not exist
+            elif state.startswith("LM-link-gone"):  # round 25 D79 (D-L1c): into a folder that does not exist
                 db.symlink_to(db.parent / "gone" / "manifest.sqlite")
             elif state == "LM-link-live":
                 db.with_name("moved.sqlite").write_bytes(moved)
@@ -9228,6 +9266,10 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         tail = STATE_LOST_DANGLING_TAIL
     if state in ("LM-damaged", "LM-fifo"):  # round 27 P111: still lost, named so
         tail = STATE_LOST_UNREAD_TAIL
+    if state == "LM-link-damaged":  # round 28 I56: the link and the unread heartbeat, both said
+        tail = STATE_LOST_DANGLING_UNREAD_TAIL
+    if state == "LM-link-gone-damaged":
+        tail = STATE_LOST_LINK_UNREAD_TAIL
     odd = {  # round 27 P119: which side, and what is there
         "SN-shm": "shm-folder",
         "SN-shm-shut": "shm-folder",
@@ -10693,6 +10735,44 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+@pytest.mark.parametrize("link", ["dangling", "gone"])
+def test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2(
+    real_env: dict[str, str], wheel: Path, link: str
+) -> None:
+    """B13 round 28 ruling 21 (I56; I5, I33), with the real agentsync: a lost manifest that is a link (to a
+    file that does not exist, or into a folder that is gone) beside a damaged heartbeat.json. The link words
+    won: step 1's tail and step 2's NEXT said heartbeat.json "records earlier passes", while the error above
+    says earlier passes "cannot be ruled out". Both facts are said now, the gone link's "remove the link
+    first" kept, and following the words (the link removed first where it says so, heartbeat.json aside) ends
+    it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    db.symlink_to(db.with_name("gone.sqlite") if link == "dangling" else db.parent / "gone" / db.name)
+    heartbeat = db.with_name("heartbeat.json")
+    heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    tail = STATE_LOST_DANGLING_UNREAD_TAIL if link == "dangling" else STATE_LOST_LINK_UNREAD_TAIL
+    assert last_line(listed).endswith(tail), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    said = lost_link_unread_next(LINK_DANGLING if link == "dangling" else LINK_GONE, f"{INSTALL_SH} {wheel}")
+    assert last_line(cp).startswith(said), last_line(cp)
+    assert "records earlier passes" not in last_line(listed) + last_line(cp)
+    assert "cannot be read, so earlier passes cannot be ruled out" in cp.stderr, cp.stderr
+    if link == "gone":
+        db.unlink()  # "they remove the link first"
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
 def test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_words_say(
     real_env: dict[str, str], wheel: Path
 ) -> None:
@@ -10726,12 +10806,13 @@ def test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_word
     assert again.returncode == 0, again.stdout + again.stderr
 
 
-def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable[[Path], int]]:
+def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable[[Path], tuple[int, int]]]:
     """install.sh's two copies of manifest.manifest_lost, each run from its own text in a process of its own
     under a time limit, so a copy that blocks fails the test rather than hanging it (B13 round 26 E31, E56):
     step 1's lost(), from config_errors' probe, and step 2's state_lost probe, whole, over a config whose
     state folder is the case's, printing what it prints (2 for a link into a folder gone or refusing a write,
-    3 for a link to nothing in a folder a sync can write, else 0 or 1)."""
+    3 for a link to nothing in a folder a sync can write, else 0 or 1; then, past its first guards, 1 when
+    heartbeat.json cannot be read, B13 round 28 I56), read as (that number, that flag)."""
     script = INSTALL_SH.read_text(encoding="utf-8")
     [body] = re.findall(r"(?ms)^(def lost\(p\):\n.*?)\n\n\n", script)
     [probe] = re.findall(r"(?ms)^state_lost\(\) \{\n.*?\"\$TOOL_PY\" -I -c '\n(.*?)\n' \"\$CONFIG\"", script)
@@ -10750,10 +10831,11 @@ def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable
         assert cp.returncode == 0 and cp.stderr == "", cp.stderr
         return cp.stdout.strip()
 
-    def state_lost(db: Path) -> int:
+    def state_lost(db: Path) -> tuple[int, int]:
         cfg = tmp_path / "sources.toml"
         cfg.write_text(default_config_text() + f'[agentsync]\nstate_dir = "{db.parent}"\n', encoding="utf-8")
-        return int(run(probe, cfg))
+        code, *unread = run(probe, cfg).split()
+        return int(code), int(unread == ["1"])
 
     return (lambda db: run(head + step1, db) == "1"), state_lost
 
@@ -10807,8 +10889,9 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
             make()
             want = manifest_lost(db)
             assert lost(db) is want, (name, beat)
-            link = {"dangling": 3, "dangling-dir": 2}.get(name, 4 if beat in unread else 1)
-            assert state_lost(db) == (link if want else 0), (name, beat)
+            # round 28 I56: the unread heartbeat is a fact apart from the link kind, never dropped beside it
+            link = {"dangling": 3, "dangling-dir": 2}.get(name, 1)
+            assert state_lost(db) == ((link, int(beat in unread)) if want else (0, 0)), (name, beat)
             assert want is (
                 beat in ("record", *unread) and name in ("missing", "dangling", "dangling-dir")
             ), (
@@ -10935,7 +11018,9 @@ def test_the_installers_governance_nouns_are_doctors_roles() -> None:
     for role, name in roles.items():
         noun = "agentsync's " + GOVERNANCE_ROLES[name].removeprefix("the ")
         assert FILE_NOUNS[role] == noun, role
-        assert f'\t{role}) MISPLACED_NOUN="{noun}" MISPLACED_CHECK={MISPLACED_CHECKS[role]} ;;\n' in text, role
+        assert f'\t{role}) MISPLACED_NOUN="{noun}" MISPLACED_CHECK={MISPLACED_CHECKS[role]} ;;\n' in text, (
+            role
+        )
         assert f'\t\trole-{role}) fnoun="{noun}" ;;\n' in text, role
     assert "agentsync's governance file " not in text
 

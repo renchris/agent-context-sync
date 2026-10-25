@@ -31182,6 +31182,10 @@ first. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest
 folder, an array, a loop and a link to nothing), the step 1 table's `LM-damaged` and `LM-fifo` rows, and
 `test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read` with the real agentsync.
 
+Amended 2026-10-25, §16.194 I5: the lost-unread tail gives no `(not damage, not a mode)`, since damaged JSON or a mode
+is one of its causes, and step 2's `state_lost` prints the link kind (0 to 3) and then 1 when heartbeat.json cannot
+be read, a fact apart, so a lost link beside one says it too.
+
 **The lost link's words, install.sh's halves** (P121 part 4 and P127's shell half, lane RA's items, built here at
 RA's seam note since install.sh is this lane's). Step 1's lost-link and lost-dangling tails give the file's own
 fact first, so "missing" is said once, of the file: `on agentsync's state file, manifest.sqlite, which is missing
@@ -31193,6 +31197,10 @@ shell's own read of the manifest now (`lost_link_now`, never the link's target),
 fix is the person's, removing or re-pointing the link first`, or `... and is a link to a file that does not
 exist`. Tests: the step 1 table's `LM-link` and `LM-link-gone` rows and
 `test_the_shell_report_names_a_lost_manifests_link_on_its_stop` (unusable, dangling, no link).
+
+Amended 2026-10-25, §16.194 I4: step 1's link tails name the link first, as step 2's NEXT does (`which is a symlink
+into a folder that does not exist or refuses a write, and is missing, though heartbeat.json beside it records earlier
+passes ...`): the file's own fact first read as though heartbeat.json were the link.
 
 **The shell reads the chmod words with Python's whitespace** (P138's shell half, lane RA's item, built here at RA's
 seam note; dated line at §16.179 D79). `claims()` in `fallback_sync_stops` matched `chmod` and its modes with
@@ -31691,6 +31699,26 @@ that line carries no file name. docs/deploy/setup-feedback.md says so. Tests:
 `test_the_installers_governance_nouns_are_doctors_roles` (both tables against `GOVERNANCE_ROLES`), the `holds-folder`
 case of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file` (the NEXT's noun
 is the report outcome's noun in one run) and the `FILE_NOUNS` pins.
+
+**The lost manifest's tails say what is true of it and of heartbeat.json** (I5, I33, I56, I4, I17; ruling 21;
+amends §16.189 P111 and P121). Three wrongs in step 1's lost-manifest tails, one build. The lost-unread tail said
+`cannot be ruled out (not damage, not a mode)`, read of heartbeat.json, whose damaged JSON or mode is the very cause
+(I5, I33): the parenthetical is gone from it, kept where heartbeat.json is readable. The link tails said `which is
+missing though heartbeat.json beside it records earlier passes and is a symlink ...`, which makes heartbeat.json the
+link (I4, I17, I33): they name the link first, as step 2's NEXT and the error line do (`which is a symlink to a file
+that does not exist, and is missing, though heartbeat.json beside it records earlier passes (not damage, not a mode)`;
+the report's outcome and buckets, whose comma reads right, are unchanged). And the link kind won over P111's fact:
+step 1 chose `lost-link` or `lost-dangling` before `lost-unread`, and step 2's probe printed 2 or 3 before 4, so a
+lost link beside an unreadable heartbeat.json was said to record earlier passes while doctor's line above said they
+cannot be ruled out (I56). Step 1 now adds `lost-unread` beside the link kind and reads the two apart; step 2's
+`state_lost` prints the link kind, then 1 when heartbeat.json cannot be read; the tail and the NEXT are built from the
+link kind (`lwhat`), the fact (`lfact`: `records earlier passes` or lane B's `cannot be read, so earlier passes cannot
+be ruled out`) and the fix (`lfix`, the gone link's `they remove the link first` kept). docs/deploy/setup-feedback.md
+says so. Tests: the step 1 table's `LM-link-damaged` and `LM-link-gone-damaged` rows and its changed `LM-link`,
+`LM-link-gone`, `LM-damaged` and `LM-fifo` tails, `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`
+(the flag apart from the link kind) and
+`test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2` (following the words ends
+it).
 
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 

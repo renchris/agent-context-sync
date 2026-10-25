@@ -6413,12 +6413,16 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     pages = setup_report._NoManifestError(7).line.replace("over 7 ", "over N ")
     assert pages.startswith("- no manifest yet (the next sync") and f"`{pages}`" in page
     assert setup_report._NoManifestError(0).line == "- no manifest yet (no sync has run)"
-    link = (  # B13 round 27 P121: the file's own fact first, "missing" said once, of the file
-        "which is missing though heartbeat.json beside it records earlier passes and is a symlink into a "
-        "folder that does not exist or refuses a write"
+    link = (  # B13 round 28 I4, I17, I33: the link first, as step 2's NEXT gives it (P121's order read as
+        # though heartbeat.json were the link)
+        "which is a symlink into a folder that does not exist or refuses a write, and is missing, though "
+        "heartbeat.json beside it records earlier passes"
     )
-    fix = "they remove the link first; then they restore the file"
-    assert link in install and fix in install and link in page and f"`{fix} ...`" in page
+    what = 'lwhat="a symlink into a folder that does not exist or refuses a write, and is "'
+    fact = 'lfact="missing, though heartbeat.json beside it records earlier passes (not damage, not a mode)"'
+    fix = "they remove the link first; then $lfix"
+    assert what in install and fact in install and fix in install
+    assert link in page and "`they remove the link first; then they restore the file ...`" in page
 
 
 def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
@@ -6433,12 +6437,16 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
 
     page = " ".join(_feedback_page().split())
     install = " ".join((ROOT / "scripts" / "install.sh").read_text(encoding="utf-8").split())
-    tail = (  # B13 round 27 P121: the file's own fact first, as the lost link's tail gives it
-        "manifest.sqlite, which is missing though heartbeat.json beside it records earlier passes and is a"
-        " symlink to a file that does not exist"
+    tail = (  # B13 round 28 I4, I17, I33: the link first, as the lost link's tail gives it
+        "manifest.sqlite, which is a symlink to a file that does not exist, and is missing, though "
+        "heartbeat.json beside it records earlier passes"
     )
     nxt = "is a symlink to a file that does not exist, and is missing, though heartbeat.json"
-    assert tail in install and nxt in install
+    assert 'lwhat="a symlink to a file that does not exist, and is "' in install
+    assert (
+        "manifest.sqlite, which is $lwhat$lfact:" in install
+        and "manifest.sqlite, is $lwhat$lfact (" in install
+    )
     assert f"`... {tail} ...`" in page and f"`... {nxt} ...`" in page
     assert "ruling 7's fix stays, with no `rm` first" in page
     at = datetime(2026, 10, 24, 10, 0, tzinfo=UTC)
@@ -7136,6 +7144,12 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "$STOPS_BOTH": both,
         "$SHUT_OPEN": shut,
     }
+    # B13 round 28 I4, I17, I33, I56: the lost manifest's tail is composed of the link kind (none for a
+    # missing file, the case the guide quotes whole), the fact and the fix, each read from step 1's first
+    # assignment
+    [lfix] = re.findall(r'^\t\tlwhat="" lfix="([^"$]*)"$', script, re.M)
+    lfact = re.findall(r'^\t\tlfact="([^"$]*)"$', script, re.M)[0]
+    shown.update({"$lwhat": "", "$lfact": lfact, "$lfix": lfix})
     for word, tail in opened:
         said = tail
         for var, words in shown.items():
