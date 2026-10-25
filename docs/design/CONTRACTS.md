@@ -30592,6 +30592,10 @@ back, the clone that never happened winning, another step's line kept),
 Amended 2026-10-24, §16.192 P55: the guides give the floor beforehand: the install prerequisites of README.md and
 docs/deploy/README.md, README.md's "Placing the speech models", it-request.md's download list and the asks table
 say the speech helper needs Swift 6.0 or later (Command Line Tools 16 or later, on macOS 14.5 or later).
+Amended 2026-10-24, §16.191 P53: "doctor is its only reader" was wrong when it landed: `setup_report._helpers_again`
+(§16.183 E34) also keys on the `RESOLVE_FAILED` head, and filed a `TOOLS_TOO_OLD` warn under "install.sh builds it
+again" until lane RA's round 27 P32 and P52 gave it a bucket of its own. The `RESOLVE_FAILED` and `_check_speech`
+docstrings now name both readers and the toolchain fix.
 
 **An unquoted URL ends only where Git's prefix follows it (E49; `agentsync.convert.ocr`; dated line at §16.181
 D84).** D84 ended an unquoted URL at the first `: `, which may sit inside a path (macOS stores a Finder `/` in a name
@@ -31043,6 +31047,17 @@ number, the rest case-folded, the raw path last, so the order is total), and `Cy
 other unlisted folders in the walk's order instead of sorting them again; the alarm, the stored list, the exclude
 line and status all name 8 to 12 and agree that 13 is held back. Test:
 `test_loop.py::test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line`.
+
+**The speech docstrings name RESOLVE_FAILED's readers and the toolchain fix (P53; `agentsync.convert.speech`,
+`agentsync.ops.doctor`; dated line at §16.186 E48).** E48 said its head moves no bucket as doctor is its only
+reader, while `setup_report._helpers_again` (§16.183 E34) keys its re-run bucket on the same head and filed a
+`TOOLS_TOO_OLD` warn there. The `RESOLVE_FAILED` docstring said only that doctor gives the re-run as its fix, and
+`_check_speech`'s listed its fixes without E48's Command Line Tools update. The report's exclusion is lane RA's
+(its round 27 P32 and P52, with their dated line at §16.183 E34), not built twice here. Docs only: E48 has its dated line, the
+`RESOLVE_FAILED` docstring says doctor's fix keys on its words (the re-run, but a Command Line Tools update first
+for `TOOLS_TOO_OLD`) and the report's re-run bucket too, with `TOOLS_TOO_OLD` left out, and `_check_speech`'s lists
+the toolchain update. No test can fail on a docstring's words; the behaviour each one states is pinned where it was
+built (`test_speech.py::test_a_resolve_that_needs_a_newer_swift_says_so`, and lane RA's test for the bucket).
 
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 

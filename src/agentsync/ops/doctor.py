@@ -903,8 +903,9 @@ def _check_speech(config: Config) -> list[CheckResult]:
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
     built; WARN with the reason when it failed, a helper built from a FluidAudio commit other than the
     pinned one among them, with a fix only for missing developer tools, a build that ran out of time or a
-    signal stopped, or a FluidAudio fetch that failed.  The probe takes no model digest and never compiles.
-    Never a FAIL."""
+    signal stopped, a FluidAudio fetch that failed, or a fetch that needs a newer Swift than this Mac's (a
+    Command Line Tools update; B13 round 26 E48, round 27 P53).  The probe takes no model digest and never
+    compiles. Never a FAIL."""
     try:
         state, detail = _speech_status(config)
     except Exception as exc:

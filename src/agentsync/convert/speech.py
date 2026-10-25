@@ -122,8 +122,10 @@ _RESOLVE = "swift package resolve"
 _FAILED = " failed (exit "  # a build step that exited non-zero: "<what> failed (exit <code>): <its line>"
 RESOLVE_FAILED = f"{_RESOLVE}{_FAILED}"
 """How the reason of a build whose ``swift package resolve`` (the FluidAudio fetch) exited non-zero starts, in
-``<helper>.failed`` and so in doctor's ``speech`` warn: doctor gives that warn the re-run as its fix by these
-words (B13 round 24 B42), which :func:`_step` writes."""
+``<helper>.failed`` and so in doctor's ``speech`` warn, which :func:`_step` writes. Doctor's fix keys on these
+words: the re-run (B13 round 24 B42), but for :data:`TOOLS_TOO_OLD`, whose fix is a Command Line Tools update
+first (round 26 E48). The setup report's ``_helpers_again`` keys its "install.sh builds it again" bucket on
+them too, a :data:`TOOLS_TOO_OLD` reason left out for a bucket of its own (round 27 P32, P52; P53)."""
 _UNCLONED_RE = re.compile(
     rb"config --get remote\.origin\.url' failed: fatal: cannot change to '[^\n]*': No such file or directory"
 )
