@@ -8777,6 +8777,26 @@ STATE_LOST_UNREAD_NEXT = (
 )
 """Step 2's NEXT for it (round 27 P111): it was read as a first start, and a new manifest began unasked."""
 
+STATE_LOST_HBMODE_TAIL = (
+    f"; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which {LOST_UNREAD}: "
+    "heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the "
+    "agent's to run first, once, as step 2's NEXT names it; if the manifest is still missing then, "
+    + LOST_FIX.format(it="that is")
+    + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
+)
+"""Step 1's tail when heartbeat.json is this account's own at a mode that refuses it: its chmod leads, the
+agent's, as status's NEXT leads with it (B13 round 28 ruling 21, lane B's I42)."""
+
+STATE_LOST_HBMODE_NEXT = (
+    f"NEXT: agentsync's state file, manifest.sqlite, {LOST_UNREAD} (the error above names it; "
+    "~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's "
+    "mode refuses this account (a mode, not damage), so the fix is the agent's first: run {fix} once, then "
+    "re-run: {rerun}; if the re-run stops on the missing manifest, "
+    + LOST_FIX.format(it="that is")
+    + ", not a step for the agent, so show them the error and go on to the report"
+)
+"""Step 2's NEXT for it (ruling 21): the person was asked to choose over a record no one had read."""
+
 LOST_LINK_FIX = (
     "fixing {it} the person's (they remove the link first; then they restore the file from a copy they "
     "trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest)"
@@ -9095,6 +9115,7 @@ def misplaced_tail(role: str, kind: str = "folder") -> str:
         "LM-fifo",
         "LM-link-damaged",
         "LM-link-gone-damaged",
+        "LM-hbmode",
         "SN-shm",
         "SN-shm-shut",
         "SN-shm-0500",
@@ -9190,6 +9211,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "LM-fifo": "state-lost",
         "LM-link-damaged": "state-lost",
         "LM-link-gone-damaged": "state-lost",
+        "LM-hbmode": "state-lost",
         "SN-shm": "state-side-notfile",
         "SN-shm-shut": "state-side-notfile",
         "SN-shm-0500": "state-side-notfile",
@@ -9260,6 +9282,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 heartbeat.write_text('{"project-alpha": {"run_id": 3', encoding="utf-8")
             elif state != "LM-none":
                 heartbeat.write_text(json.dumps({"project-alpha": entry}), encoding="utf-8")
+            if state == "LM-hbmode":  # round 28 ruling 21: a record no one can read, at a mode of its own
+                heartbeat.chmod(0)
             if state == "LM-wal":  # a stale -wal it cannot open: init stops on the lost manifest first
                 wal.write_bytes(b"")
                 wal.chmod(0)
@@ -9364,6 +9388,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
                 f.chmod(0o600)
         for f in (Path(env["HOME"]) / "store").glob("*"):
             f.chmod(0o600)
+        if db.with_name("heartbeat.json").is_file():
+            db.with_name("heartbeat.json").chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
     if state in ("PM-fixed", "LM-new", "LM-none", "LM-link-live", "SN-wal-fifo") or state.startswith(
@@ -9380,6 +9406,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         tail = STATE_LOST_DANGLING_UNREAD_TAIL
     if state == "LM-link-gone-damaged":
         tail = STATE_LOST_LINK_UNREAD_TAIL
+    if state == "LM-hbmode":
+        tail = STATE_LOST_HBMODE_TAIL
     odd = {  # round 27 P119: which side, and what is there
         "SN-shm": "shm-folder",
         "SN-shm-shut": "shm-folder",
@@ -9401,6 +9429,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
     said = last_line(cp).replace("heartbeat.json beside it cannot be read", "")  # P111: not damage
     assert "damaged" not in said and "cannot be read" not in said, last_line(cp)
+    # round 28 ruling 21: a heartbeat at 0000 is the status step's access word too, logged after the lost one
+    word += ",state-file-access" if state == "LM-hbmode" else ""
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
 
 
@@ -10946,7 +10976,7 @@ def _inlined_lost_runs(tmp_path: Path) -> tuple[Callable[[Path], bool], Callable
         cfg = tmp_path / "sources.toml"
         cfg.write_text(default_config_text() + f'[agentsync]\nstate_dir = "{db.parent}"\n', encoding="utf-8")
         code, *unread = run(probe, cfg).split()
-        return int(code), int(unread == ["1"])
+        return int(code), int(unread[:1] == ["1"])
 
     return (lambda db: run(head + step1, db) == "1"), state_lost
 
@@ -11379,6 +11409,45 @@ def test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read(
         cp
     )
     assert not db.exists(), "no new manifest was started over it"
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 28 ruling 21 (lane B's I42; install.sh's half of I5, I33, I56), with the real agentsync: the
+    manifest missing beside a heartbeat.json at 0000. Steps 1 and 2 gave the person's choice (restore the
+    manifest or start a new one) over a record no one had read, while its chmod 600 is the agent's and
+    status's NEXT leads with it. Following the words: the chmod, then the re-run stops on the lost manifest
+    with the person's NEXT, and their new start ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        f.unlink(missing_ok=True)
+    heartbeat = db.with_name("heartbeat.json")
+    heartbeat.chmod(0)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+    finally:
+        heartbeat.chmod(0o600)
+    assert last_line(listed).endswith(STATE_LOST_HBMODE_TAIL), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    fix = "chmod 600 ~/'Library/Application Support/agentsync/heartbeat.json'"
+    rerun = f"{INSTALL_SH} {wheel}"
+    assert last_line(cp).startswith(STATE_LOST_HBMODE_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    heartbeat.chmod(0)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)  # the agent's chmod, as the NEXT names it
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=rerun)), last_line(lost)
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr

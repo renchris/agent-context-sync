@@ -7110,6 +7110,14 @@ def lost(p):
         fd = os.open(hb, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:  # a link to nothing: no heartbeat
         return False
+    except PermissionError:  # refused by its own mode alone: the chmod 600 of the agent first (ruling 21)
+        try:
+            st = hb.stat()
+            ro = bool(os.statvfs(hb).f_flag & os.ST_RDONLY)
+        except (OSError, AttributeError):
+            return "unread"
+        mine = st.st_uid == os.getuid() and stat.S_ISREG(st.st_mode) and not ro
+        return "unread-mode" if mine and st.st_mode & 0o600 != 0o600 else "unread"
     except OSError:
         return "unread"
     try:
@@ -7339,8 +7347,10 @@ elif (lostdb := lost(db)):  # step 2 reinstalls this checkout, whose init stops 
         words.append("lost-dangling")
     # heartbeat.json there but unreadable: named so (round 27 P111, ruling 17), beside the link kind, a fact
     # of its own (B13 round 28 I56: a link beside it was said to record earlier passes)
-    if lostdb == "unread":
+    if lostdb in ("unread", "unread-mode"):
         words.append("lost-unread")
+    if lostdb == "unread-mode":  # heartbeat.json of this account, at a mode that refuses it (I42, ruling 21)
+        words.append("lost-hbmode")
 elif access:
     words.append(access)
     if sidestatus:
@@ -7408,7 +7418,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7513,6 +7523,7 @@ list_folders() {
 				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				clink="$(LC_ALL=C grep -xE 'lost-(link|dangling)' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cunread="$(LC_ALL=C grep -x 'lost-unread' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
+				chbmode="$(LC_ALL=C grep -x 'lost-hbmode' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cside="$(LC_ALL=C grep -x 'side-status' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
 				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|symlink-(loop|nothing|file|folder|fifo|socket))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
@@ -7719,7 +7730,12 @@ list_folders() {
 		lfact="missing though heartbeat.json beside it records earlier passes (not damage, not a mode)"
 		[ -z "$lwhat" ] || lfact="missing, though heartbeat.json beside it records earlier passes (not damage, not a mode)"
 		[ -z "$cunread" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
-		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact: fixing that is the person's ($lfix), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
+		# heartbeat.json is this account's own, at a mode that refuses it: its chmod 600 is the agent's, first, as
+		# status's NEXT leads with it, and only the stop that may follow is the person's (B13 round 28 ruling 21,
+		# lane B's I42: the person was asked to choose over a record no one had read)
+		lown="fixing that is the person's ($lfix)"
+		[ -z "$chbmode" ] || lown="heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still missing then, fixing that is the person's ($lfix)"
+		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact: $lown, and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
@@ -8706,6 +8722,7 @@ state_misplaced() {
 STATE_LOST_LINK="" # 1 once state_lost finds the lost manifest a symlink into a folder gone or refusing a write
 STATE_LOST_DANGLING="" # 1 once state_lost finds it a symlink to nothing in a folder a sync can write (round 26 E19)
 STATE_LOST_UNREAD="" # 1 once state_lost finds heartbeat.json beside it there but unreadable (round 27 P111)
+STATE_LOST_HBFIX="" # its chmod 600, once state_lost finds this account's own at a mode that refuses it (ruling 21)
 # Whether the manifest is lost from a Mac that has synced (manifest.manifest_lost, round 23 A29): none at the
 # config's state path (or a symlink there to a missing file, round 24 B64, round 25 D33), in a folder this account can use, while heartbeat.json beside it records a pass. init
 # and add-source exit 1 on it ("<db> is missing, but heartbeat.json records earlier passes"), and fail's "fix the
@@ -8747,6 +8764,7 @@ if not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
 # one there that cannot be read is lost all the same, as manifest.lost_words reads it (round 27 P111): 4
 hb = db.parent / "heartbeat.json"
 unread = False
+hbfix = ""
 try:
     hb.lstat()
 except OSError:  # none there: a first start
@@ -8757,6 +8775,15 @@ try:
 except FileNotFoundError:  # a link to nothing: no heartbeat
     print(0)
     sys.exit(0)
+except PermissionError:  # refused by its own mode alone: its chmod 600 leads (B13 round 28 ruling 21, I42)
+    fd = None
+    try:
+        from agentsync.ops.doctor import state_path_fix
+
+        r = Path(os.path.realpath(hb))
+        hbfix = state_path_fix(r.parent, r)
+    except Exception:
+        hbfix = ""
 except OSError:
     fd = None
 try:
@@ -8783,14 +8810,18 @@ lost = unread or any(
 # cannot be read, a fact apart from the link kind (B13 round 28 I56: a link beside one was said to record
 # earlier passes, while the error above says they cannot be ruled out)
 folder = Path(os.path.realpath(db)).parent
-print((3 if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else 2) if lost and link else int(lost), int(unread))
+# and last, the chmod 600 of heartbeat.json when that is all that refuses it, by doctor.state_path_fix
+hbfix = hbfix if unread and hbfix.startswith("chmod 600 ") else ""
+print((3 if folder.is_dir() and os.access(folder, os.W_OK | os.X_OK) else 2) if lost and link else int(lost), int(unread), hbfix)
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
 	STATE_LOST_LINK=""
 	STATE_LOST_DANGLING=""
 	STATE_LOST_UNREAD=""
+	STATE_LOST_HBFIX=""
 	case "$n" in
-	[123]" 1") STATE_LOST_UNREAD=1 ;;
+	[123]" 1 chmod 600 "*) STATE_LOST_UNREAD=1 STATE_LOST_HBFIX="${n#* 1 }" ;;
+	[123]" 1"*) STATE_LOST_UNREAD=1 ;;
 	esac
 	n="${n%% *}"
 	[ "$n" != 2 ] || STATE_LOST_LINK=1
@@ -8869,6 +8900,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		}
 		[ -z "$STATE_LOST_UNREAD" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
+		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's
+		[ -z "$STATE_LOST_HBFIX" ] ||
+			FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first: run $STATE_LOST_HBFIX once, then re-run: $SELF$RERUN_ARGS; if the re-run stops on the missing manifest, fixing that is the person's ($lfix), not a step for the agent, so show them the error and go on to the report"
 	elif [ "$rc" -eq 1 ] && state_owned_elsewhere; then
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then

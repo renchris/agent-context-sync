@@ -31732,6 +31732,21 @@ says so. Tests: the step 1 table's `LM-link-damaged` and `LM-link-gone-damaged` 
 `test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2` (following the words ends
 it).
 
+**A heartbeat.json only its own mode refuses leads with the agent's chmod** (ruling 21's install.sh half, with lane
+B's I42 words). Beside a lost manifest, a heartbeat.json at 0000 is lost-unread, and steps 1 and 2 gave the person's
+choice (restore the manifest, or move heartbeat.json aside for a new start) over a record no one had read, while
+status's NEXT leads with the heartbeat's `chmod 600`, the agent's, and re-judges after it. Step 1's `lost()` returns
+`unread-mode` when the open is refused, the file is this account's, a regular file, not on a read-only volume and its
+mode lacks 0600 (an ACL, another owner or a read-only volume stay the person's `unread`), and adds `lost-hbmode`; the
+tail says `heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the
+agent's to run first, once, as step 2's NEXT names it; if the manifest is still missing then, fixing that is the
+person's (...)`. Step 2's `state_lost` prints that chmod last (doctor.state_path_fix at the file's resolved folder),
+and the NEXT is `... heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first:
+run chmod 600 ~/'Library/Application Support/agentsync/heartbeat.json' once, then re-run: <install.sh>; if the re-run
+stops on the missing manifest, fixing that is the person's (...)`. Tests: the step 1 table's `LM-hbmode` row and
+`test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod` (the chmod, the re-run's
+lost-manifest NEXT, the person's new start).
+
 **What is at a misplaced lock, heartbeat or governance file is named** (I20, I35). Step 1's `state-file-notfile` tail
 and step 2's NEXT said `which is a folder or something else that is not a file` for a fifo at the lock or a folder at
 holds.json, while the error line just above, and status, name the kind (`is a fifo, not a file`), as the -wal and
