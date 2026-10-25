@@ -1819,6 +1819,42 @@ the two turns first), E 8 (cycle.py's new start and restored run numbers, the sp
 P131 to P138) and P139 (not built, measured: a check of only trunk's last completed run saves nothing in round 26 and
 would cancel trunk's runs; lane D's P140 builds the safe early read).
 
+### B13 round 27 landed (2026-10-25)
+
+All five lanes landed; CI green on `07b43cc5` (ci `40185998162`); the prompt is still v33. Notes `lanes/r27-<lane>.md`,
+lead notes `round27/lead-notes.md`. 89 of the 91 items are built, each with a test that fails without it; the lead's
+P130 was the harvest's umbrella note, built as P131 to P138, and P139 is not built (measured, above). Two built items
+leave a measured half unbuilt: P54's code (a fix makes the URL cut worse; its docs and pins are built, lane E) and
+P112's step 3 (storing page paths at queue time and purging them after the new start runs the very purge ruling 17
+says must wait, and a path purge erases every blob ever at that path; lane B). Lane B built ruling 15 first: a link
+to nothing at holds.json is now the person's FAIL and never an empty hold list. P111 landed in two halves: lane B's
+rule shipped switched off behind `manifest._UNREAD_IS_LOST`, and lane RB's install.sh commit turned it on together
+with its inlined copies, since RB's test pins those copies to `manifest_lost`.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `c0787278`, `2a1b5d9c`, 2 commits |
+| B | `763ae518..a3aecbbb`, 10 commits |
+| E | `24f6e8da..14fe8e75`, 8 commits |
+| RB | `1d9d0df7..c99da160` and `c93fabd6..b75e5016`, 11 commits |
+| RA | `4314c464..07b43cc5`, 23 commits |
+
+Learnings: the Mac ran at a load of 270 to 1,000 for most of the round (CPU not saturated: blocked processes), so a
+land gate took about 1 h 50 min and five lands took 14 hours; RB's land went red once on a load-only 5-second probe
+and once on a two-letter word, and a timing mark (`c99da160`) ended the first. A hook's `git restore` guard matched
+the word "restore" in a lane's pytest `-k` filter and held lane E at a prompt for about two hours until the operator
+answered it. Lanes finished building within one to three hours; the rest was the land queue.
+
+Residuals the lanes named for round 28's harvest (in their notes): a manifest restored from a copy older than a
+queued purge still dequeues a purge that targets nothing (lane B); install.sh's `misplaced_words` still calls
+holds.json "agentsync's governance file holds.json" where the report says "the hold list" (lanes RB and RA); P111's
+report half, now that the rule is on (lane RA).
+
+Round 28: the round 27 workflow (`round27/round27-claude-only.js` through `round28/tools/edit.py`, with the guard
+line first in every prompt) on this section's landed tip, BASE `f04c61db`, ids I<n> (no §16 line uses the letter),
+outputs `round28/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane
+changed the prompt.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
