@@ -11390,8 +11390,8 @@ def test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_updat
     fix is a Command Line Tools update first, as a re-run fails the same way. It has a bucket of its own in
     doctor's words; the developer tools' fix keeps it unexpected; the report's copies equal their sources."""
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
-    assert speech.TOOLS_TOO_OLD == setup_report._TOOLS_TOO_OLD_COPY
-    assert setup_report._tools_too_old_re(object()).pattern == speech.TOOLS_TOO_OLD_RE.pattern
+    # B13 round 28 I74: the report reads speech.TOOLS_TOO_OLD_RE itself, with no copy for an older build
+    assert not hasattr(setup_report, "_TOOLS_TOO_OLD_COPY") and not hasattr(setup_report, "_tools_too_old_re")
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)
     config = load_config(fake_mac["config"])

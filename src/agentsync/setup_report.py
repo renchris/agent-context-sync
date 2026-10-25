@@ -11566,7 +11566,7 @@ def _helpers_again(c: Config) -> dict[str, str]:
             elif (
                 name == "speech"
                 and reason.startswith(speech.RESOLVE_FAILED)
-                and not _tools_too_old_re(speech).search(reason)
+                and not speech.TOOLS_TOO_OLD_RE.search(reason)
             ):
                 out[name] = speech.RESOLVE_FAILED
     except Exception:
@@ -11574,28 +11574,14 @@ def _helpers_again(c: Config) -> dict[str, str]:
     return out
 
 
-_TOOLS_TOO_OLD_COPY = (
-    "this Mac's Swift {installed} is older than the Swift {needed} the speech helper or FluidAudio needs"
-)
-"""``speech.TOOLS_TOO_OLD``, the cause a speech build's marker gives a fetch that needs a newer Swift than
-this Mac's: the report's copy for an installed build without the name, which a test keeps equal to the source
-(B13 round 27 P32, P52)."""
 _NEWER_SWIFT_FIX_COPY = (
     "update the Command Line Tools (or Xcode) in Software Update to a release with Swift {needed} or later"
 )
-"""How doctor's fix for :data:`_TOOLS_TOO_OLD_COPY` opens (``doctor._resolve_again_fix``, lane E's E48): a
-test keeps the report's words equal to doctor's, which have no name of their own (P32, P52). The Doctor line
-says it without the ``(or Xcode) in Software Update`` the Doctor section's fix spells out."""
-
-
-def _tools_too_old_re(speech: Any) -> re.Pattern[str]:
-    """``speech.TOOLS_TOO_OLD_RE``, or the same read of :data:`_TOOLS_TOO_OLD_COPY` when the installed speech
-    module has no such name (an older build), as :func:`_state_lost` reads lane B's words."""
-    found = getattr(speech, "TOOLS_TOO_OLD_RE", None)
-    if isinstance(found, re.Pattern):
-        return cast("re.Pattern[str]", found)
-    words = _TOOLS_TOO_OLD_COPY  # no regex sign in it, as speech's own read says
-    return re.compile(words.format(installed=r"(?P<installed>\d[\d.]*)", needed=r"(?P<needed>\d[\d.]*)"))
+"""How doctor's fix for ``speech.TOOLS_TOO_OLD`` opens (``doctor._resolve_again_fix``, lane E's E48): a test
+keeps the report's words equal to doctor's, which have no name of their own (P32, P52). The Doctor line says
+it without the ``(or Xcode) in Software Update`` the Doctor section's fix spells out. The cause is read by
+``speech.TOOLS_TOO_OLD_RE`` itself: the report and the speech module always ship in one build, so a copy for a
+build without it served nothing (B13 round 28 I74)."""
 
 
 def _speech_newer_swift(c: Config) -> tuple[str, str] | None:
@@ -11610,7 +11596,7 @@ def _speech_newer_swift(c: Config) -> tuple[str, str] | None:
         reason = ocr._failure(ocr._helper_path(c.cache_dir, speech.SPEECH), speech.SPEECH)
         if not reason or not reason.startswith(speech.RESOLVE_FAILED):
             return None
-        found = _tools_too_old_re(speech).search(reason)
+        found = speech.TOOLS_TOO_OLD_RE.search(reason)
     except Exception:
         return None
     return (found.group(0), found["needed"]) if found else None
