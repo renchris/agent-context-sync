@@ -10501,12 +10501,21 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
     # B13 round 27 P123: an earlier attempt's stop pairs only with a sync of its own, never a later attempt's
     stops = _measured_stops(r, lo, hi, until=hi if nxt is not None else None)
-    # B13 round 27 P127, P19: the latest attempt's open stop on a lost manifest, by the report's own read of
-    # the link now (never the stop record: an older reader takes a new kind for "refused"); an earlier
-    # attempt's, or one a sync ended 0 after, is of a time the read says nothing of
-    link = _lost_link_kind(r.config) if nxt is None and stops else ""
-    # B13 round 28 ruling 21: and whether its heartbeat.json cannot be read now, never "after earlier syncs"
-    unread = nxt is None and bool(stops) and _manifest_lost_kind(r.config) == "unread"
+    return _with_now_words(r, stops) if nxt is None else stops
+
+
+def _with_now_words(r: _Run, stops: list[_SyncStop]) -> list[_SyncStop]:
+    """The latest attempt's open stops (no later sync ended 0 after them) in the words of the report's own
+    read now, so the outcome and Items say what the bucket and Doctor say: a lost manifest's link (B13 round
+    27 P127, P19; never the stop record: an older reader takes a new kind for "refused") and whether its
+    heartbeat.json cannot be read (B13 round 28 ruling 21), and a misplaced stop's file as doctor's FAIL
+    names it (B13 round 27 P18). An earlier attempt's stop, or one a sync ended 0 after, is of a time the
+    read says nothing of, so the caller passes the latest attempt's alone. One helper for the stops before
+    the end line and after it, so a second identical stop never loses the words (B13 round 28 I9, I37)."""
+    if not stops:
+        return stops
+    link = _lost_link_kind(r.config)
+    unread = _manifest_lost_kind(r.config) == "unread"
     stops = [
         dataclasses.replace(s, link=link, lost_unread=unread)
         if (link or unread)
@@ -10517,9 +10526,7 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         else s
         for s in stops
     ]
-    # B13 round 27 P18: the latest attempt's open misplaced stop, as doctor's FAIL names its file now, so the
-    # outcome and Items say what the bucket and Doctor say; under the same guards as the link's
-    if nxt is not None or r.config is None:
+    if r.config is None:
         return stops
     return [
         dataclasses.replace(s, shape=_stop_shape(r, s)) if s.kind == "misplaced" and s.ended_ok is None else s
@@ -10627,6 +10634,8 @@ def _late_stops(r: _Run, index: int) -> list[tuple[_SyncStop, FrictionEvent | No
     if last is None or last <= end:
         return []
     stops = _measured_stops(r, end, last + timedelta(seconds=1))
+    if index == len(fr.attempts) - 1:  # B13 round 28 I9, I37: the words now, as the stops before the end line
+        stops = _with_now_words(r, stops)
     errors = [e for e in after if e.kind == "error" and e.step == att.layout.report_step and e.at is not None]
     account = {id(s): e for s, e in _pair_stops(stops, errors)}
     return [(s, account.get(id(s))) for s in stops]

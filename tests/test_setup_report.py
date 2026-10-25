@@ -6251,6 +6251,71 @@ def test_a_step_3_stop_on_a_folder_at_the_lock_names_it_as_doctor_does(
     assert "which was a folder" not in plain, plain
 
 
+def test_a_stop_after_the_end_line_takes_the_words_now_as_the_one_before_it(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I9, I37: the same stop logged twice, once before the attempt's end line and once after
+    it, read in two ways: Items said the lock "was a folder, not a file" (P18) and the line after the end
+    line "was not where or what it should be"; a lost manifest that is a link to nothing lost "and is a link
+    to a file that does not exist" on the second. One helper words both stops of the latest attempt now."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name in ("lock", "state_dir.manifest")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    said = "agentsync sync exited 1: agentsync.lock is a folder; the fix is the person's"
+    late = f"2026-09-29T10:01:40Z | step 3 | error | {said} | -\n"
+    friction = _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY) + late
+    stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+    sp = load_config(fake_mac["config"]).state_paths
+    conn = sqlite3.connect(expand(sp.db))
+    try:  # the ok run before the stops: none ended 0 after them
+        conn.execute("UPDATE runs SET started_at = '2026-09-29T09:00:00Z' WHERE status = 'ok'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    def lines(stop_file: str, kind: str) -> tuple[str, str]:
+        write_friction(fake_mac, friction)
+        both = _stop_line("50", stop_file, "person", kind)
+        stops.write_text(both + both.replace("10:00:50", "10:01:30"), encoding="utf-8")
+        summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+        block = summary.split("after attempt 1's end line (they do not change the outcome):", 1)[1]
+        [after] = [ln for ln in block.splitlines() if ln.startswith("- agentsync sync · step 3")]
+        return _items_of(summary)[0], after
+
+    lock = expand(sp.lock)
+    lock.unlink(missing_ok=True)
+    lock.mkdir()
+    try:
+        items, after = lines("lock", "misplaced")
+    finally:
+        lock.rmdir()
+    for line in (items, after):
+        assert "agentsync's lock file, which was a folder, not a file; " in line, (items, after)
+    db = expand(sp.db)
+    db.rename(tmp_path / "kept.sqlite")
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.symlink_to(db.with_name("gone.sqlite"))
+    try:
+        items, after = lines("manifest", "lost")
+    finally:
+        db.unlink()
+    for line in (items, after):
+        assert "which was missing after earlier syncs and is a link to a file that does not exist" in line, (
+            items,
+            after,
+        )
+
+
 def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
     fake_mac: dict[str, Path],
 ) -> None:
