@@ -13310,6 +13310,9 @@ _STATE_SIDE_NOT_FILE_RE = re.compile(
 file: the state file's write-ahead log belongs there`` since round 26 E18, in brackets before it), read before
 :data:`_STATE_NOT_FILE_RE`, which an older doctor's words for it would also match."""
 _STATE_NOT_FILE_RE = re.compile(r"error: state: .* is (?P<kind>[^,]+), not the state file\b")
+"""The sync's line for something not a file where manifest.sqlite belongs (``cli._misplaced``: doctor's
+``_not_a_file`` kinds, and lane B's symlink to a folder and symlink loop, B13 round 23 A46), which holds no
+"cannot be opened" (B13 round 22 Z51)."""
 _STATE_MISPLACED_RE = re.compile(
     r"error: state: .* is (?P<kind>[^,]+), not a file: (?P<role>the lock|the heartbeat|the hold list"
     r"|the purge queue|the suppression list|the audit trail) belongs there"
@@ -13318,18 +13321,17 @@ _STATE_MISPLACED_RE = re.compile(
 file belongs (``cli._not_a_file_stop``: doctor's lock, heartbeat and governance not-a-file FAILs, lane B's B13
 round 26 E38, E39, E43), the person's to move aside (B13 round 27 ruling 16, P110: the outcome said only "its
 config step failed with rc 1")."""
-_MISPLACED_NOUNS = {
-    "the lock": "agentsync's lock file",
-    "the heartbeat": "agentsync's heartbeat file",
-    "the hold list": "agentsync's governance file holds.json",
-    "the purge queue": "agentsync's governance file purge-queue.json",
-    "the suppression list": "agentsync's governance file suppressed.json",
-    "the audit trail": "agentsync's governance file audit.jsonl",
+_MISPLACED_CHECKS = {
+    "the lock": "lock",
+    "the heartbeat": "heartbeat",
+    "the hold list": "governance.hold",
+    "the purge queue": "governance.purge_queue",
+    "the suppression list": "governance.suppressed",
+    "the audit trail": "governance.audit",
 }
-"""The file of each :data:`_STATE_MISPLACED_RE` role, in install.sh's words for it (misplaced_words)."""
-"""The sync's line for something not a file where manifest.sqlite belongs (``cli._misplaced``: doctor's
-``_not_a_file`` kinds, and lane B's symlink to a folder and symlink loop, B13 round 23 A46), which holds no
-"cannot be opened" (B13 round 22 Z51)."""
+"""The doctor check of each :data:`_STATE_MISPLACED_RE` role, whose words in :data:`_MISPLACED_ROLES` the
+outcome names the file in, so the outcome, Items and the Doctor bucket name one file one way (B13 round 27
+P126 with P18 and P120: holds.json is the hold list, as doctor and status call it)."""
 _STATE_NOT_FOLDER_RE = re.compile(
     r"error: state: .* is (?:not a (?:directory|folder)\b|[^,]+, not a folder\b"
     r"(?P<above>, and the state folder )?)"
@@ -13411,10 +13413,10 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             return _side_words(side.group("role"), side.group("kind")), "after it was moved aside"
         odd = _STATE_MISPLACED_RE.search(ln.strip())  # B13 round 27 ruling 16 (P110)
         if odd is not None:
-            noun = _MISPLACED_NOUNS[odd.group("role")]
-            return f" on {noun}, which is {odd.group('kind')}, not a file: the person's to fix", (
-                "after it was moved aside"
-            )
+            noun = _MISPLACED_ROLES[_MISPLACED_CHECKS[odd.group("role")]]
+            what = odd.group("kind")
+            what = what if what == "not a regular file" else f"{what}, not a file"
+            return f" on {noun}, which is {what}: the person's to fix", "after it was moved aside"
         kind = _STATE_NOT_FILE_RE.search(ln.strip())
         if kind is not None:
             what = kind.group("kind")

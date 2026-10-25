@@ -10643,6 +10643,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     # state folder belongs (cli._misplaced's line, no "cannot be opened"), names its kind and whose in both
     # the item and the outcome; the kind is the line's own, never "a folder" for a fifo
     root = "~/Library/Application Support/agentsync"
+    sp = load_config(fake_mac["config"]).state_paths
+    holds = governance._holds_file(sp.root)
+    queue = governance.governance_dir(sp.root) / "purge-queue.json"
     for line, words, after in (
         (
             f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})",
@@ -10720,6 +10723,40 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "copy)",
             "on a folder above agentsync's state folder, which is not a folder: the person's to fix",
             "it was moved aside",
+        ),
+        # B13 round 27 P126 (ruling 16, with lane RB's P110): the lock, the heartbeat and a governance file
+        # that are not files name the file and its owner, in the Doctor bucket's words for it (P18, P120),
+        # each line built from doctor's and governance's own words so a change to them reaches these rows
+        *(
+            (
+                f"error: state: {detail} (fix: {fix})",
+                f"on {noun}, which is {kind}, not a file: the person's to fix",
+                "it was moved aside",
+            )
+            for detail, fix, noun, kind in (
+                (
+                    doctor._not_a_file_detail(sp, sp.lock, "a folder"),
+                    f"the person moves {sp.lock} aside, keeping a copy",
+                    "agentsync's lock file",
+                    "a folder",
+                ),
+                (
+                    doctor._not_a_file_detail(sp, sp.heartbeat, "a fifo"),
+                    f"the person moves {sp.heartbeat} aside, keeping a copy",
+                    "agentsync's heartbeat file",
+                    "a fifo",
+                ),
+                (
+                    *governance._not_a_file_words(holds, "a symlink to nothing", "the hold list"),
+                    "agentsync's hold list",
+                    "a symlink to nothing",
+                ),
+                (
+                    *governance._not_a_file_words(queue, "a symlink loop", "the purge queue"),
+                    "a governance file in the state folder",
+                    "a symlink loop",
+                ),
+            )
         ),
     ):
         out.write_text(

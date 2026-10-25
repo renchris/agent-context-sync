@@ -30769,10 +30769,10 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36, P102,
-P115, P26, P13, P104, P20, P120, P37, P18, P38, P39, P107, P108 and P35, in `src/agentsync/setup_report.py` and
-`tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
-one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
-defects built in one commit.
+P115, P26, P13, P104, P20, P120, P37, P18, P38, P39, P107, P108, P35 and P126, in `src/agentsync/setup_report.py`
+and `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that
+describe one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are
+two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -31057,6 +31057,19 @@ beside a manifest that is no link any link at a side is one (round 26 E62). inst
 RB's (round 27 §16.189). Test:
 `test_a_side_link_beside_a_linked_manifest_is_no_side_and_the_targets_sides_are_judged` (the three links with
 doctor's judge and with the fallback, a folder at the target's -shm, and a link beside a plain manifest).
+
+**Step 2's outcome over a lock, heartbeat or governance file that is not a file names the file and its owner**
+(P126; round 27 ruling 16, built with lane RB's P110 `_STATE_MISPLACED_RE`, `1d9d0df70`). RB's pattern was the
+verifier's: it reads the role words doctor and governance print (`<path> is <kind>, not a file: <role> belongs
+there`), after the side-file check and before the manifest's `not the state file`. The report now names the file
+in its Doctor bucket's words (`_MISPLACED_ROLES`, through `_MISPLACED_CHECKS`), so the outcome, Items and the bucket
+name one file one way (P18, P120): `install.sh exited 1 at its config step on agentsync's lock file, which is a
+folder, not a file: the person's to fix`, and holds.json is `agentsync's hold list`, not `agentsync's governance
+file holds.json`; the purge queue, the suppression list and the audit trail are `a governance file in the state
+folder`. A kind `not a regular file` is not doubled. The `_STATE_NOT_FILE_RE` docstring that P110's block had
+split from its pattern is back under it. Test: four rows (the lock, the heartbeat, the hold list, the purge queue)
+in `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`, each line built from
+`doctor._not_a_file_detail` or `governance._not_a_file_words`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

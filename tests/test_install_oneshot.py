@@ -10964,9 +10964,9 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
     assert "fix the error above" not in last_line(cp), last_line(cp)
     kind = "a fifo" if case.endswith("-fifo") else "a folder"
     report = (Path(env["HOME"]) / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
-    assert (  # P110: the outcome names the stop and whose fix it is
+    assert (  # P110: the outcome names the stop and whose fix it is; P126: in the Doctor bucket's words
         "- **outcome: failed at step 2** (computed: install.sh exited 1 at its config step on "
-        f"{FILE_NOUNS[role]}, "
+        f"{setup_report._MISPLACED_ROLES[MISPLACED_CHECKS[role]]}, "
         f"which is {kind}, not a file: the person's to fix)"
     ) in report, [ln for ln in report.splitlines() if "outcome" in ln]
     beta = folder.parent / "Beta"
