@@ -4561,6 +4561,8 @@ class QueuedPurge:
     selector: PurgeSelector
     reason: PurgeReason
     enqueued_at: str
+    aliases: tuple[str, ...] = ()
+    found_nothing: bool = False
 
 class Suppressions:
     """Items and source-path globs that were purged for a reason other than upstream deletion."""
@@ -31737,6 +31739,35 @@ byte file left in place stops the next sync on "file is not a database"; status 
 `test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it` (now over add-source, init and `sync
 --mode dry_run`), `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_never_a_new_start`,
 `test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keeps_its_own_fail`.
+
+**I93, I109, I65: a queued purge whose id still reaches the page's history (`agentsync.governance`,
+`agentsync.cycle`, `agentsync.cli`; ruling 20).** An upstream deletion queued before a new start read "not
+resolvable" and stayed queued for good, though its id (the page's front matter) still reached the page's history;
+and a restored older manifest let a re-keyed entry run "VERIFIED · 0 items" and leave the queue, erasing nothing.
+`enqueue_purge` stores the item's retired ids (its `item_aliases` rows) as `aliases` beside `selector`, never inside
+it (older builds run `PurgeSelector(**selector)` and drop the field when they rewrite the queue: today's behavior
+again); the cycle passes them at its three call sites. `purge` takes extra `ids` that seed the history walk.
+`run_purge_queue` resolves every upstream-deleted or label-escalation source and id entry dry first, with its stored
+aliases: one that targets no item beyond its aliases, no docs path and no blob, and whose item no earlier purge
+erased (the suppression list, which every purge but an upstream deletion's fills), stays queued with
+`unresolved_note` and a `found_nothing` mark beside the selector (no part of the request: an entry compares equal
+with or without it), never VERIFIED; otherwise it runs, taken-path protection keeping a live page now at that path.
+This is the only judgment that reads the docs history: status, the loop and `partition_purges` read the mark.
+`_covers` matches a stored alias, so a hand `purge docs=<page>` of an old-id page takes the entry off the queue, and
+`_kept_listed` counts a listed row under any stored alias as listed (`, 1 of them under an earlier id`).
+`UNRESOLVED_HEAD` is `kept until its id is found: `; the note's by-hand route is `~/.local/bin/agentsync purge
+id=<its id> --source <its source>`, which keeps another file's live page at that path, `purge docs=<page path>`
+the last resort; `purge --queue` says `N queued purge(s) run; M still queued until its id is found in the docs
+history (see its note)`. I65: a queue run logs one counted WARNING per kept kind (`new_start_purges(n)`,
+`unresolved_purges(n)`), never one per entry; judged "stays queued: ..." notes keep theirs. Tests (`test_cli.py`):
+`test_a_purge_queued_before_the_new_start_runs_once_its_id_reaches_the_page_history`,
+`test_enqueue_purge_stores_the_retired_ids_beside_the_selector`,
+`test_a_purge_of_a_file_back_under_a_new_id_at_its_path_erases_the_old_page_and_keeps_the_live_one`,
+`test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verified`,
+`test_status_and_the_loop_read_no_history_for_a_kept_entry`,
+`test_a_stored_alias_keeps_a_listed_page_and_a_hand_purge_of_its_page_dequeues_it`,
+`test_a_queue_run_after_the_new_start_warns_once_counted_never_once_per_entry`,
+`test_a_queue_run_that_keeps_entries_until_their_id_is_found_warns_once_counted`.
 
 **I62, I32, I42: the lost-unread heartbeat (`agentsync.ops.doctor`, `agentsync.cli`; ruling 21).** I62 and I32 are
 one defect, built once. Beside a lost manifest whose heartbeat.json cannot be read (damaged JSON, a fifo, a link
