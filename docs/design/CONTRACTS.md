@@ -31634,4 +31634,12 @@ Test: the TOOL_MESSAGES case `a URL right after an angle bracket is a path`.
 
 ### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
 
-Reserved for round 28 lane D of B13.
+Lane D's round 28 items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
+verifier's corrected fix built): I11, I69, I78, I101, I75, I77, I71, I73, I79, I80, I81, I82, I83, I84, I99, I102
+and I103. I11, I78 and I101 are one gap in the guide, built once; so are I69 and I77 in the records page.
+
+**`--no-ci` skips every CI read** (I80; `scripts/ship-land.sh`). Round 27 P140 added a third read, trunk's runs
+before the gate, which `--no-ci` skips as it does the other two, and the header still said `skip both CI reads`
+(and a comment `without either CI read`). The header names the three: trunk's runs before the gate and after it,
+and the read-back after the push. Test: `test_ship_land.py::test_no_ci_skips_every_ci_read_as_the_header_says`,
+which also lands under `--no-ci` with a red trunk's gh on PATH and finds it never called.

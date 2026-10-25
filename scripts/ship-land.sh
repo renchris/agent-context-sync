@@ -2,7 +2,7 @@
 # Land HEAD on origin/main: the fetch, rebase, land gate, trunk check and push run under one lock shared by every
 # worktree of this checkout, then the push's CI runs are read back.
 #   scripts/ship-land.sh                    land, then wait for CI on the pushed sha
-#   scripts/ship-land.sh --no-ci            skip both CI reads (the trunk check before the push, the read-back after)
+#   scripts/ship-land.sh --no-ci            skip every CI read (trunk's runs before the gate and after it, the read-back after the push)
 #   scripts/ship-land.sh --allow-red-trunk  push even when origin/main's own CI is red (record the run id)
 #   scripts/ship-land.sh --lock <path>      take this lock instead of <git-common-dir>/land.lock
 # Run it exactly as `scripts/ship-land.sh`, with no env prefix and no `bash` in front: the user-level allow rule
@@ -213,7 +213,7 @@ while :; do
     fi
     echo "== trunk is red (run $out); landing on top as --allow-red-trunk asks"
   elif [ "$rc" != 0 ]; then
-    # Not read is not red: --allow-red-trunk does not cover it, and --no-ci lands without either CI read.
+    # Not read is not red: --allow-red-trunk does not cover it, and --no-ci lands without any CI read.
     echo "ship-land: could not read trunk CI ($out); nothing pushed; retry, or pass --no-ci to land without it" >&2
     exit 9
   fi

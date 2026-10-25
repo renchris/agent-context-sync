@@ -304,3 +304,22 @@ def test_a_diagrams_run_listed_before_ci_is_not_read_as_ci_green(
     sha = _git(other, "rev-parse", "HEAD")
     assert cp.returncode == 8, cp.stdout + cp.stderr
     assert f"CI RED on {sha[:8]}: run 303" in cp.stderr
+
+
+def test_no_ci_skips_every_ci_read_as_the_header_says(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 28 I80: round 27 P140 added a third CI read, trunk's runs before the gate, and `--no-ci`
+    skips it too, but the header still said "skip both CI reads". It names all three, and a red trunk's gh is
+    never called under `--no-ci`."""
+    header = SHIP_LAND.read_text(encoding="utf-8").split("\nset -euo pipefail\n", 1)[0]
+    [line] = [line for line in header.splitlines() if "--no-ci " in line]
+    assert (
+        "skip every CI read (trunk's runs before the gate and after it, the read-back after the push)" in line
+    )
+    assert "both CI reads" not in SHIP_LAND.read_text(encoding="utf-8")
+    assert "either CI read" not in SHIP_LAND.read_text(encoding="utf-8")
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    cp = _land(clone, _with_gh(tmp_path, env, STUB_GH), "--no-ci")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not (tmp_path / "gh.log").exists(), "no CI read under --no-ci"
