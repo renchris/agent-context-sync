@@ -30766,9 +30766,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20 and P120, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with
-the hunks of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and
-P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
+P102, P115, P26, P13, P104, P20, P120 and P37, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`,
+with the hunks of other lanes' files the items need (named below). Items that describe one defect are built once:
+P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30970,6 +30970,13 @@ file" in its Doctor bucket (`_MISPLACED_ROLES["governance.hold"]`) and its step 
 its bucket words stay the stop line's. Test: `test_the_hold_list_is_named_as_doctor_names_it_in_every_reader`,
 which also keeps every `_MISPLACED_ROLES` word equal to the stop line's for the same file and the shell
 fallback's words equal to `_SYNC_STOP_FILES`.
+
+**Two governance files that are not files read as two** (P37). purge-queue.json, suppressed.json and audit.jsonl
+share one `_MISPLACED_ROLES` word, and the roles were made unique before the words were chosen, so two of them read
+`from a governance file in the state folder that is not a file (2 checks)` in the Doctor bucket and the outcome. The
+words now count the files: one file is `from <its role> that is not a file`, two or more are `from state files that
+are not files`. Test: `test_two_governance_files_that_are_not_files_read_as_two` (a folder at purge-queue.json and a
+fifo at suppressed.json).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

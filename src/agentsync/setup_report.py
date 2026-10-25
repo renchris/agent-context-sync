@@ -11790,9 +11790,11 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             for t, m, d in r.facts.doctor_problems
         )
     ]
-    roles = list(dict.fromkeys(_MISPLACED_ROLES[n] for n in misplaced_named))
+    # the words count the files, not their roles: three governance files share one (B13 round 27 P37)
     misplaced_words = (
-        f"from {roles[0]} that is not a file" if len(roles) == 1 else "from state files that are not files"
+        f"from {_MISPLACED_ROLES[misplaced_named[0]]} that is not a file"
+        if len(misplaced_named) == 1
+        else "from state files that are not files"
     )
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []

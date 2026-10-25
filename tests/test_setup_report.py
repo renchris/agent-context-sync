@@ -15059,6 +15059,43 @@ def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dic
     assert "holds file" not in summary, summary
 
 
+def test_two_governance_files_that_are_not_files_read_as_two(fake_mac: dict[str, Path]) -> None:
+    """B13 round 27 P37: purge-queue.json, suppressed.json and audit.jsonl share one role, and the roles were
+    made unique before the words were chosen, so two of them that are not files read "from a governance file
+    in the state folder that is not a file (2 checks)". The words count the files."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    gov = root / "governance"
+    gov.mkdir(parents=True, exist_ok=True)
+    queue, suppressed = gov / "purge-queue.json", gov / "suppressed.json"
+    lines = [
+        "[ok  ] python — fine",
+        f"[FAIL] governance.purge_queue — {queue} is a folder, not a file: the purge queue belongs there "
+        f"(fix: the person moves {queue} aside, keeping a copy)",
+        f"[FAIL] governance.suppressed — {suppressed} is a fifo, not a file: the suppression list belongs "
+        f"there (fix: the person moves {suppressed} aside, keeping a copy)",
+    ]
+    queue.unlink(missing_ok=True)
+    suppressed.unlink(missing_ok=True)
+    queue.mkdir()
+    os.mkfifo(suppressed, 0o600)
+    try:
+        _text, summary = summary_of(fake_mac, doctor=lambda config: lines)
+    finally:
+        queue.rmdir()
+        suppressed.unlink()
+    assert (
+        " · from state files that are not files (2 checks): governance.purge_queue FAIL (the person's; see "
+        "Doctor), governance.suppressed FAIL (the person's; see Doctor) · unexpected 0"
+    ) in _line(summary, "- doctor: "), summary
+    assert (
+        "2 doctor FAILs with a known cause, from state files that are not files: governance.purge_queue, "
+        "governance.suppressed"
+    ) in _line(summary, "- **outcome: "), summary
+    assert "a governance file in the state folder that is not a file" not in summary, summary
+
+
 def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
