@@ -11638,8 +11638,20 @@ def _side_breaking_read(db: Path) -> Path | None:
 
 
 def _sides_not_files_at(db: Path) -> list[Path]:
-    """:func:`_sidecars_not_files` for the manifest at ``db``. Beside a manifest that is no link, any link at
-    a side is one, as doctor reads it: sqlite never opens a side through a link (B13 round 26 E62)."""
+    """:func:`_sidecars_not_files` for the manifest at ``db``: doctor's one judge, ``sides_not_a_file_at``,
+    which reads the sides where sqlite keeps them (``doctor.manifest_sides``: beside a linked manifest's
+    target, and nothing beside the link), so the report, doctor, status and install.sh name the same sides
+    (B13 round 27 ruling 18, P35 after lane B's P42). Beside a manifest that is no link, any link at a side is
+    one, as doctor reads it: sqlite never opens a side through a link (B13 round 26 E62). On a build whose
+    doctor lacks the judge, or when it raises, the same reading here: beside a linked manifest every side link
+    is skipped before any stat follows it, as the stat through it named a harmless link to a folder or a loop
+    a stop that doctor, status and every sync passed."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return list(doctor.sides_not_a_file_at(db))
+    except Exception:  # an older or broken doctor: the reading below
+        pass
     out: list[Path] = []
     try:
         db_link = stat.S_ISLNK(db.lstat().st_mode)
@@ -11648,13 +11660,10 @@ def _sides_not_files_at(db: Path) -> list[Path]:
     for p in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
             mode = p.lstat().st_mode
-            if stat.S_ISLNK(mode):
-                if not db_link:
-                    out.append(p)
-                    continue
-                mode = p.stat().st_mode
-        except OSError as exc:
-            if exc.errno == errno.ELOOP:
+        except OSError:
+            continue
+        if stat.S_ISLNK(mode):
+            if not db_link:
                 out.append(p)
             continue
         if not stat.S_ISREG(mode):

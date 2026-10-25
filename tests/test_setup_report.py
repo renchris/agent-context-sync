@@ -15105,6 +15105,61 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
 
 
+def test_a_side_link_beside_a_linked_manifest_is_no_side_and_the_targets_sides_are_judged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 27 ruling 18, P35 (the report's half, after lane B's P42): beside a manifest that is a link,
+    sqlite keeps the -wal and -shm beside the link's target, so a link beside the link, to a folder or a loop,
+    is no stop. The report stat-followed it and named a side not a file that doctor, status, every sync and
+    init passed. It now reads doctor's one judge (``doctor.sides_not_a_file_at`` over ``manifest_sides``):
+    those links are none, a folder at the target's -shm is one, and the fallback for a build whose doctor
+    lacks the judge reads the links alike."""
+    store = tmp_path / "store"
+    store.mkdir()
+    target = store / "manifest.sqlite"
+    sqlite3.connect(target).close()
+    state = tmp_path / "state"
+    state.mkdir()
+    db = state / "manifest.sqlite"
+    db.symlink_to(target)
+    (tmp_path / "a-folder").mkdir()
+    wal = db.with_name(db.name + "-wal")
+    shm = db.with_name(db.name + "-shm")
+    cases = {
+        "wal-to-folder": lambda: wal.symlink_to(tmp_path / "a-folder"),
+        "wal-loop": lambda: wal.symlink_to(wal),
+        "shm-to-folder": lambda: shm.symlink_to(tmp_path / "a-folder"),
+    }
+    for name, make in cases.items():
+        make()
+        try:
+            assert doctor.side_not_a_file_at(db) is None, name
+            assert setup_report._sides_not_files_at(db) == [], name
+            with monkeypatch.context() as m:  # a doctor with no such judge: the report reads it itself
+                m.delattr(doctor, "sides_not_a_file_at")
+                assert setup_report._sides_not_files_at(db) == [], name
+        finally:
+            for side in (wal, shm):
+                side.unlink(missing_ok=True)
+    target_shm = target.with_name(target.name + "-shm")
+    target_shm.mkdir()
+    try:
+        assert doctor.side_not_a_file_at(db) == target_shm
+        assert setup_report._sides_not_files_at(db) == [target_shm]
+    finally:
+        target_shm.rmdir()
+    # beside a manifest that is no link, any link at a side is one, as before (B13 round 26 E62)
+    plain = tmp_path / "plain" / "manifest.sqlite"
+    plain.parent.mkdir()
+    sqlite3.connect(plain).close()
+    plain_wal = plain.with_name(plain.name + "-wal")
+    plain_wal.symlink_to(tmp_path / "a-folder")
+    assert setup_report._sides_not_files_at(plain) == [plain_wal]
+    with monkeypatch.context() as m:
+        m.delattr(doctor, "sides_not_a_file_at")
+        assert setup_report._sides_not_files_at(plain) == [plain_wal]
+
+
 def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status(
     fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

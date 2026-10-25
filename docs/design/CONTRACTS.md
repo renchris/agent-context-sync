@@ -30768,8 +30768,8 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 ### 16.188 Round 27: setup report: the lost link's cases, a too-old Swift, earlier attempts and the new start's counts (2026-10-24, wave B13 round 27 lane RA)
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
-verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120, P37, P18, P38, P39, P107 and P108, in `src/agentsync/setup_report.py` and
+verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36, P102,
+P115, P26, P13, P104, P20, P120, P37, P18, P38, P39, P107, P108 and P35, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
 defects built in one commit.
@@ -31044,6 +31044,19 @@ of it stays exact. install.sh's legend has
 no IT template note, so its Private only line is unchanged. Test:
 `test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so` ("Page" gets no such sentence, "HR"
 no Private only line).
+
+**A side link beside a linked manifest is no side; the target's sides are judged** (P35, the report's half;
+round 27 ruling 18, after lane B's P42 `cea67f2f9`). Beside a manifest that is a link, sqlite keeps the -wal and
+-shm beside the link's target, and doctor, status, every sync and init pass a link beside the link. The report's
+`_sides_not_files_at` followed such a link with a stat, so a -wal link to a folder or a loop, or a -shm link to a
+folder, was a side not a file in the Doctor bucket and the outcome. It now reads doctor's one judge,
+`doctor.sides_not_a_file_at` over `doctor.manifest_sides`, so the report names the sides doctor names: none beside
+the link, and a folder at the target's -shm. On a build whose doctor lacks that judge, or when it raises, the report
+reads the same way itself: beside a linked manifest every side link is skipped before any stat follows it, and
+beside a manifest that is no link any link at a side is one (round 26 E62). install.sh's two inline copies are lane
+RB's (round 27 §16.189). Test:
+`test_a_side_link_beside_a_linked_manifest_is_no_side_and_the_targets_sides_are_judged` (the three links with
+doctor's judge and with the fallback, a folder at the target's -shm, and a link beside a plain manifest).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
