@@ -10762,7 +10762,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
                 ),
                 (
                     *governance._not_a_file_words(queue, "a symlink loop", "the purge queue"),
-                    "a governance file in the state folder",
+                    "agentsync's purge queue",
                     "a symlink loop",
                 ),
             )
@@ -15631,6 +15631,14 @@ def test_two_governance_files_that_are_not_files_read_as_two(fake_mac: dict[str,
         "governance.suppressed"
     ) in _line(summary, "- **outcome: "), summary
     assert "a governance file in the state folder that is not a file" not in summary, summary
+    # B13 round 28 ruling 22: one of them alone is named as doctor names it
+    for name, role in (
+        ("governance.purge_queue", "purge-queue.json"),
+        ("governance.suppressed", "suppressed.json"),
+        ("governance.audit", "audit.jsonl"),
+    ):
+        noun = "agentsync's " + governance.GOVERNANCE_ROLES[role].removeprefix("the ")
+        assert setup_report._MISPLACED_ROLES[name] == noun, name
 
 
 def test_a_fifo_at_the_shm_is_the_side_files_never_the_manifests(

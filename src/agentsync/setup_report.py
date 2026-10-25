@@ -11390,13 +11390,15 @@ _MISPLACED_ROLES = {
     "lock": "agentsync's lock file",
     "heartbeat": "agentsync's heartbeat file",
     "governance.hold": "agentsync's hold list",
-    "governance.purge_queue": "a governance file in the state folder",
-    "governance.suppressed": "a governance file in the state folder",
-    "governance.audit": "a governance file in the state folder",
+    "governance.purge_queue": "agentsync's purge queue",
+    "governance.suppressed": "agentsync's suppression list",
+    "governance.audit": "agentsync's audit trail",
 }
 """The doctor check that FAILs each state file other than the manifest when something that is not a regular
 file sits where it belongs (lane B's round 26 ruling 13: E38 the lock, E39 the heartbeat, E43 the governance
-files), and the report's words for that file, :data:`_SYNC_STOP_FILES`' where it has them."""
+files), and the report's words for that file, :data:`_SYNC_STOP_FILES`' where it has them. Each governance
+file by its own name (``governance.GOVERNANCE_ROLES``), as doctor and install.sh name it (B13 round 28 ruling
+22, with lane RB's I3, I15, I34, I44, I57, I86, I100), never "a governance file in the state folder"."""
 
 
 def _misplaced_state(c: Config) -> dict[str, Path]:
