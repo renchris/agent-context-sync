@@ -261,34 +261,58 @@ def _guide_offences(guides: dict[str, str], probes_script: str) -> list[str]:
     install = set(INSTALL_OPTIONS["main"]) - {"*"} - INSTALL_HIDDEN
     probes = set(_install_case_arms(probes_script, "while [ $# -gt 0 ]; do", "done")) - {"*"}
     known = common | install | probes | {s for entries in verbs.values() for s in spellings(entries)}
-    command = re.compile(r"\bagentsync ([a-z][a-z-]*)|\binstall\.sh\b")
+    # the verb only where a command starts: the span's start, a path's last part, a prompt, "run", "sudo",
+    # "then", a pipe or a list, or a bracket, so prose such as "the agentsync logged line" names none (B13
+    # round 28 I103)
+    command = re.compile(
+        r"(?:^|(?<=/)|(?<=\$ )|(?<=\brun )|(?<=\bsudo )|(?<=\bthen )|(?<=[;|] )|(?<=&& )|(?<=\$\()|(?<=\()"
+        r"|(?<=\( ))agentsync ([a-z][a-z-]*)|\binstall\.sh\b"
+    )
+    # an inline span as CommonMark pairs it, a backtick run (not an escaped one) closed by a run of the same
+    # length, across a line break but not into a blank line, a list item, a table row, a heading or a quote
+    block = r"\n[ \t]*(?:\n|[-*+] |\d+[.)] |\||#{1,6} |>)"
+    inline = re.compile(rf"(?<![`\\])(`+)(?!`)((?:(?!{block}).)+?)(?<!`)\1(?!`)", re.S)
     offences: list[str] = []
     for name, text in guides.items():
-        for n, line in enumerate(text.splitlines(), 1):
-            for span in re.findall(r"`([^`\n]+)`", line):
-                starts = list(command.finditer(span))
-                parts = [(span, known)] if span.startswith("-") else []
-                for i, m in enumerate(starts):
-                    end = starts[i + 1].start() if i + 1 < len(starts) else len(span)
-                    if m.group(1) is None:
-                        allowed = install
-                    elif m.group(1) in verbs:
-                        allowed = common | spellings(verbs[m.group(1)])
-                    else:
-                        allowed = set()
-                        offences.append(f"{name}:{n}: {span} (no command {m.group(1)!r})")
-                    parts.append((span[m.end() : end], allowed))
-                for part, allowed in parts:
-                    bad = [f for f in re.findall(r"(?<!\S)(--?[a-z][a-z-]*)", part) if f not in allowed]
-                    if bad:
-                        offences.append(f"{name}:{n}: {span} ({', '.join(bad)})")
+        # a fenced block holds no inline span: blank it, keeping its newlines so the line numbers hold
+        lines, fence = [], ""
+        for line in text.split("\n"):
+            mark = re.match(r"\s*(`{3,}(?![^\n]*`)|~{3,})", line)  # a backtick fence's info holds none
+            lines.append("" if fence or mark else line)
+            if not fence and mark:
+                fence = mark.group(1)
+            elif mark and mark.group(1).startswith(fence) and not line.strip()[len(mark.group(1)) :]:
+                fence = ""
+        flat = "\n".join(lines)
+        for found in inline.finditer(flat):
+            n = flat.count("\n", 0, found.start()) + 1
+            span = found.group(2).replace("\n", " ")
+            starts = list(command.finditer(span))
+            parts = [(span, known)] if span.startswith("-") else []
+            for i, m in enumerate(starts):
+                end = starts[i + 1].start() if i + 1 < len(starts) else len(span)
+                if m.group(1) is None:
+                    allowed = install
+                elif m.group(1) in verbs:
+                    allowed = common | spellings(verbs[m.group(1)])
+                else:
+                    allowed = set()
+                    offences.append(f"{name}:{n}: {span} (no command {m.group(1)!r})")
+                parts.append((span[m.end() : end], allowed))
+            for part, allowed in parts:
+                bad = [f for f in re.findall(r"(?<!\S)(--?[a-z][a-z-]*)", part) if f not in allowed]
+                if bad:
+                    offences.append(f"{name}:{n}: {span} ({', '.join(bad)})")
     return offences
 
 
 def test_guides_name_only_options_that_parse() -> None:
     """A deleted option exits 2, so README.md and the docs/deploy guides name only commands and options that
     parse (the plans and CONTRACTS.md keep the history).  The check catches the ``--no-redact`` and
-    ``add-source --inbox`` lines K16a and K05 had left behind."""
+    ``add-source --inbox`` lines K16a and K05 had left behind.  B13 round 28 I103: it read one line at a time,
+    so a span that wraps (114 in README.md and docs/deploy, 43 of them naming a command or opening with an
+    option) was never checked, and read "agentsync <word>" anywhere, prose included; it reads each span whole
+    and the verb only where a command starts."""
     root = Path(__file__).resolve().parents[1]
     guides = {
         str(p.relative_to(root)): p.read_text(encoding="utf-8")
@@ -306,6 +330,25 @@ def test_guides_name_only_options_that_parse() -> None:
         "--inbox)",
         "no command 'frob')",
         "--gone)",
+    ]
+    # B13 round 28 I103: a span that wraps is read whole, at the line it starts on; an odd backtick on a line
+    # no longer pairs prose as code; prose "agentsync <word>" names no command; a fenced block is not read
+    wrapped = {
+        "wrap.md": "Run `agentsync add-source\n--inbox`.\n"
+        "see `foo\nbar` and agentsync frob and `x` end\n"
+        "Keep `the agentsync logged line` as it is.\n"
+        "```sh\nagentsync frob `--x`\n```\n"
+        "Then `$(agentsync frob)`.\n"
+        "- run `x\n- `agentsync frob --x`\n"
+        "```agentsync frob```, then \\`, and `sudo agentsync sync --gone`.\n"
+    }
+    assert _guide_offences(wrapped, probes) == [
+        "wrap.md:1: agentsync add-source --inbox (--inbox)",
+        "wrap.md:9: $(agentsync frob) (no command 'frob')",
+        "wrap.md:11: agentsync frob --x (no command 'frob')",
+        "wrap.md:11: agentsync frob --x (--x)",
+        "wrap.md:12: agentsync frob (no command 'frob')",
+        "wrap.md:12: sudo agentsync sync --gone (--gone)",
     ]
 
 

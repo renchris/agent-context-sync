@@ -31723,3 +31723,19 @@ one, `docs/lanes/COMMON.md` says the same, and `timeout-minutes` is 60, 10 minut
 margin the test keeps; ci.yml's note adds a sentence after D83's, which keeps the 50 it set, and the recording
 tests' bound (`_wide_limit`'s docstring and the dated line at W70) names 60. Test:
 `test_claude_md_gives_cis_time_and_its_limit`.
+
+**The guides' option scan reads a span that wraps, and the verb only where a command starts** (I103;
+`tests/test_contracts.py`). `_guide_offences` read one line at a time with `` `([^`\n]+)` ``, so the 114 inline
+spans of README.md and docs/deploy that wrap (43 of them naming a command or opening with an option) were never
+checked, and a line where one opens or closes paired its backticks wrongly, reading prose as code; and it took
+`agentsync <word>` anywhere in a span, prose included. It now blanks fenced blocks (keeping their newlines), pairs
+backtick runs of equal length (not an escaped one) across a line break but not into a blank line, a list item, a
+table row, a heading or a quote, reads each span with its newlines as spaces at the line it starts on, and matches
+the verb only at the span's start, after a `/`, `$ `, `run `, `sudo `, `then `, `; `, `| `, `&& `, `$(` or `(`; a
+line of three backticks that holds another is a span, not a fence. Measured: no offence on README.md and
+docs/deploy before or after, the four stale examples still caught, and of the 108 `agentsync` verbs the old
+pattern found in one-line spans (199 matches with `install.sh`'s 91) the new one drops one,
+`warning: agentsync setup-report failed (...)`, quoted output, not a command. The verifier's `(?<=\( ?)` is two lookbehinds:
+Python's must be fixed-width. Test: `test_contracts.py::test_guides_name_only_options_that_parse`, with a wrapped
+stale option, a prose case, a fenced block, a `$(...)` span, a span left open in a list item, a fence-like
+span, an escaped backtick and a `sudo` command (cases the reviewer found).
