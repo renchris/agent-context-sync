@@ -1991,7 +1991,7 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
         in (summary)
     ), "expected turns on their own line (K10)"
     # B13 round 8 J14: three zero counts need no "none of these changes the outcome by itself"
-    assert "- agent friction: 0 deviation, 0 prompt, 0 error" in summary.splitlines()
+    assert "- agent friction: 0 deviations, 0 prompts, 0 errors" in summary.splitlines()
     assert "- friction (attempt 1): 12 event lines: 4 start, 4 end, 1 question, 2 click, 1 finished" in (
         summary
     ), "every event line counted once, the finished line too (L9)"
@@ -2058,7 +2058,7 @@ def test_v5_turn_kinds_make_it_worked_with_help(fake_mac: dict[str, Path]) -> No
         "question; 1 click beyond the Allow clicks; 1 approval)"
     ), "person-facing facts only: the deviation, prompt and untyped lines are agent friction (K4)"
     assert (
-        "- agent friction: 1 deviation, 1 prompt, 0 error (F15, F16); 1 line without a prompt kind "
+        "- agent friction: 1 deviation, 1 prompt, 0 errors (F15, F16); 1 line without a prompt kind "
         "(untyped or v4), shown, not counted; none of these changes the outcome by itself" in summary
     )
     assert "- agent said: fully one command" in summary, (
@@ -3389,7 +3389,7 @@ def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path])
         "- **outcome: failed at step 4** (computed: install.sh exit 0; step 4 logged an error (F14) and did "
         "not finish: no later end of that step and no later step before the report)"
     )
-    assert "- agent friction: 0 deviation, 0 prompt, 1 error (F14); F14 stopped the run" in summary
+    assert "- agent friction: 0 deviations, 0 prompts, 1 error (F14); F14 stopped the run" in summary
     items = summary.split("Items that were not one command (attempt 1):", 1)[1]
     assert "- F14 · step 4 · error · it-request exited 1: no template" in items
     assert "outcome=Failed%20at%20step%203%20%28IT%20request%20and%20report%29" in text.splitlines()[-1], (
@@ -5280,7 +5280,7 @@ def test_a_step_3_sync_that_stopped_is_worked_with_help(fake_mac: dict[str, Path
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     summary = section(text, "Summary")
     assert _line(summary, "- agent friction: ").endswith(
-        "1 deviation, 0 prompt, 1 error (F4, F5); F5 is one of the outcome's reasons (see Items); the other "
+        "1 deviation, 0 prompts, 1 error (F4, F5); F5 is one of the outcome's reasons (see Items); the other "
         "does not change it by itself"  # B13 round 26 E7: one line left
     ), summary
     agent_side = summary.split("Agent friction (attempt 1; it does not change the outcome by itself):", 1)[1]
@@ -5342,8 +5342,8 @@ def test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason(fake_mac: di
         _LOCK_STOP_ITEM + " (F4: the agent's account of it)"
     ], items
     assert _line(summary, "- agent friction: ") == (
-        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); 1 step-3 sync stop agentsync logged itself, "
-        "one of the outcome's reasons (see Items; F4 is the agent's account of it)"
+        "- agent friction: 0 deviations, 0 prompts, 1 error (F4); 1 step-3 sync stop agentsync logged "
+        "itself, one of the outcome's reasons (see Items; F4 is the agent's account of it)"
     ), summary
     assert "none of these changes" not in summary and "Agent friction (" not in summary, summary
 
@@ -7197,7 +7197,7 @@ def test_an_unanswered_folder_question_is_a_deviation_not_a_question(fake_mac: d
     write_friction(fake_mac, V11_HAPPY.replace(end, unanswered + end))
     _text, summary = summary_of(fake_mac)
     assert "- expected turns: the folder question (step 1; not logged as a question) · " in summary
-    assert "- agent friction: 1 deviation, 0 prompt, 0 error (F4); none of these changes" in summary
+    assert "- agent friction: 1 deviation, 0 prompts, 0 errors (F4); none of these changes" in summary
 
 
 # ---- a Mac that is already set up is not asked for its folders again (field report 2026-10-07) -----------
@@ -8875,7 +8875,8 @@ def test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0(
     _text, summary = summary_of(fake_mac)
     assert summary.strip().startswith("- **outcome: fully one command**"), "the 10:00 re-run ended rc 0"
     assert (
-        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); none of these changes the outcome" in summary
+        "- agent friction: 0 deviations, 0 prompts, 1 error (F4); none of these changes the outcome"
+        in summary
     )
     late = _insert_before(
         "2026-09-29T10:01:10Z | end",
@@ -8888,7 +8889,8 @@ def test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0(
         "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
     )
     assert (
-        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); none of these changes the outcome" in summary
+        "- agent friction: 0 deviations, 0 prompts, 1 error (F4); none of these changes the outcome"
+        in summary
     )
     assert parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)["outcome"] == ["Fully one command"]
     [attempt] = setup_report.parse_friction(late).attempts
@@ -8976,7 +8978,7 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     text, summary = summary_of(fake_mac)
     assert "1 attempt:" in section(text, "Agent friction log") and "- attempt:" not in summary
     assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
-    assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
+    assert "0 prompts, 1 error (F5); none of these changes the outcome by itself" in summary
 
 
 def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt(
@@ -9407,7 +9409,7 @@ def test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt
         assert (second.first_line, second.last_line) == (6, 7), (second.first_line, second.last_line)
         write_friction(fake_mac, log)
         _text, summary = summary_of(fake_mac)
-        assert "- agent friction: 1 deviation, 0 prompt, 1 error (F6, F7); F7 stopped the run" in summary, (
+        assert "- agent friction: 1 deviation, 0 prompts, 1 error (F6, F7); F7 stopped the run" in summary, (
             summary
         )
     # no error after it: the late line stays in the finished attempt
@@ -9520,7 +9522,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         in summary
     )
     # B13 round 11 M34: the friction line would only repeat the agent-friction line's one error
-    assert "- agent friction: 0 deviation, 0 prompt, 1 error (F1)" in summary
+    assert "- agent friction: 0 deviations, 0 prompts, 1 error (F1)" in summary
     assert "- friction (attempt" not in summary, summary
     # A first line of another step or kind keeps its text whole, and a log of F<n> lines is still v4.
     for first in (
@@ -10014,7 +10016,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
         == f"- **outcome: worked with help** (computed: install.sh exit 0; {RETRY_WHY})"
     )
     assert (
-        "- agent friction: 2 deviation, 0 prompt, 1 error (F4, F6, F7); none of these changes the outcome "
+        "- agent friction: 2 deviations, 0 prompts, 1 error (F4, F6, F7); none of these changes the outcome "
         "by itself" in summary
     )
     assert (  # B13 round 5 F37: the run that ended 0 began after the end line, and the line says so

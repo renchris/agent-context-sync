@@ -10970,10 +10970,9 @@ def _agent_friction_line(
     counts = att.kinds()
     lines = att.of_kind(*PROBLEM_KINDS)
     ids = f" ({', '.join(f'F{e.line}' for e in lines)})" if lines else ""
-    text = (
-        f"- agent friction: {counts['deviation']} deviation, {counts['prompt']} prompt, {counts['error']} "
-        f"error{ids}"
-    )
+    # each count takes its noun's number, "2 errors", as every other count does (B13 round 27 P20)
+    tally = ", ".join(_plural(counts[k], k) for k in ("deviation", "prompt", "error"))
+    text = f"- agent friction: {tally}{ids}"
     uncounted = len(att.untyped) + len(att.legacy)
     if uncounted:
         text += f"; {_plural(uncounted, 'line')} without a prompt kind (untyped or v4), shown, not counted"

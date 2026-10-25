@@ -5249,6 +5249,8 @@ stopped the run"; `install.sh: 1 install run (+1 --list-folders) during this att
 when the run type is not "real". "Items that were not one command" lists only the person-facing items (the stopping
 error, then questions, clicks and approvals beyond the expected ones); a separate "Agent friction (attempt N; it does
 not change the outcome by itself):" list follows with the other deviation, prompt, error and untyped lines.
+Amended 2026-10-24, §16.188 P20: the agent friction counts take their nouns' number, `agent friction: 0 deviations,
+0 prompts, 2 errors (F8, F10)` (`1 error` for one).
 **Install source (K6).** The last install.sh start line's `commit=<sha>[-dirty]` and `tree=<12-hex>` (the SHA-256
 prefix of `git diff HEAD` in that checkout; the older `commit=<sha>-dirty dirty <fp>` form is still read) are shown
 as `last install.sh run: commit <sha>-dirty tree <fp> (...)` (**amended 2026-10-11, §16.40 "The install
@@ -30764,9 +30766,9 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13 and P104, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the hunks
-of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and P58;
-P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
+P102, P115, P26, P13, P104 and P20, in `src/agentsync/setup_report.py` and `tests/test_setup_report.py`, with the
+hunks of other lanes' files the items need (named below). Items that describe one defect are built once: P33 and
+P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two defects built in one commit.
 
 **A link to nothing in a writable folder is not a link into a missing folder** (P33, P58; amends §16.183 E3 and
 §16.184 E19). The outcome's cause and the Items after-words keyed E3's link words on ` is a symlink to ` alone, so
@@ -30949,6 +30951,16 @@ is private only)` and cuts a copied `NEXT:`'s `, or paste the setup report into 
 `paste it`) (`_without_copied_links`). The label is matched, never a bare `issues/new`. No second recount: the
 counts stand as counted on the shown text, and a recount could clear `word_named_shown` and flip the verdict. A
 public report copies both lines as they are. Test: `test_a_private_only_report_shows_no_issue_link_install_out_holds`.
+
+**The friction counts take their nouns' number** (P20; amends §16.14's K10 Summary lines with a dated line). The
+line read `- agent friction: 0 deviation, 0 prompt, 2 error (F8, F10)`, a fixed string, while every other count
+goes through `_plural`. `_agent_friction_line` now builds the three counts with `_plural`: `0 deviations, 0 prompts,
+2 errors (F8, F10)`, `1 error (F5)`. install.sh writes no such line; its readers (awk) match only the line's
+`- agent friction: ` prefix and its suffixes, which are unchanged, and `tests/test_install_oneshot.py`'s singular
+lines stay as the older builds' reports they stand for. Not changed: the sibling tallies `f"{counts[k]} {k}"` over
+`INSTRUCTION_KINDS` (literal tokens such as `fix:`, which a plural would break) and `_kind_counts` (any word an
+agent logs as a kind, and `finished`). Tests: the friction lines of the Summary tests in `tests/test_setup_report.py`,
+for example `0 errors (F15, F16)` and `2 deviations` (red at the old words).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
