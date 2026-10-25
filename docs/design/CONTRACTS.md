@@ -31777,6 +31777,18 @@ install.sh before the shell's P138 fix. Tests: `test_the_shell_report_says_where
 `agents-space-then-wal-person` rows, its stamp pin, `test_the_shell_report_says_what_its_f_ids_are` and
 `test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
 
+**The status step names the misplaced file and its fix too** (I36). On the `--source-local` path add-source opens
+past a lock, heartbeat or governance file that is not a file, so status, not init, stops on it, and the NEXT was the
+generic list of the person's (`the [FAIL] lines above are the person's to fix ...`) while the config step's NEXT names
+the file and its move aside. When the one blocking [FAIL] line of the status step (or of the closing status) is the
+check of the file `state_misplaced` finds, by its check name and nothing else beside it, the NEXT is `<file> <is
+what> (the [FAIL] <check> line above names it and its fix; ~/.local/bin/agentsync status prints it again): fixing it
+is the person's (keeping a copy, they move it aside; ...), not a step for the agent, so show them those lines and go
+on to the report; once it is fixed, the next run is: <install.sh>`, never "the error above" (there is no error line,
+only the [FAIL] line). Any other mix keeps the generic list, so no other [FAIL] loses its mention. Tests: the
+`--source-local` half of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file` (the
+named NEXT; beside a folder at the lock too, the generic list).
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,

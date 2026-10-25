@@ -11091,6 +11091,19 @@ def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+def misplaced_status_next(role: str, rerun: str, kind: str = "folder") -> str:
+    """Step 2's NEXT at its status step, on the --source-local path add-source opens past, when the one [FAIL]
+    that stops it is a lock, heartbeat or governance file that is not a file: the file and its fix, as the
+    config step's NEXT gives them, not the generic list of the person's (B13 round 28 I36)."""
+    check = MISPLACED_CHECKS[role]
+    return (
+        f"NEXT: {FILE_NOUNS[role]} {MISPLACED_IS[kind]} (the [FAIL] {check} line above names it and its "
+        "fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's (keeping a copy, "
+        f"they move it aside{SHUT_OPEN}), not a step for the agent, so show them those lines and go on to "
+        f"the report; once it is fixed, the next run is: {rerun}"
+    )
+
+
 def test_the_installers_governance_nouns_are_doctors_roles() -> None:
     """B13 round 28 ruling 22 (I3, I15, I34, I44, I57, I86, I100): step 1's tails and step 2's NEXT called
     holds.json "agentsync's governance file holds.json" while the error line above, status, doctor and the
@@ -11189,6 +11202,20 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
     assert "error: agentsync add-source failed" not in added.stderr, added.stderr
     assert f"[FAIL] {MISPLACED_CHECKS[role]} " in added.stdout + added.stderr, added.stdout + added.stderr
     assert "fix the error above" not in last_line(added), last_line(added)
+    # round 28 I36: its own fix, as the config step's NEXT gives it (the folder is in the config by then)
+    assert last_line(added).startswith(misplaced_status_next(role, f"{INSTALL_SH} {wheel}", token)), (
+        last_line(added)
+    )
+    if role != "lock":  # beside a second person's [FAIL], the generic list keeps both
+        lock = root / "agentsync.lock"
+        lock.unlink(missing_ok=True)
+        lock.mkdir(0o700)
+        gamma = folder.parent / "Gamma"
+        gamma.mkdir()
+        both = install_sh(env, str(wheel), "--source-local", str(gamma))
+        assert both.returncode == 1, both.stdout + both.stderr
+        assert last_line(both).startswith(PERSONS_NEXT), last_line(both)
+        lock.rmdir()
     path.unlink() if case.endswith("-fifo") else path.rmdir()  # the person moves it aside
     if kept.exists():
         kept.rename(path)

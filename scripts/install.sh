@@ -9120,6 +9120,22 @@ persons_fails() {
 	b="$(blocking_fails "$1")"
 	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path |check or replace the pandoc at \[convert\] pandoc_path )' >/dev/null
 }
+# Whether the one [FAIL] line of status output $1 that stops the run is the check of the lock, heartbeat or
+# governance file that is not a file state_misplaced finds (its words set, as config_failed sets them): on the
+# --source-local path add-source opens past it, so status, not init, stops on it, and the NEXT was the generic
+# list of the person's while the config step's names the file and its fix (B13 round 28 I36). Never with any
+# other blocking [FAIL] beside it, whose own mention the generic list keeps.
+misplaced_only() {
+	local b
+	b="$(blocking_fails "$1")"
+	[ -n "$b" ] && [ "$(printf '%s\n' "$b" | LC_ALL=C grep -c '^')" -eq 1 ] || return 1
+	state_misplaced && misplaced_words "$STATE_MISPLACED" "$STATE_MISPLACED_KIND" || return 1
+	case "$b" in "[FAIL] $MISPLACED_CHECK "*) return 0 ;; esac
+	return 1
+}
+misplaced_status_next() { # TAIL: the status step's NEXT for it, ending on TAIL
+	next="$MISPLACED_NOUN $MISPLACED_IS (the [FAIL] $MISPLACED_CHECK line above names it and its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them those lines and go on to the report; once it is fixed, $1"
+}
 # The chmods the [FAIL] lines of status output $1 that stop the run name, when every one of those lines is a
 # check of agentsync's state (state_dir and its parts, lock, heartbeat, governance.*) whose fix is one chmod 600
 # or chmod 700 of paths in its state folder, as doctor.state_path_fix gives this account's own: one command, the
@@ -9694,7 +9710,9 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	[ -z "$fails" ] || printf '%s\n' "$fails"
 	[ -z "$blocking" ] || EXIT_RC=1
 	[ -z "$held" ] || EXIT_RC=1 # a listing macOS holds for an Allow click in this terminal (field N8b)
-	if [ -n "$blocking" ] && persons_fails "$LOOP_OUT"; then
+	if [ -n "$blocking" ] && misplaced_only "$LOOP_OUT"; then # its own fix, as the config step's NEXT (I36)
+		misplaced_status_next "run $AGENTSYNC sync and follow its NEXT line"
+	elif [ -n "$blocking" ] && persons_fails "$LOOP_OUT"; then
 		next="$PERSONS_FAILS, run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$blocking" ] && chmods="$(state_chmods "$LOOP_OUT")" && [ -n "$chmods" ]; then
 		next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report"
@@ -9718,6 +9736,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
 elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
 	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ] && misplaced_only "$DOCTOR_LOG"; then
+	EXIT_RC=1 # add-source opened past it (--source-local): its own fix, as the config step's NEXT (B13 round 28 I36)
+	misplaced_status_next "the next run is: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 	EXIT_RC=1
 	next="$PERSONS_FAILS, the next run is: $SELF$RERUN_ARGS"
