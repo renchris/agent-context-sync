@@ -1062,8 +1062,11 @@ _NEW_START_RE = re.compile(
     r"\bnote: a new manifest was started over (?P<n>\d+) existing mirror pages?"
     r"(?P<by>,? \(?by the background sync\)?)?; (?P<k>\d+) written back"
     r"(?:, (?P<r>\d+) removed \((?:its|their) file is gone or was not converted\))?"
-    r"(?:, (?P<d>\d+) deletion notices? removed \([^)]*\))?(?P<by2> \(by the background sync\))?"
+    r"(?:, (?P<d>\d+) deletion notices? removed \([^)]*\))?"
+    r"(?:, (?P<s>\d+) kept for (?:a file|files) still settling)?(?P<by2> \(by the background sync\))?"
 )
+# B13 round 28 I54, I63: and since lane E's P117 S kept for a file still settling, after the notices, in the
+# CLI's order, so the counts add up (written back + removed + notices + kept = pages)
 # The clauses in that rest, read apart so their order and brackets do not matter: Q28's first reads and the
 # unreadable/failed split, "(F of them read for the first time, also counted above); of the converted: U
 # unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
@@ -3747,7 +3750,7 @@ class _Facts:
     first_sync_converter_waiting: tuple[int, int] | None = None
     # the CLI's new-start note printed before that line in the same run (B13 round 27 P115) as (N, pages,
     # written back, removed, deletion notices removed, by the background sync); None: none, or none removed
-    first_sync_new_start: tuple[int, int, int, int, int, bool] | None = None
+    first_sync_new_start: tuple[int, int, int, int, int, int, bool] | None = None
     # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
     # install.out has no header at all (an older install.sh), None when the line is above the first header
     # read (the tail starts inside an earlier run)
@@ -6091,13 +6094,16 @@ def _installer_output(r: _Run) -> list[str]:
             r.facts.first_sync_run = ""
         converted, again = int(last.group("c")), int(last.group("r") or last.group("r1") or 0)
         r.facts.first_sync = (converted, int(last.group("d")), again)
-        if started is not None and (int(started.group("r") or 0) or int(started.group("d") or 0)):
+        if started is not None and (
+            int(started.group("r") or 0) or int(started.group("d") or 0) or int(started.group("s") or 0)
+        ):  # B13 round 28 I54, I63: a kept-only note counts too, as the CLI prints it whenever back < pages
             r.facts.first_sync_new_start = (
                 converted,
                 int(started.group("n")),
                 int(started.group("k")),
                 int(started.group("r") or 0),
                 int(started.group("d") or 0),
+                int(started.group("s") or 0),
                 bool(started.group("by") or started.group("by2")),
             )
         split = _SPLIT_RE.search(last.group("tail"))
@@ -12837,7 +12843,7 @@ def _sync_line_end(
         # sync line it belongs to (B13 round 27 P115, round 26 E10's report half)
         start = r.facts.first_sync_new_start
         if start is not None and start[0] == converted:
-            _n, pages, back, gone, notices, by_job = start
+            _n, pages, back, gone, notices, settling, by_job = start
             by = " by the background sync" if by_job else ""
             over = _plural(pages, "existing mirror page")
             said = f"a new manifest was started over {over}{by}: {back} written back"
@@ -12848,8 +12854,11 @@ def _sync_line_end(
             if notices:
                 whose = "its file was" if notices == 1 else "their files were"
                 said += f", {_plural(notices, 'deletion notice')} removed ({whose} already reported gone)"
+            if settling:  # B13 round 28 I54, I63: lane E's P117 clause, so the counts add up
+                said += f", {settling} kept for {'a file' if settling == 1 else 'files'} still settling"
             line = "install.out's last sync line" if borrowed else "install.out"
-            parts.append(f"{said[:-1]}; {line})")
+            # the source joins the last clause's bracket, or opens its own after a clause with none
+            parts.append(f"{said[:-1]}; {line})" if said.endswith(")") else f"{said} ({line})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
         parts.append(

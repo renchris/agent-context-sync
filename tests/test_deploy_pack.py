@@ -6721,7 +6721,9 @@ def test_the_guides_summary_sync_row_gives_the_new_starts_clause() -> None:
         'whose = "its file was" if notices == 1 else "their files were"',
         "f\", {_plural(notices, 'deletion notice')} removed ({whose} already reported gone)\"",
         'by = " by the background sync" if by_job else ""',
-        'parts.append(f"{said[:-1]}; {line})")',
+        # B13 round 28 I54, I63: the source joins the last clause's bracket, or opens its own after the kept
+        # clause, which has none
+        'parts.append(f"{said[:-1]}; {line})" if said.endswith(")") else f"{said} ({line})")',
     ):
         assert piece in source, piece
     said = "a new manifest was started over N existing mirror pages: B written back, R removed"

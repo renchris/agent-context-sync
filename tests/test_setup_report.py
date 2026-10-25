@@ -6486,6 +6486,30 @@ def test_the_sync_line_counts_the_pages_a_new_start_removed(
             "a new manifest was started over 13 existing mirror pages by the background sync: 11 written "
             f"back, 2 removed {gone}; install.out)",
         ),
+        # B13 round 28 I54, I63: lane E's P117 clause, after the notices, so the counts add up; the source
+        # opens its own bracket after a clause that has none
+        (
+            f"{head}{note}11 written back, 1 removed (its file is gone or was not converted), 1 kept for a "
+            f"file still settling\n{sync}",
+            "a new manifest was started over 13 existing mirror pages: 11 written back, 1 removed (its file "
+            "is gone or was not converted), 1 kept for a file still settling (install.out)",
+        ),
+        (
+            f"{head}{note}10 written back, 1 deletion notice removed (its file was already reported gone), 2 "
+            f"kept for files still settling\n{sync}",
+            "a new manifest was started over 13 existing mirror pages: 10 written back, 1 deletion notice "
+            "removed (its file was already reported gone), 2 kept for files still settling (install.out)",
+        ),
+        (  # kept alone: the CLI prints the note whenever fewer pages came back than there were
+            f"{head}{note}12 written back, 1 kept for a file still settling\n{sync}",
+            "a new manifest was started over 13 existing mirror pages: 12 written back, 1 kept for a file "
+            "still settling (install.out)",
+        ),
+        (
+            f"{head}{note}11 written back, 2 kept for files still settling (by the background sync)\n{sync}",
+            "a new manifest was started over 13 existing mirror pages by the background sync: 11 written "
+            "back, 2 kept for files still settling (install.out)",
+        ),
         (f"{head}{note}every file is converted again\n{sync}", None),
         (  # a note of an earlier run, above this run's header
             f"# run=20260928T100000Z-4141 2026-09-28T10:00:00Z install.sh\n{note}11 written back, 2 removed "
@@ -6510,6 +6534,12 @@ def test_the_sync_line_counts_the_pages_a_new_start_removed(
             assert "new manifest" not in line, line
         else:
             assert line.endswith(f" · {want}") or f" · {want} · " in line, line
+            # back + removed + notices + kept is every page the new start found
+            counts = [
+                int(n)
+                for n in re.findall(r"(\d+) (?:written back|removed|deletion notices? removed|kept)", want)
+            ]
+            assert sum(counts) == 13, (counts, want)
         assert not setup_report.instruction_counts(out.splitlines()), out
 
 
