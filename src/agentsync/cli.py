@@ -3327,10 +3327,10 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             until = "until the next sync builds the manifest"
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {until}")
         elif kept and all(why.startswith(governance.UNRESOLVED_HEAD) for _q, why in kept):
-            # nothing in the new manifest names them: its note says how to erase the page by hand (P112)
-            _out(
-                f"{plural(ran, 'queued purge')} run; {len(left)} still queued, not resolvable (see its note)"
-            )
+            # nothing in the manifest names them and the run found no page under their id: kept until one is
+            # found; its note says how to erase the page by hand (P112; B13 round 28 I93)
+            until = "until its id is found in the docs history (see its note)"
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {until}")
         elif kept and all(why.startswith("not judged: ") for _q, why in kept):
             # kept for the state file, not for a listed file: no manifest read judged them (E25)
             blind = "while the state file cannot be read"

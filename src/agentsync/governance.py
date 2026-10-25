@@ -1124,11 +1124,19 @@ def suppress_items(state_dir: Path, items: Iterable[tuple[str, str]]) -> None:
 
 @dataclass(frozen=True, slots=True)
 class QueuedPurge:
-    """One pending purge request."""
+    """One pending purge request.
+
+    ``aliases`` are the item's retired ids when it was queued (its ``item_aliases`` rows), kept beside the
+    selector so a purge run after the manifest that linked them was replaced still finds the pages history
+    keeps under an older id (B13 round 28 I93, I109).  ``found_nothing`` records that the queue's run found
+    nothing its id reaches (:func:`run_purge_queue`), so status says why it stays queued without reading
+    history; it is no part of the request, so an entry compares equal with or without it."""
 
     selector: PurgeSelector
     reason: PurgeReason
     enqueued_at: str
+    aliases: tuple[str, ...] = ()
+    found_nothing: bool = field(default=False, compare=False)
 
 
 def _queue_file(state_dir: Path) -> Path:
@@ -1137,7 +1145,9 @@ def _queue_file(state_dir: Path) -> Path:
 
 def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     """Queued purges, oldest first. One of the wrong shape is GovernanceDamagedError, never a traceback (B13
-    round 28 I90)."""
+    round 28 I90).  ``aliases`` and ``found_nothing`` sit beside ``selector``, never in it, and are read with
+    a default: an older build runs ``PurgeSelector(**selector)`` and drops them when it rewrites the queue,
+    which is today's behavior again (B13 round 28 I93, I109)."""
     path = _queue_file(state_dir)
     data = _read_json(path, {"queue": []}, "the purge queue")
     # an object with no "queue" is an empty queue: reading too few purges erases nothing (the hold list, whose
@@ -1148,8 +1158,21 @@ def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     out: list[QueuedPurge] = []
     for q in entries:
         try:
+            selector = PurgeSelector(**q["selector"])  # a q that is no object raises TypeError here
+            aliases = q.get("aliases", [])
+            found_nothing = q.get("found_nothing", False)
+            if not isinstance(aliases, list) or not all(isinstance(a, str) and a for a in aliases):
+                raise TypeError("aliases is not a list of ids")
+            if not isinstance(found_nothing, bool):
+                raise TypeError("found_nothing is not true or false")
             out.append(
-                QueuedPurge(PurgeSelector(**q["selector"]), PurgeReason(q["reason"]), str(q["enqueued_at"]))
+                QueuedPurge(
+                    selector,
+                    PurgeReason(q["reason"]),
+                    str(q["enqueued_at"]),
+                    tuple(aliases),
+                    found_nothing,
+                )
             )
         except (TypeError, KeyError, ValueError, GovernanceError):
             raise GovernanceDamagedError(
@@ -1158,27 +1181,41 @@ def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     return out
 
 
+def _queue_entry(q: QueuedPurge) -> dict[str, object]:
+    """One queue entry as written: ``aliases`` and ``found_nothing`` only when set, beside the selector."""
+    out: dict[str, object] = {
+        "selector": q.selector.to_json(),
+        "reason": q.reason.value,
+        "enqueued_at": q.enqueued_at,
+    }
+    if q.aliases:
+        out["aliases"] = list(q.aliases)
+    if q.found_nothing:
+        out["found_nothing"] = True
+    return out
+
+
 def _write_queue(state_dir: Path, queue: Sequence[QueuedPurge]) -> None:
-    _atomic_write_json(
-        _queue_file(state_dir),
-        {
-            "queue": [
-                {"selector": q.selector.to_json(), "reason": q.reason.value, "enqueued_at": q.enqueued_at}
-                for q in queue
-            ]
-        },
-    )
+    _atomic_write_json(_queue_file(state_dir), {"queue": [_queue_entry(q) for q in queue]})
 
 
 def enqueue_purge(
-    state_dir: Path, selector: PurgeSelector, reason: PurgeReason, *, now: datetime | None = None
+    state_dir: Path,
+    selector: PurgeSelector,
+    reason: PurgeReason,
+    *,
+    aliases: Iterable[str] = (),
+    now: datetime | None = None,
 ) -> bool:
     """Queue a purge (confirmed upstream deletion past the breaker, label escalation, DLP, erasure); False if
-    an identical request is already queued."""
+    an identical request is already queued.  ``aliases`` are the item's retired ids (the manifest's
+    ``item_aliases`` rows whose current id is the queued one), stored beside the selector, never a path: a
+    new start or a restored older manifest loses the rows that link them (B13 round 28 I93, I109)."""
     queue = pending_purges(state_dir)
     if any(q.selector == selector and q.reason is reason for q in queue):
         return False
-    queue.append(QueuedPurge(selector, reason, _iso(_now(now))))
+    retired = tuple(sorted({a for a in aliases if a and a != selector.stable_id}))
+    queue.append(QueuedPurge(selector, reason, _iso(_now(now)), retired))
     with _audit_appender(state_dir) as audit:  # a refused audit trail queues nothing (A79)
         _write_queue(state_dir, queue)
         audit(
@@ -1196,11 +1233,14 @@ def enqueue_purge(
 
 def _covers(selector: PurgeSelector, report: PurgeReport, entry: QueuedPurge) -> bool:
     """True when the verified purge of ``selector`` (``report``) already did what the queued ``entry`` asks:
-    the entry names one item by source and stable id, the purge erased that id (or it as an alias) and was not
-    narrowed to another source, and it suppressed the item if the entry's purge would have (every reason but
-    ``upstream-deleted`` suppresses)."""
+    the entry names one item by source and stable id, the purge erased that id or one of the entry's stored
+    aliases (so a hand ``purge docs=<page>`` of an old-id page takes it off the queue; B13 round 28 I109) and
+    was not narrowed to another source, and it suppressed the item if the entry's purge would have (every
+    reason but ``upstream-deleted`` suppresses)."""
     sel = entry.selector
-    if not (sel.stable_id and sel.source_id) or (sel.source_id, sel.stable_id) not in report.items:
+    if not (sel.stable_id and sel.source_id) or not any(
+        (sel.source_id, i) in report.items for i in (sel.stable_id, *entry.aliases)
+    ):
         return False
     if selector.source_id not in (None, sel.source_id):
         # a docs glob narrowed to another source targets the matched page only, not the item's other pages
@@ -2719,6 +2759,7 @@ def purge(
     push: bool = False,
     lock: bool = True,
     now: datetime | None = None,
+    ids: Iterable[tuple[str, str]] = (),
 ) -> PurgeReport:
     """Remove the selected items from the docs repo's whole history, the manifest (and any pre-migration
     ``<db>.pre-v*`` copy), the converter cache, the Teams store, staging and logs; expire reflogs, prune, and
@@ -2726,6 +2767,8 @@ def purge(
 
     Refused (HoldActiveError) while a hold covers an affected source.  ``dry_run`` reports without writing.
     ``push`` force-pushes the rewritten refs only when ``allow_remote`` and a tenant-owned remote exist.
+    ``ids`` (source, stable id) are targeted beside the selector: a queued entry's stored aliases, so the
+    history walk finds pages kept under an id no manifest links any more (B13 round 28 I93, I109).
     The returned report's ``verified`` must be True; the CLI exits non-zero otherwise.
     """
     gov = gov or load_governance(config.config_path)
@@ -2740,7 +2783,16 @@ def purge(
             pass
     with _maybe_lock(sp, lock and not dry_run):
         report = _purge_locked(
-            config, repo, sp, selector=selector, reason=reason, gov=gov, dry_run=dry_run, push=push, now=now
+            config,
+            repo,
+            sp,
+            selector=selector,
+            reason=reason,
+            gov=gov,
+            dry_run=dry_run,
+            push=push,
+            now=now,
+            ids=set(ids),
         )
         if report.verified:  # never on a dry run
             _drop_covered(sp.root, selector, report)
@@ -2758,10 +2810,12 @@ def _purge_locked(
     dry_run: bool,
     push: bool,
     now: datetime | None,
+    ids: set[tuple[str, str]] | None = None,
 ) -> PurgeReport:
     has_repo = (repo / ".git").exists()
-    mt = _resolve_manifest(sp.db, selector, set())
-    plan = _Plan(ids={(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases)
+    seed = set(ids or ())  # a queued entry's stored aliases (B13 round 28 I93, I109)
+    mt = _resolve_manifest(sp.db, selector, seed)
+    plan = _Plan(ids={(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases | seed)
     plan.rel_paths |= {(s, r) for s, _i, r, d in mt.items if not d}
     worktrees: list[_Worktree] = []
     taken: dict[str, set[tuple[str, str] | None]] = {}
@@ -3097,33 +3151,40 @@ def new_start_purges(n: int) -> str:
     )
 
 
-UNRESOLVED_HEAD = "not resolvable: "
-"""The first words of :func:`unresolved_note`, by which :func:`kept_lines` counts it."""
+UNRESOLVED_HEAD = "kept until its id is found: "
+"""The first words of :func:`unresolved_note`, by which :func:`kept_lines` and the CLI count it."""
 
 
 def unresolved_note(q: QueuedPurge) -> str:
-    """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry queued before the manifest it
-    names was replaced (a new start) when the current manifest holds nothing for its source and id (no row,
-    page, tombstone or alias): run, it targeted nothing, read VERIFIED and dropped its only record, while the
-    page's history stayed under the id the lost manifest's alias had linked (B13 round 27 P112; ruling 17).
-    The page is found and erased by its path, never guessed here: a new start may have published another page
-    there."""
+    """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry when the current manifest
+    holds nothing for its source, id and stored aliases (no row, page, tombstone or alias): queued before a
+    new start replaced the manifest that named it, or found by the queue's own run to reach nothing in the
+    docs history (:func:`run_purge_queue`).  Run blind, it targeted nothing, read VERIFIED and dropped its
+    only record, while the page's history stayed under the id the lost manifest's alias had linked (B13 round
+    27 P112; ruling 17).  ``purge --queue`` looks for its id in history and runs it once it finds one (B13
+    round 28 I93).  By hand, a purge by the page's own id keeps another file's live page at that path; a
+    purge by the path erases every page ever there, a restored file's live page too, so it is the last
+    resort."""
     where = f"mirror/{q.selector.source_id}/" if q.selector.source_id else "mirror/"
     return (
-        f"{UNRESOLVED_HEAD}the manifest that recorded its file's page was replaced (a new start), and "
-        "nothing in the current one names it, so `purge --queue` leaves it queued; find the page with "
-        f"`git log --all --name-only -- {where}` in the docs repo and erase it with "
-        f"`{AGENTSYNC_BIN} purge docs=<page path>`"
+        f"{UNRESOLVED_HEAD}nothing in the manifest names it (a new start replaced the one that recorded its "
+        "file's page, or an older copy was put back), so `purge --queue` keeps it until it finds its id in "
+        "the docs history; if none is found it stays queued. To erase the page by hand, find it with "
+        f"`git log --all --name-only -- {where}` in the docs repo and run "
+        f"`{AGENTSYNC_BIN} purge id=<its id> --source <its source>` with the id in the page's front matter, "
+        f"which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge docs=<page path>` is "
+        "the last resort, for a page that id run targets nothing of"
     )
 
 
 def unresolved_purges(n: int) -> str:
-    """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118)."""
-    is_, its, it = ("is", "its", "it") if n == 1 else ("are", "their", "them")
+    """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118; B13 round 28 I93)."""
+    is_, its, it, stays = ("is", "its", "it", "stays") if n == 1 else ("are", "their", "they", "stay")
     return (
-        f"{plural(n, 'queued purge')} {is_} not resolvable: the manifest that recorded {its} file's page "
-        f"was replaced by a new start and the current one names nothing for {it}; `{AGENTSYNC_BIN} purge "
-        f"--queue` leaves {it} queued, and `{AGENTSYNC_BIN} purge docs=<page path>` erases a page by hand"
+        f"{plural(n, 'queued purge')} {is_} kept until `{AGENTSYNC_BIN} purge --queue` finds {its} id in the "
+        f"docs history; if none is found {it} {stays} queued (nothing in the manifest names {it} after a new "
+        f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source>` erases a page "
+        "by hand"
     )
 
 
@@ -3190,16 +3251,24 @@ def _queued_before(q: QueuedPurge, started: str | None) -> bool:
 
 def _unresolved(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge, started: str | None) -> bool:
     """Whether ``q``, an entry the cycle queues (a source + id selector), was queued before this manifest's
-    first run and the manifest holds nothing for it: no row, page, tombstone or alias (:func:`_resolve_read`),
-    so a run targets nothing (B13 round 27 P112). An entry queued by this manifest's own runs always has its
-    row or tombstone here."""
+    first run, or the queue's last run found nothing its id reaches (``found_nothing``), and the manifest
+    holds nothing for it or its stored aliases: no row, page, tombstone or alias (:func:`_resolve_read`), so
+    no manifest read says what a run targets (B13 round 27 P112). An entry queued by this manifest's own runs
+    always has its row or tombstone here. Read-only and no git: status and the loop judge by it, and only
+    :func:`run_purge_queue` looks for the id in history (B13 round 28 I93, I109)."""
     sel = q.selector
     if q.reason not in KEPT_REASONS or not (sel.source_id and sel.stable_id) or sel.docs_glob:
         return False
-    if not _queued_before(q, started):
+    if not (q.found_nothing or _queued_before(q, started)):
         return False
-    mt = _resolve_read(conn, m, sel, set())
+    mt = _resolve_read(conn, m, sel, _stored_ids(q))
     return not mt.items and not mt.docs_paths and not mt.aliases
+
+
+def _stored_ids(q: QueuedPurge) -> set[tuple[str, str]]:
+    """``q``'s stored aliases as (source, id), the ids a purge of it targets beside its selector."""
+    sid = q.selector.source_id
+    return {(sid, a) for a in q.aliases} if sid else set()
 
 
 def _kept_queued(db: Path, q: QueuedPurge) -> str:
@@ -3276,7 +3345,9 @@ def _kept_why(
         return ""
     if state is None:
         state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
-    mt = _resolve_read(conn, m, q.selector, set())
+    # a row under a stored alias is the same file: a restored older manifest lists it under its retired id,
+    # and a run seeded with that id would erase its page (B13 round 28 I109)
+    mt = _resolve_read(conn, m, q.selector, _stored_ids(q))
     listed = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir and state.get((s, i)) in _LISTED_STATES]
     note = _kept_note(q, listed)
     if not note and _unresolved(conn, m, q, _first_run_started(conn)):  # B13 round 27 P112
@@ -3289,13 +3360,17 @@ def _kept_listed(
     sid: str,
     info: Mapping[tuple[str, str], tuple[str, bool]],
     alias_to_current: Mapping[tuple[str, str], str],
+    aliases: Sequence[str] = (),
 ) -> list[tuple[str, str]]:
     """The listed files a ``source_id`` + ``stable_id`` selector (no ``docs_glob``) names, by lookup: the rows
     :func:`_resolve_read` selects for that shape are the queued id and the id it is an alias of (a re-key),
-    and nothing else.  ``info`` maps each row to (state, is_dir)."""
-    cands = [(s, sid)]
-    if alias_to_current.get((s, sid), sid) != sid:
-        cands.append((s, alias_to_current[(s, sid)]))
+    and the same for each of the entry's stored ``aliases`` (B13 round 28 I109), and nothing else.  ``info``
+    maps each row to (state, is_dir)."""
+    cands: list[tuple[str, str]] = []
+    for i in (sid, *aliases):
+        for k in ((s, i), (s, alias_to_current.get((s, i), i))):
+            if k not in cands:
+                cands.append(k)
     return [k for k in cands if k in info and not info[k][1] and info[k][0] in _LISTED_STATES]
 
 
@@ -3303,8 +3378,12 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
     """:func:`_kept_why`'s note for the listed files ``q`` names, or "" when none is listed."""
     if not listed:
         return ""
-    later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
-    via = f", {later} of them under a later id" if later else ""
+    sid = q.selector.stable_id
+    earlier = sum(1 for _s, i in listed if i in q.aliases and i != sid)  # a restored copy's row (I109)
+    later = sum(1 for _s, i in listed if i != sid and i not in q.aliases) if sid else 0
+    via = "".join(
+        f", {n} of them under {when} id" for n, when in ((later, "a later"), (earlier, "an earlier")) if n
+    )
     rows = plural(len(listed), "row")
     if q.reason is PurgeReason.LABEL_ESCALATION:
         return (
@@ -3361,8 +3440,11 @@ def partition_purges(
             for q in entries:
                 sel = q.selector
                 if q.reason in KEPT_REASONS and sel.source_id and sel.stable_id and not sel.docs_glob:
-                    why = _kept_note(q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current))
-                    if not why and (sel.source_id, sel.stable_id) not in info:  # a row: resolvable (P112)
+                    why = _kept_note(
+                        q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current, q.aliases)
+                    )
+                    if not why and not any((sel.source_id, i) in info for i in (sel.stable_id, *q.aliases)):
+                        # no row under its id or a stored alias (a row: resolvable; P112, I109)
                         why = unresolved_note(q) if _unresolved(conn, m, q, started) else ""
                     whys.append(why)
                 else:
@@ -3524,6 +3606,31 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
     ]
 
 
+def _probed(q: QueuedPurge) -> bool:
+    """Whether the queue's run resolves ``q`` dry before it runs it: an entry the cycle queues for a file that
+    may come back (an ``upstream-deleted`` or ``label-escalation`` source + id selector), whose manifest row a
+    new start or a restored older copy may have lost (B13 round 28 I93, I109)."""
+    sel = q.selector
+    return q.reason in KEPT_REASONS and bool(sel.source_id and sel.stable_id) and not sel.docs_glob
+
+
+def _targets_nothing(rep: PurgeReport, seed: set[tuple[str, str]]) -> bool:
+    """Whether a dry run of a queued entry found nothing to erase: no blob, no docs path and no item beyond
+    the stored aliases it was seeded with.  Run, it read VERIFIED having erased nothing and dropped its only
+    record (B13 round 27 P112), so it stays queued with :func:`unresolved_note` instead (B13 round 28 I93)."""
+    return rep.blobs_targeted == 0 and not rep.docs_paths and set(rep.items) <= seed
+
+
+def _erased_before(state_dir: Path, q: QueuedPurge) -> bool:
+    """Whether an earlier purge already erased ``q``'s item: its id or a stored alias is on the suppression
+    list, which every purge but an upstream deletion's fills with each id it erased.  Its run targets nothing
+    because nothing is left, as when an operator purge of the same item ran while ``q`` stayed queued: it runs
+    and leaves the queue, never kept as one whose id is not found (B13 round 28 I93)."""
+    sid = q.selector.source_id
+    items = load_suppressions(state_dir).items
+    return bool(sid) and any((sid, i) in items for i in (q.selector.stable_id, *q.aliases))
+
+
 _HELD_WHY = "the purge failed; the log has the error"
 """What a queued entry's report says when its purge raised a :class:`GovernanceError` that is not a hold: a
 git failure's text can name a path or an id, and the report is printed, so that text stays in the log."""
@@ -3545,7 +3652,11 @@ def run_purge_queue(
     did (:func:`_covers`) is not run again: it leaves the queue with a ``purge-covered`` audit line and a note
     on the covering report; a dry run notes it the same way and does not preview it on its own.  An entry
     kept queued (a listed file's upstream deletion, a published file's label escalation, a hold, a failure)
-    gets a report with ``not_run`` set.
+    gets a report with ``not_run`` set.  An upstream deletion or label escalation by source + id is resolved
+    dry first, seeded with its stored aliases: one that targets no item, docs path or blob, and whose item no
+    earlier purge erased, stays queued with :func:`unresolved_note` and its ``found_nothing`` mark, never
+    VERIFIED having erased nothing; this is the only judgment that reads the docs history (B13 round 28 I93,
+    I109).
     """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
@@ -3582,16 +3693,47 @@ def run_purge_queue(
                 # it is: the run's covering purge has already erased the row that check reads
                 continue
             why = _kept_queued(sp.db, q)
-            if why:
+            probe = _probed(q) and (not why or why.startswith(UNRESOLVED_HEAD))
+            if why and not probe:
                 if why.startswith("not judged: "):
                     unjudged += 1  # one WARNING for the run, with its cause, after the loop (P25)
                 else:
                     log.warning("governance: %s", why)
                 not_run(q, why)
                 continue
+            seed = _stored_ids(q)
             try:
-                rep = purge(
-                    config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now
+                dry: PurgeReport | None = None
+                if probe:
+                    # B13 round 28 I93, I109: what the entry's id and stored aliases reach, before it runs
+                    dry = purge(
+                        config,
+                        q.selector,
+                        reason=q.reason,
+                        gov=gov,
+                        dry_run=True,
+                        lock=False,
+                        ids=seed,
+                        now=now,
+                    )
+                    if _targets_nothing(dry, seed) and not _erased_before(sp.root, q):
+                        note = unresolved_note(q)
+                        log.warning("governance: %s", note)
+                        not_run(dataclasses.replace(q, found_nothing=True), note)
+                        continue
+                rep = (
+                    dry
+                    if dry is not None and dry_run
+                    else purge(
+                        config,
+                        q.selector,
+                        reason=q.reason,
+                        gov=gov,
+                        dry_run=dry_run,
+                        lock=False,
+                        now=now,
+                        ids=seed,
+                    )
                 )
             except GovernanceError as exc:
                 log.warning("governance: queued purge kept: %s", exc)

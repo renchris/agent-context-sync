@@ -8773,8 +8773,9 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
 ) -> None:
     """B13 round 27 P112 (ruling 17): a purge queued before the new start, for an id the new manifest holds
     nothing of (a re-keyed item whose alias only the lost manifest had), targeted 0 items, read VERIFIED and
-    was dequeued while the page's history stayed; status and the loop invited it. It is "not resolvable":
-    kept, no invitation, never VERIFIED, and its note names the by-hand erase."""
+    was dequeued while the page's history stayed; status and the loop invited it. It is kept until its id is
+    found (B13 round 28 I93): no invitation, never VERIFIED, and its note names the by-hand erase, by the
+    page's id first and by its path only as the last resort."""
     cfg = _synced(initialised)
     q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
     _new_start(initialised, tmp_path)
@@ -8782,6 +8783,7 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
     runnable, kept = governance.partition_purges(initialised.state_paths)
     assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
     assert "purge docs=<page path>" in kept[0][1] and "mirror/source/" in kept[0][1]
+    assert "`~/.local/bin/agentsync purge id=<its id> --source <its source>`" in kept[0][1], kept
     step = loop.next_step(initialised)
     assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
     capsys.readouterr()
@@ -8851,6 +8853,199 @@ def test_the_reports_purge_queue_over_no_manifest_gives_the_queues_own_judgment(
     assert "No queued id was looked up: there is no manifest to look them up in." in part, part
     assert f"- {governance.new_start_purges(1)}" in part and "the manifest holds now" not in part, part
     assert "- not looked up: 1 queued purge was not looked up (no manifest could be read" in part, part
+
+
+# ---- B13 round 28 I93, I109: a queued purge whose id still reaches the page's history runs it ----
+
+_PAGE = "mirror/source/projects/sample.txt.md"
+
+
+def _queue_stored(config: Config, stable_id: str, aliases: Sequence[str], *, ago: bool) -> None:
+    """Write an upstream deletion to the queue file as this build stores it, its retired ids in "aliases"
+    beside the selector (an older build reads the entry and drops the field)."""
+    stamp = datetime.now(UTC) - (timedelta(minutes=5) if ago else timedelta(0))
+    qfile = governance._queue_file(expand(config.state_paths.root))
+    qfile.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "selector": {"source_id": "source", "stable_id": stable_id},
+        "reason": "upstream-deleted",
+        "enqueued_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "aliases": list(aliases),
+    }
+    qfile.write_text(json.dumps({"queue": [entry]}), encoding="utf-8")
+
+
+def _gone_from_history(repo: Path, *blobs: str) -> bool:
+    """No commit on any ref touches the page, and no blob it had is still an object in the repo."""
+    reachable = git(repo, "rev-list", "--all", "--objects")
+    return not git(repo, "log", "--all", "--format=%H", "--", _PAGE).strip() and not any(
+        b in reachable or _has_object(repo, b) for b in blobs
+    )
+
+
+def _has_object(repo: Path, sha: str) -> bool:
+    run = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", sha], check=False, capture_output=True)
+    return run.returncode == 0
+
+
+def _delete_then_new_start(config: Config, tmp: Path) -> None:
+    (config.sources[0].path / "projects" / "sample.txt").unlink()
+    _new_start(config, tmp)
+
+
+@pytest.mark.parametrize("rekeyed", [False, True], ids=["gone file", "re-keyed, aliases stored"])
+def test_a_purge_queued_before_the_new_start_runs_once_its_id_reaches_the_page_history(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, rekeyed: bool
+) -> None:
+    """B13 round 28 I93: an upstream deletion queued before the new start read "not resolvable" and stayed
+    queued for good, though its id (the page's front matter) or a stored alias (a re-key: the front matter
+    keeps the first id) still reaches the page's history. `purge --queue` finds it, runs it VERIFIED,
+    dequeues it, and no blob of that page is left in history."""
+    cfg = _synced(initialised)
+    repo = expand(initialised.docs_repo)
+    blob = git(repo, "rev-parse", f"HEAD:{_PAGE}").strip()
+    sid = _stable_id(initialised, "projects/sample.txt")
+    if rekeyed:
+        _queue_stored(initialised, "contoso-volume:rekeyed-0042", [sid], ago=True)
+    else:
+        _queue_upstream(initialised, "projects/sample.txt")
+    _delete_then_new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert ": VERIFIED · 1 item" in said and "1 queued purge run; 0 still queued" in said, said
+    assert governance.pending_purges(initialised.state_paths.root) == []
+    assert _gone_from_history(repo, blob)
+
+
+def test_enqueue_purge_stores_the_retired_ids_beside_the_selector(initialised: Config) -> None:
+    """B13 round 28 I93: the item's retired ids are stored as "aliases" beside "selector", never inside it (an
+    older build runs PurgeSelector(**selector)), and read back with the entry."""
+    root = expand(initialised.state_paths.root)
+    sel = governance.PurgeSelector(source_id="source", stable_id="contoso-volume:rekeyed-0042")
+    reason = governance.PurgeReason.UPSTREAM_DELETED
+    assert governance.enqueue_purge(root, sel, reason, aliases=["contoso-volume:first-0042"])
+    (entry,) = json.loads(governance._queue_file(root).read_text(encoding="utf-8"))["queue"]
+    assert entry["aliases"] == ["contoso-volume:first-0042"] and "aliases" not in entry["selector"], entry
+    (q,) = governance.pending_purges(root)
+    assert q.aliases == ("contoso-volume:first-0042",) and q.selector == sel
+
+
+def test_a_purge_of_a_file_back_under_a_new_id_at_its_path_erases_the_old_page_and_keeps_the_live_one(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 28 I93: the file deleted, then back at the same path under a new id after the new start. The
+    queued purge by the old id erases the old page's blob and keeps the live page now at that path (a purge
+    by the path, the old note's by-hand route, targeted both)."""
+    cfg = _synced(initialised)
+    repo = expand(initialised.docs_repo)
+    old_blob = git(repo, "rev-parse", f"HEAD:{_PAGE}").strip()
+    old_id = _stable_id(initialised, "projects/sample.txt")
+    _queue_upstream(initialised, "projects/sample.txt")
+    folder = initialised.sources[0].path / "projects"
+    (folder / "sample.new").write_text("Contoso notes, written again\n", encoding="utf-8")  # another inode
+    _delete_then_new_start(initialised, tmp_path)
+    (folder / "sample.new").rename(folder / "sample.txt")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert _stable_id(initialised, "projects/sample.txt") != old_id
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert ": VERIFIED · 1 item" in said and f"taken: {_PAGE}" in said, said
+    assert governance.pending_purges(initialised.state_paths.root) == []
+    assert "Contoso notes, written again" in (repo / _PAGE).read_text(encoding="utf-8")
+    assert not _has_object(repo, old_blob)
+
+
+def test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verified(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I93, I109: an upstream deletion queued after the manifest's first run (a restored older
+    copy) for an id no page and no stored alias reaches ran "VERIFIED · 0 items", dequeued, erasing nothing.
+    `purge --queue` keeps it with the note, never VERIFIED, the queue and history unchanged; status and the
+    loop then count it as kept until its id is found, never inviting the run."""
+    cfg = _synced(initialised)
+    repo = expand(initialised.docs_repo)
+    q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    qfile = governance._queue_file(expand(initialised.state_paths.root))
+    before = (json.loads(qfile.read_text(encoding="utf-8")), git(repo, "rev-parse", "HEAD"))
+    for argv in (["purge", "--queue", "--dry-run"], ["purge", "--queue"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
+        said = capsys.readouterr().out
+        assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
+        assert f"note: {governance.unresolved_note(q)}" in said, said
+    assert "1 still queued until its id is found in the docs history (see its note)" in said, said
+    (entry,) = json.loads(qfile.read_text(encoding="utf-8"))["queue"]
+    assert {k: v for k, v in entry.items() if k != "found_nothing"} == before[0]["queue"][0], entry
+    assert git(repo, "rev-parse", "HEAD") == before[1]
+    runnable, kept = governance.partition_purges(initialised.state_paths)
+    assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
+
+
+def test_status_and_the_loop_read_no_history_for_a_kept_entry(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I93: only `purge --queue` looks for a queued id in the docs history; status, the loop and
+    partition_purges judge an entry the run kept (its found_nothing mark) from the manifest and the queue."""
+    cfg = _synced(initialised)
+    _queue_stored(initialised, "contoso-volume:retired-0042", [], ago=False)
+    qfile = governance._queue_file(expand(initialised.state_paths.root))
+    data = json.loads(qfile.read_text(encoding="utf-8"))
+    data["queue"][0]["found_nothing"] = True
+    qfile.write_text(json.dumps(data), encoding="utf-8")
+
+    def no_history(*_a: object, **_k: object) -> None:
+        raise AssertionError("the kept-entry judgment read the docs history")
+
+    for name in ("_commit_graph", "_CatFile", "purge"):
+        monkeypatch.setattr(governance, name, no_history)
+    (q,) = governance.pending_purges(initialised.state_paths.root)
+    runnable, kept = governance.partition_purges(initialised.state_paths)
+    assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
+    assert governance._kept_queued(initialised.state_paths.db, q) == governance.unresolved_note(q)
+    assert governance.unresolved_purges(1) in loop.next_step(initialised).notes
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
+
+
+@pytest.mark.parametrize("route", ["restored copy lists it", "purge docs= by hand"])
+def test_a_stored_alias_keeps_a_listed_page_and_a_hand_purge_of_its_page_dequeues_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, route: str
+) -> None:
+    """B13 round 28 I109: an entry re-keyed before its deletion carries the item's first id as a stored alias.
+    A restored older manifest that lists that id as live keeps the entry queued and the page (a run seeded
+    with the alias would erase it); after the new start a hand `purge docs=<page>` of the old-id page takes
+    the entry off the queue (report.items holds the alias, not the queued id)."""
+    cfg = _synced(initialised)
+    repo = expand(initialised.docs_repo)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    if route == "restored copy lists it":
+        _queue_stored(initialised, "contoso-volume:rekeyed-0042", [sid], ago=False)
+        (q,) = governance.pending_purges(initialised.state_paths.root)
+        ((_q, why),) = governance.partition_purges(initialised.state_paths)[1]
+        assert why.startswith(
+            "stays queued: the manifest lists the file as live or online-only (1 row, 1 of "
+            "them under an earlier id)"
+        ), why
+        head = git(repo, "rev-parse", "HEAD")
+        capsys.readouterr()
+        assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+        assert "VERIFIED" not in capsys.readouterr().out
+        assert governance.pending_purges(initialised.state_paths.root) == [q]
+        assert git(repo, "rev-parse", "HEAD") == head and (repo / _PAGE).is_file()
+        return
+    _queue_stored(initialised, "contoso-volume:rekeyed-0042", [sid], ago=True)
+    _delete_then_new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["purge", f"docs={_PAGE}", "--config", cfg]) == cli.EXIT_OK
+    assert ": VERIFIED · 1 item" in capsys.readouterr().out
+    assert governance.pending_purges(initialised.state_paths.root) == []
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")

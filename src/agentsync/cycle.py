@@ -3026,6 +3026,7 @@ class _Cycle:
             self.config.state_paths.root,
             governance.PurgeSelector(source_id=sid, stable_id=stable),
             governance.PurgeReason.DLP_REMEDIATION,
+            aliases=self.manifest.aliases_of(sid, stable),
             now=self.now(),
         )
         with contextlib.suppress(ConfigError):  # an archive copy can outlive its source's block
@@ -5035,6 +5036,8 @@ class _Cycle:
                             self.config.state_paths.root,
                             governance.PurgeSelector(source_id=src.id, stable_id=stable_id),
                             governance.PurgeReason.UPSTREAM_DELETED,
+                            # the item's retired ids, which a new start or a restored copy loses (I93)
+                            aliases=self.manifest.aliases_of(src.id, stable_id),
                             now=self.now(),
                         )
                     except (governance.GovernanceError, OSError) as exc:
@@ -6052,6 +6055,7 @@ class _Cycle:
             self.config.state_paths.root,
             governance.PurgeSelector(source_id=row.source_id, stable_id=row.stable_id),
             governance.PurgeReason.LABEL_ESCALATION,
+            aliases=self.manifest.aliases_of(row.source_id, row.stable_id),
             now=self.now(),
         )
         # One alarm per source with running counts, replaced in place: a relabelled folder is one event, and
