@@ -30641,6 +30641,10 @@ then a word end): a folder `Q3: fatal Plans` still leaked, and the last three ar
 followed by a cause with no Git prefix (`: Permission denied`) reads `https:<path>` as before D84: the cause is
 lost, nothing leaks. Tests: two cases in `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path`
 (`Q3: Q4 Plans`, `Q3: fatal Plans`).
+Amended 2026-10-25, §16.196 I104: "a URL followed by a cause with no Git prefix reads `https:<path>`" no longer holds
+for five URLSession causes at the line's end (`ocr._URL_CAUSES`), which now end the URL (`<url>: The request timed
+out.`); any other such cause still reads `https:<path>`, and no tool has been measured printing an unquoted URL
+before a URLSession cause (SwiftPM's binary-target download quotes its URL and already kept its cause).
 Amended 2026-10-24, §16.191 P54: "anything else runs to the end of the line as a path" leaves one case out: an
 http(s) or ssh URL whose own path holds `: ` and Git's prefix (`…/Q3: fatal: Q4 Plans/Kit.git`) ends at that
 prefix, and the rest of the folder name stays visible as the cause, by design (no end rule tells it from Git's
@@ -31420,6 +31424,10 @@ prototyped against all 24 TOOL_MESSAGES cases, fails `an unquoted URL keeps the 
 written to keep. The `_plain` docstring says so, and two cases pin the leftover, so a later rule change has to say
 it changes it: `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (`an unquoted URL whose path
 holds a Git prefix ends at it`, and its https form). Only a `file://` or a quoted URL holding one is a path (E50).
+Amended 2026-10-25, §16.196 I72: the rule takes an unquoted URL of any scheme but `file://` (http(s), ssh, git, ...),
+not only http(s) and ssh, and only a `file://` URL, a quoted one, or one written right after `<`, `~` or `/`
+(`<https://...>`) is a path; a letter, digit or `.` before the URL joins its scheme, and the URL still ends at Git's
+prefix.
 
 **The empty folders keep one Finder-like order (P128; `agentsync.arm_local`, `agentsync.cycle`).** The walk sorted
 its empty cloud folders by code point, so the alarm named `'Empty Subfolder 10'` to `'13'` then `'8'`, and held
@@ -31528,7 +31536,101 @@ Reserved for round 28 lane B of B13.
 
 ### 16.196 Round 28: a password in a .url, staging paths in conversion errors, the new start's runs and kept pages, Finder order (2026-10-25, wave B13 round 28 lane E)
 
-Reserved for round 28 lane E of B13.
+Round 28's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
+verifier's corrected fix built, as corrected by measurement where noted). A dated line this round writes reads
+`Amended 2026-10-25, §16.196 I<n>`.
+
+**A password in a URL's userinfo is a credential (I40, ruling 22; `agentsync.lints`).** A `.url` shortcut whose
+target was `https://<user>:<password>@files.contoso.example/q.docx` was published as a current page, the password in
+its body and summary: `generic-password` needs the word password or pwd before `=` or `:`, and gitleaks 8.30.1 finds
+nothing. The builtin rule `url-credential` reads a non-empty password of three or more characters in any scheme's
+userinfo, an empty user included (`redis://:<password>@cache.contoso.example`), and passes over
+`lints._URL_PLACEHOLDER`: a bracketed hint (`<password>`), a mask (`****@`, `XXXX@`), a `${VAR}`, a `%s` and one
+placeholder word (`postgres://user:password@localhost`). Corrected by measurement: the verifier's rule reused
+`_MASK`, whose `(?!\S)` fails before the `@`, so `https://user:****@host` was a hit. A hit stubs the page "contains
+a credential" through `lint_secrets`; the new pattern moves `secret_rules_identity`'s digest, so a page published
+before it is read again, stubbed and its purge queued, with no `SECRET_RULES_VERSION` bump (the scan functions, and
+so `_SCAN_CODE_SHA`, are unchanged). Not built: the verifier's converter mask of the userinfo, which would publish
+the masked page instead of withholding it, against ruling 22. Tests:
+`test_lints.py::test_the_url_credential_rule_reads_a_password_in_a_urls_userinfo` (3 hits, 10 passes),
+`test_credential_rescreen.py::test_a_url_shortcut_with_a_password_is_a_credential_stub` (no committed blob and no
+file holds the password, on a Mac whose gitleaks misses it) and
+`test_credential_rescreen.py::test_a_url_shortcut_published_before_the_url_credential_rule_becomes_a_stub`.
+
+**A package of another Office family is not the type its name says, and no reason names the staged path (I39,
+ruling 22; `agentsync.convert`).** A Word package named `.potx` or `.pptx` failed as "conversion failed:
+python-pptx cannot read the deck: ValueError: file '<home>/Library/Application Support/agentsync/staging/<id>/…'
+is not a PowerPoint file", tried three times, its reason in the page, `_sync/QUARANTINE.tsv` and the manifest.
+`_common._ooxml_family` reads the main part's family from `[Content_Types].xml` (Word, Excel or PowerPoint, macro,
+template and slideshow types included; None when it cannot tell), and the deck, workbook and `.docx` converters
+raise `UnreadableSourceError("not-ooxml: a Word document, not a deck (not the type its name says)")` only for a
+known family other than their own: one cached stub, never retried, which the report classes "not the type its name
+says". Every presentation main type stays on python-pptx, and a template-typed `.pptx` keeps its error (R85).
+`convert_file` builds an UNREADABLE or FAILED reason with `_common._pathless`: the staged file as its name, its
+folder dropped, the home folder as `~`. Each of the three converters' `outdated` calls a stub whose reason holds a
+staging or home path outdated (`_stub_with_a_path`), so a row an older build settled with the path is read again:
+a failed conversion is never cached, the re-read's reason holds no path, and a source's re-reads are done once a
+build. Corrected by measurement: the verifier's emitter bump is not built, as it would move the action key of
+every deck, workbook and document for a read the re-read rule alone gives. Tests: `test_convert_family.py` (the
+Word package as `.potx`, `.pptx` and `.xlsx` and a deck as `.docx`; a macro deck and a template-typed `.pptx` keep
+their results; a reason names no staged path and no home; a sync converts the file once over three runs and no
+file in the docs repo names the staging folder; an older build's stub with the path is read again once, then left).
+
+**A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
+nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
+(manifest gone, heartbeat.json aside) after two of them repeated their numbers. Corrected by measurement: the
+finder's fix (the hint alone reads STATE.md) does nothing, as a new start has no last run and the hint is never
+read. `_highest_recorded_run` and `_recorded_run_hint` read the line too (`_state_md_run`; a link, an unreadable page
+or no such line read 0), which fixes the new start, the dry run's preview and a manifest restored from a copy taken
+before such runs. Tests: `test_cli.py::test_a_new_start_after_runs_that_changed_nothing_continues_after_the_run_state_md_records`
+and `test_cli.py::test_a_manifest_restored_from_before_runs_that_changed_nothing_continues_after_them` (the dry run and the sync
+say run 4, no trailer repeats, run 4's index line is written).
+
+**The CHANGELOG line names the sources the commit subject does (I23; `agentsync.cycle`, `agentsync.publish`).** A
+poll new start that kept a settling page named that source in the commit subject (its shard changed) and not in
+CHANGELOG.md's line for the same run, which read only page changes and removed notices. `Cycle._subject_sources`
+(page changes, changed shards, removed notices) feeds the subject and `append_changelog(source_ids=)`; without it
+the heading reads as before. A shard-only commit still names its source (`test_e2e.py`). Test:
+`test_cycle.py::test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling`, its `settles` case (another source adds
+a page in the new start's run; the index line after `run N · ` equals the subject, which names `inbox`).
+
+**Status counts the pages a new start kept for settling files (I108; `agentsync.cli`, `agentsync.cycle`).** Only the
+cycle read `new_start_kept:<source>` (P117). Status gives one read-only line per source, `new start: N page(s) kept
+for files still settling in <source>; its next complete pass converts or removes them`, from
+`cycle._kept_by_source`, and never clears the key. The shard is left as the manifest's export (§5.1): such a page
+has no shard line until its file's pass converts it, as listing it from HEAD would put a line in the shard for an
+item the manifest does not hold. Test: the P117 test above (the line while the page is kept, twice; none after the
+sweep).
+
+**The empty folders sort and log in Finder's order (I24, I105, I48; `agentsync.arm_local`; one build).**
+`natural_key` compared the text before each number as one case-folded string, so `b2` and `b10` sorted before `b 2`,
+punctuation after digits and `file01` before `file1`. It now ranks each path component's tokens as
+`localizedStandardCompare` does: space, punctuation (macOS's order, `_FINDER_PUNCT`), a number by its value, letters
+case-folded; then the digit runs' widths, lowercase first and the raw path. Measured against
+`localizedStandardCompare` on this Mac: equal on 37 named cases and on four of five random sets of about 180 names,
+two places apart (a tie-break among names equal but for case or zeros) on the fifth. `sync -v`, where the alarm
+sends the person, logged the empty and unlistable folders as the walk popped them; `_log_unknown` logs them once the
+walk ends, a listing time-out's raise included, the root first and the rest in that order, and `_warn_unlisted`'s
+first five use it. The stored `empty_cloud_dirs:<id>` is rewritten once, on the first walk after the change. Tests:
+`test_loop.py::test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line` (the
+verifier's orders) and `test_arm_local.py::test_sync_v_logs_the_empty_and_unlistable_folders_in_finders_order`.
+
+**An unquoted URL ends before a URLSession cause (I104; `agentsync.convert.ocr`; dated line at §16.186 E49).** E49
+ended an unquoted URL only before Git's prefix or at the line's end, so `error: https://git.contoso.com/Kit.git: The
+network connection was lost.` read `error: https:<path>`, the cause lost. The end rule now also ends it before `: `
+and one of five URLSession causes at the line's end (`ocr._URL_CAUSES`): `<url>: The network connection was lost.`
+Any other cause with no Git prefix still reads `https:<path>`; a URL whose last folder is exactly `Q3: <cause>` at the
+line's end reads `<url>: <cause>`, one fixed English phrase and no name, by design as P54. No tool has been measured
+printing this shape: SwiftPM's binary-target download quotes its URL and already kept its cause. Tests: one
+TOOL_MESSAGES case per cause, the `Q3:` edge, and a cause mid-path that is still a path.
+
+**The OCR URL cut's words name every scheme and the URLs that are a path (I72; `agentsync.convert.ocr`; dated line
+at §16.191 P54).** The `_plain` docstring and two paragraphs said "an http(s) or ssh URL" and "only a `file://` or a
+quoted URL holding it is a path"; the rule takes any scheme but `file://` (`git://`, `svn+ssh://`, `ftp://` alike),
+and a URL written right after `<`, `~` or `/` is a path too (`<https://…>` reads `<https:<path>`). Corrected by
+measurement: the finder's "one joined to the character before it is a path" is false, as a letter, a digit or `.`
+before the URL joins its scheme and the URL still ends at Git's prefix (`seehttps://…` reads `<url>: fatal: …`).
+Test: the TOOL_MESSAGES case `a URL right after an angle bracket is a path`.
 
 ### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
 
