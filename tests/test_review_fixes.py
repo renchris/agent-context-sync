@@ -646,7 +646,8 @@ def test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_fi
     step = loop.next_step(loosened)
     assert not [w for w in step.waits if "purge" in w], step.waits
     assert governance.kept_escalations(1) in step.notes, step.notes
-    assert governance.KEPT_PURGES not in " ".join(step.notes), "worded for upstream deletions only"
+    # B13 round 28 I67: KEPT_PURGES is only the plural tail, so with one entry that guard checked nothing
+    assert not [n for n in step.notes if "upstream deletion" in n], "worded for upstream deletions only"
     (rep,) = governance.run_purge_queue(loosened, now=NOW)
     assert rep.not_run and rep.not_run == kept[0][1]
     assert page in git(loosened.docs_repo, "ls-tree", "-r", "--name-only", "HEAD")
