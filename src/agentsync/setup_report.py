@@ -11587,6 +11587,24 @@ _STATE_LOST_DANGLING_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_DANGLING}"
 round 26 E19; round 27 P19; :func:`_lost_dangling`): status names the link, so the bucket does too."""
 
 
+_HOLD_UNREAD_WAIT = "not run while the hold list cannot be read"
+"""Doctor's words in its governance.purge_queue warn when the hold list cannot be read (cli's
+``_governance_checks``, B13 round 27 P131): no run invited, the governance.hold FAIL its cause."""
+
+
+def _hold_list_unread(c: Config | None) -> bool:
+    """``governance.hold_list_unread`` of the state folder, the report's own read; False when it fails or the
+    build has no such read (B13 round 28 I45)."""
+    if c is None:
+        return False
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return bool(governance.hold_list_unread(expand(c.state_paths.root)))
+    except Exception:
+        return False
+
+
 def _lost_bucket_words(kind: str, link: str) -> str:
     """The Doctor line's bucket for a lost manifest: :data:`_STATE_LOST_WORDS`, or
     :data:`_STATE_LOST_UNREAD_WORDS` for ``kind`` ``"unread"`` (:func:`_manifest_lost_kind`), with the
@@ -12130,6 +12148,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []
     fails: list[tuple[str, str | None]] = []
+    hold_bucket: list[str] | None = None  # the bucket that took governance.hold's FAIL (B13 round 28 I45)
     for tag, name, detail in r.facts.doctor_problems:
         # B13 round 23 A23, ruling 4: one fault, state_dir's, the person's; every check that reads the state
         # folder, not checked (an older doctor FAILs heartbeat and governance, or crashes, beside it)
@@ -12175,6 +12194,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if tag == "FAIL" and name in misplaced_named:  # B13 round 26 ruling 13, by the report's own lstat
             from_misplaced.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, misplaced_words))
+            hold_bucket = from_misplaced if name == "governance.hold" else hold_bucket
             continue
         if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
             from_lost.append(f"{name} FAIL{_PERSONS}")
@@ -12231,6 +12251,19 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if tag == "FAIL" and name in refused:
             from_refused.append(f"{name} FAIL{refused[name]}")
             fails.append((name, _REFUSED_WORDS))
+            hold_bucket = from_refused if name == "governance.hold" else hold_bucket
+            continue
+        if (
+            hold_bucket is not None
+            and tag == "warn"
+            and name == "governance.purge_queue"
+            and _HOLD_UNREAD_WAIT in detail
+            and _hold_list_unread(r.config)
+        ):
+            # B13 round 28 I45: doctor's queue warn names the hold list as its cause and invites no run; it
+            # sits with the hold list's FAIL, never "unexpected" (an older doctor's warn, without the
+            # phrase, and a hold list whose FAIL is itself unexpected keep it where it was)
+            hold_bucket.append(f"{name} warn ({_HOLD_UNREAD_WAIT})")
             continue
         # B13 round 23 A49: a state folder or file this account opens whose mode lets others read it FAILs
         # with this account's chmod, the agent's (install.sh's status-step NEXT names it); never beside a file

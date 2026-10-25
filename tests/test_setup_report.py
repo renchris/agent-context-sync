@@ -14908,7 +14908,9 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
     finally:
         heartbeat.unlink()
     line = _line(section(text, "Summary"), "- doctor: ")
-    assert "heartbeat warn (heartbeat.json cannot be read: " in line and line.endswith(" · unexpected 0"), line
+    assert "heartbeat warn (heartbeat.json cannot be read: " in line and line.endswith(" · unexpected 0"), (
+        line
+    )
     assert "records earlier passes" not in text and "earlier syncs recorded" not in text
     heartbeat.mkdir(mode=0o700)
     try:
@@ -15495,6 +15497,65 @@ def test_a_lock_heartbeat_or_governance_file_that_is_not_a_file_is_the_persons(
     # the same FAIL with a regular file there is not this one: unexpected
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", lines["lock"]])
     assert _line(summary, "- doctor: ").endswith("unexpected 1: lock FAIL"), summary
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fail(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 28 I45: with the hold list not a file, doctor's governance.purge_queue warn says the queue
+    is "not run while the hold list cannot be read", naming the hold list as its cause, yet the report
+    counted it "unexpected". It sits in the bucket that took governance.hold's FAIL (the misplaced one, or
+    the refused one for a mode), keyed on the report's own read of the hold list; an older doctor's warn
+    with no such words, or a hold list that can be read, leaves it where it was."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    (root / "governance").mkdir(parents=True, exist_ok=True)
+    holds = root / "governance" / "holds.json"
+    hold_fail = (
+        f"[FAIL] governance.hold — {holds} is a folder, not a file: the hold list belongs there (fix: the "
+        f"person moves {holds} aside, keeping a copy)"
+    )
+    queue_warn = (
+        "[warn] governance.purge_queue — 1 purge request queued (confirmed upstream deletions / label "
+        "escalations); not run while the hold list cannot be read: the governance.hold line says why"
+    )
+    older_warn = "[warn] governance.purge_queue — 1 purge request queued (confirmed upstream deletions)"
+    holds.unlink(missing_ok=True)
+    holds.mkdir()
+    try:
+        _text, summary = summary_of(
+            fake_mac, doctor=lambda config: ["[ok  ] python — fine", hold_fail, queue_warn]
+        )
+        assert (
+            " · from agentsync's hold list that is not a file (2 checks): governance.hold FAIL (the "
+            "person's; see Doctor), governance.purge_queue warn (not run while the hold list cannot be "
+            "read) · unexpected 0"
+        ) in _line(summary, "- doctor: "), summary
+        _text, summary = summary_of(
+            fake_mac, doctor=lambda config: ["[ok  ] python — fine", hold_fail, older_warn]
+        )
+        assert "governance.purge_queue warn (not run" not in _line(summary, "- doctor: "), summary
+    finally:
+        holds.rmdir()
+    holds.write_text("{}\n", encoding="utf-8")
+    holds.chmod(0o000)
+    try:
+        refused = (
+            f"[FAIL] governance.hold — {holds} cannot be opened: Permission denied (fix: chmod 600 {holds})"
+        )
+        _text, summary = summary_of(
+            fake_mac, doctor=lambda config: ["[ok  ] python — fine", refused, queue_warn]
+        )
+        line = _line(summary, "- doctor: ")
+        assert "governance.purge_queue warn (not run while the hold list cannot be read)" in line, line
+        assert line.endswith(" · unexpected 0"), line
+    finally:
+        holds.chmod(0o600)
+    # a hold list that can be read: the warn is not the hold list's
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", queue_warn])
+    assert "(not run while the hold list cannot be read)" not in _line(summary, "- doctor: "), summary
 
 
 def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dict[str, Path]) -> None:
