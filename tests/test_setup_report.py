@@ -686,6 +686,31 @@ def test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole() -> None:
     )
 
 
+def test_the_path_legend_item_names_every_use_of_path() -> None:
+    """B13 round 27 P38: the legend's <path> item said every <path> was a link's target outside this home,
+    while the log scrub, --source-local arguments and exclude lines print <path> too, and a report whose only
+    <path>s were those had no item at all. The item names both uses, and stands whenever the body shows
+    <path>; only a replaced link target counts."""
+    red = setup_report.Redactor()
+    red.add("path", "/Volumes/Contoso Drive/state")
+    target = red.redact("state: /Volumes/Contoso Drive/state is a symlink")
+    logged = setup_report._scrub_item_paths(f"{LOG_HEAD}cycle: src-x: fetch of Contoso Plan.docx failed: x")
+    assert "<path>" in target and "<path>" in logged
+    for body, counted in ((f"{target}\n{logged}\n", True), (f"{logged}\n", False)):
+        tail = setup_report._redaction_section(red if counted else setup_report.Redactor(), [], (), body)
+        legend = next(ln for ln in tail if ln.startswith("Placeholders used: "))
+        assert (
+            "<path> a link's target outside this home (a state file's or the docs repo's), or an item "
+            in legend
+        )
+        assert "document name" in legend and "--source-local argument" in legend and "exclude" in legend, (
+            legend
+        )
+        assert ("path 1" in tail[3]) is counted, tail[3]
+    tail = setup_report._redaction_section(setup_report.Redactor(), [], (), "nothing cut\n")
+    assert "<path>" not in "\n".join(tail)
+
+
 @pytest.mark.usefixtures("roomy_budget")
 def test_the_pandoc_line_is_the_pandoc_the_converters_run(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch

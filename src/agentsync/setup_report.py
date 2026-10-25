@@ -947,7 +947,10 @@ _LEGEND = {
         "path (neither need be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
-    "path": "<path> a link's target outside this home (a state file's or the docs repo's)",
+    "path": (  # every <path> the body can show, the uncounted ones too (B13 round 27 P38)
+        "<path> a link's target outside this home (a state file's or the docs repo's), or an item path or "
+        "document name in a log line, a --source-local argument or an exclude entry, cut as its section says"
+    ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL, or a URL prefix, that a [governance] error or check quotes",
@@ -14148,7 +14151,10 @@ def _redaction_section(
     red: Redactor, hits: list[tuple[str, list[str]]], filled: Sequence[str] = (), body: str = ""
 ) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
-    legend = " · ".join(_legend_item(red, k, body) for k in red.kinds_used() if k in _LEGEND)
+    # B13 round 27 P38: a <path> the log scrub, a --source-local argument or an exclude line wrote is no
+    # replacement and is not counted, but the body shows it, so its item stands, as the shell's legend_kinds
+    shown = [k for k in _LEGEND if k in red.kinds_used() or (k == "path" and "<path>" in body)]
+    legend = " · ".join(_legend_item(red, k, body) for k in shown)
     if _NOT_IN_CONFIG in body:  # U8: the fallback label, where the report shows one
         legend = f"{legend} · {_NOT_IN_CONFIG_LEGEND}" if legend else _NOT_IN_CONFIG_LEGEND
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice

@@ -30769,7 +30769,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120, P37 and P18, in `src/agentsync/setup_report.py` and
+P102, P115, P26, P13, P104, P20, P120, P37, P18 and P38, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
 defects built in one commit.
@@ -30995,6 +30995,15 @@ fallback, which reads no doctor, keeps its words. Test:
 `test_a_step_3_stop_on_a_folder_at_the_lock_names_it_as_doctor_does` (and its case with no lock FAIL), and
 `test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt` (a stop a later sync ended 0 after,
 and an earlier attempt's, keep the record's words).
+
+**The <path> legend item names every <path>** (P38). Round 26 E2's item read `<path> a link's target outside this
+home (a state file's or the docs repo's)` for every `<path>` in the report, while the log scrub
+(`_scrub_item_paths`), the `--source-local` arguments (`_source_local_shown`) and the exclude lines print `<path>`
+too, and a report whose only `<path>`s were those had no item. `_LEGEND["path"]` now adds `or an item path or
+document name in a log line, a --source-local argument or an exclude entry, cut as its section says`, and
+`_redaction_section` shows the item whenever the body shows `<path>`, as the shell's `legend_kinds` greps its body.
+Only a replaced link target is counted (`path N` in the kinds stays a count of replacements). Test:
+`test_the_path_legend_item_names_every_use_of_path`.
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 
