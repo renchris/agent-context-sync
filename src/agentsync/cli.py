@@ -1451,8 +1451,10 @@ def _age_text(delta: timedelta) -> str:
     return f"{secs // 86400}d"
 
 
-def _status_lines(config: Config) -> list[str]:
-    """What ``agentsync status`` prints (read-only); ``setup-report`` embeds the same lines."""
+def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
+    """What ``agentsync status`` prints (read-only); ``setup-report`` embeds the same lines. ``checks_beside``
+    False (the setup report's Status, whose Doctor prints only the lines that are not ok): a line that points
+    at an [ok] check line beside it gives that line's words itself (B13 round 28 I18)."""
     out: list[str] = [f"config: {config.config_path}", f"docs repo: {config.docs_repo}"]
     lock_path = config.state_paths.lock
     odd = doctor.own_kind(lock_path)  # never "free" over a folder, fifo, socket or link (E38)
@@ -1498,7 +1500,9 @@ def _status_lines(config: Config) -> list[str]:
             f"`{loop.BIN} purge --queue`)"
         )
     # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
-    if kept:
+    if kept and not checks_beside:  # B13 round 28 I18: no [ok] line beside it in the report to point at
+        out.append(f"queued purges kept: {len(kept)}: {'; '.join(governance.kept_lines(kept))}")
+    elif kept:
         out.append(f"queued purges kept: {len(kept)} (the governance.purge_queue line says why)")
     if gov is not None:
         try:
@@ -2762,7 +2766,12 @@ def _report_hooks() -> setup_report.ReportHooks:
         doctor=checks,
         status=lambda config: [
             _loop_line(config),
-            *_guarded("status", lambda: _status_lines(config), refused="governance.config", config=config),
+            *_guarded(
+                "status",
+                lambda: _status_lines(config, checks_beside=False),
+                refused="governance.config",
+                config=config,
+            ),
         ],
         loop_next=loop_next,
         job_proxy=_job_proxy_urls,

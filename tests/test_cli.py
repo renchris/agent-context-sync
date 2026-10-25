@@ -8637,6 +8637,38 @@ def test_the_queued_purge_words_count_with_agreement_and_status_says_the_sentenc
     assert governance.kept_escalations(2).startswith("2 label-escalation purges stay queued")
 
 
+def test_the_reports_status_says_why_a_queued_purge_is_kept_where_doctor_prints_no_ok_line(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """B13 round 28 I18: the report's Status said "queued purges kept: 1 (the governance.purge_queue line
+    says why)", but the report's Doctor prints only the lines that are not ok, so that [ok] line is never
+    there. The report's Status gives the sentence itself; `agentsync status` keeps the pointer (P118)."""
+    _synced(initialised)
+    _queue_upstream(initialised, "projects/sample.txt")
+    db = expand(initialised.state_paths.db)
+    kept = tmp_path / "kept.sqlite"
+    db.rename(kept)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    pointer = "the governance.purge_queue line says why"
+    assert f"queued purges kept: 1 ({pointer})" in cli._status_lines(initialised)
+    text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
+    status = text.split("\n## Status", 1)[1].split("\n## ", 1)[0]
+    _runnable, held = governance.partition_purges(initialised.state_paths)
+    assert f"queued purges kept: 1: {'; '.join(governance.kept_lines(held))}" in status, status
+    assert pointer not in text, [ln for ln in text.splitlines() if pointer in ln]
+    # the manifest replaced by a new start that names nothing for the id: "not resolvable", once
+    kept.rename(db)
+    _new_start(initialised, tmp_path)
+    _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
+    status = text.split("\n## Status", 1)[1].split("\n## ", 1)[0]
+    block = status.split("~~~text", 1)[1].split("~~~", 1)[0]  # status's own lines, before the parts
+    assert pointer not in text and "queued purges kept: " in block, status
+    assert block.count(governance.unresolved_purges(1)) == 1, block
+
+
 @pytest.mark.parametrize("what", ["damaged JSON", "a fifo", "a folder"])
 def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
     initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, what: str
