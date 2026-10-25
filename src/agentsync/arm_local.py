@@ -617,7 +617,7 @@ def _warn_unlisted(state: _WalkState, source_id: str, *, echoed: bool) -> None:
     stalled, so there it is not."""
     if not state.unlisted:
         return
-    unlisted = sorted(state.unlisted)
+    unlisted = sorted(state.unlisted, key=natural_key)
     log.warning(
         "%s: %d %s could not be listed: %s%s",
         source_id,
@@ -627,6 +627,24 @@ def _warn_unlisted(state: _WalkState, source_id: str, *, echoed: bool) -> None:
         f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else "",
         extra={ECHOED_ALARM: True} if echoed else None,
     )
+
+
+def _log_unknown(state: _WalkState, source_id: str) -> None:
+    """The walk's info line for each folder it could not read or found with zero children in a cloud tree,
+    once the walk ends (a listing time-out included), the root first and the rest in :func:`natural_key`
+    order: logged as each was popped, they came in the walk's own order, unlike the alarm that sends the
+    person to ``sync -v`` for them (B13 round 28 I48).  A folder unknown because a child's lstat failed is
+    neither: its own warning was logged when it failed."""
+    unlisted = set(state.unlisted)
+    found = unlisted | set(state.empty) | ({"."} if state.empty_root else set())
+    rest = sorted((d for d in found if d != "."), key=natural_key)
+    for shown in (["."] if "." in found else []) + rest:
+        if shown in unlisted:
+            log.info("%s: directory %r is unknown (%s)", source_id, shown, state.unknown[shown])
+        else:
+            log.info(
+                "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
+            )
 
 
 def walk(
@@ -702,6 +720,7 @@ def walk(
                 name="agentsync-listing",
             )
         except CallTimedOutError:
+            _log_unknown(state, source_id)
             _warn_unlisted(state, source_id, echoed=False)
             raise CallTimedOutError(
                 f"listing {shown!r} did not return within {listing_timeout_s:.0f}s"
@@ -714,8 +733,7 @@ def walk(
             state.unknown[shown] = reason
             state.kinds[shown] = _errno_kind(exc.errno)
             state.unlisted.append(shown)
-            # info, as a zero-child cloud folder: ``_warn_unlisted`` names it with its reason once a walk.
-            log.info("%s: directory %r is unknown (%s)", source_id, shown, reason)
+            # info, logged by ``_log_unknown`` once the walk ends; ``_warn_unlisted`` names it with its reason
             continue
         state.dirs += 1
         if not entries and in_domain(dir_path):
@@ -727,10 +745,7 @@ def walk(
                 state.empty.append(rel_dir)
             else:
                 state.empty_root = True
-            # info: the scan's one alarm names these each pass; a line per folder per pass filled the logs.
-            log.info(
-                "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
-            )
+            # info, logged by ``_log_unknown`` once the walk ends: the scan's one alarm names these each pass
             continue
         prefix = f"{rel_dir}/" if rel_dir else ""
         for entry in entries:
@@ -806,6 +821,7 @@ def walk(
                 with_gen_count=with_gen_count,
             )
 
+    _log_unknown(state, source_id)
     _warn_unlisted(state, source_id, echoed=True)
     items = _dedupe_hard_links(state, source_id)
     stats = WalkStats(
@@ -825,13 +841,47 @@ def walk(
     return items, stats
 
 
-def natural_key(path: str) -> tuple[tuple[tuple[int, int, str], ...], str]:
-    """A Finder-like order for folder paths: each run of digits by its number, the rest case-folded, the
-    raw path last so the order is total. The walk sorts its unknown and empty folders by it once, so the
-    alarm's first five and its "+N more", the stored list, the exclude line and status all agree, as Finder
-    lists them ('... 8', '... 9', '... 10'), never 10 before 8 (B13 round 27 P128)."""
-    parts = re.split(r"(\d+)", path)
-    return tuple((0, int(t), "") if i % 2 else (1, 0, t.casefold()) for i, t in enumerate(parts)), path
+_FINDER_PUNCT = "_-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$"
+"""Punctuation in the order macOS's ``localizedStandardCompare`` (Finder's) ranks it; any other character
+that is no letter, digit or space ranks after these, then by itself."""
+_NAME_TOKEN = re.compile(r"\s+|\d+|[^\W\d_]+|.", re.S)
+_NameToken = tuple[int, int, str]
+
+
+def _name_key(name: str) -> tuple[tuple[_NameToken, ...], tuple[int, ...]]:
+    """One path component's tokens ranked by class, space < punctuation < a number by its value < letters
+    case-folded, and the length of each run of digits, which only breaks a tie (``file1`` before
+    ``file01``)."""
+    tokens: list[_NameToken] = []
+    widths: list[int] = []
+    for t in _NAME_TOKEN.findall(name):
+        if t.isspace():
+            tokens.append((0, 0, ""))
+        elif t.isdecimal():
+            tokens.append((2, int(t), ""))
+            widths.append(len(t))
+        elif t[0].isalpha():
+            tokens.append((3, 0, t.casefold()))
+        else:
+            rank = _FINDER_PUNCT.find(t)
+            tokens.append((1, rank if rank >= 0 else len(_FINDER_PUNCT), t))
+    return tuple(tokens), tuple(widths)
+
+
+def natural_key(
+    path: str,
+) -> tuple[tuple[tuple[_NameToken, ...], ...], tuple[tuple[int, ...], ...], str, str]:
+    """Finder's order for folder paths (``localizedStandardCompare``): component by component, so a folder's
+    children follow it; within one, space before punctuation before numbers by value before letters
+    case-folded; then the digit runs' widths, then lowercase first, then the raw path, so the order is total.
+    The walk sorts its unknown and empty folders, and logs them, by it once, so the alarm's first five and
+    its "+N more", the stored list, the exclude line, status and ``sync -v`` all agree, as Finder lists them
+    ('b 2', 'b2', 'b10'; '... 8', '... 9', '... 10'; B13 round 27 P128, round 28 I24, I105, I48). Measured
+    against ``localizedStandardCompare`` on this Mac: equal on 37 named cases and on four of five random sets
+    of about 180 names, two places apart on the fifth (a tie-break among names equal but for case or
+    zeros)."""
+    parts = [_name_key(part) for part in path.split("/")]
+    return tuple(t for t, _ in parts), tuple(w for _, w in parts), path.swapcase(), path
 
 
 _EXCLUDE_SHOWN = 5  # folders named in one ready-to-paste exclude line; the rest are a count

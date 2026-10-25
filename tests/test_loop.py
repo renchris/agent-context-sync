@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import errno
+import functools
 import json
 import logging
 import os
@@ -536,6 +537,22 @@ def test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_t
     advice = arm_local.exclude_advice(src, stored, "~/agent-context/sources.toml")
     assert all(f'"/{n}/"' in advice for n in names[:5]) and names[5] not in advice, advice
     assert sorted(["b 2", "B 10", "a 10", "A 9"], key=arm_local.natural_key) == ["A 9", "a 10", "b 2", "B 10"]
+    # B13 round 28 I24, I105: Finder's order (localizedStandardCompare, measured on this Mac): a space, then
+    # punctuation, before digits and letters, a component at a time, and fewer zeros first
+    by_key = functools.partial(sorted, key=arm_local.natural_key)
+    assert by_key(["b10", "b 2", "b2", "Empty Subfolder"]) == ["b 2", "b2", "b10", "Empty Subfolder"]
+    assert by_key(["a1", "a 1", "a_1"]) == ["a 1", "a_1", "a1"]
+    assert by_key(["b10", "b 2", "b2", "b-2", "file01", "file1", "x/a10/c", "x/a 2"]) == [
+        "b 2",
+        "b-2",
+        "b2",
+        "b10",
+        "file1",
+        "file01",
+        "x/a 2",
+        "x/a10/c",
+    ]
+    assert by_key(["b2", "B 2", "b 2", "b_2", "b.2", "b-2"]) == ["b 2", "B 2", "b_2", "b-2", "b.2", "b2"]
 
 
 def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(

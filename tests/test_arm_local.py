@@ -885,6 +885,50 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
     )
 
 
+def test_sync_v_logs_the_empty_and_unlistable_folders_in_finders_order(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B13 round 28 I48: the alarm sends the person to ``sync -v`` for the rest of its folders, which logged
+    them as the walk popped them (12, 3, 4, 13, 5, 2, ...); they are logged once the walk ends, in the
+    alarm's own order, and the warning's first five keep it too ('Shut 9' before 'Shut 10')."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    empty = ["Empty Subfolder", *(f"Empty Subfolder {n}" for n in range(2, 14)), "b 2", "b2", "b10"]
+    for name in [empty[i] for i in (11, 2, 3, 12, 4, 1, 0, 6, 8, 10, 7, 5, 9, 15, 13, 14)]:
+        (root / name).mkdir(parents=True)
+    _write(root / "Shut 10" / "b.docx")
+    _write(root / "Shut 9" / "c.docx")
+    _write(root / "a.docx")
+    with (
+        _chmod(root / "Shut 10", 0),
+        _chmod(root / "Shut 9", 0),
+        caplog.at_level(logging.INFO, logger=al.__name__),
+    ):
+        al.LocalArm(_cfg(root)).scan(None, full=True)
+    said = [r.getMessage() for r in caplog.records]
+    zero = [
+        m.split("'")[1] for m in said if m.endswith("has zero children in a cloud tree; treated as unknown")
+    ]
+    assert zero == ["b 2", "b2", "b10", "Empty Subfolder", *(f"Empty Subfolder {n}" for n in range(2, 14))]
+    assert [m.split("'")[1] for m in said if " is unknown (" in m] == ["Shut 9", "Shut 10"]
+    (warned,) = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warned.index("'Shut 9'") < warned.index("'Shut 10'"), warned
+
+
+def test_a_folder_a_child_lstat_made_unknown_is_not_logged_as_empty(caplog: pytest.LogCaptureFixture) -> None:
+    """B13 round 28 I48 review: ``_log_unknown`` names the unlisted and the empty folders only; one whose
+    child could not be lstat'ed had its own warning, and is no folder with zero children."""
+    state = al._WalkState()
+    state.unknown.update(
+        {"Docs": "lstat 'x': EIO: Input/output error", "Empty 2": "zero children in a cloud tree"}
+    )
+    state.empty.append("Empty 2")
+    with caplog.at_level(logging.INFO, logger=al.__name__):
+        al._log_unknown(state, "s")
+    assert [r.getMessage() for r in caplog.records] == [
+        "s: directory 'Empty 2' has zero children in a cloud tree; treated as unknown"
+    ]
+
+
 def test_a_held_listing_still_warns_about_the_folders_it_could_not_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -907,10 +951,14 @@ def test_a_held_listing_still_warns_about_the_folders_it_could_not_list(
 
     monkeypatch.setattr(al, "_list_dir", flaky)
     try:
-        with caplog.at_level(logging.WARNING, logger=al.__name__), pytest.raises(al.CallTimedOutError):
+        with caplog.at_level(logging.INFO, logger=al.__name__), pytest.raises(al.CallTimedOutError):
             _walk(root, listing_timeout_s=0.2)
     finally:
         release.set()
+    # B13 round 28 I48: the folder's info line is logged before the raise, as at the walk's end
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.INFO] == [
+        f"s: directory {failed[0]!r} is unknown (EDEADLK: {os.strerror(errno.EDEADLK)})"
+    ]
     warned = [r for r in caplog.records if r.levelno >= logging.WARNING]
     edeadlk = f"EDEADLK: {os.strerror(errno.EDEADLK)}"
     assert [r.getMessage() for r in warned] == [f"s: 1 folder could not be listed: {failed[0]!r} ({edeadlk})"]
