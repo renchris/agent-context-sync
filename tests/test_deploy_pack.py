@@ -6576,6 +6576,38 @@ def test_the_p53_line_says_only_resolve_faileds_docstring_names_the_readers() ->
     assert "The `RESOLVE_FAILED` and `_check_speech` docstrings now name both readers" not in text
 
 
+def test_the_round_27_ra_record_says_rb_built_install_shs_halves() -> None:
+    """B13 round 28 I79: §16.188 said install.sh's lost-link tails "still name the link before the file" and
+    its `claims()` has no blank normalization "at this commit", which lane RB had built in commits that were
+    ancestors of RA's (§16.189). Each clause points to RB's record, install.sh holds what they say it holds,
+    and a §16.197 line at each records what it read."""
+    claims, _bare, _held_at, unheld = _dated_line_scan()
+    assert unheld == []
+    for item in ("P121", "P127", "P138"):
+        assert ("16.197", ["I79"], "16.188", item) in claims, item
+    sections = dict(_contracts_numbered_sections())
+    ra = " ".join(sections["16.188"].split())
+    rb = " ".join(sections["16.189"].split())
+    assert "still name the link before the file (lane RB's file" not in ra
+    assert "lane RB's file, not changed here; at this commit it has none" not in ra
+    for title in (
+        "The lost link's words, install.sh's halves",
+        "The shell reads the chmod words with Python's whitespace",
+    ):
+        assert f"**{title}**" in rb and f'§16.189 "{title}"' in ra, title
+    shell = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    install = " ".join(shell.split())
+    assert (
+        "which is missing though heartbeat.json beside it records earlier passes and is a symlink to a file"
+        " that does not exist" in install
+    )
+    assert "lost_link_now" in install  # P127's shell half
+    claims_fn = shell[shell.index("function claims(") :]
+    assert (
+        "\\302\\240" in claims_fn[: claims_fn.index("\n\t\t}\n")]
+    )  # P138's: claims() reads a no-break space
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

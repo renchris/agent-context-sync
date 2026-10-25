@@ -30806,11 +30806,14 @@ agentsync's state file, which is missing though heartbeat.json records earlier p
 that does not exist or refuses a write: the person's to fix, removing or re-pointing the link first`; P33's words for
 a link to a file that does not exist take the same order. No colon is added inside the bucket, which is rendered
 before `(<n> checks): <names>` (P129's verifier). `_DANGLING_WORDS` says `does not exist` too. Not built here: P121's
-part (4), the step 1 tails in `scripts/install.sh` for a lost link and a lost dangling link, which still name the
-link before the file (lane RB's file, routed to RB). Tests: the config-step words table,
+part (4), the step 1 tails in `scripts/install.sh` for a lost link and a lost dangling link (lane RB's file; RB built
+them file-first, §16.189 "The lost link's words, install.sh's halves"). Tests: the config-step words table,
 `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons` and
 `test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_whole_in_status`.
+Amended 2026-10-25, §16.197 I79: install.sh had P121's part (4) at this commit already (lane RB's 45cd3503a, an
+ancestor of this record's commit); the clause said its tails "still name the link before the file", as they read
+before the rebase.
 
 **A step 3 stop and the bucket name the lost manifest's link** (P19, P127; amends §16.183 E3). A step 3 stop on a
 lost manifest said only `which was missing after earlier syncs` in the outcome and Items while the same report's
@@ -30830,9 +30833,11 @@ heartbeat.json records earlier passes, and is a link to a file that does not exi
 `_STATE_LOST_DANGLING_EVIDENCE`, with the plain fix's two moves, which work through such a link; §16.183 E3's plain
 words for a link into a folder that exists no longer hold. No word holds the link's target. `install.sh`'s shell
 report words this line too (`fallback_sync_stop_line`, `which was missing after earlier syncs` for `lost`); that half
-is lane RB's file and is not changed here (routed to RB). Tests:
+is lane RB's file and is not changed here (RB built it, §16.189 "The lost link's words, install.sh's halves"). Tests:
 `test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
 `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured` (the writable-folder sub-case).
+Amended 2026-10-25, §16.197 I79: lane RB built P127's shell half in the same round (`lost_link_now`); the clause
+said only "routed to RB".
 
 **A speech build that needs a newer Swift is the Command Line Tools update, never the re-run** (P32, P52; amends
 §16.183's E34). Lane E's E48 gives a fetch that needs a newer Swift than this Mac's the cause `speech.TOOLS_TOO_OLD`
@@ -30879,8 +30884,10 @@ passes on the code before it (a mutation that drops the normalization and keeps 
 agree once install.sh's `claims()` turns every other character `[^\S\n]` covers into an ASCII space (\r, \v, \f,
 \x1c-\x1f, U+0085, U+00A0, U+1680, U+2000-U+200A, U+2028, U+2029, U+202F, U+205F, U+3000: `link_agent`'s list,
 not the verifier's narrower eight, which leaves a thin space splitting the reports), lane RB's file, not changed here;
-at this commit it has none. Test:
+RB built it from `link_agent`'s list, §16.189 "The shell reads the chmod words with Python's whitespace". Test:
 `test_a_chmod_joined_to_its_mode_by_another_space_pairs_as_with_an_ascii_one`.
+Amended 2026-10-25, §16.197 I79: install.sh's `claims()` had the normalization at this commit already (lane RB's
+b75e5016a, an ancestor of this record's b529b0875); the clause said "at this commit it has none".
 
 **A link's target the run's own text names is redacted, on disk or not** (P34; amends §16.185's E2). `_link_targets`
 registers the targets of the links on disk now, so once the person removed the link, as its fix says, install.out's
@@ -31637,8 +31644,7 @@ Test: the TOOL_MESSAGES case `a URL right after an angle bracket is a path`.
 ### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
 
 Lane D's round 28 items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
-verifier's corrected fix built): I11, I69, I78, I101, I75, I77, I71, I73, I79, I80, I81, I82, I83, I84, I99, I102
-and I103. I11, I78 and I101 are one gap in the guide, built once; so are I69 and I77 in the records page.
+verifier's corrected fix built): I80, I73, I79, I71, I81, I82, I83, I84, I99 and I103.
 
 **`--no-ci` skips every CI read** (I80; `scripts/ship-land.sh`). Round 27 P140 added a third read, trunk's runs
 before the gate, which `--no-ci` skips as it does the other two, and the header still said `skip both CI reads`
@@ -31651,3 +31657,11 @@ which also lands under `--no-ci` with a red trunk's gh on PATH and finds it neve
 `RESOLVE_FAILED`'s does (`speech.py`), and `_check_speech`'s adds the toolchain fix alone. The line now says so, and
 a dated line records what it said. Docs only. Test: `test_the_p53_line_says_only_resolve_faileds_docstring_names_the_readers`,
 which reads both docstrings.
+
+**§16.188 says lane RB built install.sh's halves** (I79; corrects §16.188 P121, P127 and P138). Two of its clauses
+described install.sh as it read before RA's rebase: P121's step 1 tails "still name the link before the file" and
+P138's `claims()` "at this commit it has none", when RB's 45cd3503a and b75e5016a, both ancestors of RA's commits,
+had built them (§16.189); a third, P127's shell half "routed to RB", named no record of RB's build. Each of the
+three points to RB's record now, and a dated line at each says what it read; "not built here" stays, true of RA's
+commits. Docs only. Test:
+`test_the_round_27_ra_record_says_rb_built_install_shs_halves`.
