@@ -30769,7 +30769,7 @@ empty mirror keeps `no sync has run`), and D79's link-first fix. Test:
 
 Lane RA's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the
 verifier's corrected fix built): P33, P58, P103, P121, P129, P19, P127, P32, P52, P123, P101, P138, P34, P36,
-P102, P115, P26, P13, P104, P20, P120, P37, P18, P38, P39 and P107, in `src/agentsync/setup_report.py` and
+P102, P115, P26, P13, P104, P20, P120, P37, P18, P38, P39, P107 and P108, in `src/agentsync/setup_report.py` and
 `tests/test_setup_report.py`, with the hunks of other lanes' files the items need (named below). Items that describe
 one defect are built once: P33 and P58; P103, P121 and P129; P19 and P127; P32 and P52. P123 and P101 are two
 defects built in one commit.
@@ -31031,6 +31031,19 @@ the phrases, so its flag-h cut needs no copy of the list (asserted). Test:
 that holds the word (a part, such as `their page`, as the line it is built into) and finds none cut, and keeps
 each phrase in one of them; and `test_a_page_hold_cuts_no_fixed_line_of_a_built_report` (a built report for a
 "Page" hold cuts none of its lines and stays public; with the value quoted it cuts that line and is private).
+
+**A two-letter hold value leaves the Redaction section whole, and says so** (P108). With a hold reason "IT", E72's
+cut turned every "it" above the Redaction section into `<value>`, while the section's own legend still read `the
+IT request's ... the IT-draft line`, the exact value, with nothing saying why. Cutting the section would unmake
+the text that explains the cut (`whole or one line of <value>`, `Read the report before sending <value>`) and
+protect nothing, as the report is already private only. The section stays uncut, and where a hold's value word
+stands in it the Private only line for a hold's value now ends `This Redaction section is not cut, so its own
+words stay as written.`, naming `(the IT request, the IT-draft line)` after `words` only for "it"; a value the
+section does not print (a "Page" hold) gets no such sentence. Its first sentence is unchanged, so the guide's quote
+of it stays exact. install.sh's legend has
+no IT template note, so its Private only line is unchanged. Test:
+`test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so` ("Page" gets no such sentence, "HR"
+no Private only line).
 
 ### 16.189 Round 27: the installer's NEXT for a state file that is not a file, and the shell report (2026-10-24, wave B13 round 27 lane RB)
 

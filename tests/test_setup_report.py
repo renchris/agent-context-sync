@@ -1822,6 +1822,38 @@ def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: di
             assert "never as a public issue: it would show that word." in text, section(text, "Redaction")
 
 
+def test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 27 P108: with a hold reason "IT", every "it" above the Redaction section became <value>,
+    while the section's own legend still read "the IT request's ... the IT-draft line", the exact value, with
+    nothing saying why. The section is not cut (cutting it would unmake the text that explains the cut): the
+    Private only line says that its words stay as written, naming the IT template's only for "it". "Page",
+    which the section does not print, gets no such sentence; "HR", no word the report prints, no line."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | Page said hold | -\n")
+    for reason, private in (("IT", True), ("HR", False), ("Page", True)):
+        cfg.write_text(
+            f'[governance]\nhold = true\nhold_reason = "{reason}"\nhold_owner = "Avery Quill"\n\n' + plain,
+            encoding="utf-8",
+        )
+        text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+        body, redaction = text.split("\n## Redaction\n", 1)
+        assert setup_report._TEMPLATE_NOTE in redaction, redaction
+        said = (
+            "it can be read back. This Redaction section is not cut, so its own words (the IT request, the "
+            "IT-draft line) stay as written."
+        )
+        assert (said in redaction) is (reason == "IT"), redaction
+        assert ("This Redaction section is not cut" in redaction) is (reason == "IT"), redaction
+        assert ("Private only: a hold's" in redaction) is private, redaction
+        if reason == "IT":
+            assert not re.search(r"(?i)(?<![a-z])it(?![a-z])", body), [
+                ln for ln in body.splitlines() if re.search(r"(?i)(?<![a-z])it(?![a-z])", ln)
+            ]
+
+
 def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -> None:
     """B13 round 26 E72: install.sh's two_letter_word holds setup_report._TWO_LETTER_WORDS, and a two-letter
     word either reader prints that the list lacks fails here (add it to both): report_words never sees one."""

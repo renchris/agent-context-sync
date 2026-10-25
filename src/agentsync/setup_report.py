@@ -14235,11 +14235,13 @@ def _redaction_section(
             "Private only: one of your folder, library or organization names is also a word this report "
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
+    held = ""
     if red.value_word_shown:  # B13 round 25 D80: a hold's one-word value, the same rule
-        word.append(
+        held = (
             "Private only: a hold's reason or owner is also a word this report prints, so where <value> "
             "stands in the report's own text it can be read back."
         )
+        word.append(held)
     if red.listing_unread:  # B13 round 8 J69
         word.append(
             "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and "
@@ -14257,7 +14259,7 @@ def _redaction_section(
             "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a "
             f"public issue: {why}. Nothing is sent automatically."
         )
-    return [
+    lines = [
         "",
         "## Redaction",
         "",
@@ -14273,6 +14275,16 @@ def _redaction_section(
         *word,
         send,
     ]
+    # B13 round 27 P108: this section is not cut, so a hold's word that stands in it reads as written; it says
+    # so where one does, with the IT template's words for "it" (a reason "IT"), never another value's
+    own = "\n".join(lines)
+    stands = {w for w in red._value_words if re.search(rf"(?i)(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", own)}
+    if held and stands:
+        said = " (the IT request, the IT-draft line)" if "it" in stands else ""
+        lines[lines.index(held)] = (
+            f"{held} This Redaction section is not cut, so its own words{said} stay as written."
+        )
+    return lines
 
 
 _EXCLUDE_LIST_RE = re.compile(r"\bexclude = \[.*?(?:\] in \[\[source\]\]|$)")
