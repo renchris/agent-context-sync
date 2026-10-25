@@ -512,6 +512,35 @@ def test_the_password_pattern_passes_over_placeholders_and_masks(
     assert [("generic-password" in f.message) for f in found] == ([True] if flagged else [])
 
 
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("URL=https://jdoe:NotARealPassw0rd@files.contoso.example/q.docx", True),
+        ("redis://:S3cretValue@cache.contoso.example:6379", True),
+        ("ftp://svc-backup:Spring26x@ftp.contoso.example/drop", True),
+        # placeholders, masks and URLs with no password in their userinfo (the verifier's list)
+        ("postgres://user:password@localhost:5432/db", False),
+        ("https://user:<password>@host.contoso.example", False),
+        ("https://user:****@host.contoso.example", False),
+        ("https://user:XXXX@host.contoso.example", False),
+        ("https://user:${DB_PASS}@host.contoso.example", False),
+        ("https://user:%s@host.contoso.example", False),
+        ("git+ssh://git@github.com/contoso/x.git", False),
+        ("https://host.contoso.example:8443/p?u=a@b.example", False),
+        ("ssh://git@host.contoso.example:22/x", False),
+    ],
+)
+def test_the_url_credential_rule_reads_a_password_in_a_urls_userinfo(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """B13 round 28 I40: a URL's ``user:password@`` is a credential (gitleaks and ``generic-password`` miss
+    it); a placeholder, a mask or a URL with no password is not."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    write(repo, "mirror/src/howto.md", page(f"# Links\n\n{line}\n"))
+    found = lints.lint_secrets(repo, ["mirror/src/howto.md"])
+    assert [("url-credential" in f.message) for f in found] == ([True] if flagged else [])
+
+
 def test_a_jpeg_sidecar_is_not_read_by_the_secret_scan_or_the_token_lint(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

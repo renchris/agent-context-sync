@@ -77,6 +77,13 @@ _STATUS = (
     r"|disabled|enabled|changed|temporary|default|hidden|redacted)[,;.!?)\]]*(?!\S)"
 )
 """A lone status word where the value would be (``Password: required``, ``pwd: unknown``): no credential."""
+_URL_PLACEHOLDER = (
+    rf"(?:{_HINT}|[*x•.-]+@|\$\{{[^}}]*\}}|%[a-z(]"
+    r"|(?:password|passwd|pass|pwd|secret|token|redacted)@)"
+)
+"""Where a URL's password would be, a placeholder: a bracketed hint (``<password>``), a mask (``****@``, which
+``_MASK`` misses as ``@`` follows it), a ``${VAR}``, a ``%s`` or one placeholder word
+(``postgres://user:password@localhost``)."""
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
@@ -90,6 +97,13 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             rf"(?i:(?:{_HINT}\s*)?(?!{_HINT})(?!{_MASK})(?!{_STATUS}))\S{{6,}}"
         ),
     ),
+    (
+        "url-credential",
+        re.compile(
+            # a URL's userinfo with a password; the user may be empty (redis://:S3cret@host)
+            rf"(?i)\b[a-z][a-z0-9+.-]*://[^\s/?#@:]*:(?!{_URL_PLACEHOLDER})[^\s/?#@]{{3,}}@"
+        ),
+    ),
     ("slack-token", re.compile(r"\bxox[abprs]-[0-9A-Za-z-]{10,}\b")),
     ("github-token", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,}\b")),
 )
@@ -99,7 +113,10 @@ a bracketed hint (``_HINT``), a masked value (``_MASK``), prose (``_PROSE``) and
 (``_STATUS``); a bracketed value that is neither (``(Welcome123)``, ``<S3cr3t!x>``) is a hit, and so is a
 value after a hint (``(min 8 chars) Welcome123``). No digit or symbol is required: gitleaks misses
 ``changeme`` and ``password=Contoso``. Known miss (B13 round 4 Q44): a letters-only value followed by more
-words reads as prose (``Password: changeme until first login``); gitleaks may catch it."""
+words reads as prose (``Password: changeme until first login``); gitleaks may catch it.  ``url-credential``
+(B13 round 28 I40) reads a password in a URL's userinfo (``https://jdoe:Spring26x@files.contoso.example``,
+a ``.url`` shortcut's target), which gitleaks 8.30.1 and ``generic-password`` miss, and passes over
+``_URL_PLACEHOLDER``."""
 
 _TEAMS_JOIN_URL = re.compile(
     r"(?i)(?<![^\s\"'<>(\[])https?://"

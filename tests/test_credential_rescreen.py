@@ -422,6 +422,45 @@ def test_a_new_file_with_a_password_gitleaks_misses_is_a_credential_stub(
     assert not committed_blobs_containing(config.docs_repo, b"Welcome123")
 
 
+SHORTCUT = "[InternetShortcut]\nURL=https://jdoe:NotARealPassw0rd@files.contoso.example/q.docx\n"
+
+
+def test_a_url_shortcut_with_a_password_is_a_credential_stub(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I40: a ``.url`` whose target carries ``user:password@`` is withheld as a credential, on a
+    Mac whose gitleaks misses it too; the password is in no committed file."""
+    config, src = make_env(tmp_path)
+    _blind_gitleaks(monkeypatch, tmp_path)
+    (src / "q.url").write_text(SHORTCUT, encoding="utf-8")
+    assert run(config).exit_code == 0
+    assert _state(config, "q.url") == (RowState.QUARANTINED, "contains a credential")
+    assert not committed_blobs_containing(config.docs_repo, b"NotARealPassw0rd")
+    assert not [
+        p for p in config.docs_repo.rglob("*") if p.is_file() and b"NotARealPassw0rd" in p.read_bytes()
+    ]
+
+
+def test_a_url_shortcut_published_before_the_url_credential_rule_becomes_a_stub(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I40: the new rule moves the rules digest, so a page published before it is read again and
+    stubbed, with its purge queued, and no SECRET_RULES_VERSION bump."""
+    config, src = make_env(tmp_path)
+    (src / "q.url").write_text(SHORTCUT, encoding="utf-8")
+    with monkeypatch.context() as mp:
+        mp.setattr(
+            lints, "SECRET_PATTERNS", tuple(r for r in lints.SECRET_PATTERNS if r[0] != "url-credential")
+        )
+        run(config)
+    assert _state(config, "q.url") == (RowState.LIVE, None)
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert page_fm(config, "mirror/src/q.url.md")["reason"] == "contains a credential"
+    assert "NotARealPassw0rd" not in git(config.docs_repo, "show", "HEAD:mirror/src/q.url.md")
+    _purged_with_alarm(config, again, "q.url")
+
+
 def test_a_copy_of_a_credential_stub_under_a_new_name_is_a_stub_too(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
