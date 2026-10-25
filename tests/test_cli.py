@@ -8121,6 +8121,72 @@ def test_a_manifest_restored_from_an_older_copy_continues_the_run_numbers_the_re
     assert f"\n## {today} · run 4 · " in month.read_text(encoding="utf-8")
 
 
+def _no_change_runs(initialised: Config, cfg: str) -> int:
+    """Two syncs that change nothing (no commit, no CHANGELOG heading) after a committing one; the run
+    STATE.md then names, above every run the repo's commits and CHANGELOG record."""
+    for _ in range(2):
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state = initialised.layout.state_md.read_text(encoding="utf-8")
+    (last,) = [int(n) for n in re.findall(r"^run: (\d+) · mode: poll · exit: 0 · commit: none", state, re.M)]
+    trailers = subprocess.run(
+        ["git", "-C", str(initialised.docs_repo), "log", "--format=%(trailers:key=Agentsync-Run,valueonly)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert max(int(t) for t in trailers) == last - 2, (trailers, last)
+    return last
+
+
+def _numbered(initialised: Config, cfg: str, capsys: pytest.CaptureFixture[str], run: int) -> None:
+    """The dry run previews ``run``, the sync takes it, and its trailer and CHANGELOG line say it once."""
+    capsys.readouterr()
+    assert cli.main(["sync", "--mode", "dry_run", "--config", cfg]) == cli.EXIT_OK
+    assert f"run {run} · " in capsys.readouterr().out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert f"run {run} · mode " in capsys.readouterr().out
+    trailers = subprocess.run(
+        ["git", "-C", str(initialised.docs_repo), "log", "--format=%(trailers:key=Agentsync-Run,valueonly)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert trailers[0] == str(run) and len(trailers) == len(set(trailers)), trailers
+    today = datetime.now(UTC).date().isoformat()
+    assert f"- {today} · run {run} · " in initialised.layout.changelog_md.read_text(encoding="utf-8")
+
+
+def test_a_new_start_after_runs_that_changed_nothing_continues_after_the_run_state_md_records(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I22: runs that change nothing commit nothing and write no CHANGELOG heading, and only
+    STATE.md's ``run:`` line records them; a new start (manifest gone, heartbeat.json aside) numbered its run
+    after the last committing run, repeating their numbers. It continues after STATE.md's run."""
+    cfg = _synced(initialised)
+    last = _no_change_runs(initialised, cfg)
+    _manifest_gone(initialised, heartbeat=False)
+    (local_source_dir / "contoso-new-start.txt").write_text("Contoso after the new start\n", encoding="utf-8")
+    _numbered(initialised, cfg, capsys, last + 1)
+
+
+def test_a_manifest_restored_from_before_runs_that_changed_nothing_continues_after_them(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I22: a copy taken after the committing run, put back after two runs that changed nothing,
+    continues after STATE.md's run, as P137's restore does after the trailers."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    copy = db.with_name("manifest.copy.sqlite")
+    with sqlite3.connect(db) as src, sqlite3.connect(copy) as dst:
+        src.backup(dst)
+    last = _no_change_runs(initialised, cfg)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    copy.rename(db)
+    (local_source_dir / "contoso-restored.txt").write_text("Contoso after the restore\n", encoding="utf-8")
+    _numbered(initialised, cfg, capsys, last + 1)
+
+
 def test_a_new_start_the_background_job_ran_is_said_by_the_next_foreground_sync_once(
     initialised: Config,
     local_source_dir: Path,

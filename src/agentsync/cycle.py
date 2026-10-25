@@ -917,13 +917,15 @@ def _highest_recorded_run(config: Config) -> int:
     """The highest run number the docs repo records: any commit's ``Agentsync-Run`` trailer (a curated commit
     at HEAD has none, and a new start before this fix restarted the numbers, so every commit is read, not
     HEAD's) and any ``## <date> · run N ·`` heading in CHANGELOG/*.md; 0 when it records none. A manifest that
-    starts with no runs over these continues after it (B13 round 26 E9)."""
+    starts with no runs over these continues after it (B13 round 26 E9). ``_sync/STATE.md``'s ``run:`` line is
+    read too: a run that changed nothing commits nothing and writes no heading, and only that page records it
+    (:func:`_state_md_run`, B13 round 28 I22)."""
     repo = config.docs_repo
-    high = 0
+    high = _state_md_run(config)
     try:
         if gitops.head_sha(repo) is not None:
             out = gitops.run_git(repo, "log", "--format=%(trailers:key=Agentsync-Run,valueonly)").stdout
-            high = max((int(v) for v in out.split() if v.isdigit()), default=0)
+            high = max([high, *(int(v) for v in out.split() if v.isdigit())])
     except AgentSyncError:
         pass
     folder = config.layout.changelog_dir
@@ -940,19 +942,35 @@ def _highest_recorded_run(config: Config) -> int:
 
 
 _INDEX_RUN = re.compile(r"^- \d{4}-\d{2}-\d{2} · run (\d+) · ", re.MULTILINE)
+_STATE_RUN = re.compile(r"^run: (\d+) · ", re.MULTILINE)
+
+
+def _state_md_run(config: Config) -> int:
+    """The run ``_sync/STATE.md``'s ``run:`` line names (every real run writes it, one that committed nothing
+    too); 0 when the page is missing, a link, unreadable or has no such line (B13 round 28 I22)."""
+    path = config.layout.state_md
+    try:
+        if path.is_symlink():
+            return 0
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    m = _STATE_RUN.search(text)
+    return int(m.group(1)) if m else 0
 
 
 def _recorded_run_hint(config: Config) -> int:
-    """The larger of two cheap reads of the run the docs repo last recorded: the newest ``Agentsync-Run``
-    trailer (:func:`_newest_run_trailer`) and the run on CHANGELOG.md's first index line; 0 when neither has
-    one. A manifest whose last run is below it was restored from an older copy, and continues
+    """The largest of three cheap reads of the run the docs repo last recorded: the newest ``Agentsync-Run``
+    trailer (:func:`_newest_run_trailer`), the run on CHANGELOG.md's first index line and STATE.md's ``run:``
+    line (:func:`_state_md_run`: a run that changed nothing records only that, B13 round 28 I22); 0 when none
+    has one. A manifest whose last run is below it was restored from an older copy, and continues
     after :func:`_highest_recorded_run`, never reusing a number the repo records (B13 round 27 P137)."""
     try:
         text = config.layout.changelog_md.read_text(encoding="utf-8", errors="replace")
     except OSError:
         text = ""
     m = _INDEX_RUN.search(text)
-    return max(_newest_run_trailer(config.docs_repo), int(m.group(1)) if m else 0)
+    return max(_newest_run_trailer(config.docs_repo), int(m.group(1)) if m else 0, _state_md_run(config))
 
 
 def _newest_run_trailer(repo: Path) -> int:
