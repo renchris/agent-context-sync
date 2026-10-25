@@ -3746,7 +3746,8 @@ class _Cycle:
         ``sentinel`` it did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
-        other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
+        # in the walk's own order (P128), never sorted again
+        other = [d for d in stats.unknown_dirs if d not in found and d != "."] if stats is not None else []
         why = stats.unknown_why if stats is not None else ()
         kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY}
         missing_state = ""

@@ -511,6 +511,33 @@ def test_six_empty_folders_on_one_wait_are_not_said_to_be_all_named(
     )
 
 
+def test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 27 P128: the walk sorted its empty folders by code point, so the alarm named 'Empty
+    Subfolder 10' to '13' then '8', and held '9' back behind "+1 more". The walk sorts them once, Finder's
+    way (a run of digits by its number, case folded), so the alarm, the stored list and the exclude line's
+    first five all name 8 to 12, and agree that 13 is the one held back."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    names = [f"Empty Subfolder {n}" for n in range(8, 14)]
+    for name in names:
+        (root / name).mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    (alarm,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("    alarm: ")]
+    shown = ", ".join(repr(n) for n in names[:5])
+    assert f"{shown} (+1 more; `{BIN} sync -v` logs each one)" in alarm, alarm
+    with Manifest(config.state_paths.db) as m:
+        stored = json.loads(m.get_meta("empty_cloud_dirs:work") or "[]")
+    assert stored == names, stored
+    (src,) = [s for s in config.sources if s.id == "work"]
+    advice = arm_local.exclude_advice(src, stored, "~/agent-context/sources.toml")
+    assert all(f'"/{n}/"' in advice for n in names[:5]) and names[5] not in advice, advice
+    assert sorted(["b 2", "B 10", "a 10", "A 9"], key=arm_local.natural_key) == ["A 9", "a 10", "b 2", "B 10"]
+
+
 def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

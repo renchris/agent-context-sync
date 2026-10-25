@@ -31033,6 +31033,17 @@ written to keep. The `_plain` docstring says so, and two cases pin the leftover,
 it changes it: `test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (`an unquoted URL whose path
 holds a Git prefix ends at it`, and its https form). Only a `file://` or a quoted URL holding one is a path (E50).
 
+**The empty folders keep one Finder-like order (P128; `agentsync.arm_local`, `agentsync.cycle`).** The walk sorted
+its empty cloud folders by code point, so the alarm named `'Empty Subfolder 10'` to `'13'` then `'8'`, and held
+`'9'` back behind "+1 more" (measured with folders 8 to 13). Not the finder's natural sort of the alarm's display
+alone: the same tuple is stored as `empty_cloud_dirs:<id>`, which the WAITING line and `exclude_advice`'s first
+five read, so the alarm would hold back 13 while the exclude line held back 9. The walk now sorts
+`empty_cloud_dirs`, `unknown_dirs` and `unknown_why` once by `arm_local.natural_key` (each run of digits by its
+number, the rest case-folded, the raw path last, so the order is total), and `Cycle._note_empty_dirs` stores the
+other unlisted folders in the walk's order instead of sorting them again; the alarm, the stored list, the exclude
+line and status all name 8 to 12 and agree that 13 is held back. Test:
+`test_loop.py::test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line`.
+
 ### 16.192 Round 27: ship-land's early read of trunk's CI, deploy docs and CONTRACTS records (2026-10-24, wave B13 round 27 lane D)
 
 Lane D's round 27 items (`docs/plans/bring-back-ocr.md`, "B13 round 27"; specs `round27/items/P<n>.md`, the

@@ -814,13 +814,24 @@ def walk(
         dataless=sum(1 for i in items if i.dataless),
         excluded=state.excluded,
         symlinks_skipped=state.symlinks,
-        unknown_dirs=tuple(sorted(state.unknown)),
+        unknown_dirs=tuple(sorted(state.unknown, key=natural_key)),
         sentinel_present=None,
-        empty_cloud_dirs=tuple(sorted(state.empty)),
+        empty_cloud_dirs=tuple(sorted(state.empty, key=natural_key)),
         empty_cloud_root=state.empty_root,
-        unknown_why=tuple(UnknownDir(d, state.kinds[d], state.unknown[d]) for d in sorted(state.unknown)),
+        unknown_why=tuple(
+            UnknownDir(d, state.kinds[d], state.unknown[d]) for d in sorted(state.unknown, key=natural_key)
+        ),
     )
     return items, stats
+
+
+def natural_key(path: str) -> tuple[tuple[tuple[int, int, str], ...], str]:
+    """A Finder-like order for folder paths: each run of digits by its number, the rest case-folded, the
+    raw path last so the order is total. The walk sorts its unknown and empty folders by it once, so the
+    alarm's first five and its "+N more", the stored list, the exclude line and status all agree, as Finder
+    lists them ('... 8', '... 9', '... 10'), never 10 before 8 (B13 round 27 P128)."""
+    parts = re.split(r"(\d+)", path)
+    return tuple((0, int(t), "") if i % 2 else (1, 0, t.casefold()) for i, t in enumerate(parts)), path
 
 
 _EXCLUDE_SHOWN = 5  # folders named in one ready-to-paste exclude line; the rest are a count
