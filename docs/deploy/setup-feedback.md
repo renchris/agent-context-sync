@@ -823,8 +823,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   does, not by its owner), except holds.json, the purge queue or suppressed.json when another account owns it in a
   sticky governance/ that is not this account's, where no rename replaces it: that one is `state-file-owner`.
   `<file>` names the first one it stopped on, in fixed words (`agentsync's lock file`, `agentsync's heartbeat
-  file`, `agentsync's governance folder`, or `agentsync's governance file holds.json`, `purge-queue.json`,
-  `suppressed.json` or `audit.jsonl`; round 24 B13: it named the class):
+  file`, `agentsync's governance folder`, or `agentsync's hold list`, `purge queue`, `suppression list` or
+  `audit trail`, the governance files in doctor's words since B13 round 28 ruling 22; round 24 B13: it named the
+  class):
   `state-file-owner`, `; step 2 stops at its status step on <file>, which another account owns, so this one cannot
   use it as its step needs (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
   ~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account cannot

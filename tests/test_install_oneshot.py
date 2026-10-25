@@ -8774,13 +8774,15 @@ FILE_NOUNS = {
     "lock": "agentsync's lock file",
     "heartbeat": "agentsync's heartbeat file",
     "governance": "agentsync's governance folder",
-    "holds": "agentsync's governance file holds.json",
-    "queue": "agentsync's governance file purge-queue.json",
-    "suppressed": "agentsync's governance file suppressed.json",
-    "audit": "agentsync's governance file audit.jsonl",
+    "holds": "agentsync's hold list",
+    "queue": "agentsync's purge queue",
+    "suppressed": "agentsync's suppression list",
+    "audit": "agentsync's audit trail",
 }
 """The file step 1's status-step tail names, in fixed words (round 24 B13: it named a class of files, "the
-lock, the heartbeat, or the governance folder or a file in it", which the agent could not name)."""
+lock, the heartbeat, or the governance folder or a file in it", which the agent could not name); a governance
+file in doctor's words (B13 round 28 ruling 22: "agentsync's governance file holds.json" sat beside "the hold
+list" in one run)."""
 
 FILE_STATUS = (
     "~/.local/bin/agentsync status prints it, and any other of the files it checks there that this account "
@@ -10919,6 +10921,25 @@ def test_a_folder_where_the_shm_belongs_is_the_persons_and_moving_it_aside_ends_
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+def test_the_installers_governance_nouns_are_doctors_roles() -> None:
+    """B13 round 28 ruling 22 (I3, I15, I34, I44, I57, I86, I100): step 1's tails and step 2's NEXT called
+    holds.json "agentsync's governance file holds.json" while the error line above, status, doctor and the
+    report call it the hold list. Both of install.sh's tables (misplaced_words and step 1's role-* nouns) name
+    each governance file in doctor's words, governance.GOVERNANCE_ROLES with "agentsync's" for "the", so they
+    cannot drift from doctor, or from each other, again."""
+    from agentsync.governance import GOVERNANCE_ROLES  # noqa: PLC0415
+
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    roles = {"holds": "holds.json", "queue": "purge-queue.json", "suppressed": "suppressed.json"}
+    roles["audit"] = "audit.jsonl"
+    for role, name in roles.items():
+        noun = "agentsync's " + GOVERNANCE_ROLES[name].removeprefix("the ")
+        assert FILE_NOUNS[role] == noun, role
+        assert f'\t{role}) MISPLACED_NOUN="{noun}" MISPLACED_CHECK={MISPLACED_CHECKS[role]} ;;\n' in text, role
+        assert f'\t\trole-{role}) fnoun="{noun}" ;;\n' in text, role
+    assert "agentsync's governance file " not in text
+
+
 def misplaced_next(role: str, rerun: str) -> str:
     """Step 2's NEXT for a lock, heartbeat or governance file that is not a regular file where one belongs,
     which init stops on (B13 round 27 ruling 16: P22, P124, P57, P110: it was fail's generic "fix the error
@@ -10983,6 +11004,10 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
         f"{setup_report._MISPLACED_ROLES[MISPLACED_CHECKS[role]]}, "
         f"which is {kind}, not a file: the person's to fix)"
     ) in report, [ln for ln in report.splitlines() if "outcome" in ln]
+    # round 28 ruling 22 (I57): one run names the file one way, the NEXT as the report's outcome
+    said = last_line(cp).removeprefix("NEXT: ").split(" is a folder or something else", 1)[0]
+    outcome = re.search(r"at its config step on (.+?), which is ", report)
+    assert outcome is not None and outcome.group(1) == said, (said, outcome)
     beta = folder.parent / "Beta"
     beta.mkdir()
     added = install_sh(env, str(wheel), "--source-local", str(beta))  # add-source opens past it: status stops

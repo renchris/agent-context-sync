@@ -936,16 +936,19 @@ STOPS_BOTH="at its config step (at its status step when it adds a folder with --
 # The words for a lock, heartbeat or governance file that is not a regular file where one belongs, by the role
 # step 1's probe and step 2's state_misplaced read off the installed build's own doctor.state_not_a_file (B13
 # round 27 ruling 16): the file, in the fixed words step 1's status-step tails use (round 24 B13), and the
-# status check that FAILs it. Fixed words only, never the check's detail, which quotes a path. 1 for a role
-# it does not know.
+# status check that FAILs it. Fixed words only, never the check's detail, which quotes a path. A governance
+# file is named in doctor's words (governance.GOVERNANCE_ROLES: the hold list, the purge queue, the suppression
+# list, the audit trail), as its error line, status and the report name it (B13 round 28 ruling 22: I3, I15,
+# I34, I44, I57, I86, I100: holds.json had two names in one run, the old one beside "the hold list"). 1
+# for a role it does not know.
 misplaced_words() { # ROLE: sets MISPLACED_NOUN and MISPLACED_CHECK
 	case "$1" in
 	lock) MISPLACED_NOUN="agentsync's lock file" MISPLACED_CHECK=lock ;;
 	heartbeat) MISPLACED_NOUN="agentsync's heartbeat file" MISPLACED_CHECK=heartbeat ;;
-	holds) MISPLACED_NOUN="agentsync's governance file holds.json" MISPLACED_CHECK=governance.hold ;;
-	queue) MISPLACED_NOUN="agentsync's governance file purge-queue.json" MISPLACED_CHECK=governance.purge_queue ;;
-	suppressed) MISPLACED_NOUN="agentsync's governance file suppressed.json" MISPLACED_CHECK=governance.suppressed ;;
-	audit) MISPLACED_NOUN="agentsync's governance file audit.jsonl" MISPLACED_CHECK=governance.audit ;;
+	holds) MISPLACED_NOUN="agentsync's hold list" MISPLACED_CHECK=governance.hold ;;
+	queue) MISPLACED_NOUN="agentsync's purge queue" MISPLACED_CHECK=governance.purge_queue ;;
+	suppressed) MISPLACED_NOUN="agentsync's suppression list" MISPLACED_CHECK=governance.suppressed ;;
+	audit) MISPLACED_NOUN="agentsync's audit trail" MISPLACED_CHECK=governance.audit ;;
 	*) return 1 ;;
 	esac
 }
@@ -7571,15 +7574,16 @@ list_folders() {
 		# installs (round 23 A29), and keeping or starting over is the person's (ruling 7: B3, B24, B33, B83).
 		# The file the probe stopped on, in fixed words: "a file or folder agentsync's status checks" could not
 		# be named when the prompt asks the agent to say what the tail names (round 24 B13). The probe stops at
-		# the first, so the status line's clause covers the others.
+		# the first, so the status line's clause covers the others. A governance file in doctor's words, as
+		# misplaced_words names it (B13 round 28 ruling 22).
 		case "$crole" in
 		role-lock) fnoun="agentsync's lock file" ;;
 		role-heartbeat) fnoun="agentsync's heartbeat file" ;;
 		role-governance) fnoun="agentsync's governance folder" ;;
-		role-holds) fnoun="agentsync's governance file holds.json" ;;
-		role-queue) fnoun="agentsync's governance file purge-queue.json" ;;
-		role-suppressed) fnoun="agentsync's governance file suppressed.json" ;;
-		role-audit) fnoun="agentsync's governance file audit.jsonl" ;;
+		role-holds) fnoun="agentsync's hold list" ;;
+		role-queue) fnoun="agentsync's purge queue" ;;
+		role-suppressed) fnoun="agentsync's suppression list" ;;
+		role-audit) fnoun="agentsync's audit trail" ;;
 		*) fnoun="a file or folder agentsync's status checks in its state folder (the lock, the heartbeat, or the governance folder or a file in it)" ;;
 		esac
 		stail=""

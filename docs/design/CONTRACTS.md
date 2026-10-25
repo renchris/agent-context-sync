@@ -29172,6 +29172,10 @@ what a hold does; lane RB's install.sh follows), and only holds.json, the purge 
 account owns in a sticky governance/ that is not this account's is `state-file-owner` though usable;
 docs/deploy/setup-feedback.md says so.
 
+Amended 2026-10-25, §16.194 I3: the role line names a governance file in doctor's words (`agentsync's hold list`,
+`agentsync's purge queue`, `agentsync's suppression list`, `agentsync's audit trail`), as its error line, status and
+the report do, no longer `agentsync's governance file holds.json` and so on.
+
 **A refusal says no change of its mode fixes it** (B5, B15; amends §16.154 Y24 and §16.166 A75). The person's NEXT
 and the `state-refused`, `state-side-refused` and `state-file-refused` tails said `and a chmod of it does not fix
 that`, read as false beside the error line above it: under a folder above the state folder that refuses a search,
@@ -31674,6 +31678,19 @@ folder is the state folder, so its words are unchanged. Tests: the `PL-wal` and 
 `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open` and
 `test_a_linked_manifests_target_this_account_cannot_open_is_the_agents_chmod_at_steps_1_and_2` (the chmod step 2
 names, run, ends it).
+
+**One name for each governance file** (I3, I15, I34, I44, I57, I86, I100, one build; ruling 22; amends §16.173 B13).
+Step 1's tails and step 2's NEXT called holds.json `agentsync's governance file holds.json` (and so the purge queue,
+suppressed.json and audit.jsonl), while the error line just above, status, doctor and the report call it the hold
+list. `misplaced_words` and step 1's `role-*` nouns now name each in doctor's words, `"agentsync's " +
+governance.GOVERNANCE_ROLES[name]` without its leading "the": `agentsync's hold list`, `agentsync's purge queue`,
+`agentsync's suppression list`, `agentsync's audit trail`, one noun for one file in every tail (owner, access,
+refused, not a file) and the NEXT. Never the report's class noun `a governance file in the state folder`, which round
+24 B13 removed because the agent could not name the file; the stop log's generic `file=governance` noun stays, since
+that line carries no file name. docs/deploy/setup-feedback.md says so. Tests:
+`test_the_installers_governance_nouns_are_doctors_roles` (both tables against `GOVERNANCE_ROLES`), the `holds-folder`
+case of `test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_not_a_file` (the NEXT's noun
+is the report outcome's noun in one run) and the `FILE_NOUNS` pins.
 
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
