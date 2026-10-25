@@ -31704,3 +31704,10 @@ with
 its deletion-notice part, `by the background sync` and `install.out's last sync line` when the line is borrowed.
 The row's list of clauses gives it there; "up to five parts" stays, as the verifier found the clause is no part of
 the converted clause and carries its own tag. Test: `test_the_guides_summary_sync_row_gives_the_new_starts_clause`.
+
+**The guide's quote for several came-back stops gives three or more** (I84; `docs/deploy/setup-feedback.md`). It
+quoted `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for the earlier, ...` for "more
+than one", and `_again_reason` says `the later ones` past two. The guide keeps the pinned two-stop span word for
+word, says "for two", and gives `the later ones after` for three or more: the verifier's fix, as cutting the span
+to name both would turn the P60 pin red and lose the words a reader matches. Test:
+`test_the_guide_gives_round_26s_new_installer_and_report_outputs`, extended with three stops.

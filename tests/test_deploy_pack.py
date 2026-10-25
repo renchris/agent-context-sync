@@ -6415,7 +6415,8 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
     folder a sync can write, and E67's reason for an agent's stop that came back after the agent's chmod (one,
     several, and not measured). Each is read from the code that prints it, with a count or a file put back as
     the guide's N and <what>. E3's report outcome is left out on purpose: the guide gives no step 2 state
-    outcome."""
+    outcome. B13 round 28 I84: the guide's several-stops quote held for two only; three or more say "the
+    later ones"."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6438,6 +6439,10 @@ def test_the_guide_gives_round_26s_new_installer_and_report_outputs() -> None:
     two = setup_report._again_reason([lock, lock], True).replace("2 syncs", "N syncs")
     head = two.replace(lock.what, "<what>").split(": ", 1)[0]
     assert head.startswith("N syncs at step 3 exited 1 on <what>, the later") and f"`{head}: ...`" in page
+    # B13 round 28 I84: three or more say "the later ones", as `_again_reason` does past two
+    three = setup_report._again_reason([lock, lock, lock], True)
+    assert "the later ones after the agent's chmod for the earlier" in three
+    assert "for three or more `the later ones after` in place of `the later after`" in page
     unmeasured = setup_report._again_reason([lock], False)
     clause = "whether a sync ended 0 after it was not measured"
     assert clause in unmeasured and f"`{clause}` when the runs table cannot be read; B13 round 26 E67" in page

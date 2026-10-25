@@ -369,8 +369,9 @@ install.log (a `--list-folders` run is not an install run):
   ended 0 after it was not measured` when the runs table cannot be read). A stop the agent fixes on a file a stop
   came back on after the agent's chmod reads `a sync at step 3 exited 1 on agentsync's lock file and came back after
   the agent's chmod, and no sync ended 0 after it by this report: the fix is no longer the agent's chmod, as v33 sends
-  it to the person` (for more than one, `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for
-  the earlier, and no sync ended 0 after them by this report: ...`; `whether a sync ended 0 after it was not
+  it to the person` (for two, `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for
+  the earlier, and no sync ended 0 after them by this report: ...`, and for three or more `the later ones after` in
+  place of `the later after`; `whether a sync ended 0 after it was not
   measured` when the runs table cannot be read; B13 round 26 E67). Neither kind is then in the
   Agent friction list, which holds what does not change the outcome. A recorded stop with neither a later
   sync that ended ok nor a claimed line is an Items line and no reason of its own, unless it is a stop whose
