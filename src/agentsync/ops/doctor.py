@@ -51,7 +51,15 @@ from agentsync.errors import AgentSyncError, ConfigError, ConversionError, Manif
 from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
-from agentsync.manifest import LOST_MANIFEST, LOST_MANIFEST_SHORT, Manifest, lost_words, manifest_lost
+from agentsync.manifest import (
+    LOST_MANIFEST,
+    LOST_MANIFEST_EMPTY_UNREAD,
+    LOST_MANIFEST_SHORT,
+    LOST_MANIFEST_UNREAD,
+    Manifest,
+    lost_words,
+    manifest_lost,
+)
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import (
@@ -2166,6 +2174,18 @@ starts a new one over that history, so moving heartbeat.json aside is the person
 converting every file again and dropping the empty-folder alarm and the deletion hold)."""
 
 
+LOST_UNREAD = (LOST_MANIFEST_UNREAD, LOST_MANIFEST_EMPTY_UNREAD)
+"""The lost words of a manifest beside a heartbeat.json that cannot be read (P111; I92's twin)."""
+
+HEARTBEAT_LOST_TAIL = (
+    "no pass runs until the person decides on the lost manifest beside it (the state_dir.manifest [FAIL] "
+    "line says how), and either of its moves replaces this file"
+)
+"""The heartbeat warn's tail beside a lost manifest it cannot rule earlier passes out for, never "the next
+completed pass rewrites it": every sync refuses on the lost manifest until the person restores it or moves
+heartbeat.json aside (B13 round 28 I62, I32)."""
+
+
 def lost_fix(lost: str) -> str:
     """The person's fix of a lost manifest by its words (``manifest.lost_words``): :data:`LOST_MANIFEST_FIX`,
     or for a manifest that is there but too short (``LOST_MANIFEST_SHORT``) the damaged manifest's
@@ -3475,6 +3495,10 @@ def _check_heartbeat(
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
     except ValueError as exc:
         folder = heartbeat_not_a_file(config)  # no pass replaces a folder: never the warn's promise (E39)
+        if folder is None and lost_words(expand(config.state_paths.db)) in LOST_UNREAD:
+            # this heartbeat is why the manifest reads lost: no pass runs until the person decides, so never
+            # the promise of one; no fix of its own, so NEXT stays on the manifest's (B13 round 28 I62, I32)
+            return [_bad("heartbeat", f"{exc}; {HEARTBEAT_LOST_TAIL}", Severity.WARN)]
         return [folder or _bad("heartbeat", f"{exc}; the next completed pass rewrites it", Severity.WARN)]
     except PermissionError as exc:  # its mode or its owner, by its cause (B13 round 21 Y43)
         # a 0000 folder refuses the open before any kind is read: judged by its lstat, the person's move

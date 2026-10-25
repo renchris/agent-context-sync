@@ -8948,14 +8948,18 @@ def test_the_reports_status_says_why_a_queued_purge_is_kept_where_doctor_prints_
     assert block.count(governance.unresolved_purges(1)) == 1, block
 
 
-@pytest.mark.parametrize("what", ["damaged JSON", "a fifo", "a folder"])
+@pytest.mark.parametrize(
+    "what", ["damaged JSON", "a fifo", "a folder", "a link through a file", "a symlink loop"]
+)
 def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
     initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, what: str
 ) -> None:
     """B13 round 27 P111 (ruling 17): with manifest.sqlite gone and heartbeat.json damaged or a fifo, the
     heartbeat read as no record, so the sync started a new manifest over the mirror with no word to the
     person. It is still lost, in its own words and the lost manifest's fix; moving heartbeat.json aside, as
-    the fix says, starts the new manifest."""
+    the fix says, starts the new manifest. B13 round 28 I62, I32 (ruling 21): the heartbeat's warn beside it
+    never promises "the next completed pass rewrites it", since no pass runs until the person decides; it
+    names the state_dir.manifest line."""
     cfg = _synced(initialised)
     sp = initialised.state_paths
     db, hb = expand(sp.db), expand(sp.heartbeat)
@@ -8963,6 +8967,13 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
         db.with_name(db.name + name).unlink(missing_ok=True)
     if what == "damaged JSON":
         hb.write_bytes(hb.read_bytes()[:20] + b"\x00garbage")
+    elif what == "a link through a file":
+        hb.unlink()
+        hb.symlink_to(tmp_path / "afile" / "heartbeat.json")
+        (tmp_path / "afile").write_text("a file\n", encoding="utf-8")
+    elif what == "a symlink loop":
+        hb.unlink()
+        hb.symlink_to(hb)
     else:
         hb.unlink()
         _make_not_a_file(hb, what)
@@ -8972,6 +8983,10 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_is_still_lost(
     assert rc == cli.EXIT_FAILED and f"{db} {manifest_mod.LOST_MANIFEST_UNREAD}" in failed, failed
     assert doctor.LOST_MANIFEST_FIX in failed, failed
     assert not [ln for ln in out if "the next sync starts a new one" in ln], out
+    beats = [ln for ln in out if ln.startswith("[warn] heartbeat ")]
+    assert not [ln for ln in beats if ln.endswith("rewrites it")], beats
+    if what != "a folder":  # a folder keeps its own FAIL, "no pass can write over it" (E39)
+        assert [ln for ln in beats if doctor.HEARTBEAT_LOST_TAIL in ln], out
     capsys.readouterr()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     err = capsys.readouterr().err
@@ -9038,6 +9053,44 @@ def test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keep
     _rc, out = _status(str(initialised.config_path), capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
     assert "file is not a database" in failed, failed
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("passed", [True, False])
+def test_a_heartbeat_shut_by_its_own_mode_beside_a_lost_manifest_takes_the_agents_chmod_first(
+    initialised: Config, capsys: pytest.CaptureFixture[str], passed: bool
+) -> None:
+    """B13 round 28 I42 (ruling 21): with the manifest moved aside and heartbeat.json at 0000, status's NEXT
+    gave the lost manifest's decision to the person, blind, and no NEXT handed the agent the heartbeat's
+    `chmod 600`, which settles whether earlier passes exist. The chmod leads, the agent's; after it the
+    manifest reads "records earlier passes" (the person's), or, with no pass recorded, a first start."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db, hb = expand(sp.db), expand(sp.heartbeat)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    if not passed:
+        hb.write_text('{"source": {"run_id": 0}}\n', encoding="utf-8")
+    hb.chmod(0o000)
+    try:
+        capsys.readouterr()
+        _rc, out = _status(cfg, capsys)
+        assert out[0] == "NEXT: " + cli._fail_step(
+            next(r for r in doctor.run_checks(initialised) if r.name == "heartbeat" and not r.ok)
+        ), out
+        assert not doctor.is_persons_fix(f"chmod 600 {doctor._shell_path(hb)}")
+        assert any(
+            ln.startswith("[FAIL] heartbeat ") and f"(fix: chmod 600 {doctor._shell_path(hb)})" in ln
+            for ln in out
+        )
+    finally:
+        hb.chmod(0o600)  # the agent's chmod, run
+    _rc, out = _status(cfg, capsys)
+    manifest = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    if passed:
+        assert manifest and manifest_mod.LOST_MANIFEST in manifest[0], out
+    else:
+        assert not manifest, "no pass recorded: a first start"
 
 
 def test_a_damaged_heartbeat_beside_a_manifest_still_heals_on_the_next_pass(

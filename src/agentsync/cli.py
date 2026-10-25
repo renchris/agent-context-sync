@@ -1567,7 +1567,7 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     try:
         heartbeat = read_heartbeat(config.state_paths.heartbeat)
         never = "never"
-    except ValueError:  # corrupt: the [warn] heartbeat line says why; the next completed pass rewrites it.
+    except ValueError:  # corrupt: the [warn] heartbeat line says why, and whether a pass rewrites it (I62).
         # Never "cannot read the state: ValueError" in place of every line here (B13 round 24 B88, B90)
         heartbeat, never = {}, "unknown (heartbeat.json is not valid; the heartbeat line says why)"
     for st in statuses:
@@ -1867,6 +1867,22 @@ def _manifest_first(checks: Sequence[doctor.CheckResult]) -> str | None:
     return None if fail is None else _fail_step(fail)
 
 
+def _heartbeat_chmod_first(config: Config, checks: Sequence[doctor.CheckResult]) -> str | None:
+    """The heartbeat FAIL's step when it is this account's own chmod (``chmod 600 <heartbeat.json>``, which
+    ``doctor.state_path_fix`` gives only for its own file at a refusing mode) and the state_dir.manifest FAIL
+    is a lost manifest beside a heartbeat that cannot be read: the chmod settles whether earlier passes exist
+    (after it the manifest reads ``records earlier passes``, the person's, or a first start), so it leads,
+    the agent's once, never the person's decision taken blind (B13 round 28 I42). None otherwise: damaged
+    JSON, a fifo, a folder, another account's file or an ACL keep the person's fix first."""
+    manifest = next((r for r in checks if r.name == "state_dir.manifest" and not r.ok), None)
+    if manifest is None or not manifest.detail.endswith(doctor.LOST_UNREAD):
+        return None
+    heartbeat = expand(config.state_paths.heartbeat)
+    want = f"chmod 600 {doctor._shell_path(heartbeat)}"
+    fail = next((r for r in checks if r.name == "heartbeat" and not r.ok and r.fix == want), None)
+    return None if fail is None else _fail_step(fail)
+
+
 def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> str | None:
     """The NEXT step of the FAIL a sync stops on (:func:`_fail_step`), or None: a state_dir.manifest FAIL
     (:func:`_manifest_first`), the state folder that is not a folder or refuses a look inside, or the state
@@ -1876,7 +1892,8 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
     (a loose mode, the docs repo's permissions) keeps the loop's order."""
     first = _manifest_first(checks)
     if first is not None:
-        return first
+        chmod = _heartbeat_chmod_first(config, checks)
+        return first if chmod is None else chmod
     try:
         if doctor.state_folder_unchecked(config) is not None:
             fail = next((r for r in checks if r.name.startswith("state_dir") and not r.ok), None)
