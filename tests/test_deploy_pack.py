@@ -6689,6 +6689,34 @@ def test_the_guides_path_row_gives_exclude_entries_and_a_removed_links_target() 
     )
 
 
+def test_the_guides_summary_sync_row_gives_the_new_starts_clause() -> None:
+    """B13 round 28 I83: since round 27 P115 the Summary's sync line adds, between the converted clause and
+    the baseline count, what install.out's new-start note says the sync removed, and the row's list of
+    clauses left it out. The row gives it in the CLI's words, read from the code that writes it; "up to five
+    parts" stays, as the clause is no part of the converted clause."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| Summary: `first sync:`")]
+    source = inspect.getsource(setup_report)
+    for piece in (
+        'said = f"a new manifest was started over {over}{by}: {back} written back"',
+        "f\", {gone} removed ({'its' if gone == 1 else 'their'} file is gone or was not converted)\"",
+        'whose = "its file was" if notices == 1 else "their files were"',
+        "f\", {_plural(notices, 'deletion notice')} removed ({whose} already reported gone)\"",
+        'by = " by the background sync" if by_job else ""',
+        'parts.append(f"{said[:-1]}; {line})")',
+    ):
+        assert piece in source, piece
+    said = "a new manifest was started over N existing mirror pages: B written back, R removed"
+    clause = f"`{said} (their file is gone or was not converted; install.out)`"
+    assert f"a clause in the CLI's own words, {clause} (`its` for one;" in row
+    assert "`, D deletion notices removed (their files were already reported gone)`" in row
+    assert "`1 deletion notice removed (its file was already reported gone)` for one" in row
+    assert "`by the background sync` after `pages`" in row and "B13 round 27 P115" in row
+    assert row.index(clause) < row.index("then status's count of sources with a complete baseline")
+    assert "the clause can add up to five parts" in row
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

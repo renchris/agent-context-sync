@@ -31695,3 +31695,12 @@ entries do not parse), which the report's legend names and the row did not. The 
 in its both-reports part and the said target in its agentsync-only part, with every substring the older row tests
 pin kept. Test: `test_the_guides_path_row_gives_exclude_entries_and_a_removed_links_target`, which makes each form
 with `_exclude_placeholder` and `_said_link_targets`.
+
+**The Summary's sync row gives the new start's clause** (I83; `docs/deploy/setup-feedback.md`). Since round 27 P115
+the `first sync:` / `sync:` line adds, between the converted clause and status's baseline count, a clause of its
+own (joined by ` · `) for what install.out's new-start note says that sync removed:
+`a new manifest was started over N existing mirror pages: B written back, R removed (their file is gone or was not converted; install.out)`,
+with
+its deletion-notice part, `by the background sync` and `install.out's last sync line` when the line is borrowed.
+The row's list of clauses gives it there; "up to five parts" stays, as the verifier found the clause is no part of
+the converted clause and carries its own tag. Test: `test_the_guides_summary_sync_row_gives_the_new_starts_clause`.
