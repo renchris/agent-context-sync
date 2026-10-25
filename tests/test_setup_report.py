@@ -7567,9 +7567,9 @@ def test_the_loop_line_over_a_state_folder_at_0000_names_the_folder(
     finally:
         root.chmod(0o700)
     loop = _line(section(text, "Summary"), "- Loop: ")
-    assert loop.startswith(
+    assert loop.startswith(  # the folder's one FAIL, named (B13 round 27 P122, lane B)
         "- Loop: not read: status says the state folder cannot be opened: Permission denied; the state_dir "
-        "lines say why"
+        "[FAIL] line says why"
     ), loop
     assert "a file cannot be opened" not in loop, loop
 
