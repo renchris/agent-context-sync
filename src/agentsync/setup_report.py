@@ -6179,8 +6179,8 @@ def _installer_output(r: _Run) -> list[str]:
         "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
         "Nor is a person's fix: on any line of a run whose NEXT says fixing its error is the person's, as "
         "the state file's error line, nor a fix: that its run's NEXT gives the agent as its step. "
-        "agentsync's own WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths "
-        "and document names as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
+        "agentsync's own WARNING and ERROR log lines, and a sync's alarm and error lines, "
+        f"{_OWN_PATH_PHRASES[0]}, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
         f"<details><summary>{_the_last(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
@@ -10349,7 +10349,7 @@ def _recent_errors(r: _Run) -> list[str]:
     window = f" in the last {_TAIL_BYTES // 1024} KiB of each log file" if longer_any else ""
     head = (
         f"The last {min(len(hits), RECENT_ERROR_LINES)} of {_plural(len(hits), 'WARNING/ERROR line')}{window}"
-        f" in {log_dir}{merged} (item paths and document names shown as <path>):"
+        f" in {log_dir}{merged} ({_OWN_PATH_PHRASES[1]}):"
     )
     return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
 
@@ -14565,13 +14565,24 @@ def _legend_item(red: Redactor, kind: str, body: str) -> str:
     return item
 
 
+_OWN_PATH_PHRASES = (
+    "show item paths and document names as <path>",
+    "item paths and document names shown as <path>",
+)
+"""The report's own fixed words that explain <path> (the Installer note's and the Recent errors header's):
+they replace nothing, so the legend's <path> item is never shown for them alone (B13 round 28 I10, I38, I51;
+round 27 P38's body test runs on the body without them)."""
+
+
 def _redaction_section(
     red: Redactor, hits: list[tuple[str, list[str]]], filled: Sequence[str] = (), body: str = ""
 ) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     # B13 round 27 P38: a <path> the log scrub, a --source-local argument or an exclude line wrote is no
     # replacement and is not counted, but the body shows it, so its item stands, as the shell's legend_kinds
-    shown = [k for k in _LEGEND if k in red.kinds_used() or (k == "path" and "<path>" in body)]
+    # B13 round 28 I10, I38, I51: never on the report's own words that explain <path>, which replace nothing
+    probe = functools.reduce(lambda text, own: text.replace(own, ""), _OWN_PATH_PHRASES, body)
+    shown = [k for k in _LEGEND if k in red.kinds_used() or (k == "path" and "<path>" in probe)]
     legend = " · ".join(_legend_item(red, k, body) for k in shown)
     if _NOT_IN_CONFIG in body:  # U8: the fallback label, where the report shows one
         legend = f"{legend} · {_NOT_IN_CONFIG_LEGEND}" if legend else _NOT_IN_CONFIG_LEGEND

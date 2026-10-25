@@ -709,6 +709,21 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
         assert ("path 1" in tail[3]) is counted, tail[3]
     tail = setup_report._redaction_section(setup_report.Redactor(), [], (), "nothing cut\n")
     assert "<path>" not in "\n".join(tail)
+    # B13 round 28 I10, I38, I51: the report's own sentences that explain <path> (the Installer note's, the
+    # Recent errors header's) replace nothing: no item for them alone, and none beside a counted target
+    # keeps the item and its count
+    own = (
+        "- agentsync's own WARNING and ERROR log lines show item paths and document names as <path>, as in "
+        "Recent errors\n"
+        "The last 1 of 1 WARNING/ERROR line in ~/x (item paths and document names shown as <path>):\n"
+    )
+    tail = setup_report._redaction_section(setup_report.Redactor(), [], (), own)
+    assert not [ln for ln in tail if ln.startswith("Placeholders used: ") and "<path>" in ln], tail
+    for body, counted in ((own + f"{logged}\n", False), (own + f"{target}\n", True)):
+        tail = setup_report._redaction_section(red if counted else setup_report.Redactor(), [], (), body)
+        legend = next(ln for ln in tail if ln.startswith("Placeholders used: "))
+        assert "<path> a link's target outside this home" in legend, legend
+        assert ("path 1" in tail[3]) is counted, tail[3]
 
 
 @pytest.mark.usefixtures("roomy_budget")
