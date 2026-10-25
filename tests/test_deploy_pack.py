@@ -6290,6 +6290,8 @@ def test_the_shell_pairing_records_case_count_is_the_tests() -> None:
         "thirty-one",
         "thirty-two",
         "thirty-three",
+        "thirty-four",
+        "thirty-five",
     )
     stated = re.findall(rf"\b({'|'.join(words)}) cases\b", record)
     assert stated[:1] == ["eleven"] and count >= 13, (stated, count)

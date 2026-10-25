@@ -29911,6 +29911,9 @@ Amended 2026-10-24, §16.189 P145: thirty cases, not nineteen: eleven stamps in 
 offset on a fractional end line, no zone, a blank for the T, no seconds, and an agent's stop under an offset).
 Amended 2026-10-24, §16.189 P138: thirty-three cases, not thirty: three chmod lines with a no-break or a thin space
 (an agent's chmod 700 of a lock, an ACL's chmod -N, and a chmod 600 that pairs), which both reports read alike.
+Amended 2026-10-25, §16.194 I106: thirty-five cases, not thirty-three: P138's seed 34, an agent's lock stop that
+turns a chmod 700 line down by its mode and a person's -wal stop after it that takes it, with a no-break space and
+with a plain one.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -31247,6 +31250,10 @@ the Installer section and `F5 (stamped ...)` in the Summary's outcome line, and 
 with its line's time stamp, as written below`. Tests: the pairing table (each paired line's stamp as written),
 `test_the_shell_report_says_what_its_f_ids_are` and `test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
 
+Amended 2026-10-25, §16.194 I6: the Installer section's citation names the line's kind, `(F5, the step 3 error line
+stamped 2026-10-14T10:05:40Z: the agent's account of it)`, as the Summary's does, so an end line written in the same
+second shares no citation.
+
 **The shell fallback says where the error its quoted NEXT names is** (P105). The shell report quotes the last run's
 NEXT, and most of install.sh's FAIL_NEXTs say `the error above names it; ~/.local/bin/agentsync status prints it`,
 which point at nothing its reader sees: the fallback copies no error line, and status cannot run with agentsync
@@ -31257,6 +31264,11 @@ NEXT line names was printed on the terminal before it and is kept in that run's 
 ~/agent-context/setup/install.out; this shell fallback copies no error text, which can name a path or a host
 outside this home, and ~/.local/bin/agentsync status, which prints it again, needs agentsync installed.` Test:
 `test_the_shell_report_says_where_the_error_a_quoted_next_names_is` (the link target's folder appears 0 times).
+
+Amended 2026-10-25, §16.194 I21: the sentence names `$INSTALL_OUT`, install.out beside the setup log
+(`~/agent-context/setup/install.out` by default, `AGENTSYNC_SETUP_LOG`'s folder when it is set), and ends `, and
+~/.local/bin/agentsync status, which prints it again, needs agentsync installed.` only when the quoted NEXT names
+status printing it (`sync` for a NEXT that names sync), else at `outside this home.`
 
 **A run a usage error stopped names this installer's checkout** (P143; amends §16.184 E21). E21 left out the
 optional commit of the installer's checkout as "git-free", while the only cost of git here is the developer tools'
@@ -31746,6 +31758,24 @@ says `fixing them is the person's (keeping a copy, they move each aside...), and
 each on its state_dir.files lines`; one side's words are unchanged. docs/deploy/setup-feedback.md says so. Tests: the
 step 1 table's `SN-both-folders` row and changed `SN-both` tail, and the `wal-folder shm-folder` case of
 `test_step_2_names_both_sides_that_are_not_files` (moving both ends it).
+
+**The shell report's citations, its sentence after an error-above NEXT, and seed 34's row** (I6, I21, I60, I106;
+amends §16.189 P106 and P105; dated line at §16.179 D79). Three wrongs and one gap in the shell fallback report. The Installer section cited a
+stop's account as `(F9, the line stamped <stamp>: ...)`, which an end line written in the same second also matched;
+it now says `the step 3 error line stamped <stamp>`, as the Summary does, and the parse that fills it reads only step
+3 error lines (I6). After a quoted NEXT that names the error above, the sentence said `~/.local/bin/agentsync status,
+which prints it again`, false for a usage error, fail's generic `fix the error above, then re-run` and
+install-agent's NEXT, which no agentsync command prints again: the ending is chosen from the NEXT's own words (it
+names `agentsync status print...`: status; `agentsync sync prints it again`: sync; else none), never from a guessed
+error class (I21). It named `~/agent-context/setup/install.out` while the NEXT was read from `$INSTALL_OUT`, beside
+the setup log `AGENTSYNC_SETUP_LOG` may move; it names `$INSTALL_OUT`, which this shell's redaction prints as `~/...`
+under this home, byte for byte as before by default (I60). And the shell pairing table had no row for P138's seed
+34, where an agent's stop turns a line down by its mode and the person's stop after it takes it (I106): two rows
+now, a no-break space and a plain one, each checked against `setup_report._stop_pairs`, and both fail against
+install.sh before the shell's P138 fix. Tests: `test_the_shell_report_says_where_the_error_a_quoted_next_names_is`
+(`state`, `usage`, `generic`, `sync`, `none`, `moved-log`), the pairing table's `agents-nbsp-then-wal-person` and
+`agents-space-then-wal-person` rows, its stamp pin, `test_the_shell_report_says_what_its_f_ids_are` and
+`test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart`.
 
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 

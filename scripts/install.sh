@@ -3758,7 +3758,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	# the line's id and its stamp as written, which a reader searches for in the log the report copies, not a
 	# number to count lines up to (B13 round 27 P106: the fence stays raw, as the issue link, the redaction and
 	# the read-back parse it)
-	case "${5:-}" in F[0-9]*" "?*) told=" (${5%% *}, the line stamped ${5#* }: the agent's account of it)" ;; F[0-9]*) told=" ($5: the agent's account of it)" ;; esac
+	case "${5:-}" in F[0-9]*" "?*) told=" (${5%% *}, the step 3 error line stamped ${5#* }: the agent's account of it)" ;; F[0-9]*) told=" ($5: the agent's account of it)" ;; esac
 	say "- agentsync sync · step 3 · exited $1 on $what, $why; whether a later sync ended 0: not read by this shell fallback; the fix is $whose$told"
 }
 # The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
@@ -4103,13 +4103,20 @@ fallback_next_line() {
 	say "~~~"
 	# a NEXT that points to "the error above" names nothing a reader of this report can see: say where it is,
 	# in fixed words. Never its text, which can name a path or a host outside this home that this shell's
-	# redaction does not cut, as setup_report's does (B13 round 27 P105; install.sh's rule, fixed words only)
+	# redaction does not cut, as setup_report's does (B13 round 27 P105; install.sh's rule, fixed words only).
+	# The copy it was read from, $INSTALL_OUT, beside the setup log AGENTSYNC_SETUP_LOG may move (B13 round 28
+	# I60), and the command that prints it again only when the NEXT itself names one: a usage error, fail's
+	# generic NEXT or install-agent's is printed again by no agentsync command (I21)
 	case "$v" in
 	*"error above"*)
+		local said="The error that NEXT line names was printed on the terminal before it and is kept in that run's block of $INSTALL_OUT; this shell fallback copies no error text, which can name a path or a host outside this home"
+		case "$v" in
+		*"agentsync status print"*) said="$said, and ~/.local/bin/agentsync status, which prints it again, needs agentsync installed." ;;
+		*"agentsync sync prints it again"*) said="$said, and ~/.local/bin/agentsync sync, which prints it again, needs agentsync installed." ;;
+		*) said="$said." ;;
+		esac
 		say ""
-		say "The error that NEXT line names was printed on the terminal before it and is kept in that run's block of ~/agent-context/setup/install.out;" \
-			"this shell fallback copies no error text, which can name a path or a host outside this home, and ~/.local/bin/agentsync" \
-			"status, which prints it again, needs agentsync installed."
+		say "$said"
 		;;
 	esac
 }

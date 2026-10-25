@@ -3343,39 +3343,63 @@ def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
         assert "sudo chown" not in text, "an older run's fix is never shown"
 
 
-ERROR_ABOVE_SAID = (
+ERROR_ABOVE_BASE = (
     "The error that NEXT line names was printed on the terminal before it and is kept in that run's block of "
-    "~/agent-context/setup/install.out; this shell fallback copies no error text, which can name a path or a "
-    "host outside this home, and ~/.local/bin/agentsync status, which prints it again, needs agentsync "
-    "installed."
+    "{out}; this shell fallback copies no error text, which can name a path or a host outside this home"
 )
+ERROR_ABOVE_SAID = (
+    ERROR_ABOVE_BASE.format(out="~/agent-context/setup/install.out")
+    + ", and ~/.local/bin/agentsync status, which prints it again, needs agentsync installed."
+)
+"""The shell report's sentence after a NEXT that names the error above and status (B13 round 27 P105); it
+names the command that prints the error again only when the NEXT names one (B13 round 28 I21), and the copy
+it was read from, beside the setup log (I60)."""
+
+_ABOVE_NEXTS = {
+    "state": (
+        "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
+        "refuses a write, and is missing (the error above names it; ~/.local/bin/agentsync status prints it "
+        "and its fix on its state_dir.manifest line): fixing it is the person's"
+    ),
+    "usage": (
+        "NEXT: fix the usage error above (see ~/agentsync/scripts/install.sh --help), then run the corrected "
+        "command"
+    ),
+    "generic": "NEXT: fix the error above, then re-run: ~/agentsync/install.sh",
+    "sync": (
+        "NEXT: the first sync failed (the error above; ~/.local/bin/agentsync sync prints it again): "
+        "fixing it is the person's"
+    ),
+    "none": "NEXT: run ~/.local/bin/agentsync sync and follow its NEXT line",
+}
 
 
-@pytest.mark.parametrize("points", [True, False])
-def test_the_shell_report_says_where_the_error_a_quoted_next_names_is(
-    env: dict[str, str], points: bool
-) -> None:
+@pytest.mark.parametrize("case", ["state", "usage", "generic", "sync", "none", "moved-log"])
+def test_the_shell_report_says_where_the_error_a_quoted_next_names_is(env: dict[str, str], case: str) -> None:
     """B13 round 27 P105 (rehearsal a, lml-fb): the shell fallback quotes the last run's NEXT, whose
     "(the error above names it; ~/.local/bin/agentsync status prints it ...)" points at nothing its reader
     sees: it copies no error line, and status cannot run with agentsync not installed. Copying the error is
     measured worse (its link target, a volume outside this home, has no shell redaction rule), so a sentence
     in fixed words says where the error is; nothing of the error is copied. A NEXT that names no error above
-    gets no sentence."""
+    gets no sentence.
+
+    B13 round 28 I21: after a usage error's NEXT, or fail's generic one, the sentence said status "prints it
+    again", which no agentsync command does for an install.sh error: the command is named only when the NEXT
+    names it (status, or sync). I60: it named ~/agent-context/setup/install.out with AGENTSYNC_SETUP_LOG
+    moved, while the NEXT was read from install.out beside that log."""
+    points = case != "none"
     home = Path(env["HOME"])
     setup = home / "agent-context" / "setup"
+    if case == "moved-log":
+        setup = home / "alt"
+        env = {**env, "AGENTSYNC_SETUP_LOG": str(setup / "install.log")}
     setup.mkdir(parents=True)
     run = "20261010T010000Z-4242"
     (setup / "install.log").write_text(
         f"2026-10-10T01:00:00Z run={run} start install.sh compat=33 commit=- kind=- source=- args=\n"
         f"2026-10-10T01:00:05Z run={run} step=config seconds=1 rc=1 result=failed\n"
     )
-    said = (
-        "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
-        "refuses a write, and is missing (the error above names it; ~/.local/bin/agentsync status prints it "
-        "and its fix on its state_dir.manifest line): fixing it is the person's"
-        if points
-        else "NEXT: run ~/.local/bin/agentsync sync and follow its NEXT line"
-    )
+    said = _ABOVE_NEXTS["state" if case == "moved-log" else case]
     (setup / "install.out").write_text(
         f"# run={run} 2026-10-10T01:00:00Z install.sh\n"
         "error: state: /Volumes/Contoso Vault/agentsync/manifest.sqlite is a symlink to a file that does not "
@@ -3387,7 +3411,17 @@ def test_the_shell_report_says_where_the_error_a_quoted_next_names_is(
     text = report_path(env).read_text()
     installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
     flat = " ".join(installer.split())
-    assert (f"~~~ {ERROR_ABOVE_SAID}" in flat) is points, installer
+    out = "~/alt/install.out" if case == "moved-log" else "~/agent-context/setup/install.out"
+    base = ERROR_ABOVE_BASE.format(out=out)
+    assert (f"~~~ {base}" in flat) is points, installer
+    if case in ("state", "sync"):
+        command = "sync" if case == "sync" else "status"
+        assert f"~~~ {ERROR_ABOVE_SAID.replace('status', command)}" in flat, installer
+    elif case in ("usage", "generic"):
+        assert f"~~~ {base}." in flat and "agentsync status, which" not in flat, installer
+    elif case == "moved-log":
+        moved = ERROR_ABOVE_SAID.replace("agent-context/setup", "alt")
+        assert f"~~~ {moved}" in flat and "~/agent-context/setup/install.out" not in flat, installer
     assert "Contoso Vault" not in text and "error: state:" not in text, text
 
 
@@ -5852,6 +5886,18 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["10:01:05 | step 3 | error | rc 1 | chmod\u2009600 <lock>"],
             ["F4"],
         ),
+        # B13 round 28 I106 (lane RA round 27 P138, seed 34): the lock stop turns down the 700 line by its
+        # mode, so the -wal stop after it takes it, a no-break space or a plain one before the mode
+        (
+            ["10:01:04 lock agent refused", "10:01:56 manifest-wal person refused"],
+            ["10:01:58 | step 3 | error | rc 1 | chmod\u00a0700 <dir>"],
+            ["-", "F4"],
+        ),
+        (
+            ["10:01:04 lock agent refused", "10:01:56 manifest-wal person refused"],
+            ["10:01:58 | step 3 | error | rc 1 | chmod 700 <dir>"],
+            ["-", "F4"],
+        ),
     ],
     ids=[
         "chmod-after",
@@ -5887,6 +5933,8 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "agents-nbsp-chmod-700",
         "agents-nbsp-persons-acl",
         "agents-thin-space-chmod-600",
+        "agents-nbsp-then-wal-person",
+        "agents-space-then-wal-person",
     ],
 )
 def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does(
@@ -5926,7 +5974,14 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
         if f == "-":
             assert "the agent's account of it)" not in line, line
         else:
-            assert line.endswith(f" ({f}, the line stamped {raw[f]}: the agent's account of it)"), (line, f)
+            # B13 round 28 I6: the line's kind named, as the Summary names it, so an end line written in
+            # the same second shares no citation
+            assert line.endswith(
+                f" ({f}, the step 3 error line stamped {raw[f]}: the agent's account of it)"
+            ), (
+                line,
+                f,
+            )
     outcome = _summary(text)[2]
     paired = [f"{f} (stamped {raw[f]})" for f in told if f != "-"]
     assert ("there is the agent's account" in outcome or "there are the agent's account" in outcome) is bool(
@@ -6062,7 +6117,7 @@ def test_the_shell_report_lists_a_stop_logged_after_the_end_line_apart(env: dict
     assert lines == [
         "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
         "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's (F5, "
-        "the line stamped 2026-10-14T10:05:40Z: the agent's account of it)"
+        "the step 3 error line stamped 2026-10-14T10:05:40Z: the agent's account of it)"
     ], installer
     assert "during this attempt:" not in installer, installer
     assert _summary(text)[2] == NOT_COMPUTED, "no outcome reads it"
@@ -6085,7 +6140,8 @@ def test_the_shell_report_says_what_its_f_ids_are(env: dict[str, str], cited: bo
         "first line as 1; each is cited with its line's time stamp, as written below."
     )
     assert section.startswith(f"{said}\n\n~~~text\n") is cited, section
-    assert ("(F5, the line stamped 2026-10-14T10:05:40Z: the agent's account of it)" in text) is cited
+    cite = "(F5, the step 3 error line stamped 2026-10-14T10:05:40Z: the agent's account of it)"
+    assert (cite in text) is cited
     fence = section.split("~~~text\n", 1)[1].split("\n~~~", 1)[0].splitlines()
     assert fence[4].startswith("2026-10-14T10:05:40Z | step 3 | error | "), fence  # F5, its 5th line
     fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
