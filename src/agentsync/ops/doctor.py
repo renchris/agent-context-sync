@@ -1828,6 +1828,15 @@ def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
         side = side_not_a_file_at(expand(config.state_paths.db))
         if side is None:
             return None
+    except Exception:
+        return None
+    return _side_fail(config, side)
+
+
+def _side_fail(config: Config, side: Path) -> tuple[Path, CheckResult] | None:
+    """``side`` and status's own state_dir.files FAIL of it, or None when status names none or its check
+    raises (the error path never raises a second error)."""
+    try:
         results = _check_state_dir(config)
     except Exception:
         return None
@@ -1835,6 +1844,20 @@ def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
     found = (r for r in results if r.name == "state_dir.files" and not r.ok and r.detail.startswith(named))
     result = next(found, None)
     return None if result is None else (side, result)
+
+
+def _openable_wal_fifo(side: Path) -> bool:
+    """Whether ``side`` is a -wal fifo this account can read and write: sqlite removes it on close and the
+    run goes on, so only it is left to the open (B13 round 27 P49). The access check opens nothing, so a fifo
+    never blocks."""
+    try:
+        return (
+            side.name.endswith("-wal")
+            and stat.S_ISFIFO(side.lstat().st_mode)
+            and os.access(side, os.R_OK | os.W_OK)
+        )
+    except OSError:
+        return False
 
 
 _GOVERNANCE_CHECKS = {
@@ -1872,15 +1895,13 @@ def state_not_a_file(
         if state_root_not_folder(config) is not None:
             return None
         db = expand(sp.db)
-        side = side_not_a_file(config) if manifest else None
-        if side is not None and not (
-            side[0].name.endswith("-wal")
-            and stat.S_ISFIFO(side[0].lstat().st_mode)
-            # only a fifo this account can open: one it cannot stops here, as a folder does (P49); the
-            # access check opens nothing, so a fifo still never blocks
-            and os.access(side[0], os.R_OK | os.W_OK)
-        ):
-            return side
+        # every side, the -wal first, past an openable -wal fifo only (P49): a -shm folder beside one was
+        # never judged, so init passed it and step 1's "stops at its config step" was false (B13 round 28 I16)
+        for bad_side in sides_not_a_file_at(db) if manifest else []:
+            if not _openable_wal_fifo(bad_side):
+                found = _side_fail(config, bad_side)
+                if found is not None:
+                    return found
         if (
             manifest
             and os.path.lexists(db)

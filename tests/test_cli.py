@@ -9327,6 +9327,28 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     assert held in lines, lines
 
 
+def test_an_openable_wal_fifo_never_hides_a_folder_at_the_shm(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I16: with a -wal fifo this account can open and a folder at the -shm, the guard judged
+    only the first side and left the fifo to sqlite, so init passed the -shm folder and step 1's "stops at its
+    config step" was false. Every side is judged; the openable fifo alone is still left to sqlite (P49)."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    wal, shm = db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")
+    wal.unlink(missing_ok=True)
+    os.mkfifo(wal, 0o600)
+    shm.unlink(missing_ok=True)
+    shm.mkdir()
+    found = doctor.state_not_a_file(initialised)
+    assert found is not None and found[0] == shm, found
+    capsys.readouterr()
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+    assert capsys.readouterr().err.startswith(f"error: state: {shm} is a folder"), "init stops on the -shm"
+    shm.rmdir()
+    assert doctor.state_not_a_file(initialised) is None, "the openable -wal fifo alone is sqlite's"
+
+
 def test_a_fifo_at_the_wal_this_account_cannot_open_stops_every_command_first(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
