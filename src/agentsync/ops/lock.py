@@ -589,11 +589,15 @@ def write_heartbeat(
     if _parse_iso(now_iso) is None:
         raise ValueError(f"now_iso is not ISO-8601: {now_iso!r}")
     try:
-        current: dict[str, dict[str, object]] = {k: dict(v) for k, v in read_heartbeat(path).items()}
+        current: dict[str, object] = {k: dict(v) for k, v in read_heartbeat(path).items()}
+        record = _hold_record(path)
     except ValueError as exc:
         log.warning("heartbeat %s is corrupt (%s); rewriting it", path, exc)
-        current = {}
-    prev = current.get(source_id, {})
+        current, record = {}, None
+    if record is not None:  # governance's record of the holds, kept outside governance/ (B13 round 28 I89)
+        current[HOLD_RECORD_KEY] = record
+    prev_entry = current.get(source_id, {})
+    prev: dict[str, object] = prev_entry if isinstance(prev_entry, dict) else {}
     prev_failures = prev.get("consecutive_failures")
     prev_incomplete = prev.get("consecutive_incomplete")
     failures = 0 if ok else (prev_failures if isinstance(prev_failures, int) else 0) + 1
@@ -614,6 +618,21 @@ def write_heartbeat(
     }
     current[source_id] = entry
     _atomic_write(path, _dump_json(current), 0o600)
+
+
+HOLD_RECORD_KEY = "holds"
+"""heartbeat.json's list of the state hold scopes (``governance.record_holds`` writes it), beside the
+per-source objects, which every reader takes alone; each pass keeps it."""
+
+
+def _hold_record(path: Path) -> list[str] | None:
+    """heartbeat.json's hold record (:data:`HOLD_RECORD_KEY`), or None when there is none."""
+    text = read_regular_text(path)
+    data = json.loads(text) if text else None
+    value = data.get(HOLD_RECORD_KEY) if isinstance(data, dict) else None
+    if not isinstance(value, list):
+        return None
+    return [s for s in value if isinstance(s, str)]
 
 
 def read_regular_text(path: Path) -> str | None:

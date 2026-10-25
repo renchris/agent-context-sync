@@ -2312,7 +2312,8 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """R49, the mixed case: one kept upstream deletion and one held operator purge.  The wait, status and
-    doctor count only the entry a run can clear; the run exits 1 for it and names both."""
+    doctor count only the entry a run can clear; the run exits 1 for it and names both. B13 round 28 I91: the
+    held one is no wait either, only a note naming the release; nothing invites a run that refuses."""
     cfg = _synced(initialised)
     sid = _stable_id(initialised, "projects/sample.txt")
     root = initialised.state_paths.root
@@ -2323,17 +2324,19 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     assert cli.main(["hold", "source", "--reason", "matter 7", "--owner", "legal", "--config", cfg]) == 0
 
     step = loop.next_step(initialised)
-    assert next(w for w in step.waits if "queued purge" in w).startswith("1 queued purge: ")
+    assert not [w for w in step.waits if "queued purge" in w], step.waits
     assert governance.kept_purges(1) in step.notes
+    release = "`~/.local/bin/agentsync hold source --release --owner <name>`"
+    assert any(n.startswith("1 queued purge waits on the hold above") and release in n for n in step.notes)
     lines = cli._status_lines(initialised)
-    assert any(x.startswith("queued purges: 1 (") for x in lines) and any(
+    assert not any(x.startswith("queued purges: ") for x in lines), lines
+    assert any(x.startswith("queued purges held: 1 (") for x in lines) and any(
         x.startswith("queued purges kept: 1 ") for x in lines
     )
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
-    assert not check.ok and check.severity is doctor.Severity.WARN
-    assert check.detail.startswith("1 purge request queued") and check.detail.endswith(
-        governance.kept_purges(1)
-    )
+    assert not check.ok and check.severity is doctor.Severity.WARN and check.fix is None
+    assert check.detail.startswith("1 purge request queued (1 operator: an operator's request)")
+    assert governance.kept_purges(1) in check.detail and "waits on the hold above" in check.detail
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
@@ -4781,7 +4784,7 @@ def test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix(
     lock = expand(initialised.state_paths.lock)
     holds = governance._holds_file(expand(initialised.state_paths.root))
     holds.parent.mkdir(parents=True, exist_ok=True)
-    holds.write_text("[]\n", encoding="utf-8")
+    holds.write_text('{"holds": []}\n', encoding="utf-8")  # "[]" is no hold list (B13 round 28 I90)
     for target, argv in ((lock, ["sync"]), (holds, ["hold", "--list"])):
         target.chmod(0)
         try:
@@ -5206,7 +5209,9 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
         rc, out = _status(cfg, capsys)
         words = f"{path} is {what}, not a file: {role} belongs there"
         (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ")]
-        assert words in failed and "keeping a copy)" in failed, failed
+        # the hold list's move aside then puts the list back, so following it never leaves no holds (I87)
+        tail = ", then puts the hold list back from a copy they trust)" if where == "holds" else ")"
+        assert words in failed and f"keeping a copy{tail}" in failed, failed
         assert rc == cli.EXIT_FAILED, out
         assert not [ln for ln in out if "check crashed" in ln or "Error" in ln], out
         assert any(ln.startswith("last runs: ") for ln in out), out  # the rest still prints
@@ -5270,7 +5275,8 @@ def test_a_hold_list_behind_a_link_to_nothing_is_never_read_as_no_holds(
     rc, out = _status(cfg, capsys)
     words = f"{holds} is a symlink to nothing, not a file: the hold list belongs there"
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
-    assert rc == cli.EXIT_FAILED and words in failed and "aside, keeping a copy)" in failed, out
+    back = "aside, keeping a copy, then puts the hold list back from a copy they trust)"  # B13 round 28 I87
+    assert rc == cli.EXIT_FAILED and words in failed and back in failed, out
     assert not [ln for ln in out if "purge --queue" in ln], "no purge is invited over the hold list"
     line = "error: state: " + failed.split(" — ", 1)[1]
     for argv in (["hold", "--list"], ["purge", "--queue"], ["purge", f"docs={page}"]):
@@ -5287,16 +5293,20 @@ def test_a_hold_list_behind_a_link_to_nothing_is_never_read_as_no_holds(
 def test_a_working_hold_list_still_passes(
     initialised: Config, capsys: pytest.CaptureFixture[str], what: str
 ) -> None:
-    """P131's verifier: the judge of a link to nothing never newly FAILs a working setup."""
+    """P131's verifier: the judge of a link to nothing never newly FAILs a working setup. "nothing" is a
+    hold list never written (a fresh install); one removed after a hold is the lost hold of B13 round 28 I87,
+    which the audit trail keeps in force."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
-    assert cli.main(["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]) == 0
+    if what != "nothing":
+        hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+        assert cli.main(hold) == 0
     holds = governance._holds_file(root)
     if what == "a link to a regular file":
         holds.rename(root / "holds.real")
         holds.symlink_to(root / "holds.real")
     elif what == "nothing":
-        holds.unlink()
+        assert not holds.exists()
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if ln.startswith("[FAIL] governance")], out
@@ -5323,6 +5333,264 @@ def test_a_loop_at_the_governance_folder_never_sends_the_person_to_a_file_under_
         said += both.out.splitlines() + both.err.splitlines()
     for name in ("holds.json", "purge-queue.json", "suppressed.json", "audit.jsonl"):
         assert not [ln for ln in said if f"{name} aside" in ln], (name, said)
+
+
+def _hold_and_queue_dlp(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path, str]:
+    """A synced setup with a hold on all and a DLP purge of the sample page queued (the cycle's reason for
+    a committed credential): the config path, the state folder and the page."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    dlp = governance.PurgeSelector.parse(f"docs={page}", source_id=None)
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    capsys.readouterr()
+    return cfg, root, page
+
+
+def _page_kept(config: Config, page: str) -> bool:
+    repo = config.docs_repo
+    return (repo / page).is_file() and bool(git(repo, "log", "--all", "--oneline", "--", page).strip())
+
+
+@pytest.mark.parametrize("how", ["a link to nothing, moved aside", "damaged JSON, moved aside", "no holds"])
+def test_a_hold_the_audit_trail_records_stays_in_force_when_the_hold_list_loses_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 28 I87 (ruling 19): following status's own fix for an unreadable hold list (move it aside)
+    left no holds.json, status then invited `purge --queue`, and the run erased the page under the hold on
+    all, history and all; a hand-written ``{"holds": []}`` did the same. A hold the audit trail records as
+    set and not released stays in force: status shows it and FAILs the lost list as the person's, every
+    purge refuses, and the records owner's release (with no set first) lets the queued purge run."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    holds = governance._holds_file(root)
+    if how == "a link to nothing, moved aside":
+        holds.rename(root / "holds.real")
+        holds.symlink_to(root / "gone" / "holds.json")
+        _rc, out = _status(cfg, capsys)
+        assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+        holds.rename(root / "holds.kept")  # the fix, followed
+    elif how == "damaged JSON, moved aside":
+        holds.write_text("{", encoding="utf-8")
+        _rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+        assert "is not the hold list agentsync can read" in failed and "remove it" not in failed, failed
+        assert not [ln for ln in out if "check crashed" in ln], out
+        holds.rename(root / "holds.kept")
+    else:
+        holds.write_text('{"holds": []}\n', encoding="utf-8")
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED, out
+    assert any(ln.startswith("HOLD: hold all (audit): lost from the hold list") for ln in out), out
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "no longer lists the hold on all set by Contoso Legal" in failed, failed
+    assert "(fix: the person puts the hold list back" in failed, failed
+    assert not [ln for ln in out if "purge --queue" in ln], "no purge is invited under a lost hold"
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
+    capsys.readouterr()
+    release = ["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(release) == cli.EXIT_OK, capsys.readouterr()
+    assert governance.read_audit(root)[-1]["action"] == "hold-released"
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+    assert not (initialised.docs_repo / page).exists()
+
+
+def _gone_volume(gov: Path) -> Path:
+    """governance/ moved to a "volume", linked back, and the volume gone (an unmount): the moved folder."""
+    vol = gov.parent / "volume"
+    vol.mkdir()
+    gov.rename(vol / "governance")
+    gov.symlink_to(vol / "governance")
+    vol.rename(gov.parent / "volume.gone")
+    return gov.parent / "volume.gone" / "governance"
+
+
+def test_a_governance_folder_linked_to_a_gone_volume_never_reads_as_no_holds(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I88 (ruling 19): with governance/ a link to a gone volume, status passed with no HOLD
+    line, `hold --list` said 0, `purge docs=` erased the page under a hold on all and then raised
+    FileExistsError with no audit line. governance/ is judged by its own lstat: status FAILs it as the
+    person's and invites no purge, and every command refuses in its words with a NEXT; the page, its history
+    and the audit trail are kept."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    gov = governance.governance_dir(root)
+    moved = _gone_volume(gov)
+    lines = len(moved.joinpath("audit.jsonl").read_text(encoding="utf-8").splitlines())
+    rc, out = _status(cfg, capsys)
+    words = f"{gov} is a symlink to nothing, not a folder: agentsync's governance folder belongs there"
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert rc == cli.EXIT_FAILED and words in failed and "put" in failed.split("(fix: ", 1)[1], out
+    assert not [ln for ln in out if "purge --queue" in ln or "check crashed" in ln], out
+    line = "error: state: " + failed.split(" — ", 1)[1]
+    for argv in (["hold", "--list"], ["purge", "--queue"], ["purge", f"docs={page}"], ["sync"], ["init"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        said = capsys.readouterr()
+        assert line in said.err.splitlines(), (argv, said.err)
+        assert "Traceback" not in said.err and "FileExistsError" not in said.err, said.err
+        assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")], (argv, said.out)
+    assert _page_kept(initialised, page)
+    assert len(moved.joinpath("audit.jsonl").read_text(encoding="utf-8").splitlines()) == lines
+
+
+def test_a_governance_folder_linked_to_a_working_folder_still_holds(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I88's pass: governance/ linked to a folder that is there is a working setup: no FAIL, and the hold
+    is honored."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.real")
+    gov.symlink_to(root / "governance.real")
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance")], out
+    assert any(ln.startswith("HOLD: hold all (state)") for ln in out), out
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert "purge suspended by legal/records hold" in capsys.readouterr().err
+    assert _page_kept(initialised, page)
+
+
+@pytest.mark.parametrize("what", ["a symlink loop", "a file", "a fifo"])
+def test_a_governance_folder_that_is_not_a_folder_is_one_persons_fail_naming_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 28 I89 (ruling 19): governance/ as a loop, a file or a fifo read "check crashed ... a fault
+    in agentsync to report", each command named a different file under it, and init exited 0. One person's
+    FAIL names governance/ itself, every command (init too) refuses in its words, and its fix puts the real
+    folder back, never a bare move aside: one followed with a hold on all set lost the page."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.real")
+    if what == "a symlink loop":
+        gov.symlink_to(gov)
+    elif what == "a file":
+        gov.write_text("not a folder\n", encoding="utf-8")
+    else:
+        os.mkfifo(gov)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert rc == cli.EXIT_FAILED and f"{gov} is {what}, not a folder" in failed, out
+    assert "puts the real governance folder (the one holding holds.json and audit.jsonl) back" in failed
+    said = list(out)
+    for argv in (["sync"], ["init"], ["hold", "--list"], ["purge", "--queue"], ["compact-history"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        both = capsys.readouterr()
+        assert f"{gov} is {what}, not a folder" in both.err, (argv, both.err)
+        said += both.out.splitlines() + both.err.splitlines()
+    for bad in ("check crashed", "fault in agentsync", "remove it by hand", "holds.json aside"):
+        assert not [ln for ln in said if bad in ln], (bad, said)
+    for name in ("holds.json", "purge-queue.json", "suppressed.json", "audit.jsonl"):
+        assert not [ln for ln in said if f"governance/{name} is " in ln], (name, said)
+    # its second branch, followed: the thing moved aside, the real folder still away. heartbeat.json's
+    # record keeps the hold on all in force, so the page is never erased
+    gov.rename(root / "governance.odd")
+    rc, out = _status(cfg, capsys)
+    assert any(ln.startswith("HOLD: hold all (audit): lost from the hold list") for ln in out), out
+    assert not [ln for ln in out if "purge --queue" in ln], out
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
+    # its first branch: the real folder back, and the hold is the list's own again
+    (root / "governance.real").rename(gov)
+    rc, out = _status(cfg, capsys)
+    assert any(ln.startswith("HOLD: hold all (state)") for ln in out), out
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance")], out
+
+
+@pytest.mark.parametrize(
+    ("name", "body"),
+    [
+        ("holds.json", "[]"),
+        ("holds.json", "null"),
+        ("holds.json", '{"holds": "all"}'),
+        ("holds.json", '{"holds": ["all"]}'),
+        ("holds.json", ""),
+        ("holds.json", '{"holds": [{"scope": "all", '),
+        ("purge-queue.json", '{"queue": "x"}'),
+        ("suppressed.json", '{"items": "x"}'),
+    ],
+)
+def test_a_damaged_or_wrong_shaped_governance_file_is_the_persons_never_a_traceback(
+    initialised: Config, capsys: pytest.CaptureFixture[str], name: str, body: str
+) -> None:
+    """B13 round 28 I90 (ruling 19): a hold list of the wrong shape raised AttributeError or TypeError out
+    of every command, sync included, and status said "check crashed"; a damaged one said "fix or remove it
+    by hand" while sync exited 0, and the hold list removed by hand let `purge --queue` erase the held page.
+    Each command now refuses with exit 1 in status's own words and no traceback; the page and its history
+    are kept, and no line says "check crashed" or "remove"."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    path = governance.governance_dir(root) / name
+    path.write_text(body, encoding="utf-8")
+    rc, out = _status(cfg, capsys)
+    role = governance.GOVERNANCE_ROLES[name]
+    failed = [
+        ln for ln in out if f"{path} is not {role} agentsync can read" in ln and ln.startswith("[FAIL]")
+    ]
+    assert rc == cli.EXIT_FAILED and len(failed) == 1, out
+    assert not [ln for ln in out if "check crashed" in ln or "remove it" in ln or "Error:" in ln], out
+    line = "error: state: " + failed[0].split(" — ", 1)[1]
+    argvs = [
+        ["hold", "--list"],
+        ["sync"],
+        ["purge", "--queue", "--dry-run"],
+        ["purge", "--queue"],
+        ["purge", f"docs={page}"],
+        ["compact-history"],
+    ]
+    for argv in argvs:
+        capsys.readouterr()
+        rc = cli.main([*argv, "--config", cfg])
+        said = capsys.readouterr()
+        if name != "holds.json" and argv[0] == "hold":
+            assert rc == cli.EXIT_OK, said  # the list reads the holds alone
+            continue
+        assert rc == cli.EXIT_FAILED, (argv, said)
+        assert line in said.err.splitlines(), (argv, said.err)
+        assert "Traceback" not in said.err and "remove it" not in said.err, said.err
+    assert _page_kept(initialised, page)
+
+
+def test_a_hold_on_all_invites_no_purge_queue_and_the_warn_names_each_reason(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 28 I91 (ruling 19): under a hold on all, status, the sync and the purge queue's warn each
+    invited `purge --queue` (and its preview), which then refused; the warn called a queued DLP purge
+    "confirmed upstream deletions / label escalations". No line names `purge --queue`, a note says the purge
+    waits on the hold and names its release, and the warn counts each reason actually queued."""
+    cfg, _root, _page = _hold_and_queue_dlp(initialised, capsys)
+    _rc, out = _status(cfg, capsys)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    out += capsys.readouterr().out.splitlines()
+    checks = cli._governance_checks(initialised)
+    assert not [ln for ln in out if "purge --queue" in ln], out
+    assert not [c for c in checks if "purge --queue" in (c.fix or "") + c.detail], checks
+    release = "`~/.local/bin/agentsync hold all --release --owner <name>`"
+    assert any(ln.startswith("queued purges held: 1 (") and release in ln for ln in out), out
+    (warn,) = [c for c in checks if c.name == "governance.purge_queue"]
+    assert "(1 dlp-remediation: a published credential)" in warn.detail and warn.fix is None, warn
+    assert "confirmed upstream deletions" not in warn.detail
+
+
+def test_a_hold_on_one_source_still_lets_another_sources_queued_purge_run(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I91's other side: a hold on one source holds only that source's entries; the wait for another
+    source's queued purge stays, and `purge --queue` runs it."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "inbox", "--reason", "matter 9", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    sel = governance.PurgeSelector.parse(f"docs={page}", source_id="source")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.DLP_REMEDIATION)
+    assert any("purge --queue" in w for w in loop.next_step(initialised).waits)
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+    assert not (initialised.docs_repo / page).exists()
 
 
 @pytest.mark.parametrize("what", ["a folder", "a fifo"])

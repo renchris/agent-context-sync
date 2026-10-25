@@ -43,6 +43,7 @@ import shutil
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import tomllib
 import unicodedata
 import urllib.parse
@@ -62,6 +63,7 @@ from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, manifest_lost, migration_backups
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
+from agentsync.ops.lock import HOLD_RECORD_KEY as _HOLD_RECORD_KEY
 from agentsync.ops.lock import SingleWriterLock, read_regular_text
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
@@ -139,17 +141,38 @@ class GovernanceError(AgentSyncError):
     """A purge, compaction, hold or offboarding step was refused or failed; the message says why."""
 
 
-class GovernanceNotAFileError(GovernanceError):
-    """A governance file that is not a regular file (a folder, a fifo, a socket, a link to one or a loop):
-    the person's move aside, keeping a copy, in the words status prints (built by :func:`_not_a_file_words`;
+class GovernanceUnreadError(GovernanceError):
+    """A governance file, or governance/ itself, that cannot be read as what it is, the person's: ``path``,
+    ``role`` (the file named by what it is), ``detail`` and ``fix``, the words status's FAIL and every
+    command's ``error: state:`` line print alike, never "check crashed" or a class name; fail closed, never
+    the empty default, which would drop legal holds (B13 round 28 ruling 19)."""
+
+    def __init__(self, path: Path, role: str, detail: str, fix: str) -> None:
+        self.path, self.role, self.detail, self.fix = path, role, detail, fix
+        super().__init__(f"{detail} (fix: {fix})")
+
+
+class GovernanceNotAFileError(GovernanceUnreadError):
+    """A governance file that is not a regular file (a folder, a fifo, a socket, a link to one or a loop),
+    or governance/ that is not a folder (``role`` :data:`GOVERNANCE_DIR_ROLE`): the person's move aside,
+    keeping a copy, in the words status prints (built by :func:`_not_a_file_words`;
     ``doctor.state_not_a_file`` is the finder), never "a fault in
     agentsync to report"; fail closed, never the empty default, which would drop legal holds (B13 round 26
     E43; ruling 13)."""
 
     def __init__(self, path: Path, kind: str, role: str) -> None:
-        self.path, self.kind, self.role = path, kind, role
-        self.detail, self.fix = _not_a_file_words(path, kind, role)
-        super().__init__(f"{self.detail} (fix: {self.fix})")
+        self.kind = kind
+        super().__init__(path, role, *_not_a_file_words(path, kind, role))
+
+
+class GovernanceDamagedError(GovernanceUnreadError):
+    """A governance file that is a regular file but not one agentsync can read: damaged JSON, an empty or
+    cut-short file, or valid JSON of the wrong shape (``[]`` or ``{"holds": "all"}`` at holds.json). The
+    person's, in :func:`_damaged_words`, never "fix or remove it by hand": a hold list removed by hand read
+    as no holds, and ``purge --queue`` erased a page under a hold on all (B13 round 28 I90)."""
+
+    def __init__(self, path: Path, role: str, what: str) -> None:
+        super().__init__(path, role, *_damaged_words(path, role, what))
 
 
 class HoldActiveError(GovernanceError):
@@ -302,50 +325,135 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
 
 
-def _atomic_write_json(path: Path, obj: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    data = (json.dumps(obj, sort_keys=True, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+GOVERNANCE_DIR_ROLE = "agentsync's governance folder"
+"""The role of governance/ itself in :class:`GovernanceNotAFileError` (B13 round 28 I88, I89)."""
+
+
+def governance_dir_error(state_dir: Path) -> GovernanceNotAFileError | None:
+    """governance/ that is not a folder agentsync can use, as the error its readers and writers raise: a
+    link to nothing, a symlink loop, a link through a file, or a file, a fifo or a socket at it or behind a
+    link (``doctor.governance_dir_kind``); None for nothing there (a fresh install), a folder, a link to one,
+    or a folder this account cannot search (its own permission lines). Judged before any file under it is
+    read: a governance/ link to a gone volume read as no holds, and ``purge docs=`` erased a page under a hold
+    on all, then raised FileExistsError with no audit line (B13 round 28 I88); a loop, a file or a fifo there
+    read as "check crashed" and named a different file under it in each command (I89)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    gov = governance_dir(state_dir)
+    kind = doctor.governance_dir_kind(gov)
+    return None if kind is None else GovernanceNotAFileError(gov, kind, GOVERNANCE_DIR_ROLE)
+
+
+def _refuse_bad_dir(folder: Path) -> None:
+    """Raise :func:`governance_dir_error` of the governance/ folder ``folder`` when it is not one."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    kind = doctor.governance_dir_kind(folder)
+    if kind is not None:
+        raise GovernanceNotAFileError(folder, kind, GOVERNANCE_DIR_ROLE)
+
+
+def _mkdir_governance(folder: Path) -> None:
+    """Create governance/ (0700) when it is not there; one that is not a folder raises its not-a-file error
+    first, and a mkdir over a link to nothing (FileExistsError) or under a file (NotADirectoryError) the same
+    error, never a traceback (B13 round 28 I88)."""
+    _refuse_bad_dir(folder)
     try:
-        os.write(fd, data)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    tmp.replace(path)
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except (FileExistsError, NotADirectoryError):
+        _refuse_bad_dir(folder)
+        raise
 
 
-def _read_json(path: Path, default: Any, role: str = "a governance file") -> Any:
+def _write_target(path: Path, role: str) -> Path:
+    """Where a write of ``path`` lands: the file a working link points to, so the link and its target stay in
+    step (B13 round 28 I94: a release renamed a local file over a linked holds.json, and the target kept the
+    hold on all), else ``path``. A link to nothing or a loop is its not-a-file error (every writer reads
+    first, so only a race reaches this)."""
+    if not path.is_symlink():
+        return path
+    try:
+        return Path(path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+        raise GovernanceNotAFileError(
+            path, doctor.governance_file_kind(path) or "a symlink to nothing", role
+        ) from None
+
+
+def _atomic_write_json(path: Path, obj: object, role: str = "a governance file") -> None:
+    """Write ``obj`` to ``path`` by a temporary file renamed over it, fsynced, mode 0600: through a working
+    link into its target's folder (:func:`_write_target`), never over the link; a target folder this account
+    cannot write is a GovernanceError naming the target, never a traceback (B13 round 28 I94)."""
+    _mkdir_governance(path.parent)
+    dest = _write_target(path, role)
+    data = (json.dumps(obj, sort_keys=True, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
+    try:
+        fd, name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".tmp")
+    except PermissionError as exc:
+        if dest == path:  # the state folder's own: its handlers name the chmod
+            raise
+        raise GovernanceError(f"{dest} cannot be written: {exc.strerror or exc}") from exc
+    tmp = Path(name)
+    try:
+        try:
+            os.fchmod(fd, 0o600)
+            os.write(fd, data)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        tmp.replace(dest)
+    except PermissionError as exc:
+        tmp.unlink(missing_ok=True)
+        if dest == path:
+            raise
+        raise GovernanceError(f"{dest} cannot be replaced: {exc.strerror or exc}") from exc
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    with contextlib.suppress(OSError):
+        dir_fd = os.open(dest.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
+
+def _read_json(path: Path, default: Any, role: str = "a governance file", *, again: bool = True) -> Any:
     """The JSON at ``path``, ``default`` only when nothing is there (a fresh install). Anything at the path
     that is not a regular file is GovernanceNotAFileError, the person's, judged by the path's own lstat
     (``doctor.governance_file_kind``): a symlink to nothing, never the empty default, which read a hold list
     behind a dangling link as no holds (B13 round 27 P131); a loop or a link through a file at the file
     itself, never "unreadable", the words of a fault to report (P132, P133); a folder this account cannot
-    open, never its chmod alone, after which the move aside still stops (P135). The same errnos from a
-    folder above the file keep their GovernanceError, the cause kept for the folder's own handlers."""
+    open, never its chmod alone, after which the move aside still stops (P135). governance/ itself that is
+    not a folder is judged first, by its own lstat, never the empty default under a link to nothing nor
+    "unreadable" under a loop (B13 round 28 I88, I89). Text that is not JSON (damaged, empty, cut short) is
+    GovernanceDamagedError, never "fix or remove it by hand" (I90). A regular file that appears between the
+    failed open and the look at what is there is read once more, never called a link to nothing (I107)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     try:  # never a plain read: a fifo at holds.json hung status and every hold (B13 round 25 D46)
         text = read_regular_text(path)
         if text is None:
+            _refuse_bad_dir(path.parent)
             if os.path.lexists(path):
-                raise GovernanceNotAFileError(
-                    path, doctor.governance_file_kind(path) or "a symlink to nothing", role
-                )
+                kind = doctor.governance_file_kind(path)
+                if kind is not None:
+                    raise GovernanceNotAFileError(path, kind, role)
+                if again:  # something readable appeared: a hold written meanwhile (I107)
+                    return _read_json(path, default, role, again=False)
+                raise GovernanceError(f"{path} kept changing while it was read; run the command again")
             return default
+        if not text.strip():
+            raise GovernanceDamagedError(path, role, "the file is empty")
         return json.loads(text)
-    except FileNotFoundError:
-        if os.path.lexists(path):
-            raise GovernanceNotAFileError(
-                path, doctor.governance_file_kind(path) or "a symlink to nothing", role
-            ) from None
-        return default
     except ValueError as exc:
         if not isinstance(exc, json.JSONDecodeError | UnicodeDecodeError):  # not a file: moved aside (E43)
             raise GovernanceNotAFileError(
                 path, doctor.governance_file_kind(path) or "not a regular file", role
             ) from None
-        raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
+        raise GovernanceDamagedError(path, role, f"it is not JSON ({exc})") from None
     except (
         PermissionError
     ) as exc:  # its owner or mode, not its contents (B13 round 20 X73): kept as the cause
@@ -354,10 +462,33 @@ def _read_json(path: Path, default: Any, role: str = "a governance file") -> Any
             raise GovernanceNotAFileError(path, kind, role) from None
         raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
     except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+            _refuse_bad_dir(path.parent)  # the folder above, by its own lstat (I89)
         kind = doctor.state_file_kind(path) if exc.errno in (errno.ELOOP, errno.ENOTDIR) else None
         if kind is not None:  # at the file itself; above it, the folder's own (P133)
             raise GovernanceNotAFileError(path, kind, role) from None
-        raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from exc
+        raise GovernanceError(f"{path} cannot be read: {exc.strerror or exc}") from exc
+
+
+def _damaged_words(path: Path, role: str, what: str) -> tuple[str, str]:
+    """The detail and the person's fix of a governance file that is a regular file agentsync cannot read
+    (``what``: why). Never "remove it" and never a bare move aside: a hold list moved aside or removed read as
+    no holds and its page was erased (B13 round 28 I90), so the hold list's fix restores it, or keeps a copy
+    and sets each hold again before any purge; the audit trail's record keeps them in force meanwhile."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    shown = doctor._shell_path(path)
+    detail = f"{path} is not {role} agentsync can read: {what}"
+    if role == "the hold list":
+        fix = (
+            f"the person (the records or legal owner) restores {shown} from a copy they trust; or moves it "
+            f"aside, keeping a copy, and before any purge sets each hold it held again with "
+            f"`{AGENTSYNC_BIN} hold <scope> --reason <why> --owner <name>` (until then the holds the audit "
+            "trail records stay in force)"
+        )
+    else:
+        fix = f"the person restores {shown} from a copy they trust, or moves it aside, keeping a copy"
+    return detail, fix
 
 
 def audit_path(state_dir: Path) -> Path:
@@ -372,7 +503,7 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
     the line: an audit trail this account cannot open raises before anything changed (B13 round 23 A79: a
     hold was released, or set, and the purge queue written, with no audit line, and the command exited 1)."""
     path = audit_path(state_dir)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _mkdir_governance(path.parent)  # a governance/ that is not a folder: its error, no traceback (I88)
     fd = _open_audit(path)
 
     def write(record: Mapping[str, object]) -> None:
@@ -393,11 +524,24 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     keeping a copy, as install.sh and state_dir.files say it (B13 round 25 D22, D41; round 26 E43)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
+    shown = doctor._shell_path(path)
+    if role == GOVERNANCE_DIR_ROLE:
+        # never a bare move aside: the hold list and the audit trail live in it, and a governance/ moved
+        # aside read as no holds, so a page under a hold on all was erased (B13 round 28 I89)
+        detail = f"{path} is {kind}, not a folder: {role} belongs there"
+        return detail, (
+            "the person puts the real governance folder (the one holding holds.json and audit.jsonl) back "
+            f"at {shown}, from wherever it was moved or from a copy; only where none was ever kept, moves "
+            f"{shown} aside, keeping a copy (a hold set earlier stays in force from heartbeat.json's record)"
+        )
     detail = f"{path} is {kind}, not a file: {role} belongs there"  # no bracket before "(fix:" (E18)
     # a folder shut to this account takes its chmod (or the person's chown) first: macOS refuses its move
     # (B13 round 27 P135, as the lock's and the heartbeat's fixes already said)
     first = doctor._opens_first(path, kind)
-    return detail, f"the person {first}moves {doctor._shell_path(path)} aside, keeping a copy"
+    fix = f"the person {first}moves {shown} aside, keeping a copy"
+    if role == "the hold list":  # then the list itself back, so following it never leaves no holds (I87)
+        fix += ", then puts the hold list back from a copy they trust"
+    return detail, fix
 
 
 def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
@@ -417,14 +561,34 @@ GOVERNANCE_ROLES = {
 def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
     """The first governance file that is not a regular file, by its stat (``doctor.state_file_kind``, which
     opens nothing, so a fifo never blocks), as the error its readers raise; None when each is a file, a link
-    to one or missing (B13 round 26 E43; ruling 13)."""
+    to one or missing (B13 round 26 E43; ruling 13). governance/ itself first (:func:`governance_dir_error`),
+    so every command refuses over it in its own words, init included (B13 round 28 I88, I89)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
+    folder = governance_dir_error(state_dir)
+    if folder is not None:
+        return folder
     for name, role in GOVERNANCE_ROLES.items():
         path = governance_dir(state_dir) / name
         kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
         if kind is not None:
             return GovernanceNotAFileError(path, kind, role)
+    return None
+
+
+def governance_damaged(state_dir: Path) -> GovernanceDamagedError | None:
+    """The first governance file that is a regular file agentsync cannot read (damaged JSON, empty, or the
+    wrong shape: :class:`GovernanceDamagedError`), the hold list first; None when each reads, or another
+    error stops the read (its own line says that). Read only after :func:`governance_not_a_file` passed, so
+    each is a regular file and a fifo never blocks: sync's guard refuses over it in status's words, never a
+    traceback and never an exit 0 (B13 round 28 I90)."""
+    for read in (_state_holds, pending_purges, load_suppressions):
+        try:
+            read(state_dir)
+        except GovernanceDamagedError as exc:
+            return exc
+        except Exception:  # another error: its own handlers
+            continue
     return None
 
 
@@ -477,19 +641,17 @@ def sticky_blocker(state_dir: Path) -> Path | None:
     account owns too, where no rename replaces it (EPERM) though the folder takes a write; else None. The
     sticky folder's own owner may replace any file in it, and whose folder it is decides nothing else:
     another account's folder this account can write works (B13 round 25 D45). Through a link, as a hold
-    writes."""
-    gov = governance_dir(state_dir)
-    try:
-        st = gov.stat()
-    except OSError:
-        return None
-    if not st.st_mode & stat.S_ISVTX or st.st_uid == os.getuid():
-        return None
+    writes. A working link is judged where the write renames, in its target's folder, by the target's owner
+    (B13 round 28 I94: a write now lands in the target)."""
     for path in (_holds_file(state_dir), _queue_file(state_dir), _suppress_file(state_dir)):
         try:
-            if path.lstat().st_uid != os.getuid():
+            dest = path.resolve(strict=True) if path.is_symlink() else path
+            st = dest.parent.stat()
+            if not st.st_mode & stat.S_ISVTX or st.st_uid == os.getuid():
+                continue
+            if dest.lstat().st_uid != os.getuid():
                 return path
-        except OSError:
+        except (OSError, RuntimeError):
             continue
     return None
 
@@ -541,12 +703,158 @@ def _check_scope(scope: str) -> str:
     return s
 
 
+_HOLD_KEYS = ("scope", "reason", "owner", "set_at")
+
+
 def _state_holds(state_dir: Path) -> list[Hold]:
-    data = _read_json(_holds_file(state_dir), {"holds": []}, "the hold list")
+    """The holds holds.json lists. One of the wrong shape (``[]``, ``null``, ``{"holds": "all"}``,
+    ``{"holds": ["all"]}``) is GovernanceDamagedError, never an AttributeError traceback out of every command
+    and never no holds (B13 round 28 I90); holds.json has had this one shape since it was added."""
+    path = _holds_file(state_dir)
+    data = _read_json(path, {"holds": []}, "the hold list")
+    # an object with no "holds" is no holds, as the queue's: the audit trail keeps any it lost (I87)
+    entries = data.get("holds", []) if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise GovernanceDamagedError(path, "the hold list", 'it is not an object with a "holds" list')
     out: list[Hold] = []
-    for h in data.get("holds", []):
-        out.append(Hold(str(h["scope"]), str(h["reason"]), str(h["owner"]), str(h["set_at"]), "state"))
+    for h in entries:
+        if not isinstance(h, dict) or not all(isinstance(h.get(k), str) for k in _HOLD_KEYS):
+            raise GovernanceDamagedError(path, "the hold list", f"an entry is not a hold: {h!r}"[:200])
+        try:
+            scope = _check_scope(h["scope"])
+        except GovernanceError:
+            raise GovernanceDamagedError(
+                path, "the hold list", f"an entry's scope is {h['scope']!r}"
+            ) from None
+        out.append(Hold(scope, h["reason"], h["owner"], h["set_at"], "state"))
     return out
+
+
+HOLD_RECORD_KEY = _HOLD_RECORD_KEY
+"""heartbeat.json's record of the state hold scopes, a list beside the per-source entries (whose readers
+take only objects), kept outside governance/ so a governance/ moved aside never lifts a hold (B13 round 28
+I89)."""
+
+
+def _heartbeat_file(state_dir: Path) -> Path:
+    return expand(state_dir) / "heartbeat.json"
+
+
+def recorded_hold_scopes(state_dir: Path) -> frozenset[str]:
+    """The scopes heartbeat.json's record says were held (:data:`HOLD_RECORD_KEY`); empty when there is no
+    record or it cannot be read (no record to keep: today's answer)."""
+    try:
+        text = read_regular_text(_heartbeat_file(state_dir))
+        data = json.loads(text) if text else None
+    except (OSError, ValueError):
+        return frozenset()
+    scopes = data.get(HOLD_RECORD_KEY) if isinstance(data, dict) else None
+    if not isinstance(scopes, list):
+        return frozenset()
+    return frozenset(s for s in scopes if isinstance(s, str))
+
+
+def record_holds(state_dir: Path, scopes: Iterable[str]) -> None:
+    """Write ``scopes`` as heartbeat.json's hold record, into an existing regular heartbeat only (a new one
+    would read as an earlier pass to the lost-manifest guard), keeping every source's entry; best effort: a
+    heartbeat that cannot be read or written keeps the audit trail as the record."""
+    path = _heartbeat_file(state_dir)
+    try:
+        text = read_regular_text(path)
+        data = json.loads(text) if text else None
+        if not isinstance(data, dict):
+            return
+        data[HOLD_RECORD_KEY] = sorted(set(scopes))
+        body = (json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+        fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            os.fchmod(fd, 0o600)
+            os.write(fd, body)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        Path(name).replace(path)
+    except (OSError, ValueError) as exc:
+        log.debug("governance: hold record not written to %s: %s", path, exc)
+
+
+def _audit_events(state_dir: Path) -> list[dict[str, Any]]:
+    """The audit trail's records, oldest first, for the hold replay: a line that does not parse is skipped,
+    and a trail that cannot be read is none (its own governance.audit line says why)."""
+    try:
+        text = read_regular_text(audit_path(state_dir))
+    except (OSError, ValueError):
+        return []
+    out: list[dict[str, Any]] = []
+    for line in (text or "").splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out
+
+
+def audit_holds(state_dir: Path) -> tuple[dict[str, dict[str, Any]], frozenset[str]]:
+    """The audit trail replayed per scope: the scopes whose last record is ``hold-set`` (each with that
+    record) and those whose last is ``hold-released``. Only :func:`set_hold` and :func:`release_hold` write
+    holds.json, each with its audit line in the same step, so the replay is the record of the holds in force
+    (B13 round 28 I87)."""
+    last: dict[str, dict[str, Any]] = {}
+    for rec in _audit_events(state_dir):
+        if rec.get("action") in ("hold-set", "hold-released") and isinstance(rec.get("scope"), str):
+            last[rec["scope"]] = rec
+    held = {s: r for s, r in last.items() if r["action"] == "hold-set"}
+    released = frozenset(s for s, r in last.items() if r["action"] == "hold-released")
+    return held, released
+
+
+def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Hold]:
+    """The holds the audit trail records as set and not released, or heartbeat.json's record names with no
+    release, that holds.json (``listed``, read here when None) lacks: missing, rewritten as no holds, or
+    with governance/ moved aside. Each is in force (``origin`` ``audit``), so purge, ``purge --queue`` and
+    compaction refuse it and status shows it: following status's fix for an unreadable hold list never
+    leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19)."""
+    have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
+    held, released = audit_holds(state_dir)
+    out = [
+        Hold(
+            scope,
+            LOST_HOLD_REASON,
+            str(rec.get("owner") or "the records owner"),
+            str(rec.get("at") or ""),
+            "audit",
+        )
+        for scope, rec in sorted(held.items())
+        if scope not in have
+    ]
+    out += [
+        Hold(scope, LOST_HOLD_REASON, "the records owner", "", "audit")
+        for scope in sorted(recorded_hold_scopes(state_dir) - have - released - set(held))
+    ]
+    return out
+
+
+LOST_HOLD_REASON = "lost from the hold list"
+"""The reason of a hold :func:`lost_holds` keeps in force (B13 round 28 I87)."""
+
+
+def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
+    """governance.hold's FAIL of a lost hold (:func:`lost_holds`): the detail and the person's fix, which
+    puts the hold list back, sets the hold again or releases it, never a purge first."""
+    path = _holds_file(state_dir)
+    by = f" set by {hold.owner}" + (f" at {hold.set_at}" if hold.set_at else "")
+    detail = (
+        f"{path} no longer lists the hold on {hold.scope}{by} (audit.jsonl, heartbeat.json), and no release "
+        "is recorded; purge and compaction stay suspended"
+    )
+    fix = (
+        f"the person puts the hold list back from the copy kept, or the records owner runs `{AGENTSYNC_BIN} "
+        f"hold {hold.scope} --reason <why> --owner <name>` again, or releases it with `{AGENTSYNC_BIN} hold "
+        f"{hold.scope} --release --owner <name>`"
+    )
+    return detail, fix
 
 
 def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datetime | None = None) -> Hold:
@@ -569,16 +877,19 @@ def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datet
             },
         )
         audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
+    record_holds(state_dir, (h.scope for h in holds))  # outside governance/ too (I89)
     log.warning("governance: %s", hold.describe())
     return hold
 
 
 def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | None = None) -> bool:
-    """Release the state hold on ``scope``; True if one existed ; config holds live in sources.toml."""
+    """Release the state hold on ``scope``; True if one existed ; config holds live in sources.toml. A hold
+    holds.json lost but the audit trail or heartbeat.json's record keeps (:func:`lost_holds`) is released
+    too, with its own audit line, so a deliberate release never needs a set first (B13 round 28 I87)."""
     s = _check_scope(scope)
     holds = _state_holds(state_dir)
     keep = [h for h in holds if h.scope != s]
-    if len(keep) == len(holds):
+    if len(keep) == len(holds) and not any(h.scope == s for h in lost_holds(state_dir, holds)):
         return False
     at = _iso(_now(now))
     with _audit_appender(state_dir) as audit:  # a release removes protection: never one with no record
@@ -591,6 +902,7 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
             },
         )
         audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
+    record_holds(state_dir, (h.scope for h in keep))
     log.warning("governance: hold %s released by %s", s, owner)
     return True
 
@@ -610,20 +922,22 @@ def state_holds(state_dir: Path) -> tuple[Hold, ...]:
 
 
 def hold_list_unread(state_dir: Path) -> bool:
-    """Whether the state's hold list cannot be read (not a file, a link to nothing, refused): status and the
-    loop invite no queued purge over it, since status FAILs it and every purge refuses until the person moves
-    it aside (B13 round 27 P131: a dangling holds.json read as no holds, and the invited run erased a page
-    under a hold on all)."""
+    """Whether the state's hold list cannot be read (not a file, a link to nothing, refused, damaged, or
+    governance/ not a folder) or has lost a hold the audit trail keeps (:func:`lost_holds`): status and the
+    loop invite no queued purge over it, since status FAILs it and every purge refuses until the person puts
+    it back (B13 round 27 P131: a dangling holds.json read as no holds, and the invited run erased a page
+    under a hold on all; round 28 I87: the same once the person followed the fix)."""
     try:
-        state_holds(state_dir)
+        return bool(lost_holds(state_dir))
     except Exception:  # not a file, refused, or the wrong shape: no read, so no hold list to trust
         return True
-    return False
 
 
 def active_holds(state_dir: Path, gov: GovernanceConfig) -> tuple[Hold, ...]:
-    """Every hold in force: the config-level one (scope ``all``) first, then state holds by scope."""
-    return (*config_holds(gov), *state_holds(state_dir))
+    """Every hold in force: the config-level one (scope ``all``) first, then state holds by scope, then the
+    holds the audit trail keeps that holds.json lost (:func:`lost_holds`; B13 round 28 I87)."""
+    listed = state_holds(state_dir)
+    return (*config_holds(gov), *listed, *lost_holds(state_dir, listed))
 
 
 def blocking_holds(holds: Sequence[Hold], source_ids: Iterable[str] | None) -> list[Hold]:
@@ -759,8 +1073,19 @@ def _suppress_file(state_dir: Path) -> Path:
 
 
 def load_suppressions(state_dir: Path) -> Suppressions:
-    """Load the suppression list (empty when none)."""
-    data = _read_json(_suppress_file(state_dir), {}, "the suppression list")
+    """Load the suppression list (empty when none). One of the wrong shape is GovernanceDamagedError, never a
+    traceback (B13 round 28 I90)."""
+    path = _suppress_file(state_dir)
+    data = _read_json(path, {}, "the suppression list")
+    pairs_ok = isinstance(data, dict) and all(
+        isinstance(data.get(k, []), list)
+        and all(isinstance(x, list) and len(x) == 2 for x in data.get(k, []))
+        for k in ("items", "globs", "paths")
+    )
+    if not pairs_ok or not isinstance(data.get("canonical", []), list):
+        raise GovernanceDamagedError(
+            path, "the suppression list", "its lists are not of the shape agentsync writes"
+        )
     items = frozenset((str(a), str(b)) for a, b in data.get("items", []))
     globs = tuple((str(a), str(b)) for a, b in data.get("globs", []))
     paths = frozenset((str(a), _path_key(str(b))) for a, b in data.get("paths", []))
@@ -811,12 +1136,26 @@ def _queue_file(state_dir: Path) -> Path:
 
 
 def pending_purges(state_dir: Path) -> list[QueuedPurge]:
-    """Queued purges, oldest first."""
-    data = _read_json(_queue_file(state_dir), {"queue": []}, "the purge queue")
-    return [
-        QueuedPurge(PurgeSelector(**q["selector"]), PurgeReason(q["reason"]), str(q["enqueued_at"]))
-        for q in data.get("queue", [])
-    ]
+    """Queued purges, oldest first. One of the wrong shape is GovernanceDamagedError, never a traceback (B13
+    round 28 I90)."""
+    path = _queue_file(state_dir)
+    data = _read_json(path, {"queue": []}, "the purge queue")
+    # an object with no "queue" is an empty queue: reading too few purges erases nothing (the hold list, whose
+    # reading too few holds would, stays strict)
+    entries = data.get("queue", []) if isinstance(data, dict) else ([] if data == [] else None)
+    if not isinstance(entries, list):
+        raise GovernanceDamagedError(path, "the purge queue", 'it is not an object with a "queue" list')
+    out: list[QueuedPurge] = []
+    for q in entries:
+        try:
+            out.append(
+                QueuedPurge(PurgeSelector(**q["selector"]), PurgeReason(q["reason"]), str(q["enqueued_at"]))
+            )
+        except (TypeError, KeyError, ValueError, GovernanceError):
+            raise GovernanceDamagedError(
+                path, "the purge queue", f"an entry is not a queued purge: {q!r}"[:200]
+            ) from None
+    return out
 
 
 def _write_queue(state_dir: Path, queue: Sequence[QueuedPurge]) -> None:
@@ -2392,6 +2731,13 @@ def purge(
     gov = gov or load_governance(config.config_path)
     repo = expand(config.docs_repo)
     sp = config.state_paths
+    _refuse_bad_dir(governance_dir(sp.root))  # before the rewrite, dry run too (B13 round 28 I88)
+    if not dry_run and governance_dir(sp.root).is_dir():
+        # the audit trail opened first, as a hold opens it (A79): one that cannot be opened stops the purge
+        # before anything is erased, never a rewrite left with no audit line (I88). Only in a governance/
+        # that is there: never one made up while the real folder is away, which would stand in its way
+        with _audit_appender(sp.root):
+            pass
     with _maybe_lock(sp, lock and not dry_run):
         report = _purge_locked(
             config, repo, sp, selector=selector, reason=reason, gov=gov, dry_run=dry_run, push=push, now=now
@@ -3073,6 +3419,65 @@ def _unjudged_split(
 
 
 _UNJUDGED_CHECK = re.compile(r"until the (\S+) \[FAIL\] line is fixed$")
+
+
+def held_purges(
+    state_dir: Path, gov: GovernanceConfig, queued: Sequence[QueuedPurge]
+) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, list[Hold]]]]:
+    """``queued`` (the runnable entries of :func:`partition_purges`) split by the holds in force: the ones a
+    ``purge --queue`` would run, and the ones a hold suspends, each with its holds. A hold on ``all`` holds
+    every entry; an entry for one source, the holds on it; a sourceless ``docs=`` or ``path=`` entry under a
+    hold on one source only stays runnable, as ``purge`` judges it by the items it resolves (B13 round 28
+    I91: under a hold on all, status, the sync and the warn invited a ``purge --queue`` that refused, preview
+    included). Raises what :func:`active_holds` raises; the caller's hold-list-unread branch comes first."""
+    holds = active_holds(state_dir, gov)
+    runnable: list[QueuedPurge] = []
+    held: list[tuple[QueuedPurge, list[Hold]]] = []
+    for q in queued:
+        sid = q.selector.source_id
+        blocking = blocking_holds(holds, [sid] if sid else [])
+        if blocking:
+            held.append((q, blocking))
+        else:
+            runnable.append(q)
+    return runnable, held
+
+
+def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
+    """The note for the entries a hold suspends (:func:`held_purges`): they wait on the hold, and run once
+    its records owner releases it, with that release's command; a note, never a WAITING ON YOU, since the
+    next move is the records owner's, and never a ``purge --queue`` (B13 round 28 I91)."""
+    scopes = sorted({h.scope for _q, hs in held for h in hs if h.origin != "config"})
+    config = any(h.origin == "config" for _q, hs in held for h in hs)
+    how = [f"`{AGENTSYNC_BIN} hold {s} --release --owner <name>`" for s in scopes]
+    if config:
+        how.append("hold = false in sources.toml's [governance]")
+    n = len(held)
+    verb = "waits" if n == 1 else "wait"
+    them = "it runs" if n == 1 else "they run"
+    return (
+        f"{plural(n, 'queued purge')} {verb} on the hold above; {them} once its records owner releases it "
+        f"({' or '.join(how)})"
+    )
+
+
+PURGE_REASON_WORDS = {
+    PurgeReason.UPSTREAM_DELETED: "a confirmed upstream deletion",
+    PurgeReason.LABEL_ESCALATION: "a label escalation",
+    PurgeReason.DLP_REMEDIATION: "a published credential",
+    PurgeReason.ERASURE_REQUEST: "an erasure request",
+    PurgeReason.OPERATOR: "an operator's request",
+}
+"""What each queued reason is, in the purge queue's warn (B13 round 28 I91)."""
+
+
+def reason_counts(queued: Sequence[QueuedPurge]) -> str:
+    """One count per reason actually queued, e.g. ``1 dlp-remediation: a published credential``, never a
+    fixed list that misnamed a queued DLP purge (B13 round 28 I91)."""
+    counts: dict[PurgeReason, int] = {}
+    for q in queued:
+        counts[q.reason] = counts.get(q.reason, 0) + 1
+    return ", ".join(f"{n} {r.value}: {PURGE_REASON_WORDS[r]}" for r, n in sorted(counts.items()))
 
 
 def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:

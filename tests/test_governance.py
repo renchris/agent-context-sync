@@ -1771,3 +1771,90 @@ def test_an_audit_trail_this_account_cannot_open_changes_no_hold_and_queues_no_p
         audit.chmod(0o600)
     assert [f.read_bytes() for f in files] == before
     assert [h.scope for h in gv.state_holds(state)] == ["all"]
+
+
+@pytest.mark.parametrize("name", ["holds.json", "purge-queue.json", "suppressed.json"])
+def test_a_write_through_a_working_link_lands_in_its_target_and_keeps_the_link(
+    tmp_path: Path, name: str
+) -> None:
+    """B13 round 28 I94: a working link at holds.json or purge-queue.json (ruling 15: it stays ok) was
+    replaced by a local file on the first write, and the target kept the old holds (a release left the
+    hold on all there). Every governance write goes into the target, through its folder, and the link
+    stays a link."""
+    state = tmp_path / "state"
+    gov = gv.governance_dir(state)
+    gov.mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    target = elsewhere / f"contoso-{name}"
+    target.write_text(
+        {"holds.json": '{"holds": []}\n', "purge-queue.json": '{"queue": []}\n'}.get(name, "{}\n")
+    )
+    link = gov / name
+    link.symlink_to(target)
+    if name == "holds.json":
+        gv.set_hold(state, "all", reason="matter 8", owner="Contoso Legal")
+        assert link.is_symlink() and [h["scope"] for h in json.loads(target.read_text())["holds"]] == ["all"]
+        assert gv.release_hold(state, "all", owner="Contoso Legal")
+        assert json.loads(target.read_text()) == {"holds": []}
+    elif name == "purge-queue.json":
+        sel = gv.PurgeSelector.parse("docs=mirror/src/a.md", source_id=None)
+        assert gv.enqueue_purge(state, sel, gv.PurgeReason.ERASURE_REQUEST)
+        assert len(json.loads(target.read_text())["queue"]) == 1
+    else:
+        gv.suppress_items(state, [("src", "id-1")])
+        assert json.loads(target.read_text())["items"] == [["src", "id-1"]]
+    assert link.is_symlink() and link.resolve() == target.resolve()
+    assert gv.governance_not_a_file(state) is None
+    assert not [p for p in gov.iterdir() if p.name.endswith(".tmp")], "no temporary file left"
+    assert not [p for p in elsewhere.iterdir() if p.name.endswith(".tmp")]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a 0500 folder")
+def test_a_write_through_a_link_into_a_folder_it_cannot_write_is_a_handled_refusal(tmp_path: Path) -> None:
+    """I94's verifier: a link's target folder this account cannot write fails as a GovernanceError naming
+    the target, never a traceback, and never a silent local file beside the link."""
+    state = tmp_path / "state"
+    gov = gv.governance_dir(state)
+    gov.mkdir(parents=True)
+    shut = tmp_path / "shut"
+    shut.mkdir()
+    target = shut / "holds.json"
+    target.write_text('{"holds": []}\n')
+    (gov / "holds.json").symlink_to(target)
+    shut.chmod(0o500)
+    try:
+        with pytest.raises(gv.GovernanceError, match=str(target.resolve().parent)):
+            gv.set_hold(state, "all", reason="matter 8", owner="Contoso Legal")
+    finally:
+        shut.chmod(0o700)
+    assert (gov / "holds.json").is_symlink() and json.loads(target.read_text()) == {"holds": []}
+
+
+def test_a_hold_list_created_while_it_is_read_is_read_never_a_link_to_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 28 I107: a hold list a concurrent hold created between the reader's failed open and its
+    look at what is there was called "a symlink to nothing", whose fix moves a valid hold list aside. It is
+    read once more; a dangling link still raises."""
+    state = tmp_path / "state"
+    gv.governance_dir(state).mkdir(parents=True)
+    holds = gv._holds_file(state)
+    real = gv.read_regular_text
+    body = {"holds": [{"scope": "all", "reason": "matter 8", "owner": "Contoso Legal", "set_at": "x"}]}
+    calls = []
+
+    def racing(path: Path) -> str | None:
+        got = real(path)
+        if path == holds and not calls:
+            calls.append(path)
+            gv._atomic_write_json(holds, body)  # the concurrent hold, written as set_hold writes it
+        return got
+
+    monkeypatch.setattr(gv, "read_regular_text", racing)
+    assert [h.scope for h in gv._state_holds(state)] == ["all"]
+    monkeypatch.setattr(gv, "read_regular_text", real)
+    holds.unlink()
+    holds.symlink_to(tmp_path / "gone" / "holds.json")
+    with pytest.raises(gv.GovernanceNotAFileError, match="a symlink to nothing"):
+        gv._state_holds(state)

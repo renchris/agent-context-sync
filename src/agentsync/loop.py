@@ -41,6 +41,7 @@ name the docs repo's ``AGENTS.md`` the same way (:func:`_baseline`).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -897,10 +898,21 @@ def next_step(
     queued, kept = governance.partition_purges(config.state_paths)
     if queued and governance.hold_list_unread(config.state_paths.root):
         queued = []  # an unread hold list is no empty one: its FAIL comes first (B13 round 27 P131)
+    on_hold: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
     if queued:
+        # a hold suspends its entries: a note, the records owner's move, never a run that refuses (B13 round
+        # 28 I91); a [governance] that does not load keeps the wait, its governance.config FAIL speaks
+        with contextlib.suppress(Exception):
+            queued, on_hold = governance.held_purges(
+                config.state_paths.root, governance.load_governance(config.config_path), queued
+            )
+    if on_hold:
+        notes.append(governance.held_words(on_hold))
+    if queued:
+        exits = "; it exits 1 with the held ones still queued" if on_hold else ""
         waits.append(
             f"{plural(len(queued), 'queued purge')}: preview with `{BIN} purge --queue --dry-run` (writes "
-            f"nothing) before you run `{BIN} purge --queue` (rewrites history)"
+            f"nothing) before you run `{BIN} purge --queue` (rewrites history){exits}"
         )
         checks.append("governance.purge_queue")
     notes += governance.kept_lines(kept)

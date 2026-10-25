@@ -31660,7 +31660,71 @@ Reserved for round 28 lane RB of B13.
 
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
-Reserved for round 28 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,
+20 and 21; the words below were sent to lanes RA and RB before they built their halves.
+
+**I87, I88, I89, I90, I91, I94, I107: a hold is never lost to a reader (`agentsync.governance`,
+`agentsync.ops.doctor`, `agentsync.ops.lock`, `agentsync.cli`, `agentsync.loop`, `agentsync.cycle`; ruling 19).**
+Twice a page under a hold on `all` was erased: once after the person followed status's own fix for an unreadable
+hold list (I87), once with governance/ a link to a gone volume (I88). `governance.audit_holds` replays the audit
+trail per scope (only `set_hold` and `release_hold` write holds.json, each with its audit line in the same step),
+and `governance.lost_holds` keeps every hold the audit trail records as set and not released, or heartbeat.json's
+record names (`HOLD_RECORD_KEY`, a list beside the per-source objects, written by a hold, its release and each pass,
+kept by `lock.write_heartbeat`, only ever into a heartbeat that is there), that holds.json lacks: missing,
+rewritten as `{"holds": []}`, or with governance/ moved aside. `active_holds` adds them as `Hold(scope, "lost from
+the hold list", owner, set_at, "audit")`, so status prints a HOLD line for each, every purge and compaction refuse
+it, `hold_list_unread` is true over it (no `purge --queue` is invited), and doctor's governance.hold FAILs it as
+the person's (`governance.lost_hold_words`: `<holds.json> no longer lists the hold on <scope> set by <owner> at
+<time> (audit.jsonl, heartbeat.json), and no release is recorded; purge and compaction stay suspended`, fix `the
+person puts the hold list back from the copy kept, or the records owner runs ... hold <scope> --reason <why> --owner
+<name> again, or releases it with ... hold <scope> --release --owner <name>`). `release_hold` releases a lost hold
+with its own audit line, so a deliberate release never needs a set first. The hold list's not-a-file fix ends `...
+aside, keeping a copy, then puts the hold list back from a copy they trust`. governance/ itself is judged by its
+own lstat (`doctor.governance_dir_kind`, never `state_file_kind`, which calls a folder not a file): a link to
+nothing, a loop, a link through a file, a file, a fifo or a socket there is `GovernanceNotAFileError(gov, kind,
+GOVERNANCE_DIR_ROLE)`, `<gov> is <kind>, not a folder: agentsync's governance folder belongs there`, fix `the
+person puts the real governance folder (the one holding holds.json and audit.jsonl) back at <gov>, from wherever
+it was moved or from a copy; only where none was ever kept, moves <gov> aside, keeping a copy (a hold set earlier
+stays in force from heartbeat.json's record)`, never a bare move aside (measured to erase held pages). It is
+judged before any file under it is read or written (`_read_json`, `_atomic_write_json`, `_audit_appender`, and
+`purge` before its rewrite, which also opens an existing governance/'s audit trail first), so status prints one
+governance.hold FAIL and the purge queue "not checked", never "check crashed", and every command, init included,
+refuses in those words with a NEXT. A regular file agentsync cannot read (damaged JSON, empty, cut short, or the
+wrong shape at holds.json, the purge queue or the suppression list) is `GovernanceDamagedError`: `<path> is not
+<role> agentsync can read: <what>`, the hold list's fix `the person (the records or legal owner) restores <path>
+from a copy they trust; or moves it aside, keeping a copy, and before any purge sets each hold it held again ...`,
+never "fix or remove it by hand" and never a traceback; `doctor.state_not_a_file` finds it (`governance_damaged`)
+once each file is a regular one, so sync and the guarded commands refuse as status FAILs. Both errors share
+`GovernanceUnreadError` (`path`, `role`, `detail`, `fix`), which every CLI handler routes. `governance.held_purges`
+splits the runnable queue by the holds in force (a hold on all holds every entry; a source's entry, the holds on
+it; a sourceless one under a hold on one source stays runnable, as `purge` judges it by what it resolves): status
+says `queued purges held: N (N queued purge(s) wait(s) on the hold above; ... once its records owner releases it
+(... hold <scope> --release --owner <name>))`, the loop gives that as a note and keeps its wait only for the
+runnable rest, and the purge_queue warn counts each reason queued (`1 dlp-remediation: a published credential`),
+with no fix when every entry is held. `_atomic_write_json` writes through a working link into its target's folder
+(`tempfile.mkstemp` there, `os.replace`, the folder fsynced), so the link and its target stay in step, a target
+folder this account cannot write is a `GovernanceError` naming it, and `sticky_blocker` judges the folder each
+write renames in. A regular file that appears between a reader's failed open and its look is read once more,
+never called a link to nothing (I107). The new public names: `governance.governance_dir_error`, `governance.recorded_hold_scopes`, `governance.record_holds`, `governance.LOST_HOLD_REASON`, `governance.held_words`, `governance.reason_counts` and `governance.PURGE_REASON_WORDS` (each reason's words). Tests: in `test_cli.py`
+`test_a_hold_the_audit_trail_records_stays_in_force_when_the_hold_list_loses_it`,
+`test_a_governance_folder_linked_to_a_gone_volume_never_reads_as_no_holds`,
+`test_a_governance_folder_linked_to_a_working_folder_still_holds`,
+`test_a_governance_folder_that_is_not_a_folder_is_one_persons_fail_naming_it`,
+`test_a_damaged_or_wrong_shaped_governance_file_is_the_persons_never_a_traceback`,
+`test_a_hold_on_all_invites_no_purge_queue_and_the_warn_names_each_reason`,
+`test_a_hold_on_one_source_still_lets_another_sources_queued_purge_run`; in `test_governance.py`
+`test_a_write_through_a_working_link_lands_in_its_target_and_keeps_the_link`,
+`test_a_write_through_a_link_into_a_folder_it_cannot_write_is_a_handled_refusal`,
+`test_a_hold_list_created_while_it_is_read_is_read_never_a_link_to_nothing`. Two older tests take the new
+contract: `test_a_working_hold_list_still_passes`'s "nothing" is a hold list never written (one removed after a
+hold is I87's lost hold), and `test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_runnable_one`
+gives the held entry a note, not a wait.
+
+**I52 (doctor's half): `doctor.own_path_fix`.** `state_path_fix` of a state file at its resolved path against its
+resolved folder, so a -wal or -shm beside a linked manifest's target takes its fix there; `refused_files_fix`'s
+chmod names each file by its own path and its person's branch is `own_path_fix`. Lane RB's install.sh and lane RA's
+report import it with a fallback. Test: `test_ops_doctor.py`
+`test_a_linked_manifests_side_takes_its_chmod_at_the_targets_folder`.
 
 ### 16.196 Round 28: a password in a .url, staging paths in conversion errors, the new start's runs and kept pages, Finder order (2026-10-25, wave B13 round 28 lane E)
 

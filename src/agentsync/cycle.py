@@ -3299,6 +3299,14 @@ class _Cycle:
                 self.heartbeat_refused = exc
             except (OSError, ValueError):
                 pass
+        if self.heartbeat_refused is None:
+            # heartbeat.json keeps the state hold scopes, outside governance/, so a governance/ moved aside
+            # never lifts a hold; never over a hold list that lost one (B13 round 28 I89)
+            with contextlib.suppress(Exception):
+                root = self.config.state_paths.root
+                scopes = {h.scope for h in governance.state_holds(root)}
+                if not governance.lost_holds(root) and governance.recorded_hold_scopes(root) != scopes:
+                    governance.record_holds(root, scopes)
         counts = Counter(c.op.value for c in self.changes)
         if retried := self._tally[
             "legacy_retried"

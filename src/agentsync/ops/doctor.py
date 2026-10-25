@@ -1402,6 +1402,45 @@ def governance_file_kind(path: Path) -> str | None:
     return None
 
 
+def governance_dir_kind(gov: Path) -> str | None:
+    """What is at governance/ when it is not a folder agentsync can use, the person's: ``a symlink to
+    nothing`` (the link's stat says ENOENT or ENOTDIR), ``a symlink loop`` (ELOOP), ``a file``, ``a fifo``,
+    ``a socket`` (or ``not a folder``), at it or behind a link (``a symlink to a file``). None when nothing is
+    there (a fresh install), for a folder, a link to one, or one this account cannot search, whose own
+    permission lines speak. Its own judge, by lstat: :func:`state_file_kind` and :func:`governance_file_kind`
+    call a folder not a file, which would FAIL every working install (B13 round 28 I88, I89)."""
+    try:
+        st = gov.lstat()
+    except OSError:  # nothing there, or a folder above it this account cannot search: its own lines
+        return None
+    if stat.S_ISLNK(st.st_mode):
+        try:
+            st = gov.stat()
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                return "a symlink loop"
+            if exc.errno in (errno.ENOENT, errno.ENOTDIR):
+                return "a symlink to nothing"
+            return None  # refused on its way (EACCES): its own lines
+        kind = _not_a_folder(st.st_mode)
+        return None if kind is None else f"a symlink to {kind}"
+    return _not_a_folder(st.st_mode)
+
+
+def _not_a_folder(mode: int) -> str | None:
+    """What a stat mode is when it is not a folder (``a file``, ``a fifo``, ``a socket``, ``not a folder``),
+    else None."""
+    if stat.S_ISDIR(mode):
+        return None
+    if stat.S_ISREG(mode):
+        return "a file"
+    if stat.S_ISFIFO(mode):
+        return "a fifo"
+    if stat.S_ISSOCK(mode):
+        return "a socket"
+    return "not a folder"
+
+
 def dangling_target(path: Path) -> Path | None:
     """Where ``path`` points when it is a symlink to nothing (its target is missing), else None. Such a link
     is no file this account is refused: an ACL line and its ``chmod -N`` were false of it, and the chmod
@@ -1799,7 +1838,9 @@ _GOVERNANCE_CHECKS = {
 """The status check that FAILs each governance file that is not a file (B13 round 26 E43)."""
 
 
-def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, CheckResult] | None:
+def state_not_a_file(
+    config: Config, *, manifest: bool = True, damaged: bool = False
+) -> tuple[Path, CheckResult] | None:
     """The first state file that is not a regular file where one belongs, and status's own FAIL of it, judged
     by stat before anything opens it (so a fifo never blocks): a -wal or -shm (:func:`side_not_a_file`; a
     fifo at the -wal this account can read and write is left to the open, since sqlite removes it on close
@@ -1844,7 +1885,10 @@ def state_not_a_file(config: Config, *, manifest: bool = True) -> tuple[Path, Ch
             return expand(sp.heartbeat), folder
         from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
 
-        odd = governance.governance_not_a_file(expand(sp.root))
+        odd: governance.GovernanceUnreadError | None = governance.governance_not_a_file(expand(sp.root))
+        if odd is None and damaged:  # the commands' guard: a damaged or wrong-shaped one too, read only once
+            # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
+            odd = governance.governance_damaged(expand(sp.root))
         if odd is not None:
             name = _GOVERNANCE_CHECKS.get(odd.path.name, "governance.hold")
             return odd.path, _bad(name, odd.detail, fix=odd.fix)

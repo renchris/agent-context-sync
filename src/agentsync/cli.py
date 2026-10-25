@@ -1479,13 +1479,15 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     if gov is not None:
         try:
             holds = governance.active_holds(config.state_paths.root, gov)
-        except governance.GovernanceNotAFileError as exc:
+        except governance.GovernanceUnreadError as exc:
             out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
             holds = governance.config_holds(gov)
     try:
         queued, kept = governance.partition_purges(config.state_paths)
-    except governance.GovernanceNotAFileError as exc:
-        out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
+    except governance.GovernanceUnreadError as exc:
+        line = f"status: cannot read the state: {_unread_words(exc, config=config)}"
+        if line not in out:  # governance/ itself: one line, not one per file under it (I89)
+            out.append(line)
         queued, kept = [], []
     for h in holds:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
@@ -1495,10 +1497,15 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
             f"queued purges: {len(queued)} (not run while the hold list cannot be read: see governance.hold)"
         )
     elif queued:
-        out.append(
-            f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
-            f"`{loop.BIN} purge --queue`)"
-        )
+        runnable, on_hold = _held_split(config, gov, queued)
+        if on_hold:  # the records owner's move, never a run that refuses (B13 round 28 I91)
+            out.append(f"queued purges held: {len(on_hold)} ({governance.held_words(on_hold)})")
+        if runnable:
+            exits = "; the run exits 1 with the held ones still queued" if on_hold else ""
+            out.append(
+                f"queued purges: {len(runnable)} (preview with `{loop.BIN} purge --queue --dry-run` before "
+                f"`{loop.BIN} purge --queue`{exits})"
+            )
     # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
     if kept and not checks_beside:  # B13 round 28 I18: no [ok] line beside it in the report to point at
         out.append(f"queued purges kept: {len(kept)}: {'; '.join(governance.kept_lines(kept))}")
@@ -1662,6 +1669,19 @@ def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
     return [_fail_step(r) for r in sorted(fails, key=lambda r: doctor.is_persons_fix(r.fix))]
 
 
+def _held_split(
+    config: Config, gov: governance.GovernanceConfig | None, queued: Sequence[governance.QueuedPurge]
+) -> tuple[list[governance.QueuedPurge], list[tuple[governance.QueuedPurge, list[governance.Hold]]]]:
+    """``governance.held_purges`` of ``queued``, or all of them runnable when [governance] or the holds do
+    not load (their own FAIL lines speak for that; the hold-list-unread branch comes first)."""
+    if gov is None:
+        return list(queued), []
+    try:
+        return governance.held_purges(config.state_paths.root, gov, queued)
+    except Exception:  # the governance lines say why
+        return list(queued), []
+
+
 def _says_why(config: Config | None, filename: object) -> str | None:
     """The words that point at the status line judging ``filename``, a path in the state folder this account
     was refused: the state_dir lines for the folder, any path in a folder it cannot search, and the files
@@ -1725,8 +1745,11 @@ def _unread_words(
         # read: state_dir's one FAIL, the person's, says why, never "GovernanceError: ... [Errno 20]" (B13
         # round 23 A22, A33; round 23 ruling 4)
         return "the state folder is not a folder; the state_dir line says why"
+    if isinstance(exc, governance.GovernanceDamagedError):  # no class name (B13 round 28 I90)
+        return f"{exc.role} cannot be read; its governance [FAIL] line says why"
     if isinstance(exc, governance.GovernanceNotAFileError):  # no class name (B13 round 26 E43)
-        return f"{exc.role} is not a file; its governance [FAIL] line says why"
+        what = "a folder" if exc.role == governance.GOVERNANCE_DIR_ROLE else "a file"  # I89
+        return f"{exc.role} is not {what}; its governance [FAIL] line says why"
     if isinstance(exc, StateUnreadableError):
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
@@ -2289,7 +2312,7 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     """``name``'s FAIL for a governance file in the state folder this account cannot open (``exc`` caused by
     a PermissionError), with the fix of what refused it; any other error is raised (B13 round 20 X73: the
     whole governance check crashed on holds.json at 0000)."""
-    if isinstance(exc, governance.GovernanceNotAFileError):
+    if isinstance(exc, governance.GovernanceUnreadError):
         # a folder, fifo or socket at holds.json, the queue or the suppression list: the person's move aside,
         # never "check crashed ... a fault in agentsync to report" (B13 round 26 E43; ruling 13)
         return _check(name, False, exc.detail, doctor.Severity.ERROR, fix=exc.fix)
@@ -2365,7 +2388,7 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
     try:
         governance.load_suppressions(root)
-    except governance.GovernanceNotAFileError as exc:  # the person's move aside, never "crashed" (E43)
+    except governance.GovernanceUnreadError as exc:  # the person's move aside, never "crashed" (E43)
         out.append(_refused_check(config, "governance.suppressed", exc))
     except AgentSyncError as exc:
         cause = exc.__cause__
@@ -2461,15 +2484,26 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         for h in governance.config_holds(gov)
     ]
     shut = doctor.state_folder_unchecked(config)  # shut, or not a folder (round 23 ruling 4)
+    folder = governance.governance_dir_error(expand(config.state_paths.root)) if shut is None else None
     if shut is not None:
         out.append(_check("governance.hold", False, shut, doctor.Severity.INFO))
+    elif folder is not None:
+        # governance/ itself is not a folder: one FAIL, the person's, never "check crashed" nor a file under
+        # it, and nothing under it is read (B13 round 28 I88, I89)
+        out.append(_check("governance.hold", False, folder.detail, doctor.Severity.ERROR, fix=folder.fix))
+        shut = "not checked: agentsync's governance folder is not a folder; the governance.hold line says why"
     else:
+        root = config.state_paths.root
         try:
-            holds = governance.state_holds(config.state_paths.root)
+            holds = governance.state_holds(root)
+            lost = governance.lost_holds(root, holds)
         except AgentSyncError as exc:  # holds.json this account cannot open: one FAIL, not a crash (X73)
             out.append(_refused_check(config, "governance.hold", exc))
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
+            for h in lost:  # the audit trail keeps it; holds.json lost it: the person's (B13 round 28 I87)
+                lost_detail, lost_fix = governance.lost_hold_words(root, h)
+                out.append(_check("governance.hold", False, lost_detail, doctor.Severity.ERROR, fix=lost_fix))
         said = {r.fix for r in out if not r.ok}  # at 0000, holds.json's refusal names the folder's chmod
         out += [r for r in _governance_folder_checks(config) if r.fix not in said]
         said = {r.fix for r in out if not r.ok}
@@ -2502,15 +2536,21 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     if not queued and kept:
         out.append(_check("governance.purge_queue", True, kept_text, doctor.Severity.INFO))
     if queued:
-        detail = (
-            f"{plural(len(queued), 'purge request')} queued (confirmed upstream deletions / label "
-            f"escalations){also}"
-        )
-        if governance.hold_list_unread(config.state_paths.root):
+        # each reason actually queued, never a fixed list that misnamed a published credential (I91)
+        detail = f"{plural(len(queued), 'purge request')} queued ({governance.reason_counts(queued)}){also}"
+        unread = governance.hold_list_unread(config.state_paths.root)
+        runnable, held = ([], []) if unread else _held_split(config, gov, queued)
+        if unread:
             # a hold list that cannot be read is no empty one: no run is invited, its FAIL says why (P131)
             detail += "; not run while the hold list cannot be read: the governance.hold line says why"
             out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
+        elif held and not runnable:
+            # suspended by a hold: no fix, no run invited; the release is its records owner's (I91)
+            detail += f"; {governance.held_words(held)}"
+            out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
         elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+            if held:
+                detail += f"; {governance.held_words(held)}"
             # install.sh prints the loop's WAITING ON YOU line for the queue: no second instruction here.
             out.append(
                 doctor.CheckResult(
@@ -2518,6 +2558,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                 )
             )
         else:
+            exits = ""
+            if held:  # the held ones stay queued, and the run exits 1 over them (I91)
+                detail += f"; {governance.held_words(held)}"
+                exits = ", which exits 1 with the held ones still queued"
             out.append(
                 _check(
                     "governance.purge_queue",
@@ -2526,7 +2570,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                     doctor.Severity.WARN,
                     fix=(
                         f"{loop.BIN} purge --queue --dry-run (a preview that writes nothing); "
-                        f"then {loop.BIN} purge --queue"
+                        f"then {loop.BIN} purge --queue{exits}"
                     ),
                 )
             )
@@ -2966,7 +3010,7 @@ def _not_a_file_stop(args: argparse.Namespace, config: Config, *, manifest: bool
     it belongs) as the command's ``error: state:`` line, with the NEXT (and a sync's stop record), and return
     True; else False. Judged by stat before anything opens it, so a fifo never blocks and nothing ends on a
     traceback (B13 round 26 E22, E38, E39, E40, E43, E65; ruling 13)."""
-    found = doctor.state_not_a_file(config, manifest=manifest)
+    found = doctor.state_not_a_file(config, manifest=manifest, damaged=True)  # a damaged one too (I90)
     if found is None:
         return False
     where, result = found
@@ -3925,7 +3969,7 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(said)
         _state_next(args, said=said, path=exc.filename)
         return EXIT_FAILED
-    except governance.GovernanceNotAFileError as exc:
+    except governance.GovernanceUnreadError as exc:
         # a governance file that is not a file, met inside a command: its status words, a NEXT (E43)
         _err(f"error: state: {exc}")
         _misplaced_next(args, f"error: state: {exc}", exc.path)
