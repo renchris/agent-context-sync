@@ -5928,6 +5928,10 @@ def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
         assert outcome == NO_STEP_LINE.format(
             " from the Installer section, which has this attempt's install runs"
         )
+        if (stops or "").startswith("2026-10-14T10:05:00Z"):  # B13 round 30 C301: in the end line's second,
+            # claiming no error, it is late, with no later timed line needed; never the outcome's
+            assert _LATE_HEAD in text and "during this attempt:" not in text, text
+            return
         assert "sync-stops.log" not in text, text
         return
     said = "1 step-3 sync stop" if counted == 1 else f"{counted} step-3 sync stops"
@@ -6371,6 +6375,13 @@ def _late_stop_report(env: dict[str, str], stop_at: str) -> str:
         "unread-mode",
         "unread-dangling",
         "unread-whole",
+        # B13 round 30 C390: a heartbeat.json this account reads, by its content
+        "unread-json",
+        "unread-list",
+        "unread-null",
+        "unread-empty",
+        "short-list",
+        "nulls",
     ],
 )
 def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str, str], link: str) -> None:
@@ -6381,7 +6392,10 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     B13 round 29 ruling 30 (C165): a manifest there but too short, or one beside a heartbeat.json that is no
     file this account can read, said "missing after earlier syncs" too; by the shell's read now (test(1)
     only, never opening heartbeat.json) it takes setup_report._LOST_WAS's words, beside the link's. A
-    manifest there in full now is no longer lost, and the read says nothing of it."""
+    manifest there in full now is no longer lost, and the read says nothing of it. B13 round 30 ruling 44
+    (C390): a heartbeat.json that is a regular file this account reads, holding damaged JSON or a value that
+    is no object (`[]`, `null`, nothing), is unread, as manifest.lost_words reads it; a real one with nulls
+    is not."""
     state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
     state.mkdir(parents=True)
     db = state / "manifest.sqlite"
@@ -6403,6 +6417,12 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     elif link == "unread-dangling":
         heartbeat.unlink()
         heartbeat.symlink_to(state / "gone.json")
+    content = {"unread-json": "{not json", "unread-list": "[]", "unread-null": "null", "unread-empty": ""}
+    content |= {"short-list": "[]", "nulls": '{"last_success_at": null, "pass_kind": null, "run_id": 3}'}
+    if link in content:
+        heartbeat.write_text(content[link], encoding="utf-8")
+    if link == "short-list":
+        db.write_bytes(b"x" * 10)
     setup = friction_path(env).parent
     setup.mkdir(parents=True)
     friction_path(env).write_text(
@@ -6425,9 +6445,12 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     [line] = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
     first = ", removing or re-pointing the link first" if link == "unusable" else ""
     which = setup_report._SYNC_STOP_KINDS["lost"]
-    kind = {"short": "short", "short-unread": "short-unread", "unread-whole": ""}.get(
-        link, "unread" if link.startswith("unread") else ""
-    )
+    kind = {
+        "short": "short",
+        "short-unread": "short-unread",
+        "short-list": "short-unread",
+        "unread-whole": "",
+    }.get(link, "unread" if link.startswith("unread") else "")
     which = setup_report._LOST_WAS.get(kind, which)
     assert which != "which was missing after earlier syncs" or kind == "", which
     # B13 round 29 C110, C154 (lane RA's words): the link's fact first, then "; the manifest" and the rest
@@ -6448,8 +6471,9 @@ def test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded(
     """B13 round 29 ruling 30 (lane B's C210, the shell half): sync-stops.log records which lost kind stopped
     a sync, on a `sync-stop-detail lost=<kind>` line right after the stop, with its stamp, so a stop whose
     manifest is fixed now still says what it was. The shell report pairs it as lane B words the rule (the line
-    right after a manifest `kind=lost` stop, the same stamp), takes _LOST_WAS's words for it ahead of its own
-    read now, and ignores an orphaned, a mis-stamped or an unknown one (the plain words stay)."""
+    right after a manifest `kind=lost` stop, the same stamp), takes _LOST_WAS's words for it when its own read
+    now says nothing (B13 round 30 C337, C396: the read now first, as _stop_which), and ignores an orphaned, a
+    mis-stamped or an unknown one (the plain words stay)."""
     state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
     state.mkdir(parents=True)
     (state / "manifest.sqlite").write_bytes(b"x" * 4096)  # fixed now: the read now says nothing
@@ -6484,6 +6508,166 @@ def test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded(
     which = setup_report._LOST_WAS.get(detail, setup_report._SYNC_STOP_KINDS["lost"])
     assert f"on agentsync's state file, {which}; whether a later sync ended 0" in line_, line_
     assert "sync-stop-detail" not in text
+
+
+@pytest.mark.parametrize(
+    ("now", "recorded"),
+    [("unread", "short"), ("short", "short-unread"), ("", "short"), ("short-unread", "unread")],
+)
+def test_a_lost_stops_kind_is_the_read_now_first_in_both_reports(
+    env: dict[str, str], now: str, recorded: str
+) -> None:
+    """B13 round 30 ruling 44 (C337, C396, C377's cross-reader test): the shell let the kind sync-stops.log
+    recorded replace its own read now, while setup_report._stop_which takes the read now on the attempt's
+    open stop, so one stop read "was empty or too short" in one report and "was missing beside a
+    heartbeat.json that could not be read" in the other, beside the bucket and Doctor's. Both take the read
+    now first, else the recorded kind; C377's flip of Python is not built (C396: it reopens ruling 21's
+    mismatch)."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    heartbeat = state / "heartbeat.json"
+    if now.startswith("short"):
+        (state / "manifest.sqlite").write_bytes(b"x" * 10)
+    elif not now:
+        (state / "manifest.sqlite").write_bytes(b"x" * 4096)  # fixed now: the read says nothing
+    if now.endswith("unread"):
+        heartbeat.mkdir()
+    else:
+        heartbeat.write_text('{"project-alpha": {"run_id": 3}}', encoding="utf-8")
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD + "2026-10-14T10:01:05Z | step 3 | error | agentsync sync exited 1 | -\n"
+        "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:01:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        f"2026-10-14T10:01:00Z sync-stop-detail lost={recorded}\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    [line] = [
+        ln
+        for ln in report_path(env).read_text().splitlines()
+        if ln.startswith("- agentsync sync · step 3 · ") and "agentsync's state file" in ln
+    ]
+    stop = setup_report._SyncStop(
+        at=datetime(2026, 10, 14, 10, 1, tzinfo=UTC),
+        file="manifest",
+        owner="person",
+        ended_ok=None,
+        kind="lost",
+        lost_kind=now,
+        lost_at_stop=recorded,
+    )
+    which = setup_report._stop_which(stop)
+    assert which == setup_report._LOST_WAS[now or recorded], which
+    assert f"on agentsync's state file, {which}; whether a later sync ended 0" in line, line
+
+
+@pytest.mark.parametrize("where", ["inside", "late"])
+@pytest.mark.parametrize("shape", ["link", "short"])
+def test_a_late_stop_takes_the_read_now_as_the_attempts_own_does(
+    env: dict[str, str], where: str, shape: str
+) -> None:
+    """B13 round 30 ruling 44 (C303): STOP_LINK and STOP_KIND were set around the attempt's own stops only, so
+    the same stop logged after the end line lost its link ("which is a link into a folder that does not exist
+    or refuses a write") and its short words, while setup_report._late_stops runs _with_now_words over the
+    latest attempt's late stops. The late block takes the read now too."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    (state / "heartbeat.json").write_text('{"project-alpha": {"run_id": 3}}', encoding="utf-8")
+    if shape == "link":
+        (state / "manifest.sqlite").symlink_to(Path(env["HOME"]) / "gone" / "manifest.sqlite")
+    else:
+        (state / "manifest.sqlite").write_bytes(b"x" * 10)
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    at, err = ("10:01:00", "10:01:05") if where == "inside" else ("10:05:30", "10:05:40")
+    lines = [
+        f"2026-10-14T{err}Z | step 3 | error | agentsync sync exited 1 | -",
+        "2026-10-14T10:05:00Z | end | finished",
+    ]
+    friction_path(env).write_text(_PAIR_HEAD + "".join(f"{ln}\n" for ln in sorted(lines)))
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        f"2026-10-14T{at}Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert (_LATE_HEAD in text) == (where == "late"), text
+    block = text.split(f"\n{_LATE_HEAD}\n\n", 1)[1] if where == "late" else text
+    [line] = [
+        ln
+        for ln in block.splitlines()
+        if ln.startswith("- agentsync sync · step 3 · ") and "agentsync's state file" in ln
+    ]
+    if shape == "link":
+        assert (
+            "which is a link into a folder that does not exist or refuses a write; the manifest was missing "
+            "after earlier syncs" in line
+        ), line
+        assert "removing or re-pointing the link first" in line, line
+    else:
+        assert setup_report._LOST_WAS["short"] in line, line
+
+
+@pytest.mark.parametrize("error", ["claims", "lock-held", "none"])
+def test_a_stop_in_the_end_lines_second_is_the_attempts_when_it_claims_an_error(
+    env: dict[str, str], error: str
+) -> None:
+    """B13 round 30 C301 (lane RA's rule, the shell half): a stop stamped in the end line's own whole second
+    fell in neither window, so the shell dropped it and the outcome hint named no stop. After the normal
+    pairing it claims the first unclaimed step 3 error of that second before the end line, and joins the
+    attempt's block; one that claims none (a `skipped: lock held` line, or none) is late, with no later timed
+    line needed."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    (state / "heartbeat.json").write_text('{"project-alpha": {"run_id": 3}}', encoding="utf-8")
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    said = {
+        "claims": "2026-10-14T10:05:00Z | step 3 | error | agentsync sync exited 1 | -\n",
+        "lock-held": "2026-10-14T10:05:00Z | step 3 | error | skipped: lock held | -\n",
+        "none": "",
+    }[error]
+    friction_path(env).write_text(_PAIR_HEAD + said + "2026-10-14T10:05:00Z | end | finished\n")
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:05:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    lines = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    assert len(lines) == 1, lines
+    inside = "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
+    if error == "claims":
+        assert inside in text and _LATE_HEAD not in text, text
+        assert "(F4, " in lines[0], lines[0]
+    else:
+        assert inside not in text and _LATE_HEAD in text, text
+        assert lines[0] in text.split(f"\n{_LATE_HEAD}\n\n", 1)[1], text
+
+
+def test_the_shell_stop_files_are_the_agentsync_reports() -> None:
+    """B13 round 30 ruling 41 (C334, C347, C367): lane B's sync records a stop on hold-record.json as
+    `file=hold-record`, which fallback_sync_stop_line read as "a state file". Its table names it "agentsync's
+    hold record", and every role it shares with setup_report._SYNC_STOP_FILES has the report's words."""
+    body = INSTALL_SH.read_text().split("fallback_sync_stop_line() {", 1)[1].split("\n}\n", 1)[0]
+    table = dict(re.findall(r'^\t([a-z-]+)\) what="([^"]*)" ;;', body, re.MULTILINE))
+    assert table["hold-record"] == "agentsync's hold record", table
+    shared = table.keys() & setup_report._SYNC_STOP_FILES.keys()
+    assert shared >= {"manifest", "lock", "heartbeat", "holds", "governance", "state-folder"}, shared
+    assert {k: table[k] for k in shared} == {k: setup_report._SYNC_STOP_FILES[k] for k in shared}
 
 
 def test_the_shell_reports_lost_words_are_the_agentsync_reports() -> None:

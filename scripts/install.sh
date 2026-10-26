@@ -3909,12 +3909,19 @@ attempt_ran_no_install() {
 # refined again: E66, E77). A stamp is read in every form setup_report reads, at its whole second in UTC
 # (FRICTION_AWK: a fraction since round 26 E77, an offset, no zone, a blank for the T and no seconds since round
 # 27 P145).
-# With "late", the stops logged at or after the attempt's end line, up to its own last timed line, plus 1 s,
-# each paired with the step 3 errors logged after that end line, as setup_report._late_stops gives them (round
-# 25 D5; round 26 E76): display only, never the outcome's count, and nothing when the attempt has no end line
-# or no timed line after it. Never the friction log's last write.
-fallback_sync_stops() { # [late]
-	local f s w v mt late="${1:-}"
+# A stop stamped in the end line's own whole second (an end line with no fraction; with one, E77 counts it
+# inside) is decided after that pairing, as lane RA's rule for setup_report decides it (B13 round 30 C301): in
+# time order each claims the first still-unclaimed step 3 error of the same second before the closing end line
+# that claims() accepts; one that claims an error is the attempt's, its row printed after the others, and one
+# that claims none is late. With "claimed", the sync-stops.log line (of the last 200) of each such stop that
+# claimed one, which the late mode leaves out.
+# With "late", the stops logged at or after the attempt's end line, up to its own last timed line or the end line
+# itself, whichever is later, plus 1 s, each paired with the step 3 errors logged after that end line, as
+# setup_report._late_stops gives them (round 25 D5; round 26 E76; round 30 C301: no later timed line needed):
+# display only, never the outcome's count, and nothing when the attempt has no end line. Never the friction log's
+# last write.
+fallback_sync_stops() { # [late|claimed]
+	local f s w v mt late="${1:-}" skip=" "
 	f="$(friction_file)"
 	s="${SETUP_LOG%/*}/sync-stops.log"
 	[ -f "$f" ] && [ -f "$s" ] || return 0
@@ -3932,8 +3939,8 @@ fallback_sync_stops() { # [late]
 	# fractional mtime + 1 s
 	mt="$(/usr/bin/stat -f %Fm "$f" 2>/dev/null | LC_ALL=C awk '/^[0-9]+(\.[0-9]*)?$/ { s = int($1); if ($1 + 0 > s) s++; print s }' || true)"
 	[ -z "$mt" ] || mt="$(utc_stamp "$(date -u -r "$mt" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)")"
-	[ -z "$late" ] || mt=""
-	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" -v late="$late" "$FRICTION_AWK"'
+	[ "$late" != late ] || mt="" skip=" $(fallback_sync_stops claimed | LC_ALL=C tr '\n' ' ')"
+	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" -v late="$late" -v skip="$skip" "$FRICTION_AWK"'
 		BEGIN {
 			split(w, a, " "); lo = a[1]; last = a[3] != "-" && a[3] > lo ? a[3] : lo
 			if (mt != "" && mt > last) last = mt
@@ -3942,8 +3949,11 @@ fallback_sync_stops() { # [late]
 			# an end line with a fraction of a second, read at its whole second (E77): a stop in that second is
 			# before it, as setup_report reads the fraction
 			ef = a[4] == "f"
-			# the late window: from the end line, in its own second, to the last timed line after it
-			if (late != "") { if (a[2] == "-" || a[3] == "-" || a[3] <= a[2]) exit; slo = a[2]; shi = a[3] }
+			# the late window: from the end line, in its own second, to the last timed line after it or the end
+			# line itself (C301)
+			if (late == "late") { if (a[2] == "-") exit; slo = a[2]; shi = a[3] != "-" && a[3] > a[2] ? a[3] : a[2] }
+			# a stop in the whole second of the end line is a candidate, decided after the pairing (C301)
+			cand = !edge && !ef
 			stamp = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z"
 		}
 		function trim(t) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", t); return t }
@@ -3978,7 +3988,7 @@ fallback_sync_stops() { # [late]
 		FILENAME == fr {
 			t = $0; sub(/\r$/, "", t)
 			if (!match(t, "^[ \t]*([-*][ \t]+)?`?" stamp "`?[ \t]*[|]")) next
-			if (done && late == "") next
+			if (done && late != "late") next
 			at = substr(t, RSTART, RLENGTH); sub(/^[^0-9]*/, "", at); at = substr(at, 1, 20)
 			rest = substr(t, RSTART + RLENGTH)
 			n = index(rest, "|"); head = tolower(trim(n ? substr(rest, 1, n - 1) : rest))
@@ -3987,7 +3997,7 @@ fallback_sync_stops() { # [late]
 				if ((head == "" || head == "finished" || index(head, "finish") == 1) && at >= lo) done = 1
 				next
 			}
-			if (at < lo || (late != "" && !done) || !match(head, /^(step[ \t]*)?[0-9]+$/)) next
+			if (at < lo || (late == "late" && !done) || !match(head, /^(step[ \t]*)?[0-9]+$/)) next
 			sub(/^step[ \t]*/, "", head)
 			if (head + 0 != 3 || !n) next
 			rest = substr(rest, n + 1); n = index(rest, "|")
@@ -4010,27 +4020,44 @@ fallback_sync_stops() { # [late]
 		}
 		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
 		{ at = substr($0, 1, 20); dline = FNR; dat = at; dk = "" }
-		late == "" && (at < lo || (edge ? secs(at) > secs(hi) : ef ? at > hi : at >= hi)) { next }
-		late != "" && (at < slo || (ef && at == slo) || secs(at) > secs(shi)) { next }
+		late != "late" && (at < lo || (edge ? secs(at) > secs(hi) : ef ? at > hi : at > hi)) { next }
+		late == "late" && (at < slo || (ef && at == slo) || secs(at) > secs(shi) || index(skip, " " FNR " ")) { next }
 		{
 			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
 			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
-			if (rc + 0 != 0) { ns++; sat[ns] = at; srow[ns] = rc + 0 " " file " " owner " " kind; sown[ns] = owner; sfile[ns] = file }
+			if (rc + 0 != 0) {
+				ns++; sat[ns] = at; srow[ns] = rc + 0 " " file " " owner " " kind; sown[ns] = owner; sfile[ns] = file
+				sln[ns] = FNR; same[ns] = late != "late" && cand && at == hi
+			}
 			if (rc + 0 != 0 && file == "manifest" && kind == "lost") dk = ns
 		}
 		END {
-			# in time order (the file is, but a stable sort keeps a hand-edited one right), each claims one
-			for (i = 1; i <= ns; i++) ord[i] = i
-			for (i = 2; i <= ns; i++) { x = ord[i]; for (j = i - 1; j > 0 && sat[ord[j]] > sat[x]; j--) ord[j + 1] = ord[j]; ord[j + 1] = x }
-			for (i = 1; i <= ns; i++) {
-				k = ord[i]; bound = i + 2 <= ns ? sat[ord[i + 2]] : ""
+			# in time order (the file is, but a stable sort keeps a hand-edited one right), each claims one; the
+			# own second of the end line waits for the pass after this one
+			for (i = 1; i <= ns; i++) if (!same[i]) ord[++no] = i
+			for (i = 2; i <= no; i++) { x = ord[i]; for (j = i - 1; j > 0 && sat[ord[j]] > sat[x]; j--) ord[j + 1] = ord[j]; ord[j + 1] = x }
+			for (i = 1; i <= no; i++) {
+				k = ord[i]; bound = i + 2 <= no ? sat[ord[i + 2]] : ""
 				for (e = 1; e <= ne; e++) {
 					if ((e in used) || eat[e] < sat[k] || (bound != "" && eat[e] >= bound)) continue
 					if (!claims(sown[k], sfile[k], etext[e])) continue
 					used[e] = 1; fl[k] = "F" eline[e] " " eraw[e]; break
 				}
 			}
-			for (k = 1; k <= ns; k++) print srow[k] (k in sdet ? "/" sdet[k] : ""), (k in fl ? fl[k] : "-")
+			# then each stop of the end line second, in file order (one second), claims an error of that second
+			# still unclaimed, or is late (C301)
+			for (k = 1; k <= ns; k++) {
+				if (!same[k]) continue
+				for (e = 1; e <= ne; e++) {
+					if ((e in used) || eat[e] != hi || !claims(sown[k], sfile[k], etext[e])) continue
+					used[e] = 1; fl[k] = "F" eline[e] " " eraw[e]; break
+				}
+			}
+			for (k = 1; k <= ns; k++) {
+				if (same[k] && !(k in fl)) continue
+				if (late == "claimed") { if (same[k]) print sln[k]; continue }
+				print srow[k] (k in sdet ? "/" sdet[k] : ""), (k in fl ? fl[k] : "-")
+			}
 		}' "$f" - < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
 }
 # The words of one of those stops, as setup_report._sync_stop_line gives a stop it could not pair: the file by
@@ -4062,11 +4089,16 @@ lost_link_now() {
 # manifest that is a regular file (or a link to one, ruling 29's C202) under 100 bytes, "unread" for a
 # heartbeat.json that is there but is no regular file this account can read, or a link to nothing or a loop
 # (ruling 29's C118), "short-unread" for both, empty otherwise, and for a manifest that is there and not short
-# (no longer lost: the read says nothing of the stop). test(1) only: heartbeat.json is never opened, so
-# a fifo there cannot hold this read (round 25 D46), and a regular one with damaged JSON reads as the record
-# words, which no shell read can tell (the agentsync report names it).
+# (no longer lost: the read says nothing of the stop). A heartbeat.json test(1) finds a regular file this
+# account can read is read by its content, as manifest.lost_words reads it (P111): damaged JSON or a value
+# that is not an object ("[]", "null", an empty file) is unread (B13 round 30 ruling 44, C390). plutil reads it
+# with each null made 0 first, since an older plutil may refuse JSON null, and prints its error on stdout, so
+# its exit code and first byte decide; no plutil reads as unread, the cautious words, the same fix. Where the
+# two still differ: plutil takes a UTF-8 BOM, an XML plist and an old-style plist as an object, which Python
+# calls unread, and refuses a NaN, which Python reads (agentsync writes none). A fifo is never opened (round 25
+# D46): -f and -r rule it out first.
 lost_kind_now() {
-	local k v state="" db hb n short="" unread=""
+	local k v state="" db hb n j short="" unread=""
 	if [ -f "$CONFIG" ]; then
 		while IFS=$'\t' read -r k v; do
 			[ "$k" != state_dir ] || state="$v"
@@ -4088,6 +4120,9 @@ lost_kind_now() {
 		unread=1
 	elif [ -e "$hb" ] && { [ ! -f "$hb" ] || [ ! -r "$hb" ]; }; then
 		unread=1
+	elif [ -f "$hb" ] && [ -r "$hb" ]; then
+		j="$(LC_ALL=C sed 's/null/0/g' <"$hb" 2>/dev/null | LC_ALL=C /usr/bin/plutil -convert json -o - -- - 2>/dev/null)" || j=""
+		case "$j" in '{'*) ;; *) unread=1 ;; esac
 	fi
 	case "$short/$unread" in
 	1/1) printf short-unread ;;
@@ -4095,12 +4130,15 @@ lost_kind_now() {
 	/1) printf unread ;;
 	esac
 }
-STOP_LINK="" # lost_link_now, for the attempt's own stops only: the read says nothing of a time after it
+STOP_LINK="" # lost_link_now, for the latest attempt's stops, before and after its end line (C303), never an earlier one's
 STOP_KIND="" # lost_kind_now, the same
 fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 	local what why whose="the person's" det="${4#lost/}" now="$STOP_KIND"
-	# the lost kind sync-stops.log recorded at the stop (lane B round 29 C210) wins over this shell's read now
-	case "$4" in lost/*) now="$det" && set -- "$1" "$2" "$3" lost "${5:-}" ;; esac
+	# this shell's read now first, as setup_report._stop_which takes the read now on the attempt's open stop,
+	# else the lost kind sync-stops.log recorded at the stop (lane B round 29 C210), so the stop's line says what
+	# the bucket and Doctor say (B13 round 30 ruling 44: C337, C396; ruling 21). The shell cannot tell a stop a
+	# later sync closed, whose manifest is lost another way now: it gives the read now there, Python the record.
+	case "$4" in lost/*) [ -n "$now" ] || now="$det"; set -- "$1" "$2" "$3" lost "${5:-}" ;; esac
 	case "$2" in
 	manifest) what="agentsync's state file" ;;
 	manifest-wal) what="the state file's write-ahead log" ;;
@@ -4108,6 +4146,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 	lock) what="agentsync's lock file" ;;
 	heartbeat) what="agentsync's heartbeat file" ;;
 	holds) what="agentsync's hold list" ;;
+	hold-record) what="agentsync's hold record" ;; # lane B's file=hold-record (B13 round 30 ruling 41: C334, C347, C367)
 	governance) what="a governance file in the state folder" ;;
 	state-folder) what="agentsync's state folder" ;;
 	*) what="a state file" ;;
@@ -4769,9 +4808,13 @@ fallback_body() {
 		say ""
 		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log after this attempt's end line (they do not change the outcome):"
 		say ""
+		# the latest attempt's late stops take the read now too, as setup_report._late_stops runs
+		# _with_now_words over them (B13 round 30 ruling 44, C303); this block holds no earlier attempt's stop
+		STOP_LINK="$(lost_link_now)" STOP_KIND="$(lost_kind_now)"
 		while read -r n p v o fl; do
 			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
 		done <<<"$k"
+		STOP_LINK="" STOP_KIND=""
 	fi
 	say ""
 	say "## Configuration"
