@@ -31751,6 +31751,11 @@ says so. Tests: the step 1 table's `LM-link-damaged` and `LM-link-gone-damaged` 
 `test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2` (following the words ends
 it).
 
+Amended 2026-10-26, §16.199 C154: the link's fact is followed by the manifest's in doctor's shape and words, `which is
+a symlink to a file that does not exist; the manifest is missing, but heartbeat.json records earlier passes (not
+damage, not a mode)` (and `; the manifest is missing, and heartbeat.json beside it cannot be read, so earlier passes
+cannot be ruled out`), in step 1's tails and step 2's NEXT alike.
+
 **A heartbeat.json only its own mode refuses leads with the agent's chmod** (ruling 21's install.sh half, with lane
 B's I42 words). Beside a lost manifest, a heartbeat.json at 0000 is lost-unread, and steps 1 and 2 gave the person's
 choice (restore the manifest, or move heartbeat.json aside for a new start) over a record no one had read, while
@@ -32517,6 +32522,23 @@ name says `is not a folder agentsync can use`. The comment above MISPLACED_PY (C
 `governance-devnull` cases of the step 1 misplaced test, the `governance-fifolink` case of
 `test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one` (following the
 words ends it), and `test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown`.
+
+**A lost manifest that is a link is said in doctor's shape in every reader** (C154, with C110's shell report line;
+`scripts/install.sh` list_folders, state_lost and fallback_sync_stop_line; amends §16.194 I4). doctor and the sync's
+error line say `<db> is a symlink to <target>, whose folder does not exist or refuses a write; the manifest is
+missing, but heartbeat.json records earlier passes`; step 1's tail and step 2's NEXT said `... a symlink into a
+folder that does not exist or refuses a write, and is missing, though heartbeat.json beside it records earlier
+passes`, and the report a third way, file first. install.sh now takes doctor's shape: `lwhat` is the link's fact and
+`; the manifest is `, and `lfact` with a link is manifest.LOST_MANIFEST's `missing, but heartbeat.json records
+earlier passes` (`(not damage, not a mode)` kept in step 1), or lane B's unread words, for a link into a gone folder
+and a link to nothing alike; a manifest that is no link keeps its words. The shell fallback report's sync-stop line
+takes lane RA's link-first form (C110, C154): `which is a link into a folder that does not exist or refuses a write;
+the manifest was missing after earlier syncs` (and `which is a link to a file that does not exist; the manifest ...`,
+`_LOST_WAS`'s words included), with `, removing or re-pointing the link first` kept. The guide's quotes and the
+deploy test's pins move with it. Tests: the dangling and gone real-agentsync tests assert that the step 1 tail, step
+2's NEXT, the error line and status's `state_dir.manifest` FAIL all hold `; the manifest ` + manifest.LOST_MANIFEST;
+the link tail and NEXT constants and `lost_link_unread_next`; the link rows of
+`test_the_shell_report_names_a_lost_manifests_link_on_its_stop`, built from `setup_report._STOP_LINKS`.
 
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 

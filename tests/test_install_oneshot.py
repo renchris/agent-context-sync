@@ -51,7 +51,7 @@ from unittest.mock import patch
 import pytest
 
 import exec_stub
-from agentsync import cli, gitops, governance, lints, net, paths, setup_report
+from agentsync import cli, gitops, governance, lints, manifest, net, paths, setup_report
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -6141,11 +6141,6 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
             heartbeat.chmod(0o600)
     text = report_path(env).read_text()
     [line] = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
-    named = {
-        "unusable": " and is a link into a folder that does not exist or refuses a write",
-        "dangling": " and is a link to a file that does not exist",
-        "unread-dangling": " and is a link to a file that does not exist",
-    }.get(link, "")
     first = ", removing or re-pointing the link first" if link == "unusable" else ""
     which = setup_report._SYNC_STOP_KINDS["lost"]
     kind = {"short": "short", "short-unread": "short-unread", "unread-whole": ""}.get(
@@ -6153,8 +6148,12 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     )
     which = setup_report._LOST_WAS.get(kind, which)
     assert which != "which was missing after earlier syncs" or kind == "", which
+    # B13 round 29 C110, C154 (lane RA's words): the link's fact first, then "; the manifest" and the rest
+    shape = {"unusable": "unusable", "dangling": "dangling", "unread-dangling": "dangling"}.get(link)
+    if shape is not None:
+        which = f"which is {setup_report._STOP_LINKS[shape]}; the manifest {which.removeprefix('which ')}"
     assert line.startswith(
-        f"- agentsync sync · step 3 · exited 1 on agentsync's state file, {which}{named}; whether a later "
+        f"- agentsync sync · step 3 · exited 1 on agentsync's state file, {which}; whether a later "
         f"sync ended 0: not read by this shell fallback; the fix is the person's{first} (F4, "
     ), line
     assert "gone" not in line, "never the link's target"
@@ -8931,12 +8930,15 @@ manifest through (B13 round 25 D79: D-L1c)."""
 
 LINK_GONE = "a symlink into a folder that does not exist or refuses a write"
 LINK_DANGLING = "a symlink to a file that does not exist"
-LINK_RECORDS = "missing, though heartbeat.json beside it records earlier passes"
+LINK_RECORDS = "missing, but heartbeat.json records earlier passes"
+"""manifest.LOST_MANIFEST without its "is", the manifest's fact after the link's, in doctor's shape (B13
+round 29 C154: install.sh said "and is missing, though heartbeat.json beside it records ...", the report
+another way)."""
 LINK_UNREAD = LOST_UNREAD.removeprefix("is ")
 
 STATE_LOST_LINK_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
-    f"{LINK_GONE}, and is {LINK_RECORDS} (not damage, not a mode): "
+    f"{LINK_GONE}; the manifest is {LINK_RECORDS} (not damage, not a mode): "
     + LOST_LINK_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8945,7 +8947,7 @@ STATE_LOST_LINK_TAIL = (
 
 STATE_LOST_LINK_UNREAD_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
-    f"{LINK_GONE}, and is {LINK_UNREAD}: "
+    f"{LINK_GONE}; the manifest is {LINK_UNREAD}: "
     + LOST_LINK_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8953,9 +8955,9 @@ STATE_LOST_LINK_UNREAD_TAIL = (
 passes")."""
 
 STATE_LOST_LINK_NEXT = (
-    "NEXT: agentsync's state file, manifest.sqlite, is a symlink into a folder that does not exist or "
-    "refuses a write, and is missing, though heartbeat.json beside it records earlier passes (the error "
-    "above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+    f"NEXT: agentsync's state file, manifest.sqlite, is {LINK_GONE}; the manifest is {LINK_RECORDS} (the "
+    "error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
+    "line): "
     + LOST_LINK_FIX.format(it="it is")
     + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
     "next run is: {rerun}"
@@ -8964,7 +8966,7 @@ STATE_LOST_LINK_NEXT = (
 
 STATE_LOST_DANGLING_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
-    f"{LINK_DANGLING}, and is {LINK_RECORDS} (not damage, not a mode): "
+    f"{LINK_DANGLING}; the manifest is {LINK_RECORDS} (not damage, not a mode): "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8972,9 +8974,9 @@ STATE_LOST_DANGLING_TAIL = (
 E19: "missing" alone read false beside the manifest.sqlite ls lists); ruling 7's fix works through it."""
 
 STATE_LOST_DANGLING_NEXT = (
-    "NEXT: agentsync's state file, manifest.sqlite, is a symlink to a file that does not exist, and is "
-    "missing, though heartbeat.json beside it records earlier passes (the error above names it; "
-    "~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
+    f"NEXT: agentsync's state file, manifest.sqlite, is {LINK_DANGLING}; the manifest is {LINK_RECORDS} (the "
+    "error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
+    "line): "
     + LOST_FIX.format(it="it is")
     + ", not a step for the agent, so show them the error and go on to the report; once it is fixed, the "
     "next run is: {rerun}"
@@ -8983,7 +8985,7 @@ STATE_LOST_DANGLING_NEXT = (
 
 STATE_LOST_DANGLING_UNREAD_TAIL = (
     "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is "
-    f"{LINK_DANGLING}, and is {LINK_UNREAD}: "
+    f"{LINK_DANGLING}; the manifest is {LINK_UNREAD}: "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8996,10 +8998,10 @@ def lost_link_unread_next(link: str, rerun: str) -> str:
     heartbeat.json that cannot be read: both facts, the link's own fix kept (B13 round 28 I56)."""
     fix = (LOST_LINK_FIX if link == LINK_GONE else LOST_FIX).format(it="it is")
     return (
-        f"NEXT: agentsync's state file, manifest.sqlite, is {link}, and is {LINK_UNREAD} (the error above "
-        "names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): "
-        f"{fix}, not a step for the agent, so show them the error and go on to the report; once it is fixed, "
-        f"the next run is: {rerun}"
+        f"NEXT: agentsync's state file, manifest.sqlite, is {link}; the manifest is {LINK_UNREAD} (the error "
+        "above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
+        f"line): {fix}, not a step for the agent, so show them the error and go on to the report; once it is "
+        f"fixed, the next run is: {rerun}"
     )
 
 
@@ -11032,6 +11034,10 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     assert "manifest.sqlite is a symlink to " in line and "gone.sqlite, which does not exist; the " in line, (
         line
     )
+    # B13 round 29 C154: one shape and one set of words in every reader, the link's fact first, doctor's
+    same = f"; the manifest {manifest.LOST_MANIFEST}"
+    for shown in (last_line(listed), last_line(lost), lost.stderr, line):
+        assert same in shown, shown
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's choice, as the NEXT words it
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
@@ -11101,6 +11107,18 @@ def test_a_manifest_link_into_a_folder_that_is_gone_is_removed_first_as_the_word
     assert last_line(lost).startswith(STATE_LOST_LINK_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(
         lost
     )
+    same = f"; the manifest {manifest.LOST_MANIFEST}"  # B13 round 29 C154: doctor's shape in every reader
+    status = subprocess.run(
+        [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    [line] = [ln for ln in status.stdout.splitlines() if ln.startswith("[FAIL] state_dir.manifest ")]
+    for shown in (last_line(listed), last_line(lost), lost.stderr, line):
+        assert same in shown, shown
     db.unlink()  # "they remove the link first"
     heartbeat = db.with_name("heartbeat.json")
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # "then ... move heartbeat.json aside"

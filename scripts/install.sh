@@ -3954,9 +3954,11 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 		short) why="which was empty or too short to be a manifest after earlier syncs" ;;
 		short-unread) why="which was empty or too short to be a manifest beside a heartbeat.json that could not be read" ;;
 		esac
+		# the link's fact first, then the manifest's, as the agentsync report says it since lane RA's round 29
+		# C110, C154 ("which is <link>; the manifest was ..."): "and is a link" after it read as heartbeat.json's
 		case "$STOP_LINK" in
-		unusable) why="$why and is a link into a folder that does not exist or refuses a write" whose="$whose, removing or re-pointing the link first" ;;
-		dangling) why="$why and is a link to a file that does not exist" ;;
+		unusable) why="which is a link into a folder that does not exist or refuses a write; the manifest ${why#which }" whose="$whose, removing or re-pointing the link first" ;;
+		dangling) why="which is a link to a file that does not exist; the manifest ${why#which }" ;;
 		esac
 	fi
 	local told=""
@@ -7675,7 +7677,7 @@ list_folders() {
 				cshort="$(LC_ALL=C grep -x 'lost-short' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cside="$(LC_ALL=C grep -x 'side-status' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
-				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|damaged|symlink-(loop|nothing|file|folder|fifo|socket)|dir-(file|fifo|socket|other|symlink-(loop|nothing|file)))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
+				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|damaged|symlink-(loop|nothing|file|folder|fifo|socket)|dir-(file|fifo|socket|other|symlink-(loop|nothing|file|fifo|socket|other)))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
 			fi
 			# a hold the hold list lost, as this checkout's governance judges it, else the installed build's
 			# (B13 round 29 ruling 27: C122, C197, C206)
@@ -7877,11 +7879,13 @@ list_folders() {
 		# "(not damage, not a mode)": damaged JSON or a mode is one of its causes (I5, I33)
 		lwhat="" lfix="they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest"
 		case "$clink" in
-		lost-dangling) lwhat="a symlink to a file that does not exist, and is " ;;
-		lost-link) lwhat="a symlink into a folder that does not exist or refuses a write, and is " lfix="they remove the link first; then $lfix" ;;
+		lost-dangling) lwhat="a symlink to a file that does not exist; the manifest is " ;;
+		lost-link) lwhat="a symlink into a folder that does not exist or refuses a write; the manifest is " lfix="they remove the link first; then $lfix" ;;
 		esac
+		# the link's fact, then the manifest's in doctor's own shape and words (manifest.LOST_MANIFEST): the
+		# sync's error line, doctor and the report said it three ways in two orders (B13 round 29 C154)
 		lfact="missing though heartbeat.json beside it records earlier passes (not damage, not a mode)"
-		[ -z "$lwhat" ] || lfact="missing, though heartbeat.json beside it records earlier passes (not damage, not a mode)"
+		[ -z "$lwhat" ] || lfact="missing, but heartbeat.json records earlier passes (not damage, not a mode)"
 		[ -z "$cunread" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		# there, but empty or too short to be a manifest: lane B's words and the damaged manifest's fix, moved
 		# aside with heartbeat.json, as doctor.lost_fix gives it (B13 round 28 I92)
@@ -9069,11 +9073,13 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		# kind too (B13 round 28 ruling 21: I56: a link beside one was said to record earlier passes)
 		local lwhat="" lfact="missing, though heartbeat.json beside it records earlier passes"
 		local lfix="they restore the file from a copy they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest"
-		[ -z "$STATE_LOST_DANGLING" ] || lwhat="a symlink to a file that does not exist, and is "
+		# the link's fact first, then the manifest's in doctor's shape and words (B13 round 29 C154)
+		[ -z "$STATE_LOST_DANGLING" ] || lwhat="a symlink to a file that does not exist; the manifest is "
 		[ -z "$STATE_LOST_LINK" ] || {
-			lwhat="a symlink into a folder that does not exist or refuses a write, and is "
+			lwhat="a symlink into a folder that does not exist or refuses a write; the manifest is "
 			lfix="they remove the link first; then $lfix"
 		}
+		[ -z "$lwhat" ] || lfact="missing, but heartbeat.json records earlier passes"
 		[ -z "$STATE_LOST_UNREAD" ] || lfact="missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		if [ -n "$STATE_LOST_SHORT" ]; then # there, but too short: the damaged manifest's fix (lane B round 28 I92)
 			lfix="keeping a copy, they restore it from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a new manifest"

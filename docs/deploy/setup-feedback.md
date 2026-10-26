@@ -785,18 +785,19 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   passes (...): fixing it is the person's (...), not a step for the agent, so show them the error and go on to the
   report; ...`), where it said `fix the error above` (round 24 ruling 7). When manifest.sqlite is a symlink into a folder
   that does not exist or refuses a write, the tail names the link (`... manifest.sqlite, which is a symlink into a
-  folder that does not exist or refuses a write, and is missing, though heartbeat.json beside it records earlier
-  passes ...`, the link first, as step 2's `NEXT:` and the error line name it, since B13 round 28 I4, I17, I33: B13
-  round 27 P121's order, the file's own fact first, read as though heartbeat.json were the link) and
+  folder that does not exist or refuses a write; the manifest is missing, but heartbeat.json records earlier passes
+  ...`, the link first, as step 2's `NEXT:` and the error line name it, since B13 round 28 I4, I17, I33: B13
+  round 27 P121's order, the file's own fact first, read as though heartbeat.json were the link; in doctor's shape
+  and words since B13 round 29 C154) and
   its fix starts `they remove the link first; then they restore the file ...`, and so does step 2's `NEXT:` (`... is a
-  symlink into a folder that does not exist or refuses a write, and is missing, though heartbeat.json ...`), since
+  symlink into a folder that does not exist or refuses a write; the manifest is missing, but heartbeat.json ...`), since
   neither move works through the link (B13 round 25 D79, CONTRACTS §16.179, as doctor's state_dir.manifest fix names
   `rm` first; round 26 E58). When manifest.sqlite is a symlink to a file that does not exist, in a folder a sync can
-  write, the tail names the link too (`... manifest.sqlite, which is a symlink to a file that does not exist, and is
-  missing, though heartbeat.json beside it records earlier passes ...`, the link first since B13 round 28 I4, I17,
+  write, the tail names the link too (`... manifest.sqlite, which is a symlink to a file that does not exist; the
+  manifest is missing, but heartbeat.json records earlier passes ...`, the link first since B13 round 28 I4, I17,
   I33) and ruling 7's fix stays, with no `rm` first, as it
   works through a link into a folder a sync can write (round 25 D79); step 2's `NEXT:` reads `... is a symlink to a file that does not
-  exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). Beside a heartbeat.json that cannot be read,
+  exist; the manifest is missing, but heartbeat.json ...` (B13 round 26 E19). Beside a heartbeat.json that cannot be read,
   the tail reads
   `... manifest.sqlite, which is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out: ...`
   with ruling 7's fix, and step 2's `NEXT:`
