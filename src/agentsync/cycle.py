@@ -2054,6 +2054,11 @@ class _Cycle:
         # counts those this run made current, for the sync's note alone (B13 round 21 Y28)
         self._legacy_moved: list[tuple[str, str]] = []
         self._policy_rescreened = False  # a [policy] change marked the label-capable rows this run
+        # the stubs whose reason an older build wrote a path into: those this run queued for their one-shot
+        # re-read (``_queue_path_stubs``) and those it read again (``_retries``), counted for the sync's notes
+        # and the run record, never named (B13 round 30 C362, C327)
+        self._path_queued: set[tuple[str, str]] = set()
+        self._path_reread: set[tuple[str, str]] = set()
         # the recording pass (spec S0 rules 3 to 8): who reads, what the queues left it, what it knows
         self.recordings: _RecordingRun = "none" if self.dry else recordings
         self._recording_queue: dict[str, list[str]] = {}  # per source: the recordings its queue deferred
@@ -3275,6 +3280,7 @@ class _Cycle:
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
         cleared, settled, waiting = self._legacy_outcomes()
+        path_current, path_failed, path_waiting = self._path_outcomes()
         return CycleReport(
             run_id=self.run_id,
             mode=self.mode,
@@ -3299,7 +3305,31 @@ class _Cycle:
             legacy_cleared=cleared,
             legacy_settled=settled,
             legacy_waiting=waiting,
+            path_reread=path_current + path_failed,
+            path_reread_current=path_current,
+            path_reread_failed=path_failed,
+            path_reread_waiting=path_waiting,
         )
+
+    def _path_outcomes(self) -> tuple[int, int, int]:
+        """Of the stubs whose reason an older build wrote a path into, ``(current, failed, waiting)`` after
+        this run: current is one read again in this run and live (or dataless) now; failed is one read again
+        that is still a stub (failed again, or settled as unreadable or refused), which is not read again;
+        waiting is one this run queued for the re-read but did not read (--source, paused, out of time), which
+        the next sync of its source reads; a row read again and gone since counts in neither. (0, 0, 0) when
+        the manifest cannot say (B13 round 30 C362)."""
+        try:
+            rows = []
+            for sid, stable in sorted(self._path_reread):
+                row = self.manifest.get_item(sid, stable)
+                if row is None and (now := self.manifest.resolve_alias(sid, stable)) is not None:
+                    row = self.manifest.get_item(sid, now)
+                rows.append(row)
+        except Exception:  # the report never fails over a count
+            return 0, 0, 0
+        current = sum(1 for r in rows if r is not None and r.state in (RowState.LIVE, RowState.DATALESS))
+        failed = sum(1 for r in rows if r is not None and r.state in (RowState.QUARANTINED, RowState.REFUSED))
+        return current, failed, len(self._path_queued - self._path_reread)
 
     def _legacy_outcomes(self) -> tuple[int, int, int]:
         """Of the rows the upgrade's retry moved, ``(current, settled, waiting)`` after this run, in one
@@ -3436,6 +3466,11 @@ class _Cycle:
             self._tally["legacy_cleared"] = cleared
             settled = self._tally["legacy_settled"] = min(report.legacy_settled, retried - cleared)
             self._tally["legacy_waiting"] = min(report.legacy_waiting, retried - cleared - settled)  # A63
+        # the one-shot re-read of a stub with a path, by outcome: the report says it too (B13 round 30 C362)
+        self._tally["path_reread"] = report.path_reread
+        self._tally["path_reread_current"] = report.path_reread_current
+        self._tally["path_reread_failed"] = report.path_reread_failed
+        self._tally["path_reread_waiting"] = report.path_reread_waiting
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
@@ -3507,7 +3542,11 @@ class _Cycle:
         the retry words for the rest (B13 round 22 Z35, after Z55's note; together never more than
         ``legacy_retried``); ``legacy_waiting``: of those, the ``no converter`` stubs a later run reads again
         once a converter for them is ready, neither settled nor retried (B13 round 23 A63; with the two
-        before it never more than ``legacy_retried``);
+        before it never more than ``legacy_retried``); ``path_reread``: stubs whose reason an older build
+        wrote a path into that this run converted once more past their retries (``_retries``' one-shot, B13
+        round 29 C181), ``path_reread_current`` and ``path_reread_failed`` the ones of them live now and still
+        a stub, and ``path_reread_waiting`` the ones this run queued for it and did not read, which a later
+        sync of their source reads (``_path_outcomes``, B13 round 30 C362);
         ``converted_unreadable``: of those, conversions whose
         result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
@@ -5937,6 +5976,8 @@ class _Cycle:
         done = held[1] if held is not None and held[0] == h1 else 0
         if done > _CONVERT_RETRIES or (done == _CONVERT_RETRIES and not self._names_a_path(reason)):
             return False
+        if done == _CONVERT_RETRIES:  # the one-shot re-read: the sync's note says it (C362)
+            self._path_reread.add((src.id, row.stable_id))
         tries[row.stable_id] = (h1, done + 1)
         self._retry_save(src.id)
         return True
@@ -5961,6 +6002,7 @@ class _Cycle:
                     and self._names_a_path(reason)
                 ):
                     self.manifest.set_verdict(src.id, row.stable_id, Verdict.ERROR)
+                    self._path_queued.add((src.id, row.stable_id))
                     moved += 1
         self.manifest.set_meta(_PATH_REREAD_META, "1")
         if moved:  # a count, never a name

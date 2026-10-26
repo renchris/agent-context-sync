@@ -470,6 +470,30 @@ _OVER_BUDGET = "exceeds the per-cycle budget ("
 _WITHHELD_WHY = "a file whose label cannot be read: an image, or a .msg not on this Mac"
 
 
+def _out_path_reread_notes(report: CycleReport) -> None:
+    """The one-shot re-read of a stub whose stored reason an older build wrote a path into, which only -v
+    logged, so an old conversion error came back with nothing saying why (B13 round 30 C362, C327; round 19
+    W18's symptom). One note per outcome, after the legacy notes: each keeps "an older build gave up on ",
+    which install.sh's grep shows, and none holds a bare "converted", "deferred" or "read again", which
+    install.sh's awk counts."""
+    said = "an older build gave up on (its stored reason named a folder on this Mac)"
+    if n := report.path_reread_current:
+        _out(
+            f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
+            f"sync and {'is' if n == 1 else 'are'} now current"
+        )
+    if n := report.path_reread_failed:
+        _out(
+            f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
+            f"sync and failed again; {'it is' if n == 1 else 'they are'} not tried again"
+        )
+    if n := report.path_reread_waiting:
+        _out(
+            f"  note: {plural(n, 'conversion')} {said} {'is' if n == 1 else 'are'} tried once more in the "
+            f"next sync of {'its source' if n == 1 else 'their sources'}"
+        )
+
+
 def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None:
     """Print a cycle's report, ending with one line for the whole run, ``converted N, deferred M online-only``
     (N files read and converted, M online-only files left for a later run's download budget), then ``, read
@@ -626,6 +650,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
                 f"again, up to {tries} in the syncs of {whose} from this one on; "
                 f"{'its error' if n == 1 else 'their errors'} may show again until those tries are used"
             )
+    _out_path_reread_notes(report)
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""

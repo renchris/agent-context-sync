@@ -6052,6 +6052,11 @@ _ROUND_29_RA_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C134's "converted page" at §16.28's OCR part and §16.48's `.potx`
 paragraph."""
 
+_ROUND_30_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread` |", "§16.206 C362"),)
+"""Round 30 lane E's dated lines at a section its claim names with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C362's four rows in §16.28's run-record table, the path re-read's
+counts."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -6175,6 +6180,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_26_D_PARAGRAPH_AMENDS,
         *_ROUND_27_RA_PARAGRAPH_AMENDS,
         *_ROUND_29_RA_PARAGRAPH_AMENDS,
+        *_ROUND_30_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

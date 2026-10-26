@@ -1055,6 +1055,10 @@ class CycleReport:
     legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
     legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
     legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
+    path_reread: int = 0  # 2026-10-26 (§16.206 C362): stubs with an older build's path converted once more past their retries
+    path_reread_current: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones live now (the note's)
+    path_reread_failed: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones still a stub, not tried again (the note's)
+    path_reread_waiting: int = 0  # 2026-10-26 (§16.206 C362): queued for it in this run and not read (the note's)
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
     new_manifest_removed: int = 0  # 2026-10-23 (§16.185 E10): of those, the ones this run did not write back
@@ -8133,6 +8137,10 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
 | `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-22, §16.171 B74:** it says `that run refused with no converter for its type` |
+| `path_reread` | **Amended 2026-10-26, §16.206 C362:** stubs whose reason an older build wrote a staging or home path into that this run converted once more past their retries (§16.201 C181's one-shot re-read, `Cycle._retries`); the sync's notes say each outcome |
+| `path_reread_current` | **Amended 2026-10-26, §16.206 C362:** of those, the ones live (or dataless) after this run |
+| `path_reread_failed` | **Amended 2026-10-26, §16.206 C362:** of those, the ones still a stub (failed again, or settled as unreadable or refused), which no later run converts until the bytes change; with `path_reread_current` always `path_reread` |
+| `path_reread_waiting` | **Amended 2026-10-26, §16.206 C362:** stubs this run queued for the re-read (`_queue_path_stubs`, once per manifest) and did not read (another source's run, paused, out of time), never in `path_reread`; the next sync of their source reads them |
 | `converted_unreadable` | (**Amended 2026-10-11, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -32921,6 +32929,9 @@ again (measured: 0 conversions in this build's run), and a stored reason is cut 
 conversions, then this build converts it once and not again in two more runs),
 `test_the_one_shot_re_read_never_repeats_when_its_reason_still_holds_a_path` and
 `test_a_stub_with_a_path_needs_no_home_folder`.
+Amended 2026-10-26, §16.206 C362, C327, C319: the re-read is said in the sync's notes and counted in the run
+record, and the older build's page stays in the docs history until compaction drops it, on purpose: the re-read
+queues no purge.
 
 **A ContentType with whitespace around its `=` names its Office family (C222; `agentsync.convert`).**
 `_MAIN_TYPE_RE` read `ContentType="..."` only, and XML allows `ContentType = "..."`, line breaks included, so such
@@ -33156,6 +33167,32 @@ is outside this config's staging folder needs it. Test:
 `test_convert_family.py::test_a_stub_whose_path_is_outside_this_staging_folder_is_read_again_once` (the older build
 settles the stub, its reason is set to name `/Volumes/Contoso/agentsync/staging/ab12/...` or a path under the home
 folder; one run converts it once, and two more do not).
+
+**The one-shot re-read is said, counted, and leaves the docs history as it is (C362, C327, C319, one defect from
+three finders, ruling 45; `agentsync.cycle`, `agentsync.cli`, `agentsync.model`; amends §16.201 C181 and §16.28).** The re-read
+logged one `log.info` line, which a default sync drops (the CLI logs at WARNING), so the old conversion error came
+back as a third read, past the report's "up to 2 later runs", with nothing saying why, and no count reached the run
+record; the W18 retry's `legacy_retried` stays 0 on a manifest that already ran it. Not added to `_legacy_moved`:
+the leftover note's "up to 2 times" would be false for a stub with no try left. The cycle keeps its own pairs, the
+stubs `_queue_path_stubs` queued in this run and the ones `_retries` converted past their retries
+(`_path_queued`, `_path_reread`), and `_path_outcomes` counts them into `CycleReport` and the run record:
+`path_reread` (converted once more in this run), `path_reread_current` (of them, live or dataless now),
+`path_reread_failed` (of them, still a stub: failed again, or settled as unreadable or refused) and
+`path_reread_waiting` (queued in this run, not read: another source's run, paused, out of time). After the legacy
+notes, the CLI prints one note per count, each keeping `an older build gave up on ` (install.sh's grep, unchanged)
+and holding no bare `converted`, `deferred` or `read again` (install.sh's awk): `note: N conversion(s) an older
+build gave up on (its stored reason named a folder on this Mac) was tried once more in this sync and is now
+current`, `... was tried once more in this sync and failed again; it is not tried again` and `... is tried once more
+in the next sync of its source`. The older build's commit of such a stub keeps the path in the docs history on
+purpose, as for any page a later build rewrites: the re-read queues no purge, scheduled compaction drops it after
+`[governance] history_days` (default 30) and `compaction_slack_days` (7), and under `[governance] archive`, or
+while a hold suspends compaction, it stays until the person chooses to purge that page, which rewrites the whole
+history. The setup report's retry sentence and the guide say so, with no count or path (lanes RA and D). Tests:
+`test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it` (a run
+of the other source says it waits, the next sync that it failed again, the one after nothing; the run record's
+counts), `test_convert_family.py::test_a_path_re_read_that_converts_says_it_is_now_current` and
+`test_convert_family.py::test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once` (an earlier
+commit still holds the staging path, and no purge is queued).
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 

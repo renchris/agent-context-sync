@@ -520,6 +520,15 @@ class CycleReport:
     # (the OCR engine for an image): "is refused until a converter for its type is ready", neither the
     # settled words nor the retry words, and the run record keeps it (``legacy_waiting``; B13 round 23 A63)
     legacy_waiting: int = 0
+    # stubs whose reason an older build wrote a staging or home path into, converted once more past their
+    # retries in this run (``Cycle._retries``' one-shot, B13 round 29 C181): of them, the ones live now and
+    # the ones still a stub, never read again; and the ones this run queued for it but did not read (another
+    # source's sync, paused, out of time), which the next sync of their source reads. The sync's notes and
+    # the run record say each, as the legacy counts do (B13 round 30 C362, C327)
+    path_reread: int = 0
+    path_reread_current: int = 0
+    path_reread_failed: int = 0
+    path_reread_waiting: int = 0
     # the heartbeat this account could not open (its PermissionError, with the path): the cycle stops trying
     # after the first source and logs nothing above DEBUG; the CLI says it once, an interactive sync as an
     # ``error: state:`` line, a NEXT to status and exit 1 (B13 round 23 A1, A34, A84; round 23 ruling 5)

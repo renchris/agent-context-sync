@@ -3,6 +3,7 @@ error names the staged path or the home folder."""
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -237,6 +238,15 @@ def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
     assert page_fm(config, page)["reason"].startswith("not-ooxml: a Word document, not a deck")
     assert str(config.state_paths.staging) not in git(config.docs_repo, "show", f"HEAD:{page}")
     assert _leaks(config) == []
+    # B13 round 30 C319: on purpose, the older build's page stays in the docs history until compaction drops
+    # it; the re-read queues no purge
+    older = [
+        sha
+        for sha in git(config.docs_repo, "rev-list", "HEAD", "--", page).split()
+        if str(config.state_paths.staging) in git(config.docs_repo, "show", f"{sha}:{page}")
+    ]
+    assert older, "the history keeps the older build's page"
+    assert not (config.state_paths.root / "governance" / "purge-queue.json").exists()
     for _ in range(2):
         assert run(config).exit_code == 0
     assert tries == ["Contoso renamed doc.potx"], "what the re-read wrote holds no path: not read again"
@@ -301,6 +311,86 @@ def test_a_stub_whose_path_is_outside_this_staging_folder_is_read_again_once(
     for _ in range(2):
         assert run(config).exit_code == 0
     assert tries == ["Contoso renamed doc.potx"], "the re-read is recorded: never again"
+
+
+_SAID = "an older build gave up on (its stored reason named a folder on this Mac)"
+
+
+def _notes(out: str) -> list[str]:
+    return [ln for ln in out.splitlines() if "an older build gave up on " in ln]
+
+
+def test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C362, C327: the one-shot re-read was a log.info line a default sync never prints, so its
+    error came back with nothing saying why, and no count reached the run record. A run of another source
+    queues it and says the next sync of its source reads it; that sync says it failed again and is not tried
+    again; the one after says nothing. Every note keeps "an older build gave up on ", install.sh's grep."""
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    second = f'\n[[source]]\nid = "other"\nkind = "local"\npath = "{other}"\nsentinel = "README.txt"\n'
+    config, src = make_env(tmp_path, source_extra=second)
+    word_package(src / "Contoso renamed doc.potx")
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    cfg = str(config.config_path)
+    capsys.readouterr()
+    cli._print_report(run(config, only=("other",)))  # a run that does not read its source (``only``)
+    out = capsys.readouterr().out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} is tried once more in the next sync of its source"
+    ], out
+    assert _run_record(config)["path_reread_waiting"] == 1
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and failed again; "
+        "it is not tried again"
+    ], out
+    record = _run_record(config)
+    assert (record["path_reread"], record["path_reread_failed"]) == (1, 1)
+    assert "path_reread_waiting" not in record and "path_reread_current" not in record
+    for note in _notes(out):
+        assert not re.search(r"\bconverted\b|\bdeferred\b|\bread again\b", note), note
+    cli.main(["sync", "--config", cfg])
+    assert _notes(capsys.readouterr().out) == []
+
+
+def test_a_path_re_read_that_converts_says_it_is_now_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C362: a deck the older build failed on with the staging path in its reason converts now; the note
+    says it is current."""
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    (src / "Contoso Quarterly.pptx").write_bytes(build_pptx_rich(tmp_path / "deck.pptx").read_bytes())
+
+    def failing(self: PptxConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
+        raise ConversionError(f"python-pptx cannot read the deck: file '{path}' timed out")
+
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        mp.setattr(PptxConverter, "convert", failing)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    assert "/staging/" in (_row(config, "Contoso Quarterly.pptx").state_reason or "")
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    out = capsys.readouterr().out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is now current"
+    ]
+    assert _row(config, "Contoso Quarterly.pptx").state is RowState.LIVE
+    assert _run_record(config)["path_reread_current"] == 1
 
 
 def test_pathless_replaces_the_longest_form_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
