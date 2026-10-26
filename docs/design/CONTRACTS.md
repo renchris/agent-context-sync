@@ -32220,4 +32220,16 @@ heartbeat.json there but damaged, not an object, or refused), which status print
 the bullet not to apply. The bullet keeps the first quote and adds the second, as the verifiers said (dropping the
 quotes for "(either reason)" would turn P62's pin red and lose the words a reader matches); the same fix covers
 both. Test: `test_the_records_page_says_purge_stops_over_a_lost_manifest`, which now reads every ending in
-`manifest.LOST_MANIFEST_WORDS`.
+`manifest.LOST_MANIFEST_WORDS`, lane B's two for a manifest too short to be one (I92) among them since its land.
+
+**The records page says what the queue does after each fix** (I75; `docs/deploy/data-governance.md`). The bullet
+ended "Then run the purge." after either fix, and after a new start `purge --queue` before a sync leaves each entry
+queued (`governance.NEW_START_NOTE`); built against lane B's I93 and I109 (not the round 27 code the verifier
+measured, where an entry was then "not resolvable" for good): after that sync it runs an entry once its id or a
+stored alias reaches the page's history, and keeps one whose id reaches nothing (`UNRESOLVED_HEAD`), as lane B's
+`test_cli.py` tests measure with the real CLI. The bullet says to preview the queue after a restore, to sync first
+after a new start, what the kept entry reads, and the by-hand purge `unresolved_note` gives, `purge id=<its id>
+--source <its source>`, with `--reason upstream-deleted` (the default `operator` also suppresses the item) and a
+dry run first, `docs=` the last resort; and, from lane B's I92 and I42, that a manifest too short to be one moves
+aside with heartbeat.json (`doctor.lost_fix`) and that status's NEXT gives a refusing heartbeat's `chmod 600`
+first. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`.

@@ -62,13 +62,28 @@ is a copy that no purge reaches, so exclude it too.
 - **Over a lost manifest:** while `agentsync status` reports that manifest.sqlite
   `is missing, but heartbeat.json records earlier passes`, or, when heartbeat.json is there but damaged or not a
   file, that it
-  `is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`,
+  `is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`
+  (for a manifest that is there but too short to be one, the same two endings start
+  `is empty or too short to be a manifest`:
+  `is empty or too short to be a manifest, but heartbeat.json records earlier passes` and
+  `is empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`),
   `agentsync purge` (a selector, `--queue`, and the `--dry-run` of either) and
   `agentsync compact-history` stop on that same line, exit 1 and write nothing, because no manifest read can tell a
   current page from a gone one. Queued purges stay queued. Follow status's fix: restore manifest.sqlite from a copy
-  you trust, or else move heartbeat.json aside (keeping a copy) so the next sync starts a new manifest; a new start
-  converts every file again and forgets the deletions, the deletion breaker's suspended removals and the archive it
-  had recorded. Then run the purge. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27 P111).
+  you trust, or else move heartbeat.json aside (keeping a copy) so the next sync starts a new manifest; a manifest
+  too short to be one is moved aside with heartbeat.json, keeping a copy. When heartbeat.json is this account's own
+  file at a mode that refuses it, status's NEXT gives its `chmod 600` first, and the manifest's fix comes only if
+  the manifest is still missing after that. A new start converts every file again and forgets the deletions, the
+  deletion breaker's suspended removals and the archive it had recorded. After a restore, preview with
+  `agentsync purge --queue --dry-run`, then run the purge. After a new start, run `agentsync sync` first:
+  `purge --queue` before it leaves each entry queued `until the next sync builds the manifest`. After that sync,
+  `purge --queue` looks for each entry's id in the docs history and runs the entry once it finds one; an entry
+  whose id reaches nothing stays queued, `kept until its id is found`. To erase such a page by hand, find it with
+  `git log --all --name-only -- mirror/<source>/` in the docs repo, preview
+  `agentsync purge id=<its id> --source <its source> --reason upstream-deleted --dry-run` with the id in the
+  page's front matter, then run it without `--dry-run`; `agentsync purge docs=<page path>`, which erases every
+  page ever at that path, a live one too, is the last resort. `agentsync hold` and its release still work (B13
+  round 26 E25, ruling 14; B13 round 27 P111; B13 round 28 I92, I93).
 
 ## Legal and records hold
 

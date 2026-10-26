@@ -6792,6 +6792,49 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     assert f"`{facts['unread']}: {unread}`" in page and f"`{facts['short']}`" in page
 
 
+def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
+    """B13 round 28 I75: the records page said "Then run the purge." after either fix, and after a new start
+    `purge --queue` leaves each entry queued until a sync builds the manifest, then (since lane B's I93, I109)
+    runs it once its id reaches the page's history and keeps it when the id reaches nothing. The page says
+    which run comes first after each fix and gives the by-hand purge by id, with the reason that does not
+    suppress the item and a dry run first, and `docs=` as the last resort; each phrase is read from
+    governance, and the too-short manifest's fix from doctor."""
+    from agentsync import governance, manifest  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost manifest:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert "Then run the purge." not in bullet
+    assert "After a restore, preview with `agentsync purge --queue --dry-run`, then run the purge." in bullet
+    wait = "until the next sync builds the manifest"
+    assert governance.NEW_START_NOTE.endswith(f"it stays queued {wait}")
+    assert (
+        "After a new start, run `agentsync sync` first: `purge --queue` before it leaves each entry queued"
+        f" `{wait}`" in bullet
+    )
+    head = governance.UNRESOLVED_HEAD.removesuffix(": ")
+    assert f"an entry whose id reaches nothing stays queued, `{head}`" in bullet
+    note = governance.unresolved_note(
+        governance.QueuedPurge(
+            selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+            reason=governance.PurgeReason.UPSTREAM_DELETED,
+            enqueued_at="2026-10-25T00:00:00Z",
+        )
+    )
+    by_hand = "purge id=<its id> --source <its source>"
+    assert (
+        by_hand in note and "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
+    )
+    assert "`git log --all --name-only -- mirror/<source>/`" in bullet
+    assert f"`agentsync {by_hand} --reason upstream-deleted --dry-run`" in bullet
+    assert governance.PurgeReason.UPSTREAM_DELETED.value == "upstream-deleted"
+    assert "`agentsync purge docs=<page path>`" in bullet and "is the last resort" in bullet
+    short = doctor.lost_fix(manifest.LOST_MANIFEST_SHORT[0])
+    assert "move it aside and heartbeat.json with it" in short
+    assert "a manifest too short to be one is moved aside with heartbeat.json, keeping a copy" in bullet
+    assert "status's NEXT gives its `chmod 600` first" in bullet and "B13 round 28 I92, I93" in bullet
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
