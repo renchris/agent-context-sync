@@ -9410,6 +9410,77 @@ def test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verifi
     assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
 
 
+def test_a_queued_purge_history_names_nothing_of_leaves_only_by_its_audited_forget(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C173, C189 (ruling 26): an entry whose id history names nothing stayed queued for good,
+    and its note's by-hand purge read "VERIFIED · 0 items" and left it. A 0-item purge still drops nothing
+    (P112's blind run); `purge --queue --forget id=<queued id> --source <src>`, previewed with --dry-run,
+    takes off that one entry with a purge-forgotten audit line and erases nothing."""
+    cfg = _synced(initialised)
+    repo = expand(initialised.docs_repo)
+    root = expand(initialised.state_paths.root)
+    q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    head = git(repo, "rev-parse", "HEAD")
+    hand = ["purge", "id=contoso-volume:retired-0042", "--source", "source", "--reason", "upstream-deleted"]
+    assert cli.main([*hand, "--config", cfg]) == cli.EXIT_OK
+    assert governance.pending_purges(root) == [q], "a 0-item purge drops nothing"
+    forget = ["purge", "--queue", "--forget", "id=contoso-volume:retired-0042", "--source", "source"]
+    capsys.readouterr()
+    assert cli.main([*forget, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    assert "would take off the queue purge id=contoso-volume:retired-0042" in capsys.readouterr().out
+    assert governance.pending_purges(root) == [q]
+    assert cli.main([*forget, "--config", cfg]) == cli.EXIT_OK
+    assert "taken off the queue: " in capsys.readouterr().out
+    assert governance.pending_purges(root) == [] and governance.lost_queued(root) == []
+    last = governance.read_audit(root)[-1]
+    assert last["action"] == "purge-forgotten" and last["selector_sha256"] == q.selector.fingerprint(), last
+    assert git(repo, "rev-parse", "HEAD") == head
+
+
+def test_forget_refuses_an_entry_a_run_has_not_found_nothing_for(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 26's refusal: an entry whose file is listed again (or one no run has looked up) is never
+    forgotten: exit 1 with why it stays queued, the entry kept; --forget goes with --queue alone."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    q = _queue_upstream(initialised, "projects/sample.txt")
+    sid = q.selector.stable_id
+    capsys.readouterr()
+    argv = ["purge", "--queue", "--forget", f"id={sid}", "--source", "source", "--config", cfg]
+    assert cli.main(argv) == cli.EXIT_FAILED
+    assert "not forgotten: stays queued: the manifest lists the file as live" in capsys.readouterr().err
+    assert governance.pending_purges(root) == [q]
+    assert (
+        cli.main(["purge", "--forget", f"id={sid}", "--source", "source", "--config", cfg]) == cli.EXIT_USAGE
+    )
+
+
+def test_a_by_hand_purge_the_cli_prints_carries_the_entrys_own_reason() -> None:
+    """B13 round 29 C193: the by-hand purge in the notes had no --reason (the default, operator, suppresses
+    an upstream deletion's file) or a fixed upstream-deleted (which lets a label-escalation file sync back).
+    Each carries its entry's own reason."""
+    for reason in governance.KEPT_REASONS:
+        q = governance.QueuedPurge(
+            governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+            reason,
+            "2026-10-25",
+        )
+        note = governance.unresolved_note(q)
+        assert f"--source <its source> --reason {reason.value}`" in note and "--reason <" not in note, note
+        assert f"docs=<page path> --reason {reason.value}`" in note, note
+    assert "--reason <its reason>`" in governance.unresolved_purges(2)
+    escalation = governance.QueuedPurge(
+        governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+        governance.PurgeReason.LABEL_ESCALATION,
+        "2026-10-25",
+    )
+    kept = governance._kept_note(escalation, [("contoso", "contoso-volume:0042")])
+    assert "--source <its source> --reason label-escalation` erases it anyway" in kept, kept
+
+
 def test_status_and_the_loop_read_no_history_for_a_kept_entry(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

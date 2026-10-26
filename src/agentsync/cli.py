@@ -383,6 +383,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--queue", action="store_true", help="run every queued purge instead of SELECTOR")
     p.add_argument(
+        "--forget",
+        metavar="SELECTOR",
+        help=(
+            "with --queue: take off the queue the entry id=<queued id> (with --source) a run looked up and "
+            "found nothing for, with an audit line; nothing is erased"
+        ),
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="report what would be purged; change nothing (an older manifest is still migrated first)",
@@ -3335,6 +3343,22 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         return EXIT_FAILED  # dry run included: it would plan erasing pages no manifest read (ruling 14)
     if args.queue or args.selector:
         _open_state_or_raise(config)  # sync's own line and exit, whatever the queue holds (P24)
+    if args.forget is not None:
+        if not args.queue:
+            _err("purge: --forget goes with --queue")
+            return EXIT_USAGE
+        # the one audited way off the queue for an entry history names nothing of (B13 round 29 C173, C189)
+        q = governance.forget_queued(
+            config,
+            governance.PurgeSelector.parse(args.forget, source_id=args.source),
+            dry_run=bool(args.dry_run),
+        )
+        what = f"purge id={q.selector.stable_id} --source {q.selector.source_id} ({q.reason.value})"
+        if args.dry_run:
+            _out(f"dry run: would take off the queue {what}; nothing written")
+        else:
+            _out(f"taken off the queue: {what} (audited; nothing erased)")
+        return EXIT_OK
     if args.queue:
         dry_run = bool(args.dry_run)
         reports = governance.run_purge_queue(config, dry_run=dry_run)

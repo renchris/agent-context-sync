@@ -60,7 +60,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "status": [],
         "curate": [],
         "adopt": ["src_dir"],
-        "purge": ["selector", "--source", "--reason", "--queue", "--dry-run", "--push"],
+        "purge": ["selector", "--source", "--reason", "--queue", "--forget", "--dry-run", "--push"],
         "hold": ["scope", "--reason", "--owner", "--release", "--list"],
         "offboard": ["--purge-data", "--dry-run", "--confirm"],
     },

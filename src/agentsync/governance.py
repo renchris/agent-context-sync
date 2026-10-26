@@ -3450,14 +3450,18 @@ def unresolved_note(q: QueuedPurge) -> str:
     purge by the path erases every page ever there, a restored file's live page too, so it is the last
     resort."""
     where = f"mirror/{q.selector.source_id}/" if q.selector.source_id else "mirror/"
+    why = q.reason.value  # the queued run's own reason, so a by-hand run suppresses as it would (C193)
     return (
         f"{UNRESOLVED_HEAD}nothing in the manifest names it (a new start replaced the one that recorded its "
         "file's page, or an older copy was put back), so `purge --queue` keeps it until it finds its id in "
         "the docs history; if none is found it stays queued. To erase the page by hand, find it with "
         f"`git log --all --name-only -- {where}` in the docs repo and run "
-        f"`{AGENTSYNC_BIN} purge id=<its id> --source <its source>` with the id in the page's front matter, "
-        f"which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge docs=<page path>` is "
-        "the last resort, for a page that id run targets nothing of"
+        f"`{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason {why}` with the id in the page's "
+        f"front matter, which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge "
+        f"docs=<page path> --reason {why}` is the last resort, for a page that id run targets nothing of. A "
+        "run takes off the queue only what history names: once no page is left, "
+        f"`{AGENTSYNC_BIN} purge --queue --forget id={q.selector.stable_id} --source {q.selector.source_id}` "
+        "takes this entry off, with an audit line"
     )
 
 
@@ -3467,8 +3471,10 @@ def unresolved_purges(n: int) -> str:
     return (
         f"{plural(n, 'queued purge')} {is_} kept until `{AGENTSYNC_BIN} purge --queue` finds {its} id in the "
         f"docs history; if none is found {it} {stays} queued (nothing in the manifest names {it} after a new "
-        f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source>` erases a page "
-        "by hand"
+        f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason <its "
+        f"reason>` erases a page by hand (each entry's reason is in `{AGENTSYNC_BIN} purge --queue "
+        f"--dry-run`), and once no page is left `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source "
+        "<its source>` takes an entry off, with an audit line"
     )
 
 
@@ -3764,7 +3770,8 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
             f"stays queued: the label policy no longer refuses the file and its page is current again "
             f"({rows}{via}); running it would erase that page and stop the file syncing. "
             "`purge --queue` skips it while the file is published, and runs it if the policy refuses the "
-            f"file again; `{AGENTSYNC_BIN} purge path=<its path> --source <its source>` erases it anyway"
+            f"file again; `{AGENTSYNC_BIN} purge path=<its path> --source <its source> --reason "
+            "label-escalation` erases it anyway"
         )
     return (
         f"stays queued: the manifest lists the file as live or online-only ({rows}{via}); "
@@ -4012,6 +4019,55 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
         *sorted(set(never)),
         *([unresolved_purges(unresolved)] if unresolved else []),
     ]
+
+
+def forget_queued(
+    config: Config,
+    selector: PurgeSelector,
+    *,
+    dry_run: bool = False,
+    lock: bool = True,
+    now: datetime | None = None,
+) -> QueuedPurge:
+    """Take off the queue the one entry ``selector`` names (a source and id), only an ``upstream-deleted`` or
+    ``label-escalation`` entry a queue run looked up and found nothing for (``found_nothing``), with a
+    ``purge-forgotten`` audit line, under the writer lock; a refused audit trail drops nothing (A79).
+    ``dry_run`` says what it would take off and writes nothing. Any other entry is refused with why it stays
+    queued: a 0-item VERIFIED purge is P112's blind run and drops nothing, so this audited act is the only way
+    off for an entry whose id history names nothing (B13 round 29 C173, C189; ruling 26)."""
+    sp = config.state_paths
+    if not (selector.source_id and selector.stable_id):
+        raise GovernanceError("purge --queue --forget takes id=<queued id> with --source <its source>")
+    with _maybe_lock(sp, lock and not dry_run):
+        queue = pending_purges(sp.root)
+        found = [q for q in queue if q.selector == selector]
+        if not found:
+            raise GovernanceError(
+                f"no queued purge of id={selector.stable_id} --source {selector.source_id}; "
+                f"`{AGENTSYNC_BIN} purge --queue --dry-run` lists the queue"
+            )
+        q = found[0]
+        if q.reason not in KEPT_REASONS or not q.found_nothing:
+            why = _kept_queued(sp.db, q, config) or (
+                "stays queued: a queue run has not looked it up and found nothing for it; "
+                f"`{AGENTSYNC_BIN} purge --queue` runs it"
+            )
+            raise GovernanceError(f"not forgotten: {why}")
+        if dry_run:
+            return q
+        with _audit_appender(sp.root) as audit:
+            _write_queue(sp.root, [e for e in queue if e is not q])
+            audit(
+                {
+                    "action": "purge-forgotten",
+                    "at": _iso(_now(now)),
+                    "reason": q.reason.value,
+                    "selector_kind": q.selector.kind(),
+                    "selector_sha256": q.selector.fingerprint(),
+                    "source_id": q.selector.source_id,
+                }
+            )
+    return q
 
 
 def _probed(q: QueuedPurge) -> bool:

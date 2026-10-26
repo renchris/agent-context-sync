@@ -6949,21 +6949,26 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
     )
     head = governance.UNRESOLVED_HEAD.removesuffix(": ")
     assert f"an entry whose id reaches nothing stays queued, `{head}`" in bullet
-    note = governance.unresolved_note(
-        governance.QueuedPurge(
-            selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
-            reason=governance.PurgeReason.UPSTREAM_DELETED,
-            enqueued_at="2026-10-25T00:00:00Z",
-        )
-    )
+    assert "a run takes off the queue only what history names" in bullet
     by_hand = "purge id=<its id> --source <its source>"
-    assert (
-        by_hand in note and "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
-    )
+    for reason in governance.KEPT_REASONS:  # each entry's own reason, never one fixed one (B13 round 29 C193)
+        note = governance.unresolved_note(
+            governance.QueuedPurge(
+                selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+                reason=reason,
+                enqueued_at="2026-10-25T00:00:00Z",
+            )
+        )
+        assert f"{by_hand} --reason {reason.value}`" in note, note
+        assert "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
+        assert "purge --queue --forget id=contoso-volume:0042 --source contoso`" in note, note
     assert "`git log --all --name-only -- mirror/<source>/`" in bullet
-    assert f"`agentsync {by_hand} --reason upstream-deleted --dry-run`" in bullet
-    assert governance.PurgeReason.UPSTREAM_DELETED.value == "upstream-deleted"
-    assert "`agentsync purge docs=<page path>`" in bullet and "is the last resort" in bullet
+    assert f"`agentsync {by_hand} --reason <its reason> --dry-run`" in bullet
+    assert "`agentsync purge --queue --forget id=<its id> --source <its source>` takes it off" in bullet
+    assert (
+        "`agentsync purge docs=<page path> --reason <its reason>`" in bullet
+        and "is the last resort" in bullet
+    )
     short = doctor.lost_fix(manifest.LOST_MANIFEST_SHORT[0])
     assert "move it aside and heartbeat.json with it" in short
     assert "a manifest too short to be one is moved aside with heartbeat.json, keeping a copy" in bullet

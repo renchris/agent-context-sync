@@ -76,14 +76,19 @@ is a copy that no purge reaches, so exclude it too.
   the manifest is still lost after that. A new start converts every file again and forgets the deletions, the
   deletion breaker's suspended removals and the archive it had recorded. After a restore, preview with
   `agentsync purge --queue --dry-run`, then run the purge. After a new start, run `agentsync sync` first:
-  `purge --queue` before it leaves each entry queued `until the next sync builds the manifest`. After that sync,
-  `purge --queue` looks for each entry's id in the docs history and runs the entry once it finds one; an entry
-  whose id reaches nothing stays queued, `kept until its id is found`. To erase such a page by hand, find it with
-  `git log --all --name-only -- mirror/<source>/` in the docs repo, preview
-  `agentsync purge id=<its id> --source <its source> --reason upstream-deleted --dry-run` with the id in the
-  page's front matter, then run it without `--dry-run`; `agentsync purge docs=<page path>`, which erases every
-  page ever at that path, a live one too, is the last resort. `agentsync hold` and its release still work (B13
-  round 26 E25, ruling 14; B13 round 27 P111; B13 round 28 I92, I93).
+  `purge --queue` before it leaves each entry queued `until the next sync builds the manifest`, and an entry whose
+  source that sync did not list in full stays `not judged yet` until a sync does. After that, `purge --queue`
+  looks for each entry's id in the docs history and runs the entry once it finds one; a run takes off the queue
+  only what history names, and an entry whose id reaches nothing stays queued, `kept until its id is found`. To
+  erase such a page by hand, find it with `git log --all --name-only -- mirror/<source>/` in the docs repo,
+  preview `agentsync purge id=<its id> --source <its source> --reason <its reason> --dry-run` with the id in the
+  page's front matter and the entry's own reason, the one `agentsync purge --queue --dry-run` shows for it
+  (`upstream-deleted` leaves the file free to sync again if it comes back, `label-escalation` keeps it out), then
+  run it without `--dry-run`; `agentsync purge docs=<page path> --reason <its reason>`, which erases every page
+  ever at that path, a live one too, is the last resort. The entry stays queued after either: once no page is
+  left, `agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, with an audit line,
+  and nothing else does. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27
+  P111; B13 round 28 I92, I93; B13 round 29 C193, C173, C189, C201).
 
 ## Legal and records hold
 
