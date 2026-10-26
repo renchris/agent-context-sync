@@ -3885,14 +3885,21 @@ fallback_sync_stops() { # [late]
 			next
 		}
 		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
+		# which lost kind stopped a sync, on the line right after its stop, with the same stamp, as lane B writes
+		# it since round 29 C210 (one write, two lines); an orphaned or unknown one is no detail
+		FILENAME != fr && match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop-detail lost=(unread|short|short-unread)$/) {
+			if (dk != "" && dline == FNR - 1 && substr($0, 1, 20) == dat) { sdet[dk] = substr($0, index($0, "lost=") + 5) }
+			next
+		}
 		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+(-[a-z]+)*)?$/) { next }
-		{ at = substr($0, 1, 20) }
+		{ at = substr($0, 1, 20); dline = FNR; dat = at; dk = "" }
 		late == "" && (at < lo || (edge ? secs(at) > secs(hi) : ef ? at > hi : at >= hi)) { next }
 		late != "" && (at < slo || (ef && at == slo) || secs(at) > secs(shi)) { next }
 		{
 			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
 			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
 			if (rc + 0 != 0) { ns++; sat[ns] = at; srow[ns] = rc + 0 " " file " " owner " " kind; sown[ns] = owner; sfile[ns] = file }
+			if (rc + 0 != 0 && file == "manifest" && kind == "lost") dk = ns
 		}
 		END {
 			# in time order (the file is, but a stable sort keeps a hand-edited one right), each claims one
@@ -3906,7 +3913,7 @@ fallback_sync_stops() { # [late]
 					used[e] = 1; fl[k] = "F" eline[e] " " eraw[e]; break
 				}
 			}
-			for (k = 1; k <= ns; k++) print srow[k], (k in fl ? fl[k] : "-")
+			for (k = 1; k <= ns; k++) print srow[k] (k in sdet ? "/" sdet[k] : ""), (k in fl ? fl[k] : "-")
 		}' "$f" - < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
 }
 # The words of one of those stops, as setup_report._sync_stop_line gives a stop it could not pair: the file by
@@ -3973,8 +3980,10 @@ lost_kind_now() {
 }
 STOP_LINK="" # lost_link_now, for the attempt's own stops only: the read says nothing of a time after it
 STOP_KIND="" # lost_kind_now, the same
-fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
-	local what why whose="the person's"
+fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
+	local what why whose="the person's" det="${4#lost/}" now="$STOP_KIND"
+	# the lost kind sync-stops.log recorded at the stop (lane B round 29 C210) wins over this shell's read now
+	case "$4" in lost/*) now="$det" && set -- "$1" "$2" "$3" lost "${5:-}" ;; esac
 	case "$2" in
 	manifest) what="agentsync's state file" ;;
 	manifest-wal) what="the state file's write-ahead log" ;;
@@ -3997,7 +4006,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	# words: "missing after earlier syncs" was false of a file that is there and claimed passes no one read
 	# (B13 round 29 ruling 30: C165)
 	if [ "$2/$3/$4" = manifest/person/lost ]; then
-		case "$STOP_KIND" in
+		case "$now" in
 		unread) why="which was missing beside a heartbeat.json that could not be read" ;;
 		short) why="which was empty or too short to be a manifest after earlier syncs" ;;
 		short-unread) why="which was empty or too short to be a manifest beside a heartbeat.json that could not be read" ;;

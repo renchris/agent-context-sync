@@ -32593,6 +32593,18 @@ the record is unchanged. Tests: `test_list_folders_names_the_hold_record_this_ac
 `test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list` (through a stub build that returns it)
 and the record row of `test_the_installers_governance_nouns_are_doctors_roles`.
 
+**The shell report reads the lost kind sync-stops.log recorded** (ruling 30's shell half of lane B's C210;
+`scripts/install.sh` fallback_sync_stops, fallback_sync_stop_line). Lane B's sync writes, in one write, its lost
+stop and then `<at> sync-stop-detail lost=<unread|short|short-unread>` with the same stamp (none for a plain
+missing manifest); the stop line itself is unchanged, so an older reader skips the detail. fallback_sync_stops
+pairs a detail line only with the stop line right before it in the file, with the same stamp, when that stop is a
+counted `file=manifest` `kind=lost` one, and carries it in the row's kind (`lost/<kind>`; the other readers of the
+rows use only the owner and the friction id); an orphaned, mis-stamped or unknown one is ignored.
+fallback_sync_stop_line takes the recorded kind ahead of `lost_kind_now`'s read (C165), so a stop whose manifest is
+fixed now still says `_LOST_WAS`'s words, in the attempt's block and the late one alike.
+`test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded` (three kinds paired; a mis-stamped, an
+apart, an unknown and a non-manifest detail ignored; no detail line in the report).
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.

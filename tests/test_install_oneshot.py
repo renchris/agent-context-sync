@@ -6243,6 +6243,51 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     assert "gone" not in line, "never the link's target"
 
 
+@pytest.mark.parametrize("detail", ["short", "unread", "short-unread", "stamp", "apart", "unknown", "folder"])
+def test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded(
+    env: dict[str, str], detail: str
+) -> None:
+    """B13 round 29 ruling 30 (lane B's C210, the shell half): sync-stops.log records which lost kind stopped
+    a sync, on a `sync-stop-detail lost=<kind>` line right after the stop, with its stamp, so a stop whose
+    manifest is fixed now still says what it was. The shell report pairs it as lane B words the rule (the line
+    right after a manifest `kind=lost` stop, the same stamp), takes _LOST_WAS's words for it ahead of its own
+    read now, and ignores an orphaned, a mis-stamped or an unknown one (the plain words stay)."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    (state / "manifest.sqlite").write_bytes(b"x" * 4096)  # fixed now: the read now says nothing
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD + "2026-10-14T10:01:05Z | step 3 | error | agentsync sync exited 1 | -\n"
+        "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    stop = "2026-10-14T10:01:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    file = stop.replace("file=manifest", "file=lock").replace("kind=lost", "kind=refused")
+    kind = {"stamp": "short", "apart": "short", "unknown": "gone", "folder": "short"}.get(detail, detail)
+    line = f"2026-10-14T10:01:00Z sync-stop-detail lost={kind}\n"
+    logged = {
+        "stamp": stop + line.replace("10:01:00Z", "10:01:01Z"),
+        "apart": stop + file + line,
+        "folder": file + line,  # after a stop that is no lost manifest's
+    }.get(detail, stop + line)
+    (setup / "sync-stops.log").write_text(logged)
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    lines = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    said = [ln for ln in lines if "agentsync's state file" in ln]
+    if detail == "folder":
+        assert not said, lines
+        return
+    [line_] = said
+    which = setup_report._LOST_WAS.get(detail, setup_report._SYNC_STOP_KINDS["lost"])
+    assert f"on agentsync's state file, {which}; whether a later sync ended 0" in line_, line_
+    assert "sync-stop-detail" not in text
+
+
 def test_the_shell_reports_lost_words_are_the_agentsync_reports() -> None:
     """B13 round 29 C165: fallback_sync_stop_line's words for a lost stop by the shell's read now are
     setup_report._LOST_WAS's, one for one, and its plain words _SYNC_STOP_KINDS' lost one."""
