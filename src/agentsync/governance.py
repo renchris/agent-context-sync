@@ -543,6 +543,12 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         os.close(fd)
 
 
+HOLD_LIST_PUT_BACK = "then, if it listed any hold, puts the hold list back from a copy they trust"
+"""The hold list's put-back after its move aside, conditional, in every reader's words (install.sh's in its
+own voice): never "then puts the hold list back" on a Mac that never kept one (B13 round 29 C151; ruling
+28)."""
+
+
 def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     """The detail and the person's fix of something at a governance file that is not a file (``kind``, in
     ``doctor.state_file_kind``'s words; ``role`` names the file: ``the audit trail``, ``the hold list``,
@@ -569,7 +575,9 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     if role == HOLD_RECORD_ROLE:  # the next hold or pass writes it again (B13 round 29 C199)
         fix += "; the next hold, release or sync writes it again from the hold list and the audit trail"
     if role == "the hold list":  # then the list itself back, so following it never leaves no holds (I87)
-        fix += ", then puts the hold list back from a copy they trust"
+        # conditional, one string in every reader: true on a Mac that never kept one (B13 round 29 C151,
+        # C142, C126; ruling 28)
+        fix += f", {HOLD_LIST_PUT_BACK}"
     fix += _what_the_move_leaves(role)
     return detail, fix
 

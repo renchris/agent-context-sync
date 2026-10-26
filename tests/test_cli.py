@@ -5311,7 +5311,7 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
         words = f"{path} is {what}, not a file: {role} belongs there"
         (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ")]
         # the hold list's move aside then puts the list back, so following it never leaves no holds (I87)
-        tail = ", then puts the hold list back from a copy they trust)" if where == "holds" else ")"
+        tail = f", {governance.HOLD_LIST_PUT_BACK})" if where == "holds" else ")"
         assert words in failed and f"keeping a copy{tail}" in failed, failed
         assert rc == cli.EXIT_FAILED, out
         assert not [ln for ln in out if "check crashed" in ln or "Error" in ln], out
@@ -5376,7 +5376,7 @@ def test_a_hold_list_behind_a_link_to_nothing_is_never_read_as_no_holds(
     rc, out = _status(cfg, capsys)
     words = f"{holds} is a symlink to nothing, not a file: the hold list belongs there"
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
-    back = "aside, keeping a copy, then puts the hold list back from a copy they trust)"  # B13 round 28 I87
+    back = f"aside, keeping a copy, {governance.HOLD_LIST_PUT_BACK})"  # B13 round 28 I87; round 29 C151
     assert rc == cli.EXIT_FAILED and words in failed and back in failed, out
     assert not [ln for ln in out if "purge --queue" in ln], "no purge is invited over the hold list"
     line = "error: state: " + failed.split(" — ", 1)[1]
@@ -5571,6 +5571,24 @@ def test_beside_a_governance_folder_that_is_not_one_the_listing_note_points_at_i
     (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
     assert warn.endswith(f"({doctor.LISTING_STATE_GOVDIR_NOTE})"), warn
     assert not [ln for ln in out if "WAITING ON YOU line about" in ln], out
+
+
+def test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C151, C142, C126 (ruling 28): with no hold ever set, a folder at holds.json was fixed by
+    "then puts the hold list back from a copy they trust", a copy that never was. The put-back is
+    conditional, one string, in status's FAIL and the sync's error alike."""
+    cfg = _synced(initialised)
+    holds = governance._holds_file(expand(initialised.state_paths.root))
+    holds.parent.mkdir(exist_ok=True)
+    holds.mkdir()
+    want = f"moves {doctor._shell_path(holds)} aside, keeping a copy, {governance.HOLD_LIST_PUT_BACK})"
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert want in failed, failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert want in capsys.readouterr().err
 
 
 def _gone_volume(gov: Path) -> Path:
