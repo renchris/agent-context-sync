@@ -33383,3 +33383,15 @@ refuses the helper's own manifest first, and FluidAudio's manifests at that comm
 hypothetical in `speech._swift_too_old`'s docstring is lane E's file and does not say the repository goes unfetched,
 so it stays. Test: `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which pins the
 sentence, refuses the old clause and reads "that commit" from the helper's `Package.swift` revision.
+
+**The records page says a mail label header that does not parse refuses under any label rule** (C379, C366, ruling
+38's guide half; `docs/deploy/data-governance.md`). Since round 29 C144 `policy.label_decision` refuses an `.eml` or
+MIME-text `.msg` whose `msip_labels` header does not parse as `label-unreadable` under any `[policy]` label rule,
+before and apart from `refuse_unlabelled`, but the page listed only an excluded label and `refuse_unlabelled` as
+what refuses such a mail, which reads as the whole list. The "Where labels are read" bullet says, in C379's words
+with C366's decoding clause, that the header is read with its RFC 2047 encoded-words decoded and one that does not
+parse is refused under any label rule, with its reason, the cases the parser refuses and the two that parse; the
+`.msg` bullet's parenthesis adds the header that does not parse. Built once, with C379's pins. Test:
+`test_the_records_page_says_a_mail_label_header_that_does_not_parse_refuses_under_any_rule`, which reads the reason
+from `label_decision` under an exclude rule alone and each named case from `msip_labels_header_parses`; and
+`test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`, which pins the new parenthesis.

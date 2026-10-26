@@ -113,7 +113,13 @@ editing `sources.toml`.
 - **Where labels are read:** from the file itself, before conversion: `docMetadata/LabelInfo.xml`, then
   `docProps/custom.xml` (MS-OFFCRYPTO 2.6.3), the PDF info dictionary, and the mail `msip_labels` header of an
   `.eml`. A `.msg` that holds MIME text (no compound-file header, an RFC 822 header block) has its `msip_labels`
-  header read as an `.eml`'s. No label is read from an Outlook-format (binary) `.msg`: it sits in a named MAPI
+  header read as an `.eml`'s. That header is read with its RFC 2047 encoded-words decoded, and an `.eml`'s or
+  MIME-text `.msg`'s `msip_labels` header that does not parse is refused under any `[policy]` label rule, not only
+  under `refuse_unlabelled` (`label-unreadable`, reason `sensitivity label unreadable (msip_labels header not
+  parseable); a label rule is set`; CONTRACTS §16.201 C144). That covers a label fragment that is not one
+  `MSIP_Label_<guid>_<Attr>=<value>` pair, a value that still holds an encoded-word or a character from a charset
+  agentsync does not know, and an encoded-word that does not decode or decodes to nothing. A header whose labels are
+  all `Enabled=False`, or one with no `Name`, parses. No label is read from an Outlook-format (binary) `.msg`: it sits in a named MAPI
   property agentsync does not read. A file with an excluded label is never converted or published. Its earlier conversions are deleted and a
   `label-escalation` purge is queued. If the policy stops refusing the file (the rule is taken out of `[policy]` or
   the label comes off the file), the next sync publishes it again and the entry stays queued. While the file is
@@ -141,7 +147,8 @@ editing `sources.toml`.
 - **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` on this Mac is read to staging, because only its
   bytes say which kind it is; one that is online-only, on a Graph source or one the OS will not hydrate is not
   downloaded and gets the withheld page below. A `.msg` that holds MIME text (mail saved as `.eml` under a `.msg` name) is screened
-  as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it) and then converted. A binary
+  as an `.eml` (an excluded label, an `msip_labels` header that does not parse, or no label under
+  `refuse_unlabelled`, refuses it) and then converted. A binary
   (Outlook-format) `.msg` keeps its label in a property agentsync does not read, so it is not converted: its page
   says that a `[policy]` label rule withholds it and that it can be saved as `.eml`. Its page's `reason:` and its
   `_sync/QUARANTINE.tsv` row both read `withheld by label rule: the label of a binary .msg, or of a .msg not on

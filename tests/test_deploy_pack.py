@@ -4746,6 +4746,44 @@ def test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs() ->
     assert "The one exception is a copy that the secret scan's new rules match, which is deleted" in readme
 
 
+def test_the_records_page_says_a_mail_label_header_that_does_not_parse_refuses_under_any_rule() -> None:
+    """B13 round 30 C379, C366 (one defect; ruling 38's guide half): since round 29 C144
+    `policy.label_decision` refuses a mail whose `msip_labels` header does not parse as `label-unreadable`
+    under any `[policy]` label rule, before and apart from `refuse_unlabelled`, and the records page listed
+    only an excluded label and `refuse_unlabelled` as what refuses such a mail. The page says so, with the
+    reason `label_decision` gives under an exclude rule alone, read here, and says what parses.
+    """
+    from agentsync.policy import (  # noqa: PLC0415
+        MSIP_HEADER_UNPARSEABLE,
+        REFUSED_PREFIX,
+        LabelReadout,
+        PolicyConfig,
+        label_decision,
+        msip_labels_header_parses,
+    )
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    policy = PolicyConfig(exclude_label_names=("Contoso Secret",))
+    assert not policy.refuse_unlabelled
+    screening = label_decision(LabelReadout(capable=True, error=MSIP_HEADER_UNPARSEABLE), policy)
+    assert screening is not None and screening.code == "label-unreadable"
+    detail = screening.reason.removeprefix(REFUSED_PREFIX)
+    assert detail == "sensitivity label unreadable (msip_labels header not parseable); a label rule is set"
+    assert (
+        "That header is read with its RFC 2047 encoded-words decoded, and an `.eml`'s or MIME-text `.msg`'s"
+        " `msip_labels` header that does not parse is refused under any `[policy]` label rule, not only under"
+        f" `refuse_unlabelled` (`label-unreadable`, reason `{detail}`; CONTRACTS §16.201 C144)."
+    ) in page
+    # the cases the page names are the parser's own
+    guid = "11111111-2222-3333-4444-555555555555"
+    assert not msip_labels_header_parses("MSIP_Label_bogus_Enabled=True")
+    assert not msip_labels_header_parses(f"MSIP_Label_{guid}_Name=\ufffd")
+    assert not msip_labels_header_parses("x", raw="=?utf-8?b?!!?=")
+    assert msip_labels_header_parses(f"MSIP_Label_{guid}_Enabled=False")
+    assert msip_labels_header_parses(f"MSIP_Label_{guid}_Enabled=True; MSIP_Label_{guid}_SiteId=x")
+    assert "A header whose labels are all `Enabled=False`, or one with no `Name`, parses." in page
+
+
 def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     """B13 round 5 F75 and F81 (one defect): since round 4's Q78 a label rule routes `.msg` to `msg-mime`,
     so every `.msg` on this Mac is fetched and one that holds MIME text is screened and read as an `.eml`,
@@ -4766,7 +4804,11 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     assert "a `.msg` on this Mac is read to staging, because only its bytes say which kind it is" in page
     # B13 round 5 F73: one that reading means a download for is withheld by its name
     assert "online-only, on a Graph source or one the OS will not hydrate is not downloaded" in page
-    assert "as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it)" in page
+    assert (
+        "as an `.eml` (an excluded label, an `msip_labels` header that does not parse, or no label under"
+        " `refuse_unlabelled`, refuses it)"
+    ) in page
+    assert "(an excluded label, or no label under `refuse_unlabelled`, refuses it)" not in page
     assert "A policy change turns a binary `.msg` page published before it into that stub" in page
     for readme in ("README.md", "docs/deploy/README.md"):
         text = _page(readme)
