@@ -3,6 +3,8 @@ error names the staged path or the home folder."""
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -71,6 +73,32 @@ def test_a_word_package_under_another_offices_name_is_not_the_type_its_name_says
     reason = str(caught.value)
     assert reason == f"not-ooxml: a Word document, not {noun} (not the type its name says)"
     assert quarantine_class(reason) == "not the type its name says"
+
+
+@pytest.mark.parametrize("gap", [" = ", "\n  =\n  ", "\t=\t"])
+@pytest.mark.parametrize(
+    ("name", "converter", "noun"),
+    [
+        ("Contoso doc.potx", PptxConverter, "a deck"),
+        ("Contoso doc.pptx", PptxConverter, "a deck"),
+        ("Contoso doc.xlsx", XlsxConverter, "a workbook"),
+    ],
+)
+def test_a_content_type_with_whitespace_around_its_equals_sign_is_read(
+    tmp_path: Path, name: str, converter: type[PptxConverter] | type[XlsxConverter], noun: str, gap: str
+) -> None:
+    """B13 round 29 C222: XML allows whitespace around an attribute's ``=``; ``ContentType = "..."`` was no
+    family, so the Word package went on to python-pptx or openpyxl and became a failed conversion, retried."""
+    src = word_package(tmp_path / name)
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    types = parts["[Content_Types].xml"].replace(b"ContentType=", f"ContentType{gap}".encode())
+    ET.fromstring(types)  # still well-formed XML
+    parts["[Content_Types].xml"] = types
+    make_zip(src, parts)
+    with pytest.raises(UnreadableSourceError) as caught:
+        converter(CFG).convert(src, name=name)
+    assert str(caught.value) == f"not-ooxml: a Word document, not {noun} (not the type its name says)"
 
 
 def test_a_deck_named_docx_is_not_the_type_its_name_says(tmp_path: Path) -> None:

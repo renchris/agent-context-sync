@@ -85,8 +85,9 @@ def _check_ooxml_container(src: Path) -> None:
 
 _CONTENT_TYPES_MAX = 1 << 20
 _MAIN_TYPE_RE = re.compile(
-    rb"ContentType=[\"']application/vnd\.(?:openxmlformats-officedocument\.(wordprocessingml|spreadsheetml"
-    rb"|presentationml)|ms-(word|excel|powerpoint))\.[^\"']*\.main(?:\+xml)?[\"']"
+    # whitespace around the "=" is XML's too (B13 round 29 C222)
+    rb"\bContentType\s*=\s*[\"']application/vnd\.(?:openxmlformats-officedocument\."
+    rb"(wordprocessingml|spreadsheetml|presentationml)|ms-(word|excel|powerpoint))\.[^\"']*\.main(?:\+xml)?[\"']"
 )
 _FAMILY_OF = {
     b"wordprocessingml": "word",
