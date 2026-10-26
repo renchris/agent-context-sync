@@ -1263,6 +1263,7 @@ _FIXED_VALUE_PHRASES = (
     "its own page was made from",
     "files still without a page",
     "file has a converted page",
+    "erases its page by hand",
     "files with a converted page",
     "with a stub page",
     "has a stub page",
@@ -9137,6 +9138,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     stopped: BaseException | None = None
     looked = 0  # the lookups that read the manifest
     no_row: list[QueuedPurge] = []  # B13 round 28 I2, I13: judged by governance's own test after the loop
+    no_run = _manifest_no_run(m)  # B13 round 29 C158: a manifest no sync has run over says nothing yet
     for entry in queue[:_PURGES_READ]:
         selector = entry.selector
         day = entry.enqueued_at[:10] if _DAY_RE.fullmatch(entry.enqueued_at[:10]) else "unknown day"
@@ -9146,6 +9148,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             skipped["no id"] += 1
         elif stopped is not None:
             skipped["no manifest" if isinstance(stopped, _NoStateError) else "time"] += 1
+        elif no_run:
+            skipped["no sync yet"] += 1
         elif lookups >= _PURGE_LOOKUPS:
             skipped["cap"] += 1
         else:
@@ -9171,13 +9175,17 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     more = f" (the first {_PURGES_READ} are counted)" if len(queue) > _PURGES_READ else ""
     # False only when _alias_of found no alias table. Every id counted as `no row` went through it.
     alias_table = m.kept.get("aliases") is not False
-    if isinstance(stopped, _NoStateError) and not looked:
+    if (isinstance(stopped, _NoStateError) and not looked) or no_run:
         # B13 round 28 I46: no manifest to say what it holds now; governance's own judgment of the queue, as
-        # status and a queue run read it, in place of words the report would make up
+        # status and a queue run read it, in place of words the report would make up; B13 round 29 C158: nor
+        # a manifest no sync has run over (add-source, init or a dry run after the new start), whose "no row"
+        # says nothing of a queued id
         why = (
-            "there is no manifest to look them up in"
+            "no sync has built this manifest yet (a new start), so nothing in it says what the queued ids are"
+            if no_run
+            else "there is no manifest to look them up in"
             if isinstance(stopped, _NoManifestError)
-            else f"the manifest could not be read: {_why_not_read(stopped)}"
+            else f"the manifest could not be read: {_why_not_read(cast(BaseException, stopped))}"
         )
         intro = [f"- {_plural(len(queue), 'purge')} queued{more}. No queued id was looked up: {why}."]
         intro += [f"- {line}" for line in _governance_kept_lines(config, queue[:_PURGES_READ])]
@@ -9188,14 +9196,12 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "re-exported copy), a live file with another id at the same path, the file itself listed again, "
             "nothing live in its place, no row at all, or not looked up (the line under the table says why)."
         ]
-    unresolved, before = _purge_unresolved(config, no_row) if alias_table and no_row else (0, 0)
+    split, before = _purge_split(config, no_row) if no_row else (Counter(), 0)
     return [
         *intro,
         "",
         *_table(header, rows),
-        *_purge_notes(
-            totals, aliased, kept=kept, alias_table=alias_table, unresolved=unresolved, before=before
-        ),
+        *_purge_notes(totals, aliased, kept=kept, alias_table=alias_table, split=split, before=before),
         *_not_looked_up(skipped),
         _purge_audit(
             governance.audit_path(config.state_paths.root), min((key[3] for key in grouped), default="")
@@ -9217,31 +9223,57 @@ def _governance_kept_lines(config: Config, queue: Sequence[QueuedPurge]) -> list
         return []
 
 
-def _purge_unresolved(config: Config, entries: Sequence[QueuedPurge]) -> tuple[int, int]:
-    """Of ``entries`` (queued ids with no row and no alias), how many governance's own test calls not
-    resolvable (``governance._unresolved``: an upstream deletion or label escalation by source and id, queued
-    before this manifest's first run, with nothing in it for them, which ``purge --queue`` leaves queued), and
-    how many others were queued before that first run (a new start the likelier cause than a purge that ran).
-    One read-only read of the manifest (``_open_manifest_ro``: nothing created or migrated); (0, 0) on any
-    failure, which keeps the words of before (B13 round 28 I2, I13: the report blamed "a purge that already
-    ran, or an erasure" and said a run takes them off the queue, while status said they stay queued)."""
+def _manifest_no_run(m: _Mirror) -> bool:
+    """Whether the manifest opens and no sync has run over it (its runs table has no row): add-source, init
+    or a dry run built it after the new start, so a queued id's "no row" says nothing about that id (lane B's
+    round 28 I61; B13 round 29 C158). False on any failure or out of time, which keeps the lookups."""
+    try:
+        rows = m.rows("SELECT MIN(started_at) FROM runs")
+    except Exception:
+        return False
+    return not rows or rows[0][0] is None
+
+
+_SPLIT_KINDS = ("not judged yet", "not judged, no sync lists it", "not looked up yet", "found nothing")
+"""What governance's one split (``governance.partition_queue``, lane B's round 29 ruling 25) makes of a queued
+id the manifest holds nothing for, after a new start: its source not listed in full since (a sync will list
+it, or none will), runnable but not looked up in the docs history yet, or looked up by a queue run and found
+nothing."""
+
+
+def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counter[str], int]:
+    """Of ``entries`` (queued ids with no row and no alias), how many governance's own split puts in each of
+    :data:`_SPLIT_KINDS`, each counted once, by its names (``UNLISTED_HEAD``, ``not_looked_up``,
+    ``UNRESOLVED_HEAD``: B13 round 29 ruling 25, C123, C159, C113, C180, C188, C214), and how many of the rest
+    were queued before this manifest's first run (a new start the likelier cause than a purge that ran; C159:
+    never an entry the split judged). Read-only; (empty, 0) on any failure, which keeps the plain words."""
+    out: Counter[str] = Counter()
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
+        split = governance.partition_queue(config.state_paths, entries, config=config)
+        judged = {id(q) for q in split.not_looked_up}
+        out["not looked up yet"] = len(split.not_looked_up)
+        live = {src.id for src in config.sources if src.is_live}
+        for q, why in split.kept:
+            if why.startswith(governance.UNLISTED_HEAD):
+                never = q.selector.source_id not in live
+                out["not judged, no sync lists it" if never else "not judged yet"] += 1
+                judged.add(id(q))
+            elif why.startswith(governance.UNRESOLVED_HEAD):
+                out["found nothing"] += 1
+                judged.add(id(q))
+        before = 0
         conn = _open_manifest_ro(expand(config.state_paths.db), 0.5)
-        if conn is None:
-            return 0, 0
-        try:
-            conn.row_factory = sqlite3.Row
-            read = governance._read_manifest(conn)
-            started = governance._first_run_started(conn)
-            unresolved = sum(1 for q in entries if governance._unresolved(conn, read, q, started))
-        finally:
-            conn.close()
-        before = sum(1 for q in entries if governance._queued_before(q, started)) - unresolved
+        if conn is not None:
+            try:
+                started = governance._first_run_started(conn)
+            finally:
+                conn.close()
+            before = sum(1 for q in entries if id(q) not in judged and governance._queued_before(q, started))
     except Exception:
-        return 0, 0
-    return unresolved, max(before, 0)
+        return Counter(), 0
+    return +out, before
 
 
 _NOT_LOOKED_UP = {
@@ -9249,6 +9281,7 @@ _NOT_LOOKED_UP = {
     "time": "the evidence time ran out",
     "cap": f"past the first {_PURGE_LOOKUPS} lookups",
     "no id": "a selector with no stable id",
+    "no sync yet": "no sync has built this manifest yet (the line above the table says why)",
 }
 """Why a queued purge's id was not looked up, by :func:`_purge_part`'s cause (B13 round 28 I46)."""
 
@@ -9293,13 +9326,55 @@ def _purge_audit(path: Path, since: str) -> str:
     )
 
 
+_NO_TRACE_RUN = (
+    "A run of the queue erases what history still names for them and takes those off the queue; one whose id "
+    "history names nothing, and that no suppressing purge erased, stays queued, kept until its id is found, "
+    "until `~/.local/bin/agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, "
+    "with an audit line"
+)
+"""What a run of the queue does with a queued id the manifest holds no trace of, in lane B's words (ruling 26,
+C189): it takes off only what history names; one it finds nothing for leaves the queue only by an audited
+forget, never a blind run (P112)."""
+
+
+def _split_lines(
+    split: Counter[str], bin_: str, unlisted: Callable[[int], str], unresolved: Callable[[int], str]
+) -> list[str]:
+    """One counted line per kind of :data:`_SPLIT_KINDS`, in governance's words where it has them
+    (``unlisted_purges``, ``unresolved_purges``); never an id, a source or a path (B13 round 29 ruling 25)."""
+    out: list[str] = []
+    n = split["not judged yet"]
+    if n:
+        out.append(f"- not judged yet: {unlisted(n)}")
+    n = split["not judged, no sync lists it"]
+    if n:
+        it = "it" if n == 1 else "them"
+        out.append(
+            f"- not judged yet: {_plural(n, 'queued purge')} of a source no sync lists (not in sources.toml, "
+            f"or paused), so nothing judges {it}: `{bin_} purge --queue --dry-run` names each, and `{bin_} "
+            "purge id=<its id> --source <its source> --reason <its reason>` erases its page by hand"
+        )
+    n = split["not looked up yet"]
+    if n:
+        ids = "its id" if n == 1 else "their ids"
+        out.append(
+            f"- not looked up yet: {_plural(n, 'queued purge')} from before the new start; `{bin_} purge "
+            f"--queue --dry-run` looks {ids} up in the docs history first, and a run keeps one queued whose "
+            "id reaches nothing"
+        )
+    n = split["found nothing"]
+    if n:
+        out.append(f"- found nothing in the docs history: {unresolved(n)}")
+    return out
+
+
 def _purge_notes(
     fates: Counter[str],
     aliased: Counter[str],
     *,
     kept: int,
     alias_table: bool,
-    unresolved: int = 0,
+    split: Counter[str] | None = None,
     before: int = 0,
 ) -> list[str]:
     """What the fates under the table mean for a run of the queue, in fixed words and counts: the queued ids
@@ -9339,11 +9414,13 @@ def _purge_notes(
             f"- still listed: {_plural(listed, 'queued purge')} {name} a file the manifest lists "
             f"now{via}. {run}"
         )
-    if unresolved and alias_table:  # B13 round 28 I2, I13: governance's own words, as status says them
+    split = split or Counter()
+    # B13 round 29 ruling 25: governance's one split, by name, each entry once, never "not resolvable"
+    if split:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        out.append(f"- not resolvable after a new start: {governance.unresolved_purges(unresolved)}")
-    traced = fates["no row"] - (unresolved if alias_table else 0)
+        out += _split_lines(split, AGENTSYNC_BIN, governance.unlisted_purges, governance.unresolved_purges)
+    traced = fates["no row"] - sum(split.values())
     if traced > 0 and alias_table:
         took = (
             "a purge that already ran, an erasure, or a new start (an entry queued before this manifest's "
@@ -9354,13 +9431,12 @@ def _purge_notes(
         out.append(
             f"- no trace: {_plural(traced, 'queued id')} "
             + ("has no row and is no alias" if traced == 1 else "have no row and are no alias")
-            + f". A re-key leaves an alias, so what took such a row away is {took}. A run of the "
-            "queue erases only what history still names for them and takes them off the queue"
+            + f". A re-key leaves an alias, so what took such a row away is {took}. {_NO_TRACE_RUN}"
         )
-    elif fates["no row"]:
+    elif traced > 0:  # B13 round 29 C113, C180, C188, C214: only a manifest that has no alias table says so
         out.append(
-            f"- no row: {_plural(fates['no row'], 'queued id')} "
-            f"{'has' if fates['no row'] == 1 else 'have'} no "
+            f"- no row: {_plural(traced, 'queued id')} "
+            f"{'has' if traced == 1 else 'have'} no "
             "row. This manifest has no alias table, so "
             "none was looked up as an alias: an earlier id of a file listed now cannot be told from one a "
             "purge took away"

@@ -9608,14 +9608,17 @@ def _purge_section(config: Config) -> str:
     return text.split("### Purge queue", 1)[1].split("\n### ", 1)[0]
 
 
-def test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable(
-    initialised: Config, tmp_path: Path
+def test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    """B13 round 28 I2, I13: after the new start, the report's Purge queue section said a queued purge the
-    new manifest names nothing for was taken by "a purge that already ran, or an erasure" and that a run
-    "takes them off the queue", while status and `purge --queue` keep it queued (P112). It says so in
-    governance's own words; an erasure request queued before the new start is not called not resolvable,
-    and its no-trace line names the new start as a cause."""
+    """B13 round 28 I2, I13: after the new start, the report's Purge queue section blamed "a purge that
+    already ran, or an erasure" and said a run "takes them off the queue", while status keeps it queued.
+    B13 round 29 ruling 25 (C123, C159, C113, C180, C188, C214): it then headed every such entry "not
+    resolvable after a new start", even one `purge --queue` would look up and run, counted it again as "no
+    alias table", and said the new start of none. It takes governance's one split by name: not looked up yet
+    while no run has probed it, found nothing once one has, each counted once; the erasure request queued
+    before the new start keeps its no-trace line, which names the new start and (ruling 26) what a run does in
+    lane B's words; "no alias table" never prints over a manifest that has one."""
     cfg = _synced(initialised)
     _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
     erasure = governance.PurgeSelector(stable_id="contoso-volume:retired-0043", source_id="source")
@@ -9628,10 +9631,49 @@ def test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvabl
     _new_start(initialised, tmp_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     part = _purge_section(initialised)
-    assert f"- not resolvable after a new start: {governance.unresolved_purges(1)}" in part, part
+    assert "- not looked up yet: 1 queued purge from before the new start; " in part, part
     assert "- no trace: 1 queued id has no row and is no alias." in part, part
     assert "a purge that already ran, an erasure, or a new start (an entry queued before" in part, part
-    assert part.count("takes them off the queue") == 1, part
+    assert setup_report._NO_TRACE_RUN in part, part
+    for never in ("not resolvable", "no alias table", "- found nothing", "takes them off the queue"):
+        assert never not in part, (never, part)
+    # a queue run looks it up and finds nothing: said so, never invited, still counted once
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    part = _purge_section(initialised)
+    assert f"- found nothing in the docs history: {governance.unresolved_purges(1)}" in part, part
+    assert "- not looked up yet" not in part and "not resolvable" not in part, part
+
+
+@pytest.mark.parametrize("between", ["init", "add-source", "dry-run"])
+def test_the_reports_purge_queue_over_a_manifest_no_sync_has_run_over_says_nothing_yet(
+    initialised: Config, tmp_path: Path, between: str
+) -> None:
+    """B13 round 29 C158: after the new start, a manifest that init, add-source or a dry run built (lane B's
+    round 28 I61) has no run, so its "no row" says nothing of a queued id; the Purge queue section said "no
+    row" and "no trace" while status said the queue waits for the next sync. It says no id was looked up and
+    why, gives the queue's own words, and a real sync brings back the table's words."""
+    cfg = _synced(initialised)
+    _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    _new_start(initialised, tmp_path)
+    if between == "init":
+        cli.main(["init", "--config", cfg])
+    elif between == "add-source":
+        extra = tmp_path / "extra"
+        extra.mkdir()
+        cli.main(["add-source", str(extra), "--config", cfg])
+    else:
+        cli.main(["sync", "--mode", "dry_run", "--config", cfg])
+    if not expand(initialised.state_paths.db).exists():
+        pytest.skip(f"{between} built no manifest on this build")
+    part = _purge_section(initialised)
+    assert "No queued id was looked up: no sync has built this manifest yet (a new start)" in part, part
+    assert f"- {governance.new_start_purges(1)}" in part, part
+    for never in ("the manifest holds now", "no trace", "takes those off the queue", "- no row:"):
+        assert never not in part, (never, part)
+    assert "no sync has built this manifest yet (the line above the table says why): 1" in part, part
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "the manifest holds now" in _purge_section(initialised)
 
 
 def test_the_reports_purge_queue_over_no_manifest_gives_the_queues_own_judgment(

@@ -31647,6 +31647,9 @@ start` among the causes. With no manifest to read, the intro says no id was look
 counted `not looked up` line names each cause (no manifest, the evidence time, the lookup cap, no stable id). Tests:
 `test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable`,
 `test_the_reports_purge_queue_over_no_manifest_gives_the_queues_own_judgment`.
+Amended 2026-10-26, §16.198 C123: the section takes governance's one split by name and never says "not
+resolvable"; `test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable` is gone, replaced by
+`test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start`, and `_purge_unresolved` by `_purge_split`.
 
 **The report's Status says why a queued purge is kept** (I18). `queued purges kept: 1 (the governance.purge_queue
 line says why)` pointed at an [ok] line the report's Doctor never prints. `_status_lines(checks_beside=False)`, the
@@ -32474,6 +32477,26 @@ governance folder that is not one is "yours" again through lane B's loop change 
 `test_a_governance_folder_that_is_not_one_is_the_persons_in_every_part`,
 `test_a_damaged_governance_file_is_the_persons_and_its_queue_warn_sits_with_it`,
 `test_a_lost_hold_and_a_held_queue_have_their_own_buckets`, `test_the_unexpected_lists_fold_a_repeated_check`.
+
+**The Purge queue section takes the queue's one split** (C123, C159, C158, C113, C180, C188, C214: one build; ruling
+25, on lane B's split; ruling 26's no-trace line in lane B's words; amends §16.193 I2). After a new start the section headed every
+queued id the manifest names nothing for `not resolvable after a new start`, even one `purge --queue` would look
+up and run, counted it again on a `no row` line saying the manifest had no alias table, and over a manifest no
+sync had run over said `no row` and `no trace` while status said the queue waits for the next sync.
+`_purge_split` reads `governance.partition_queue` over those ids by its names and counts each once: `not judged
+yet` (`UNLISTED_HEAD`, in `unlisted_purges`' words, or, for a source no sync lists, a counted line naming the dry
+run and the by-hand purge with no id), `not looked up yet` (`QueueSplit.not_looked_up`: the dry run looks each up
+first), `found nothing in the docs history` (`UNRESOLVED_HEAD`, in `unresolved_purges`' words); never `not
+resolvable`. The no-trace line counts only the rest, names the new start only for those queued before the first
+run (C159), and ends in lane B's ruling 26 words (`_NO_TRACE_RUN`: a run takes off only what history names, and an
+id history names nothing of leaves only by an audited `--forget`); the `no row ... no alias table` line prints
+only for a manifest that lacks the table. A manifest no sync has run over (no runs row, lane B's I61 test) looks up
+no id: `No queued id was looked up: no sync has built this manifest yet (a new start) ...`, the queue's own words,
+and `no sync has built this manifest yet` in the not-looked-up line. Tests:
+`test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start` and
+`test_the_reports_purge_queue_over_a_manifest_no_sync_has_run_over_says_nothing_yet` (tests/test_cli.py, in place
+of round 28's pinned head), `test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_table`,
+`test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 

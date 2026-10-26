@@ -13516,6 +13516,23 @@ def test_the_waiting_files_note_says_whether_a_stub_waits_now_from_the_manifest(
     ), note
 
 
+def test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_table() -> None:
+    """B13 round 29 C113, C214, C180, C188 (ruling 25): an entry governance's split judged was counted again
+    on a "no row" line saying the manifest has no alias table, which it had. Each entry is said once, by its
+    kind, and "no alias table" only of a manifest that lacks one."""
+    for split in (Counter({"found nothing": 2}), Counter({"not looked up yet": 1, "not judged yet": 1})):
+        lines = setup_report._purge_notes(
+            Counter({"no row": 2}), Counter(), kept=0, alias_table=True, split=split
+        )
+        assert len(lines) == 2 if len(split) == 2 else len(lines) == 1, lines
+        assert not [
+            ln for ln in lines if ln.startswith(("- no trace:", "- no row:")) or "alias table" in ln
+        ], lines
+        assert not [ln for ln in lines if "not resolvable" in ln], lines
+    plain = setup_report._purge_notes(Counter({"no row": 1}), Counter(), kept=0, alias_table=False)
+    assert len(plain) == 1 and plain[0].startswith("- no row:") and "no alias table" in plain[0], plain
+
+
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13541,6 +13558,7 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     ]
     seed.m.rekey(inbox, gone[-2], "id-after-the-save")
     seed.m.rekey(inbox, gone[-1], "id-after-the-second-delete")
+    seed.run(1, {}, day="2026-10-01")  # a sync has run over it (B13 round 29 C158: else nothing says yet)
     seed.close()
     day = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
     upstream = governance.PurgeReason.UPSTREAM_DELETED
@@ -13595,8 +13613,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "A run of the queue keeps 2 of them queued (an upstream deletion or a label escalation of a file "
         "that is live or online-only) and erases the page and history of the other 1",
         "- no trace: 2 queued ids have no row and are no alias. A re-key leaves an alias, so what took "
-        "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
-        "history still names for them and takes them off the queue",
+        "such a row away is a purge that already ran, or an erasure. "
+        + setup_report._NO_TRACE_RUN,  # B13 round 29 ruling 26: lane B's words
         # B13 round 28 I46: the not-looked-up column's cause
         "- not looked up: 1 queued purge was not looked up (a selector with no stable id: 1)",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "

@@ -4493,6 +4493,9 @@ _RETIRED_TEST_NAMES = {
     "test_the_uv_a_fix_names_is_the_one_install_sh_finds": "§16.120 S29's §16.126 T54 dated line",
     "test_doctor_loads_convert_through_cycle_and_its_words_say_so": "§16.162 Z56's §16.168 A66 dated line",
     "test_the_entry_docstring_says_since_when_a_failed_probe_exits_1": "§16.162 Z58's §16.168 A66 dated line",
+    "test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable": (
+        "§16.193 I2's §16.198 C123 dated line"
+    ),
 }
 """Test names CONTRACTS.md cites as history: a dated line beside each says the test is gone or replaced."""
 

@@ -3690,12 +3690,6 @@ def _after_new_start(
     return NOT_LOOKED_UP
 
 
-def _unresolved(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge, started: str | None) -> bool:
-    """Whether :func:`_after_new_start` judges ``q`` at all (round 28's test, which the setup report still
-    reads until it takes the split by name)."""
-    return _after_new_start(conn, m, q, started) is not None
-
-
 def _source_unlisted(conn: sqlite3.Connection, source_id: str) -> bool:
     """Whether no pass over this manifest has listed ``source_id`` in full: no sources row (a run that died
     after it began), or no ``last_full_run_id`` (a pass that skipped it or did not complete) (C201)."""
