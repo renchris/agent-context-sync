@@ -654,14 +654,41 @@ def _artifact_name(url: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "_", url)
 
 
-def _seed(artifacts: Path, *, git: str, cwd: Path, deadline: float) -> None:
+_TOOLS_LINE_RE = re.compile(rb"// swift-tools-version:\s*(\d+)\.(\d+)(?:\.(\d+))?")
+_SWIFT_VERSION_RE = re.compile(rb"Apple Swift version (\d+)\.(\d+)(?:\.(\d+))?")
+
+
+def _swift_too_old(swift: str, *, cwd: Path, deadline: float) -> bool:
+    """True only when ``swift --version`` exits 0 and names a version below the packaged ``Package.swift``'s
+    tools version, both read: the seed then fetches nothing, as SwiftPM's resolve refuses that Swift anyway
+    with :data:`TOOLS_TOO_OLD`, the reason that stays recorded (B13 round 29 C211). Any other answer (no
+    match, a non-zero exit, a timeout, a tool that does not run) is False, so the seed runs as before; never
+    raises. A Swift FluidAudio's own manifest refuses (a tools version above the helper's) is not told."""
+    try:
+        needed = _TOOLS_LINE_RE.match(_sources()["Package.swift"])
+        left = min(_VERSION_TIMEOUT_S, deadline - _clock())
+        if needed is None or left <= 0:
+            return False
+        cp = ocr._run_build([swift, "--version"], cwd=cwd, timeout=left, env=_build_env())
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return False
+    found = _SWIFT_VERSION_RE.search((cp.stdout or b"") + b"\n" + (cp.stderr or b""))
+    if cp.returncode != 0 or found is None:
+        return False
+    installed, floor = (tuple(int(part or 0) for part in m.groups()) for m in (found, needed))
+    return installed < floor
+
+
+def _seed(artifacts: Path, *, git: str, swift: str, cwd: Path, deadline: float) -> None:
     """Behind a proxy set in the environment or in git's config (``git``, the build's), put FluidAudio's
     binary artifact where SwiftPM looks before it downloads (it then prints "Fetched ... from cache"): curl,
     which trusts and routes as git does (:func:`_curl_env`), fetches
     :data:`NEMO_URL` to a temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
     place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
     the checksum again either way.  A run stopped mid-fetch by SIGTERM or SIGKILL never reaches the
-    ``finally``, so every run first removes the temporary files earlier runs left."""
+    ``finally``, so every run first removes the temporary files earlier runs left.  A ``swift`` older than
+    the helper's tools version fetches nothing (:func:`_swift_too_old`, asked only when there is a proxy and
+    no file yet; B13 round 29 C211)."""
     with contextlib.suppress(OSError):
         for stale in artifacts.glob(f"{_SEED_PREFIX}*"):
             with contextlib.suppress(OSError):
@@ -673,6 +700,9 @@ def _seed(artifacts: Path, *, git: str, cwd: Path, deadline: float) -> None:
     proxy = git_config.get("http.proxy")
     if proxy == "" or (proxy is None and not _shell(_PROXIES)):
         return  # no proxy, or git's empty http.proxy: git goes direct, so there is nothing to route
+    if _swift_too_old(swift, cwd=cwd, deadline=deadline):
+        log.info("this Mac's Swift is older than the speech helper needs: NemoTextProcessing is not fetched")
+        return
     try:
         artifacts.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=_SEED_PREFIX, dir=artifacts)
@@ -782,7 +812,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         pin = tree / "Sources" / _TARGET / "Pin.swift"
         pin.unlink(missing_ok=True)
         log.info("building the on-device %s (FluidAudio from github.com; up to 20 minutes)", kind.name)
-        _seed(spm / "cache" / "artifacts", git=git, cwd=tree, deadline=deadline)
+        _seed(spm / "cache" / "artifacts", git=git, swift=swift, cwd=tree, deadline=deadline)
         _step(
             [swift, "package", *places, "resolve"],
             cwd=tree,

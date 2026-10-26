@@ -965,7 +965,48 @@ def test_a_wrong_or_failed_fetch_leaves_nothing_and_swiftpm_downloads_as_before(
     assert len(lines_of(curl.with_name("curl.calls"))) == 1
     artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
     assert not artifacts.exists() or list(artifacts.iterdir()) == []
-    assert lines_of(tools / "swift.calls")[0].startswith("package ")
+    calls = lines_of(tools / "swift.calls")
+    assert calls[0] == "--version" and calls[1].startswith("package "), "the seed asks the Swift first (C211)"
+
+
+_TOO_OLD_RESOLVE = (
+    "package) echo \"error: 'agentsync-speech': package 'agentsync-speech' is using Swift tools version 6.0.0"
+    ' but the installed version is 5.10.0" >&2; exit 1 ;;'
+)
+
+
+@pytest.mark.parametrize(
+    ("answer", "seeded"),
+    [
+        ("echo 'swift-driver version: 1.90.11.1 Apple Swift version 5.10 (swiftlang-5.10.0.13)'", False),
+        ("echo 'swift-driver version: 1.127.15 Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4)'", True),
+        ("echo 'no version here'", True),
+        ("echo 'Apple Swift version 5.10'; exit 1", True),
+    ],
+)
+def test_a_swift_older_than_the_helper_needs_fetches_nothing_through_the_proxy(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: str, seeded: bool
+) -> None:
+    """B13 round 29 C211: behind a proxy the seed fetched the 87 MB file before ``swift package resolve``
+    found the Swift too old. It asks ``swift --version`` first and fetches nothing only when that exits 0
+    and names a version below Package.swift's tools version; any other answer seeds as before. Resolve still
+    runs, so SwiftPM's own TOOLS_TOO_OLD reason is the one recorded."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    script(tools / "swift", f'case "$1" in\n--version) {answer} ;;\n{_TOO_OLD_RESOLVE}\nesac')
+    cache = tmp_path / "cache"
+    with pytest.raises(SpeechError) as caught:
+        speech.build(cache)
+    assert speech.TOOLS_TOO_OLD_RE.search(str(caught.value)), caught.value
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    assert curl.with_name("curl.calls").exists() is seeded
+    assert (artifacts / NEMO_CACHE_NAME).exists() is seeded
+    assert lines_of(tools / "swift.calls")[0] == "--version"
+
+
+def test_the_swift_check_needs_no_swift_without_a_proxy(curl: Path, tools: Path, tmp_path: Path) -> None:
+    """C211: with nothing to fetch the build asks the Swift nothing: resolve and build, as before."""
+    assert speech.build(tmp_path / "cache").is_file()
+    assert [c.split()[0] for c in lines_of(tools / "swift.calls")] == ["package", "build"]
 
 
 @pytest.mark.parametrize(

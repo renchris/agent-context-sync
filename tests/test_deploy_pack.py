@@ -6643,18 +6643,24 @@ def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check()
     later are installed", but behind a proxy `speech._compile` seeds the 87 MB NemoTextProcessing file
     (`_seed`, a curl through that proxy) before `swift package resolve`, the step that finds a too-old Swift,
     so such a Mac fetches it too, once. The page says so; the order is read from `_compile`, and `_seed`'s
-    early return without a proxy from its source."""
+    early return without a proxy from its source. Round 29 C211: the seed asks `swift --version` first, so a
+    Swift older than 6.0 fetches nothing, and the page says that instead."""
     it_request = " ".join(_page("docs/deploy/it-request.md").split())
     assert (
         "Behind a proxy (`HTTPS_PROXY` or `ALL_PROXY` in the environment, or git's http.proxy setting), the"
-        " installer fetches the 87 MB file through that proxy before SwiftPM checks the Swift version, so a"
-        " Mac with Swift older than 6.0 fetches it too. It fetches it once and keeps it in the speech"
-        " helper's cache. The helper is still not built, and the FluidAudio repository is not fetched."
+        " installer fetches the 87 MB file through that proxy before SwiftPM resolves the package. A Mac"
+        " whose Swift is older than 6.0 (as `swift --version` says) does not fetch it; a newer Swift that"
+        " FluidAudio's own manifest still refuses may, and the helper is then not built and the FluidAudio"
+        " repository is not fetched. It fetches the file once and keeps it in the speech helper's cache."
         in it_request
     )
     compile_ = inspect.getsource(speech._compile)
     assert compile_.index("_seed(") < compile_.index('"resolve"]')
     seed = inspect.getsource(speech._seed)
+    # B13 round 29 C211: the Swift is asked after the proxy check and before the fetch, and 6.0 is the
+    # packaged manifest's tools version, which the guard reads
+    assert seed.index("_shell(_PROXIES)") < seed.index("if _swift_too_old(") < seed.index("_CURL,")
+    assert speech._sources()["Package.swift"].startswith(b"// swift-tools-version: 6.0\n")
     assert "if final.exists():\n        return" in seed  # once: a file already seeded is kept
     assert 'if proxy == "" or (proxy is None and not _shell(_PROXIES)):\n        return' in seed
     assert set(speech._PROXIES) == {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
