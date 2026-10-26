@@ -30671,6 +30671,12 @@ Amended 2026-10-24, §16.191 P54: "anything else runs to the end of the line as 
 http(s) or ssh URL whose own path holds `: ` and Git's prefix (`…/Q3: fatal: Q4 Plans/Kit.git`) ends at that
 prefix, and the rest of the folder name stays visible as the cause, by design (no end rule tells it from Git's
 `<url>: fatal: <cause>`); only a `file://` or a quoted URL holding it is a path (E50). Two cases pin it.
+Amended 2026-10-26, §16.202 C186 (by §16.196 I72): the line above takes an unquoted URL of any scheme but `file://`
+(http(s), ssh, git, ...), not only http(s) and ssh, and the paths are more than a `file://` or a quoted URL: one
+written right after `<`, `~` or `/` (`<https://...>`), and one whose scheme a digit, `_`, `.` or a non-ASCII letter
+comes right before (`3https://...` reads `3https:<path>`; round 29 C185), are paths too. A run before the scheme
+that starts with an ASCII letter joins it (`seehttps://...`, `x.https://...`), and that URL still ends at Git's
+prefix; a `+` or `-` right before the scheme stays outside the URL (`-<url>: fatal: ...`).
 
 **The URL guards are each pinned by a case (E50; `agentsync.convert.ocr`; dated line at §16.181 D84).** D84's
 `file://` exclusion (in any case) and the quote in the URL's lookbehind were pinned by no case: removing either,
@@ -32753,3 +32759,12 @@ C211, only past the `swift --version` check). The page names the four in README 
 docs and test only. Test:
 `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which now reads the names the page
 gives against `_PROXIES` in order.
+
+**The E49 paragraph's P54 line takes I72's correction too** (C186; dated line at §16.186 E49). I72's spec named two
+paragraphs that said "an http(s) or ssh URL" and "only a `file://` or a quoted URL holding it is a path", the P54
+paragraph and the P54 line under E49, and §16.196's record named one dated line, at §16.191 P54; the line under E49
+kept the stale claim with nothing dated beside it. It now has its own line, in round 29 C185's measured words
+rather than I72's (whose "a letter, digit or `.` before the URL joins its scheme" C185 found false for a digit and
+a `.`: `3https://` and `.https://` read as paths, `seehttps://` and `x.https://` keep `<url>`, read with `_plain`
+at b2724d9c). So I72's correction is dated at both paragraphs, §16.186 E49 and §16.191 P54. Docs only; the claim
+here holds the line (`test_every_dated_line_from_round_11_on_is_held_by_a_test`).
