@@ -4922,15 +4922,58 @@ with no space beside it is part of the path, which may hold one."""
 def _said_link_targets(lines: Iterable[str]) -> list[str]:
     """The targets outside this home that ``lines`` name a link pointing to (:data:`_SAID_LINK_RE`), as
     written and normalized, longest first, as :func:`_link_targets` gives the links on disk (B13 round 27
-    P34). Only a path two parts deep or more: "/" or "/x" as a redaction value would cut every path."""
+    P34). Only a path two parts deep or more: "/" or "/x" as a redaction value would cut every path. Each
+    target is registered as written and in its narrower forms (:func:`_said_link_forms`), so the agent's own
+    words after it in a friction row stay and a later row naming the bare target cuts it (B13 round 29
+    C163)."""
     found: set[str] = set()
     for line in lines:
         for m in _SAID_LINK_RE.finditer(line):
-            for value in (m.group(1), os.path.normpath(m.group(1))):
-                parts = [p for p in value.split("/") if p]
-                if value.startswith("/") and len(parts) >= 2 and not _under_home(value):
-                    found.add(value)
+            for form in _said_link_forms(m.group(1)):
+                for value in (form, os.path.normpath(form)):
+                    parts = [p for p in value.split("/") if p]
+                    if value.startswith("/") and len(parts) >= 2 and not _under_home(value):
+                        found.add(value)
     return sorted(found, key=len, reverse=True)
+
+
+_SAID_LINK_STOPS = (". ", ", ", " (", "? ", " — ", " - ")
+"""Where the agent's own words can follow a link target it quotes (``... m.sqlite. No chmod was run``,
+``..., so I stopped``, `` (the agent ran nothing)``): :data:`_SAID_LINK_RE` ends a target at none of them,
+since a path may hold any (B13 round 29 C163)."""
+
+
+def _said_link_forms(value: str) -> list[str]:
+    """``value`` as :data:`_SAID_LINK_RE` captured it, then each narrower form it can be: cut at each
+    :data:`_SAID_LINK_STOPS` and at each space after its last ``/`` (a tail with no punctuation), each with
+    trailing sentence punctuation taken off (a target ending its line with ``.`` or ``?``), so a later row
+    naming the bare target cuts it. The capture itself is left out only when what follows a stop after its
+    last ``/`` reads as the agent's words (several of them, no file extension at the end: ``... m.sqlite. No
+    chmod was run``), so those words stay; a final part that may be a file's own name (``Smith,
+    Jones.sqlite``) is cut whole, and a stop before the last ``/`` (``/Volumes/Backup (2)/m.sqlite``) always
+    is. Values are cut longest first, so a narrower form never shortens a longer one (B13 round 29 C163)."""
+    cuts = set()
+    words = len(value)  # where the agent's words begin, if they do
+    last = value.rfind("/")
+    for stop in _SAID_LINK_STOPS:
+        at = value.find(stop)
+        while at > 0:
+            cuts.add(value[:at])
+            if stop == ". ":  # a path value is never cut just before a "." (Redactor.add), so with it too
+                cuts.add(value[: at + 1])
+            rest = value[at + len(stop) :]
+            if at > last and " " in rest.strip() and not re.search(r"\.\w{1,8}$", rest):
+                words = min(words, at)
+            at = value.find(stop, at + 1)
+    at = value.find(" ", last)
+    while at > 0:
+        cuts.add(value[:at])
+        at = value.find(" ", at + 1)
+    forms = [value, value.rstrip(".,;:?!)")] if words == len(value) else []
+    keep = (c for c in cuts if len(c) <= words or (len(c) == words + 1 and c.endswith(".")))
+    for cut in sorted(keep, key=len, reverse=True):
+        forms += [cut, cut.rstrip(".,;:?!)")]
+    return list(dict.fromkeys(f for f in forms if f))
 
 
 def _run_text_lines(r: _Run) -> list[str]:

@@ -32288,6 +32288,16 @@ kept equal to `governance.LOST_HOLD_REASON` by a test. The shell report's `hold_
 patterns (lane RB, §16.199). Tests: `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`,
 `test_a_lost_holds_owner_is_in_no_part_of_the_report`.
 
+**A link target the agent quotes is cut before its own words** (C163). `_SAID_LINK_RE` ends a target only at
+`; `, ` |` and doctor's fixed words, so a friction row's `... m.sqlite. No chmod was run`, `..., so I stopped` or
+` (the agent ran nothing)` was registered whole: the row lost its words to `<path>`, and a later row naming the bare
+target printed it in clear. `_said_link_forms` registers the capture and each narrower form (cut at `. `, `, `,
+` (`, `? `, ` — `, ` - ` and at each space after the last `/`, trailing sentence punctuation off). The capture itself
+is left out only when what follows a stop after its last `/` reads as words (a space in it, no file extension at
+its end), so `<path> No chmod was run` keeps the row's words; a final part that may be a file's name (`Smith,
+Jones.sqlite`), a tail with no stop, and a stop before the last `/` (`/Volumes/Backup (2)/m.sqlite`) stay cut whole.
+Test: `test_a_link_target_only_the_runs_own_text_names_is_redacted` (C163's rows).
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Reserved for round 29 lane RB of B13.

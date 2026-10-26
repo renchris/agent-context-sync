@@ -15911,6 +15911,32 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
     for said in ("/", "/x", "/x/", "/x; y", "/x | -"):
         assert setup_report._said_link_targets([f"error: state: {db} is a symlink to {said}"]) == []
     assert setup_report._said_link_targets([f"{db} is a symlink to {old} (fix: x)"]) == [old]
+    # B13 round 29 C163: the agent's words after the target with no "; " or " |" before them, each followed by
+    # a later row naming the bare target: the target is cut in both, and the row's own words stay
+    vault = "/Volumes/Fabrikam Vault/m.sqlite"
+    for tail, words in (
+        (". No chmod was run", " No chmod was run"),  # a path value takes the "." that ends it
+        (", so I stopped", ", so I stopped"),
+        (" (the agent ran nothing)", " (the agent ran nothing)"),
+        (".", None),
+        (" which I left alone", None),  # no stop: it may be the file's own name, so it is cut whole
+    ):
+        rows = [
+            f"agentsync sync exited 1: manifest.sqlite is a symlink to {vault}{tail}",
+            f"should I point it back at {vault}?",
+        ]
+        friction = V12_HAPPY
+        for n, said in enumerate(rows):
+            friction = _insert_before("2026-09-29T10:01:10Z | end", _step3_error(f"6{n}", said), friction)
+        write_friction(fake_mac, friction)
+        _rc, text, _ = report(tmp_path, cfg)
+        assert "Fabrikam Vault" not in text, [ln for ln in text.splitlines() if "Fabrikam Vault" in ln]
+        assert "should I point it back at <path>?" in text, tail
+        if words:
+            assert f"is a symlink to <path>{words}" in text, tail
+    # a path that really holds ", " or " (" is still registered whole, before its narrower forms
+    backup = "/Volumes/Backup (2)/m.sqlite"
+    assert setup_report._said_link_targets([f"{db} is a symlink to {backup}"])[0] == backup
 
 
 def test_the_side_files_have_doctors_names_in_every_reader(
