@@ -11165,7 +11165,9 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
     state_lost), since the installed build that runs them may predate it, and both missed round 24 B64's
     dangling link. Each copy answers as manifest_lost does over a missing file, a dangling link, a link to a
     live file, a link loop, a regular file, a folder and a missing heartbeat, so they cannot drift apart
-    again unseen.
+    again unseen. B13 round 29 ruling 29 (lane B's C118, C202): a heartbeat.json that is a link to nothing is
+    one that cannot be read, and a link to a short file is judged as that file, in both copies as in
+    manifest.lost_words.
 
     B13 round 26 E31, E56: both copies read heartbeat.json with a blocking open, so a fifo there held step
     1's probe until with_timeout killed it, with every word it would have printed, and step 2's for its 10 s,
@@ -11196,9 +11198,10 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
         ),
     }
     # B13 round 27 P111 (ruling 17): a heartbeat.json there that cannot be read is lost all the same, as
-    # manifest.lost_words reads it (lane B); none there, or a link to nothing, is a first start
-    unread = ("fifo", "damaged", "folder", "array", "loop")
-    for beat in ("record", "none", *unread, "to-nothing"):
+    # manifest.lost_words reads it (lane B); none there is a first start, and since lane B's round 29 C118 a
+    # link to nothing is one that cannot be read (agentsync renames a regular file there)
+    unread = ("fifo", "damaged", "folder", "array", "loop", "to-nothing")
+    for beat in ("record", "none", *unread):
         for name, make in cases.items():
             for f in state.iterdir():
                 f.rmdir() if f.is_dir() and not f.is_symlink() else f.unlink()
@@ -11222,9 +11225,11 @@ def test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost(tmp_p
             # round 28 I56: the unread heartbeat is a fact apart from the link kind, never dropped beside it;
             # I92 (lane B): 5 for a manifest there but too short to be one
             link = {"dangling": 3, "dangling-dir": 2, "through-file": 2, "empty": 5, "short": 5}.get(name, 1)
+            link = 5 if name == "link-short" else link
             assert state_lost(db) == ((link, int(beat in unread)) if want else (0, 0)), (name, beat)
-            # lane B's I92 judges a regular file alone by its size: a link to a short file is judged as before
-            lostable = ("missing", "dangling", "dangling-dir", "through-file", "empty", "short")
+            # lane B's I92 judges a regular file by its size, and since its round 29 C202 a link to one as
+            # that file (SQLite opens what the link reaches, so 0 bytes behind it built a new manifest)
+            lostable = ("missing", "dangling", "dangling-dir", "through-file", "empty", "short", "link-short")
             assert want is (beat in ("record", *unread) and name in lostable), (
                 name,
                 beat,

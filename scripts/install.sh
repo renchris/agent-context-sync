@@ -7226,14 +7226,14 @@ def lost(p):
     symlink to a missing file is a missing manifest, as manifest_lost reads it since round 24 B64 (round 25 D33:
     this copy predated it, so step 1 predicted no stop for a dangling link). A regular file, not a link,
     shorter than 100 bytes, the header of a manifest, is lost too, as lane B round 28 I92 reads it (SQLite
-    opens 0 or 1 byte as a new database): lostshort says so, and a link through a file is to nothing."""
+    opens 0 or 1 byte as a new database): lostshort says so, and a link through a file is to nothing. A link
+    to such a short file is judged as that file (lane B round 29 C202: SQLite opens what the link reaches)."""
     global lostshort
     lostshort = False
     try:
         st = p.lstat()
         if stat.S_ISLNK(st.st_mode):
-            p.stat()
-            return False
+            st = p.stat()  # to nothing: a missing manifest, below; to a file: judged as that file (C202)
         if not stat.S_ISREG(st.st_mode) or st.st_size >= 100:
             return False
         lostshort = True
@@ -7247,8 +7247,9 @@ def lost(p):
     # word with it (round 25 D46; round 26 E31, E56). One that is there but cannot be read (not a regular
     # file, a link that reaches no file through a file or a loop, not UTF-8 or JSON, not an object, refused)
     # cannot rule earlier passes out: "unread", lost all the same, as manifest.lost_words reads it since lane
-    # B round 27 P111 (ruling 17: it was read as no record, a first start); none there, or a link to nothing,
-    # is a first start
+    # B round 27 P111 (ruling 17: it was read as no record, a first start); none there is a first start, and a
+    # link to nothing is one that cannot be read, as lane B round 29 C118 reads it (agentsync renames a
+    # regular file there, so a person made the link: step 2 started a new manifest unasked)
     hb = p.parent / "heartbeat.json"
     try:
         hb.lstat()
@@ -7256,8 +7257,8 @@ def lost(p):
         return False
     try:
         fd = os.open(hb, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
-    except FileNotFoundError:  # a link to nothing: no heartbeat
-        return False
+    except FileNotFoundError:  # a link to nothing: no read, never a first start (C118)
+        return "unread"
     except PermissionError:  # refused by its own mode alone: the chmod 600 of the agent first (ruling 21)
         try:
             st = hb.stat()
@@ -8916,14 +8917,13 @@ from agentsync.paths import expand
 db = expand(load_config(Path(sys.argv[1])).state_paths.db)
 link = short = False
 try:
-    # a symlink to a missing file is a missing manifest, as manifest_lost reads it (round 25 D33); a regular file,
-    # not a link, under the 100-byte header is lost too, as lane B round 28 I92 reads it: 5 below
+    # a symlink to a missing file is a missing manifest, as manifest_lost reads it (round 25 D33); a regular file
+    # under the 100-byte header is lost too, as lane B round 28 I92 reads it, and a link to one is judged as that
+    # file (lane B round 29 C202): 5 below
     st = db.lstat()
     if stat.S_ISLNK(st.st_mode):
         link = True
-        db.stat()
-        print(0)
-        sys.exit(0)
+        st = db.stat()
     if not stat.S_ISREG(st.st_mode) or st.st_size >= 100:
         print(0)
         sys.exit(0)
@@ -8949,9 +8949,8 @@ except OSError:  # none there: a first start
     sys.exit(0)
 try:
     fd = os.open(hb, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
-except FileNotFoundError:  # a link to nothing: no heartbeat
-    print(0)
-    sys.exit(0)
+except FileNotFoundError:  # a link to nothing: no read, never a first start (lane B round 29 C118)
+    fd = None
 except PermissionError:  # refused by its own mode alone: its chmod 600 leads (B13 round 28 ruling 21, I42)
     fd = None
     try:

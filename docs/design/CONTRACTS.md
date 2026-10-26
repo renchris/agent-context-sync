@@ -32540,6 +32540,20 @@ deploy test's pins move with it. Tests: the dangling and gone real-agentsync tes
 the link tail and NEXT constants and `lost_link_unread_next`; the link rows of
 `test_the_shell_report_names_a_lost_manifests_link_on_its_stop`, built from `setup_report._STOP_LINKS`.
 
+**install.sh's two inlined lost-manifest copies take lane B's one judge** (ruling 29's install.sh half of lane B's
+C118 and C202, landed in one push with lane B's manifest.py). Step 1's `lost()` and step 2's `state_lost` probe,
+inlined because the installed build that runs them may predate `manifest.lost_words`, read as it does now: a
+manifest that is a link is judged by what it reaches, so a link to a regular file under 100 bytes beside a
+heartbeat that records passes or cannot be read is lost-short (`lost-short` at step 1, 5 at step 2, the short
+manifest's tail and NEXT; a link to nothing stays a missing manifest), and a heartbeat.json that is a link to
+nothing is one that cannot be read (`unread`, never a first start: agentsync renames a regular file there, so a
+person made the link). `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost` holds both copies to
+`manifest.manifest_lost` over every case, `link-short` and the `to-nothing` heartbeat now among the lost ones; it
+fails on either rule alone. Lane B's manifest.py commit lands in this push too (`manifest.lost_words` judging a
+link by its target and a heartbeat link to nothing as unread, and `manifest.lost_error(db, lost)`, the one
+`ManifestLostError` every raise site builds, errno EINVAL for a short file, ENOENT for a missing one); lane B's
+§16.200 holds its record.
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.
