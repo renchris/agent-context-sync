@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import zipfile
+from email.header import Header
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -519,6 +520,91 @@ def test_a_removed_label_or_one_without_its_name_is_no_parse_error(tmp_path: Pat
     assert (
         policy.screen_file(aip, name="aip.eml", policy=PolicyConfig(exclude_label_ids=(OTHER_LABEL,))) is None
     )
+
+
+def _compat32_reader(path: Path) -> policy.LabelReadout:
+    """The mail label reader before C144 (compat32, no error arm): it keeps encoded-words raw."""
+    from email.parser import BytesHeaderParser  # noqa: PLC0415
+
+    with path.open("rb") as fh:
+        headers = BytesHeaderParser().parse(fh)
+    labels = [
+        lab
+        for v in headers.get_all(policy.MSIP_LABELS_HEADER) or []
+        for lab in policy.parse_msip_labels_header(" ".join(str(v).split()))
+    ]
+    return policy.LabelReadout(capable=True, labels=tuple(labels))
+
+
+@pytest.mark.parametrize("suffix", [".eml", ".msg"])
+@pytest.mark.parametrize("form", ["encoded", "folded"])
+def test_a_mail_an_older_label_reader_published_is_screened_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str, form: str
+) -> None:
+    """B13 round 30 C404, C360: C144's decoded reader moved no [policy] fingerprint, and an unchanged file is
+    never fetched, so a labelled mail an older reader let through stayed published under the rule naming its
+    label. The manifest keeps ``LABEL_READER_REVISION``; an older build's manifest has none, and the next sync
+    screens every mail row again: the page becomes the refused stub and its purge is queued, once."""
+    import sqlite3  # noqa: PLC0415
+
+    from agentsync import governance  # noqa: PLC0415
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+    from test_review_fixes import make_env, page_fm, run  # noqa: PLC0415
+
+    name = "Contoso Highly Confidential"
+    rule = f'exclude_label_ids = ["{LABEL}"]' if form == "encoded" else f'exclude_label_names = ["{name}"]'
+    config, src = make_env(tmp_path, extra=f"\n[policy]\n{rule}\n")
+    if form == "encoded":
+        _mail(src / f"Contoso Plan{suffix}", Header(_msip(name), "utf-8").encode().encode())
+    else:
+        _folded(src / f"Contoso Plan{suffix}", name)
+    page = f"mirror/src/contoso-plan{'.msg' if suffix == '.msg' else ''}.md"
+    with monkeypatch.context() as mp:  # the older build: its reader, and no revision in the manifest
+        mp.setattr(policy, "read_eml_labels", _compat32_reader)
+        assert run(config).exit_code == 0
+    with sqlite3.connect(config.state_paths.db) as db:
+        db.execute("DELETE FROM meta WHERE key = ?", (cycle._LABEL_READER_META,))
+    assert page_fm(config, page)["status"] == "current", "the older reader let it through"
+    assert "Quillon body" in (config.docs_repo / page).read_text(encoding="utf-8")
+    assert run(config).exit_code == 0
+    fm = page_fm(config, page)
+    assert fm["status"] == "refused" and "is excluded by [policy]" in fm["reason"], fm
+    assert "Quillon body" not in (config.docs_repo / page).read_text(encoding="utf-8")
+    assert [q.reason for q in governance.pending_purges(config.state_paths.root)] == [
+        governance.PurgeReason.LABEL_ESCALATION
+    ]
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle._LABEL_READER_META) == str(policy.LABEL_READER_REVISION)
+    assert run(config).commit_sha is None, "screened once: the next sync marks nothing"
+
+
+def test_a_label_reader_revision_with_no_label_rule_screens_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C404: an install with no label rule records the revision and pays for no re-screen; a rule set
+    later re-screens through the [policy] change."""
+    import sqlite3  # noqa: PLC0415
+
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+    from test_review_fixes import make_env, run  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    _mail(src / "Contoso Plan.eml", Header(_msip("Contoso Highly Confidential"), "utf-8").encode().encode())
+    assert run(config).exit_code == 0
+    with sqlite3.connect(config.state_paths.db) as db:
+        db.execute("DELETE FROM meta WHERE key = ?", (cycle._LABEL_READER_META,))
+    marked: list[tuple[str, ...]] = []
+    real = Manifest.mark_for_rescreen
+
+    def spy(self: Manifest, suffixes: Any, *args: Any, **kwargs: Any) -> int:
+        marked.append(tuple(suffixes))
+        return real(self, suffixes, *args, **kwargs)
+
+    monkeypatch.setattr(Manifest, "mark_for_rescreen", spy)
+    assert run(config).commit_sha is None
+    assert marked == []
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle._LABEL_READER_META) == str(policy.LABEL_READER_REVISION)
 
 
 # ---------------------------------------------------------------------------------------------------------

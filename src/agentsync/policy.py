@@ -500,6 +500,13 @@ def msip_labels_header_parses(value: str, raw: str | None = None) -> bool:
     return all(part or charset is None for part, charset in words)
 
 
+LABEL_READER_REVISION = 2
+"""The mail label reader's revision. Bump it whenever :func:`read_eml_labels` can read a label it used to
+miss: the cycle keeps it in the manifest, and while a label rule is on a change screens every ``.eml`` and
+``.msg`` row again, since [policy]'s fingerprint does not move with the reader (2: C144's decoded reader, B13
+round 30 C404, C360)."""
+
+
 def read_eml_labels(path: Path) -> LabelReadout:
     """Labels from the ``msip_labels`` header of a MIME message (headers only are parsed).
 

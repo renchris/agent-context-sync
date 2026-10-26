@@ -294,6 +294,10 @@ _SCOPE_ROOT_META = "scope_root:"
 """``scope_root:<source_id>`` holds ``<run>:<path>`` for a local or inbox source: the first run under the
 ``path`` it has now (0: the path it had when this was first recorded)."""
 _RESCREEN_META = "policy_rescreen_pending"
+_LABEL_READER_META = "label_reader_revision"
+"""The ``content_policy.LABEL_READER_REVISION`` the mail rows were last screened under (``_Cycle.
+_check_label_reader``, B13 round 30 C404, C360): none stored is an older build's manifest."""
+_MAIL_SUFFIXES = (".eml", ".msg")
 _SECRET_RULES_META = "secret_rules"
 """Manifest meta: the JSON ``lints.secret_rules_identity()`` of the last secret-scan re-screen.  When the
 identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
@@ -2044,6 +2048,7 @@ class _Cycle:
         # the rows the upgrade's one-time retry moved (``Manifest.retry_settled_failure_rows``): the report
         # counts those this run made current, for the sync's note alone (B13 round 21 Y28)
         self._legacy_moved: list[tuple[str, str]] = []
+        self._policy_rescreened = False  # a [policy] change marked the label-capable rows this run
         # the recording pass (spec S0 rules 3 to 8): who reads, what the queues left it, what it knows
         self.recordings: _RecordingRun = "none" if self.dry else recordings
         self._recording_queue: dict[str, list[str]] = {}  # per source: the recordings its queue deferred
@@ -2095,6 +2100,7 @@ class _Cycle:
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
             self._note_roots(fp_changed)
             self._check_policy_change()
+            self._check_label_reader()
             lints.remember_gitleaks()  # before the identity: a LaunchAgent run then uses this run's gitleaks
             self._check_secret_rules()
             self.publisher.ensure_scaffold()
@@ -2521,40 +2527,61 @@ class _Cycle:
         Tightening must refuse (and queue a purge of) files already published under the old rules;
         loosening must re-publish files refused under them.  The fingerprint lives in the manifest's meta
         table; a manifest without one re-screens once when label rules are active."""
-        stubs = self._rescreen_stubs_load()  # before this cycle's verdicts: a stub that waits no more leaves
+        self._rescreen_stubs_load()  # before this cycle's verdicts: a stub that waits no more leaves
         policy = self.publisher.content_policy
         current = policy.fingerprint()
         stored = self.manifest.get_meta(_POLICY_META)
         if stored == current:
             return
         if stored is not None or policy.labels_active:
-            queued: set[tuple[str, str]] = set()
-            marked = self.manifest.mark_for_rescreen(
-                _LABEL_CAPABLE,
-                sorted(label_withheld_suffixes()),
-                unread_only=policy.labels_active,
-                queued=queued,
+            self._policy_rescreened = self._queue_rescreen(
+                _LABEL_CAPABLE, sorted(label_withheld_suffixes()), "[policy] changed: %d label-capable %s"
             )
-            if queued:  # added to what an earlier change queued and no sync has converted yet
-                for sid, stable in queued:
-                    # with no OCR engine an image's stub is no label rule's, and OCR, not this change,
-                    # converts it once the engine is there
-                    row = self.manifest.get_item(sid, stable)
-                    if self.publisher.images_readable or (
-                        row is not None and row.name.lower().endswith(".msg")
-                    ):
-                        stubs.setdefault(sid, set()).add(stable)
-                self._rescreen_stubs_moved = True
-                self._rescreen_stubs_save()
-            if marked:
-                self.manifest.set_meta(_RESCREEN_META, current)
-                log.warning(
-                    "[policy] changed: %d label-capable %s queued for a re-screen",
-                    marked,
-                    "file" if marked == 1 else "files",
-                    extra={ECHOED_WHEN: "rescreen"},
-                )
         self.manifest.set_meta(_POLICY_META, current)
+
+    def _check_label_reader(self) -> None:
+        """Re-screen every ``.eml`` and ``.msg`` row once when the mail label reader's revision moved
+        (``content_policy.LABEL_READER_REVISION``) while a label rule is on: [policy]'s fingerprint does not
+        move with the reader, and an unchanged file is never fetched, so a mail an older reader let through
+        stayed published (B13 round 30 C404, C360). The revision is written whatever the rule, so an install
+        with no rule never pays; a rule set later re-screens through ``_check_policy_change``. Only mail:
+        no other reader changed, and a binary ``.msg`` withheld by its name stays as it is."""
+        revision = str(content_policy.LABEL_READER_REVISION)
+        if self.manifest.get_meta(_LABEL_READER_META) == revision:
+            return
+        if self.publisher.content_policy.labels_active and not self._policy_rescreened:
+            self._queue_rescreen(_MAIL_SUFFIXES, (), "the mail label reader changed: %d mail %s")
+        self.manifest.set_meta(_LABEL_READER_META, revision)
+
+    def _queue_rescreen(self, suffixes: Sequence[str], withheld: Sequence[str], said: str) -> bool:
+        """Mark the rows named with one of ``suffixes`` for a re-screen (``Manifest.mark_for_rescreen``, a
+        withheld stub of one of ``withheld`` included), keep the stubs it queues for the sync that converts
+        them, and log the count (``said``: a format with ``%d`` and the noun's ``%s``; never a name).
+        Returns whether any row was marked."""
+        stubs = self._rescreen_stubs_load()
+        policy = self.publisher.content_policy
+        queued: set[tuple[str, str]] = set()
+        marked = self.manifest.mark_for_rescreen(
+            suffixes, withheld, unread_only=policy.labels_active, queued=queued
+        )
+        if queued:  # added to what an earlier change queued and no sync has converted yet
+            for sid, stable in queued:
+                # with no OCR engine an image's stub is no label rule's, and OCR, not this change,
+                # converts it once the engine is there
+                row = self.manifest.get_item(sid, stable)
+                if self.publisher.images_readable or (row is not None and row.name.lower().endswith(".msg")):
+                    stubs.setdefault(sid, set()).add(stable)
+            self._rescreen_stubs_moved = True
+            self._rescreen_stubs_save()
+        if marked:
+            self.manifest.set_meta(_RESCREEN_META, policy.fingerprint())
+            log.warning(
+                said + " queued for a re-screen",
+                marked,
+                "file" if marked == 1 else "files",
+                extra={ECHOED_WHEN: "rescreen"},
+            )
+        return bool(marked)
 
     def _rerender_stubs(self) -> None:
         """Re-render, once per ``publish.STUB_RENDER``, every stub whose text the stored state alone decides

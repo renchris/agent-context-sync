@@ -32871,10 +32871,16 @@ decodes to nothing (`=?utf-8?b?!!?=`, which reads as an empty name); the readout
 `policy.MSIP_HEADER_UNPARSEABLE` with whatever labels did parse, and `label_decision` refuses it under any label
 rule (`label-unreadable`, `... ; a label rule is set`), as a binary `.msg` is withheld, not only under
 `refuse_unlabelled`. A header whose labels are all `Enabled=False` (a removed label) and one without `Name` are no
-error. The label fingerprint moves with the decoded labels, so a mail an older build converted is screened again.
+error. A mail an older build converted is screened again by the decoded reader only through the one-time mail
+re-screen §16.206 records: the label fingerprint is not part of H1, and [policy]'s fingerprint does not move with the
+reader.
 Tests: `test_policy.py::test_an_encoded_word_msip_labels_header_is_read_and_refused` (both forms, `.eml` and
 `.msg`, a name rule and an id rule), `test_policy.py::test_an_msip_labels_header_that_does_not_parse_refuses_under_any_label_rule`
 and `test_policy.py::test_a_removed_label_or_one_without_its_name_is_no_parse_error` (and the classic AIP header).
+Amended 2026-10-26, §16.206 C404, C360: CORRECTED: this paragraph said the label fingerprint moved with the decoded
+labels, so a mail an older build converted was screened again. Nothing called it, and an unchanged mail was never
+fetched, so a labelled mail the older reader let through stayed published; `LABEL_READER_REVISION` now screens
+every `.eml` and `.msg` row again once while a label rule is on.
 
 **Every conversion reason folds the home folder, the longest path form first, before its whitespace is collapsed
 (C182, C183, C221, ruling 31; `agentsync.convert`; amends §16.196 I39).** A converter that could not start
@@ -33084,7 +33090,29 @@ Reserved for round 30 lane B of B13.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
-Reserved for round 30 lane E of B13.
+Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the
+verifier's corrected fix built, as corrected by measurement where noted). A dated line this round writes reads
+`Amended 2026-10-26, §16.206 C<n>`.
+
+**A mail an older label reader let through is screened again by the new one (C404, C360, one defect from two
+finders, ruling 38; `agentsync.policy`, `agentsync.cycle`; corrects §16.201 C144).** C144's decoded reader moved
+no fingerprint: `PolicyConfig.fingerprint()` hashes only the rules, `label_fingerprint` has no caller (§16.201 left
+it out of H1), and an unchanged file is never fetched, so a mail whose encoded `msip_labels` header the compat32
+reader read as unlabelled stayed published under the rule naming its label (an `.eml` and a `.msg` that holds MIME
+text, an id rule and a name rule alike). `policy.LABEL_READER_REVISION` (2, for C144) sits beside
+`read_eml_labels`, bumped whenever a label reader can read a label it used to miss. The cycle keeps it in its own
+manifest meta key (`label_reader_revision`); `_check_label_reader`, right after `_check_policy_change`, marks only
+the `.eml` and `.msg` rows for a re-screen when the stored value differs while a label rule is on, through the same
+helper as a [policy] change (`_queue_rescreen`: its stub queue, `policy_rescreen_pending` and a counted WARNING,
+never a name), and writes the key whatever the rule, so an install with no rule never pays (a rule set later
+re-screens through the [policy] change). A [policy] change in the same sync has marked them already. A binary
+`.msg` withheld by its name is not marked: its reader did not change. `fingerprint()`, the `label_policy`
+converter option and every action key stay as they were. The re-screen refuses the page and queues its
+`label-escalation` purge, as a tightened rule does. Tests:
+`test_policy.py::test_a_mail_an_older_label_reader_published_is_screened_again` (the compat32 reader publishes,
+the revision key is deleted as an older build's manifest has none, and the next sync refuses the page and queues
+its purge, then marks nothing; an encoded header under an id rule and a folded one under a name rule, `.eml` and
+`.msg`) and `test_policy.py::test_a_label_reader_revision_with_no_label_rule_screens_nothing`.
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
