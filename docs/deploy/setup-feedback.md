@@ -442,7 +442,8 @@ install.log (a `--list-folders` run is not an install run):
   C154). Beside a heartbeat.json that
   cannot be read the file is
   `missing beside a heartbeat.json that cannot be read: the person's to fix, restoring the file or moving heartbeat.json aside`
-  (B13 round 28 ruling 21), and only where heartbeat.json is this account's own file whose mode alone refuses it
+  (B13 round 28 ruling 21 for the case; round 29 ruling 30 for its owner and two moves), and only where
+  heartbeat.json is this account's own file whose mode alone refuses it
   `missing beside a heartbeat.json that cannot be read: heartbeat.json's chmod first, the agent's, then the file's, the person's`
   (B13 round 29 ruling 30); a manifest too short to be one is
   `empty or too short to be a manifest though heartbeat.json records earlier passes` (B13 round 28 I92), and beside a
@@ -823,7 +824,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   When heartbeat.json is this account's own and only its mode refuses it, its `chmod 600` leads, the agent's, as
   status's `NEXT:` leads with it: the tail says `heartbeat.json's mode refuses this account (a mode, not damage), so
   the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still
-  missing then, fixing that is the person's (...)`, and step 2's `NEXT:` names the chmod, then the re-run (lane B's
+  lost then, fixing that is the person's (...)`, and step 2's `NEXT:` names the chmod, then the re-run (lane B's
   I42). A manifest that is there but empty or under its 100-byte header, beside a heartbeat.json that records
   earlier passes, is lost too (lane B's round 28 I92): the tail and the `NEXT:` say `empty or too short to be a
   manifest, though heartbeat.json beside it records earlier passes` and give the damaged manifest's fix, `keeping a

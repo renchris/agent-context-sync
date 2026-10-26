@@ -33395,3 +33395,14 @@ parse is refused under any label rule, with its reason, the cases the parser ref
 `test_the_records_page_says_a_mail_label_header_that_does_not_parse_refuses_under_any_rule`, which reads the reason
 from `label_decision` under an exclude rule alone and each named case from `msip_labels_header_parses`; and
 `test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`, which pins the new parenthesis.
+
+**The guide quotes the heartbeat-mode tail as install.sh prints it, and cites ruling 30 for the unread owner** (C306,
+C376; `docs/deploy/setup-feedback.md`). Since round 29 C195 install.sh's `lown` tail for this account's own
+heartbeat whose mode alone refuses it says `if the manifest is still lost then, fixing that is the person's`, but
+the guide still quoted `still missing then`, split over a line break, which is how C195's sweep missed it; the
+guide's paraphrase of step 2's NEXT is accurate and stays. The step 2 outcome
+`the person's to fix, restoring the file or moving heartbeat.json aside` (`setup_report._UNREAD_PERSONS`, lane RA's
+490691340) is ruling 30's owner and two moves, but the guide kept ruling 21's citation from the words it replaced;
+it now cites ruling 21 for the case and ruling 30 for the owner. Test:
+`test_the_guide_quotes_the_heartbeat_mode_tail_and_cites_the_owner_ruling`, which reads the quote from install.sh's
+`lown=` line and the outcome from `_UNREAD_PERSONS`.

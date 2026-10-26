@@ -7151,6 +7151,34 @@ def test_the_guide_gives_the_lost_unread_tail_and_next() -> None:
     assert f"the tail and the `NEXT:` say `{short}` with the same damaged-manifest fix" in page
 
 
+def test_the_guide_quotes_the_heartbeat_mode_tail_and_cites_the_owner_ruling() -> None:
+    """B13 round 30 C306: since round 29 C195 install.sh's heartbeat-mode tail says `if the manifest
+    is still lost then`, and the guide still quoted `still missing then`, split over a line break so a
+    one-line grep missed it; the quote is read from install.sh's `lown=` line. C376: the guide cited only
+    round 28 ruling 21 for `the person's to fix, restoring the file or moving heartbeat.json aside`, the
+    report's `_UNREAD_PERSONS`, whose owner and two moves are round 29 ruling 30's; ruling 21 keeps the
+    case."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [lown] = [
+        line for line in script.splitlines() if "lown=" in line and "heartbeat.json's mode refuses" in line
+    ]
+    start = lown.index("if the manifest is still")
+    owner_words = "fixing that is the person's"
+    quoted = lown[start : lown.index(owner_words, start) + len(owner_words)]
+    assert quoted == "if the manifest is still lost then, fixing that is the person's"
+    assert f"as step 2's NEXT names it; {quoted} (...)`" in page
+    assert "still missing then" not in page
+    owner = f"`missing beside a heartbeat.json that cannot be read: {setup_report._UNREAD_PERSONS}`"
+    assert (
+        f"{owner} (B13 round 28 ruling 21 for the case; round 29 ruling 30 for its owner and two moves), and"
+        " only where heartbeat.json is this account's own file whose mode alone refuses it"
+    ) in page
+    assert f"{owner} (B13 round 28 ruling 21)," not in page
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init
