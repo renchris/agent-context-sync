@@ -764,7 +764,12 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   symlink there counts by what it points to, so a link to a folder or a link loop is no file either. The folder goes
   aside with heartbeat.json, as doctor's fix says: moved alone, the next run stopped on the lost manifest below
   (round 24 ruling 8). No manifest at all while heartbeat.json beside it records an earlier pass is a manifest lost
-  from a Mac that has synced, which every init step 2 reinstalls stops on (round 23 A29): `state-lost`, `; step 2
+  from a Mac that has synced, which every init step 2 reinstalls stops on (round 23 A29). So is one beside a
+  heartbeat.json that is there but cannot be read (a fifo, a loop or a link through a file, contents that are not
+  UTF-8 JSON or not an object, or a refused read; until then it read as a first start, and step 2 started a new
+  manifest unasked); a missing heartbeat.json, or a link to nothing there, is still a first start, and a folder there gets the
+  misplaced heartbeat's words first, as init stops on that first (B13 round 27 P111, ruling 17). Its word is
+  `state-lost`, `; step 2
   stops at its config step on agentsync's state file, manifest.sqlite, which is missing though heartbeat.json beside
   it records earlier passes (not damage, not a mode): fixing that is the person's (they restore the file from a copy
   they trust, or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest), and
@@ -785,7 +790,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   I33) and ruling 7's fix stays, with no `rm` first, as it
   works through a link into a folder a sync can write (round 25 D79); step 2's `NEXT:` reads `... is a symlink to a file that does not
   exist, and is missing, though heartbeat.json ...` (B13 round 26 E19). Beside a heartbeat.json that cannot be read,
-  the tail and the `NEXT:` say `missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be
+  the tail reads
+  `... manifest.sqlite, which is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out: ...`
+  with ruling 7's fix, and step 2's `NEXT:`
+  `... manifest.sqlite, is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out (the error above names it; ...`
+  (B13 round 27 P111); they say `missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be
   ruled out` for a link of either kind as for a missing file, never `records earlier passes`, and give no `(not
   damage, not a mode)`, since damaged JSON or a mode is one of its causes (B13 round 28 ruling 21: I5, I33, I56).
   When heartbeat.json is this account's own and only its mode refuses it, its `chmod 600` leads, the agent's, as

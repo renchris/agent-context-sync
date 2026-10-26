@@ -6835,6 +6835,35 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
     assert "status's NEXT gives its `chmod 600` first" in bullet and "B13 round 28 I92, I93" in bullet
 
 
+def test_the_guide_gives_the_lost_unread_tail_and_next() -> None:
+    """B13 round 28 I11, I78, I101 (one gap, built once): round 27 P111 (ruling 17) made a missing manifest
+    beside a heartbeat.json that cannot be read lost, never a first start, and added its step 1 tail and step
+    2 NEXT; the guide defined a lost manifest only beside a heartbeat that records an earlier pass and quoted
+    neither. It widens the definition and quotes both, read from `manifest.LOST_MANIFEST_UNREAD` and
+    install.sh."""
+    from agentsync import manifest  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    install = " ".join((ROOT / "scripts" / "install.sh").read_text(encoding="utf-8").split())
+    words = manifest.LOST_MANIFEST_UNREAD
+    fact = words.removeprefix("is ")
+    assert words.startswith("is missing, and heartbeat.json beside it cannot be read")
+    assert f'lfact="{fact}"' in install
+    assert (
+        "step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact:"
+        in install
+    )
+    assert (
+        "FAIL_NEXT=\"agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it;"
+        in install
+    )
+    assert f"`... manifest.sqlite, which {words}: ...` with ruling 7's fix" in page
+    assert f"`... manifest.sqlite, {words} (the error above names it; ...`" in page
+    assert "So is one beside a heartbeat.json that is there but cannot be read" in page
+    assert "a missing heartbeat.json, or a link to nothing there, is still a first start" in page
+    assert "B13 round 27 P111, ruling 17" in page
+
+
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:
     """B13 round 26 E55: §16.180 said status still FAILs a fifo at the -wal, but its own manifest read opens
     and closes the database first, and sqlite removes the -wal on close: status passes and exits 0, as init

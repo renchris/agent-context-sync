@@ -32106,7 +32106,9 @@ Test: the TOOL_MESSAGES case `a URL right after an angle bracket is a path`.
 ### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
 
 Lane D's round 28 items (`docs/plans/bring-back-ocr.md`, "B13 round 28"; specs `round28/items/I<n>.md`, the
-verifier's corrected fix built): I80, I73, I79, I71, I81, I82, I83, I84, I99 and I103.
+verifier's corrected fix built): I80, I73, I79, I71, I81, I82, I83, I84, I99 and I103 first, then, after lanes RA,
+B and RB landed the words they read, I102, I69 and I77, I75, and I11, I78 and I101. I11, I78 and I101 are one gap in
+the guide, built once; so are I69 and I77 in the records page.
 
 **`--no-ci` skips every CI read** (I80; `scripts/ship-land.sh`). Round 27 P140 added a third read, trunk's runs
 before the gate, which `--no-ci` skips as it does the other two, and the header still said `skip both CI reads`
@@ -32233,3 +32235,13 @@ after a new start, what the kept entry reads, and the by-hand purge `unresolved_
 dry run first, `docs=` the last resort; and, from lane B's I92 and I42, that a manifest too short to be one moves
 aside with heartbeat.json (`doctor.lost_fix`) and that status's NEXT gives a refusing heartbeat's `chmod 600`
 first. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`.
+
+**The guide gives the lost-unread tail and NEXT** (I11, I78, I101: one gap, built once;
+`docs/deploy/setup-feedback.md`). Round 27 P111 (ruling 17) made a missing manifest beside a heartbeat.json that is
+there but cannot be read lost, never a first start, and added step 1's `lost-unread` tail and step 2's NEXT; the
+guide defined a lost manifest only beside a heartbeat that records an earlier pass and quoted neither (lane RB's
+round 28 I5, I33 and I56 sentence names the words for the links). The guide widens the definition (what cannot be
+read, `manifest.lost_words`'s list; a missing heartbeat.json or a link to nothing there still a first start; a
+folder there the misplaced heartbeat's words first) and quotes the plain tail and NEXT as P60 quotes E19's. Test:
+`test_the_guide_gives_the_lost_unread_tail_and_next`, which reads `manifest.LOST_MANIFEST_UNREAD` and install.sh's
+`lfact`, the tail and the NEXT.
