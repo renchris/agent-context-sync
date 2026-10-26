@@ -293,6 +293,38 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "3f1dee54, a docs-only" not in note and "3f1dee54, a docs-only" not in guide
 
 
+def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder() -> None:
+    """B13 round 29 C149, C150 (one defect): macOS's `com.apple.tmp_cleaner` runs daily at local midnight
+    and deletes an empty folder under /tmp whose mtime is over 3 days old; `cp -Rp` keeps the fixture's, so
+    every rehearsal root lost `Project Alpha/Empty Subfolder` and step 2 printed no empty-folder wait. The
+    lane brief gives the cleaner's rule, the touch after each copy and restore (not `cp -R`, which resets
+    file mtimes), the dirs.txt check before step 2 and the midnight caveat; the schedule and rule are read
+    from the system's own files where this Mac has them."""
+    lanes = " ".join(_page("docs/lanes/COMMON.md").split())
+    head = "Rehearsal kit and macOS's /tmp cleaner (round 29 C149, C150; the kit itself is the lead's):"
+    assert lanes.count(head) == 1
+    note = lanes.split(head, 1)[1].split(" Tools CI lacks (round 18):", 1)[0]
+    for part in (
+        "runs `/usr/libexec/tmp_cleaner` daily at local midnight (`StartCalendarInterval` hour 0)",
+        "(`-type d -empty -mtime +3`)",
+        "Right after every `cp -Rp` of the fixture and every snapshot restore, run `/usr/bin/find <copy>"
+        " -type d -exec touch {} +`",
+        "never `cp -R`, which resets the file mtimes agentsync reads",
+        "run it again at the start of each act",
+        "/usr/bin/find . -type d | LC_ALL=C sort)` with dirs.txt and stop on a difference",
+        "is the cleaner's doing, not agentsync's",
+    ):
+        assert part in note, part
+    plist = Path("/System/Library/LaunchDaemons/com.apple.tmp_cleaner.plist")
+    script = Path("/usr/libexec/tmp_cleaner")
+    if plist.exists() and script.exists():  # macOS only; CI's Linux steps and other hosts skip the read
+        daemon = plistlib.loads(plist.read_bytes())
+        assert daemon["ProgramArguments"] == [str(script)] and daemon["StartCalendarInterval"] == {"Hour": 0}
+        cleaner = script.read_text(encoding="utf-8")
+        assert 'daily_clean_tmps_dirs="/tmp"' in cleaner and 'daily_clean_tmps_days="3"' in cleaner
+        assert 'dargs="-empty -mtime +$daily_clean_tmps_days"' in cleaner
+
+
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
     profile = plistlib.loads(PPPC.read_bytes())
     tcc, managed = profile["PayloadContent"]

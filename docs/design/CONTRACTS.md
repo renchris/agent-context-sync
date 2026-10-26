@@ -32781,3 +32781,17 @@ quotes `failed at step 2 (computed: install.sh exited 1 at its config step on th
 account can read on a run that adds a folder with --source-local, as its step 1 passage already says. Not the
 finder's fix (the status step for every add-source run): it is false for the -wal, so it would make things worse.
 Test: `test_the_guide_gives_the_reports_step_2_state_outcomes`, which makes both forms from `setup_report._side_words`.
+
+**The lane brief says macOS's /tmp cleaner takes an old empty folder** (C149, C150: one defect, built once;
+`docs/lanes/COMMON.md`; the rehearsal kit itself is the lead's, and agentsync is not involved).
+`com.apple.tmp_cleaner` runs `/usr/libexec/tmp_cleaner` at local midnight (`StartCalendarInterval` hour 0), which
+deletes under /tmp each empty folder whose mtime is over 3 days old; the kit's `cp -Rp` keeps the fixture's
+2026-10-21 folder mtimes, so `Project Alpha/Empty Subfolder` left every rehearsal root's fixture copy and homes at
+00:02 to 00:07 local and step 2 printed no empty-folder wait (rehearsals E and F; the verifiers reproduced it with
+the cleaner's own `find` under `-print`, and a touched copy and a fresh `mkdir` folder survived). The brief gives
+the rule, the `/usr/bin/find <copy> -type d -exec touch {} +` after every copy and snapshot restore and again at
+each act (one touch buys 3 days), never `cp -R` (it resets the file mtimes agentsync reads), the dirs.txt check
+before step 2, and that a wait gone just after midnight is the cleaner's. Touching changes only folder mtimes,
+before install and the first sync, so agentsync's baseline is unchanged. Test:
+`test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`, which reads the schedule and rule from the
+system's own files where the Mac has them.
