@@ -2724,7 +2724,7 @@ def _shell_hold_redact(tmp_path: Path, holds: list[dict[str, str]], said: Sequen
     text = INSTALL_SH.read_text()
     funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
     helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
-    words = re.compile(r"(?ms)^(?:joined_word|report_word|output_word)\(\) \{\n.*?^\}$")
+    words = re.compile(r"(?ms)^(?:joined_word|report_word|output_word|two_letter_word)\(\) \{\n.*?^\}$")
     helpers += "\n" + "\n".join(m.group(0) for m in words.finditer(text))
     said_file = tmp_path / "said.txt"
     said_file.write_text("".join(f"{ln}\n" for ln in said))
@@ -2800,6 +2800,31 @@ def test_a_one_word_hold_value_is_cut_alike_by_both_readers(tmp_path: Path, owne
     for value in setup_report._hold_values(run):
         red.add("value", value, ignore_case=True)
     assert shown == [red.redact(line)] == ["F4 | step 3 | question | 1 | <value> said the hold stays on | -"]
+
+
+@pytest.mark.parametrize("owner", ["IT", "It"])
+def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers(
+    tmp_path: Path, owner: str
+) -> None:
+    """Lane RA's round 28 I7, the shell half: with a hold owner "IT" the folded cut turned every "it" of the
+    report's own prose into <value>. A two-letter initialism written all in capitals is cut as written (flag
+    H), as setup_report now registers it case-sensitively: a quoted "IT" is still cut, the pronoun stays. A
+    value not all in capitals ("It") keeps the folded cut. Both readers give the same lines."""
+    hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    lines = ["F4 | step 3 | question | 1 | IT said the hold stays on | -", "it stays, and It was set early"]
+    shown = _shell_hold_redact(tmp_path, [hold], lines)
+    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
+    cfg = tmp_path / "home" / "agent-context" / "sources.toml"
+    paths_ = types.SimpleNamespace(root=str(state))
+    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
+    red = setup_report.Redactor()
+    for value in setup_report._hold_values(run):
+        norm = setup_report._norm(value)
+        exact = len(norm) == 2 and value.strip().isupper() and norm in setup_report._TWO_LETTER_WORDS
+        red.add("value", value, ignore_case=not exact)
+    assert shown == [red.redact(ln) for ln in lines], shown
+    cut = "F4 | step 3 | question | 1 | <value> said the hold stays on | -"
+    assert shown == ([cut, lines[1]] if owner == "IT" else [cut, "<value> stays, and <value> was set early"])
 
 
 def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Path) -> None:

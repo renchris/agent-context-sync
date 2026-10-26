@@ -31761,6 +31761,15 @@ docs/deploy/setup-feedback.md says so. Tests: `test_the_inlined_lost_manifest_co
 (`empty`, `short`, `link-short`, `through-file`), the step 1 table's `LM-short` row and
 `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_at_steps_1_and_2` (following the words ends it).
 
+**A two-letter capital hold value is cut as written in the shell report too** (lane RA's I7, the shell half, at RA's
+seam note; scope grown). With a hold owner or reason `IT`, setup_report now registers a two-letter initialism written
+all in capitals case-sensitively, so the pronoun "it" of the report's own prose stays and a quoted "IT" is still cut
+and still makes the report private only. The shell fallback's `hold_values` pass gave it flag h, matched in any case:
+it now gives such a value flag H, which `redact_stream` matches as written, as a whole word, and which sets the
+private-only line where it cut, as flag h does; any other value (`It`, `rm`) keeps the folded cut. Test:
+`test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers` (`IT`, `It`; the shell's lines
+equal the Redactor's under setup_report's rule).
+
 **What is at a misplaced lock, heartbeat or governance file is named** (I20, I35). Step 1's `state-file-notfile` tail
 and step 2's NEXT said `which is a folder or something else that is not a file` for a fifo at the lock or a folder at
 holds.json, while the error line just above, and status, name the kind (`is a fifo, not a file`), as the -wal and

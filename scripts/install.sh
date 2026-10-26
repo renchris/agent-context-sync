@@ -2933,7 +2933,9 @@ pacv=\1/p' || true
 	# report is for a private copy only, since its <value> in the report's own text reads back as the word, as a
 	# one-word folder's does (B13 round 25 D80: it was left out, so a one-word owner quoted on another line
 	# printed in clear in one report and was cut in the other, whose lists differ); the word is tested without its
-	# accents, as Python tests _norm ("Détail" is "detail"). A value holding a TAB, which a pair cannot hold, also
+	# accents, as Python tests _norm ("Détail" is "detail"). A two-letter one in capitals that is such a word
+	# ("IT") is flag H, matched as written, so the report's own "it" stays (lane RA's round 28 I7, the shell
+	# half). A value holding a TAB, which a pair cannot hold, also
 	# gives each of its parts of 3 characters or more: a shorter one would cut a common word ("it") from every
 	# line.
 	while IFS= read -r v; do
@@ -2949,6 +2951,10 @@ pacv=\1/p' || true
 			fl=i
 			case "${low:-$v}" in *[!A-Za-z]*) ;; *)
 				if report_word "$low" || output_word "$low" || { [ "${#low}" -eq 2 ] && two_letter_word "$low"; }; then fl=h; fi
+				# a two-letter initialism written all in capitals ("IT", "RM") is cut as written, flag H, so the
+				# pronoun "it" stays; a quoted "IT" is still cut and still makes the report private only, as
+				# setup_report registers it case-sensitively since lane RA's round 28 I7
+				case "$v" in [A-Z][A-Z]) [ "$fl" != h ] || ! two_letter_word "$low" || fl=H ;; esac
 				;;
 			esac
 			add_forms "$v" "<value>" "$fl"
@@ -3421,7 +3427,7 @@ redact_stream() {
 				continue
 			}
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
+			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
@@ -3434,7 +3440,7 @@ redact_stream() {
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""
 						keep(f[2], 1)
-						if (f[3] == "h") hold_word = 1 # a hold value that is a report word was cut (D80)
+						if (f[3] == "h" || f[3] == "H") hold_word = 1 # a hold value that is a report word was cut (D80)
 					}
 					s = substr(s, i + n)
 				}
