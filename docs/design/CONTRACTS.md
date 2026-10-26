@@ -31477,6 +31477,8 @@ Amended 2026-10-25, §16.196 I72: the rule takes an unquoted URL of any scheme b
 not only http(s) and ssh, and only a `file://` URL, a quoted one, or one written right after `<`, `~` or `/`
 (`<https://...>`) is a path; a letter, digit or `.` before the URL joins its scheme, and the URL still ends at Git's
 prefix.
+Amended 2026-10-26, §16.201 C185: only a run that starts with an ASCII letter joins the scheme; one that starts
+with a digit, `_`, `.` or a non-ASCII letter makes the URL a path (`3https://...` reads `3https:<path>`).
 
 **The empty folders keep one Finder-like order (P128; `agentsync.arm_local`, `agentsync.cycle`).** The walk sorted
 its empty cloud folders by code point, so the alarm named `'Empty Subfolder 10'` to `'13'` then `'8'`, and held
@@ -32046,6 +32048,12 @@ every deck, workbook and document for a read the re-read rule alone gives. Tests
 Word package as `.potx`, `.pptx` and `.xlsx` and a deck as `.docx`; a macro deck and a template-typed `.pptx` keep
 their results; a reason names no staged path and no home; a sync converts the file once over three runs and no
 file in the docs repo names the staging folder; an older build's stub with the path is read again once, then left).
+Amended 2026-10-26, §16.201 C182, C183, C221: the home fold runs on every reason, a converter-unavailable one with
+no staged file included (`_common._homeless`), each path's longest form goes first, and the paths go from the raw
+text before its whitespace is collapsed.
+Amended 2026-10-26, §16.201 C181: CORRECTED: the `outdated` re-read above never ran, as only a FAILED stub held a
+path and its retries came first, which an older build had used up. The cycle's one-shot re-read past the retries
+gives it (`Cycle._retries`, `Cycle._queue_path_stubs`), and the three converters' `outdated` reason arms are gone.
 
 **A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
 nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
@@ -32072,6 +32080,8 @@ for files still settling in <source>; its next complete pass converts or removes
 has no shard line until its file's pass converts it, as listing it from HEAD would put a line in the shard for an
 item the manifest does not hold. Test: the P117 test above (the line while the page is kept, twice; none after the
 sweep).
+Amended 2026-10-26, §16.201 C116, C131: one kept page reads `kept for a file still settling` and `converts or
+removes it`, more read `files` and `them`.
 
 **The empty folders sort and log in Finder's order (I24, I105, I48; `agentsync.arm_local`; one build).**
 `natural_key` compared the text before each number as one case-folded string, so `b2` and `b10` sorted before `b 2`,
@@ -32085,6 +32095,8 @@ walk ends, a listing time-out's raise included, the root first and the rest in t
 first five use it. The stored `empty_cloud_dirs:<id>` is rewritten once, on the first walk after the change. Tests:
 `test_loop.py::test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line` (the
 verifier's orders) and `test_arm_local.py::test_sync_v_logs_the_empty_and_unlistable_folders_in_finders_order`.
+Amended 2026-10-26, §16.201 C212: the tokens are read with the accents taken off (NFD less its combining marks),
+and the accents break a tie after them and before the digit widths, in NFC and NFD alike.
 
 **An unquoted URL ends before a URLSession cause (I104; `agentsync.convert.ocr`; dated line at §16.186 E49).** E49
 ended an unquoted URL only before Git's prefix or at the line's end, so `error: https://git.contoso.com/Kit.git: The
@@ -32094,6 +32106,8 @@ Any other cause with no Git prefix still reads `https:<path>`; a URL whose last 
 line's end reads `<url>: <cause>`, one fixed English phrase and no name, by design as P54. No tool has been measured
 printing this shape: SwiftPM's binary-target download quotes its URL and already kept its cause. Tests: one
 TOOL_MESSAGES case per cause, the `Q3:` edge, and a cause mid-path that is still a path.
+Amended 2026-10-26, §16.201 C184: the cause mid-path case is `...srv/Q3: The request timed out/Fabrikam
+Plans/Kit.git`, as the one before had a space in its URL and never reached the cause's line end.
 
 **The OCR URL cut's words name every scheme and the URLs that are a path (I72; `agentsync.convert.ocr`; dated line
 at §16.191 P54).** The `_plain` docstring and two paragraphs said "an http(s) or ssh URL" and "only a `file://` or a
@@ -32102,6 +32116,9 @@ and a URL written right after `<`, `~` or `/` is a path too (`<https://…>` rea
 measurement: the finder's "one joined to the character before it is a path" is false, as a letter, a digit or `.`
 before the URL joins its scheme and the URL still ends at Git's prefix (`seehttps://…` reads `<url>: fatal: …`).
 Test: the TOOL_MESSAGES case `a URL right after an angle bracket is a path`.
+Amended 2026-10-26, §16.201 C185: a run before the URL joins its scheme only when it starts with an ASCII letter
+(`seehttps://...`), and one that starts with a digit, `_`, `.` or a non-ASCII letter makes the URL a path
+(`3https://...` reads `3https:<path>`).
 
 ### 16.197 Round 28: deploy docs, CONTRACTS records, ship-land's header and the contracts test (2026-10-25, wave B13 round 28 lane D)
 
@@ -32140,6 +32157,8 @@ no FluidAudio repository. The page says so, the verifier's doc fix; the optional
 SwiftPM step before `_seed`) is not built, as the page is now true and the step order the speech tests assert
 stays. Test: `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which reads the order
 from `_compile`.
+Amended 2026-10-26, §16.201 C211: the code guard is built, in `_seed` after its proxy test (`_swift_too_old`, a
+`swift --version` read), so a Swift older than the packaged tools version fetches nothing, and the page says so.
 
 **The guide says a late stop's reason says when the person's FAIL came** (I81; `docs/deploy/setup-feedback.md`).
 The guide said "No outcome reads it" of a step 3 stop logged after the end line, and since round 27 P101
@@ -32260,7 +32279,117 @@ Reserved for round 29 lane B of B13.
 
 ### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
 
-Reserved for round 29 lane E of B13.
+Round 29's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 29"; specs `round29/items/C<n>.md`, the
+verifier's corrected fix built, as corrected by measurement where noted). A dated line this round writes reads
+`Amended 2026-10-26, §16.201 C<n>`.
+
+**A mail label that does not parse fails closed (C144, ruling 31; `agentsync.policy`).** Under a rule naming
+`Contoso Highly Confidential`, a mail whose `msip_labels` header was RFC 2047-encoded was converted: compat32's
+`BytesHeaderParser` kept the encoded-words raw, so the `;` and `=` the parser splits on were `=3B` and `=3D`, a
+fully encoded header read as no label and Python's own folding (the SiteId chunk) lost the label's name, for an
+`.eml` and a `.msg` that holds MIME text alike. `read_eml_labels` parses with `email.policy.default`, which decodes
+them (`make_header(decode_header(...))` is not used: it raises LookupError on an unknown charset, which
+`screen_file` does not catch). `msip_labels_header_parses` fails a header one of whose `;` fragments names
+`MSIP_Label_` (any case) or holds `=?` and is not one `MSIP_Label_<guid>_<Attr>=<value>` pair (an attribute of
+letters and `_`, the classic AIP client's `Extended_MSFT_Method` included), or whose value still holds `=?` or a
+U+FFFD (a charset Python does not know), and a header whose raw form holds an encoded-word that does not decode or
+decodes to nothing (`=?utf-8?b?!!?=`, which reads as an empty name); the readout then carries
+`policy.MSIP_HEADER_UNPARSEABLE` with whatever labels did parse, and `label_decision` refuses it under any label
+rule (`label-unreadable`, `... ; a label rule is set`), as a binary `.msg` is withheld, not only under
+`refuse_unlabelled`. A header whose labels are all `Enabled=False` (a removed label) and one without `Name` are no
+error. The label fingerprint moves with the decoded labels, so a mail an older build converted is screened again.
+Tests: `test_policy.py::test_an_encoded_word_msip_labels_header_is_read_and_refused` (both forms, `.eml` and
+`.msg`, a name rule and an id rule), `test_policy.py::test_an_msip_labels_header_that_does_not_parse_refuses_under_any_label_rule`
+and `test_policy.py::test_a_removed_label_or_one_without_its_name_is_no_parse_error` (and the classic AIP header).
+
+**Every conversion reason folds the home folder, the longest path form first, before its whitespace is collapsed
+(C182, C183, C221, ruling 31; `agentsync.convert`; amends §16.196 I39).** A converter that could not start
+(`[convert] pandoc_path = "~/bin/pandoc"` missing, or not executable) put the home folder in the page,
+`_sync/QUARANTINE.tsv`, `_sync/STATE.md` and the manifest: `_reason` had no staged file, so `_pathless` never ran,
+and the cycle's waiting line (`convert_reason(why)`) rebuilt it on every later sync (C182). `_common._homeless`
+folds the home folder and is `_pathless`'s last step, and `_reason` calls it when there is no staged file. Each of
+`_pathless`' three loops takes a path's longest form first (`_longest_first`), so a resolved `/private/tmp/...`
+no longer leaves `/private` behind, and a link to a suffix of itself is right too (C183). `_reason` removes the
+paths from the raw text, then collapses its whitespace, then cuts it, so a staging folder with two spaces in a row,
+or a tab, no longer keeps its path (C221; codex-convert). Tests: `test_convert_family.py`'s
+`test_pathless_replaces_the_longest_form_first`, `test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed`,
+`test_a_staging_folder_with_two_spaces_leaks_no_path_into_the_docs_repo` and
+`test_a_converter_that_cannot_start_names_no_home_folder` (missing and not executable, two syncs each).
+
+**An older build's stub with a path in its reason is converted once more past its retries (C181, ruling 31;
+`agentsync.cycle`, `agentsync.convert`; corrects §16.196 I39).** I39's re-read was dead: the leaked path only ever
+went into a FAILED stub, `Manifest.produced_by` hands no FAILED row to `outdated`, and the I39 test's second run
+was a `_CONVERT_RETRIES` retry, which an older build that ran three times had already used up. `Cycle._retries`
+now converts a stub whose reason names a path (`_names_a_path`: `_stub_with_a_path`, or a reason the manifest cut
+inside this Mac's staging folder) once more when its retries are done, recorded as `_CONVERT_RETRIES + 1` in its
+`convert-retry:` entry so it never repeats, whatever the new reason says. A settled stub is never fetched, so once
+per manifest (`convert-path-reread:done`) `_queue_path_stubs` gives each such stub the ERROR verdict again, as
+`retry_settled_failure_rows` does (not a converter-unavailable one, not a local online-only one). It stays in the
+cycle, keyed off the reason: `produced_by` is not widened, so no other converter's `outdated` sees FAILED reasons.
+The reason arm of the deck, document and workbook converters' `outdated` is gone (it could never fire),
+`_stub_with_a_path` reads the home folder under `_homeless`' guard, and the staging words alone without one.
+Corrected by measurement: the verifier's fix in `_retries` alone never runs, as a settled stub is not fetched
+again (measured: 0 conversions in this build's run), and a stored reason is cut at 200 characters, before
+`/staging/` under a long `state_dir` outside the home folder. Tests: `test_convert_family.py`'s
+`test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once` (the older build runs 4 times, 3
+conversions, then this build converts it once and not again in two more runs),
+`test_the_one_shot_re_read_never_repeats_when_its_reason_still_holds_a_path` and
+`test_a_stub_with_a_path_needs_no_home_folder`.
+
+**A ContentType with whitespace around its `=` names its Office family (C222; `agentsync.convert`).**
+`_MAIN_TYPE_RE` read `ContentType="..."` only, and XML allows `ContentType = "..."`, line breaks included, so such
+a Word package under a deck's or a workbook's name went on to python-pptx or openpyxl and became a failed
+conversion, retried. The pattern takes `\s*` on both sides of the `=`. Test:
+`test_convert_family.py::test_a_content_type_with_whitespace_around_its_equals_sign_is_read` (` = `, a newline
+and a tab, as `.potx`, `.pptx` and `.xlsx`).
+
+**The new start's kept line agrees with its count (C116, C131, one defect from two finders; `agentsync.cli`; amends
+§16.196 I108).** One kept page read `new start: 1 page kept for files still settling in inbox; its next complete
+pass converts or removes them`, beside the sync's own `1 kept for a file still settling`. `_new_start_kept_lines`
+says `a file` and `it` for one page, `files` and `them` for more; `its` is the source's. Tests:
+`test_cycle.py::test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling` (the singular, and no
+`new start:` settling line of any count after the sweep) and
+`test_cycle.py::test_the_new_start_kept_line_agrees_with_its_count`.
+
+**The URL cut's line-end anchor has its test, and its words say where a scheme starts (C184, C185;
+`agentsync.convert.ocr`; amends §16.196 I104 and I72, §16.191 P54).** The `a URLSession cause mid-path is still a
+path` case had a space in its URL, so it never reached the cause's `$`: with the anchor removed, every case still
+passed. It is now `error: Failed to clone repository https://git.contoso.com/srv/Q3: The request timed
+out/Fabrikam Plans/Kit.git`, which reads `https:<path>` and, without the anchor, `<url>: The request timed
+out/Fabrikam Plans/Kit.git` (measured, C184). The `_plain` docstring said a letter, a digit or a `.` before a URL
+joins its scheme. A scheme starts at an ASCII letter with no letter, digit, `_` or `.` right before it, so a run
+that starts with an ASCII letter joins it (`a3https://...` ends at Git's prefix) and one that starts with a digit,
+`_`, `.` or a non-ASCII letter makes the URL a path (`3https://...` reads `3https:<path>`), a `+` or `-` right
+before the scheme staying outside the URL (C185; lane D's C186 takes these words beside E49). Tests:
+`test_ocr.py::test_a_tool_message_keeps_its_words_and_loses_every_path` (the new mid-path case, `a URL whose word
+starts with a digit is a path` and `a URL whose word starts with a letter keeps its scheme run`) and
+`test_ocr.py::test_the_url_cut_docstring_says_a_scheme_starts_at_a_letter`.
+
+**The speech build asks the Swift before the proxy fetch (C211; `agentsync.convert.speech`,
+`docs/deploy/it-request.md`; amends §16.197 I71).** Behind a proxy `_seed` fetched the 87 MB NemoTextProcessing
+file before `swift package resolve` found the Swift too old. `_swift_too_old` runs `swift --version` only when
+`_seed` would fetch (a proxy, and no file yet) and is True only when it exits 0 and names a version below the
+packaged `Package.swift`'s `swift-tools-version` (6.0), both read; then nothing is fetched. Any other answer (no
+match, a non-zero exit, a timeout, a tool that does not run) seeds as before, and it never raises. Resolve still
+runs, so SwiftPM's TOOLS_TOO_OLD reason stays the recorded one, doctor's fix and the report's bucket unchanged. A
+newer Swift that FluidAudio's own manifest refuses still fetches it: no worse, not fixed. Corrected by measurement:
+the check sits in `_seed` after its proxy test rather than before the call in `_compile`, so a build with nothing to
+fetch asks the Swift nothing and the speech tests' step lists stay. The IT request says so. Tests:
+`test_speech.py::test_a_swift_older_than_the_helper_needs_fetches_nothing_through_the_proxy` (5.10 fetches
+nothing; 6.2.4, no version and a non-zero exit seed),
+`test_speech.py::test_the_swift_check_needs_no_swift_without_a_proxy` and
+`test_deploy_pack.py::test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`.
+
+**Accented folder names take Finder's order (C212; `agentsync.arm_local`; amends §16.196 I24).** `natural_key`
+put `Été 2026` after `Facture` in NFC and first in NFD (a combining mark tokenized as punctuation). `_name_key`
+tokenizes each component from NFD with its combining marks taken off, and keeps them per letter, letters only and
+in order (`_marks`: ranked by `_FINDER_MARKS`, acute before grave, trailing empty entries trimmed so `straße` still
+ties with `strasse`, and a digit run's width moves no accent onto another letter: `1 Été` before `01 Été`);
+`natural_key` compares the tokens, then the accents, then the digit widths (`e01` before `é1`), then the NFC form's
+swapcase, then the raw path. Measured against `localizedStandardCompare` on this Mac, 2026-10-26: equal on eleven
+accent sets in NFC and in NFD. Corrected by measurement: the verifier's `strase, strasse, straße, strat` is not
+Finder's here, which puts `straße` first; neither key does, so the test pins the old key's order for it. Test:
+`test_loop.py::test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_the_exclude_line`.
 
 ### 16.202 Round 29: CI's times, the guides' hold and purge rows, the IT request's proxy and the rehearsal kit's note (2026-10-26, wave B13 round 29 lane D)
 
