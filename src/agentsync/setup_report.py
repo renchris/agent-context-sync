@@ -1254,8 +1254,8 @@ _FIXED_VALUE_PHRASES = (
     "whose page could not be read",
     "its own page was made from",
     "files still without a page",
-    "file has a page",
-    "files with a page",
+    "file has a converted page",
+    "files with a converted page",
     "erases the page and history",
     "erase that file's page and its history",
     "as its stub page says",
@@ -8302,8 +8302,9 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
         if int(cls) != 2 and not dataless and str(sid) not in graph:
             waiting[str(sid)] += int(files)
             field[str(sid)] += int(files) if int(cls) == 1 else 0
-    # a kind with no page at all is folded into one line, which says "has a page", never "no file": the
-    # query counts only files with a page, so a refused template reads 0 here (B13 round 10 L5)
+    # a kind with no page at all is folded into one line, which says "has a converted page", never "no
+    # file": the query counts only files with an ok output, so a refused template reads 0 here (B13 round 10
+    # L5), and a stub page, which Quarantine lists, is no converted page (B13 round 29 C134)
     folded = []
     for suffix, name in _OCR_DOCUMENTS.items():
         if not any(documents[(suffix, cls, away)] for cls in (2, 0, 1) for away in (0, 1)):
@@ -8316,10 +8317,10 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
                 cells.append(
                     f"{here + away} {_VERSION_WORDS[cls]}" + (f" ({away} online-only)" if away else "")
                 )
-        out.append(f"- {name} ({suffix}) files with a page: " + ", ".join(cells))
+        out.append(f"- {name} ({suffix}) files with a converted page: " + ", ".join(cells))
     if folded:
         listed = folded[0] if len(folded) == 1 else f"{', '.join(folded[:-1])} or {folded[-1]}"
-        out.append(f"- no {listed} file has a page")
+        out.append(f"- no {listed} file has a converted page")
     scans: Counter[str] = Counter()
     for sid, row_state, cls, dataless, files, _lo, _hi in _stub_rows(m):
         if row_state == "quarantined" and cls.startswith("no text layer"):

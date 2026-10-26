@@ -8567,6 +8567,8 @@ the OCR probe. There is no page count cap.
   Amended 2026-10-11 by §16.48 (R85): a line for deck templates (`.potx`), which the deck converter reads.
   Amended 2026-10-14, §16.86 L5: a kind with no page is folded into one line, `- no deck template (.potx) or
   OpenDocument (.odt) file has a page`; the images-not-on-this-Mac line stays at 0.
+  Amended 2026-10-26, §16.198 C134: the lines read `files with a converted page` and `file has a converted page`:
+  a stub page, which Quarantine lists, is no converted page.
 - Scanned PDFs with a stub, by the three reasons, and the engine identities found on pages with their page
   counts (an identity is printed only when it is `ocr-` and plain tokens).
 - Re-read, per local or inbox source, from manifest meta `reread:<source id>`: whether the scan is
@@ -13883,6 +13885,7 @@ source's top is `<path>` in the report, as every claimed suffix is. `_OCR_DOCUME
 from before OCR, as a deck's do.
 Amended 2026-10-14, §16.86 L5: only when a template has a page; otherwise it is named in the one `- no ... file
 has a page` line.
+Amended 2026-10-26, §16.198 C134: those lines read `files with a converted page` and `file has a converted page`.
 
 #### The speech build and the build watcher
 
@@ -18687,6 +18690,8 @@ scanned PDFs with a stub: none`, as K5 shortened the re-read line. The images-no
 every state (the finder dropped it): it is the measurement of the open decision O2's cost, and research cites its 0
 as the evidence. Tests: `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
 `test_ocr_part_counts_images_documents_rereads_and_time`.
+Amended 2026-10-26, §16.198 C134: the line reads `file has a converted page`, and each kind's `files with a
+converted page`: a deck whose page is a stub, which Quarantine lists, read as `no deck (.pptx) ... file has a page`.
 
 **An older copy's failed bracket names its own causes** (L21; dated line at §16.80 K11). `failed at step 1 (a
 changed --log-start value, or a fresh copy: the next attempt, 26s later, said v18)` sat on the stale attempt as if
@@ -32323,6 +32328,13 @@ names. The guide (`docs/deploy/setup-feedback.md`) quotes both forms. Tests:
 `test_a_lost_manifest_beside_a_heartbeat_its_mode_refuses_keeps_the_agents_chmod_first`,
 `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`, the unread row of the config-step words
 table, and `test_the_guide_gives_the_reports_step_2_state_outcomes`.
+
+**The OCR part says "converted page"** (C134's first half; amends §16.86 L5, §16.28 and §16.48). With a deck's
+stub page in Quarantine, the OCR part said `- no deck (.pptx) ... file has a page`: its query counts only files
+with an `ok` output, which a stub is not. The lines read `- <kind> (<suffix>) files with a converted page: ...` and
+`- no <kinds> file has a converted page`; stubs stay out of the query, as the version-class columns are only
+meaningful for converted pages, and `_FIXED_VALUE_PHRASES` takes the new phrases. Test:
+`test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line` (a quarantined `.pptx`).
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
