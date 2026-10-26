@@ -3971,16 +3971,26 @@ def held_purges(
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, list[Hold]]]]:
     """``queued`` (the runnable entries of :func:`partition_purges`) split by the holds in force: the ones a
     ``purge --queue`` would run, and the ones a hold suspends, each with its holds. A hold on ``all`` holds
-    every entry; an entry for one source, the holds on it; a sourceless ``docs=`` or ``path=`` entry under a
-    hold on one source only stays runnable, as ``purge`` judges it by the items it resolves (B13 round 28
-    I91: under a hold on all, status, the sync and the warn invited a ``purge --queue`` that refused, preview
-    included). Raises what :func:`active_holds` raises; the caller's hold-list-unread branch comes first."""
+    every entry; an entry for one source, the holds on it; a sourceless ``docs=`` or ``path=`` entry (the
+    cycle's DLP shape), the holds on the sources it resolves to, read-only and as the purge seeds them, folder
+    rows left out (B13 round 29 C205: under a hold on its one source it was invited, then refused); a manifest
+    that cannot be read keeps it runnable, as before, and a held source's id found only in history stays a
+    known gap (B13 round 28 I91). Raises what :func:`active_holds` raises; the caller's hold-list-unread
+    branch comes first."""
     holds = active_holds(state_dir, gov)
+    one_source = any(h.scope != HOLD_ALL for h in holds)
     runnable: list[QueuedPurge] = []
     held: list[tuple[QueuedPurge, list[Hold]]] = []
     for q in queued:
         sid = q.selector.source_id
-        blocking = blocking_holds(holds, [sid] if sid else [])
+        sources = [sid] if sid else []
+        if not sid and one_source:
+            try:
+                mt = _resolve_manifest(expand(state_dir) / "manifest.sqlite", q.selector, _stored_ids(q))
+                sources = sorted({s for s, _i, _r, d in mt.items if not d} | {s for s, _ in mt.aliases})
+            except (AgentSyncError, sqlite3.Error):
+                sources = []
+        blocking = blocking_holds(holds, sources)
         if blocking:
             held.append((q, blocking))
         else:
@@ -3988,21 +3998,40 @@ def held_purges(
     return runnable, held
 
 
+def _hold_names(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
+    """Each hold of ``held`` by name, never by where it is printed: ``the hold on all``, ``the hold on source
+    '<id>'``, ``the hold set in sources.toml's [governance]``, joined with "and" (B13 round 29 C115, C132)."""
+    scopes = sorted({h.scope for _q, hs in held for h in hs if h.origin != "config"})
+    names = ["the hold on all" if s == HOLD_ALL else f"the hold on source {s!r}" for s in scopes]
+    if any(h.origin == "config" for _q, hs in held for h in hs):
+        names.append("the hold set in sources.toml's [governance]")
+    return " and ".join(names)
+
+
+HELD_HEAD = " on the hold on "
+"""The fixed words after a held queue's count (":func:`held_words`"): ``1 queued purge waits on the hold on
+all; ...``; a config hold reads ``... on the hold set in sources.toml's [governance]`` (B13 round 29 C115)."""
+
+
 def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
-    """The note for the entries a hold suspends (:func:`held_purges`): they wait on the hold, and run once
-    its records owner releases it, with that release's command; a note, never a WAITING ON YOU, since the
-    next move is the records owner's, and never a ``purge --queue`` (B13 round 28 I91)."""
+    """The note for the entries a hold suspends (:func:`held_purges`): they wait on each hold, named (never
+    "the hold above": the sync prints no hold line; B13 round 29 C115, C132), and after its records owner
+    releases it, with that release's command, the next sync asks for ``purge --queue``; a note, never a
+    WAITING ON YOU, since the next move is the records owner's, and the release always before any
+    ``purge --queue`` (B13 round 28 I91)."""
     scopes = sorted({h.scope for _q, hs in held for h in hs if h.origin != "config"})
     config = any(h.origin == "config" for _q, hs in held for h in hs)
     how = [f"`{AGENTSYNC_BIN} hold {s} --release --owner <name>`" for s in scopes]
     if config:
         how.append("hold = false in sources.toml's [governance]")
     n = len(held)
-    verb = "waits" if n == 1 else "wait"
-    them = "it runs" if n == 1 else "they run"
+    verb, them = ("waits", "it") if n == 1 else ("wait", "them")
+    holds = len(scopes) + config
+    release = "releases it" if holds == 1 else "releases them"
     return (
-        f"{plural(n, 'queued purge')} {verb} on the hold above; {them} once its records owner releases it "
-        f"({' or '.join(how)})"
+        f"{plural(n, 'queued purge')} {verb} on {_hold_names(held)}; once its records owner {release} "
+        f"({' or '.join(how)}), the next sync asks you to run `{AGENTSYNC_BIN} purge --queue`, which runs "
+        f"{them}"
     )
 
 
@@ -4175,6 +4204,7 @@ def run_purge_queue(
         new_start = 0  # the new start's entries, and those kept until their id is found: one counted
         unresolved = 0  # WARNING per kind after the loop, as P25 (B13 round 28 I65)
         unlisted = 0  # entries whose source no sync since the new start listed (B13 round 29 C201)
+        held: dict[str, int] = {}  # each hold's refusal, counted, in first-seen order (B13 round 29 C176)
 
         def not_run(q: QueuedPurge, why: str) -> None:
             reports.append(
@@ -4247,7 +4277,10 @@ def run_purge_queue(
                     )
                 )
             except GovernanceError as exc:
-                log.warning("governance: queued purge kept: %s", exc)
+                if isinstance(exc, HoldActiveError):
+                    held[str(exc)] = held.get(str(exc), 0) + 1  # one counted WARNING per hold (C176)
+                else:
+                    log.warning("governance: queued purge kept: %s", exc)  # its note points here: per entry
                 not_run(q, f"stays queued: {exc if isinstance(exc, HoldActiveError) else _HELD_WHY}")
                 continue
             reports.append(rep)
@@ -4322,6 +4355,8 @@ def run_purge_queue(
             log.warning("governance: %s", unresolved_purges(unresolved))
         if unlisted:
             log.warning("governance: %s", unlisted_purges(unlisted))
+        for why, k in held.items():
+            log.warning("governance: %s kept: %s", plural(k, "queued purge"), why)
         if unjudged:
             log.warning(
                 "governance: cannot judge %s: %s",

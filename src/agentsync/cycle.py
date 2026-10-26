@@ -3518,15 +3518,44 @@ class _Cycle:
                 retention.append(f"- {state}: {detail}")
         if retention:
             lines += ["## Retention", "", *retention, ""]
-        lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
-        queued, kept = governance.partition_purges(self.config.state_paths, config=self.config)
+        try:
+            lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
+        except governance.GovernanceUnreadError:
+            # a hold list that cannot be read is no empty one; the other extras stay (B13 round 29 C204)
+            lines += [
+                "## Legal / records holds",
+                "",
+                "- the hold list cannot be read; purge and compaction stay suspended: status's "
+                "governance.hold line says why",
+                "",
+            ]
+        try:
+            queued, kept = governance.partition_purges(self.config.state_paths, config=self.config)
+        except governance.GovernanceUnreadError:  # its own FAIL in status; no queue invited
+            queued, kept = [], []
         if queued or kept:
             lines += ["## Queued purges", ""]
+        root = self.config.state_paths.root
+        if queued and governance.hold_list_unread(root):
+            # split as status and the loop split it: no purge invited over a hold list that lost a hold or
+            # cannot be read, nor under a hold (B13 round 29 C204; ruling 32)
+            lines.append(
+                f"- {plural(len(queued), 'purge request')} waiting; {governance.hold_list_wait(root)}: "
+                "status's governance.hold line says why"
+            )
+            queued = []
+        held: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
         if queued:
+            with contextlib.suppress(Exception):  # holds that cannot be read: each runnable, as status
+                queued, held = governance.held_purges(root, self.gov, queued)
+        if held:
+            lines.append(f"- {governance.held_words(held)}")
+        if queued:
+            exits = "; it exits 1 with the held ones still queued" if held else ""
             lines.append(
                 f"- {plural(len(queued), 'purge request')} waiting; preview with "
                 f"`{skill.AGENTSYNC_BIN} purge --queue --dry-run`, then run "
-                f"`{skill.AGENTSYNC_BIN} purge --queue` (rewrites history)"
+                f"`{skill.AGENTSYNC_BIN} purge --queue` (rewrites history){exits}"
             )
         lines += [f"- {line}" for line in governance.kept_lines(kept)]
         if queued or kept:

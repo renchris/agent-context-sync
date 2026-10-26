@@ -2328,7 +2328,12 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     assert not [w for w in step.waits if "queued purge" in w], step.waits
     assert governance.kept_purges(1) in step.notes
     release = "`~/.local/bin/agentsync hold source --release --owner <name>`"
-    assert any(n.startswith("1 queued purge waits on the hold above") and release in n for n in step.notes)
+    # each hold by name, never "the hold above" (B13 round 29 C115, C132)
+    assert any(
+        n.startswith("1 queued purge waits on the hold on source 'source'; once its records owner")
+        and release in n
+        for n in step.notes
+    )
     lines = cli._status_lines(initialised)
     assert not any(x.startswith("queued purges: ") for x in lines), lines
     assert any(x.startswith("queued purges held: 1 (") for x in lines) and any(
@@ -2337,12 +2342,107 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
     assert not check.ok and check.severity is doctor.Severity.WARN and check.fix is None
     assert check.detail.startswith("1 purge request queued (1 operator: an operator's request)")
-    assert governance.kept_purges(1) in check.detail and "waits on the hold above" in check.detail
+    assert (
+        governance.kept_purges(1) in check.detail and "waits on the hold on source 'source'" in check.detail
+    )
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert "  note: stays queued: purge suspended by legal/records hold: " in out
     assert out.splitlines()[-1] == "0 queued purges run; 2 still queued (1 of them while its file is listed)"
+
+
+def _state_md(config: Config) -> str:
+    return config.layout.state_md.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("how", ["a hold on all", "a lost hold", "a hold list that cannot be read"])
+def test_state_md_invites_no_queued_purge_a_hold_keeps(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 29 C204 (ruling 32): STATE.md invited `purge --queue` under a hold on all and under a lost
+    hold, where status and the sync invite nothing. It splits the queue as they do, in ruling 27's words."""
+    _cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    holds = governance._holds_file(root)
+    if how == "a lost hold":
+        holds.write_text('{"holds": []}\n', encoding="utf-8")
+    run_cycle(initialised, mode=CycleMode.RECONCILE)  # the cycle writes STATE.md; a sync's guard would stop
+    if how == "a hold list that cannot be read":
+        holds.write_text("{", encoding="utf-8")
+        run_cycle(initialised, mode=CycleMode.RECONCILE)
+    text = _state_md(initialised)
+    # no invitation: the held note names `purge --queue` only after the release (C132)
+    assert "purge --queue --dry-run" not in text and "(rewrites history)" not in text, text
+    if how == "a hold on all":
+        assert (
+            "waits on the hold on all; once its records owner releases it (`~/.local/bin/agentsync hold "
+            in text
+        )
+    elif how == "a lost hold":
+        assert f"waiting; {governance.HOLD_LOST_WAIT}: status's governance.hold line says why" in text, text
+    else:
+        assert f"waiting; {governance.HOLD_UNREAD_WAIT}: status's governance.hold line says why" in text, text
+
+
+def test_state_md_still_invites_a_purge_no_hold_keeps(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C204's control: a hold on another source leaves the queued purge invited in STATE.md."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sel = governance.PurgeSelector(stable_id="contoso-volume:0042", source_id="source")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    hold = ["hold", "contoso-other", "--reason", "hr", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    run_cycle(initialised, mode=CycleMode.RECONCILE)
+    assert "then run `~/.local/bin/agentsync purge --queue` (rewrites history)" in _state_md(initialised)
+
+
+@pytest.mark.parametrize("shape", ["docs", "path"])
+def test_a_sourceless_queued_purge_under_a_hold_on_its_one_source_is_held(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    """B13 round 29 C205 (ruling 32): a sourceless docs= or path= entry (the cycle's DLP shape) under a hold
+    on the one source it reaches was invited, then refused. It is held by the sources it resolves to, read
+    from the manifest as the purge seeds them."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    text = f"docs={page}" if shape == "docs" else "path=projects/sample.txt"
+    sel = governance.PurgeSelector.parse(text, source_id=None)
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.DLP_REMEDIATION)
+    hold = ["hold", "source", "--reason", "matter 7", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge --queue" in w], step.waits
+    release = "`~/.local/bin/agentsync hold source --release --owner <name>`"
+    assert any("waits on the hold on source 'source'" in n and release in n for n in step.notes), step.notes
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
+
+
+def test_a_held_queue_logs_one_counted_warning_per_hold(
+    initialised: Config, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 29 C176 (ruling 32): a purge --queue run under a hold logged one identical WARNING per held
+    entry. One counted WARNING per hold."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    for n in range(3):
+        sel = governance.PurgeSelector(stable_id=f"contoso-volume:004{n}", source_id="source")
+        assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="agentsync.governance"):
+        assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    kept = [r.getMessage() for r in caplog.records if " kept: " in r.getMessage()]
+    assert len(kept) == 1 and kept[0].startswith(
+        "governance: 3 queued purges kept: purge suspended by legal/records hold:"
+    ), kept
 
 
 def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits_ok(
