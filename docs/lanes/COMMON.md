@@ -482,7 +482,7 @@ Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on 
 also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
 tests (`gh run view <id> --log-failed`), then wait for the owner's fix. The lane that landed a test that is red on CI
-owns its fix until main is green, even after other lanes land on top. CI takes 18 to 45 minutes a run (the slowest, 44:27, in round 28, but one of 49:59 at round 28's start), and a run can wait up to about 48 minutes for a macOS runner first; its limit is 60 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207).
+owns its fix until main is green, even after other lanes land on top. CI takes 18 to 52 minutes a run (the slowest, 51:10, in round 29), and a run can wait up to about 48 minutes for a macOS runner first; its limit is 70 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372).
 
 Makes things worse: 18 round 30 items carry "a fix makes things worse? True" (C307, C317, C323, C324, C326, C329,
 C333, C342, C344, C350, C351, C355, C370, C371, C380, C386, C391, C396). For each, the verifier's corrected fix is

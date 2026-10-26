@@ -25712,7 +25712,8 @@ Y68:** the bound is now well under the ci job's 45 minutes, `timeout-minutes` in
 job took 33:53. **Amended 2026-10-23, §16.182 D83:** the bound is now well under the ci job's 50 minutes,
 `timeout-minutes` in ci.yml, raised from 45 after round 24's slowest job took 36:24. **Amended 2026-10-25,
 §16.197 I99:** the bound is now well under the ci job's 60 minutes, `timeout-minutes` in ci.yml, raised from 50
-after a job took 49:59.
+after a job took 49:59. **Amended 2026-10-26, §16.207 C372:** the bound is now well under the ci job's 70 minutes,
+`timeout-minutes` in ci.yml, raised from 60 after a job took 51:10.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -33352,4 +33353,18 @@ commit still holds the staging path, and no purge is queued).
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
-Reserved for round 30 lane D of B13.
+Lane D's round 30 items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the
+verifier's corrected fix built): C372 and C387 first, then C363 and C373, C379 and C366, C306, C376 and C392, then,
+after lanes RB and B landed the words they read, C315 and C378 and the guides' halves the lanes name, and last C329
+and C380. C372 and C387 are one defect, built once; so are C363 and C373, C379 and C366, and C329 and C380.
+
+**CI's time is the time of round 29's later jobs, and its limit is 70** (C372, C387; CLAUDE.md,
+`docs/lanes/COMMON.md`, ci.yml; dated line at §16.144 W70). The nine ci jobs from 673a72a0 to fa32c452 (read with `gh run view --json jobs`,
+all green on attempt 1; C387's count, which follows CLAUDE.md's chain from b2724d9c, where C372's started at
+7d46666a) took 35:36 to 51:10, six past 45; the slowest, b2b88e5d (docs and a doc test, not docs-only), ran pytest's
+step for 50:28 at 6345 tests, which left the 60-minute limit only 8:50 above it, under the 10 the note keeps.
+CLAUDE.md gives `about 18 to 52 minutes` with the nine named, COMMON.md says the same with round 30's id, and
+`timeout-minutes` is 70, about 19 minutes above 51:10, as round 25 raised it at a margin of 8:36; I99's and C207's
+sentences keep the 60 they measured against, and `tests/test_convert_recording.py`'s docstring names 70, as does a
+dated line on §16.144's W70 paragraph. Tests: `test_claude_md_gives_cis_time_and_its_limit`, which reads the limit
+from ci.yml and the docstring's number with it, and `test_the_recording_tests_limit_names_cis_own_limit`.

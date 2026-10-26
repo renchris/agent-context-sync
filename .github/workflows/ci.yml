@@ -36,7 +36,9 @@ name: ci
 # 37, which left 50 one second above that job, so it is 60: 10 minutes above it (B13 round 28 I99).
 # Round 28's six later jobs and round 29's first (71388552 to b2724d9c) took 30:19 to 44:27, all green on attempt 1
 # (the slowest 3f1dee54, pytest's step 43:58 at 6191 tests), so 60 stays 15 minutes above them and 10 above
-# 49:59 (B13 round 29 C207, C196).
+# 49:59 (B13 round 29 C207, C196). Round 29's nine later jobs (673a72a0 to fa32c452) took 35:36 to 51:10, all green
+# on attempt 1, six past 45 (the slowest b2b88e5d, pytest's step 50:28 at 6345 tests), which left 60 only 8:50 above
+# it, so it is 70: about 19 minutes above it (B13 round 30 C372, C387).
 on:
   workflow_dispatch:
   push:
@@ -53,7 +55,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
