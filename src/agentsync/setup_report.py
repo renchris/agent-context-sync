@@ -7656,8 +7656,7 @@ class _Mirror:
 
                     if manifest.manifest_lost(self.db):
                         # B13 round 28 ruling 21: status's words for an unread heartbeat, told apart
-                        said = getattr(manifest, "lost_words", lambda _db: None)(self.db)
-                        unread = said is not None and said == getattr(manifest, "LOST_MANIFEST_UNREAD", None)
+                        unread = manifest.lost_words(self.db) == manifest.LOST_MANIFEST_UNREAD
                         raise _LostManifestError(unread=unread) from None
                     raise _NoManifestError(self.new_pages) from None
                 except NotADirectoryError:  # a file where a folder on its way belongs (A23: the folder's)
@@ -7671,12 +7670,9 @@ class _Mirror:
                 if st.st_size < 100:  # lane B's I92: too short to be a manifest, beside earlier passes
                     from agentsync import manifest  # noqa: PLC0415 - lazy, as the reads above
 
-                    said = getattr(manifest, "lost_words", lambda _db: None)(self.db)
-                    if said is not None and said in (
-                        getattr(manifest, "LOST_MANIFEST_EMPTY", None),
-                        getattr(manifest, "LOST_MANIFEST_EMPTY_UNREAD", None),
-                    ):
-                        unread = said == getattr(manifest, "LOST_MANIFEST_EMPTY_UNREAD", None)
+                    said = manifest.lost_words(self.db)
+                    if said in (manifest.LOST_MANIFEST_EMPTY, manifest.LOST_MANIFEST_EMPTY_UNREAD):
+                        unread = said == manifest.LOST_MANIFEST_EMPTY_UNREAD
                         raise _LostManifestError(unread=unread, short=True)
                 side = _side_breaking_read(self.db)  # B13 round 25 ruling 12 (D20): the -wal's, not access
                 if side is not None:
@@ -7859,10 +7855,6 @@ def _cannot_open(exc: BaseException | None) -> bool:
 _STATE_SHUT = "the state file cannot be opened by this account: see Doctor's state_dir lines"
 """:func:`_why_not_read`'s words for it: doctor's state_dir (the folder) or state_dir.files (the file) says
 which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
-_STATE_FOLDER_SHUT = "the state folder cannot be opened by this account: see Doctor's state_dir lines"
-"""The same for a state folder, or a folder above it, that refuses this account (:func:`_state_folder_shut`):
-the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses. The
-words when the one Doctor line cannot be named (:func:`_state_folder_shut_words`)."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -7896,8 +7888,10 @@ def _state_folder_pointer(root: Path | None) -> str:
 
 
 def _state_folder_shut_words(root: Path | None) -> str:
-    """:data:`_STATE_FOLDER_SHUT` pointing at the one Doctor line that says why
-    (:func:`_state_folder_pointer`); the counting reads its opening, which never changes."""
+    """:data:`_STATE_SHUT`'s words for a state folder, or a folder above it, that refuses this account
+    (:func:`_state_folder_shut`): the words name what failed (B13 round 22 Z15, round 22 ruling 3), pointing
+    at the one Doctor line that says why (:func:`_state_folder_pointer`); the counting reads its opening,
+    which never changes."""
     return f"the state folder cannot be opened by this account: see Doctor's {_state_folder_pointer(root)}"
 
 
@@ -12050,8 +12044,8 @@ def _manifest_lost_kind(c: Config | None) -> str:
     """Which lost manifest the report's own read finds: ``"unread"`` when ``manifest.lost_words`` returns
     ``LOST_MANIFEST_UNREAD`` (a heartbeat.json beside it that cannot be read, so earlier passes cannot be
     ruled out; B13 round 27 P111), ``"records"`` for any other lost manifest (heartbeat.json records earlier
-    passes), ``""`` when it is not lost or the read fails. An installed build without ``lost_words`` reads
-    ``manifest_lost`` as ``"records"``, the only lost manifest it knew. B13 round 28 ruling 21 (I95, I1, I28,
+    passes), ``""`` when it is not lost or the read fails. The report ships with manifest in one build, so it
+    reads the names directly (B13 round 29 C167, as round 28 I74). B13 round 28 ruling 21 (I95, I1, I28,
     I41, I53, I64, I76): every lost-manifest word of the report chooses its ending by this, as status does,
     never "records earlier passes" over a heartbeat that cannot be read. ``"short"`` and ``"short-unread"``:
     lane B's ``LOST_MANIFEST_EMPTY`` and its unread twin (B13 round 28 I92), a file there but too short to be
@@ -12061,21 +12055,17 @@ def _manifest_lost_kind(c: Config | None) -> str:
     try:
         from agentsync import manifest  # noqa: PLC0415 - lazy, as _ManifestReader's
 
-        db = expand(c.state_paths.db)
-        words = getattr(manifest, "lost_words", None)
-        if words is None:
-            return "records" if manifest.manifest_lost(db) else ""
-        said = words(db)
+        said = manifest.lost_words(expand(c.state_paths.db))
     except Exception:
         return ""
     if said is None:
         return ""
     # lane B's I92: a manifest that is there but shorter than SQLite's header, beside earlier passes, is lost
-    # too, in words of its own (read by name, so an older build that lacks them never matches)
+    # too, in words of its own
     kinds = {
-        getattr(manifest, "LOST_MANIFEST_UNREAD", _STATE_LOST_UNREAD_COPY.strip()): "unread",
-        getattr(manifest, "LOST_MANIFEST_EMPTY", None): "short",
-        getattr(manifest, "LOST_MANIFEST_EMPTY_UNREAD", None): "short-unread",
+        manifest.LOST_MANIFEST_UNREAD: "unread",
+        manifest.LOST_MANIFEST_EMPTY: "short",
+        manifest.LOST_MANIFEST_EMPTY_UNREAD: "short-unread",
     }
     return kinds.get(said, "records")
 
@@ -12415,11 +12405,8 @@ def _shut_whose(c: Config, shut: str) -> str:
         # a file another account owns in a folder this one shut by its mode is the person's still (review);
         # each at its resolved path against its resolved folder, as doctor's state_dir.files FAIL judges it: a
         # -wal or -shm beside a linked manifest's target is in the target's folder (B13 round 28 I52, lane B's
-        # own_path_fix, read through getattr for an older build, whose fallback is the same judgment)
-        own = getattr(doctor, "own_path_fix", None) or (
-            lambda p: doctor.state_path_fix(Path(os.path.realpath(p)).parent, Path(os.path.realpath(p)))
-        )
-        fixes += [own(p) for p in refused or ([] if fixes else [db])]
+        # own_path_fix)
+        fixes += [doctor.own_path_fix(p) for p in refused or ([] if fixes else [db])]
         return _PERSONS if any(doctor.is_persons_fix(f) for f in fixes) else _AGENTS
     except Exception:
         return _PERSONS

@@ -6,7 +6,6 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 from __future__ import annotations
 
 import ast
-import contextlib
 import dataclasses
 import functools
 import itertools
@@ -15470,20 +15469,7 @@ def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_mi
     heartbeat.json that records passes is lost (``manifest.LOST_MANIFEST_EMPTY``), and status says "empty or
     too short". The report's lost words said "missing" of a file that is there. Its bucket, Status part
     lines, evidence, re-screen and step 2's outcome say it is empty or too short, with the damaged manifest's
-    moves. Lane B's names are given here only while this build lacks them."""
-    empty = "is empty or too short to be a manifest, but heartbeat.json records earlier passes"
-    if not hasattr(manifest_mod, "LOST_MANIFEST_EMPTY"):  # until lane B's I92 lands
-        real = manifest_mod.lost_words
-
-        def lost_words(db_path: Path) -> str | None:
-            with contextlib.suppress(OSError):
-                if db_path.is_file() and db_path.stat().st_size < 100 and real(db_path.with_name("gone")):
-                    return empty
-            return real(db_path)
-
-        monkeypatch.setattr(manifest_mod, "LOST_MANIFEST_EMPTY", empty, raising=False)
-        monkeypatch.setattr(manifest_mod, "LOST_MANIFEST_EMPTY_UNREAD", "x-unread", raising=False)
-        monkeypatch.setattr(manifest_mod, "lost_words", lost_words)
+    moves."""
     words = manifest_mod.LOST_MANIFEST_EMPTY
     cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
@@ -15895,6 +15881,22 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
 
 
+def test_the_report_reads_manifests_and_doctors_names_directly() -> None:
+    """B13 round 29 C167 (as round 28 I74): the report ships with manifest and doctor in one build, so a
+    getattr fallback for an older build's missing name is dead code that hides a rename; a broken module is
+    still caught by each read's ``except Exception``. None is left, and the unused ``_STATE_FOLDER_SHUT``
+    is gone."""
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    for dead in (
+        'getattr(manifest, "lost_words"',
+        'getattr(manifest, "LOST_MANIFEST_EMPTY',
+        'getattr(manifest, "LOST_MANIFEST_UNREAD", None)',
+        'getattr(doctor, "own_path_fix"',
+    ):
+        assert dead not in source, dead
+    assert not hasattr(setup_report, "_STATE_FOLDER_SHUT")
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_shut_side_at_a_linked_manifests_target_is_the_agents_chmod(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -15902,8 +15904,7 @@ def test_a_shut_side_at_a_linked_manifests_target_is_the_agents_chmod(
     """B13 round 28 I52 (the report's half; lane B's ``doctor.own_path_fix``): with manifest.sqlite a link
     to a file in another folder of this account's, a -wal there at mode 0000 is this account's own chmod at
     its resolved path, as doctor's state_dir.files FAIL says; the report judged it against the state folder
-    and called it the person's. The target itself at 0000 is the agent's too, and so is it with a doctor that
-    lacks own_path_fix (an older build)."""
+    and called it the person's. The target itself at 0000 is the agent's too."""
     cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(cfg)]) == 0
@@ -15923,9 +15924,6 @@ def test_a_shut_side_at_a_linked_manifests_target_is_the_agents_chmod(
         shut.chmod(0)
         try:
             assert setup_report._shut_whose(config, "file") == setup_report._AGENTS, shut.name
-            with monkeypatch.context() as m:
-                m.delattr(doctor, "own_path_fix", raising=False)
-                assert setup_report._shut_whose(config, "file") == setup_report._AGENTS, shut.name
         finally:
             shut.chmod(0o600)
 

@@ -27337,6 +27337,8 @@ above it refuses this account a search` before a folder's fix, and its NEXT says
 `test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere`,
 `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`,
 `test_cli.py::test_the_syncs_state_error_says_a_folder_refused_when_a_folder_did`.
+Amended 2026-10-26, §16.198 C167: `_STATE_FOLDER_SHUT` is gone, never read since `_state_folder_shut_words` named
+the one Doctor line (round 28 I19); its words and their reason live in that function, as I74 removed a dead copy.
 
 Amended 2026-10-22, §16.164 A4, A16: the outcome's folder-above words read `on agentsync's state folder, behind a
 folder above it that refuses this account a search: the person's to fix`.
@@ -32395,6 +32397,13 @@ line of its own adds `, N with a stub page`, the scanned PDFs' stubs among them.
 a stub page`, `has a stub page` and `have a stub page`. Tests:
 `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
 `test_ocr_part_counts_images_documents_rereads_and_time`.
+
+**No dead fallback for a name the same build ships** (C167; amends §16.158 Z15). The report and manifest, doctor
+ship in one build, so the getattr fallbacks for `manifest.lost_words`, `LOST_MANIFEST_UNREAD`,
+`LOST_MANIFEST_EMPTY`, `LOST_MANIFEST_EMPTY_UNREAD` and `doctor.own_path_fix` were dead code that hid a rename,
+and `_STATE_FOLDER_SHUT` was never read; each is gone (as round 28 I74), with the test legs that faked an older
+build. The lazy imports and their `except Exception` stay: they cover a broken module, not an older one. Test:
+`test_the_report_reads_manifests_and_doctors_names_directly`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
