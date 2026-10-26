@@ -1662,3 +1662,32 @@ def test_last_reread_counts_are_those_of_the_two_newest_runs_that_say_what_they_
         "UPDATE runs SET counts_json = '[\"reread_for\"]' WHERE run_id = (SELECT MAX(run_id) FROM runs)"
     )
     assert m.last_reread_counts() == [], "a record that is no object says nothing, and nothing older is used"
+
+
+@pytest.mark.parametrize("body", [b"", b"x", b"j" * 99])
+def test_a_link_to_a_short_file_and_a_heartbeat_link_to_nothing_are_lost(tmp_path: Path, body: bytes) -> None:
+    """B13 round 29 C202, C118 (ruling 29): a manifest link to a file under 100 bytes beside a heartbeat that
+    records passes is lost-short, as the file itself is, and _connect writes nothing through it; a heartbeat
+    that is a link to nothing beside a missing or short manifest cannot be read, never a first start. One
+    error per kind (C179): EINVAL for a short file, ENOENT for a missing one."""
+    state = tmp_path / "state"
+    state.mkdir()
+    target = tmp_path / "elsewhere.sqlite"
+    target.write_bytes(body)
+    db = state / "manifest.sqlite"
+    db.symlink_to(target)
+    hb = state / "heartbeat.json"
+    hb.write_text('{"contoso": {"run_id": 3, "last_success_at": "2026-10-01T00:00:00Z"}}\n', encoding="utf-8")
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY
+    with pytest.raises(manifest_mod.ManifestLostError) as raised:
+        manifest_mod._connect(db)
+    assert raised.value.errno == 22 and target.read_bytes() == body  # EINVAL; nothing written
+    target.write_bytes(b"j" * 100)
+    assert manifest_mod.lost_words(db) is None, "a link to 100 bytes or more is judged as before"
+    hb.unlink()
+    hb.symlink_to(tmp_path / "gone" / "heartbeat.json")
+    db.unlink()
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_UNREAD
+    assert manifest_mod.lost_error(db, manifest_mod.LOST_MANIFEST_UNREAD).errno == 2  # ENOENT
+    db.write_bytes(body)
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY_UNREAD
