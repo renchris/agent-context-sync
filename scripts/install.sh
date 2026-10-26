@@ -970,10 +970,11 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	# the person's fix, in lane B's words (round 28 I87, I89, I90): never a bare move aside of the hold list or
 	# of governance/, which read as no holds, so a page under a hold on all was erased. The hold list's put-back
 	# is conditional, as lane B's words are since round 29 (ruling 28: C151, C142, C126): a list that held no
-	# hold needs none. governance/'s second clause names what is at the path, never "it", which read as the
-	# real governance folder just named (round 29 ruling 28: C114, C143)
+	# hold needs none, and names the hold list, never "it" (round 30 ruling 42: C316, C333, lane B's words).
+	# governance/'s second clause names what is at the path, never "it", which read as the real governance
+	# folder just named (round 29 ruling 28: C114, C143)
 	MISPLACED_WHY="not damage, not a mode" MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN"
-	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from a copy they trust$SHUT_OPEN"
+	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then, if the hold list had listed any hold, put the hold list back from a copy they trust$SHUT_OPEN"
 	# the hold record outside governance/, which the next hold, release or sync writes again from the hold list and
 	# the audit trail, in lane B's words (round 29 ruling 24: C199)
 	[ "$1" != record ] || MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN; the next hold, release or sync writes it again from the hold list and the audit trail"

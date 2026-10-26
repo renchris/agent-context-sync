@@ -9736,7 +9736,8 @@ def misplaced_fix(role: str, kind: str) -> str:
             "now aside, keeping a copy"
         )
     if role == "holds":
-        back = "then, if it listed any hold, put the hold list back from a copy they trust"  # round 29 C151
+        # round 29 C151; round 30 ruling 42 (C316, C333): the hold list named, never "it"
+        back = "then, if the hold list had listed any hold, put the hold list back from a copy they trust"
         return f"keeping a copy, they move it aside, {back}{SHUT_OPEN}"
     if role == "record":  # lane B's round 29 C199: written again from the hold list and the audit trail
         again = "the next hold, release or sync writes it again from the hold list and the audit trail"
