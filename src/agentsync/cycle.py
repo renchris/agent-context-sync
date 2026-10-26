@@ -276,6 +276,11 @@ _PATH_REREAD_META = "convert-path-reread:done"
 """Set once the failed-conversion stubs whose reason an older build wrote a staging or home path into, and
 whose retries it used up, were given the ERROR verdict again (``_Cycle._queue_path_stubs``, B13 round 29
 C181), so the next fetch reaches ``_Cycle._retries``' one-shot re-read: a settled stub is never fetched."""
+_UNAVAILABLE_FOLD_META = "convert-unavailable-fold:done"
+"""Set once the stubs of a converter that could not start, whose stored reason an older build wrote the home
+folder into, had it folded to ``~`` in place, row and page (``_Cycle._fold_unavailable_reasons``, B13 round 30
+C361): such a stub is never converted while its converter cannot start, and its waiting line never rewrites
+it."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -2105,6 +2110,7 @@ class _Cycle:
             self._check_secret_rules()
             self.publisher.ensure_scaffold()
             self._rerender_stubs()
+            self._fold_unavailable_reasons()
             self._legacy_moved = self.manifest.retry_settled_failure_rows(
                 CONVERSION_FAILED, retried_meta=_RETRY_META, done_key=_RETRY_LEGACY_META
             )
@@ -2638,6 +2644,85 @@ class _Cycle:
         self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
             log.info("%d stub or tombstone page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
+
+    def _fold_unavailable_reasons(self) -> None:
+        """Once per manifest (meta ``_UNAVAILABLE_FOLD_META``): fold the home folder to ``~`` in the stored
+        reason of each stub whose converter could not start, as an older build wrote it before every reason
+        was folded (B13 round 29 C182), and in its page, which is written only where the plan differs, as
+        ``_rerender_stubs`` writes (B13 round 30 C361). Such a stub is never converted while the converter
+        still cannot start (``_queue_path_stubs`` skips it) and ``_converter_waits`` keeps it as it is, so its
+        page, ``_sync/QUARANTINE.tsv`` and the manifest kept the home folder. Folded in place, never swapped
+        for this cycle's reason: the stub keeps its first cause (B13 round 19 W51), and a waiting sync leaves
+        its page as it is. No verdict or count moves. The meta key is written only on a run that covers every
+        live source."""
+        if self.manifest.get_meta(_UNAVAILABLE_FOLD_META) is not None:
+            return
+        if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
+            return  # a run of some sources only: the next full one folds them all
+        folded = 0
+        for src in self.config.live_sources():
+            for row in list(self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))):
+                reason = row.state_reason or ""
+                if row.is_dir or not reason.startswith(CONVERTER_UNAVAILABLE):
+                    continue
+                result = self._failed_stub_again(row)
+                page = (result.reason or "") if result is not None else ""
+                if convert_common._homeless(reason) == reason and convert_common._homeless(page) == page:
+                    continue
+                # from the page's full text when it has it, cut as a stub's reason is stored: the cut an older
+                # build made inside the home folder lost what came after it
+                full = page if page.startswith(CONVERTER_UNAVAILABLE) else reason
+                self.manifest.set_state(
+                    src.id,
+                    row.stable_id,
+                    RowState.QUARANTINED,
+                    _one_line(convert_common._homeless(full), 200),
+                )
+                folded += 1
+                now = self.manifest.get_item(src.id, row.stable_id)
+                if result is None or now is None:
+                    continue
+                outs = self.manifest.outputs_for(src.id, row.stable_id)
+                have = [
+                    (o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE
+                ]
+                result = dataclasses.replace(result, reason=convert_common._homeless(page))
+                try:  # one row that cannot be planned or written keeps its page; no sync stops on it
+                    pages = self.publisher.plan_pages(src, now, result)
+                    if [(p.output_path, p.page_sha256) for p in pages] == have:
+                        continue
+                    self.changes += self.publisher.write_pages(now, pages, self.run_id)
+                except (PublishError, OSError) as exc:
+                    log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    continue
+                self.stub_pages.update(p.output_path for p in pages)
+        self.manifest.set_meta(_UNAVAILABLE_FOLD_META, "1")
+        if folded:  # a count, never a name
+            log.info("%d stored reason(s) of a converter that could not start folded the home folder", folded)
+
+    def _failed_stub_again(self, row: ItemRow) -> ConversionResult | None:
+        """The failed conversion's result ``row``'s stub was published from, rebuilt from its own intact page
+        (its ``reason:`` holds the full text), or None when its page is not one intact failed stub."""
+        outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if len(live) != 1 or live[0].status is not OutputStatus.FAILED or not _pages_intact(self.repo, outs):
+            return None
+        try:
+            fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, FrontmatterError):
+            return None
+        converter_id, _, converter_version = (fm.converter or "").partition("@")
+        return ConversionResult(
+            status=ConversionStatus.FAILED,
+            converter_id=converter_id,
+            converter_version=converter_version,
+            options_hash=fm.options_hash or "",
+            action_key=live[0].action_key or "",
+            content_sha256=fm.content_sha256 or "",
+            canonical_sha256=fm.canonical_sha256 or "",
+            units=(),
+            reason=fm.reason or row.state_reason or "",
+        )
 
     def _page_withheld(self, row: ItemRow) -> bool | None:
         """Whether the live stub of an image a label rule may withhold says so, read from the page, or None

@@ -32898,6 +32898,9 @@ or a tab, no longer keeps its path (C221; codex-convert). Tests: `test_convert_f
 Amended 2026-10-26, §16.206 C364: a tab no longer keeps the path only where the message prints it as written; each
 form is now replaced in its `repr` spelling too, the escaped one first (`_common._spellings`, which takes
 `_longest_first`'s place).
+Amended 2026-10-26, §16.206 C361: a converter-unavailable stub an older build wrote with the home folder in its
+reason is folded once, in place, row and page (`Cycle._fold_unavailable_reasons`); it never healed by itself while
+the converter could not start.
 
 **An older build's stub with a path in its reason is converted once more past its retries (C181, ruling 31;
 `agentsync.cycle`, `agentsync.convert`; corrects §16.196 I39).** I39's re-read was dead: the leaked path only ever
@@ -33128,6 +33131,23 @@ of it, so neither replace spoils the other, and an ordinary path's two spellings
 the home folder in both. Two spaces in a row were already clean (`repr` keeps a space). Test:
 `test_convert_family.py::test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed` (two spaces, a tab and
 a backslash; a `!r` message and two real `OSError`s, neither `staging` nor `Contoso` kept).
+
+**An older build's converter-unavailable reason is folded in place, once (C361, ruling 45; `agentsync.cycle`;
+amends §16.201 C182).** C182 folded the home folder out of every new reason, but a stub an older build wrote while
+pandoc could not start (`[convert] pandoc_path = "~/bin/pandoc"` missing) kept it in its page, `_sync/QUARANTINE.tsv`,
+`_manifest/<source>.jsonl` and the manifest for as long as pandoc still could not start: `_queue_path_stubs` skips a
+converter-unavailable row, and `_converter_waits` writes neither the row nor the page. Once per manifest
+(`convert-unavailable-fold:done`, written only on a run that covers every live source, as `_rerender_stubs`),
+`Cycle._fold_unavailable_reasons` folds the home folder to `~` in each such stub's stored reason, taken from its
+page's full `reason:` when the page is one intact failed stub (`_failed_stub_again`) and cut to 200 characters as a
+stub's reason is stored, since an older build's cut inside a long home folder lost what came after it; and rewrites
+the page with the folded reason only where the plan differs. It is never swapped for this cycle's reason: the stub
+keeps its first cause (§16.144 W51), and a later waiting sync leaves the page byte for byte. No verdict or count
+moves; the docs history keeps the older page, as for any page a later build rewrites. Test:
+`test_convert_family.py::test_an_older_builds_converter_unavailable_reason_is_folded_in_place` (the older build's
+sync with no home fold, a home folder long enough that the stored reason is cut inside it; then no home folder in
+the row, the HEAD page, QUARANTINE.tsv or the source's manifest file, the reason ending `~/bin/pandoc`, and a third
+sync that leaves the page as it is).
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 

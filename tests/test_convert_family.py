@@ -372,6 +372,45 @@ def test_a_converter_that_cannot_start_names_no_home_folder(tmp_path: Path, kind
         assert "cannot run pandoc: " in reason and "~/bin/pandoc" in reason
 
 
+def test_an_older_builds_converter_unavailable_reason_is_folded_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C361: a stub an older build wrote while pandoc could not start kept the home folder in
+    its page, QUARANTINE.tsv and the manifest for as long as pandoc still cannot start: such a stub is never
+    converted, and its waiting line rewrites nothing. The next sync folds the stored reason in place, once,
+    keeping its first cause, and a later waiting sync leaves the page as it is."""
+    # a home folder of 150 characters: the stored reason (200) is cut inside it, the page's (300) is not
+    home_dir = tmp_path / ("Contoso Home " * 20)[: max(12, 149 - len(str(tmp_path.resolve())))].strip()
+    home_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home_dir))
+    config, src = make_env(tmp_path, extra='\n[convert]\npandoc_path = "~/bin/pandoc"\n')
+    (src / "contoso-notes.rtf").write_text(r"{\rtf1\ansi Contoso notes\par}", encoding="utf-8")
+    homes = {str(home_dir), str(home_dir.resolve())}  # a tmp folder is /var and /private/var
+    from agentsync.convert import _common  # noqa: PLC0415
+
+    with monkeypatch.context() as mp:  # the build before C182, and before this fold
+        mp.setattr(convert_pkg, "_homeless", lambda text: text)
+        mp.setattr(_common, "_homeless", lambda text: text)
+        mp.setattr(cycle_mod._Cycle, "_fold_unavailable_reasons", lambda _self: None)
+        run(config)
+    page = "mirror/src/contoso-notes.rtf.md"
+    stored = _row(config, "contoso-notes.rtf").state_reason or ""
+    assert stored.endswith("…") and "~/bin" not in stored, "the older build cut it inside the home folder"
+    assert [h for h in homes if h in page_fm(config, page)["reason"]]
+    run(config)
+    reason = _row(config, "contoso-notes.rtf").state_reason or ""
+    # from the page's full text, as the cut inside the home folder lost what came after it
+    assert reason.endswith("[convert] pandoc_path is not an absolute file: ~/bin/pandoc"), reason
+    assert "Contoso Home" not in reason
+    for rel in (page, "_sync/QUARANTINE.tsv", "_manifest/src.jsonl"):
+        assert "Contoso Home" not in git(config.docs_repo, "show", f"HEAD:{rel}"), rel
+    assert page_fm(config, page)["reason"].endswith("~/bin/pandoc")
+    assert _leaks(config) == []
+    before = (config.docs_repo / page).read_bytes()
+    run(config)
+    assert (config.docs_repo / page).read_bytes() == before, "a waiting sync leaves the stub as it is"
+
+
 def test_a_stub_with_a_path_needs_no_home_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     """C181: ``_stub_with_a_path`` now runs in the cycle, so a Mac with no home folder to read (no HOME, no
     password entry) gets the staging words alone, as ``_homeless`` does, never a RuntimeError."""
