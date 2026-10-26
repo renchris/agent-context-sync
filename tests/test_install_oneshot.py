@@ -2753,9 +2753,92 @@ def test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report(t
     shown = _shell_hold_redact(tmp_path, [], said, "en_US.UTF-8")
     assert shown == [
         "F4 | step 3 | question | 1 | <value> said the hold stays on | -",
-        "<value> released alpha; the records owner runs hold beta again",
+        # the scopes no source names are source ids since B13 round 30 C386; "alpha" is a word this report
+        # prints, which stays readable, as setup_report keeps it
+        "<value> released alpha; the records owner runs hold <source-1> again",
         "Sky Lund is no hold owner",
     ], shown
+
+
+@pytest.mark.parametrize("record", ["hold-record", "heartbeat"])
+def test_a_hold_scope_no_source_names_is_cut_from_the_shell_report_from_every_hold_file(
+    tmp_path: Path, record: str
+) -> None:
+    """B13 round 30 ruling 39 (C386), the shell half: a hold scope is free text in a source id's shape, so a
+    matter name can stand there, and status's HOLD: line and the lost-hold FAIL printed it in clear.
+    hold_scopes reads every scope the hold list, the audit trail and hold-record.json name, and
+    redaction_pairs registers each one no source names as a source id, <source-N>, listed or lost; `all` and a
+    scope that is one of agentsync's own words (`docs`) stay readable, as a configured id does. In byte
+    order, as setup_report numbers them; heartbeat.json's round 28 `holds` list is read only while no
+    hold-record.json is there, as governance.recorded_hold_scopes reads it."""
+    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True)
+    trail = [
+        {"action": "hold-set", "at": "2026-10-22T05:32:56Z", "scope": "client-alpha", "owner": "Avery Quill"},
+        {"action": "hold-released", "at": "2026-10-22T06:00:00Z", "scope": "docs", "owner": "Avery Quill"},
+    ]
+    (state / "governance" / "audit.jsonl").write_text("".join(json.dumps(r) + "\n" for r in trail))
+    beat = {"holds": ["all", "matter-zeta"], "project-alpha": {"run_id": 3}}
+    if record == "hold-record":
+        (state / "hold-record.json").write_text(
+            json.dumps({"holds": ["all", "matter-zeta"]}, indent=1) + "\n"
+        )
+        beat["holds"] = ["beat-scope"]  # not read beside a hold record
+    (state / "heartbeat.json").write_text(json.dumps(beat, indent=1) + "\n")
+    hold = {
+        "owner": "Rowan Pike",
+        "reason": "review",
+        "scope": "fabrikam-merger",
+        "set_at": "2026-10-22T05:00:00Z",
+    }
+    said = [
+        "HOLD: hold fabrikam-merger (state) since 2026-10-22T05:00:00Z: reason and owner not shown",
+        "HOLD: hold client-alpha (audit) since 2026-10-22T05:32:56Z: lost from the hold list, owner not "
+        "shown",
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on matter-zeta set by the records "
+        "owner (kept by hold-record.json), and no release is recorded",
+        "HOLD: hold all (record): lost from the hold list, owner not shown",
+        "hold docs released (owner not shown)",
+        "beat-scope",
+    ]
+    shown = _shell_hold_redact(tmp_path, [hold], said, "en_US.UTF-8")
+    assert shown == [
+        "HOLD: hold <source-2> (state) since 2026-10-22T05:00:00Z: reason and owner not shown",
+        "HOLD: hold <source-1> (audit) since 2026-10-22T05:32:56Z: lost from the hold list, owner not shown",
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on <source-3> (owner not shown) "
+        "(kept by hold-record.json), and no release is recorded",
+        "HOLD: hold all (record): lost from the hold list, owner not shown",
+        "hold docs released (owner not shown)",
+        "beat-scope",
+    ], shown
+    for name in ("fabrikam", "client-alpha", "zeta"):
+        assert name not in "\n".join(shown), shown
+
+
+def test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_in_the_shell_report() -> None:
+    """B13 round 30 ruling 42 (C313), hold_cut's half: a hold only hold-record.json keeps has the origin
+    `record`, and hold_cut, matching `(config|state|audit)`, left its reason and owner whole. It is cut as the
+    `audit` origin is, keeping the fixed `lost from the hold list`, before lane B's land prints one."""
+    fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
+    assert fn is not None
+    said = {
+        "HOLD: hold all (record): lost from the hold list — set by the records owner since "
+        "2026-10-22T05:32:56Z": (
+            "HOLD: hold all (record) since 2026-10-22T05:32:56Z: lost from the hold list, owner not shown"
+        ),
+        "refused: hold beta (record): Matter Contoso — set by Pat Doe. Release it first (records owner).": (
+            "refused: hold beta (record): reason and owner not shown. Release it first (records owner)."
+        ),
+    }
+    cp = subprocess.run(
+        [BASH32, "-c", fn.group(0) + "hold_cut"],
+        input="\n".join(said) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
+    )
+    assert cp.stdout.splitlines() == list(said.values())
 
 
 def test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
@@ -2837,6 +2920,7 @@ def _shell_hold_redact(
             "repo_slug() { echo contoso/agentsync; }",
             'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
             f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
+            *re.findall(r"(?m)^GENERIC_SOURCE_IDS=.*$", text),
             helpers,
             funcs,
             f"redact_stream <{said_file}",
@@ -17527,7 +17611,7 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
 SHELL_REDACTION_FNS = re.compile(
-    r"(?ms)^(?:hold_values|redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$"
+    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$"
 )
 
 

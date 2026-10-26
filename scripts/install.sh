@@ -2168,6 +2168,50 @@ hold_values() {
 			}
 		}' "${files[@]}" 2>/dev/null || true
 }
+# Every hold scope the hold files name, one a line, each once, in byte order, "all" left out (B13 round 30
+# ruling 39, C386): the "scope" of each hold in governance/holds.json, of each audit line that sets or releases a
+# hold in governance/audit.jsonl, and each scope hold-record.json's "holds" list keeps (ruling 24), or, while no
+# hold-record.json is there, heartbeat.json's round 28 "holds" list (a list only: a "holds" object is a source
+# of that name), as governance.recorded_hold_scopes reads them. Only a scope in a source id's shape
+# (config.SOURCE_ID_RE), which is all a hold takes, so no JSON escape needs undoing. Only a regular file is read,
+# so a fifo there cannot hold it. Every read fails quietly.
+hold_scopes() {
+	local k v f state="" json audit record
+	local -a files=()
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	json="$state/governance/holds.json" audit="$state/governance/audit.jsonl" record="$state/hold-record.json"
+	[ -e "$record" ] || [ -L "$record" ] || record="$state/heartbeat.json"
+	for f in "$json" "$audit" "$record"; do
+		[ ! -f "$f" ] || files+=("$f")
+	done
+	[ "${#files[@]}" -gt 0 ] || return 0
+	HOLDS_JSON="$json" AUDIT_JSONL="$audit" LC_ALL=C awk '
+		function ids(s, key,    v) { # each "<key>": "<id>" in s
+			while (match(s, "\"" key "\"[[:space:]]*:[[:space:]]*\"[a-z0-9][a-z0-9-]*\"")) {
+				v = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+				sub(/^[^:]*:[[:space:]]*"/, "", v); sub(/"$/, "", v); print v
+			}
+		}
+		{ sub(/\r$/, "") }
+		FILENAME == ENVIRON["AUDIT_JSONL"] { if ($0 ~ /"action"[[:space:]]*:[[:space:]]*"hold-(set|released)"/) trail = trail $0 "\n"; next }
+		FILENAME == ENVIRON["HOLDS_JSON"] { held = held $0 "\n"; next }
+		{ kept = kept $0 "\n" }
+		END {
+			ids(held, "scope"); ids(trail, "scope")
+			# the record (or the heartbeat): "holds": ["<id>", ...], the list up to its first ]
+			if (match(kept, /"holds"[[:space:]]*:[[:space:]]*\[/)) {
+				s = substr(kept, RSTART + RLENGTH)
+				if ((k = index(s, "]"))) s = substr(s, 1, k - 1)
+				while (match(s, /"[a-z0-9][a-z0-9-]*"/)) { print substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH) }
+			}
+		}' "${files[@]}" 2>/dev/null | LC_ALL=C awk '$0 != "all" && length($0) <= 63' | LC_ALL=C sort -u || true
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
@@ -2654,6 +2698,18 @@ redaction_pairs() {
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
 	} 2>/dev/null | LC_ALL=C sed 's/ mirrored but no longer in sources\.toml.*//' |
 		LC_ALL=C grep -oE "'[a-z0-9][a-z0-9-]*' \([0-9]+ file(s|\(s\))?\)" | LC_ALL=C sed "s/^'//; s/' .*//" | LC_ALL=C sort -u)
+	# Every hold scope no source above names (hold_scopes: the hold list, the audit trail and the hold record), as
+	# a source id after them: a scope is free text in an id's shape, so a matter name can stand there, and status's
+	# HOLD: line and the lost-hold FAIL print it (B13 round 30 ruling 39, C386, as setup_report registers lane RA's
+	# pairs). An id that is one of agentsync's own words or a word this report prints stays readable, as setup_report
+	# keeps it (U62); "all" is never one. In byte order, after the vanished ids, as the Python report numbers them.
+	while IFS= read -r v; do
+		case "$ids" in *" $v "*) continue ;; esac
+		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
+		! report_word "$v" || continue
+		tables=$((tables + 1)) ids="$ids$v "
+		add_pair "$v" "<source-$tables>" w
+	done < <(hold_scopes)
 	# and the folder each one is added back from: doctor's fix and the sync's refusal end with
 	# cycle.vanished_add_back_tail, "... install.sh --source-local "<folder>" [--source-local ...]" under
 	# install.sh and "... add-source "<folder>"[, then ... add-source "<folder>"]" elsewhere, each folder
@@ -3236,10 +3292,11 @@ agent_restore() {
 # never less: "hold <scope> (<origin>)[ since <iso>]: reason and owner not shown[<ending>]"; a refusal joining N
 # more reads "hold <scope> (<origin>) and N more hold(s): reasons and owners not shown[<ending>]"; the release
 # "hold <scope> released (owner not shown)". agentsync status still prints both. Before the pairs, as the Python
-# report cuts them before its pass. A hold the hold list lost (origin "audit", governance.lost_holds) is cut too,
-# keeping agentsync's fixed reason: "hold <scope> (audit)[ since <iso>]: lost from the hold list, owner not
-# shown[<ending>]"; and its governance.hold FAIL ("... no longer lists the hold on <scope> set by <owner>[ at
-# <iso>] (kept by <records>) ...") reads "... on <scope> (owner not shown)" and then the line from its last fixed
+# report cuts them before its pass. A hold the hold list lost (origin "audit", governance.lost_holds, or "record"
+# when only hold-record.json keeps it: B13 round 30 ruling 42, C313) is cut too, keeping agentsync's fixed reason:
+# "hold <scope> (audit|record)[ since <iso>]: lost from the hold list, owner not shown[<ending>]"; and its
+# governance.hold FAIL ("... no longer lists the hold on <scope> set by <owner>[ at <iso>] (kept by <records>)
+# ...") reads "... on <scope> (owner not shown)" and then the line from its last fixed
 # anchor (the last record clause, " (kept by " or the older " (audit.jsonl", with the " at <iso>" right before it;
 # with no record clause, nothing),
 # so an owner holding one hides more, never less, as setup_report._LOST_HOLD_RE cuts it (lane RA's round 29
@@ -3270,7 +3327,7 @@ hold_cut() {
 		}
 		{
 			s = lostcut($0); out = ""; set = " \342\200\224 set by "; held = ""
-			while (match(s, /hold [^ \t\r\f\v]+ \((config|state|audit)\): /)) {
+			while (match(s, /hold [^ \t\r\f\v]+ \((config|state|audit|record)\): /)) {
 				at = RSTART; len = RLENGTH
 				if (word(s, at) || !index(substr(s, at + len), set)) { out = out substr(s, 1, at); s = substr(s, at + 1); continue }
 				head = substr(s, at, len - 2); whole = substr(s, at); out = out substr(s, 1, at - 1)
@@ -3286,9 +3343,9 @@ hold_cut() {
 				reason = substr(reason, 1, j - length(set))
 				if (match(tail, / since [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?$/)) when = substr(tail, RSTART)
 				more = 0; w = substr(whole, len + 1)
-				while (match(w, /; hold [^ \t\r\f\v]+ \((config|state|audit)\): /)) { more++; w = substr(w, RSTART + RLENGTH) }
+				while (match(w, /; hold [^ \t\r\f\v]+ \((config|state|audit|record)\): /)) { more++; w = substr(w, RSTART + RLENGTH) }
 				if (more) held = head " and " more " more hold" (more > 1 ? "s" : "") ": reasons and owners not shown" end
-				else if (head ~ / \(audit\)$/ && reason == "lost from the hold list") held = head when ": lost from the hold list, owner not shown" end
+				else if (head ~ / \((audit|record)\)$/ && reason == "lost from the hold list") held = head when ": lost from the hold list, owner not shown" end
 				else held = head when ": reason and owner not shown" end
 				s = ""
 				break
