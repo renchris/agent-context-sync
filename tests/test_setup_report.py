@@ -16263,21 +16263,31 @@ def test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fai
     with no such words, or a hold list that can be read, leaves it where it was."""
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)
-    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    config = load_config(fake_mac["config"])
+    root = expand(config.state_paths.root)
     (root / "governance").mkdir(parents=True, exist_ok=True)
     holds = root / "governance" / "holds.json"
     hold_fail = (
         f"[FAIL] governance.hold — {holds} is a folder, not a file: the hold list belongs there (fix: the "
         f"person moves {holds} aside, keeping a copy)"
     )
-    queue_warn = (
-        "[warn] governance.purge_queue — 1 purge request queued (confirmed upstream deletions / label "
-        "escalations); not run while the hold list cannot be read: the governance.hold line says why"
+    # B13 round 29 C168: the warn as cli's own governance checks give it, never words written here
+    sid = config.sources[0].id
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(source_id=sid, stable_id="s1"), governance.PurgeReason.OPERATOR
     )
+
+    def cli_warn() -> str:
+        checks = cli._governance_checks(config)
+        [warn] = [r for r in checks if r.name == "governance.purge_queue" and not r.ok]
+        assert setup_report._HOLD_UNREAD_WAIT in warn.detail, warn.detail  # a rewording fails here, by name
+        return f"[warn] {warn.name} — {warn.detail}"
+
     older_warn = "[warn] governance.purge_queue — 1 purge request queued (confirmed upstream deletions)"
     holds.unlink(missing_ok=True)
     holds.mkdir()
     try:
+        queue_warn = cli_warn()
         _text, summary = summary_of(
             fake_mac, doctor=lambda config: ["[ok  ] python — fine", hold_fail, queue_warn]
         )
@@ -16295,6 +16305,7 @@ def test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fai
     holds.write_text("{}\n", encoding="utf-8")
     holds.chmod(0o000)
     try:
+        queue_warn = cli_warn()
         refused = (
             f"[FAIL] governance.hold — {holds} cannot be opened: Permission denied (fix: chmod 600 {holds})"
         )
@@ -16307,7 +16318,7 @@ def test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fai
     finally:
         holds.chmod(0o600)
     # a hold list that can be read: the warn is not the hold list's
-    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", queue_warn])
+    _text, summary = summary_of(fake_mac, doctor=lambda c: ["[ok  ] python — fine", queue_warn])
     assert "(not run while the hold list cannot be read)" not in _line(summary, "- doctor: "), summary
 
 

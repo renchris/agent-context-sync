@@ -32405,6 +32405,13 @@ and `_STATE_FOLDER_SHUT` was never read; each is gone (as round 28 I74), with th
 build. The lazy imports and their `except Exception` stay: they cover a broken module, not an older one. Test:
 `test_the_report_reads_manifests_and_doctors_names_directly`.
 
+**The I45 test reads cli's own warn** (C168). `test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fail`
+wrote doctor's governance.purge_queue warn by hand, so a rewording in cli left it green while the report's bucket
+no longer matched. It queues one purge and takes the warn from `cli._governance_checks` with the hold list a
+folder and at mode 0000, asserting `_HOLD_UNREAD_WAIT` is in its detail; the older doctor's warn stays a literal,
+as it stands for a build that is not this one. Measured on a mutant: with cli's phrase reworded, the new test
+fails and the old one passed.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Reserved for round 29 lane RB of B13.
