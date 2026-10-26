@@ -6404,6 +6404,17 @@ def _exit_text(run: InstallRun, runs: Sequence[InstallRun]) -> str:
     return f"exit {run.rc} after {secs}" + (", before its report step" if _provisional(run, runs) else "")
 
 
+def _run_end(run: InstallRun, runs: Sequence[InstallRun]) -> str:
+    """The Every run table's end cell: :func:`_exit_text`, and the Summary's words when a signal stopped the
+    run's closing status (:func:`_closing_stopped`), so the table never shows such a run as a plain exit 0
+    while its report step's row says it was stopped (B13 round 29 C135)."""
+    if run.rc is None:
+        return "no end line"
+    end = _exit_text(run, runs)
+    closing = _closing_stopped(run.step("report"))
+    return f"{end}, its closing status {closing}" if closing is not None else end
+
+
 def _run_list(runs: Sequence[InstallRun], *, signed: InstallRun | None = None) -> list[str]:
     """Every run on one line (the tables above show the last :data:`INSTALL_RUNS_SHOWN` only), and the runs
     with no end line by their start time, whether their process is gone, and the last step they logged.
@@ -6417,7 +6428,7 @@ def _run_list(runs: Sequence[InstallRun], *, signed: InstallRun | None = None) -
             "list-folders" if run.list_only else "install",
             len(run.steps),
             _reached(run, stopped=run is signed),
-            _exit_text(run, runs) if run.rc is not None else "no end line",
+            _run_end(run, runs),
         )
         for run in listed
     ]

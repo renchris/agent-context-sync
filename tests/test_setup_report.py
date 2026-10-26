@@ -6585,9 +6585,14 @@ def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_su
         text, summary = summary_of(fake_mac)
         [row] = [ln for ln in section(text, "Installer").splitlines() if ln.startswith("| report ")]
         line = _line(summary, "- install.sh: ")
+        # B13 round 29 C135: the Every run table's end cell says it too, never a plain exit 0
+        every = section(text, "Installer").split("Every run, oldest first", 1)[1]
+        [run_row] = [ln for ln in every.splitlines() if ln.startswith("| ") and "| install |" in ln]
         if words is None:
             assert "closing status" not in row and "closing status" not in line, (field, row, line)
+            assert "closing status" not in run_row and run_row.endswith("| exit 0 after 57s |"), run_row
             continue
+        assert run_row.endswith(f"| exit 0 after 57s, its closing status {words} |"), run_row
         assert f"the closing status was {words} before it finished, so its NEXT line may be missing" in row, (
             row
         )

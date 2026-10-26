@@ -31232,6 +31232,8 @@ Amended 2026-10-25, §16.193 I27: the agentsync report reads the field: the repo
 status was stopped by SIGKILL (signal 9) before it finished, so its NEXT line may be missing`, and the Summary's
 install.sh line `, its closing status stopped by SIGKILL (signal 9)` after the exit; only a signal exit (128 + N)
 is read, never echoed.
+Amended 2026-10-26, §16.198 C135: and the Installer section's Every run table's end cell adds the same `, its
+closing status stopped by SIGKILL (signal 9)` after the exit, so that table never shows such a run as a plain exit 0.
 
 **Every friction stamp setup_report reads, the shell reads** (P145; amends §16.184 E77; dated line at §16.179 D79).
 The shell's readers took `...:SSZ` and, since E77, a fraction, while `_ISO_TIME` and `parse_time` read an offset
@@ -32375,6 +32377,12 @@ Tests: `test_a_lost_links_words_name_the_link_first_in_doctors_words`, the pins 
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`,
 `test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
 `test_the_guide_gives_the_reports_step_2_state_outcomes`.
+
+**The Every run table says a stopped closing status** (C135; amends §16.189 P14, beside I27's line). Round 28's I27 read
+install.log's `closing_status=` into the report step's row and the Summary, but the Installer section's Every run
+table still ended such a run `exit 0 after 57s`. `_run_end` gives that cell the Summary's words, `exit 0 after 57s,
+its closing status stopped by SIGKILL (signal 9)`; no field, or one that is no signal exit, reads as before. Test:
+`test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
