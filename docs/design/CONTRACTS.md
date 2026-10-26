@@ -32506,6 +32506,19 @@ such tail and keeps the words (`src-x: <path> is a `contains a credential` stub 
 trailing clause (`; S of the unreadable held back: ...`) sits after every clause `_SPLIT_RE` keys on, which reads
 the same counts. Test: `test_a_credential_stubs_alarm_names_no_page_in_the_report`.
 
+**Both side files not files are named in the outcome and the evidence** (C140, on lane B's C141 helper). With
+folders at both the -wal and the -shm, step 2's outcome and the evidence named the -wal only and said moving "it"
+aside lets the report measure, beside a bucket that named both. `_both_sides` reads doctor's one judge
+(`sides_not_a_file_at`) worded by lane B's `sides_not_files_words`: when the run's own side and the other are not
+files now, the outcome reads ` on the state file's write-ahead log and shared-memory file, which are each a folder,
+not a file: the person's to fix` (mixed kinds, `which are a folder and a fifo, not files`; each kind doctor's
+`state_file_kind`), after they were moved aside; the evidence, `... are not files: a report written after the
+person moves each aside measures them (see Doctor's state_dir.files lines)`. One moved aside since, or no config,
+keeps the line's own side, so a historical outcome never names a side its line did not lead to. Round 28 I31's
+evidence pin (the -wal alone, whose folder breaks the read) follows. Tests:
+`test_both_side_files_not_files_are_named_in_the_outcome_and_the_evidence`,
+`test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

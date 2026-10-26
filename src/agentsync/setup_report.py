@@ -10170,6 +10170,7 @@ def _evidence_line(r: _Run) -> str:
     # B13 round 26 E23: the side file by name when every such line names the same one
     side_names = {w.split(" is not a file", 1)[0] for w in side_whys}
     side_name = next(iter(side_names)) if len(side_names) == 1 else ""
+    both = _both_sides(r)[0] if side else ""
     notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
     above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
     gov = sum(n for w, n in why.items() if w.startswith("a file in the state folder cannot be opened"))  # A87
@@ -10202,7 +10203,10 @@ def _evidence_line(r: _Run) -> str:
         ),
         (
             side,
-            f"{side_name or 'a side file of the state file'} is not a file: a report written after the "
+            f"{both} are not files: a report written after the person moves each aside measures them (see "
+            "Doctor's state_dir.files lines)"
+            if both  # B13 round 29 C140: both side files, by lane B's two-side words
+            else f"{side_name or 'a side file of the state file'} is not a file: a report written after the "
             "person moves it aside measures them (see Doctor's state_dir.files line)",
         ),
         (
@@ -14530,6 +14534,16 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             return f" on {noun}, which is damaged, empty or of the wrong shape: the person's to fix", after
         side = _STATE_SIDE_NOT_FILE_RE.search(ln.strip())  # B13 round 25 ruling 12 (D9)
         if side is not None:
+            # B13 round 29 C140: both sides when the line's own side and the other are not files now; one
+            # moved aside since, or no config, keeps the line's side alone
+            names, kinds = _both_sides(r, f"-{side.group('role')}")
+            if names:
+                what = (
+                    f"each {kinds[0]}, not a file"
+                    if len(set(kinds)) == 1
+                    else f"{' and '.join(kinds)}, not files"
+                )
+                return f" on {names}, which are {what}: the person's to fix", "after they were moved aside"
             return _side_words(side.group("role"), side.group("kind")), "after it was moved aside"
         odd = _STATE_MISPLACED_RE.search(ln.strip())  # B13 round 27 ruling 16 (P110)
         if odd is not None:
@@ -14761,6 +14775,27 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun], *, latest: bool = True) 
     except Exception:  # a cause the report cannot read leaves the step's own words
         return None
     return words[0] if words is not None else None
+
+
+def _both_sides(r: _Run, own: str = "") -> tuple[str, list[str]]:
+    """The two side files' names when both the -wal and the -shm are not files now (doctor's one judge,
+    ``sides_not_a_file_at``, worded by lane B's ``sides_not_files_words``, C141), and what each is (doctor's
+    ``state_file_kind``, the -wal first); ("", []) for one, none, a run whose line names a side (``own``)
+    that is not among them, or any failure (B13 round 29 C140: the outcome and the evidence named the -wal
+    only)."""
+    if r.config is None:
+        return "", []
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        sides = _sides_not_files_at(expand(r.config.state_paths.db))
+        words, n = doctor.sides_not_files_words(sides)
+        if n != 2 or (own and own not in {doctor.side_suffix(p) for p in sides}):
+            return "", []
+        kinds = [doctor.state_file_kind(p) or "not a regular file" for p in sorted(sides, key=_wal_first)]
+        return words.removesuffix(" are not files"), kinds
+    except Exception:
+        return "", []
 
 
 def _side_words(role: str, kind: str) -> str:

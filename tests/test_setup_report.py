@@ -6,6 +6,7 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 from __future__ import annotations
 
 import ast
+import contextlib
 import dataclasses
 import functools
 import inspect
@@ -15875,8 +15876,8 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
     outcome = _line(summary, "- **outcome: ")
     assert "from the state file's write-ahead log that is not a file: state_dir.files" in outcome, outcome
-    # B13 round 28 I31: folders at both: the warn names both side files, as the bucket does; the evidence
-    # names the write-ahead log alone, whose folder breaks the read
+    # B13 round 28 I31: folders at both: the warn names both side files, as the bucket does; B13 round 29
+    # C140: and so does the evidence, each moved aside (the -wal's folder breaks the read, the -shm's FAILs)
     shm = db.with_name(db.name + "-shm")
     wal.mkdir(mode=0o700)
     shm.mkdir(mode=0o700)
@@ -15891,8 +15892,10 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
         in _line(summary, "- doctor: ")
     ), summary
     evidence = _line(summary, "- evidence: ")
-    assert "because the state file's write-ahead log is not a file: " in evidence, evidence
-    assert "shared-memory" not in evidence, evidence
+    assert "because the state file's write-ahead log and shared-memory file are not files: " in evidence, (
+        evidence
+    )
+    assert "moves each aside" in evidence, evidence
     # a folder at the -shm: the read is whole, so the parts are measured and the warn is judged
     shm.mkdir(mode=0o700)
     try:
@@ -16201,6 +16204,56 @@ def test_a_lost_links_words_name_the_link_first_in_doctors_words() -> None:
     assert setup_report._stop_which(stop) == (
         "which is a link to a file that does not exist; the manifest was missing after earlier syncs"
     )
+
+
+def test_both_side_files_not_files_are_named_in_the_outcome_and_the_evidence(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 29 C140 (on lane B's C141 helper): with folders at both the -wal and the -shm, the outcome
+    and the evidence named the -wal only and said moving "it" aside lets the report measure. Both are named
+    when the run's own side and the other are not files now, each by its kind; one moved aside since keeps
+    the line's side alone."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg.as_posix()]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    wal, shm = db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")
+    for side in (wal, shm):
+        side.unlink(missing_ok=True)
+    wal.mkdir()
+    shm.mkdir()
+    line = (
+        f"error: state: {wal} is a folder, not a file: the state file's write-ahead log belongs there (fix: "
+        f"the person moves {wal} aside, keeping a copy)"
+    )
+    _step_2_stopped_on(fake_mac, line)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+        summary = section(text, "Summary")
+        outcome = _line(summary, "- **outcome: ")
+        assert (
+            "on the state file's write-ahead log and shared-memory file, which are each a folder, not a "
+            "file: the person's to fix"
+        ) in outcome, outcome
+        evidence = _line(summary, "- evidence: ")
+        assert (
+            "the state file's write-ahead log and shared-memory file are not files: a report written after "
+            "the person moves each aside measures them (see Doctor's state_dir.files lines)"
+        ) in evidence, evidence
+        shm.rmdir()
+        os.mkfifo(shm, 0o600)
+        outcome = _line(section(report(tmp_path, cfg)[1], "Summary"), "- **outcome: ")
+        assert "which are a folder and a fifo, not files: the person's to fix" in outcome, outcome
+        shm.unlink()
+        outcome = _line(section(report(tmp_path, cfg)[1], "Summary"), "- **outcome: ")
+        assert (
+            "on the state file's write-ahead log, which is a folder, not a file: the person's to fix"
+            in outcome
+        )
+        assert "shared-memory" not in outcome, outcome
+    finally:
+        with contextlib.suppress(OSError):
+            wal.rmdir()
 
 
 def test_the_side_files_have_doctors_names_in_every_reader(
