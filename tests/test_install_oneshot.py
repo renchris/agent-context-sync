@@ -226,6 +226,7 @@ case "$sub" in
     echo "stub cycle"
     [ -z "${STUB_SYNC_OUT:-}" ] || printf '%s\\n' "$STUB_SYNC_OUT"
     [ -z "${STUB_SYNC_ERR:-}" ] || printf '%s\\n' "$STUB_SYNC_ERR" >&2
+    [ -z "${STUB_SYNC_SIGNAL:-}" ] || kill -"$STUB_SYNC_SIGNAL" $$  # a sync a signal stopped (C320)
     exit "${STUB_SYNC_RC:-0}" ;;
   install-agent) exit "${STUB_AGENT_RC:-0}" ;;
   setup-report)
@@ -1350,6 +1351,32 @@ def test_a_closing_status_a_signal_stopped_is_said_and_logged(
     rc = 137 if signal_name == "KILL" else 143
     assert report_line.endswith(f" closing_status={rc}"), report_line
     assert last_line(cp).startswith("NEXT: "), last_line(cp)
+    # B13 round 30 C320: bash's own job line for the killed child (its script line, pid and the command
+    # unexpanded) reached stderr, install.out and both reports; the note above says it
+    for text in (cp.stdout, cp.stderr, install_out(env).read_text()):
+        assert not re.search(r"Killed: 9|Terminated: 15", text), text
+
+
+@pytest.mark.parametrize(("signal_name", "rc"), [("KILL", 137), ("TERM", 143)])
+def test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr(
+    env: dict[str, str], folder: Path, wheel: Path, signal_name: str, rc: int
+) -> None:
+    """B13 round 30 C320: a first sync a signal killed printed bash's own job line ("line N: <pid> Killed: 9
+    "$AGENTSYNC" sync ...") into install.out. The sync's own stderr still reaches it, through fd 3; the job
+    line does not, and install.log keeps the sync's rc."""
+    cp = install_sh(
+        {**env, "STUB_SYNC_ERR": "stub sync complaint", "STUB_SYNC_SIGNAL": signal_name},
+        str(wheel),
+        "--source-local",
+        str(folder),
+    )
+    out = install_out(env).read_text()
+    assert "stub sync complaint" in cp.stderr and "stub sync complaint" in out, cp.stderr
+    for text in (cp.stdout, cp.stderr, out):
+        assert not re.search(r"Killed: 9|Terminated: 15", text), text
+    assert any(" step=first-sync " in ln and f" rc={rc} " in f"{ln} " for ln in install_log(env)), (
+        install_log(env)
+    )
 
 
 def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(

@@ -9823,10 +9823,12 @@ SYNC_SUMMARY_RE='converted [0-9]+, deferred [0-9]+ online-only'
 # T33), and leaves its skip WARNING to the stderr line beside it (B13 round 7 H31). AGENTSYNC_LOCK_WAIT_ANNOUNCED
 # says whether the probe saw the lock busy: when it did not (a sync took the lock after the probe), agentsync says
 # the wait once, as a plain line, and marks stdout so the note below books it (B13 round 17 U68). An older
-# agentsync ignores both.
+# agentsync ignores both. The sync's own stderr goes out through fd 3, and the group's 2>/dev/null takes only
+# bash's own job line for a child a signal killed ("line N: <pid> Killed: 9 <the command unexpanded>"), which
+# reached install.out and both reports; SYNC_RC keeps 137 or 143 (B13 round 30 C320).
 first_sync_run() {
-	AGENTSYNC_QUIET_LOCK_WAIT=1 AGENTSYNC_LOCK_WAIT_ANNOUNCED="$SYNC_LOCK_BUSY" \
-		"$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"
+	{ AGENTSYNC_QUIET_LOCK_WAIT=1 AGENTSYNC_LOCK_WAIT_ANNOUNCED="$SYNC_LOCK_BUSY" \
+		"$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT" 2>&3 3>&-; } 3>&2 2>/dev/null
 }
 # What the first sync printed: its "converted N, deferred M online-only" line(s) after a success, else all of
 # it (a failure's detail, or an agentsync that prints no such line).
@@ -10120,8 +10122,10 @@ esac
 # [FAIL] and WAITING ON YOU lines are printed, above the one NEXT: its detail and policy lines would put label
 # names into install.out. WAITING lines name source ids, which setup-report redacts, and one names folders
 # in an exclude line (an empty cloud folder), which setup-report and the shell report show as <path>. The
-# status step's own output (DOCTOR_LOG) never has that line: its heartbeat check names no folder.
-loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
+# status step's own output (DOCTOR_LOG) never has that line: its heartbeat check names no folder. The group's
+# 2>/dev/null also takes bash's own "Killed: 9" or "Terminated: 15" job line for a status a signal killed,
+# which reached install.out and both reports; closing_status and its note read the exit code (B13 round 30 C320).
+loop_status_run() { { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT"; } 2>/dev/null; }
 # A local listing the step-5 status warned was held, that this closing status reads as ok, was cleared by this run's
 # sync: say so, by source id as the heartbeat lines do, rather than leave the reader to infer it from a WAITING
 # line that is missing (B13 round 6 G33). Run only when this run's sync ran and exited 0: a [FAIL] that skipped
