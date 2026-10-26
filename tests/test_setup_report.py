@@ -12149,7 +12149,8 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
     line that says "has a page", never "no file": the query counts only files with a page, so a refused
     template is there and reads 0. The images-not-on-this-Mac line stays at 0: it is the cost the open
     decision O2 is measured by. B13 round 29 C134: a deck's stub page (Quarantine lists it) is no converted
-    page, and the line said "no deck file has a page" beside it: it says "converted page"."""
+    page, and the line said "no deck file has a page" beside it: it says "converted page", and (C111) names
+    each kind's stub pages beside it, a refused template's among them."""
     seed = Seed(fake_mac["config"])
     one = seed.ids()[0]
     seed.item(one, "ledger.pdf")
@@ -12165,8 +12166,9 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
     ), ocr
     assert [ln for ln in ocr if "has a" in ln and "page" in ln] == [
         "- no deck (.pptx), deck template (.potx), Word (.docx) or OpenDocument (.odt) file has a converted "
-        "page"
-    ], ocr
+        "page (1 deck (.pptx) file and 1 deck template (.potx) file have a stub page: Quarantine by reason "
+        "gives why)"
+    ], ocr  # B13 round 29 C111: the stub is said beside the line, which counts converted pages only
     assert not [ln for ln in ocr if "files with a converted page: 0 with an OCR identity, 0 without" in ln], (
         ocr
     )
@@ -12187,9 +12189,9 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "downloaded for OCR;" in ocr_part
     )
     assert (
-        "- PDF (.pdf) files with a converted page: 1 with an OCR identity, 1 without an OCR identity\n"
-        in ocr_part
-    ), "the version is the cache row's when the page's key has one"
+        "- PDF (.pdf) files with a converted page: 1 with an OCR identity, 1 without an OCR identity, 2 with "
+        "a stub page\n" in ocr_part
+    ), "the version is the cache row's when the page's key has one; the two scans' stubs (B13 round 29 C111)"
     assert (
         "- deck (.pptx) files with a converted page: 0 with an OCR identity, 0 without an OCR identity, 1 "
         "from the early OCR build (an OCR build that was never released)\n" in ocr_part

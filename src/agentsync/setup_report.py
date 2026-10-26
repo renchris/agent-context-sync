@@ -1256,6 +1256,9 @@ _FIXED_VALUE_PHRASES = (
     "files still without a page",
     "file has a converted page",
     "files with a converted page",
+    "with a stub page",
+    "has a stub page",
+    "have a stub page",
     "erases the page and history",
     "erase that file's page and its history",
     "as its stub page says",
@@ -8342,9 +8345,20 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
         if int(cls) != 2 and not dataless and str(sid) not in graph:
             waiting[str(sid)] += int(files)
             field[str(sid)] += int(files) if int(cls) == 1 else 0
+    # a file whose page is a stub (quarantined or refused: a file not the type its name says, a label rule's
+    # withholding), per kind: no converted page, but a page all the same (B13 round 29 C111)
+    stubbed: Counter[str] = Counter()
+    for suffix, files in m.rows(
+        f"SELECT {ext}, COUNT(DISTINCT i.source_id || '/' || i.stable_id) FROM items i "
+        "JOIN outputs o ON o.source_id = i.source_id AND o.stable_id = i.stable_id "
+        "AND o.status IN ('quarantined', 'refused') "
+        f"WHERE i.is_dir = 0 AND i.state IN ('quarantined', 'refused') AND {ext} IS NOT NULL GROUP BY 1"
+    ):
+        stubbed[str(suffix)] += int(files)
     # a kind with no page at all is folded into one line, which says "has a converted page", never "no
     # file": the query counts only files with an ok output, so a refused template reads 0 here (B13 round 10
-    # L5), and a stub page, which Quarantine lists, is no converted page (B13 round 29 C134)
+    # L5), and a stub page, which Quarantine lists, is no converted page (B13 round 29 C134); the stubs are
+    # said beside it, per kind (C111)
     folded = []
     for suffix, name in _OCR_DOCUMENTS.items():
         if not any(documents[(suffix, cls, away)] for cls in (2, 0, 1) for away in (0, 1)):
@@ -8357,10 +8371,25 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
                 cells.append(
                     f"{here + away} {_VERSION_WORDS[cls]}" + (f" ({away} online-only)" if away else "")
                 )
+        if stubbed[suffix]:
+            cells.append(f"{stubbed[suffix]} with a stub page")
         out.append(f"- {name} ({suffix}) files with a converted page: " + ", ".join(cells))
     if folded:
         listed = folded[0] if len(folded) == 1 else f"{', '.join(folded[:-1])} or {folded[-1]}"
-        out.append(f"- no {listed} file has a converted page")
+        stubs = [
+            f"{_plural(stubbed[suffix], f'{name} ({suffix}) file')}"
+            for suffix, name in _OCR_DOCUMENTS.items()
+            if f"{name} ({suffix})" in folded and stubbed[suffix]
+        ]
+        said = ""
+        if stubs:
+            one = len(stubs) == 1 and sum(stubbed.values()) == 1
+            joined = stubs[0] if len(stubs) == 1 else f"{', '.join(stubs[:-1])} and {stubs[-1]}"
+            said = (
+                f" ({joined} {'has a stub page' if one else 'have a stub page'}: Quarantine by reason gives "
+                "why)"
+            )
+        out.append(f"- no {listed} file has a converted page{said}")
     scans: Counter[str] = Counter()
     for sid, row_state, cls, dataless, files, _lo, _hi in _stub_rows(m):
         if row_state == "quarantined" and cls.startswith("no text layer"):

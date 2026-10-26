@@ -18692,6 +18692,8 @@ as the evidence. Tests: `test_the_ocr_part_folds_the_document_kinds_with_no_page
 `test_ocr_part_counts_images_documents_rereads_and_time`.
 Amended 2026-10-26, §16.198 C134: the line reads `file has a converted page`, and each kind's `files with a
 converted page`: a deck whose page is a stub, which Quarantine lists, read as `no deck (.pptx) ... file has a page`.
+Amended 2026-10-26, §16.198 C111: a folded kind's stub pages are said beside the line (`(1 deck (.pptx) file has
+a stub page: Quarantine by reason gives why)`), and a kind with a line of its own adds `, N with a stub page`.
 
 **An older copy's failed bracket names its own causes** (L21; dated line at §16.80 K11). `failed at step 1 (a
 changed --log-start value, or a fresh copy: the next attempt, 26s later, said v18)` sat on the stale attempt as if
@@ -32383,6 +32385,16 @@ install.log's `closing_status=` into the report step's row and the Summary, but 
 table still ended such a run `exit 0 after 57s`. `_run_end` gives that cell the Summary's words, `exit 0 after 57s,
 its closing status stopped by SIGKILL (signal 9)`; no field, or one that is no signal exit, reads as before. Test:
 `test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`.
+
+**The OCR part names a kind's stub pages** (C111; amends §16.86 L5). C134's `converted page` keeps the folded line's
+meaning (files with an `ok` output), and a stub page (an item quarantined or refused, its output a stub: a Word file
+named `.pptx`, a label rule's withholding, a template with no converter) is said beside it, per kind:
+`- no deck (.pptx), deck template (.potx) or OpenDocument (.odt) file has a converted page (1 deck (.pptx) file has
+a stub page: Quarantine by reason gives why)`, never "unreadable", as a refusal is no reading failure. A kind with a
+line of its own adds `, N with a stub page`, the scanned PDFs' stubs among them. `_FIXED_VALUE_PHRASES` takes `with
+a stub page`, `has a stub page` and `have a stub page`. Tests:
+`test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
+`test_ocr_part_counts_images_documents_rereads_and_time`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
