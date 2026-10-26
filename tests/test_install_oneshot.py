@@ -9192,6 +9192,8 @@ MISPLACED_IS = {
     "damaged": "is damaged, empty or of the wrong shape, so no command can read it",
     "dir-file": "is a file, not a folder",
     "dir-symlink-nothing": "is a symlink to nothing, not a folder",
+    "dir-symlink-fifo": "is a symlink to a fifo, not a folder",  # B13 round 29 C166: behind a link too
+    "dir-symlink-other": "is a symlink to something that is not a folder",
     "": "is a folder or something else that is not a file",
 }
 """What install.sh's misplaced_words says is there, by the token its probes read with the installed build's
@@ -11447,7 +11449,7 @@ def test_step_2_gives_the_persons_next_over_a_lock_heartbeat_or_governance_file_
     assert again.returncode == 0, again.stdout + again.stderr
 
 
-@pytest.mark.parametrize("case", ["holds-damaged", "governance-file"])
+@pytest.mark.parametrize("case", ["holds-damaged", "governance-file", "governance-fifolink"])
 def test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one(
     real_env: dict[str, str], wheel: Path, case: str
 ) -> None:
@@ -11466,10 +11468,18 @@ def test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder
     root = _state_db(env).parent
     gov = root / "governance"
     gov.mkdir(0o700, exist_ok=True)
-    role, token = ("holds", "damaged") if case == "holds-damaged" else ("governance", "dir-file")
+    role, token = {
+        "holds-damaged": ("holds", "damaged"),
+        "governance-file": ("governance", "dir-file"),
+        "governance-fifolink": ("governance", "dir-symlink-fifo"),  # B13 round 29 C166: its kind kept
+    }[case]
     kept = root / "governance.kept"
     if role == "holds":
         (gov / "holds.json").write_text("[]", encoding="utf-8")
+    elif case == "governance-fifolink":
+        gov.rename(kept)
+        os.mkfifo(root / "elsewhere.fifo", 0o600)
+        gov.symlink_to(root / "elsewhere.fifo")
     else:
         gov.rename(kept)
         gov.write_text("", encoding="utf-8")
@@ -12249,6 +12259,8 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "queue-damaged",
         "governance-file",
         "governance-dangling",
+        "governance-fifolink",
+        "governance-devnull",
     ],
 )
 def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_or_governance_file_not_a_file(
@@ -12302,6 +12314,9 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         path.symlink_to(root / "nothing-here.json")
     elif case.endswith("-devnull"):  # a kind with no fixed word ("a symlink to not a regular file")
         path.symlink_to("/dev/null")
+    elif case.endswith("-fifolink"):  # B13 round 29 C166: governance/ a link to a fifo
+        os.mkfifo(root / "elsewhere.fifo", 0o600)
+        path.symlink_to(root / "elsewhere.fifo")
     elif case.endswith("-damaged"):  # round 28 I90: a regular file it cannot read, of a wrong-typed shape
         path.write_text('{"holds": "all"}' if case.startswith("holds") else '{"queue": 3}', encoding="utf-8")
     elif case == "governance-file":  # round 28 I88, I89: governance/ itself not a folder
@@ -12341,11 +12356,36 @@ def test_list_folders_says_step_2_stops_at_its_config_step_on_a_lock_heartbeat_o
         "queue-damaged": "damaged",
         "governance-file": "dir-file",
         "governance-dangling": "dir-symlink-nothing",
+        "governance-fifolink": "dir-symlink-fifo",  # B13 round 29 C166: the kind was dropped
+        "governance-devnull": "dir-symlink-other",
         "queue-filelink-older": "symlink-nothing",
         "holds-devnull": "",  # what no fixed word says keeps the generic words
     }.get(case, "folder")
     assert last_line(cp).endswith(misplaced_tail(role, token)), last_line(cp)
     assert logged.endswith(" config_err=state-file-notfile"), logged
+
+
+def test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown(tmp_path: Path) -> None:
+    """B13 round 29 C166: misplaced_words gave governance/ that is not a folder, with a kind an older build
+    cannot name, the generic "is a folder or something else that is not a file", which contradicts the
+    stop; it says "is not a folder agentsync can use" there, and each dir-* kind keeps its own words."""
+    text = INSTALL_SH.read_text()
+    [fn] = re.findall(r"(?ms)^misplaced_words\(\) \{.*?^\}$", text)
+    script = tmp_path / "words.sh"
+    script.write_text(
+        f"{fn}\nfor k in '' dir-symlink-fifo dir-symlink-socket dir-symlink-other; do\n"
+        '  misplaced_words governance "$k"; printf "%s|%s\\n" "$k" "$MISPLACED_IS"\ndone\n'
+        "misplaced_words holds ''; printf 'holds|%s\\n' \"$MISPLACED_IS\"\n",
+        encoding="utf-8",
+    )
+    cp = subprocess.run([BASH32, str(script)], capture_output=True, text=True, check=True)
+    assert cp.stdout.splitlines() == [
+        "|is not a folder agentsync can use",
+        "dir-symlink-fifo|is a symlink to a fifo, not a folder",
+        "dir-symlink-socket|is a symlink to a socket, not a folder",
+        "dir-symlink-other|is a symlink to something that is not a folder",
+        "holds|is a folder or something else that is not a file",
+    ], cp.stdout
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])

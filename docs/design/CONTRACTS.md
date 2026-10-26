@@ -32504,6 +32504,20 @@ damaged JSON reads as the record words, which no shell read can tell. Tests: the
 `test_the_shell_report_names_a_lost_manifests_link_on_its_stop`, and
 `test_the_shell_reports_lost_words_are_the_agentsync_reports` (the three words equal `setup_report._LOST_WAS`).
 
+**C166, C216: governance/ that is a link to a fifo, a socket or another non-folder keeps its kind, and the reader's
+header names the folder's role (`scripts/install.sh` MISPLACED_PY, misplaced_words, step 1's `misodd` grep).**
+`doctor.governance_dir_kind` says `a symlink to a fifo`, `a symlink to a socket` and `a symlink to not a folder`
+(a link to /dev/null), which MISPLACED_PY's governance map lacked, so the token was empty and misplaced_words said
+governance/ `is a folder or something else that is not a file`, a sentence against its own stop. The map gives
+`dir-symlink-fifo`, `dir-symlink-socket` and `dir-symlink-other`; their words are `is a symlink to a fifo, not a
+folder`, `is a symlink to a socket, not a folder` and `is a symlink to something that is not a folder` (never the
+raw `a symlink to not a folder`); step 1's `misodd` grep takes the three; and governance/ with a kind a build cannot
+name says `is not a folder agentsync can use`. The comment above MISPLACED_PY (C216) names the `governance` role
+(the folder itself) and its dir-* kinds, which it already printed. Tests: the `governance-fifolink` and
+`governance-devnull` cases of the step 1 misplaced test, the `governance-fifolink` case of
+`test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one` (following the
+words ends it), and `test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown`.
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.

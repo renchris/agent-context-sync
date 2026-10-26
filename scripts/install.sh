@@ -958,9 +958,14 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	dir-symlink-loop) MISPLACED_IS="is a symlink loop, not a folder" ;;
 	dir-symlink-nothing) MISPLACED_IS="is a symlink to nothing, not a folder" ;;
 	dir-symlink-file) MISPLACED_IS="is a symlink to a file, not a folder" ;;
+	dir-symlink-fifo | dir-symlink-socket) MISPLACED_IS="is a symlink to a ${2#dir-symlink-}, not a folder" ;;
+	dir-symlink-other) MISPLACED_IS="is a symlink to something that is not a folder" ;;
 	dir-other) MISPLACED_IS="is not a folder" ;;
 	*) MISPLACED_IS="is a folder or something else that is not a file" ;;
 	esac
+	# governance/ itself with a kind this build cannot name is never "a folder ... that is not a file", which
+	# contradicts the stop (B13 round 29 C166)
+	case "$1/${2:-}" in governance/dir-*) ;; governance/*) MISPLACED_IS="is not a folder agentsync can use" ;; esac
 	# the person's fix, in lane B's words (round 28 I87, I89, I90): never a bare move aside of the hold list or
 	# of governance/, which read as no holds, so a page under a hold on all was erased. The hold list's put-back
 	# is conditional, as lane B's words are since round 29 (ruling 28: C151, C142, C126): a list that held no
@@ -984,10 +989,11 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	*) return 1 ;;
 	esac
 }
-# The lock, heartbeat or governance file that is not a regular file where one belongs, as a build's own
+# The lock, heartbeat, governance folder or governance file that is not what belongs there, as a build's own
 # doctor.state_not_a_file finds it first, the manifest and its sides included: "<role> <kind>" (role lock,
-# heartbeat, holds, queue, suppressed or audit, "-" for none; kind a fixed token, or empty when that build
-# cannot say), nothing when it cannot run. The installed build's by default; with SRC, a checkout's src
+# heartbeat, governance (the folder itself), holds, queue, suppressed or audit, "-" for none; kind a fixed
+# token, a dir-* one for governance, or empty when that build cannot say), nothing when it cannot run (B13
+# round 29 C216: the folder's role and its dir-* kinds were left out). The installed build's by default; with SRC, a checkout's src
 # folder, that checkout's code throughout, in a process of its own, as step 1 asks it of the build step 2
 # installs (B13 round 28 I96: an older installed build passed a link to nothing at holds.json, so step 1 said
 # "(none is needed)" over the stop step 2 then met). Never re-implements the kinds. -I: nothing from the folder
@@ -1039,6 +1045,11 @@ def misplaced_kind(role, path):
                 "a symlink loop": "dir-symlink-loop",
                 "a symlink to nothing": "dir-symlink-nothing",
                 "a symlink to a file": "dir-symlink-file",
+                # behind a link too (B13 round 29 C166: dropped, so the words said "a folder or something else
+                # that is not a file" of a folder)
+                "a symlink to a fifo": "dir-symlink-fifo",
+                "a symlink to a socket": "dir-symlink-socket",
+                "a symlink to not a folder": "dir-symlink-other",
             }.get(kind)
         kind = (
             judge.own_kind(path)
