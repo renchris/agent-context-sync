@@ -9119,6 +9119,7 @@ FILE_NOUNS = {
     "heartbeat": "agentsync's heartbeat file",
     "governance": "agentsync's governance folder",
     "holds": "agentsync's hold list",
+    "record": "agentsync's hold record",  # lane B's round 29 C199: governance.HOLD_RECORD_ROLE's words
     "queue": "agentsync's purge queue",
     "suppressed": "agentsync's suppression list",
     "audit": "agentsync's audit trail",
@@ -9262,6 +9263,7 @@ MISPLACED_CHECKS = {
     "heartbeat": "heartbeat",
     "governance": "governance.hold",
     "holds": "governance.hold",
+    "record": "governance.hold",
     "queue": "governance.purge_queue",
     "suppressed": "governance.suppressed",
     "audit": "governance.audit",
@@ -9308,6 +9310,9 @@ def misplaced_fix(role: str, kind: str) -> str:
     if role == "holds":
         back = "then, if it listed any hold, put the hold list back from a copy they trust"  # round 29 C151
         return f"keeping a copy, they move it aside, {back}{SHUT_OPEN}"
+    if role == "record":  # lane B's round 29 C199: written again from the hold list and the audit trail
+        again = "the next hold, release or sync writes it again from the hold list and the audit trail"
+        return f"keeping a copy, they move it aside{SHUT_OPEN}; {again}"
     return f"keeping a copy, they move it aside{SHUT_OPEN}"
 
 
@@ -11455,6 +11460,13 @@ def test_the_installers_governance_nouns_are_doctors_roles() -> None:
             role
         )
         assert f'\t\trole-{role}) fnoun="{noun}" ;;\n' in text, role
+    # lane B's round 29 C199: the hold record outside governance/, in its own words (a build without the name
+    # gives the words lane B sent)
+    record = governance.__dict__.get("HOLD_RECORD_ROLE", "the hold record")
+    noun = "agentsync's " + str(record).removeprefix("the ")
+    assert FILE_NOUNS["record"] == noun
+    assert f'\trecord) MISPLACED_NOUN="{noun}" MISPLACED_CHECK=governance.hold ;;\n' in text
+    assert f'\t\trole-record) fnoun="{noun}" ;;\n' in text
     assert "agentsync's governance file " not in text
 
 
@@ -12493,6 +12505,70 @@ def test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown
         "dir-symlink-other|is a symlink to something that is not a folder",
         "holds|is a folder or something else that is not a file",
     ], cp.stdout
+
+
+def test_list_folders_names_the_hold_record_this_account_cannot_read(env: dict[str, str]) -> None:
+    """B13 round 29 ruling 24 (lane B's C199, install.sh's state probe): the hold record moved out of
+    heartbeat.json into its own state file, <state>/hold-record.json, which every lost-hold check reads, so
+    status FAILs one this account cannot read with the agent's chmod 600 (lane B's words). Step 1's probe read
+    the lock, the heartbeat and the governance files only and said "(none is needed)"; it names the record
+    now, by its own noun, and the chmod as the agent's."""
+    _config_step_2_stops_on(env, "clean-real")
+    record = _state_db(env).parent / "hold-record.json"
+    record.write_text('{"holds": ["all"]}', encoding="utf-8")
+    record.chmod(0)
+    _tool_python(env)
+    try:
+        cp = install_sh(env, "--list-folders")
+    finally:
+        record.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp).endswith(file_tail("state-file-access", "record")), last_line(cp)
+    assert install_log(env)[-2].endswith(" config_err=state-file-access"), install_log(env)[-2]
+
+
+def test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list(tmp_path: Path) -> None:
+    """B13 round 29 ruling 24 (lane B's C199): doctor.state_not_a_file returns the hold record under the
+    governance.hold check, which MISPLACED_PY read as the hold list, so the words would name holds.json and
+    its put-back for a file the next hold, release or sync writes again. It is the role "record" now, by its
+    own path, with lane B's fix; a build that never returns it is unchanged."""
+    src = tmp_path / "src" / "agentsync"
+    (src / "ops").mkdir(parents=True)
+    for name in ("__init__.py", "ops/__init__.py"):
+        (src / name).write_text("", encoding="utf-8")
+    (src / "config.py").write_text("def load_config(path):\n    return path\n", encoding="utf-8")
+    (src / "ops" / "doctor.py").write_text(
+        "import types\nfrom pathlib import Path\n\n\n"
+        "def state_not_a_file(config, damaged=False):\n"
+        "    return Path('/x/hold-record.json'), types.SimpleNamespace(name='governance.hold')\n\n\n"
+        "def governance_file_kind(path):\n    return 'a fifo'\n",
+        encoding="utf-8",
+    )
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    code = text.split("\nMISPLACED_PY='", 1)[1].split("'\nmisplaced_reader() {", 1)[0]
+    cfg = tmp_path / "sources.toml"
+    cfg.write_text("", encoding="utf-8")
+    cp = subprocess.run(
+        [sys.executable, "-I", "-c", code, str(cfg), str(src.parent)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert cp.stdout.strip() == "record fifo", cp.stdout + cp.stderr
+    [fn] = re.findall(r"(?ms)^misplaced_words\(\) \{.*?^\}$", text)
+    words = subprocess.run(
+        [
+            BASH32,
+            "-c",
+            f'{fn}\nSHUT_OPEN=""\nmisplaced_words record fifo; echo "$MISPLACED_NOUN|$MISPLACED_FIX"',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    fix = misplaced_fix("record", "fifo").replace(SHUT_OPEN, "")  # no folder shut to this account here
+    assert words.stdout.strip() == f"{FILE_NOUNS['record']}|{fix}", words.stdout
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])

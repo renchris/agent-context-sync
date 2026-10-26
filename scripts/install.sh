@@ -973,6 +973,9 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	# real governance folder just named (round 29 ruling 28: C114, C143)
 	MISPLACED_WHY="not damage, not a mode" MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN"
 	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from a copy they trust$SHUT_OPEN"
+	# the hold record outside governance/, which the next hold, release or sync writes again from the hold list and
+	# the audit trail, in lane B's words (round 29 ruling 24: C199)
+	[ "$1" != record ] || MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN; the next hold, release or sync writes it again from the hold list and the audit trail"
 	case "$1/${2:-}" in
 	holds/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust; or, keeping a copy, they move it aside and, before any purge, set each hold it held again" ;;
 	*/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust, or move it aside, keeping a copy" ;;
@@ -983,6 +986,7 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	heartbeat) MISPLACED_NOUN="agentsync's heartbeat file" MISPLACED_CHECK=heartbeat ;;
 	governance) MISPLACED_NOUN="agentsync's governance folder" MISPLACED_CHECK=governance.hold ;;
 	holds) MISPLACED_NOUN="agentsync's hold list" MISPLACED_CHECK=governance.hold ;;
+	record) MISPLACED_NOUN="agentsync's hold record" MISPLACED_CHECK=governance.hold ;;
 	queue) MISPLACED_NOUN="agentsync's purge queue" MISPLACED_CHECK=governance.purge_queue ;;
 	suppressed) MISPLACED_NOUN="agentsync's suppression list" MISPLACED_CHECK=governance.suppressed ;;
 	audit) MISPLACED_NOUN="agentsync's audit trail" MISPLACED_CHECK=governance.audit ;;
@@ -1025,6 +1029,8 @@ roles = {
 role = roles.get(getattr(found[1], "name", None), "-") if found is not None else "-"
 if found is not None and found[0].name == "governance":  # governance/ itself, under its hold check (I88, I89)
     role = "governance"
+if found is not None and found[0].name == "hold-record.json":  # lane B round 29 C199: the hold record, apart
+    role = "record"
 
 
 def misplaced_kind(role, path):
@@ -7474,6 +7480,7 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
         (expand(sp.heartbeat), r, 0o400, "heartbeat"),
         (gov, rw | os.X_OK, 0o700, "governance"),
         (gov / "holds.json", r, 0o400, "holds"),
+        (db.parent / "hold-record.json", r, 0o400, "record"),  # lane B round 29 C199: read by every lost-hold check
         (gov / "purge-queue.json", r, 0o400, "queue"),
         (gov / "suppressed.json", r, 0o400, "suppressed"),
         (gov / "audit.jsonl", os.W_OK, 0o200, "audit"),
@@ -7713,7 +7720,7 @@ list_folders() {
 			if config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null; then
 				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused|state-file-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
-				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
+				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|record|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				clink="$(LC_ALL=C grep -xE 'lost-(link|dangling)' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cunread="$(LC_ALL=C grep -x 'lost-unread' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				chbmode="$(LC_ALL=C grep -x 'lost-hbmode' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
@@ -7879,6 +7886,7 @@ list_folders() {
 		role-heartbeat) fnoun="agentsync's heartbeat file" ;;
 		role-governance) fnoun="agentsync's governance folder" ;;
 		role-holds) fnoun="agentsync's hold list" ;;
+		role-record) fnoun="agentsync's hold record" ;;
 		role-queue) fnoun="agentsync's purge queue" ;;
 		role-suppressed) fnoun="agentsync's suppression list" ;;
 		role-audit) fnoun="agentsync's audit trail" ;;

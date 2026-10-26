@@ -32578,6 +32578,21 @@ copy of `setup_report`'s registration rule, so the parity it asserts held agains
 (the multi-line hold and the one-word hold value) now take `setup_report._build_redactor` over a `_Run` of the same
 home (`_agentsync_redactor`, HOME set to it); measured, the same mutation fails the `IT` rows in both locales.
 
+**The hold record in step 1's state probe** (ruling 24's install.sh half of lane B's C199; `scripts/install.sh`
+config_errors, MISPLACED_PY, misplaced_words). Lane B moves a hold's record out of heartbeat.json into
+`<state>/hold-record.json` (`governance.HOLD_RECORD_NAME`), which every lost-hold check reads: status FAILs one
+this account cannot read on governance.hold with the agent's `chmod 600`, and `doctor.state_not_a_file` returns one
+that is not a regular file under the governance.hold check (lane B's words, sent before this build). The access
+probe reads it beside the governance files (read alone, as its writer replaces it), so a 0000 record gives the
+status-step tail on `agentsync's hold record` (role `record`; `governance.HOLD_RECORD_ROLE`, `the hold record`,
+with "agentsync's" for "the", as the other nouns are) and the agent's chmods; MISPLACED_PY reads a finding at
+`hold-record.json` as role `record`, never the hold list, whose put-back would be false of it, and misplaced_words
+gives lane B's fix, `keeping a copy, they move it aside; the next hold, release or sync writes it again from the
+hold list and the audit trail` (a damaged one keeps the restore-or-move fix). A build that never writes or returns
+the record is unchanged. Tests: `test_list_folders_names_the_hold_record_this_account_cannot_read`,
+`test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list` (through a stub build that returns it)
+and the record row of `test_the_installers_governance_nouns_are_doctors_roles`.
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.
