@@ -1022,6 +1022,7 @@ class SourceReport:
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
     new: int = 0  # 2026-10-16 (§16.102 N39): of the changed files, those new this run (``changed=N (K new)``)
     converter_waiting: int = 0  # 2026-10-19 (§16.138 V13): files whose converter could not start, never in converted
+    credential_stubbed: int = 0  # 2026-10-26 (§16.200 C145): of ``unreadable``, pages the secret scan stubbed
 
 class CarriedLines(NamedTuple):  # 2026-10-13 (§16.68 H73): an unselected source's lines in STATE.md
     run_id: int  # the last run that selected the source
@@ -4481,6 +4482,7 @@ class Hold:
     owner: str
     set_at: str
     origin: str
+    kept_by: tuple[str, ...] = ()  # 2026-10-26 (§16.200 C174): a lost hold's records, by file name
     def describe(self) -> str:
         """One line naming the scope, why, who and since when."""
 
@@ -29966,6 +29968,7 @@ the CLI status does not FAIL it either: init, status and a sync each open the ma
 -wal when that connection closes, so status prints `state_dir.files` ok and exits 0 with the fifo gone (measured at
 081db13b); only `doctor._check_state_dir` called with no open before it sees the FAIL. One this account cannot open
 (a fifo at mode 0000) stays: status FAILs it in the words above and init exits 1 on them, as for a folder there.
+Amended 2026-10-26, §16.200 C141: with both sides not files the words name both, `the state file's write-ahead log and shared-memory file are not files; the state_dir.files lines say why`, from `doctor.sides_not_files_words`.
 
 **D6, D22, D10: a side file is named by its role, its move aside keeps a copy, and it is one line.** The detail is
 `<path> is <kind>, not a file (the state file's write-ahead log)` (`doctor.SIDE_ROLES`) (`shared-memory file` for the -shm, `the token
@@ -31199,6 +31202,7 @@ NEXT. A folder at heartbeat.json is that and the misplaced heartbeat, whose word
 first. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost` (a fifo, damaged JSON, a
 folder, an array, a loop and a link to nothing), the step 1 table's `LM-damaged` and `LM-fifo` rows, and
 `test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read` with the real agentsync.
+Amended 2026-10-26, §16.200 C118: a heartbeat.json that is a link to nothing is lost-unread under ruling 15, never a first start, in `manifest.lost_words` and both of install.sh's copies.
 
 Amended 2026-10-25, §16.194 I5: the lost-unread tail gives no `(not damage, not a mode)`, since damaged JSON or a mode
 is one of its causes, and step 2's `state_lost` prints the link kind (0 to 3) and then 1 when heartbeat.json cannot
@@ -31648,12 +31652,14 @@ counted `not looked up` line names each cause (no manifest, the evidence time, t
 line says why)` pointed at an [ok] line the report's Doctor never prints. `_status_lines(checks_beside=False)`, the
 report's status hook only, gives `governance.kept_lines`' sentence there; `agentsync status` keeps the pointer. Test:
 `test_the_reports_status_says_why_a_queued_purge_is_kept_where_doctor_prints_no_ok_line`.
+Amended 2026-10-26, §16.200 C112, C125: one kind reads `queued purges kept: <its counted sentence>`, several `queued purges kept: N: <each>`.
 
 **A queue warn the hold list causes sits with the hold list's FAIL** (I45). Doctor's `governance.purge_queue` warn
 `not run while the hold list cannot be read` was `unexpected` beside a hold list that is not a file. Keyed on
 `governance.hold_list_unread` and doctor's phrase, it joins the bucket that took governance.hold's FAIL (misplaced or
 refused); an older doctor's warn, or a readable hold list, keeps it where it was. Test:
 `test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fail`.
+Amended 2026-10-26, §16.200 C174: for a hold the hold list lost (one that reads) doctor says `not run while a hold the hold list lost is in force`; `cannot be read` is only for a hold list that cannot be read (`governance.hold_list_state`).
 
 **Each governance file is named as doctor names it** (ruling 22's report half, with lane RB's I3). `_MISPLACED_ROLES`
 says `agentsync's purge queue`, `agentsync's suppression list` and `agentsync's audit trail`
@@ -31793,6 +31799,7 @@ of 2 to 99 bytes stops init as no database (exit 65), whose NEXT is the person's
 docs/deploy/setup-feedback.md says so. Tests: `test_the_inlined_lost_manifest_copies_read_every_case_as_manifest_lost`
 (`empty`, `short`, `link-short`, `through-file`), the step 1 table's `LM-short` row and
 `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_at_steps_1_and_2` (following the words ends it).
+Amended 2026-10-26, §16.200 C202: a link to a regular file under 100 bytes is lost-short as the file itself is; `manifest.lost_words` judges a link by what it reaches, and install.sh's copies follow.
 
 **A two-letter capital hold value is cut as written in the shell report too** (lane RA's I7, the shell half, at RA's
 seam note; scope grown). With a hold owner or reason `IT`, setup_report now registers a two-letter initialism written
@@ -31960,6 +31967,9 @@ never called a link to nothing (I107). The new public names: `governance.governa
 contract: `test_a_working_hold_list_still_passes`'s "nothing" is a hold list never written (one removed after a
 hold is I87's lost hold), and `test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_runnable_one`
 gives the held entry a note, not a wait.
+Amended 2026-10-26, §16.200 C199, C200, C171, C170, C175: the record is its own file, `<state>/hold-record.json`, never heartbeat.json's `holds` key (read only while no record file exists, and only as a list); the governance folder's fix names it only when it names a scope.
+Amended 2026-10-26, §16.200 C174: the lost hold's FAIL names the record that keeps it, `(kept by audit.jsonl and hold-record.json)`, never `(audit.jsonl, heartbeat.json)`.
+Amended 2026-10-26, §16.200 C115, C132: the held note names each hold (`the hold on all`, `the hold on source '<id>'`), never `the hold above`, and puts the release before `purge --queue`.
 
 **I61, I92: no blind purge from a manifest that knows nothing (`agentsync.governance`, `agentsync.manifest`,
 `agentsync.ops.doctor`, `agentsync.cli`; ruling 20).** After the new start, add-source, init or a dry-run sync left
@@ -31978,6 +31988,7 @@ byte file left in place stops the next sync on "file is not a database"; status 
 `test_after_the_new_start_a_queued_purge_waits_for_the_next_sync_to_judge_it` (now over add-source, init and `sync
 --mode dry_run`), `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_never_a_new_start`,
 `test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keeps_its_own_fail`.
+Amended 2026-10-26, §16.200 C202: a regular file, or a link to one (by what it reaches), under 100 bytes beside earlier passes is lost; this replaces C190's docs-only correction.
 
 **I93, I109, I65: a queued purge whose id still reaches the page's history (`agentsync.governance`,
 `agentsync.cycle`, `agentsync.cli`; ruling 20).** An upstream deletion queued before a new start read "not
@@ -32292,6 +32303,7 @@ after a new start, what the kept entry reads, and the by-hand purge `unresolved_
 dry run first, `docs=` the last resort; and, from lane B's I92 and I42, that a manifest too short to be one moves
 aside with heartbeat.json (`doctor.lost_fix`) and that status's NEXT gives a refusing heartbeat's `chmod 600`
 first. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`.
+Amended 2026-10-26, §16.200 C193: the by-hand purge carries the entry's own `--reason <its reason>` (`upstream-deleted` or `label-escalation`), never a fixed `upstream-deleted`.
 
 **The guide gives the lost-unread tail and NEXT** (I11, I78, I101: one gap, built once;
 `docs/deploy/setup-feedback.md`). Round 27 P111 (ruling 17) made a missing manifest beside a heartbeat.json that is
@@ -32619,7 +32631,140 @@ apart, an unknown and a non-manifest detail ignored; no detail line in the repor
 
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
-Reserved for round 29 lane B of B13.
+Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 29 rulings 24 to
+32; the words and names below were sent to lanes RA, RB, E and D before they built their halves. A dated line this
+round writes reads `Amended 2026-10-26, §16.200 C<n>`.
+
+**C199, C200, C171, C170, C175: the hold record of its own (`agentsync.governance`, `agentsync.ops.lock`,
+`agentsync.cycle`; ruling 24; amends §16.195 I89).** The record left heartbeat.json, which the new start moves
+aside, so after it no record was left and following governance/'s fix let `purge docs=` erase a page under a hold
+on `all` (C199); and its key, `holds`, is a valid source id, whose heartbeat entry each pass replaced (C200,
+C171). `governance.hold_record_file` is `<state>/hold-record.json` (`governance.HOLD_RECORD_NAME` =
+`lock.HOLD_RECORD_NAME`), `{"holds": [<scope>, ...]}`, 0600, written atomically. `record_holds(state_dir,
+listed=None)` writes the union of the hold list's holds and every lost one, after the audit line, so setting or
+releasing one hold never drops a lost one (C170), under a short blocking flock on the state folder itself, never
+the single-writer lock, so no hold is refused while a sync runs and no new file sits in the folder (C175); set_hold,
+release_hold and each pass call it. `recorded_hold_scopes` reads the file, and heartbeat.json's round 28 `holds`
+list only while no record file exists and only as a list (a dict there is a source named `holds`); `write_heartbeat`
+carries that list only until the file exists. A record that is not a file, or is damaged, is the person's
+(`governance.HOLD_RECORD_ROLE`, `the hold record`; check governance.hold; `doctor.state_not_a_file` returns it), never
+no holds; one this account cannot open takes the agent's `chmod 600`. The governance folder's fix says `(a hold set
+earlier stays in force from hold-record.json's record)` only when that record names a scope, else that a hold set
+earlier is lost with the folder and the person checks with the records owner first. Tests in `test_cli.py`:
+`test_a_hold_stays_in_force_after_the_new_start_and_the_governance_folders_fix` (both orders),
+`test_the_governance_folders_fix_promises_no_record_that_is_not_there`,
+`test_a_hold_record_that_cannot_be_read_is_the_persons_never_no_holds`,
+`test_setting_or_releasing_another_hold_keeps_a_lost_hold_in_the_record`,
+`test_a_source_named_holds_keeps_its_heartbeat_entry_under_a_hold`,
+`test_round_28s_record_in_heartbeat_json_is_read_until_the_record_file_replaces_it`,
+`test_the_hold_record_never_writes_over_a_passs_heartbeat_and_waits_its_turn`.
+
+**C172: lost suppressions and queued purges, from the audit trail (`agentsync.governance`, `agentsync.cycle`,
+`agentsync.cli`; ruling 28).** suppressed.json moved aside, as its bare fix said, republished an erased page, and a
+queue moved aside dropped a queued purge with no word. `governance.audited_suppressions` (`AuditedSuppressions`,
+by `(source_id, sha256(id))` and `(source_id, sha256(path))` from the `purge` lines of every suppressing reason)
+keeps those items out in the cycle though the list lacks them. `lost_suppressions` names each purge-summary whose
+items or source-path glob the list lost and no later run of the same selector did again; `lost_queued` each
+`purge-enqueued` record with no verified summary, `purge-covered` or `purge-forgotten` of its selector that the
+queue no longer holds (an older build's entry only when the queue file is gone, since that build took a covered
+entry off with no line; every enqueue now carries `dequeue_audited`, and a hand purge writes a `purge-covered` line
+for each queued entry it did). `suppressions_lost`, `queue_lost` and `governance_lost` give `GovernanceLostError`:
+status FAILs governance.suppressed or governance.purge_queue, and sync and the commands that publish refuse
+(`doctor.state_not_a_file(..., lost=True)`), never a hold or a purge, so the person can run each purge again. The
+suppression list's and the queue's damaged and not-a-file fixes restore first and say what the move aside, keeping
+a copy, leaves to run again. Tests: `test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync`,
+`test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs`,
+`test_a_hand_purge_that_covers_a_queued_one_leaves_no_lost_entry`.
+
+**C201, C102, C124: the queue after a new start, per source (`agentsync.governance`, `agentsync.loop`,
+`agentsync.cli`; ruling 25).** One split, `governance.partition_queue(state_paths, queue=None, *, config=None)` ->
+`QueueSplit(runnable, kept, not_looked_up)`; `partition_purges` is its pair. An entry queued before the new start
+that the manifest names nothing for is: not judged yet while no sync since has listed its source in full (no
+sources row, or no `last_full_run_id`): `unlisted_note`, head `UNLISTED_HEAD`, never probed, run or invited, counted
+by `unlisted_purges`; a source not in sources.toml or paused says so and names `purge id=<id> --source <src> --reason
+<its reason>` (C201); not looked up yet (`NOT_LOOKED_UP`) once its source is listed and no run has probed it:
+runnable, so the WAITING ON YOU line and the warn invite the dry run first (`looked_up_words` adds `N from before
+the new start: it looks its id up in the docs history`) and a hold suspends it (C102, C124); found nothing once a
+run probed it: `unresolved_note`, a note and [ok] (P112). Tests:
+`test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source` (the folder away, a run killed after it
+began; both reasons), `test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase`,
+`test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up`; P112's test takes the new split.
+
+**C118, C202, C190, C192, C203, C179, C128, C129: one lost-manifest judge (`agentsync.manifest`,
+`agentsync.ops.doctor`, `agentsync.cli`, `agentsync.errors`; ruling 29; amends §16.189 P111, §16.194 I92 and
+§16.195 I92).** `manifest.lost_words` judges a manifest link by what it reaches, so a link to a regular file under
+100 bytes is lost-short (C202; it replaces C190's docs-only correction), and a heartbeat.json that is a link to
+nothing is lost-unread (C118). A 2 to 99 byte manifest is lost in every command: `doctor.manifest_unreadable` does
+not probe a lost manifest, so status prints one state_dir.manifest FAIL, sync, init, add-source, reconcile,
+accept-deletions, checkpoint, curate and `purge --queue` exit 1 with the lost words and a NEXT, and no -wal or -shm
+is written beside it (C192, C203). `manifest.lost_error(db, lost)` builds the one `ManifestLostError`, EINVAL for a
+short file and ENOENT for a missing one, at both raise sites (C179). Beside a manifest lost as too short the listing
+note is `doctor.LISTING_STATE_SHORT_NOTE` (C128), and governance.time_machine does not judge it (C129). manifest.py
+landed with lane RB's install.sh copies as one push. Tests: `test_manifest.py`'s
+`test_a_link_to_a_short_file_and_a_heartbeat_link_to_nothing_are_lost`; in `test_cli.py`
+`test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread`,
+`test_a_manifest_linked_to_a_file_too_short_to_be_one_is_lost`, `test_a_manifest_of_2_to_99_bytes_is_lost_in_every_command`,
+`test_a_lost_manifests_error_has_one_errno_per_kind`, `test_beside_a_manifest_too_short_the_listing_note_never_says_missing`,
+`test_a_manifest_too_short_beside_earlier_passes_is_not_judged_for_time_machine`.
+
+**C193, C173, C189: an audited forget and each by-hand purge's own reason (`agentsync.governance`, `agentsync.cli`;
+ruling 26; amends §16.197 I75).** A 0-item VERIFIED purge drops nothing (P112's blind run). `purge --queue --forget
+id=<queued id> --source <src>` (one flag, previewed with `--dry-run`; `governance.forget_queued`) takes off only an
+`upstream-deleted` or `label-escalation` entry marked found_nothing, with a `purge-forgotten` audit line under the
+writer lock (a refused audit trail drops nothing), and refuses any other with why it stays queued. Every by-hand
+purge the notes and the records page print carries the entry's own `--reason`, and they say a run takes off only
+what history names. Tests: `test_a_queued_purge_history_names_nothing_of_leaves_only_by_its_audited_forget`,
+`test_forget_refuses_an_entry_a_run_has_not_found_nothing_for`,
+`test_a_by_hand_purge_the_cli_prints_carries_the_entrys_own_reason`; `test_deploy_pack.py`'s records-page test
+takes both reasons.
+
+**C107, C174, C130, C152: a lost hold said as lost (`agentsync.governance`, `agentsync.loop`, `agentsync.cli`,
+`agentsync.ops.doctor`; ruling 27; amends §16.195 I87 and §16.193 I45).** `governance.hold_list_state` is
+`unread`, `lost` or None (`hold_list_unread` is its `is not None`); `HOLD_LOST_WAIT` (`not run while a hold the
+hold list lost is in force`) and `HOLD_UNREAD_WAIT` (`not run while the hold list cannot be read`), chosen by
+`hold_list_wait`, end status's queued line and doctor's warn. The sync waits on a lost hold with `LOST_HOLD_WAIT`,
+naming status's governance.hold FAIL, with no owner, no scope and no purge (C107). The lost hold's FAIL keeps `set by
+<owner>[ at <iso>]` and names the record that keeps it, `(kept by <records>)`, from `Hold.kept_by` (C174).
+`loop.next_step` reads a queue that cannot be read as none (C152), and beside governance/ that is not a folder the
+incomplete-listing warn's note is `doctor.LISTING_STATE_GOVDIR_NOTE` (C130). Tests:
+`test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it`, `test_a_lost_holds_fail_names_the_record_that_keeps_it`,
+`test_beside_a_governance_folder_that_is_not_one_the_listing_note_points_at_its_fail`.
+
+**C204, C205, C115, C132, C176: a held queue in every writer (`agentsync.governance`, `agentsync.cycle`; ruling 32;
+amends §16.195 I91).** STATE.md splits the queue as status and the loop do (C204). `held_purges` holds a sourceless
+`docs=` or `path=` entry by the sources it resolves to, read-only, folder rows left out, and keeps today's split on a
+manifest error (C205). `held_words` names each hold, after the fixed head `HELD_HEAD` (` on the hold on `): `1 queued
+purge waits on the hold on all; once its records owner releases it (...), the next sync asks you to run ... purge
+--queue, which runs it` (C115, C132). A held queue's run logs one counted WARNING per hold (C176). Tests:
+`test_state_md_invites_no_queued_purge_a_hold_keeps`, `test_state_md_still_invites_a_purge_no_hold_keeps`,
+`test_a_sourceless_queued_purge_under_a_hold_on_its_one_source_is_held`,
+`test_a_held_queue_logs_one_counted_warning_per_hold`.
+
+**C151, C142, C126: the hold list's put-back (`agentsync.governance`; ruling 28).** `governance.HOLD_LIST_PUT_BACK`,
+`then, if it listed any hold, puts the hold list back from a copy they trust`, in status and every command
+(install.sh's in its own voice, lane RB). The shorter form for a Mac that never kept one is not built: it needs
+C126's strict judge in both readers, and the conditional clause is true there already. Test:
+`test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold`.
+
+**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status, doctor and the commands (`agentsync.cli`,
+`agentsync.governance`, `agentsync.ops.doctor`, `agentsync.ops.lock`, `agentsync.cycle`, `agentsync.model`;
+amends §16.193 I18 and §16.180 D2).** The report's kept line counts once for one kind (C112, C125). Each
+`PURGE_REASON_WORDS` gloss says what triggered it (C146). governance.hold and governance.purge_queue print one ok
+line each when they read and hold nothing (C155). Status's NEXT reads the state as the sync's guard does (C177). A
+queued purge the manifest names by an item outside its stored aliases skips the dry history probe (C178).
+`read_heartbeat` names a file that is not UTF-8 (C139). `doctor.sides_not_files_words` names one or both sides
+that are not files (C141). A page the secret scan stubbed joins the unreadable count once
+(`SourceReport.credential_stubbed`; the split's last clause `S of the unreadable held back: its page contained a
+credential`), and an alarm names its page (C145). A sync stopped on a lost manifest writes `<at> sync-stop-detail
+lost=<unread|short|short-unread>` after its stop line, in the one write and with its stamp (`cli.SYNC_STOP_DETAIL`;
+C210). Tests: `test_the_kept_purges_line_counts_once_for_one_kind_and_totals_several`,
+`test_no_purge_reasons_gloss_repeats_its_own_name`, `test_a_clean_state_lists_the_hold_list_and_the_queue_as_checked`,
+`test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on`,
+`test_a_queued_purge_the_manifest_names_walks_its_history_once`,
+`test_a_heartbeat_that_is_not_utf8_is_named_in_its_warn`,
+`test_both_side_files_not_files_are_named_both_in_statuss_cannot_read_line`,
+`test_a_lost_manifests_sync_stop_records_which_lost_kind_stopped_it`; `test_cycle.py`'s
+`test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_its_page`.
 
 ### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
 
