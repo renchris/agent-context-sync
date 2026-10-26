@@ -538,7 +538,7 @@ _GOVERNANCE_TAIL_RE = re.compile(
 _HOLD_ISO = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?"
 """The time a hold line gives (``Hold.set_at``, ``_iso``)."""
 _HOLD_SET_RE = re.compile(
-    r"\bhold (?P<scope>\S+) \((?P<origin>config|state|audit)\): (?P<reason>[^\n]*) — set by [^\n]*?"
+    r"\bhold (?P<scope>\S+) \((?P<origin>config|state|audit|record)\): (?P<reason>[^\n]*) — set by [^\n]*?"
     rf"(?P<when> since {_HOLD_ISO})?"
     r"(?P<end>\. Release it first \(records owner\)\.| \(purge and compaction suspended\))?[ \t]*$",
     flags=re.M,
@@ -551,10 +551,14 @@ runs from the first hold to the line's end, keeping only a fixed ending the line
 stop phrase written inside a reason or owner hides more, never less (A8 review). A hold the hold list lost
 (origin ``audit``, ``governance.lost_holds``) is matched too: its reason is agentsync's fixed
 :data:`_LOST_HOLD_REASON` and stays, and its owner, read from the audit trail, is cut (B13 round 29 C101,
-C119, C156, C187; ruling 23)."""
+C119, C156, C187; ruling 23); so is one only the hold record keeps (origin ``record``, lane B's round 30
+C313), which no build may print before a report can cut it (B13 round 30 ruling 42)."""
 _LOST_HOLD_REASON = "lost from the hold list"
 """``governance.LOST_HOLD_REASON``, the reason a lost hold's line gives: fixed words, never a value."""
-_HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state|audit)\): ")
+_LOST_ORIGINS = frozenset({"audit", "record"})
+"""The origins of a hold the hold list lost: the audit trail's, and the hold record's alone (B13 round 30
+ruling 42, C313), whose :data:`_LOST_HOLD_REASON` stays and whose owner alone is cut."""
+_HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state|audit|record)\): ")
 """A refusal's next hold, inside a :data:`_HOLD_SET_RE` match: such a line names the first one only (A8)."""
 _HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
 """The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
@@ -588,7 +592,9 @@ def _cut_holds(text: str) -> str:
         end = m["end"] or ""
         if more:
             return f"{head} and {_plural(more, 'more hold')}: reasons and owners not shown{end}"
-        if m["origin"] == "audit" and m["reason"] == _LOST_HOLD_REASON:  # fixed words: only the owner goes
+        if (
+            m["origin"] in _LOST_ORIGINS and m["reason"] == _LOST_HOLD_REASON
+        ):  # fixed words: only the owner goes
             return f"{head}{m['when'] or ''}: {_LOST_HOLD_REASON}, owner not shown{end}"
         return f"{head}{m['when'] or ''}: reason and owner not shown{end}"
 

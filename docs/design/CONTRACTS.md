@@ -32358,6 +32358,8 @@ before it; with no record clause (a line agentsync never writes), nothing after 
 `test_a_lost_holds_owner_is_in_no_part_of_the_report`.
 Amended 2026-10-26, §16.203 C386: the scope stays only when it is `all`, a generic id or a word the report prints;
 any other hold scope reads as its `<source-N>`, in the `HOLD:` line and the FAIL alike.
+Amended 2026-10-26, §16.203 C313: by ruling 42, `_HOLD_SET_RE` and `_HOLD_MORE_RE` take the `record` origin too,
+cut as the `audit` one is.
 
 **A link target the agent quotes is cut before its own words** (C163). `_SAID_LINK_RE` ends a target only at
 `; `, ` |` and doctor's fixed words, so a friction row's `... m.sqlite. No chmod was run`, `..., so I stopped` or
@@ -33151,6 +33153,15 @@ now covers the page phrases alone, since the shell report keeps a match inside t
 "review" and "records" are report words too, so a hold reason of one of them has the same kind of cut; that is not
 built this round. Tests: `test_an_audit_hold_value_leaves_every_audit_line_whole_c302`,
 `test_an_audit_hold_cuts_no_fixed_line_of_a_built_report_c302`.
+
+Ruling 42 (2026-10-26): **a hold only the hold record keeps is cut as a lost one** (C313, lane B's origin; ruling
+42; amends §16.198 C101). Lane B gives such a hold the
+origin `record` (`hold <scope> (record): lost from the hold list — set by <owner>`, C313), and no build may print a
+`(record)` line a report cannot cut. `_HOLD_SET_RE` and `_HOLD_MORE_RE` take `record` beside `config`, `state` and
+`audit`, so the line keeps agentsync's fixed reason and loses its owner, as an `(audit)` one does (`hold all
+(record): lost from the hold list, owner not shown`); a `(record)` line with any other reason reads `reason and
+owner not shown`, and a refusal whose next hold is one counts it. These two are the report's only patterns that
+read a hold's origin. Test: `test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_ruling_42`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

@@ -1730,6 +1730,34 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
     assert not red.counts and red.total == 0, red.counts
 
 
+def test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_ruling_42() -> None:
+    """B13 round 30 ruling 42 (lane B's C313): a hold only hold-record.json keeps has the origin ``record``
+    (``hold <scope> (record): lost from the hold list — set by <owner>``). Its line is cut as an ``(audit)``
+    one: the fixed reason stays and the owner goes; a ``(record)`` line with a free-text reason loses it too,
+    and a refusal whose next hold is one counts it."""
+    red = setup_report.Redactor()
+    when = "2026-10-22T05:32:56Z"
+    for owner in ("the records owner", "Avery Quill"):
+        bare = governance.Hold("all", governance.LOST_HOLD_REASON, owner, "", "record")
+        assert red.redact(f"[ok  ] governance.hold — {bare.describe()}") == (
+            "[ok  ] governance.hold — hold all (record): lost from the hold list, owner not shown"
+        )
+    timed = governance.Hold("all", governance.LOST_HOLD_REASON, "Avery Quill", when, "record")
+    assert red.redact(f"HOLD: {timed.describe()} (purge and compaction suspended)") == (
+        f"HOLD: hold all (record) since {when}: lost from the hold list, owner not shown (purge and "
+        "compaction suspended)"
+    )
+    free = governance.Hold("all", "Fabrikam matter 8", "Avery Quill", when, "record")
+    assert red.redact(free.describe()) == f"hold all (record) since {when}: reason and owner not shown"
+    state = governance.Hold("all", "Fabrikam matter 8", "Avery Quill", when, "state")
+    refused = red.redact(f"purge suspended by legal/records hold: {state.describe()}; {timed.describe()}")
+    assert refused == (
+        "purge suspended by legal/records hold: hold all (state) and 1 more hold: reasons and owners not "
+        "shown"
+    )
+    assert not red.counts and red.total == 0, red.counts
+
+
 def test_a_lost_holds_owner_is_in_no_part_of_the_report(
     fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
