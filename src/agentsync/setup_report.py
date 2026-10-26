@@ -142,6 +142,7 @@ from agentsync.config import (
     DEFAULT_EXCLUDES,
     INBOX_IGNORES,
     OS_JUNK_EXCLUDES,
+    SOURCE_ID_RE,
     Config,
     load_config,
 )
@@ -4868,6 +4869,11 @@ def _build_redactor(r: _Run) -> Redactor:
                     for value in _project_values(root):
                         red.add("folder", value, ignore_case=True)
                         _alias_escaped(red, value)
+    # Then every hold scope no source registered: ``hold`` takes any id-shaped scope, one set before its
+    # source is added or kept on a removed one, so a matter name typed there printed in the HOLD line and the
+    # lost-hold FAIL. A <source-N> after the sources' own numbers (B13 round 30 C386; ruling 39)
+    for scope in _hold_scopes(r):
+        red.add("source", scope)
     for host in _proxy_hosts(_proxy_urls(r)):
         _add_proxy_host(red, host)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
@@ -5093,6 +5099,38 @@ def _hold_values(r: _Run) -> list[str]:
             if len(form) >= 2:
                 out.append(form)
     return list(dict.fromkeys(out))
+
+
+def _hold_scopes(r: _Run) -> list[str]:
+    """Every hold scope the three hold files name, sorted: holds.json, the audit trail's hold-set and
+    hold-released records, and hold-record.json, or, only while no record file is there, heartbeat.json's
+    round 28 ``holds`` list, as ``governance.lost_holds`` reads them (``recorded_hold_scopes``). Not ``all``,
+    a :data:`_GENERIC_IDS` id or a word the report prints (B13 round 17 U62: a retired ``setup`` cut "the
+    setup report"), and only an id-shaped one (``SOURCE_ID_RE``): each is registered as a source id, never a
+    free value, so a generic scope keeps agentsync's own words and nothing goes private (B13 round 30 C386;
+    ruling 39). Each read fails quietly."""
+    from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    if r.config is None:
+        return []
+    root = expand(r.config.state_paths.root)
+    scopes: set[str] = set()
+    with contextlib.suppress(Exception):
+        scopes.update(h.scope for h in governance.state_holds(root))
+    with contextlib.suppress(Exception):
+        for rec in governance._audit_events(root):
+            if rec.get("action") in _HOLD_ACTIONS and isinstance(rec.get("scope"), str):
+                scopes.add(rec["scope"])
+    with contextlib.suppress(Exception):
+        scopes.update(governance.recorded_hold_scopes(root))
+    return sorted(
+        s
+        for s in scopes
+        if s != governance.HOLD_ALL
+        and s not in _GENERIC_IDS
+        and s not in report_words()
+        and SOURCE_ID_RE.match(s)
+    )
 
 
 # ---- sections -------------------------------------------------------------------------------------------

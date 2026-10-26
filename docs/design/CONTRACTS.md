@@ -32356,6 +32356,8 @@ patterns (lane RB, §16.199). The cross-vendor review found an owner holding a t
 time, left its tail in clear: the cut keeps the last record clause, with the time only when it stands right
 before it; with no record clause (a line agentsync never writes), nothing after the owner. Tests: `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`,
 `test_a_lost_holds_owner_is_in_no_part_of_the_report`.
+Amended 2026-10-26, §16.203 C386: the scope stays only when it is `all`, a generic id or a word the report prints;
+any other hold scope reads as its `<source-N>`, in the `HOLD:` line and the FAIL alike.
 
 **A link target the agent quotes is cut before its own words** (C163). `_SAID_LINK_RE` ends a target only at
 `; `, ` |` and doctor's fixed words, so a friction row's `... m.sqlite. No chmod was run`, `..., so I stopped` or
@@ -33116,7 +33118,21 @@ governance and makes the `no trace` and `no row` lines with `_purge_notes`, so t
 
 ### 16.203 Round 30: setup report: a hold scope kept private, the hold record and the lost lists as the person's, the Purge queue's columns and a report that never writes the manifest (2026-10-26, wave B13 round 30 lane RA)
 
-Reserved for round 30 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 30").
+C386 (2026-10-26): **a hold scope no source registers is never printed in clear** (C386; ruling 39, data
+integrity; amends §16.198 C101).
+`hold` takes any id-shaped scope, so a hold can be set before its source is added or kept on a source since removed,
+and a records owner can type a matter name there (`fabrikam-merger`). The report kept the scope on purpose, which
+was safe only while it was a source id the redactor knew, so the name printed in the `HOLD:` line and, once the hold
+list lost it, in doctor's FAIL. `_hold_scopes` now reads every scope the three hold files name (holds.json, the
+audit trail's `hold-set` and `hold-released` records, hold-record.json, or, while no record file is there,
+heartbeat.json's round 28 `holds` list, as `lost_holds` reads them), each read failing quietly, and the report
+registers each as a source id after the configured and unconfigured ones, so it reads `<source-N>` in the source
+numbering wherever it stands. `all`, a generic id (`docs`, `inbox`) and a word the report prints are left out, as an
+unconfigured id is (U62), so agentsync's own words stay and nothing goes private; only an id-shaped scope is taken.
+`_cut_holds` runs before the value pass, so its lines keep the scope for the pass to replace. No hold is refused for
+its scope: a refusal would block a hold set ahead of its source, or kept on a removed one whose data remains. The
+shell report's `hold_scopes` reader takes the same files, fallback and rule (lane RB, §16.204). Test:
+`test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

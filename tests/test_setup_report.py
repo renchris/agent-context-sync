@@ -1768,6 +1768,61 @@ def test_a_lost_holds_owner_is_in_no_part_of_the_report(
     assert not {"the records owner", "lost from the hold list"} & set(setup_report._hold_values(r))
 
 
+def test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C386 (ruling 39): ``hold`` takes any id-shaped scope, so a matter name typed there
+    (``fabrikam-merger``) printed in clear in the HOLD line and, once the hold list lost it, in doctor's FAIL.
+    It is a <source-N> read from all three hold files, listed and lost; ``all`` and a generic scope (``docs``)
+    stay readable, and the report stays public."""
+    cfg = fake_mac["config"]
+    for scope in ("fabrikam-merger", "docs", "all"):
+        hold = ["hold", scope, "--reason", "matter 8", "--owner", "Avery Quill", "--config", str(cfg)]
+        assert cli.main(hold) == 0
+    root = Path(load_config(cfg).state_paths.root).expanduser()
+
+    def built() -> str:
+        capsys.readouterr()
+        cli.main(["status", "--config", str(cfg)])
+        status = capsys.readouterr().out
+        assert "hold fabrikam-merger (" in status, status  # the person still reads the scope
+        (fake_mac["setup"] / "install.out").write_text(
+            "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + status,
+            encoding="utf-8",
+        )
+        rc, text, _ = report(tmp_path, cfg)
+        assert rc == 0
+        assert "fabrikam" not in text.lower(), [ln for ln in text.splitlines() if "fabrikam" in ln.lower()]
+        assert "hold docs (" in text and "hold all (" in text, text
+        assert "Private only:" not in text and setup_report.issue_link(text) is not None
+        return text
+
+    listed = built()
+    assert re.search(r"hold <source-\d+> \(state\) since \S+: reason and owner not shown", listed), listed
+    # lost: holds.json moved aside, so only the audit trail and hold-record.json keep the scope
+    (root / "governance" / "holds.json").rename(root / "holds.json.aside")
+    lost = built()
+    assert re.search(r"hold <source-\d+> \(audit\) since \S+: lost from the hold list", lost), lost
+    assert re.search(r"no longer lists the hold on <source-\d+> \(owner not shown\)", section(lost, "Doctor"))
+    # each file alone names it: the audit trail, then hold-record.json
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    assert setup_report._hold_scopes(r) == ["fabrikam-merger"]
+    (root / "governance" / "audit.jsonl").rename(root / "audit.jsonl.aside")
+    assert setup_report._hold_scopes(r) == ["fabrikam-merger"]
+    (root / "hold-record.json").rename(root / "hold-record.json.aside")
+    assert setup_report._hold_scopes(r) == []
+    (root / "audit.jsonl.aside").rename(root / "governance" / "audit.jsonl")
+    assert setup_report._hold_scopes(r) == ["fabrikam-merger"]
+    # a round 28 state: no hold-record.json, heartbeat.json's ``holds`` list keeps it, governance/ moved aside
+    # (the cross-vendor review: lost_holds reads it, so the FAIL names the scope)
+    (root / "governance").rename(root / "governance.aside")
+    heartbeat = root / "heartbeat.json"
+    beat = json.loads(heartbeat.read_text(encoding="utf-8")) if heartbeat.is_file() else {}
+    heartbeat.write_text(json.dumps({**beat, "holds": ["fabrikam-merger"]}), encoding="utf-8")
+    assert [h.scope for h in governance.lost_holds(root)] == ["fabrikam-merger"]
+    assert setup_report._hold_scopes(r) == ["fabrikam-merger"]
+
+
 def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private(
     fake_mac: dict[str, Path],
 ) -> None:
