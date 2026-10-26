@@ -424,9 +424,12 @@ install.log (a `--list-folders` run is not an install run):
   `install.sh exited 1 at its status step on the state file's shared-memory file, which is a folder, not a file: the person's to fix`
   (`the state file's write-ahead log` for the -wal; B13 round 25 ruling 12). A lost manifest reads
   `install.sh exited 1 at its config step on agentsync's state file, which is missing though heartbeat.json records earlier passes: the person's to fix`;
-  a link there adds `, and is a link to a file that does not exist` before the colon, or
-  `, and is a link into a folder that does not exist or refuses a write` and then ends
-  `, removing or re-pointing the link first` (B13 round 26 E3, E19; round 27 P121). Beside a heartbeat.json that
+  a link there names the link first, in doctor's words for the manifest after it:
+  `which is a link to a file that does not exist; the manifest is missing, but heartbeat.json records earlier passes`
+  before the colon, or
+  `which is a link into a folder that does not exist or refuses a write; the manifest is missing, but heartbeat.json records earlier passes`
+  and then ends `, removing or re-pointing the link first` (B13 round 26 E3, E19; round 27 P121; round 29 C110,
+  C154). Beside a heartbeat.json that
   cannot be read the file is
   `missing beside a heartbeat.json that cannot be read: the person's to fix, restoring the file or moving heartbeat.json aside`
   (B13 round 28 ruling 21), and only where heartbeat.json is this account's own file whose mode alone refuses it

@@ -9839,6 +9839,20 @@ _LINK_FIRST = ", removing or re-pointing the link first"
 D71)."""
 _STOP_LINKS = {"unusable": _LINK_UNUSABLE, "dangling": _LINK_DANGLING}
 """``_SyncStop.link``'s words (B13 round 27 P127, P19)."""
+_LINK_LOST_RECORDS = "; the manifest is missing, but heartbeat.json records earlier passes"
+"""After a lost manifest's link, doctor's words for the manifest (``manifest.LOST_MANIFEST``): the link
+first, as doctor's FAIL, the sync's error, install.sh's step 1 tail and step 2 NEXT put it, so "records
+earlier passes and is a link" never reads as heartbeat.json being the link (B13 round 29 C110, C154). A test
+keeps it equal to the source."""
+_LINK_LOST_UNREAD = (
+    "; the manifest is missing, and heartbeat.json beside it cannot be read, so earlier passes cannot be "
+    "ruled out"
+)
+""":data:`_LINK_LOST_RECORDS` beside a heartbeat.json that cannot be read (``manifest.
+LOST_MANIFEST_UNREAD``)."""
+_LINK_LOST = {"records": _LINK_LOST_RECORDS, "unread": _LINK_LOST_UNREAD}
+"""The manifest's words after its link, by :func:`_manifest_lost_kind` (a link is never short: lost_words
+judges a link by whether its target exists)."""
 
 
 _STATE_LOST_EVIDENCE = (
@@ -9850,20 +9864,19 @@ _STATE_LOST_EVIDENCE = (
 they were not measured, the person's, in ``doctor.LOST_MANIFEST_FIX``'s two moves, with no advice to write the
 report again when idle, which cannot bring a manifest back."""
 _STATE_LOST_LINK_EVIDENCE = (
-    f"not measured, as the state file is missing though heartbeat.json records earlier passes, and is "
-    f"{_LINK_UNUSABLE}: a report written after the person removes or re-points the link, then restores the "
-    "file or moves heartbeat.json aside so the next sync starts a new manifest, measures them (see Doctor's "
-    "state_dir.manifest line)"
+    f"not measured, as the state file is {_LINK_UNUSABLE}{_LINK_LOST_RECORDS}: a report written after the "
+    "person removes or re-points the link, then restores the file or moves heartbeat.json aside so the next "
+    "sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
 )
 """:data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link into a folder that does not exist or
 refuses a write (B13 round 26 E3, E14; ``r.facts.lost_link``): neither move works through the link, so
 doctor's fix (B13 round 25 D71) removes it first, or a link pointed at a folder that exists works again. Never
-the link's target: it is a path. The file's fact first, as :data:`_STATE_LOST_LINK_WORDS` (B13 round 27 P103,
-P121, P129)."""
+the link's target: it is a path. The link first, then the manifest's words, as :data:`_STATE_LOST_LINK_WORDS`
+(B13 round 29 C110, C154; "missing" once, as B13 round 27 P103, P121, P129 asked)."""
 _STATE_LOST_DANGLING_EVIDENCE = (
-    f"not measured, as the state file is missing though heartbeat.json records earlier passes, and is "
-    f"{_LINK_DANGLING}: a report written after the person restores it, or moves heartbeat.json aside so the "
-    "next sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
+    f"not measured, as the state file is {_LINK_DANGLING}{_LINK_LOST_RECORDS}: a report written after the "
+    "person restores it, or moves heartbeat.json aside so the next sync starts a new manifest, measures them "
+    "(see Doctor's state_dir.manifest line)"
 )
 """:data:`_STATE_LOST_EVIDENCE` for a lost manifest that is a link to nothing in a folder a sync can write
 (B13 round 26 E19; round 27 P19; ``r.facts.lost_dangling``): the same two moves, which work through such a
@@ -9926,14 +9939,14 @@ def _unread_evidence(r: _Run) -> str:
     fact = _LOST_FACTS["short-unread"] if short else _LOST_UNREAD
     if short:  # lane B's I92: no link form beside a short file
         return f"not measured, as the state file is {fact}: a report written after {then}"
-    if r.facts.lost_link:
+    if r.facts.lost_link:  # the link first (B13 round 29 C110, C154)
         return (
-            f"not measured, as the state file is {fact}, and is {_LINK_UNUSABLE}: a report written after the "
-            f"person removes or re-points the link, and {then}"
+            f"not measured, as the state file is {_LINK_UNUSABLE}{_LINK_LOST_UNREAD}: a report written after "
+            f"the person removes or re-points the link, and {then}"
         )
     if r.facts.lost_dangling:
         return (
-            f"not measured, as the state file is {fact}, and is {_LINK_DANGLING}: a report written after "
+            f"not measured, as the state file is {_LINK_DANGLING}{_LINK_LOST_UNREAD}: a report written after "
             f"{then}"
         )
     return f"not measured, as the state file is {fact}: a report written after {then}"
@@ -10983,7 +10996,11 @@ def _stop_which(stop: _SyncStop) -> str:
     if stop.kind == "misplaced" and stop.shape:  # B13 round 27 P18: doctor's kind, in the past tense
         which = f"which was {stop.shape}, not {'a folder' if stop.file == 'state-folder' else 'a file'}"
     link = _STOP_LINKS.get(stop.link)
-    return f"{which} and is {link}" if link else which
+    if not link:
+        return which
+    # the link first, then the manifest's past (B13 round 29 C110, C154): "which is a link into ...; the
+    # manifest was missing after earlier syncs"
+    return f"which is {link}; the manifest {which.removeprefix('which ')}"
 
 
 def _stop_unread_why(stop: _SyncStop) -> str:
@@ -11897,12 +11914,13 @@ aside), keyed on the report's own read (:func:`_manifest_lost_at`), never on doc
 _STATE_LOST_UNREAD_WORDS = f"from the state file that is {_LOST_UNREAD}"
 """:data:`_STATE_LOST_WORDS` over a heartbeat.json that cannot be read (:func:`_manifest_lost_kind`
 ``"unread"``): the same person's decision, after heartbeat.json's own fix (B13 round 28 ruling 21)."""
-_STATE_LOST_LINK_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_UNUSABLE}"
+_STATE_LOST_LINK_WORDS = f"from the state file that is {_LINK_UNUSABLE}{_LINK_LOST_RECORDS}"
 """:data:`_STATE_LOST_WORDS` for a lost manifest that is a link into a folder that does not exist or refuses a
 write (B13 round 26 E3, E14; :func:`_lost_link`): both halves of doctor's one FAIL (B13 round 25 D71), so the
-bucket keeps the lost manifest's decision and names the link its fix removes first. The file's fact first, so
-"missing" is said once and of the file, and the folder in doctor's words (B13 round 27 P103, P121, P129)."""
-_STATE_LOST_DANGLING_WORDS = f"{_STATE_LOST_WORDS}, and is {_LINK_DANGLING}"
+bucket keeps the lost manifest's decision and names the link its fix removes first. The link first, then the
+manifest's words in doctor's (B13 round 29 C110, C154), so "missing" is said once and of the manifest, and the
+folder in doctor's words (B13 round 27 P103, P121, P129)."""
+_STATE_LOST_DANGLING_WORDS = f"from the state file that is {_LINK_DANGLING}{_LINK_LOST_RECORDS}"
 """:data:`_STATE_LOST_WORDS` for a lost manifest that is a link to nothing in a folder a sync can write (B13
 round 26 E19; round 27 P19; :func:`_lost_dangling`): status names the link, so the bucket does too."""
 
@@ -11938,10 +11956,13 @@ whether heartbeat.json records earlier passes or cannot be read (B13 round 28 ru
 def _lost_bucket_words(kind: str, link: str) -> str:
     """The Doctor line's bucket for a lost manifest: :data:`_STATE_LOST_WORDS`, or
     :data:`_STATE_LOST_UNREAD_WORDS` for ``kind`` ``"unread"`` (:func:`_manifest_lost_kind`), with the
-    link's words after the file's fact (:func:`_lost_link_kind`; B13 round 28 ruling 21: a link to nothing
-    can be lost over an unread heartbeat too)."""
+    link's words first and the manifest's after them (:func:`_lost_link_kind`; B13 round 28 ruling 21: a link
+    to nothing can be lost over an unread heartbeat too; B13 round 29 C110, C154)."""
     base = f"from the state file that is {_LOST_FACTS[kind]}" if kind in _LOST_FACTS else _STATE_LOST_WORDS
-    return f"{base}, and is {_STOP_LINKS[link]}" if link in _STOP_LINKS else base
+    if link not in _STOP_LINKS:
+        return base
+    lost = _LINK_LOST.get(kind, f"; the manifest is {_LOST_FACTS.get(kind, _LOST_FACTS['records'])}")
+    return f"from the state file that is {_STOP_LINKS[link]}{lost}"  # the link first (C110, C154)
 
 
 def _lost_link(c: Config | None) -> bool:
@@ -14158,11 +14179,13 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             )
             whose = _HEARTBEAT_CHMOD_FIRST if chmod else _UNREAD_PERSONS if unread else "the person's to fix"
             linked = _HEARTBEAT_CHMOD_FIRST if chmod else "the person's to fix"  # the link names its moves
+            # the link first, then the manifest's words (B13 round 29 C110, C154), "missing" once (B13 round
+            # 27 P103, P121, P129)
+            lost = _LINK_LOST.get(lost_kind, f"; the manifest is {fact}")
             if " is a symlink to " in ln and _dangling_unusable() in ln:
                 return (
-                    # the file's fact first, "missing" once (B13 round 27 P103, P121, P129)
-                    f" on agentsync's state file, which is {fact}, and is a link into a folder that does not "
-                    f"exist or refuses a write: {linked}, removing or re-pointing the link first",
+                    f" on agentsync's state file, which is {_LINK_UNUSABLE}{lost}: {linked}, removing or "
+                    "re-pointing the link first",
                     "after the link was removed or pointed at a folder that exists, and "
                     + (
                         "heartbeat.json fixed or moved aside, or the file restored"
@@ -14172,8 +14195,7 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 )
             if " is a symlink to " in ln:  # E19's: both moves of the plain fix work through the link
                 return (
-                    f" on agentsync's state file, which is {fact}, and is a link to a file that does not "
-                    f"exist: {whose}",
+                    f" on agentsync's state file, which is {_LINK_DANGLING}{lost}: {whose}",
                     f"after {moved}",
                 )
             return f" on agentsync's state file, which is {fact}: {whose}", f"after {moved}"

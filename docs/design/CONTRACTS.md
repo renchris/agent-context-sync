@@ -32360,6 +32360,22 @@ one keeps the singular. The guide quotes both forms. Tests:
 `test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`,
 `test_the_guide_gives_round_25s_new_report_and_installer_outputs`.
 
+**A lost manifest's link is named first, in doctor's words** (C110 with C154's report words). The report said
+`from the state file that is missing though heartbeat.json records earlier passes, and is a link into a folder ...`,
+which reads as heartbeat.json being the link, while doctor's FAIL, the sync's error and install.sh's step 1 tail and
+step 2 NEXT put the link first (round 28 I4). Every lost-link form names the link, then `; the manifest` and
+manifest's own words (`_LINK_LOST_RECORDS`, `_LINK_LOST_UNREAD`, kept equal to `manifest.LOST_MANIFEST` and
+`LOST_MANIFEST_UNREAD` by a test), the substring doctor's dangling FAIL ends on: the bucket (`from the state file
+that is a link into a folder that does not exist or refuses a write; the manifest is missing, but heartbeat.json
+records earlier passes`), the evidence, step 2's outcome and a step 3 stop's words (`which is a link to a file that
+does not exist; the manifest was missing after earlier syncs`). "Missing" is said once (P103, P121, P129). The verb
+stays `removing or re-pointing the link first`: re-pointing works too, and the after-words say so. A link is never
+short (lost_words judges a link by whether its target exists). The shell report's lost-link words follow (lane RB).
+Tests: `test_a_lost_links_words_name_the_link_first_in_doctors_words`, the pins of
+`test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`,
+`test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
+`test_the_guide_gives_the_reports_step_2_state_outcomes`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Reserved for round 29 lane RB of B13.

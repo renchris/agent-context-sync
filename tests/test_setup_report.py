@@ -6347,12 +6347,12 @@ def test_a_step_3_stop_on_a_lost_manifest_link_names_the_link(
             gone.mkdir(mode=0o700)
         summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
         assert summary.strip().splitlines()[0] == (
-            f"{head}state file, which was missing after earlier syncs and is {which}, and doctor's "
-            f"state_dir.manifest FAIL still stands: the person's to fix{fix})"
+            f"{head}state file, which is {which}; the manifest was missing after earlier syncs, and "
+            f"doctor's state_dir.manifest FAIL still stands: the person's to fix{fix})"
         ), (case, summary)
         assert _items_of(summary) == [
-            "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after "
-            f"earlier syncs and is {which}; whether a later sync ended 0: not measured (the state file is "
+            f"- agentsync sync · step 3 · exited 1 on agentsync's state file, which is {which}; the manifest "
+            "was missing after earlier syncs; whether a later sync ended 0: not measured (the state file is "
             f"missing); the fix is the person's{fix} (F4: the agent's account of it)"
         ], (case, summary)
         assert "contoso-gone" not in summary, summary
@@ -6477,7 +6477,9 @@ def test_a_stop_after_the_end_line_takes_the_words_now_as_the_one_before_it(
     finally:
         db.unlink()
     for line in (items, after):
-        assert "which was missing after earlier syncs and is a link to a file that does not exist" in line, (
+        assert (
+            "which is a link to a file that does not exist; the manifest was missing after earlier" in line
+        ), (
             items,
             after,
         )
@@ -11083,9 +11085,10 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             f"error: state: {db} is a symlink to /Users/x/gone/manifest.sqlite, whose folder does not "
             f"exist or refuses a write, and {manifest_mod.LOST_MANIFEST} (fix: the person removes the "
             "link first: rm x)",
-            "on agentsync's state file, which is missing though heartbeat.json records earlier passes, and "
-            "is a link into a folder that does not exist or refuses a write: the person's to fix, removing "
-            "or re-pointing the link first",
+            # B13 round 29 C110, C154: the link first, then the manifest in doctor's words
+            "on agentsync's state file, which is a link into a folder that does not exist or refuses a "
+            f"write; the manifest {manifest_mod.LOST_MANIFEST}: the person's to fix, removing or re-pointing "
+            "the link first",
             "the link was removed or pointed at a folder that exists, and the file restored or "
             "heartbeat.json moved aside",
         ),
@@ -11093,8 +11096,8 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             # round 26 E19) is no link into a missing folder, and its fix has no step for the link
             f"error: state: {db} is a symlink to /Users/x/agentsync/gone.sqlite, which does not exist; the "
             f"manifest {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})",
-            "on agentsync's state file, which is missing though heartbeat.json records earlier passes, and "
-            "is a link to a file that does not exist: the person's to fix",
+            "on agentsync's state file, which is a link to a file that does not exist; the manifest "
+            f"{manifest_mod.LOST_MANIFEST}: the person's to fix",
             "the file was restored or heartbeat.json moved aside",
         ),
         # lane B's words (round 23 ruling 4, A46): the kind of a symlink, and a folder above the state folder
@@ -11177,7 +11180,9 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         assert outcome.split("(computed: ", 1)[1].startswith(
             f"install.sh exited 1 at its config step {words}"
         ), outcome
-        assert "Library" not in outcome and "manifest" not in outcome, outcome
+        assert "Library" not in outcome and "manifest.sqlite" not in outcome, (
+            outcome
+        )  # never a path (C110: "the manifest" is a word)
     # B13 round 22 Z6: a last run that stopped there names the cause and whose in the outcome, with no bracket
     above = (
         "the person gives this account search access to ~/'Library/Application Support', a folder above "
@@ -15177,9 +15182,9 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     db.symlink_to(gone / "manifest.sqlite")
     _rc, text, _ = report(tmp_path, cfg)
     summary = section(text, "Summary")
-    link = (  # B13 round 27 P103, P121, P129: "missing" once, about the file, said first
-        "from the state file that is missing though heartbeat.json records earlier passes, and is a link "
-        "into a folder that does not exist or refuses a write"
+    link = (  # B13 round 27 P103, P121, P129: "missing" once; B13 round 29 C110, C154: the link first
+        "from the state file that is a link into a folder that does not exist or refuses a write; the "
+        f"manifest {manifest_mod.LOST_MANIFEST}"
     )
     assert f" · {link} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
         summary, "- doctor: "
@@ -15189,10 +15194,10 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     assert status.count(setup_report._LOST_MANIFEST_LINE) == lost, status  # the lost count is unchanged
     assert _line(summary, "- evidence: ") == (
         f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
-        "file is missing though heartbeat.json records earlier passes, and is a link into a folder that does "
-        "not exist or refuses a write: a report written after the person removes or re-points the link, then "
-        "restores the file or moves heartbeat.json aside so the next sync starts a new manifest, measures "
-        "them (see Doctor's state_dir.manifest line)"
+        "file is a link into a folder that does not exist or refuses a write; the manifest is missing, but "
+        "heartbeat.json records earlier passes: a report written after the person removes or re-points the "
+        "link, then restores the file or moves heartbeat.json aside so the next sync starts a new manifest, "
+        "measures them (see Doctor's state_dir.manifest line)"
     ), summary
     assert "contoso-gone" not in summary, summary
     # a link into a folder that exists (doctor's B64 FAILs no such link): a link to a file that does not
@@ -15203,8 +15208,8 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     summary = section(text, "Summary")
     assert "link into a folder" not in summary, summary
     dangling = (
-        "from the state file that is missing though heartbeat.json records earlier passes, and is a link to "
-        "a file that does not exist"
+        "from the state file that is a link to a file that does not exist; the manifest "
+        f"{manifest_mod.LOST_MANIFEST}"
     )
     assert f" · {dangling} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
         summary, "- doctor: "
@@ -15214,9 +15219,9 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     ), summary
     assert _line(summary, "- evidence: ") == (
         f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
-        "file is missing though heartbeat.json records earlier passes, and is a link to a file that does not "
-        "exist: a report written after the person restores it, or moves heartbeat.json aside so the next "
-        "sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
+        "file is a link to a file that does not exist; the manifest is missing, but heartbeat.json records "
+        "earlier passes: a report written after the person restores it, or moves heartbeat.json aside so the "
+        "next sync starts a new manifest, measures them (see Doctor's state_dir.manifest line)"
     ), summary
     assert "contoso-gone" not in summary and "re-point" not in summary, summary
     # B13 round 27 P58: step 2's own line for it (E19's, as init prints it) gives the outcome the same case
@@ -15241,9 +15246,8 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     summary = section(text, "Summary")
     outcome = _line(summary, "- **outcome: ")
     assert outcome.split("(computed: ", 1)[1].startswith(
-        "install.sh exited 1 at its config step on agentsync's state file, which is missing though "
-        "heartbeat.json records earlier passes, and is a link to a file that does not exist: the person's "
-        "to fix"
+        "install.sh exited 1 at its config step on agentsync's state file, which is a link to a file that "
+        f"does not exist; the manifest {manifest_mod.LOST_MANIFEST}: the person's to fix"
     ), outcome
     assert f" · {dangling} (2 checks): state_dir.manifest FAIL (the person's; see Doctor), " in _line(
         summary, "- doctor: "
@@ -16099,6 +16103,29 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
     assert setup_report._said_link_targets([f"{db} is a symlink to {backup}"])[0] == backup
 
 
+def test_a_lost_links_words_name_the_link_first_in_doctors_words() -> None:
+    """B13 round 29 C110, C154: the report said "missing though heartbeat.json records earlier passes, and is
+    a link into a folder ...", which reads as heartbeat.json being the link, while doctor's FAIL, the sync's
+    error and install.sh put the link first. Every lost-link form names the link, then "; the manifest" and
+    manifest's own words, the substring doctor's dangling FAIL ends on; "missing" is said once."""
+    assert setup_report._LINK_LOST_RECORDS == "; the manifest " + manifest_mod.LOST_MANIFEST
+    assert setup_report._LINK_LOST_UNREAD == "; the manifest " + manifest_mod.LOST_MANIFEST_UNREAD
+    forms = []
+    for link in ("unusable", "dangling"):
+        for kind in ("records", "unread"):
+            forms.append(setup_report._lost_bucket_words(kind, link))
+        stop = setup_report._SyncStop(datetime.now(UTC), "manifest", "person", None, kind="lost", link=link)
+        forms.append(setup_report._stop_which(stop))
+    forms += [setup_report._STATE_LOST_LINK_WORDS, setup_report._STATE_LOST_DANGLING_WORDS]
+    forms += [setup_report._STATE_LOST_LINK_EVIDENCE, setup_report._STATE_LOST_DANGLING_EVIDENCE]
+    for words in forms:
+        assert words.index("a link") < words.index("; the manifest ") < words.index("missing"), words
+        assert words.count("missing") == 1, words
+    assert setup_report._stop_which(stop) == (
+        "which is a link to a file that does not exist; the manifest was missing after earlier syncs"
+    )
+
+
 def test_the_side_files_have_doctors_names_in_every_reader(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -16481,8 +16508,8 @@ def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
     line = _line(section(text, "Summary"), "- doctor: ")
     assert "from a state file that is a link" not in line and "state_dir.manifest FAIL (the person's" in line
     assert (
-        "from the state file that is missing though heartbeat.json records earlier passes, and is a link "
-        "into a folder that does not exist or refuses a write" in (line)
+        "from the state file that is a link into a folder that does not exist or refuses a write; the "
+        f"manifest {manifest_mod.LOST_MANIFEST}" in (line)
     ), line  # B13 round 26 E3, E14: the lost manifest's one bucket, which names the link
 
 

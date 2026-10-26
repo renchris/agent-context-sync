@@ -6801,13 +6801,13 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     lost = f"install.sh exited 1 at its config step on agentsync's state file, which is {facts['records']}"
     assert f"`{lost}: the person's to fix`" in page
     flat = " ".join(source.split())
-    for link in (
-        'and is a link to a file that does not " f"exist: {whose}"',
-        'and is a link into a folder that does not " f"exist or refuses a write: {linked}, removing',
+    for link in (  # B13 round 29 C110, C154: the link first, then doctor's words for the manifest
+        'f" on agentsync\'s state file, which is {_LINK_DANGLING}{lost}: {whose}",',
+        'f" on agentsync\'s state file, which is {_LINK_UNUSABLE}{lost}: {linked}, removing or "',
     ):
         assert link in flat, link
-    assert "`, and is a link to a file that does not exist` before the colon" in page
-    assert "`, and is a link into a folder that does not exist or refuses a write` and then ends" in page
+    for link in (setup_report._LINK_DANGLING, setup_report._LINK_UNUSABLE):
+        assert f"`which is {link}{setup_report._LINK_LOST_RECORDS}`" in page, link
     assert f"`{setup_report._LINK_FIRST}`" in page
     # B13 round 29 ruling 30: the person's two moves, and the agent's chmod first only in the mode case
     for unread in (setup_report._UNREAD_PERSONS, setup_report._HEARTBEAT_CHMOD_FIRST):
