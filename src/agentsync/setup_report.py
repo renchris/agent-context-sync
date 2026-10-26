@@ -3297,8 +3297,11 @@ def compute_outcome(
         for name, bucket in sorted_fails:
             if bucket is not None:
                 known.setdefault(bucket, []).append(name)
-        if odd:
-            why.append(f"{_plural(len(odd), 'unexpected doctor FAIL')}: {', '.join(odd)}")
+        if odd:  # B13 round 29 C161: each name once, its count in words, as the Doctor line folds it
+            said_odd = ", ".join(
+                n if k == 1 else f"{n} twice" if k == 2 else f"{n} {k} times" for n, k in Counter(odd).items()
+            )
+            why.append(f"{_plural(len(odd), 'unexpected doctor FAIL')}: {said_odd}")
         # the Doctor line's own bucket: its cause is known, so it is no unexpected FAIL (X35). A reason of its
         # own a bucket, its words (each starts "from ...") before the names: no bracket inside the outcome's
         # own, and no second "; " inside one reason (B13 round 21 Y32)
@@ -7995,6 +7998,9 @@ def _why_not_read(exc: BaseException) -> str:
 
         if isinstance(exc, GovernanceError):
             return _why_not_read(exc.__cause__)
+    words = _governance_unread_words(exc)  # B13 round 29 ruling 27 (C137, C161): by its role
+    if words is not None:
+        return words
     if isinstance(exc, sqlite3.Error):
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
@@ -8014,6 +8020,26 @@ def _why_not_read(exc: BaseException) -> str:
     # B13 round 22 Z39: no branch for a GovernanceError from a PermissionError here: Y38's above words it by
     # its OSError, and the file's name is status's (cli._unread_words), never the report's
     return f"an unexpected error: {type(exc).__name__}"
+
+
+def _governance_unread_words(exc: BaseException) -> str | None:
+    """Fixed words for a ``governance.GovernanceUnreadError`` (governance/ that is not a folder, a governance
+    file that is not a file or is damaged), by its role, pointing at the Doctor line that says why; never its
+    class, detail or path, which can name a folder (B13 round 29 ruling 27: C137, C161 read "an unexpected
+    error: GovernanceNotAFileError"). None for any other exception, or when governance does not import."""
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:
+        return None
+    if not isinstance(exc, governance.GovernanceUnreadError):
+        return None
+    role = str(exc.role)
+    if role == governance.GOVERNANCE_DIR_ROLE:
+        return "agentsync's governance folder is not a folder; the governance.hold line says why"
+    check = _MISPLACED_CHECKS.get(role)
+    if check is None:
+        return "a governance file cannot be read; see Doctor's governance lines"
+    return f"{_MISPLACED_ROLES[check]} cannot be read; Doctor's {check} line says why"
 
 
 def _os_why(exc: BaseException) -> str:
@@ -10071,6 +10097,10 @@ def _evidence_line(r: _Run) -> str:
     notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
     above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
     gov = sum(n for w, n in why.items() if w.startswith("a file in the state folder cannot be opened"))  # A87
+    # B13 round 29 ruling 27 (C103, C137, C161): governance/ not a folder, or a governance file that cannot
+    # be read, by _governance_unread_words' fixed words, never "another cause"
+    govdir = sum(n for w, n in why.items() if w.startswith("agentsync's governance folder is not a folder"))
+    govfile = {w: n for w, n in why.items() if w.endswith(" line says why") and " cannot be read; " in w}
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
         (
@@ -10115,11 +10145,36 @@ def _evidence_line(r: _Run) -> str:
             "measures them (see Doctor's governance lines)",
         ),
         (
+            govdir,
+            "agentsync's governance folder is not a folder: a report written after the person puts the real "
+            "one back measures them (see Doctor's governance.hold line)",
+        ),
+        *(
+            (
+                n,
+                f"{w.split('; ', 1)[0]}: a report written after the person restores it measures them (see "
+                f"{w.split('; ', 1)[1].removesuffix(' says why')})",
+            )
+            for w, n in govfile.items()
+        ),
+        (
             config,
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
         (
-            count - retry - state - shut - folder - notfile - side - notfolder - above - gov - config,
+            count
+            - retry
+            - state
+            - shut
+            - folder
+            - notfile
+            - side
+            - notfolder
+            - above
+            - gov
+            - config
+            - govdir
+            - sum(govfile.values()),
             "of another cause: see those lines",
         ),
     ]
@@ -12112,6 +12167,12 @@ class _DoctorSort:
     misplaced_words: str = "from state files that are not files"
     lost_words: str = _STATE_LOST_WORDS  # B13 round 26 E3, E14: _STATE_LOST_LINK_WORDS for a link
     side_words: str = _SIDE_NOT_FILE_WORDS  # B13 round 26 E23: the side file by name (_side_bucket_words)
+    # B13 round 29 ruling 27: governance/ not a folder, a damaged governance file, a lost hold, a held queue
+    from_govdir: list[str] = dataclasses.field(default_factory=list)
+    from_damaged: list[str] = dataclasses.field(default_factory=list)
+    damaged_words: str = ""
+    from_lost_hold: list[str] = dataclasses.field(default_factory=list)
+    from_held: list[str] = dataclasses.field(default_factory=list)
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -12445,6 +12506,100 @@ def _reads_the_state_folder(name: str) -> bool:
     return name.startswith(("state_dir.", "heartbeat.")) or name in _READS_THE_STATE_FOLDER
 
 
+_GOVDIR_WORDS = "from agentsync's governance folder that is not a folder"
+"""The Doctor line's bucket for governance/ itself not a folder (lane B's round 28 I88, I89), the person's,
+the real governance folder put back first (B13 round 29 ruling 27: C103, C121, C137, C147, C152, C161,
+C208)."""
+_LOST_HOLD_WORDS = "from a hold the hold list lost"
+"""The bucket for governance.hold's FAIL of a hold the audit trail or the hold record keeps that holds.json
+lost (``governance.lost_holds``), the person's, in the person's kinds' words (lane RB); never its owner, its
+reason or its scope (B13 round 29 ruling 27: C108, C120, C147, C161, C208; ruling 23)."""
+_HELD_WORDS = "waiting on a legal or records hold"
+"""The bucket for governance.purge_queue's warn when every queued purge waits on a hold (``governance.
+held_words``): its records owner's release comes first, never a WAITING ON YOU (B13 round 29 ruling 27, C108,
+C147, C208)."""
+_HELD_HEADS = (" on the hold on ", " on the hold set in sources.toml's [governance]", " on the hold above; ")
+"""``governance.held_words``' fixed words after its count (``HELD_HEAD`` and its config form, lane B's round
+29 ruling 32), and round 28's, which an older doctor prints."""
+_HOLD_LOST_WAIT = "not run while a hold the hold list lost is in force"
+"""Doctor's governance.purge_queue words when the hold list lost a hold (``governance.HOLD_LOST_WAIT``, lane
+B's round 29 ruling 27), as :data:`_HOLD_UNREAD_WAIT` when it cannot be read; a test keeps it equal to the
+source."""
+
+
+def _governance_dir_not_folder(c: Config | None) -> bool:
+    """Whether governance/ is not a folder agentsync can use (``governance.governance_dir_error``): the
+    report's own read, never doctor's words; False when it fails (B13 round 29 ruling 27)."""
+    if c is None:
+        return False
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return governance.governance_dir_error(expand(c.state_paths.root)) is not None
+    except Exception:
+        return False
+
+
+def _damaged_governance(c: Config | None) -> dict[str, Path]:
+    """Each governance file whose own reader raises ``GovernanceDamagedError`` (damaged JSON, empty, or the
+    wrong shape), by doctor's check, read one by one (``governance.governance_damaged`` names the first only);
+    a read that fails otherwise adds nothing (B13 round 29 ruling 27: C104, C147, C208)."""
+    out: dict[str, Path] = {}
+    if c is None:
+        return out
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        root = expand(c.state_paths.root)
+        reads = (
+            ("governance.hold", governance._state_holds),
+            ("governance.purge_queue", governance.pending_purges),
+            ("governance.suppressed", governance.load_suppressions),
+        )
+    except Exception:
+        return out
+    for check, read in reads:
+        try:
+            read(root)
+        except governance.GovernanceDamagedError as exc:
+            out[check] = Path(exc.path)
+        except Exception:
+            continue
+    return out
+
+
+def _hold_lost(c: Config | None) -> bool:
+    """Whether the hold list reads but lost a hold the audit trail or the hold record keeps
+    (``governance.hold_list_state`` ``lost``); False when the read fails (B13 round 29 ruling 27)."""
+    if c is None:
+        return False
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return governance.hold_list_state(expand(c.state_paths.root)) == "lost"
+    except Exception:
+        return False
+
+
+def _queue_held(r: _Run) -> bool:
+    """Whether every queued purge a ``purge --queue`` would run waits on a hold in force, and one does: the
+    report's own ``governance.held_purges`` over ``partition_purges``' runnable entries, with the hold list
+    readable; False when any read fails, or an entry would run (B13 round 29 ruling 27: C108, C147, C208)."""
+    if r.config is None:
+        return False
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        root = expand(r.config.state_paths.root)
+        if governance.hold_list_unread(root):
+            return False
+        queued, _kept = governance.partition_purges(r.config.state_paths, config=r.config)
+        runnable, held = governance.held_purges(root, governance.load_governance(r.config_path), queued)
+        return not runnable and bool(held)
+    except Exception:
+        return False
+
+
 def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     """Doctor's problems in the Doctor line's buckets, once per report and attempt runs: the Summary's
     outcome (:func:`_doctor_fails`) and its doctor line (:func:`_doctor_line`) read the one sort."""
@@ -12545,6 +12700,28 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     )
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []
+    # B13 round 29 ruling 27: ruling 19's governance states, each by the report's own read
+    govdir = not notfolder and _governance_dir_not_folder(r.config)
+    from_govdir: list[str] = []
+    damaged = {} if notfolder or govdir else _damaged_governance(r.config)
+    from_damaged: list[str] = []
+    damaged_named = [
+        n
+        for n, p in damaged.items()
+        if any(
+            t == "FAIL" and m == n and f"{p.name} is not " in d and " agentsync can read" in d
+            for t, m, d in r.facts.doctor_problems
+        )
+    ]
+    damaged_words = (
+        f"from {_MISPLACED_ROLES[damaged_named[0]]} that is damaged, empty or of the wrong shape"
+        if len(damaged_named) == 1
+        else "from governance files that are damaged, empty or of the wrong shape"
+    )
+    hold_lost = not notfolder and not govdir and "governance.hold" not in damaged and _hold_lost(r.config)
+    from_lost_hold: list[str] = []
+    held_queue = not notfolder and not govdir and _queue_held(r)
+    from_held: list[str] = []
     fails: list[tuple[str, str | None]] = []
     hold_bucket: list[str] | None = None  # the bucket that took governance.hold's FAIL (B13 round 28 I45)
     for tag, name, detail in r.facts.doctor_problems:
@@ -12588,6 +12765,13 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if notfile and tag == "FAIL" and name == "state_dir.manifest":
             from_notfile.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_NOT_FILE_WORDS))
+            continue
+        if govdir and tag == "FAIL" and name.startswith("governance.") and name != "governance.remote":
+            # B13 round 29 ruling 27: governance/ itself, the person's; before the files under it, whose
+            # lstat under a non-folder finds nothing
+            from_govdir.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _GOVDIR_WORDS))
+            hold_bucket = from_govdir if name == "governance.hold" else hold_bucket
             continue
         if tag == "FAIL" and name in misplaced_named:  # B13 round 26 ruling 13, by the report's own lstat
             from_misplaced.append(f"{name} FAIL{_PERSONS}")
@@ -12651,17 +12835,45 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             fails.append((name, _REFUSED_WORDS))
             hold_bucket = from_refused if name == "governance.hold" else hold_bucket
             continue
+        if tag == "FAIL" and name in damaged_named:  # B13 round 29 ruling 27 (C104, C147, C208)
+            from_damaged.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, damaged_words))
+            hold_bucket = from_damaged if name == "governance.hold" else hold_bucket
+            continue
+        if (
+            hold_lost
+            and tag == "FAIL"
+            and name == "governance.hold"
+            and "no longer lists the hold on " in detail
+        ):
+            # B13 round 29 ruling 27 (C108, C120): one FAIL per lost hold, each the person's
+            from_lost_hold.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _LOST_HOLD_WORDS))
+            hold_bucket = from_lost_hold
+            continue
+        wait = next((w for w in (_HOLD_UNREAD_WAIT, _HOLD_LOST_WAIT) if w in detail), None)
         if (
             hold_bucket is not None
             and tag == "warn"
             and name == "governance.purge_queue"
-            and _HOLD_UNREAD_WAIT in detail
+            and wait is not None
             and _hold_list_unread(r.config)
         ):
             # B13 round 28 I45: doctor's queue warn names the hold list as its cause and invites no run; it
             # sits with the hold list's FAIL, never "unexpected" (an older doctor's warn, without the
-            # phrase, and a hold list whose FAIL is itself unexpected keep it where it was)
-            hold_bucket.append(f"{name} warn ({_HOLD_UNREAD_WAIT})")
+            # phrase, and a hold list whose FAIL is itself unexpected keep it where it was); a lost hold's
+            # words too (B13 round 29 ruling 27)
+            hold_bucket.append(f"{name} warn ({wait})")
+            continue
+        if (
+            held_queue
+            and tag == "warn"
+            and name == "governance.purge_queue"
+            and any(h in detail for h in _HELD_HEADS)
+        ):
+            # B13 round 29 ruling 27 (C108, C147, C208): every entry waits on a hold, by the report's own
+            # read: the records owner's release comes first; a warn with a runnable entry keeps its place
+            from_held.append(f"{name} warn")
             continue
         # B13 round 23 A49: a state folder or file this account opens whose mode lets others read it FAILs
         # with this account's chmod, the agent's (install.sh's status-step NEXT names it); never beside a file
@@ -12774,6 +12986,11 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         misplaced_words=misplaced_words,
         lost_words=lost_words,
         side_words=side_words,
+        from_govdir=from_govdir,
+        from_damaged=from_damaged,
+        damaged_words=damaged_words,
+        from_lost_hold=from_lost_hold,
+        from_held=from_held,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -12883,6 +13100,19 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"{sort.misplaced_words} ({_plural(len(sort.from_misplaced), 'check')}): "
             + ", ".join(_fold(sort.from_misplaced))
         )
+    for words, entries in (  # B13 round 29 ruling 27
+        (_GOVDIR_WORDS, sort.from_govdir),
+        (sort.damaged_words, sort.from_damaged),
+        (_LOST_HOLD_WORDS, sort.from_lost_hold),
+    ):
+        if entries:
+            parts.append(f"{words} ({_plural(len(entries), 'check')}): " + ", ".join(_fold(entries)))
+    if sort.from_held:
+        parts.append(
+            f"{_HELD_WORDS} ({_plural(len(sort.from_held), 'check')}): "
+            + ", ".join(_fold(sort.from_held))
+            + " (its records owner's release comes first; see Doctor)"
+        )
     if sort.from_lost:  # B13 round 24 ruling 7
         parts.append(
             f"{sort.lost_words} ({_plural(len(sort.from_lost), 'check')}): "
@@ -12930,7 +13160,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             + ", ".join(f"{n} warn" for n in sort.from_newer_swift)
             + f" ({update.format(needed=sort.newer_swift)}, then run install.sh again)"
         )
-    parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
+    # B13 round 29 C161: a check named once, its count in words, as every bucket folds
+    parts.append(
+        f"unexpected {len(unexpected)}" + (f": {', '.join(_fold(unexpected))}" if unexpected else "")
+    )
     gone = _install_doctor_only(r, runs)
     if gone is not None:  # the two doctors differ: say when each ran, never why (B13 round 5 F39)
         run, named = gone
@@ -14029,12 +14262,28 @@ _MISPLACED_CHECKS = {
 outcome names the file in, so the outcome, Items and the Doctor bucket name one file one way (B13 round 27
 P126 with P18 and P120: holds.json is the hold list, as doctor and status call it)."""
 _STATE_NOT_FOLDER_RE = re.compile(
-    r"error: state: .* is (?:not a (?:directory|folder)\b|[^,]+, not a folder\b"
+    r"error: state: .* is (?:not a (?:directory|folder)\b|[^,]+, not a folder\b(?!: agentsync's governance)"
     r"(?P<above>, and the state folder )?)"
 )
 """The sync's line for something not a folder where the state folder belongs (state_dir's words: "<root> is
 not a directory", or "<path> is <kind>, not a folder"), or where a folder above it belongs (", and the state
 folder <root> sits under it"; B13 round 23 ruling 4)."""
+
+
+_GOVERNANCE_DIR_RE = re.compile(
+    r"error: state: .* is (?P<kind>[^,]+), not a folder: agentsync's governance folder belongs there"
+)
+"""The line a command prints when governance/ itself is not a folder (``governance.GOVERNANCE_DIR_ROLE``, lane
+B's round 28 I88, I89): the person's, the real governance folder put back first, never "agentsync's state
+folder" nor a bare move aside (B13 round 29 ruling 27: C103, C121, C137, C157). Keyed on "belongs there",
+which no state_dir line holds, and read before :data:`_STATE_NOT_FOLDER_RE`."""
+_GOVERNANCE_DAMAGED_RE = re.compile(
+    r"error: state: .* is not (?P<role>the hold list|the purge queue|the suppression list|the audit trail) "
+    r"agentsync can read\b"
+)
+"""The line for a governance file that is a regular file agentsync cannot read (``governance.
+_damaged_words``: damaged JSON, empty, or the wrong shape; lane B's round 28 I90), the person's (B13 round 29
+ruling 27: C104, C157)."""
 
 
 _STATE_LOST_COPY = " is missing, but heartbeat.json records earlier passes"
@@ -14175,6 +14424,25 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
     # aside (doctor's MANIFEST_FIX, state_dir's move-aside): the outcome named no cause, as the line holds no
     # "cannot be opened"
     for ln in block:
+        gov = _GOVERNANCE_DIR_RE.search(ln.strip())  # B13 round 29 ruling 27: governance/ itself
+        if gov is not None:
+            return (
+                f" on agentsync's governance folder, which is {gov.group('kind')}, not a folder: the "
+                "person's to fix",
+                "after the real governance folder was put back, or, where none was ever kept, it was moved "
+                "aside",
+            )
+        damaged = _GOVERNANCE_DAMAGED_RE.search(ln.strip())  # B13 round 29 ruling 27 (C104, C157)
+        if damaged is not None:
+            role = damaged.group("role")
+            noun = _MISPLACED_ROLES[_MISPLACED_CHECKS[role]]
+            after = (
+                "after it was restored from a copy they trust, or moved aside, keeping a copy, and each hold "
+                "set again"
+                if role == "the hold list"
+                else "after it was restored from a copy or moved aside, keeping a copy"
+            )
+            return f" on {noun}, which is damaged, empty or of the wrong shape: the person's to fix", after
         side = _STATE_SIDE_NOT_FILE_RE.search(ln.strip())  # B13 round 25 ruling 12 (D9)
         if side is not None:
             return _side_words(side.group("role"), side.group("kind")), "after it was moved aside"

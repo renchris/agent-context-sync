@@ -32451,6 +32451,30 @@ folder and at mode 0000, asserting `_HOLD_UNREAD_WAIT` is in its detail; the old
 as it stands for a build that is not this one. Measured on a mutant: with cli's phrase reworded, the new test
 fails and the old one passed.
 
+**Ruling 19's governance states are the person's in the report** (C103, C104, C108, C120, C121, C137, C147, C152,
+C157, C161, C208: one build; ruling 27, after lane B's words and names). The report read lane B's round 28 FAILs
+as unexpected, named governance/ that is not a folder "agentsync's state folder", and gave Status's evidence a
+Python class name. Step 2's outcome reads two more lines first: `_GOVERNANCE_DIR_RE` (`... is <kind>, not a
+folder: agentsync's governance folder belongs there`, keyed on "belongs there", which no state_dir line holds,
+and kept out of `_STATE_NOT_FOLDER_RE`) gives ` on agentsync's governance folder, which is <kind>, not a folder:
+the person's to fix`, after the real governance folder was put back; `_GOVERNANCE_DAMAGED_RE` (`... is not <role>
+agentsync can read`) gives ` on <the file>, which is damaged, empty or of the wrong shape: the person's to fix`,
+the hold list's after-words naming each hold set again. The Doctor line takes four buckets, each keyed on the
+report's own read through governance's names (a lazy import; a failed read leaves the line where it was):
+`from agentsync's governance folder that is not a folder` (`governance_dir_error`), `from <the file> that is
+damaged, empty or of the wrong shape` (each reader's `GovernanceDamagedError`, file by file),
+`from a hold the hold list lost` (`hold_list_state` `lost`; no owner, reason or scope) and `waiting on a legal or
+records hold` (`held_purges` leaves no runnable entry; `HELD_HEAD`'s words, or round 28's from an older doctor).
+The queue warn joins the hold list's bucket in either wait's words (`_HOLD_LOST_WAIT`, kept equal to
+`governance.HOLD_LOST_WAIT`). `_why_not_read` maps a `GovernanceUnreadError` by its role to fixed words that
+name the Doctor line (`agentsync's hold list cannot be read; Doctor's governance.hold line says why`), never its
+class, detail or path, and the evidence line names those causes, never "another cause". The unexpected lists fold
+a repeated check (`governance.hold FAIL twice`; the outcome's `governance.hold twice`). The heartbeat warn beside a
+governance folder that is not one is "yours" again through lane B's loop change (C152's loop half). Tests:
+`test_a_governance_folder_that_is_not_one_is_the_persons_in_every_part`,
+`test_a_damaged_governance_file_is_the_persons_and_its_queue_warn_sits_with_it`,
+`test_a_lost_hold_and_a_held_queue_have_their_own_buckets`, `test_the_unexpected_lists_fold_a_repeated_check`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

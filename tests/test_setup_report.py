@@ -8,6 +8,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import functools
+import inspect
 import itertools
 import json
 import logging
@@ -16345,6 +16346,184 @@ def test_the_queue_warn_a_hold_list_that_cannot_be_read_causes_sits_with_its_fai
     # a hold list that can be read: the warn is not the hold list's
     _text, summary = summary_of(fake_mac, doctor=lambda c: ["[ok  ] python — fine", queue_warn])
     assert "(not run while the hold list cannot be read)" not in _line(summary, "- doctor: "), summary
+
+
+def _governance_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI's status checks with only governance's and the heartbeat's problems kept: this tmp HOME has no
+    launcher, whose FAIL would be an unexpected one beside the state under test."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.name.startswith("governance") or c.name.startswith("heartbeat")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+
+
+def _step_2_stopped_on(fake_mac: dict[str, Path], line: str) -> None:
+    """An install run whose config step exited 1 on ``line``, as install.out keeps it."""
+    write_friction(fake_mac, retry_friction())
+    (fake_mac["setup"] / "install.log").write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1).replace(
+            "step=config seconds=1 rc=0 result=done note=add-source",
+            "step=config seconds=1 rc=1 result=failed",
+        ),
+        encoding="utf-8",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        f"# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n{line}\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_governance_folder_that_is_not_one_is_the_persons_in_every_part(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 ruling 27 (C103, C121, C137, C152, C157, C161, C208): with a file at governance/, the
+    outcome named "agentsync's state folder, which is not a folder", Doctor counted the governance.hold FAIL
+    and the heartbeat warn beside it as unexpected, and Status's evidence named a Python class. The outcome
+    names agentsync's governance folder and its kind, the FAIL sits in its own bucket by the report's own
+    read, the evidence says the governance folder in fixed words, and nothing is unexpected."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    root = expand(load_config(cfg).state_paths.root)
+    gov = governance.governance_dir(root)
+    if gov.exists():
+        gov.rename(root / "governance.kept")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    error = governance.governance_dir_error(root)
+    assert error is not None
+    _step_2_stopped_on(fake_mac, f"error: state: {error}")
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert "on agentsync's governance folder, which is a file, not a folder: the person's to fix" in outcome
+    assert "state folder, which is not a folder" not in text, outcome
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from agentsync's governance folder that is not a folder (1 check): governance.hold FAIL (the "
+        "person's; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    assert "agentsync's governance folder is not a folder; the governance.hold line says why" in text
+    for odd in ("unexpected error", "GovernanceNotAFileError", "another cause"):
+        assert odd not in text, [ln for ln in text.splitlines() if odd in ln]
+    # the state folder's own line keeps its words: the new match needs governance's
+    assert setup_report._GOVERNANCE_DIR_RE.search(f"error: state: {root} is a file, not a folder") is None
+    assert setup_report._STATE_NOT_FOLDER_RE.search(f"error: state: {error}") is None
+
+
+def test_a_damaged_governance_file_is_the_persons_and_its_queue_warn_sits_with_it(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 ruling 27 (C104, C147, C157, C208): a damaged hold list read as an unexpected FAIL and a
+    generic outcome. Its FAIL, and the queue warn its cause holds, sit in its own bucket by the report's own
+    read; the outcome names the hold list and its two moves; a damaged purge queue is named as itself."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    sid = config.sources[0].id
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(source_id=sid, stable_id="s1"), governance.PurgeReason.OPERATOR
+    )
+    holds = governance.governance_dir(root) / "holds.json"
+    holds.write_text("@@ not json", encoding="utf-8")
+    with pytest.raises(governance.GovernanceDamagedError) as damaged:
+        governance.state_holds(root)
+    _step_2_stopped_on(fake_mac, f"error: state: {damaged.value}")
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    wait = setup_report._HOLD_UNREAD_WAIT
+    bucket = (
+        " · from agentsync's hold list that is damaged, empty or of the wrong shape (2 checks): "
+        f"governance.hold FAIL (the person's; see Doctor), governance.purge_queue warn ({wait})"
+    )
+    assert bucket in line, line
+    assert line.endswith(" · unexpected 0"), line
+    outcome = _line(summary, "- **outcome: ")
+    assert "on agentsync's hold list, which is damaged, empty or of the wrong shape: the person's to fix" in (
+        outcome
+    ), outcome
+    assert setup_report._why_not_read(damaged.value) == (
+        "agentsync's hold list cannot be read; Doctor's governance.hold line says why"
+    )
+    # a damaged purge queue, by its own name, its reader's error mapped by role
+    holds.write_text('{"holds": []}', encoding="utf-8")
+    queue = governance.governance_dir(root) / "purge-queue.json"
+    queue.write_text('{"queue": 5}', encoding="utf-8")
+    with pytest.raises(governance.GovernanceDamagedError) as bad:
+        governance.pending_purges(root)
+    assert setup_report._why_not_read(bad.value) == (
+        "agentsync's purge queue cannot be read; Doctor's governance.purge_queue line says why"
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "from agentsync's purge queue that is damaged, empty or of the wrong shape (1 check)" in line, line
+
+
+def test_a_lost_hold_and_a_held_queue_have_their_own_buckets(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 ruling 27 (C108, C120, C147, C208): a hold the hold list lost, and a queue every entry
+    of which waits on a hold in force, were "unexpected". A lost hold's FAIL (and the queue warn it causes)
+    sits in its own bucket, with no owner or scope; a held queue's warn waits on the records owner's release;
+    a queue with no hold keeps its place."""
+    assert setup_report._HOLD_LOST_WAIT == governance.HOLD_LOST_WAIT
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    sid = config.sources[0].id
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(source_id=sid, stable_id="s1"), governance.PurgeReason.OPERATOR
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    plain = _line(section(text, "Summary"), "- doctor: ")
+    assert setup_report._HELD_WORDS not in plain, plain
+    assert (
+        cli.main(
+            ["hold", "all", "--reason", "Fabrikam matter", "--owner", "Avery Quill", "--config", str(cfg)]
+        )
+        == 0
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        f" · {setup_report._HELD_WORDS} (1 check): governance.purge_queue warn (its records owner's release "
+        "comes first; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    (governance.governance_dir(root) / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        " · from a hold the hold list lost (2 checks): governance.hold FAIL (the person's; see Doctor), "
+        f"governance.purge_queue warn ({setup_report._HOLD_LOST_WAIT})"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    for secret in ("Avery", "Quill", "Fabrikam"):
+        assert secret not in text, secret
+
+
+def test_the_unexpected_lists_fold_a_repeated_check() -> None:
+    """B13 round 29 C161: two unexpected FAILs of one check read "governance.hold FAIL twice" on the Doctor
+    line, as every bucket folds, and the outcome says "governance.hold twice"."""
+    assert setup_report._fold(["governance.hold FAIL", "governance.hold FAIL", "lock FAIL"]) == [
+        "governance.hold FAIL twice",
+        "lock FAIL",
+    ]
+    source = inspect.getsource(setup_report._doctor_line)
+    assert "', '.join(_fold(unexpected))" in source
+    outcome = inspect.getsource(setup_report)
+    assert "why.append(f\"{_plural(len(odd), 'unexpected doctor FAIL')}: {said_odd}\")" in outcome
 
 
 def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dict[str, Path]) -> None:
