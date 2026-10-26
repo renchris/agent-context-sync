@@ -303,6 +303,9 @@ _LABEL_READER_META = "label_reader_revision"
 """The ``content_policy.LABEL_READER_REVISION`` the mail rows were last screened under (``_Cycle.
 _check_label_reader``, B13 round 30 C404, C360): none stored is an older build's manifest."""
 _MAIL_SUFFIXES = (".eml", ".msg")
+_READER_RESCREEN = "label-reader:"
+"""How ``_RESCREEN_META`` begins when a label reader's revision, not [policy], queued the re-screen, so
+STATE.md's line does not say [policy] changed (B13 round 30 C404)."""
 _SECRET_RULES_META = "secret_rules"
 """Manifest meta: the JSON ``lints.secret_rules_identity()`` of the last secret-scan re-screen.  When the
 identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
@@ -2561,14 +2564,22 @@ class _Cycle:
         if self.manifest.get_meta(_LABEL_READER_META) == revision:
             return
         if self.publisher.content_policy.labels_active and not self._policy_rescreened:
-            self._queue_rescreen(_MAIL_SUFFIXES, (), "the mail label reader changed: %d mail %s")
+            self._queue_rescreen(
+                _MAIL_SUFFIXES,
+                (),
+                "the mail label reader changed: %d mail %s",
+                pending=_READER_RESCREEN + revision,
+            )
         self.manifest.set_meta(_LABEL_READER_META, revision)
 
-    def _queue_rescreen(self, suffixes: Sequence[str], withheld: Sequence[str], said: str) -> bool:
+    def _queue_rescreen(
+        self, suffixes: Sequence[str], withheld: Sequence[str], said: str, *, pending: str | None = None
+    ) -> bool:
         """Mark the rows named with one of ``suffixes`` for a re-screen (``Manifest.mark_for_rescreen``, a
         withheld stub of one of ``withheld`` included), keep the stubs it queues for the sync that converts
         them, and log the count (``said``: a format with ``%d`` and the noun's ``%s``; never a name).
-        Returns whether any row was marked."""
+        ``pending`` is what ``_RESCREEN_META`` keeps while the re-screen is incomplete (the [policy]
+        fingerprint when None). Returns whether any row was marked."""
         stubs = self._rescreen_stubs_load()
         policy = self.publisher.content_policy
         queued: set[tuple[str, str]] = set()
@@ -2585,7 +2596,7 @@ class _Cycle:
             self._rescreen_stubs_moved = True
             self._rescreen_stubs_save()
         if marked:
-            self.manifest.set_meta(_RESCREEN_META, policy.fingerprint())
+            self.manifest.set_meta(_RESCREEN_META, policy.fingerprint() if pending is None else pending)
             log.warning(
                 said + " queued for a re-screen",
                 marked,
@@ -2665,7 +2676,8 @@ class _Cycle:
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
             return  # a run of some sources only: the next full one folds them all
         folded = 0
-        for src in self.config.live_sources():
+        # a paused source's stub too: QUARANTINE.tsv lists it, and once the key is written nothing folds it
+        for src in [s for s in self.config.sources if s.state is not SourceState.RETIRED]:
             for row in list(self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))):
                 reason = row.state_reason or ""
                 if row.is_dir or not reason.startswith(CONVERTER_UNAVAILABLE):
@@ -2887,19 +2899,24 @@ class _Cycle:
 
     def _rescreen_lines(self) -> list[str]:
         """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left)."""
-        if not self.manifest.get_meta(_RESCREEN_META):  # never set, or "" since the last re-screen finished
+        pending = self.manifest.get_meta(_RESCREEN_META)
+        if not pending:  # never set, or "" since the last re-screen finished
             return []
         left = self.manifest.pending_named(_LABEL_CAPABLE)
         if left == 0:
             self.manifest.set_meta(_RESCREEN_META, "")
             return []
+        reader = pending.startswith(
+            _READER_RESCREEN
+        )  # a label reader's revision queued it, not [policy] (C404)
         return [
             "## Content policy",
             "",
-            f"- [policy] changed: {plural(left, 'label-capable file')} not yet re-screened (fetched and "
+            f"- {'the mail label reader changed' if reader else '[policy] changed'}: "
+            f"{plural(left, 'label-capable file')} not yet re-screened (fetched and "
             "screened as the byte budget allows); until then "
             + ("its mirror page reflects" if left == 1 else "their mirror pages reflect")
-            + " the previous policy",
+            + (" the previous label reader" if reader else " the previous policy"),
             "",
         ]
 
@@ -3319,17 +3336,32 @@ class _Cycle:
         the next sync of its source reads; a row read again and gone since counts in neither. (0, 0, 0) when
         the manifest cannot say (B13 round 30 C362)."""
         try:
-            rows = []
-            for sid, stable in sorted(self._path_reread):
-                row = self.manifest.get_item(sid, stable)
-                if row is None and (now := self.manifest.resolve_alias(sid, stable)) is not None:
-                    row = self.manifest.get_item(sid, now)
-                rows.append(row)
+            rows = [self._path_row(sid, stable) for sid, stable in sorted(self._path_reread)]
+            read = {(r.source_id, r.stable_id) for r in rows if r is not None} | self._path_reread
+            queued = [self._path_row(sid, stable) for sid, stable in sorted(self._path_queued)]
         except Exception:  # the report never fails over a count
             return 0, 0, 0
         current = sum(1 for r in rows if r is not None and r.state in (RowState.LIVE, RowState.DATALESS))
         failed = sum(1 for r in rows if r is not None and r.state in (RowState.QUARANTINED, RowState.REFUSED))
-        return current, failed, len(self._path_queued - self._path_reread)
+        # still the stub, still queued: not one this run converted some other way (new bytes), removed or
+        # re-keyed into a re-read (B13 round 23 A62's alias rule)
+        waiting = sum(
+            1
+            for r in queued
+            if r is not None
+            and (r.source_id, r.stable_id) not in read
+            and r.state is RowState.QUARANTINED
+            and (r.state_reason or "").startswith(CONVERSION_FAILED)
+            and r.last_verdict is Verdict.ERROR
+        )
+        return current, failed, waiting
+
+    def _path_row(self, source_id: str, stable: str) -> ItemRow | None:
+        """The row ``stable`` names, read under its new id when a safe-save re-keyed it in this run."""
+        row = self.manifest.get_item(source_id, stable)
+        if row is None and (now := self.manifest.resolve_alias(source_id, stable)) is not None:
+            row = self.manifest.get_item(source_id, now)
+        return row
 
     def _legacy_outcomes(self) -> tuple[int, int, int]:
         """Of the rows the upgrade's retry moved, ``(current, settled, waiting)`` after this run, in one

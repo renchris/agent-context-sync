@@ -33121,7 +33121,8 @@ text, an id rule and a name rule alike). `policy.LABEL_READER_REVISION` (2, for 
 manifest meta key (`label_reader_revision`); `_check_label_reader`, right after `_check_policy_change`, marks only
 the `.eml` and `.msg` rows for a re-screen when the stored value differs while a label rule is on, through the same
 helper as a [policy] change (`_queue_rescreen`: its stub queue, `policy_rescreen_pending` and a counted WARNING,
-never a name), and writes the key whatever the rule, so an install with no rule never pays (a rule set later
+never a name; the pending value begins `label-reader:`, so STATE.md's line says `the mail label reader changed`, not
+`[policy] changed`), and writes the key whatever the rule, so an install with no rule never pays (a rule set later
 re-screens through the [policy] change). A [policy] change in the same sync has marked them already. A binary
 `.msg` withheld by its name is not marked: its reader did not change. `fingerprint()`, the `label_policy`
 converter option and every action key stay as they were. The re-screen refuses the page and queues its
@@ -33129,7 +33130,8 @@ converter option and every action key stay as they were. The re-screen refuses t
 `test_policy.py::test_a_mail_an_older_label_reader_published_is_screened_again` (the compat32 reader publishes,
 the revision key is deleted as an older build's manifest has none, and the next sync refuses the page and queues
 its purge, then marks nothing; an encoded header under an id rule and a folded one under a name rule, `.eml` and
-`.msg`) and `test_policy.py::test_a_label_reader_revision_with_no_label_rule_screens_nothing`.
+`.msg`), `test_policy.py::test_a_label_reader_revision_with_no_label_rule_screens_nothing` and
+`test_policy.py::test_a_label_reader_re_screen_does_not_say_policy_changed`.
 
 **A path in its escaped spelling leaves a reason too (C364, ruling 45; `agentsync.convert`; amends §16.201 C221
 and C183).** `_pathless` and `_homeless` replaced each path as written, but an `OSError` and a `PosixPath` print
@@ -33149,7 +33151,8 @@ pandoc could not start (`[convert] pandoc_path = "~/bin/pandoc"` missing) kept i
 `_manifest/<source>.jsonl` and the manifest for as long as pandoc still could not start: `_queue_path_stubs` skips a
 converter-unavailable row, and `_converter_waits` writes neither the row nor the page. Once per manifest
 (`convert-unavailable-fold:done`, written only on a run that covers every live source, as `_rerender_stubs`),
-`Cycle._fold_unavailable_reasons` folds the home folder to `~` in each such stub's stored reason, taken from its
+`Cycle._fold_unavailable_reasons` folds the home folder to `~` in each such stub's stored reason, a paused source's
+too (QUARANTINE.tsv lists it, and once the key is written nothing would fold it), taken from its
 page's full `reason:` when the page is one intact failed stub (`_failed_stub_again`) and cut to 200 characters as a
 stub's reason is stored, since an older build's cut inside a long home folder lost what came after it; and rewrites
 the page with the folded reason only where the plan differs. It is never swapped for this cycle's reason: the stub
@@ -33158,7 +33161,8 @@ moves; the docs history keeps the older page, as for any page a later build rewr
 `test_convert_family.py::test_an_older_builds_converter_unavailable_reason_is_folded_in_place` (the older build's
 sync with no home fold, a home folder long enough that the stored reason is cut inside it; then no home folder in
 the row, the HEAD page, QUARANTINE.tsv or the source's manifest file, the reason ending `~/bin/pandoc`, and a third
-sync that leaves the page as it is).
+sync that leaves the page as it is) and
+`test_convert_family.py::test_a_paused_sources_converter_unavailable_reason_is_folded_too`.
 
 **A test reaches `_stub_with_a_path` (C365, ruling 45; tests only).** §16.201 C181's two end-to-end tests reach the
 re-read through `_names_a_path`'s own branch (a reason naming this config's staging folder, or cut inside it), so
@@ -33178,7 +33182,8 @@ stubs `_queue_path_stubs` queued in this run and the ones `_retries` converted p
 (`_path_queued`, `_path_reread`), and `_path_outcomes` counts them into `CycleReport` and the run record:
 `path_reread` (converted once more in this run), `path_reread_current` (of them, live or dataless now),
 `path_reread_failed` (of them, still a stub: failed again, or settled as unreadable or refused) and
-`path_reread_waiting` (queued in this run, not read: another source's run, paused, out of time). After the legacy
+`path_reread_waiting` (queued in this run and still that stub, queued and not read: another source's run, paused,
+out of time; not one this run converted from new bytes, removed or re-keyed into a re-read). After the legacy
 notes, the CLI prints one note per count, each keeping `an older build gave up on ` (install.sh's grep, unchanged)
 and holding no bare `converted`, `deferred` or `read again` (install.sh's awk): `note: N conversion(s) an older
 build gave up on (its stored reason named a folder on this Mac) was tried once more in this sync and is now
@@ -33190,7 +33195,8 @@ while a hold suspends compaction, it stays until the person chooses to purge tha
 history. The setup report's retry sentence and the guide say so, with no count or path (lanes RA and D). Tests:
 `test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it` (a run
 of the other source says it waits, the next sync that it failed again, the one after nothing; the run record's
-counts), `test_convert_family.py::test_a_path_re_read_that_converts_says_it_is_now_current` and
+counts), `test_convert_family.py::test_a_path_re_read_that_converts_says_it_is_now_current`,
+`test_convert_family.py::test_a_queued_path_stub_with_new_bytes_is_no_waiting_re_read` and
 `test_convert_family.py::test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once` (an earlier
 commit still holds the staging path, and no purge is queued).
 

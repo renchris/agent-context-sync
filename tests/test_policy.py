@@ -578,6 +578,33 @@ def test_a_mail_an_older_label_reader_published_is_screened_again(
     assert run(config).commit_sha is None, "screened once: the next sync marks nothing"
 
 
+def test_a_label_reader_re_screen_does_not_say_policy_changed() -> None:
+    """C404: a re-screen the reader's revision queued kept ``policy_rescreen_pending`` as the [policy]
+    fingerprint, so STATE.md said "[policy] changed" when nobody changed [policy]."""
+
+    class _Manifest:
+        def __init__(self, pending: str) -> None:
+            self.pending = pending
+
+        def get_meta(self, _key: str) -> str:
+            return self.pending
+
+        def pending_named(self, _suffixes: object) -> int:
+            return 2
+
+    for pending, said, tail in (
+        (
+            cycle._READER_RESCREEN + "2",
+            "- the mail label reader changed: 2 label-capable files",
+            "label reader",
+        ),
+        ("sha256:abc", "- [policy] changed: 2 label-capable files", "policy"),
+    ):
+        fake = type("C", (), {"manifest": _Manifest(pending)})()
+        [line] = [ln for ln in cycle._Cycle._rescreen_lines(fake) if ln.startswith("- ")]  # type: ignore[arg-type]
+        assert line.startswith(said) and line.endswith(f"the previous {tail}"), line
+
+
 def test_a_label_reader_revision_with_no_label_rule_screens_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

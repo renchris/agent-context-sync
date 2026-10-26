@@ -363,6 +363,28 @@ def test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_re
     assert _notes(capsys.readouterr().out) == []
 
 
+def test_a_queued_path_stub_with_new_bytes_is_no_waiting_re_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C362 (review): the waiting count was every queued stub the one-shot did not reach, so a file whose new
+    bytes this sync converted as a change was said to wait for the next sync of its source."""
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    build_potx(src / "Contoso renamed doc.potx")  # new bytes: a deck template, converted as a change
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    assert _notes(capsys.readouterr().out) == []
+    assert _row(config, "Contoso renamed doc.potx").state is RowState.LIVE
+    assert "path_reread_waiting" not in _run_record(config)
+
+
 def test_a_path_re_read_that_converts_says_it_is_now_current(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -382,7 +404,7 @@ def test_a_path_re_read_that_converts_says_it_is_now_current(
         mp.setattr(PptxConverter, "convert", failing)
         for _ in range(4):
             assert run(config).exit_code == 0
-    assert "/staging/" in (_row(config, "Contoso Quarterly.pptx").state_reason or "")
+    assert str(config.state_paths.root) in (_row(config, "Contoso Quarterly.pptx").state_reason or "")
     capsys.readouterr()
     cli.main(["sync", "--config", str(config.config_path)])
     out = capsys.readouterr().out
@@ -535,6 +557,28 @@ def test_an_older_builds_converter_unavailable_reason_is_folded_in_place(
     before = (config.docs_repo / page).read_bytes()
     run(config)
     assert (config.docs_repo / page).read_bytes() == before, "a waiting sync leaves the stub as it is"
+
+
+def test_a_paused_sources_converter_unavailable_reason_is_folded_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C361 (review): the fold read only live sources but wrote its once-per-manifest key, so a paused
+    source's stub, which QUARANTINE.tsv still lists, kept the home folder for good."""
+    extra = '\n[convert]\npandoc_path = "~/bin/pandoc"\n'
+    config, src = make_env(tmp_path, extra=extra)
+    (src / "contoso-notes.rtf").write_text(r"{\rtf1\ansi Contoso notes\par}", encoding="utf-8")
+    from agentsync.convert import _common  # noqa: PLC0415
+
+    with monkeypatch.context() as mp:
+        mp.setattr(convert_pkg, "_homeless", lambda text: text)
+        mp.setattr(_common, "_homeless", lambda text: text)
+        mp.setattr(cycle_mod._Cycle, "_fold_unavailable_reasons", lambda _self: None)
+        run(config)
+    home = str(Path.home().resolve())
+    assert home in (_row(config, "contoso-notes.rtf").state_reason or "")
+    paused, _ = make_env(tmp_path, extra=extra, source_extra='state = "paused"')
+    run(paused)
+    assert home not in (_row(paused, "contoso-notes.rtf").state_reason or "")
 
 
 def test_a_stub_with_a_path_needs_no_home_folder(monkeypatch: pytest.MonkeyPatch) -> None:
