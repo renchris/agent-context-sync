@@ -33406,3 +33406,20 @@ guide's paraphrase of step 2's NEXT is accurate and stays. The step 2 outcome
 it now cites ruling 21 for the case and ruling 30 for the owner. Test:
 `test_the_guide_quotes_the_heartbeat_mode_tail_and_cites_the_owner_ruling`, which reads the quote from install.sh's
 `lown=` line and the outcome from `_UNREAD_PERSONS`.
+
+**A lint finds a single-quoted program split by a pair of apostrophes** (C392, lane RB's lesson;
+`tests/test_deploy_pack.py`). Two apostrophes of a plural possessive in a comment inside a `_PY='` body or an awk
+program pass /bin/bash -n, the pinned shellcheck and both apostrophe lints (the snippet lint reads only lines ending
+`-c '`, the substitution lint only `$(` and `<(` blocks): the first ends the program, the second reopens a quote the
+program's own closing quote ends, and the program runs without the code after the first. `split_single_quote_spans`
+lexes each shell script's quotes (comments at a word's start, double quotes with the `$( )` and backquotes inside
+them, backslash escapes, `$'...'`, here-strings and heredoc bodies, a `case` pattern's `)` inside a `$( )`) and
+fails on a multi-line single-quoted span that opens right after a letter or digit, the second half of a split pair.
+Measured: it flags the two seeds of the finding and the verifier's (LOST_HOLD_PY, MISPLACED_PY, the awk program at
+install.sh:388, job_canaries' awk), and nothing in the 17 scripts SHELL_SCRIPTS globs; every one of install.sh's 73
+multi-line spans opens after a space, `=` or `"`. Corrected by measurement: a first prototype read a here-string's
+`<<<"$locks"` as a heredoc and skipped the rest of install.sh, so a seed past it went unseen; a here-string is
+skipped whole, and a heredoc that never closes fails the lint. The optional widening of the snippet lint to `_PY='`
+openers is not built: both bodies close at a line's end (`...or "")'`), not on a line of their own, so its extractor
+would read them past their end. Tests: `test_the_split_quote_lint_finds_a_split_pair_in_a_program` and
+`test_no_single_quoted_program_is_split_by_a_pair_of_apostrophes`.

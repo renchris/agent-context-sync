@@ -459,6 +459,156 @@ def test_no_apostrophe_inside_a_single_quoted_python_snippet(script: Path) -> No
         compile(body, f"{script.name}:{start}", "exec")
 
 
+def split_single_quote_spans(text: str) -> list[int]:
+    """The line numbers of each multi-line single-quoted span whose opening quote directly follows a letter or
+    digit: the second half of a split pair, such as the ``users' ... owners'`` of a plural possessive, which
+    ends a single-quoted program early and reopens it after the next word. The lexer skips comments (a ``#``
+    at a word's start), double-quoted text (but not a ``$( )`` or backquote inside it), backslash escapes,
+    ``$'...'`` spans, here-strings and heredoc bodies, and counts lines exactly (B13 round 30 C392)."""
+    found: list[int] = []
+    kinds = ["cmd"]  # cmd (the top level), sub ($( )), bq (a backquote) or dq (double quotes)
+    depth = [0]  # the open ( of each context, so a $( ) closes at its own )
+    cases = [0]  # the open case of each context, whose pattern ) closes nothing
+    heredocs: list[str] = []
+    i, line, n = 0, 1, len(text)
+
+    def word_start(k: int) -> bool:
+        return k == 0 or text[k - 1] in " \t\n;(|&"
+
+    def push(kind: str) -> None:
+        kinds.append(kind)
+        depth.append(0)
+        cases.append(0)
+
+    def pop() -> None:
+        kinds.pop()
+        depth.pop()
+        cases.pop()
+
+    while i < n:
+        c = text[i]
+        kind = kinds[-1]
+        if c == "\n":
+            line += 1
+            i += 1
+            if heredocs and kind in ("cmd", "sub"):
+                for word in heredocs:
+                    while True:
+                        assert i < n, f"line {line}: the heredoc {word!r} is never closed"
+                        end = text.find("\n", i)
+                        end = n if end < 0 else end
+                        body = text[i:end]
+                        line += 1
+                        i = end + 1
+                        if body.lstrip("\t") == word:
+                            break
+                heredocs = []
+            continue
+        if c == "\\":
+            line += text.startswith("\\\n", i)
+            i += 2
+            continue
+        if kind == "dq":
+            if c == '"':
+                pop()
+            elif text.startswith("$(", i):
+                push("sub")
+                i += 1
+            elif c == "`":
+                push("bq")
+            i += 1
+            continue
+        if kind == "bq" and c == "`":
+            pop()
+            i += 1
+            continue
+        if c == "#" and word_start(i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+            continue
+        if c == "'":
+            end = text.index("'", i + 1)
+            if "\n" in text[i:end] and i > 0 and text[i - 1].isalnum():
+                found.append(line)
+            line += text.count("\n", i, end)
+            i = end + 1
+            continue
+        if text.startswith("$'", i):
+            k = i + 2
+            while text[k] != "'":
+                k += 2 if text[k] == "\\" else 1
+            line += text.count("\n", i, k)
+            i = k + 1
+            continue
+        if c == '"' or c == "`" or text.startswith("$(", i):
+            push({'"': "dq", "`": "bq"}.get(c, "sub"))
+            i += 1 if c in '"`' else 2
+            continue
+        if text.startswith("<<<", i):
+            i += 3
+            continue
+        heredoc = re.match(r"<<-?[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|\\?([A-Za-z_]\w*))", text[i : i + 80])
+        if heredoc:
+            heredocs.append(next(word for word in heredoc.groups() if word))
+            i += heredoc.end()
+            continue
+        if kind == "sub":
+            keyword = re.match(r"(case|esac)\b", text[i : i + 5]) if word_start(i) else None
+            if keyword:
+                cases[-1] += 1 if keyword.group(1) == "case" else -1
+                i += keyword.end()
+                continue
+            if c == "(":
+                depth[-1] += 1
+            elif c == ")" and depth[-1]:
+                depth[-1] -= 1
+            elif c == ")" and not cases[-1]:
+                pop()
+        i += 1
+    assert kinds == ["cmd"], f"the lexer ended inside {kinds[-1]} at line {line}"
+    return found
+
+
+def test_the_split_quote_lint_finds_a_split_pair_in_a_program() -> None:
+    """B13 round 30 C392: a comment holding two apostrophes of a plural possessive inside a ``_PY='`` body or
+    an awk program passes /bin/bash -n, shellcheck and both lints above (the snippet lint reads only ``-c '``
+    lines, the substitution lint only ``$(`` and ``<(`` blocks); the first apostrophe ends the program and
+    the second reopens a quote that the program's own closing quote ends. The lint finds both shapes, and
+    not a heredoc, a ``$'...'`` span or a clean ``-c '`` snippet."""
+    comment = "# the users' list and the owners' rows\n"
+    python = "LOST_PY='\nimport sys\n" + comment + "print(len(sys.argv))\n'\n"
+    awk = 'f() {\n\tprintf "%s\\n" "$1" | LC_ALL=C awk \'\n' + comment + "\t\t{ print $1 }'\n}\n"
+    assert split_single_quote_spans(python) == [3]
+    assert split_single_quote_spans(awk) == [3]
+    # inside a "$( )", whose double quotes hold the program
+    sub = 'n="$(printf "%s" "$x" | awk \'\n' + comment + '\t{ print }\' "$cfg")"\n'
+    assert split_single_quote_spans(sub) == [2]
+    clean = (
+        "cat <<EOF\nit's here\nEOF\n"
+        "cat <<-'SED'\n\tthe users' list\n\tSED\n"
+        "x=$'it\\'s\\nfine'\n"
+        'grep -c x <<<"$locks"\n'
+        'n="$(with_timeout 10 "$TOOL_PY" -I -c \'\nimport sys\nprint(len(sys.argv))\n\' "$cfg")"\n'
+        "case $x in a) echo 'one' ;; esac\n"
+        'y="$(case $x in a) echo b ;; esac)"\n'
+        "# a comment's own apostrophe\n"
+    )
+    assert split_single_quote_spans(clean) == []
+
+
+@pytest.mark.parametrize("script", SHELL_SCRIPTS, ids=lambda p: p.name)
+def test_no_single_quoted_program_is_split_by_a_pair_of_apostrophes(script: Path) -> None:
+    """A pair of apostrophes inside a single-quoted program (a ``_PY='`` body, an awk program, any
+    multi-line ``'...'``) splits it in two: bash -n and shellcheck pass it, and the program runs without the
+    code after the first (B13 round 30 C392, lane RB's lesson). The second half opens right after a word, so
+    no multi-line single-quoted span may open right after a letter or digit."""
+    lines = split_single_quote_spans(script.read_text(encoding="utf-8"))
+    assert lines == [], (
+        f"{script.name} lines {lines}: a single-quoted span opens right after a word, the second half of a"
+        ' pair of apostrophes that split a single-quoted program; use " or drop the apostrophe'
+    )
+
+
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
 def test_scripts_pass_shellcheck(script: Path) -> None:
