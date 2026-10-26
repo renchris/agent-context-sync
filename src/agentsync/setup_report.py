@@ -10693,9 +10693,18 @@ def _probe(text: str) -> str:
     return text.replace(AGENTSYNC_BIN, "agentsync").replace("agentsync.", "")
 
 
+_STUB_NOW_RE = re.compile(r"(?s).+( is a `contains a credential` stub now)\Z")
+"""Lane B's alarm for a page the secret scan stubbed (``<source>: <mirror page> is a `contains a credential`
+stub now: ...``, round 29 C145), as a ``: ``-segment: the page is cut, through the last such tail, and
+agentsync's own words after it stay (B13 round 29 C145's report half; ruling 23)."""
+
+
 def _scrub_segment(part: str) -> str:
     if _LOG_HEAD_RE.fullmatch(part) or not _PATH_IN_LOG_RE.search(_probe(part)):
         return part
+    stub = _STUB_NOW_RE.fullmatch(part)
+    if stub is not None:
+        return "<path>" + stub.group(1)
     out = _KEY_PATH_RE.sub(
         lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(_probe(m.group(0))) else m.group(0), part
     )

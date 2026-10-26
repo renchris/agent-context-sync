@@ -32498,6 +32498,14 @@ and `no sync has built this manifest yet` in the not-looked-up line. Tests:
 of round 28's pinned head), `test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_table`,
 `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place`.
 
+**A credential stub's alarm names no page in the report** (C145's report half, after lane B's sha). Lane B's alarm
+names a page the secret scan stubbed by its mirror path (`<source>: mirror/<source>/<path>.md is a `contains a
+credential` stub now: ...`), and the LaunchAgent's err.log, which Recent errors reads, keeps it. The item-path
+scrub cut the whole segment, agentsync's words with it; `_STUB_NOW_RE` cuts the page through the segment's last
+such tail and keeps the words (`src-x: <path> is a `contains a credential` stub now: ...`). The sync line's new
+trailing clause (`; S of the unreadable held back: ...`) sits after every clause `_SPLIT_RE` keys on, which reads
+the same counts. Test: `test_a_credential_stubs_alarm_names_no_page_in_the_report`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

@@ -269,6 +269,34 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
     assert "(item paths and document names shown as <path>)" in errors
 
 
+def test_a_credential_stubs_alarm_names_no_page_in_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 29 C145's report half: lane B's alarm names a page the secret scan stubbed by its mirror path
+    (``<source>: mirror/<source>/<path>.md is a `contains a credential` stub now``), and the LaunchAgent's
+    err.log keeps it, which Recent errors reads. The page's folder and document names are a path the report
+    cuts; the sync line's new trailing clause leaves the split's counts as they were."""
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-10-05 09:00:00,000 WARNING agentsync.cycle: src-x: mirror/src-x/Big Bank Merger/Globex "
+        "terms.docx.md is a `contains a credential` stub now: its converted text held one\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    for name in ("Big Bank", "Merger", "Globex"):
+        assert name not in text, [ln for ln in text.splitlines() if name in ln]
+    assert "is a `contains a credential` stub now" in section(text, "Recent errors"), section(
+        text, "Recent errors"
+    )
+    line = (
+        "1 source synced (of the converted: 2 unreadable, 0 failed, 1 refused, 1 of them withheld: its label "
+        "cannot be read; 1 of the unreadable held back: its page contained a credential)"
+    )
+    split = setup_report._SPLIT_RE.search(line)
+    assert split is not None and split.groups() == ("2", "0", "1", "1"), split
+
+
 @pytest.fixture
 def mac_zone() -> Iterator[None]:
     """This Mac's time zone is America/Denver (UTC-6 until 2026-11-01, then UTC-7): the report reads a Python
