@@ -1336,7 +1336,14 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
         if action == "purge-enqueued":
             open_[(fp, rec.get("reason"))] = rec
         elif action == "purge-summary" and rec.get("verified") is True:
-            open_ = {k: v for k, v in open_.items() if k[0] != fp}
+            # only the reasons the purge did, as _covers judges it: an upstream-deleted run of a selector
+            # leaves its erasure, label or DLP entry queued, and so open here (C172's review)
+            upstream = rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value
+            open_ = {
+                k: v
+                for k, v in open_.items()
+                if k[0] != fp or (upstream and k[1] != PurgeReason.UPSTREAM_DELETED.value)
+            }
         elif action in ("purge-covered", "purge-forgotten"):
             open_.pop((fp, rec.get("reason")), None)
     return [
@@ -1576,7 +1583,7 @@ def _drop_covered(
             # each with its purge-covered line, as the queue's run writes one: an entry off the queue with no
             # line would read as lost (B13 round 29 C172)
             with _audit_appender(state_dir) as line:
-                _write_queue(state_dir, kept)
+                # the lines first: a queue rewritten with no line for what it dropped would read as lost
                 for e in queue:
                     # the queue's own run writes its lines; the purge's own entry, its summary closes
                     if not audit or not _covers(selector, report, e) or e.selector == selector:
@@ -1590,6 +1597,7 @@ def _drop_covered(
                             "selector_sha256": e.selector.fingerprint(),
                         }
                     )
+                _write_queue(state_dir, kept)
     except Exception as exc:  # the purge already verified: the queue is only tidied
         log.warning("governance: purge queue not updated after a verified purge: %s", exc)
 
@@ -3673,10 +3681,12 @@ def _after_new_start(
     mt = _resolve_read(conn, m, sel, _stored_ids(q))
     if mt.items or mt.docs_paths or mt.aliases:
         return None
-    if q.found_nothing:
-        return unresolved_note(q)
+    # the source first: a found_nothing mark from before the new start must never send the run to probe and
+    # erase the page of a file no sync since has listed (B13 round 29 C201, its review)
     if _source_unlisted(conn, sel.source_id):
         return unlisted_note(q, config)
+    if q.found_nothing:
+        return unresolved_note(q)
     return NOT_LOOKED_UP
 
 
@@ -4127,7 +4137,8 @@ def forget_queued(
                 f"no queued purge of id={selector.stable_id} --source {selector.source_id}; "
                 f"`{AGENTSYNC_BIN} purge --queue --dry-run` lists the queue"
             )
-        q = found[0]
+        # of entries of one selector, the one this act may take off first (the review's case of two reasons)
+        q = next((e for e in found if e.reason in KEPT_REASONS and e.found_nothing), found[0])
         if q.reason not in KEPT_REASONS or not q.found_nothing:
             why = _kept_queued(sp.db, q, config) or (
                 "stays queued: a queue run has not looked it up and found nothing for it; "

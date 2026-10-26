@@ -5975,6 +5975,26 @@ def test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs(
     assert not (initialised.docs_repo / page).exists()
 
 
+def test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C172's review: a verified upstream-deleted purge of a selector closed every queued entry of it in the
+    audit replay, though an erasure request of the same item stays queued (it is not suppressed by that run);
+    a queue rewritten as empty then read as losing nothing, and the sync was not refused."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    sel = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    hand = ["purge", f"id={sid}", "--source", "source", "--reason", "upstream-deleted", "--config", cfg]
+    assert cli.main(hand) == cli.EXIT_OK
+    assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.ERASURE_REQUEST]
+    governance._queue_file(root).write_text('{"queue": []}\n', encoding="utf-8")
+    assert [r["reason"] for r in governance.lost_queued(root)] == ["erasure-request"]
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+
+
 def test_a_hand_purge_that_covers_a_queued_one_leaves_no_lost_entry(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -9465,10 +9485,16 @@ def _queue_escalation(config: Config, rel: str) -> governance.QueuedPurge:
     return q
 
 
+@pytest.mark.parametrize("marked", [False, True], ids=["", "found nothing before"])
 @pytest.mark.parametrize("reason", ["upstream-deleted", "label-escalation"])
 @pytest.mark.parametrize("first", ["the folder away", "a run killed after it began"])
 def test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source(
-    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, first: str, reason: str
+    initialised: Config,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    first: str,
+    reason: str,
+    marked: bool,
 ) -> None:
     """B13 round 29 C201 (ruling 25): after the new start, a first sync that skipped the source (its folder
     away) or a run that died after it began left a manifest with a run but nothing for the source, and the
@@ -9480,6 +9506,9 @@ def test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source(
     q = (_queue_upstream if reason == "upstream-deleted" else _queue_escalation)(
         initialised, "projects/sample.txt"
     )
+    if marked:  # an earlier generation's run found nothing for it: still never probed here (C201's review)
+        q = dataclasses.replace(q, found_nothing=True)
+        governance._write_queue(expand(initialised.state_paths.root), [q])
     _new_start(initialised, tmp_path)
     folder = initialised.sources[0].path
     if first == "the folder away":
