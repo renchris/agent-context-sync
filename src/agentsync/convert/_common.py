@@ -134,20 +134,35 @@ def _check_ooxml_family(src: Path, family: str, noun: str) -> None:
 def _pathless(text: str, src: Path, name: str) -> str:
     """``text`` with ``src`` as ``name``, its folder dropped before any other file in it, and the home folder
     as ``~``: a library's error names the staged file (``~/Library/Application Support/agentsync/staging/…``),
-    and a stub's reason goes into the page, ``_sync/QUARANTINE.tsv`` and the manifest (B13 round 28 I39)."""
-    for path in _forms(src):
+    and a stub's reason goes into the page, ``_sync/QUARANTINE.tsv`` and the manifest (B13 round 28 I39).
+    Each path's longest form goes first, so a resolved ``/private/tmp/…`` leaves no ``/private`` behind
+    (B13 round 29 C183)."""
+    for path in _longest_first(src):
         text = text.replace(str(path), name)
-    for folder in _forms(src.parent):
+    for folder in _longest_first(src.parent):
         if len(str(folder)) > 1:
             text = text.replace(str(folder) + "/", "")
+    return _homeless(text)
+
+
+def _homeless(text: str) -> str:
+    """``text`` with the home folder, in each of its forms, as ``~``: the one fold a reason with no staged
+    file gets too (a converter that cannot start, ``[convert] pandoc_path`` under the home; B13 round 29
+    C182), which ``_pathless`` ends with."""
     try:
         home = Path.home()
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry: nothing to fold
         return text
-    for form in reversed(_forms(home)):  # the resolved form first: it may be the longer one
+    for form in _longest_first(home):
         if len(str(form)) > 1:
             text = text.replace(str(form), "~")
     return text
+
+
+def _longest_first(path: Path) -> list[Path]:
+    """``_forms(path)``, the longest first: a form that is a substring of the other (``/tmp`` in
+    ``/private/tmp``, or a link to a suffix of itself) is replaced only after the longer one (C183)."""
+    return sorted(_forms(path), key=lambda p: len(str(p)), reverse=True)
 
 
 def _forms(path: Path) -> list[Path]:

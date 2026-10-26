@@ -191,3 +191,92 @@ def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
     monkeypatch.setattr(PptxConverter, "convert", counted)
     assert run(config).exit_code == 0
     assert tries == [], "what the re-read wrote holds no path: not read again"
+
+
+def test_pathless_replaces_the_longest_form_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 29 C183: with ``/tmp`` resolving to ``/private/tmp``, the shorter form went first and left
+    ``/private`` behind (``file '/privateContoso Q3.pptx'``). Each loop now takes the longest form first."""
+    from agentsync.convert._common import _homeless, _pathless  # noqa: PLC0415
+
+    (tmp_path / "real" / "ab12").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    src = tmp_path / "link" / "ab12" / "Contoso Q3.pptx"
+    real = src.resolve()
+    assert real != src
+    for given in (src, real):
+        assert _pathless(f"file '{given}' is not", src, src.name) == "file 'Contoso Q3.pptx' is not"
+        assert (
+            _pathless(f"cannot open '{given.parent}/media/x.png'", src, src.name)
+            == "cannot open 'media/x.png'"
+        )
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home-link").symlink_to(tmp_path / "home")
+    monkeypatch.setenv("HOME", str(tmp_path / "home-link"))
+    for given in (tmp_path / "home-link", tmp_path / "home"):
+        assert _homeless(f"cannot open {given}/notes.txt") == "cannot open ~/notes.txt"
+
+
+@pytest.mark.parametrize("gap", ["  ", "\t"])
+def test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed(tmp_path: Path, gap: str) -> None:
+    """B13 round 29 C221: ``_reason`` collapsed whitespace first, so a staging folder with two spaces in a
+    row, or a tab, no longer matched and its path stayed in the reason."""
+    from agentsync.convert import _reason  # noqa: PLC0415
+
+    staged = tmp_path / f"Contoso{gap}State" / "staging" / "ab12"
+    staged.mkdir(parents=True)
+    src = staged / "Q3 deck.pptx"
+    for given in (src, src.resolve()):
+        said = _reason(ValueError(f"file '{given}' is not a\nPowerPoint file"), src, src.name)
+        assert said == "file 'Q3 deck.pptx' is not a PowerPoint file"
+        assert _reason(ValueError(f"cannot open '{given.parent}/media/x.png'"), src, src.name) == (
+            "cannot open 'media/x.png'"
+        )
+
+
+def test_a_staging_folder_with_two_spaces_leaks_no_path_into_the_docs_repo(tmp_path: Path) -> None:
+    """C221 end to end: ``state_dir`` with two spaces in a row and a deck python-pptx refuses by its path."""
+    from test_review_fixes import cfg_text, write_config  # noqa: PLC0415
+
+    src = tmp_path / "source"
+    src.mkdir()
+    (src / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    text = cfg_text(tmp_path, src).replace(str(tmp_path / "state"), str(tmp_path / "Contoso  State"))
+    config = write_config(tmp_path, text)
+    assert "  " in str(config.state_paths.staging)
+    (src / "Contoso Quarterly.pptx").write_bytes(build_potx(tmp_path / "t.potx").read_bytes())
+    assert run(config).exit_code == 0
+    row = _row(config, "Contoso Quarterly.pptx")
+    assert "file 'Contoso Quarterly.pptx' is not a PowerPoint file" in (row.state_reason or "")
+    staging = str(config.state_paths.staging)
+    forms = {staging, " ".join(staging.split()), "/staging/", "Contoso State/"}  # README names the state dir
+    for path in config.docs_repo.rglob("*"):
+        if path.is_file() and ".git" not in path.relative_to(config.docs_repo).parts:
+            data = path.read_text(encoding="utf-8", errors="replace")
+            assert [f for f in forms if f in data] == [], path
+    blobs = all_objects(config.docs_repo)
+    assert not [f for f in forms if f.encode() in blobs]
+
+
+@pytest.mark.parametrize("kind", ["missing", "not executable"])
+def test_a_converter_that_cannot_start_names_no_home_folder(tmp_path: Path, kind: str) -> None:
+    """B13 round 29 C182: the converter-unavailable FAILED reason was built with no staged file, so
+    ``_pathless`` never ran, and ``[convert] pandoc_path = "~/bin/pandoc"`` put the home folder in the page,
+    QUARANTINE.tsv, STATE.md and the manifest; the cycle's waiting line (cycle.py's ``convert_reason``)
+    rebuilt it on the next sync. The home fold now runs on every reason."""
+    if kind == "not executable":
+        (Path.home() / "bin").mkdir()
+        (Path.home() / "bin" / "pandoc").write_text("#!/bin/sh\n", encoding="utf-8")
+        (Path.home() / "bin" / "pandoc").chmod(0o644)
+    config, src = make_env(tmp_path, extra='\n[convert]\npandoc_path = "~/bin/pandoc"\n')
+    (src / "contoso-notes.rtf").write_text(r"{\rtf1\ansi Contoso notes\par}", encoding="utf-8")
+    home = str(Path.home())
+    for _ in range(2):  # the second sync is the one that rebuilds the waiting line
+        run(config)
+        assert _leaks(config) == []
+        assert home.encode() not in all_objects(config.docs_repo)
+    reason = _row(config, "contoso-notes.rtf").state_reason or ""
+    assert reason.startswith("conversion failed: converter unavailable: ")
+    if kind == "missing":
+        assert reason.endswith("[convert] pandoc_path is not an absolute file: ~/bin/pandoc")
+    else:
+        assert "cannot run pandoc: " in reason and "~/bin/pandoc" in reason

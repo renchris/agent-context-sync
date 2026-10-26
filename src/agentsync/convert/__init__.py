@@ -7,7 +7,7 @@ import hashlib
 import logging
 from pathlib import Path
 
-from agentsync.convert._common import _pathless
+from agentsync.convert._common import _homeless, _pathless
 from agentsync.convert.base import Converter, options_hash
 from agentsync.convert.cache import ConverterCache, action_key
 from agentsync.convert.registry import Registry
@@ -49,11 +49,13 @@ def _suffix(name: str) -> str:
 
 
 def _reason(exc: BaseException, src: Path | None = None, name: str = "") -> str:
-    """One-line, bounded, deterministic reason text for a stub page; with ``src``, free of the staged path
-    and the home folder (``_common._pathless``, B13 round 28 I39)."""
-    text = " ".join(str(exc).split()) or type(exc).__name__
-    if src is not None:
-        text = _pathless(text, src, name or src.name)
+    """One-line, bounded, deterministic reason text for a stub page: free of the home folder always
+    (``_common._homeless``; a converter that cannot start has no staged file, B13 round 29 C182), and with
+    ``src`` of the staged path too (``_common._pathless``, B13 round 28 I39). The paths go from the raw text,
+    before its whitespace is collapsed, or a folder with two spaces in a row would not match (C221)."""
+    text = str(exc)
+    text = _homeless(text) if src is None else _pathless(text, src, name or src.name)
+    text = " ".join(text.split()) or type(exc).__name__
     return text if len(text) <= _REASON_MAX else text[: _REASON_MAX - 1] + "…"
 
 
@@ -173,7 +175,7 @@ def convert_file(
             "converter %s unavailable for %s: %s",
             conv.converter_id,
             name,
-            _reason(exc),
+            _reason(exc, src, name),
             extra={_ECHOED_WHEN: "error"},
         )
         opts = options_hash({})
@@ -190,7 +192,7 @@ def convert_file(
             ),
             content_sha256=content_sha256,
             canonical_sha256=canonical_sha256,
-            reason=f"{CONVERTER_UNAVAILABLE}: {_reason(exc)}",
+            reason=f"{CONVERTER_UNAVAILABLE}: {_reason(exc, src, name)}",
         )
     key = action_key(
         converter_id=conv.converter_id,
