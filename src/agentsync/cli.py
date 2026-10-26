@@ -110,7 +110,9 @@ from agentsync.manifest import (
     ACCESS_ERRNOS,
     LOST_MANIFEST,
     LOST_MANIFEST_EMPTY,
+    LOST_MANIFEST_EMPTY_UNREAD,
     LOST_MANIFEST_SHORT,
+    LOST_MANIFEST_UNREAD,
     LOST_MANIFEST_WORDS,
     Manifest,
     lost_error,
@@ -1520,7 +1522,13 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
             )
     # the count alone: the governance.purge_queue line beside it gives the sentence (B13 round 27 P118)
     if kept and not checks_beside:  # B13 round 28 I18: no [ok] line beside it in the report to point at
-        out.append(f"queued purges kept: {len(kept)}: {'; '.join(governance.kept_lines(kept))}")
+        # one kind: its own counted sentence; several: the total, then each (B13 round 29 C112, C125)
+        said = governance.kept_lines(kept)
+        out.append(
+            f"queued purges kept: {said[0]}"
+            if len(said) == 1
+            else f"queued purges kept: {len(kept)}: {'; '.join(said)}"
+        )
     elif kept:
         out.append(f"queued purges kept: {len(kept)} (the governance.purge_queue line says why)")
     if gov is not None:
@@ -1901,8 +1909,9 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
     """The NEXT step of the FAIL a sync stops on (:func:`_fail_step`), or None: a state_dir.manifest FAIL
     (:func:`_manifest_first`), the state folder that is not a folder or refuses a look inside, or the state
     file that is not a file the sync's own guard finds (``doctor.state_not_a_file``: the lock, heartbeat.json,
-    a governance file, a -wal or -shm). It leads, never the loop's skill or sign-in step, whose sync stops on
-    it, so status and the sync sent the agent back and forth (B13 round 27 P23). A FAIL the sync reads past
+    a governance file, one damaged or of the wrong shape, a -wal or -shm). It leads, never the loop's skill or
+    sign-in step, whose sync stops on it, so status and the sync sent the agent back and forth (B13 round 27
+    P23). A FAIL the sync reads past
     (a loose mode, the docs repo's permissions) keeps the loop's order."""
     first = _manifest_first(checks)
     if first is not None:
@@ -1912,7 +1921,9 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
         if doctor.state_folder_unchecked(config) is not None:
             fail = next((r for r in checks if r.name.startswith("state_dir") and not r.ok), None)
             return None if fail is None else _fail_step(fail)
-        found = doctor.state_not_a_file(config)  # the sync's own stop, by stat
+        # the sync's own stop, as its guard reads it: a damaged governance file (I90) and a lost purge (C172)
+        # too, so status's NEXT leads with what stops the sync (B13 round 29 C177)
+        found = doctor.state_not_a_file(config, damaged=True, lost=True)
     except Exception:  # the NEXT path never raises over the checks
         return None
     if found is None:
@@ -2566,6 +2577,11 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             out.append(_refused_check(config, "governance.hold", exc))
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
+            if not holds and not lost and not governance.config_holds(gov):
+                # one governance.hold line in every state, an ok one when it read and holds none (C155)
+                out.append(
+                    _check("governance.hold", True, "no hold set (hold list read)", doctor.Severity.INFO)
+                )
             for h in lost:  # the audit trail keeps it; holds.json lost it: the person's (B13 round 28 I87)
                 lost_detail, lost_fix = governance.lost_hold_words(root, h)
                 out.append(_check("governance.hold", False, lost_detail, doctor.Severity.ERROR, fix=lost_fix))
@@ -2597,6 +2613,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_refused_check(config, "governance.purge_queue", exc))
         return out
     queued, kept = split.runnable, split.kept
+    if not queued and not kept:  # one governance.purge_queue line in every state (B13 round 29 C155)
+        out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
     gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
     if gone is not None:
         out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
@@ -3614,6 +3632,7 @@ def _state_next(
     said: str = "",
     path: object = None,
     kind: str | None = None,
+    lost: str | None = None,
 ) -> None:
     """Print ``step`` (:data:`STATE_REFUSED_STEP`) as a NEXT line for a ``sync`` with no ``--mode`` (an
     agent's or a person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names
@@ -3625,7 +3644,9 @@ def _state_next(
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         return
     _out(loop.NEXT_PREFIX + step)
-    _record_sync_stop(args, said, path, kind or ("misplaced" if step == STATE_MISPLACED_STEP else "refused"))
+    _record_sync_stop(
+        args, said, path, kind or ("misplaced" if step == STATE_MISPLACED_STEP else "refused"), lost=lost
+    )
 
 
 SYNC_STOPS_LOG = setup_report._SYNC_STOPS_NAME
@@ -3640,11 +3661,25 @@ after earlier syncs (``lost``, ``manifest.manifest_lost``): a lost manifest's st
 ``file=state-folder`` and read as a refusal (B13 round 24 B27, B62, B82, B100; ruling 7)."""
 
 
-def _record_sync_stop(args: argparse.Namespace, said: str, path: object, kind: str = "refused") -> None:
+SYNC_STOP_DETAIL = {
+    LOST_MANIFEST_UNREAD: "unread",
+    LOST_MANIFEST_EMPTY: "short",
+    LOST_MANIFEST_EMPTY_UNREAD: "short-unread",
+}
+"""The ``lost=`` value of the ``sync-stop-detail`` line under a lost manifest's stop, by its lost words; the
+plain ``LOST_MANIFEST`` (missing beside earlier passes) writes none (B13 round 29 C210)."""
+
+
+def _record_sync_stop(
+    args: argparse.Namespace, said: str, path: object, kind: str = "refused", lost: str | None = None
+) -> None:
     """Append the stop's line to :data:`SYNC_STOPS_LOG`, only when the setup folder is already there; never
     raises, so a stop is never a second error. A refusal :func:`_folder_refuses` says was its folder's, not
     the file's, is the folder's role: a deny-ACL'd state folder wrote ``file=manifest`` (B13 round 24 B16,
-    lane RA's reader)."""
+    lane RA's reader). A lost manifest's stop (``lost``, its lost words) is followed by ``<at>
+    sync-stop-detail lost=<unread|short|short-unread>`` (:data:`SYNC_STOP_DETAIL`), the same stamp, in the
+    one write, so a reader pairs them by adjacency and stamp, and the stop line stays what older readers
+    parse: which lost kind stopped the sync (B13 round 29 C210)."""
     try:
         folder = setup_report.default_setup_log().parent
         if not folder.is_dir():
@@ -3662,7 +3697,11 @@ def _record_sync_stop(args: argparse.Namespace, said: str, path: object, kind: s
         fix = said.rpartition(" (fix: ")[2]
         owner = "agent" if fix.startswith("chmod ") else "person"
         at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        line = f"{at} sync-stop file={role} rc=1 owner={owner} kind={kind}\n".encode()
+        text = f"{at} sync-stop file={role} rc=1 owner={owner} kind={kind}\n"
+        detail = SYNC_STOP_DETAIL.get(lost or "") if kind == "lost" and role == "manifest" else None
+        if detail is not None:
+            text += f"{at} sync-stop-detail lost={detail}\n"
+        line = text.encode()
         fd = os.open(folder / SYNC_STOPS_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
             os.write(fd, line)
@@ -3784,7 +3823,7 @@ def _side_said(args: argparse.Namespace) -> tuple[str, Path] | None:
 
 
 def _misplaced_next(
-    args: argparse.Namespace, said: str, path: object = None, kind: str | None = None
+    args: argparse.Namespace, said: str, path: object = None, kind: str | None = None, lost: str | None = None
 ) -> None:
     """The NEXT after :func:`_misplaced`'s line, for any command: a sync's (:data:`STATE_MISPLACED_STEP`)
     also records the stop (:func:`_state_next`, ``kind``) for ``path``, by default the state folder (a side
@@ -3792,7 +3831,9 @@ def _misplaced_next(
     :data:`STATE_MISPLACED_COMMAND_STEP` (D44). Curate and the governance commands printed none, so curate's
     "(see NEXT)" pointed at nothing (B13 round 24 B89). None under install.sh, which names its own."""
     if getattr(args, "command", None) == "sync":
-        _state_next(args, STATE_MISPLACED_STEP, said=said, path=path or _state_root(args), kind=kind)
+        _state_next(
+            args, STATE_MISPLACED_STEP, said=said, path=path or _state_root(args), kind=kind, lost=lost
+        )
     elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
         _out(loop.NEXT_PREFIX + STATE_MISPLACED_COMMAND_STEP)  # no sync ran (D44)
 
@@ -4048,7 +4089,8 @@ def _main(argv: Sequence[str] | None) -> int:
             where = _state_db(args)
         # every command's NEXT, not only a sync's: curate and hold over a folder at the manifest printed
         # none, while over a file at the state folder they did (B13 round 25 D44)
-        _misplaced_next(args, said, where, kind="lost" if lost else None)
+        reason = exc.reason if isinstance(exc, ManifestLostError) else None  # which lost kind (C210)
+        _misplaced_next(args, said, where, kind="lost" if lost else None, lost=reason)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read

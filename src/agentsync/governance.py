@@ -1564,7 +1564,9 @@ def _covers(selector: PurgeSelector, report: PurgeReport, entry: QueuedPurge) ->
     return report.reason is not PurgeReason.UPSTREAM_DELETED or entry.reason is PurgeReason.UPSTREAM_DELETED
 
 
-def _drop_covered(state_dir: Path, selector: PurgeSelector, report: PurgeReport) -> None:
+def _drop_covered(
+    state_dir: Path, selector: PurgeSelector, report: PurgeReport, *, audit: bool = True
+) -> None:
     """Take off the queue every entry a verified purge already did (:func:`_covers`).  A queue file this build
     cannot read or write is logged and left as it is: the purge itself is done and its report stands."""
     try:
@@ -1573,12 +1575,13 @@ def _drop_covered(state_dir: Path, selector: PurgeSelector, report: PurgeReport)
         if len(kept) != len(queue):
             # each with its purge-covered line, as the queue's run writes one: an entry off the queue with no
             # line would read as lost (B13 round 29 C172)
-            with _audit_appender(state_dir) as audit:
+            with _audit_appender(state_dir) as line:
                 _write_queue(state_dir, kept)
                 for e in queue:
-                    if not _covers(selector, report, e):
+                    # the queue's own run writes its lines; the purge's own entry, its summary closes
+                    if not audit or not _covers(selector, report, e) or e.selector == selector:
                         continue
-                    audit(
+                    line(
                         {
                             "action": "purge-covered",
                             "at": _iso(_now(None)),
@@ -3091,6 +3094,7 @@ def purge(
     lock: bool = True,
     now: datetime | None = None,
     ids: Iterable[tuple[str, str]] = (),
+    audit_covered: bool = True,
 ) -> PurgeReport:
     """Remove the selected items from the docs repo's whole history, the manifest (and any pre-migration
     ``<db>.pre-v*`` copy), the converter cache, the Teams store, staging and logs; expire reflogs, prune, and
@@ -3126,7 +3130,7 @@ def purge(
             ids=set(ids),
         )
         if report.verified:  # never on a dry run
-            _drop_covered(sp.root, selector, report)
+            _drop_covered(sp.root, selector, report, audit=audit_covered)
         return report
 
 
@@ -3519,9 +3523,9 @@ def unresolved_purges(n: int) -> str:
         f"{plural(n, 'queued purge')} {is_} kept until `{AGENTSYNC_BIN} purge --queue` finds {its} id in the "
         f"docs history; if none is found {it} {stays} queued (nothing in the manifest names {it} after a new "
         f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason <its "
-        f"reason>` erases a page by hand (each entry's reason is in `{AGENTSYNC_BIN} purge --queue "
-        f"--dry-run`), and once no page is left `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source "
-        "<its source>` takes an entry off, with an audit line"
+        "reason>` erases a page by hand (each entry's reason is on its line when a queue run keeps it), "
+        f"and once no page is left `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source <its "
+        "source>` takes an entry off, with an audit line"
     )
 
 
@@ -4045,12 +4049,13 @@ def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
 
 PURGE_REASON_WORDS = {
     PurgeReason.UPSTREAM_DELETED: "a confirmed upstream deletion",
-    PurgeReason.LABEL_ESCALATION: "a label escalation",
+    PurgeReason.LABEL_ESCALATION: "a published file the label policy now refuses",
     PurgeReason.DLP_REMEDIATION: "a published credential",
-    PurgeReason.ERASURE_REQUEST: "an erasure request",
-    PurgeReason.OPERATOR: "an operator's request",
+    PurgeReason.ERASURE_REQUEST: "a request to erase a person's items",
+    PurgeReason.OPERATOR: "a purge queued by hand",
 }
-"""What each queued reason is, in the purge queue's warn (B13 round 28 I91)."""
+"""What each queued reason is, in the purge queue's warn (B13 round 28 I91): what triggered it, never its key
+again ("1 label-escalation: a label escalation"; B13 round 29 C146)."""
 
 
 def reason_counts(queued: Sequence[QueuedPurge]) -> str:
@@ -4282,6 +4287,7 @@ def run_purge_queue(
                         lock=False,
                         now=now,
                         ids=seed,
+                        audit_covered=False,  # the run audits what it covers itself
                     )
                 )
             except GovernanceError as exc:

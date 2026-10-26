@@ -2341,7 +2341,7 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     )
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
     assert not check.ok and check.severity is doctor.Severity.WARN and check.fix is None
-    assert check.detail.startswith("1 purge request queued (1 operator: an operator's request)")
+    assert check.detail.startswith("1 purge request queued (1 operator: a purge queued by hand)")
     assert (
         governance.kept_purges(1) in check.detail and "waits on the hold on source 'source'" in check.detail
     )
@@ -2443,6 +2443,74 @@ def test_a_held_queue_logs_one_counted_warning_per_hold(
     assert len(kept) == 1 and kept[0].startswith(
         "governance: 3 queued purges kept: purge suspended by legal/records hold:"
     ), kept
+
+
+def test_the_kept_purges_line_counts_once_for_one_kind_and_totals_several(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 29 C112, C125 (one defect): the kept-purges line read "queued purges kept: 1: 1 queued purge
+    is kept until ...". One kind gives its own counted sentence; several keep the total, then each."""
+    _synced(initialised)
+    _queue_upstream(initialised, "projects/sample.txt")
+    _runnable, kept = governance.partition_purges(initialised.state_paths)
+    (one,) = governance.kept_lines(kept)
+    assert f"queued purges kept: {one}" in cli._status_lines(initialised, checks_beside=False), (
+        cli._status_lines(initialised, checks_beside=False)
+    )
+    assert not [
+        x
+        for x in cli._status_lines(initialised, checks_beside=False)
+        if x.startswith("queued purges kept: 1: ")
+    ]
+    esc = governance.PurgeSelector(
+        stable_id=_stable_id(initialised, "projects/sample.txt"), source_id="source"
+    )
+    assert governance.enqueue_purge(
+        initialised.state_paths.root, esc, governance.PurgeReason.LABEL_ESCALATION
+    )
+    _runnable, kept = governance.partition_purges(initialised.state_paths)
+    two = governance.kept_lines(kept)
+    assert len(two) == 2 and f"queued purges kept: 2: {'; '.join(two)}" in cli._status_lines(
+        initialised, checks_beside=False
+    )
+
+
+def test_no_purge_reasons_gloss_repeats_its_own_name() -> None:
+    """B13 round 29 C146: the purge_queue warn read "(3 label-escalation: a label escalation)". Each gloss
+    says what triggered the purge, never its key again."""
+    for reason, gloss in governance.PURGE_REASON_WORDS.items():
+        assert reason.value.replace("-", " ") not in gloss, (reason, gloss)
+    assert set(governance.PURGE_REASON_WORDS) == set(governance.PurgeReason)
+
+
+def test_a_clean_state_lists_the_hold_list_and_the_queue_as_checked(initialised: Config) -> None:
+    """B13 round 29 C155: a hold list that read with no hold, and an empty queue, printed no line, so the
+    check total changed on one Mac and a passing hold list was never listed. One ok line each."""
+    _synced(initialised)
+    checks = [
+        c
+        for c in cli._governance_checks(initialised)
+        if c.name in ("governance.hold", "governance.purge_queue")
+    ]
+    assert [(c.name, c.ok, c.detail) for c in checks] == [
+        ("governance.hold", True, "no hold set (hold list read)"),
+        ("governance.purge_queue", True, "no purge queued"),
+    ], checks
+
+
+def test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C177: with holds.json of the wrong shape, the sync stopped on it while status's NEXT led
+    with another step. Status reads it as the sync's guard does: its NEXT names governance.hold."""
+    cfg = _synced(initialised)
+    holds = governance._holds_file(expand(initialised.state_paths.root))
+    holds.parent.mkdir(exist_ok=True)
+    holds.write_text('{"holds": "all"}\n', encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert "is not the hold list agentsync can read" in capsys.readouterr().err
+    _rc, out = _status(cfg, capsys)
+    assert out[0].startswith("NEXT: ") and "governance.hold" in out[0], out[:3]
 
 
 def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits_ok(
@@ -5311,7 +5379,12 @@ def test_a_state_file_that_is_not_a_file_is_the_persons_in_status_and_every_comm
         words = f"{path} is {what}, not a file: {role} belongs there"
         (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ")]
         # the hold list's move aside then puts the list back, so following it never leaves no holds (I87)
-        tail = f", {governance.HOLD_LIST_PUT_BACK})" if where == "holds" else ")"
+        # the queue's and the suppression list's say what the move aside leaves (B13 round 29 C172)
+        tail = (
+            f", {governance.HOLD_LIST_PUT_BACK})"
+            if where == "holds"
+            else governance._what_the_move_leaves(role) + ")"
+        )
         assert words in failed and f"keeping a copy{tail}" in failed, failed
         assert rc == cli.EXIT_FAILED, out
         assert not [ln for ln in out if "check crashed" in ln or "Error" in ln], out
@@ -8170,6 +8243,41 @@ def test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_th
     assert (read.file, read.owner, read.kind, read.ended_ok) == ("lock", "agent", "refused", None)
 
 
+@pytest.mark.parametrize(
+    ("how", "detail"),
+    [("missing", None), ("short", "short"), ("unread", "unread"), ("short-unread", "short-unread")],
+)
+def test_a_lost_manifests_sync_stop_records_which_lost_kind_stopped_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str, detail: str | None
+) -> None:
+    """B13 round 29 C210 (ruling 30): sync-stops.log recorded a lost manifest's stop as kind=lost alone, so a
+    closed stop over an unread heartbeat or a too-short manifest read "missing after earlier syncs". A
+    detail line follows it in the same write, with the same stamp; the stop line stays what older readers
+    parse, and the plain missing manifest writes none."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db, hb = expand(sp.db), expand(sp.heartbeat)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    if how.startswith("short"):
+        db.write_bytes(b"")
+    if how.endswith("unread"):
+        hb.write_text("{", encoding="utf-8")
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    lines = stops.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith(" sync-stop file=manifest rc=1 owner=person kind=lost"), lines
+    if detail is None:
+        assert len(lines) == 1, lines
+    else:
+        assert lines[1:] == [f"{lines[0].split()[0]} sync-stop-detail lost={detail}"], lines
+    since = datetime(2000, 1, 1, tzinfo=UTC)
+    (read,) = setup_report._read_sync_stops(stops.parent / "install.log", since, None)
+    assert (read.file, read.kind) == ("manifest", "lost"), read  # an older reader skips the detail
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-600 folder")
 def test_a_sync_stop_its_folder_refused_is_recorded_on_the_folder_not_the_file(
     initialised: Config, capsys: pytest.CaptureFixture[str]
@@ -9291,7 +9399,10 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
     runnable, kept = governance.partition_purges(initialised.state_paths)
     assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
     assert "purge docs=<page path>" in kept[0][1] and "mirror/source/" in kept[0][1]
-    assert "`~/.local/bin/agentsync purge id=<its id> --source <its source>`" in kept[0][1], kept
+    assert (
+        "`~/.local/bin/agentsync purge id=<its id> --source <its source> --reason upstream-deleted`"
+        in kept[0][1]
+    )
     step = loop.next_step(initialised)
     assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
     capsys.readouterr()
@@ -9816,13 +9927,15 @@ def test_the_reports_status_says_why_a_queued_purge_is_kept_where_doctor_prints_
     text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
     status = text.split("\n## Status", 1)[1].split("\n## ", 1)[0]
     _runnable, held = governance.partition_purges(initialised.state_paths)
-    assert f"queued purges kept: 1: {'; '.join(governance.kept_lines(held))}" in status, status
+    assert f"queued purges kept: {'; '.join(governance.kept_lines(held))}" in status, status  # C112
     assert pointer not in text, [ln for ln in text.splitlines() if pointer in ln]
     # the manifest replaced by a new start that names nothing for the id: "not resolvable", once
     kept.rename(db)
     _new_start(initialised, tmp_path)
     _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
     assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    # not looked up yet until a queue run probes it (B13 round 29 C102); then kept, its id found nowhere
+    assert cli.main(["purge", "--queue", "--config", str(initialised.config_path)]) == cli.EXIT_OK
     text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
     status = text.split("\n## Status", 1)[1].split("\n## ", 1)[0]
     block = status.split("~~~text", 1)[1].split("~~~", 1)[0]  # status's own lines, before the parts
