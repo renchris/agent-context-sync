@@ -558,17 +558,18 @@ _HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state|audit)\): ")
 _HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
 """The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
 _LOST_HOLD_RE = re.compile(
-    r"(?P<head>\bno longer lists the hold on \S+) set by "
-    rf"(?:[^\n]*(?P<at> at {_HOLD_ISO}(?:[ ,;.)][^\n]*)?)"
-    r"|[^\n]*(?P<record> \((?:kept by |audit\.jsonl)[^\n]*)|[^\n]*)$",
-    flags=re.M,
+    r"(?P<head>\bno longer lists the hold on \S+) set by (?P<rest>[^\n]*)$", flags=re.M
 )
+_LOST_RECORD_RE = re.compile(r" \((?:kept by |audit\.jsonl)")
+_LOST_AT_END_RE = re.compile(rf" at {_HOLD_ISO}\Z")
 """governance.hold's FAIL for a lost hold (``governance.lost_hold_words``: ``... no longer lists the hold on
 <scope> set by <owner> at <iso> (kept by <records>), and no release is recorded ...``; before lane B's round
 29 ruling 27 words, ``(audit.jsonl, heartbeat.json)``), whose owner the audit trail gives. The owner reads
 ``(owner not shown)``; the scope, the time and the fixed words after it stay. Fail-safe: the cut runs through
-the line's last fixed anchor (the last time on the line, else its record clause, else the line's end), so an
-owner holding `` at <iso>`` hides more, never less (B13 round 29 C101, C187; ruling 23)."""
+the line's last fixed anchor (its last record clause, with the time only when it stands right before it; a
+line with none, which agentsync never writes, keeps nothing after the owner), so an owner holding `` at
+<iso>`` or a record clause hides more, never less (B13 round 29 C101, C187; ruling 23; the cross-vendor
+review's owner with a time and no set time)."""
 
 
 def _cut_holds(text: str) -> str:
@@ -594,7 +595,14 @@ def _cut_holds(text: str) -> str:
         return f"hold {m['scope']} released (owner not shown)"
 
     def lost(m: re.Match[str]) -> str:
-        return f"{m['head']} (owner not shown){m['at'] or m['record'] or ''}"
+        rest = m["rest"]
+        records = list(_LOST_RECORD_RE.finditer(rest))
+        if records:  # the last record clause, and the time only when it stands right before it
+            at = records[-1].start()
+            before = _LOST_AT_END_RE.search(rest[:at])
+            return f"{m['head']} (owner not shown){before.group(0) if before else ''}{rest[at:]}"
+        # no record clause: a line agentsync never writes, so nothing after the owner is kept (fail-safe)
+        return f"{m['head']} (owner not shown)"
 
     if "hold " not in text:
         return text
@@ -4942,14 +4950,15 @@ def _link_targets(r: _Run) -> list[str]:
 
 
 _SAID_LINK_RE = re.compile(
-    r"is a symlink to (/.+?)(?=, whose folder |, which does not exist|\s*\(fix:|;\s|\s+\||\s*$)"
+    r"is a symlink to (/.+?)(?=, whose folder |, which does not exist|\s*\(fix:|;\s(?![^\n|]*/)|\s+\||\s*$)"
 )
 """A link's target in doctor's three forms (B13 round 27 P34): ``... whose folder does not exist or refuses a
 write`` (``DANGLING_UNUSABLE``), ``..., which does not exist; the manifest ...`` and the docs repo's bare
 ``<repo> is a symlink to <target>``. A target also ends at a ``; `` or a `` |``: the agent's own words in a
 friction row (``...; no chmod was run | -``) follow it there, and the whole rest of the row was registered as
 the value, so the target alone printed whole wherever the row was quoted (B13 round 28 I55). A ``;`` or ``|``
-with no space beside it is part of the path, which may hold one."""
+with no space beside it is part of the path, which may hold one, and so is a ``; `` with a ``/`` after it on
+the line (``/Volumes/Legal; Client Matter/m.sqlite``: the cross-vendor review of round 29's C163)."""
 
 
 def _said_link_targets(lines: Iterable[str]) -> list[str]:
@@ -4970,7 +4979,7 @@ def _said_link_targets(lines: Iterable[str]) -> list[str]:
     return sorted(found, key=len, reverse=True)
 
 
-_SAID_LINK_STOPS = (". ", ", ", " (", "? ", " — ", " - ")
+_SAID_LINK_STOPS = (". ", ", ", " (", "? ", " — ", " - ", "; ")
 """Where the agent's own words can follow a link target it quotes (``... m.sqlite. No chmod was run``,
 ``..., so I stopped``, `` (the agent ran nothing)``): :data:`_SAID_LINK_RE` ends a target at none of them,
 since a path may hold any (B13 round 29 C163)."""

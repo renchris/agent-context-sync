@@ -1679,11 +1679,15 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
         ),
     ):
         assert red.redact(line) == want, red.redact(line)
+    # no record clause (a line agentsync never writes): nothing after the owner is kept (lane RB's review)
+    bare_line = f"/x/holds.json no longer lists the hold on all set by Avery at {when} Quill, and no release"
+    assert red.redact(bare_line) == "/x/holds.json no longer lists the hold on all (owner not shown)"
     # fail-safe: an owner holding a time, or the record clause, hides more, never less
     for owner in (f"Avery at {when} Quill", "Avery (audit.jsonl) Quill", "Avery Quill (fix: none)"):
-        tricky = governance.Hold("all", governance.LOST_HOLD_REASON, owner, when, "audit")
-        for line in (governance.lost_hold_words(root, tricky)[0], tricky.describe()):
-            assert "Quill" not in red.redact(line), red.redact(line)
+        for at in (when, ""):  # the cross-vendor review: an owner holding a time, and no set time
+            tricky = governance.Hold("all", governance.LOST_HOLD_REASON, owner, at, "audit")
+            for line in (governance.lost_hold_words(root, tricky)[0], tricky.describe()):
+                assert "Quill" not in red.redact(line), red.redact(line)
     # a state hold whose reason is the lost words is a reason like any other: cut
     state = governance.Hold("all", governance.LOST_HOLD_REASON, "Avery Quill", when, "state")
     assert red.redact(state.describe()) == f"hold all (state) since {when}: reason and owner not shown"
@@ -16103,6 +16107,21 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
         assert "should I point it back at <path>?" in text, tail
         if words:
             assert f"is a symlink to <path>{words}" in text, tail
+    # the cross-vendor review: a folder name holding "; " before the last "/" is part of the path
+    legal = "/Volumes/Legal; Client Matter/m.sqlite"
+    assert (
+        setup_report._said_link_targets([f"{db} is a symlink to {legal}, which does not exist"])[0] == legal
+    )
+    assert (
+        setup_report._said_link_targets(
+            [
+                _step3_error(
+                    "50", "m.sqlite is a symlink to /Volumes/Fabrikam Vault/m.sqlite; no chmod was run"
+                )
+            ]
+        )[0]
+        == "/Volumes/Fabrikam Vault/m.sqlite"
+    )
     # a path that really holds ", " or " (" is still registered whole, before its narrower forms
     backup = "/Volumes/Backup (2)/m.sqlite"
     assert setup_report._said_link_targets([f"{db} is a symlink to {backup}"])[0] == backup

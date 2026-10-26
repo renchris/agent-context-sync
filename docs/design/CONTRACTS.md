@@ -32300,7 +32300,9 @@ a time hides more, never less; nothing is counted, so no `<value>` stands in eit
 itself, never `Hold.owner`, and never agentsync's fallbacks (`the records owner`, `lost from the hold list`,
 `hold = true`, `sources.toml`), which would cut the fix lines and every sources.toml path. `_LOST_HOLD_REASON` is
 kept equal to `governance.LOST_HOLD_REASON` by a test. The shell report's `hold_cut` and `hold_values` take the same
-patterns (lane RB, §16.199). Tests: `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`,
+patterns (lane RB, §16.199). The cross-vendor review found an owner holding a time, on a line with no set
+time, left its tail in clear: the cut keeps the last record clause, with the time only when it stands right
+before it; with no record clause (a line agentsync never writes), nothing after the owner. Tests: `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`,
 `test_a_lost_holds_owner_is_in_no_part_of_the_report`.
 
 **A link target the agent quotes is cut before its own words** (C163). `_SAID_LINK_RE` ends a target only at
@@ -32311,6 +32313,8 @@ target printed it in clear. `_said_link_forms` registers the capture and each na
 is left out only when what follows a stop after its last `/` reads as words (a space in it, no file extension at
 its end), so `<path> No chmod was run` keeps the row's words; a final part that may be a file's name (`Smith,
 Jones.sqlite`), a tail with no stop, and a stop before the last `/` (`/Volumes/Backup (2)/m.sqlite`) stay cut whole.
+A `; ` with a `/` after it on the line is the path's own (`/Volumes/Legal; Client Matter/m.sqlite`, which the
+cross-vendor review found cut short there, the folder name in clear), and `; ` is a narrower form's stop.
 Test: `test_a_link_target_only_the_runs_own_text_names_is_redacted` (C163's rows).
 
 **heartbeat.json's fix comes first only where it has one** (C105, C138, C148, C134's second half, C164: one
