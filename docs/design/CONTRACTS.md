@@ -33054,3 +33054,18 @@ heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out` 
 damaged manifest's fix and the chmod first in the mode case (`chbmode`, `STATE_LOST_HBFIX`). Tests:
 `test_the_guide_gives_the_reports_step_2_state_outcomes` (the report's form, read from `_LOST_FACTS` and the
 source's `whose`) and `test_the_guide_gives_the_lost_unread_tail_and_next` (install.sh's two `lfact` lines).
+
+**The guide's Purge queue row names the section's parts** (C169; `docs/deploy/setup-feedback.md`). The row explained
+five of the table's six columns, never `not looked up` (round 28 I46) or the intro over no manifest, and said that
+for `no row` "a run of the queue then erases only what history still names and takes the entry off the queue", the
+claim round 28's I2, I13 and I46 already made false. Built after lane RA's 1d1a7f4d6 (C188 with C123, C159, C158,
+C113, C180 and C214), on lane B's ruling 25 and 26 split and `--forget` (C173, C189), as the verifier asked, and in
+words rather than a copy of governance's sentences. The row now says what `not looked up` is and the causes its line
+names (`_NOT_LOOKED_UP`), the `No queued id was looked up: <why>.` intro over no manifest or one no sync has run over
+(C158) with the queue's kept lines, governance's split after a new start, each entry once (`not judged yet`, `not
+looked up yet`, `found nothing in the docs history`), that a found-nothing entry stays queued until the by-hand purge
+by id with its own reason and then `purge --queue --forget id=<its id> --source <its source>`, which takes off only an
+`upstream-deleted` or `label-escalation` entry (`governance.forget_queued`, `KEPT_REASONS`), the new start among
+`no trace`'s causes, and that only a manifest with no alias table gives the `no row` line. Test:
+`test_the_guides_purge_queue_row_names_the_sections_parts`, which reads every head and cause from setup_report and
+governance and makes the `no trace` and `no row` lines with `_purge_notes`, so the row cannot drift unnoticed again.

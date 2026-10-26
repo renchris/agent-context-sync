@@ -6456,6 +6456,67 @@ def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut(
     assert "the installer's fallback report since 29eef8c92, §16.199) both reports also cut a hold" in page
 
 
+def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:
+    """B13 round 29 C169: the guide's Purge queue row explained five of the table's six columns, never `not
+    looked up` or the no-manifest intro, and said a run takes every `no row` entry off the queue, though since
+    lane RA's 1d1a7f4d6 (on lane B's ruling 25 and 26 split) entries after a new start are counted on lines of
+    their own and one a queue run found nothing for stays queued until an audited `--forget`. The row names
+    each part; every head and cause is read from setup_report and governance, so the row cannot drift
+    again."""
+    from agentsync import governance, setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    [row] = re.findall(r"\| Purge queue \| Are the queued purges real deletions\? \|(.*?)\|(?: \||$)", page)
+    source = " ".join(inspect.getsource(setup_report).split())
+    assert "A run of the queue then erases only what history still names and takes the entry off" not in row
+    assert "That reading of `no row` holds only when the line under the table starts `no trace`" not in row
+    # the sixth column and its line's causes
+    assert setup_report._PURGE_FATES[-1] == "not looked up"
+    assert "`not looked up` is an id the report did not look up, and the `not looked up:` line" in row
+    assert (
+        "return [f\"- not looked up: {_plural(total, 'queued purge')} {verb} not looked up ({causes})\"]"
+        in source
+    )
+    causes = {
+        "no manifest": "no manifest could be read",
+        "no sync yet": "no sync has built this manifest yet",
+        "time": "the evidence time ran out",
+        "cap": "past the ",
+        "no id": "a selector with no stable id",
+    }
+    assert set(causes) == set(setup_report._NOT_LOOKED_UP)
+    for key, words in causes.items():
+        assert setup_report._NOT_LOOKED_UP[key].startswith(words) and words in row, key
+    # the intro over no manifest, or one no sync has run over
+    assert (
+        "intro = [f\"- {_plural(len(queue), 'purge')} queued{more}. No queued id was looked up: {why}.\"]"
+        in source
+    )
+    assert "reads `No queued id was looked up: <why>.` and the queue's own kept lines follow" in row
+    # governance's split, each head on a line of its own
+    for head in ("not judged yet", "not looked up yet", "found nothing in the docs history"):
+        assert f'out.append(f"- {head}: ' in source or f'f"- {head}: ' in source, head
+        assert f"`{head}`" in row, head
+    assert set(setup_report._SPLIT_KINDS) >= {"not judged yet", "not looked up yet", "found nothing"}
+    # the audited forget, only for the two kept reasons
+    forget = "purge --queue --forget id=<its id> --source <its source>"
+    assert forget in setup_report._NO_TRACE_RUN and f"`agentsync {forget}`" in row
+    kept = {governance.PurgeReason.UPSTREAM_DELETED, governance.PurgeReason.LABEL_ESCALATION}
+    assert set(governance.KEPT_REASONS) == kept
+    assert "takes an `upstream-deleted` or `label-escalation` entry off, with an audit line" in row
+    assert "--reason <its reason>` erases a page by hand" in row
+    # no trace: the new start's cause; no alias table only on its own line
+    from collections import Counter  # noqa: PLC0415
+
+    [trace] = setup_report._purge_notes(Counter({"no row": 1}), Counter(), kept=0, alias_table=True, before=1)
+    assert trace.startswith("- no trace: ")
+    assert "or a new start (an entry queued before this manifest's first run)" in trace
+    assert "an erasure, or, for an entry queued before this manifest's first run, a new start" in row
+    [bare] = setup_report._purge_notes(Counter({"no row": 1}), Counter(), kept=0, alias_table=False)
+    assert bare.startswith("- no row: ") and "This manifest has no alias table" in bare
+    assert "Only over a manifest with no alias table" in row and "only the preview tells them apart" in row
+
+
 def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     """B13 round 26 E35, E58 (one gap, built once): round 25 added four report outputs and an installer tail
     the guide never described: D80's Private only line for a hold's one-word value (and E6's send words,
