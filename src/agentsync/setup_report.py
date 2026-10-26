@@ -2792,11 +2792,16 @@ _SYNC_STOPS_NAME = "sync-stops.log"
 one line when it exits 1 on a state path (``cli.SYNC_STOPS_LOG``, lane B's half of B13 round 23 A9): ``<UTC
 time> sync-stop file=<role> rc=1 owner=<agent|person> kind=<refused|misplaced|lost>``, with no path in it; a
 line with no ``kind=`` (written before B13 round 24 B82) is a refusal. No ``run=`` word, so no install.log
-reader of any build takes it for an install run."""
+reader of any build takes it for an install run. A lost manifest's stop may be followed by a
+:data:`_SYNC_STOP_DETAIL_RE` line (B13 round 29 C210)."""
 _SYNC_STOP_RE = re.compile(
     r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
     r"(?: kind=(?P<kind>[a-z]+(?:-[a-z]+)*))?$"
 )
+_SYNC_STOP_DETAIL_RE = re.compile(r"^(?P<at>\S+) sync-stop-detail lost=(?P<lost>unread|short|short-unread)$")
+"""The line lane B's sync writes right after a lost manifest's stop, in the same write and with its stamp
+(``cli.SYNC_STOP_DETAIL``, B13 round 29 C210): which lost kind stopped it. :data:`_SYNC_STOP_RE` never
+matches it, so an older reader skips it and still reads the stop."""
 _SIDE_ROLE = {"wal": "the state file's write-ahead log", "shm": "the state file's shared-memory file"}
 """What each side file of the manifest is, ``doctor.SIDE_ROLES`` with the dash dropped (B13 round 26 E5, E23):
 every report line that names the -wal or the -shm says it so, as Doctor's state_dir.files line beside it
@@ -2832,6 +2837,9 @@ class _SyncStop:
     shape: str = ""  # what a misplaced stop's file is now, by doctor's FAIL (B13 round 27 P18): _stop_shape
     # a lost manifest's kind now, by the report's own read (B13 round 28 ruling 21): _manifest_lost_kind's
     lost_kind: str = ""
+    # the lost kind that stopped it, by the sync-stop-detail line under it (B13 round 29 C210): kept for a
+    # closed stop or an earlier attempt's, of which the read now says nothing
+    lost_at_stop: str = ""
 
     @property
     def what(self) -> str:
@@ -2855,13 +2863,20 @@ def _read_sync_stops(
     heartbeat stop pairs only when ``heartbeat_at``, the time the heartbeat file was last written (when this
     account can read and write it now), is after the stop: a sync whose heartbeat write is refused still ends
     its run ``ok`` (round 23 ruling 5; the review of A9). ``until``: no start at or after it pairs, so an
-    earlier attempt's stop is never fixed by a later attempt's sync (B13 round 27 P123)."""
+    earlier attempt's stop is never fixed by a later attempt's sync (B13 round 27 P123). A
+    :data:`_SYNC_STOP_DETAIL_RE` line names the lost kind of the stop on the line right before it, only when
+    the two stamps are equal and that stop is the manifest's ``kind=lost``; any other is skipped (C210)."""
     try:
         text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
     out: list[_SyncStop] = []
+    before = ""  # the stamp of the line right before, when it was a lost manifest's stop this read kept
     for line in text.splitlines()[-200:]:
+        d = _SYNC_STOP_DETAIL_RE.match(line.strip())
+        if d is not None and out and d.group("at") == before:
+            out[-1] = dataclasses.replace(out[-1], lost_at_stop=d.group("lost"))
+        before = ""
         m = _SYNC_STOP_RE.match(line.strip())
         at = parse_time(m.group("at")) if m is not None else None
         if m is None or at is None or at < lo or (hi is not None and at >= hi) or m.group("rc") == "0":
@@ -2871,6 +2886,7 @@ def _read_sync_stops(
             ended = None
         kind = m.group("kind") or "refused"
         out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended, ok_starts is not None, kind))
+        before = m.group("at") if m.group("file") == "manifest" and kind == "lost" else ""
     return out
 
 
@@ -11176,10 +11192,13 @@ _LOST_WAS = {
 def _stop_which(stop: _SyncStop) -> str:
     """:data:`_SYNC_STOP_KINDS`' words for ``stop``, and the link a lost manifest is now (``stop.link``, B13
     round 27 P127, P19): the outcome and Items say what the bucket and evidence say. Never the link's
-    target."""
+    target. A lost stop the read now says nothing of (closed, or an earlier attempt's) takes the kind its
+    sync-stop-detail line recorded (``stop.lost_at_stop``, B13 round 29 C210)."""
     which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
     if stop.kind == "lost" and stop.lost_kind in _LOST_WAS:  # B13 round 28 ruling 21; lane B's I92
         which = _LOST_WAS[stop.lost_kind]
+    elif stop.kind == "lost" and stop.lost_at_stop in _LOST_WAS:
+        which = _LOST_WAS[stop.lost_at_stop]
     if stop.kind == "misplaced" and stop.shape:  # B13 round 27 P18: doctor's kind, in the past tense
         which = f"which was {stop.shape}, not {'a folder' if stop.file == 'state-folder' else 'a file'}"
     link = _STOP_LINKS.get(stop.link)

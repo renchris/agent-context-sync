@@ -3817,6 +3817,60 @@ def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Pat
     assert "not measured (the state file is not a file)" in line("manifest", "person", "misplaced")
 
 
+def test_a_closed_lost_stop_says_the_lost_kind_its_detail_line_recorded(tmp_path: Path) -> None:
+    """B13 round 29 C210: lane B's sync writes ``<at> sync-stop-detail lost=<kind>`` right after a lost
+    manifest's stop, with its stamp. A stop a later sync ended 0 after (closed: the report's read now says
+    nothing of it) read "which was missing after earlier syncs" over a heartbeat.json that could not be read
+    or a manifest that was there but too short. The detail line pairs only with the stop right before it,
+    same stamp, the manifest's ``kind=lost``; an orphan or a mismatched stamp is skipped, and the stop line
+    alone still parses as before."""
+    at = datetime(2026, 9, 29, 10, 0, 0, tzinfo=UTC)
+    ok = [datetime(2026, 9, 29, 10, 5, tzinfo=UTC)]
+    stops = tmp_path / setup_report._SYNC_STOPS_NAME
+    stops.write_text(
+        "2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T10:00:50Z sync-stop-detail lost=unread\n"
+        "2026-09-29T10:00:51Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T10:00:51Z sync-stop-detail lost=short\n"
+        "2026-09-29T10:00:52Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T10:00:53Z sync-stop-detail lost=short-unread\n"  # a stamp that is not its stop's
+        "2026-09-29T10:00:54Z sync-stop-detail lost=unread\n"  # an orphan
+        "2026-09-29T10:00:55Z sync-stop file=lock rc=1 owner=agent\n"
+        "2026-09-29T10:00:55Z sync-stop-detail lost=unread\n",  # under a stop that is not a lost manifest's
+        encoding="utf-8",
+    )
+    read = setup_report._read_sync_stops(stops.with_name("install.log"), at, None, ok)
+    assert [(s.file, s.kind, s.lost_at_stop) for s in read] == [
+        ("manifest", "lost", "unread"),
+        ("manifest", "lost", "short"),
+        ("manifest", "lost", ""),
+        ("lock", "refused", ""),
+    ], read
+    assert all(s.ended_ok == ok[0] for s in read), read
+    whichs = [setup_report._stop_which(s) for s in read]
+    assert whichs[:3] == [
+        "which was missing beside a heartbeat.json that could not be read",
+        "which was empty or too short to be a manifest after earlier syncs",
+        "which was missing after earlier syncs",
+    ], whichs
+    # the read now's kind, on an open stop, still wins over the record's
+    now = dataclasses.replace(read[1], ended_ok=None, lost_kind="unread")
+    assert setup_report._stop_which(now) == "which was missing beside a heartbeat.json that could not be read"
+    # a stop the window leaves out lends its detail line to no stop before it
+    stops.write_text(
+        "2026-09-29T09:00:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T11:00:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        "2026-09-29T11:00:00Z sync-stop-detail lost=unread\n",
+        encoding="utf-8",
+    )
+    hi = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
+    [only] = setup_report._read_sync_stops(stops.with_name("install.log"), at, hi, ok)
+    assert only.lost_at_stop == "", only
+    # an older reader's regex never takes the detail line for a stop
+    assert setup_report._SYNC_STOP_RE.match("2026-09-29T10:00:50Z sync-stop-detail lost=unread") is None
+
+
 def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path]) -> None:
     write_install_log(fake_mac)
     write_friction(

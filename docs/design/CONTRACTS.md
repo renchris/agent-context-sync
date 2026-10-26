@@ -32527,6 +32527,15 @@ checks' Doctor line over that state reads `unexpected 0`. Tests:
 `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing`,
 `test_a_short_manifests_real_doctor_line_has_nothing_unexpected`.
 
+**A closed lost stop says the lost kind that stopped it** (C210's report half, on lane B's `sync-stop-detail` line).
+A stop a later sync ended 0 after, or an earlier attempt's, is one the report's read now says nothing of, so it read
+`which was missing after earlier syncs` over a heartbeat.json that could not be read and over a manifest that was
+there but too short. `_read_sync_stops` pairs `<at> sync-stop-detail lost=<unread|short|short-unread>` with the stop
+on the line right before it, only when the stamps are equal and that stop is `file=manifest` `kind=lost`; an orphan,
+a mismatched stamp or one under any other stop is skipped. `_stop_which` takes the read now's kind on an open stop,
+else the recorded one (`_LOST_WAS`), else `_SYNC_STOP_KINDS`. The stop line is unchanged, so an older reader still
+parses it and skips the detail. Test: `test_a_closed_lost_stop_says_the_lost_kind_its_detail_line_recorded`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
