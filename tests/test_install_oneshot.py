@@ -2920,7 +2920,7 @@ def _shell_hold_redact(
             "repo_slug() { echo contoso/agentsync; }",
             'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
             f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
-            *re.findall(r"(?m)^GENERIC_SOURCE_IDS=.*$", text),
+            *re.findall(r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES)\+?=.*$", text),
             helpers,
             funcs,
             f"redact_stream <{said_file}",
@@ -3076,6 +3076,110 @@ def test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_priv
         return
     assert private in text, text
     assert "\nSend it: privately (docs/deploy/setup-feedback.md" in text, text
+    assert setup_report.ISSUE_URL not in text, text
+
+
+def _shell_phrases(name: str) -> tuple[str, ...]:
+    """install.sh's copy of one of setup_report's fixed-phrase lists: every ``NAME=`` and ``NAME+=`` line, its
+    phrases split at "|"."""
+    parts = re.findall(rf'(?m)^{name}\+?="([^"]*)"$', INSTALL_SH.read_text(encoding="utf-8"))
+    assert parts, name
+    return tuple("".join(parts).split("|"))
+
+
+def test_the_shell_reports_fixed_phrases_are_the_agentsync_reports() -> None:
+    """B13 round 30 ruling 39 (C338, C397): redact_stream keeps a hold value's match inside one of
+    agentsync's own fixed phrases, as setup_report._in_fixed_phrase does; the shell's two lists are Python's,
+    phrase for phrase (a "|" between them, so a trailing blank stays), and none holds the "|" that splits
+    them."""
+    assert _shell_phrases("FIXED_CAPS_PHRASES") == setup_report._FIXED_CAPS_PHRASES
+    assert _shell_phrases("FIXED_VALUE_PHRASES") == setup_report._FIXED_VALUE_PHRASES
+    assert not any("|" in p for p in (*setup_report._FIXED_CAPS_PHRASES, *setup_report._FIXED_VALUE_PHRASES))
+
+
+# agentsync's own lines that hold a fixed phrase with "IT" or "page" in it, and one that quotes the value
+_FIXED_PHRASE_LINES = {
+    "IT": [
+        "[ok  ] graph.client_id — not set: Graph sources are off; local sources work without IT",
+        "(errors above name any IT action)",
+        "admin approval needed. IT action: grant the app consent",
+        "Full Disk Access (IT's on a managed Mac)",
+        "IT said the hold stays on",
+    ],
+    "Page": [
+        "3 files kept its page",
+        "images: 4 files: 4 with a page",
+        "Page said the hold stays on",
+    ],
+}
+
+
+@pytest.mark.parametrize("lang", [None, "en_US.UTF-8"])
+@pytest.mark.parametrize("owner", ["IT", "Page"])
+def test_a_hold_value_inside_a_fixed_phrase_stays_in_both_readers(
+    tmp_path: Path, owner: str, lang: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 39 (C338, C397): with a hold owner "IT", the shell cut agentsync's own "work
+    without IT", "name any IT action" and "IT action: " to <value>, which the Python report keeps (C106,
+    C162), and made the report private. A match inside a fixed phrase written out in the line stays in both
+    readers, in the C locale and in en_US.UTF-8; a quoted value is still cut."""
+    hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    lines = _FIXED_PHRASE_LINES[owner]
+    shown = _shell_hold_redact(tmp_path, [hold], lines, lang)
+    red = _agentsync_redactor(tmp_path, tmp_path / "home" / "agent-context" / "sources.toml", monkeypatch)
+    assert shown == [red.redact(ln) for ln in lines], shown
+    assert shown == [*lines[:-1], lines[-1].replace(owner, "<value>")], shown
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+def test_an_it_hold_keeps_the_shell_report_public_over_agentsyncs_own_phrase(
+    env: dict[str, str], folder: Path, wheel: Path, quoted: bool
+) -> None:
+    """B13 round 30 ruling 39 (C338, C397), end to end: the Doctor section embeds agentsync status, whose
+    graph.client_id ok line says "local sources work without IT" on every Mac with no Graph source, so a hold
+    owner "IT" made every shell report private with no issue link. The line stays whole and the report public;
+    a quoted "IT" is still cut and still makes it private (D80)."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "governance"
+    state.mkdir(parents=True)
+    hold = {"owner": "IT", "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    (state / "holds.json").write_text(json.dumps({"holds": [hold]}), encoding="utf-8")
+    said = "[ok  ] graph.client_id — not set: Graph sources are off; local sources work without IT"
+    if quoted:
+        said += "\nF4 | step 3 | question | 1 | IT said the hold stays on | -"
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    assert "graph.client_id — not set: Graph sources are off; local sources work without IT" in text, text
+    private = "\nPrivate only: a hold's reason or owner is also a word this report prints"
+    if quoted:
+        assert "F4 | step 3 | question | 1 | <value> said the hold stays on | -" in text, text
+        assert private in text and setup_report.ISSUE_URL not in text, text
+    else:
+        assert private not in text and setup_report.ISSUE_URL in text, text
+
+
+def test_two_hold_words_the_shell_report_shows_make_its_private_line_plural(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 30 C339: the shell kept one bit for the hold words it cut, so two words shown still read "a
+    hold's reason or owner is also a word ... it can be read back", where the agentsync report says the
+    plural since C133. redact_stream counts the distinct words cut (each word's accentless lower-case form, so
+    its NFC and NFD forms are one), and two or more give the plural."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "governance"
+    state.mkdir(parents=True)
+    hold = {"owner": "Page", "reason": "Mark", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
+    (state / "holds.json").write_text(json.dumps({"holds": [hold]}), encoding="utf-8")
+    said = "F4 | step 3 | question | 1 | Page and Mark said the hold stays on; page again | -"
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "<value> and <value> said the hold stays on; <value> again" in text, text
+    assert (
+        "\nPrivate only: hold reasons or owners are also words this report prints, so where <value> stands "
+        "in the\nreport's own text they can be read back.\n"
+    ) in text, text
+    assert "a hold's reason or owner is also a word" not in text, text
     assert setup_report.ISSUE_URL not in text, text
 
 

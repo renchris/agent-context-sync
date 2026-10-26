@@ -1947,6 +1947,24 @@ id_key() {
 # Source ids that are agentsync's own words (setup_report._GENERIC_IDS; a test holds the two equal).
 GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive files graph inbox local mail mirror notes"
 GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
+# agentsync's own fixed phrases that hold a word a one-word hold value can be, "|" between phrases:
+# setup_report._FIXED_CAPS_PHRASES ("IT" in capitals) and _FIXED_VALUE_PHRASES ("page", "#" standing for a count),
+# a test keeps each equal to its list (B13 round 30 ruling 39, C338, C397). redact_stream leaves a hold value's
+# match inside one written out in full as it is and makes nothing private, as setup_report._in_fixed_phrase does:
+# the Doctor section embeds agentsync status, whose graph.client_id line says "local sources work without IT".
+FIXED_CAPS_PHRASES="IT request|IT-draft line|IT draft: |left for IT|(for IT: |(IT's on a managed Mac)|name any IT action"
+FIXED_CAPS_PHRASES+="|IT action: |IT app registration|work without IT|for IT: Developer ID build|for the IT admin"
+FIXED_CAPS_PHRASES+="|if IT allows it|IT must allow|ask IT for tenant admin consent|ask IT for admin consent"
+FIXED_CAPS_PHRASES+="|ask IT whether a Conditional Access|ask IT to revoke sessions|ask IT to withdraw any PPPC profile"
+FIXED_CAPS_PHRASES+="|IT fills|When IT replies"
+FIXED_VALUE_PHRASES="over the OCR page limit|past the OCR page limit|past the page + picture limit"
+FIXED_VALUE_PHRASES+="|is every page the run added or changed|changes no page|has a page from before OCR"
+FIXED_VALUE_PHRASES+="|documents whose page has no OCR identity|such as a page of|kept its page|kept their page"
+FIXED_VALUE_PHRASES+="|whose page could not be read|its own page was made from|files still without a page"
+FIXED_VALUE_PHRASES+="|file has a converted page|erases its page by hand|files with a converted page|with a stub page"
+FIXED_VALUE_PHRASES+="|has a stub page|have a stub page|erases the page and history"
+FIXED_VALUE_PHRASES+="|erase that file's page and its history|as its stub page says|existing mirror page"
+FIXED_VALUE_PHRASES+="|file: # with a page|files: # with a page|(1 page)"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
@@ -3085,7 +3103,14 @@ pacv=\1/p' || true
 				case "$v" in [[:upper:]][[:upper:]]) [ "$fl" != h ] || ! two_letter_word "$low" || fl=H ;; esac
 				;;
 			esac
-			add_forms "$v" "<value>" "$fl"
+			# a word flag h or H cuts carries its accentless lower-case form as a 4th field: redact_stream counts
+			# the distinct words cut by it, as Python counts value_words_shown, so the NFC and NFD forms of
+			# one word are one (B13 round 30 C339)
+			if [ "$fl" = i ]; then
+				add_forms "$v" "<value>" "$fl"
+			else
+				add_forms "$v" "<value>" "$fl" | LC_ALL=C sed "s/\$/	$low/"
+			fi
 		done <<<"$w"
 	done < <(hold_values)
 }
@@ -3371,7 +3396,8 @@ redact_stream() {
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
-			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
+			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" \
+		FIXED_PHRASES="$FIXED_CAPS_PHRASES|$FIXED_VALUE_PHRASES" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
 	# report, which replaces in one pass. A held piece ends in ">" or "~", or is followed by no word character,
@@ -3519,8 +3545,29 @@ redact_stream() {
 		}
 		return best
 	}
+	# whether the bytes at..at+n-1 of t stand wholly inside one of the fixed phrases of agentsync written out in t
+	# (FIXED_PHRASES; setup_report._in_fixed_phrase): case as written, byte-wise, "#" a count
+	function in_fixed(t, at, n,    q, u, off) {
+		for (q = 1; q <= nfp; q++) {
+			u = t; off = 0
+			while (u != "" && match(u, fpx[q])) {
+				if (off + RSTART <= at && at + n <= off + RSTART + RLENGTH) return 1
+				off += RSTART; u = substr(u, RSTART + 1)
+			}
+		}
+		return 0
+	}
 	BEGIN {
 		slug = tolower(ENVIRON["REPO_SLUG"])
+		n = split(ENVIRON["FIXED_PHRASES"], fp, "|"); nfp = 0
+		for (q = 1; q <= n; q++) { # each phrase as a regex: its signs escaped, "#" one or more digits; none empty
+			if (fp[q] == "") continue
+			fpx[++nfp] = ""
+			for (i = 1; i <= length(fp[q]); i++) {
+				c = substr(fp[q], i, 1)
+				fpx[nfp] = fpx[nfp] (c == "#" ? "[0-9]+" : index("\\^$.[]|()*+?{}/", c) ? "\\" c : c)
+			}
+		}
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
 		for (k = 1; k <= np; k++) {
 			split(rows[k], f, "\t"); val[k] = f[1]; ph[k] = f[2]
@@ -3589,21 +3636,30 @@ redact_stream() {
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
+			hv = (f[3] == "h" || f[3] == "H"); line = ""
+			if (hv) for (j = 1; j <= ns; j++) line = line seg[j] # the line as it stands, for in_fixed
+			at = 0 # the bytes of the line before s
 			for (j = 1; j <= ns; j++) {
-				if (held[j]) { keep(seg[j], 1); continue }
+				if (held[j]) { keep(seg[j], 1); at += length(seg[j]); continue }
 				s = seg[j]; acc = ""
 				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
 					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
 						acc = acc substr(s, 1, i + n - 1)
+					} else if (hv && in_fixed(line, at + i, n)) {
+						acc = acc substr(s, 1, i + n - 1) # a fixed phrase of agentsync, not the value (ruling 39, C338, C397)
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""
 						keep(f[2], 1)
-						if (f[3] == "h" || f[3] == "H") hold_word = 1 # a hold value that is a report word was cut (D80)
+						if (hv) { # a hold value that is a report word was cut (D80); each word once (C339)
+							hk = (f[4] != "") ? f[4] : tolower(f[1])
+							if (!(hk in hseen)) { hseen[hk] = 1; hn++ }
+						}
 					}
-					s = substr(s, i + n)
+					at += i + n - 1; s = substr(s, i + n)
 				}
+				at += length(s)
 				keep(acc s, 0)
 			}
 			ns = m
@@ -3613,7 +3669,7 @@ redact_stream() {
 		for (j = 1; j <= ns; j++) line = line seg[j]
 		print line
 	}
-	END { if (hold_word && ENVIRON["HOLD_WORD_FILE"] != "") printf "" > ENVIRON["HOLD_WORD_FILE"] }'
+	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once'
 }
 launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `launchctl print`
 	printf '%s\n' "$1" | sed -n "s/^	$2 = //p" | head -1
@@ -5021,8 +5077,13 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		break
 	done <<<"$pairs"
 	# and a one-word hold reason or owner that is such a word, where the body cut it (redact_stream's flag h,
-	# HOLD_WORD_SHOWN), as the agentsync report says it (B13 round 25 D80)
-	if [ -n "${HOLD_WORD_SHOWN:-}" ]; then
+	# HOLD_WORD_SHOWN, the count of distinct words cut), as the agentsync report says it (B13 round 25 D80), in
+	# the plural at two or more words (B13 round 30 C339, as C133 made the agentsync report's)
+	if [ "${HOLD_WORD_SHOWN:-0}" -ge 2 ] 2>/dev/null; then
+		say "Private only: hold reasons or owners are also words this report prints, so where <value> stands in the"
+		say "report's own text they can be read back."
+		PRIVATE_ONLY=1
+	elif [ -n "${HOLD_WORD_SHOWN:-}" ]; then
 		say "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands in the"
 		say "report's own text it can be read back."
 		PRIVATE_ONLY=1
@@ -5305,7 +5366,7 @@ write_fallback_report() { # RC WHY
 		AGENT_KEPT=""
 		[ ! -f "$AGENT_KEPT_FILE" ] || AGENT_KEPT=1
 		HOLD_WORD_SHOWN=""
-		[ ! -f "$HOLD_WORD_FILE" ] || HOLD_WORD_SHOWN=1
+		[ ! -f "$HOLD_WORD_FILE" ] || HOLD_WORD_SHOWN="$(LC_ALL=C tr -cd '0-9' <"$HOLD_WORD_FILE")" HOLD_WORD_SHOWN="${HOLD_WORD_SHOWN:-1}"
 		rm -f "$AGENT_KEPT_FILE" "$HOLD_WORD_FILE"
 		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
 		# What it fills is read from the redacted Summary just written.

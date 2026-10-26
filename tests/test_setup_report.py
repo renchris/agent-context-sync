@@ -1894,11 +1894,10 @@ def test_a_one_word_hold_value_stays_in_the_reports_own_fixed_phrases() -> None:
     red.add("value", "Page", ignore_case=True)
     assert [t for t in texts if red.redact(t) != t] == []
     assert not red.private_only
-    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    # the shell report embeds agentsync status, so its flag-h cut keeps a copy of the list since B13 round 30
+    # C397 (test_install_oneshot.py::test_the_shell_reports_fixed_phrases_are_the_agentsync_reports)
     for phrase, rx in zip(setup_report._FIXED_VALUE_PHRASES, setup_report._FIXED_VALUE_RES, strict=True):
         assert any(rx.search(t) for t in texts), f"{phrase!r} is no fixed text of the report's"
-        # the shell report prints none of them, so its flag-h cut needs no such list to match this one
-        assert not rx.search(shell), phrase
 
 
 @pytest.mark.usefixtures("roomy_budget")
