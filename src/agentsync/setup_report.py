@@ -5958,9 +5958,10 @@ config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no
 _PERSONS_KINDS_COPY = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
-    "earlier syncs, another account's or not a file, a hold the hold list lost, a state folder that is not a "
-    "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
-    "volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+    "earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression "
+    "list that lost a purge the audit trail records, a state folder that is not a folder, or a state file or "
+    "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a "
+    "[convert] pandoc_path, Rosetta to install or a native pandoc copy"
 )
 """``doctor.PERSONS_KINDS``, for a report written while doctor does not import (a test keeps them equal)."""
 

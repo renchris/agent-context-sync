@@ -2481,13 +2481,16 @@ PERSONS_FIX_RE = re.compile(
 # kind also names a state file that is not a file (MANIFEST_FIX: a folder where the manifest belongs), the
 # state folder, and the refusals no chmod fixes, each the person's: an ACL or a privacy setting (_search_fix),
 # a folder above it that refuses a search (_parent_fix), a read-only volume (read_only_fix). Since round 29
-# (ruling 27: C122, C197, C206) a hold the hold list lost, whose governance.hold FAIL's fix is the person's.
+# (ruling 27: C122, C197, C206) a hold the hold list lost, whose governance.hold FAIL's fix is the person's,
+# and since round 30 (ruling 40: C311) a purge queue or suppression list that lost a purge the audit trail
+# records, whose governance.purge_queue or governance.suppressed FAIL's is.
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
-    "earlier syncs, another account's or not a file, a hold the hold list lost, a state folder that is not a "
-    "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
-    "volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+    "earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression "
+    "list that lost a purge the audit trail records, a state folder that is not a folder, or a state file or "
+    "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a "
+    "[convert] pandoc_path, Rosetta to install or a native pandoc copy"
 )
 
 

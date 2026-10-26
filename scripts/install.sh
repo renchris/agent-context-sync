@@ -174,11 +174,12 @@
 #      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
 #      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
 #      remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not
-#      a file, a hold the hold list lost, a state folder that is not a folder, or a state file or folder that
-#      an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert]
-#      pandoc_path, Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to
-#      the report (B13 round 13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65; round
-#      23 ruling 6; round 24 ruling 7; round 29 ruling 27)
+#      a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail
+#      records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting,
+#      a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install
+#      or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30;
+#      round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65; round 23 ruling 6; round 24 ruling 7;
+#      round 29 ruling 27; round 30 ruling 40)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -1092,7 +1093,10 @@ misplaced_reader() { # PYTHON [SRC]
 # "lost-hold", "none", or nothing when the build cannot say (one that lacks lost_holds, a hold list or
 # governance folder it cannot read, which the misplaced and access probes judge, or any error). The build's
 # own judge as status calls it, never re-implemented here, read in the order misplaced_reader is: with SRC this
-# checkout's code, else the installed build's. Prints no scope, owner or reason: a hold's owner is a value.
+# checkout's code, else the installed build's. Prints no scope, owner or reason: a hold's owner is a value. And,
+# after a comma, a purge queue or suppression list that lost a purge the audit trail records, by the build's own
+# governance.governance_lost as status calls it (B13 round 30 ruling 40, C311): "lost-queue" or
+# "lost-suppressed"; nothing more when the build lacks it or it raises, so an older build's verdict is unchanged.
 LOST_HOLD_PY='
 import os, sys
 from pathlib import Path
@@ -1117,7 +1121,13 @@ try:
     lost = lost_holds(root, governance.state_holds(root))
 except BaseException:
     sys.exit(0)
-print("lost-hold" if lost else "none")'
+said = "lost-hold" if lost else "none"
+try:
+    odd = governance.governance_lost(expand(root))
+    said += {"purge-queue.json": ",lost-queue", "suppressed.json": ",lost-suppressed"}.get(odd.path.name, "") if odd else ""
+except BaseException:
+    pass
+print(said)'
 lost_hold_reader() { # PYTHON [SRC]
 	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
 }
@@ -8136,14 +8146,31 @@ list_folders() {
 		fi
 		ctail="$ctail$stail"
 		clog=" config_err=$cerr"
-	elif [ "$chold" = lost-hold ]; then
-		# A hold the hold list lost (holds.json moved aside or rewritten as no holds, or a hold only a record
-		# names) fails step 2's status on its governance.hold line, and its fix is the person's: step 1 said
-		# "(none is needed)" over that stop (B13 round 29 ruling 27: C122, C197, C206). Only when nothing else
-		# is predicted: a config-step stop comes first, and a hold list that cannot be read is the misplaced or
-		# access tail's. Fixed words: the hold's scope and owner are values, never printed here.
-		ctail="; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
-		clog=" config_err=state-hold-lost"
+	elif [ -n "$chold" ] && [ "$chold" != none ]; then
+		# A purge queue or suppression list that lost a purge the audit trail records fails step 2's status on
+		# its governance.purge_queue or governance.suppressed line, first, as status's NEXT leads with
+		# governance_lost (B13 round 30 ruling 40, C311); then a hold the hold list lost (holds.json moved aside
+		# or rewritten as no holds, or a hold only a record names) on its governance.hold line (B13 round 29
+		# ruling 27: C122, C197, C206). Each fix is the person's, and step 1 said "(none is needed)" over that
+		# stop. Only when nothing else is predicted: a config-step stop comes first, and a list that cannot be
+		# read is the misplaced or access tail's. Fixed words: no scope, owner, reason, selector or time.
+		ctail="" clog=""
+		case ",$chold," in
+		*,lost-queue,*)
+			ctail="; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+			clog=",state-queue-lost"
+			;;
+		*,lost-suppressed,*)
+			ctail="; step 2 stops at its status step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
+			clog=",state-suppressed-lost"
+			;;
+		esac
+		case ",$chold," in *,lost-hold,*)
+			ctail="$ctail; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+			clog="$clog,state-hold-lost"
+			;;
+		esac
+		[ -z "$clog" ] || clog=" config_err=${clog#,}"
 	fi
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
@@ -9613,7 +9640,7 @@ print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
 }
 STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than
