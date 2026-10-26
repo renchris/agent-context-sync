@@ -419,10 +419,14 @@ install.log (a `--list-folders` run is not an install run):
   (`agentsync's state file`, `agentsync's lock file`, `agentsync's heartbeat file`, `agentsync's hold list`,
   `agentsync's purge queue`, `agentsync's suppression list` or `agentsync's audit trail`) and <kind> is what sits
   there (a folder, a fifo, a symlink to nothing, a symlink loop; `which is not a regular file` when no kind is
-  known; B13 round 27 P110, P126). At the manifest's -wal or -shm, which lets init run, the step is the status
-  step:
-  `install.sh exited 1 at its status step on the state file's shared-memory file, which is a folder, not a file: the person's to fix`
-  (`the state file's write-ahead log` for the -wal; B13 round 25 ruling 12). A lost manifest reads
+  known; B13 round 27 P110, P126). A misplaced -wal or -shm reads
+  `failed at step 2 (computed: install.sh exited 1 at its config step on the state file's shared-memory file, which is a folder, not a file: the person's to fix)`
+  (`the state file's write-ahead log` for the -wal; B13 round 25 ruling 12): init and add-source both stop on either
+  side, since lane B's round 26 E65 and round 28 I16 (B13 round 29 C224: this said the -wal or -shm lets init run,
+  so the step was the status step). One run differs, as step 1's `<at its step>` below says: a folder at the -shm
+  this account can read, on a run that adds a folder with --source-local, lets add-source pass, and that run reads
+  `install.sh exited 1 at its status step on the state file's shared-memory file, which is a folder, not a file: the person's to fix`.
+  A lost manifest reads
   `install.sh exited 1 at its config step on agentsync's state file, which is missing though heartbeat.json records earlier passes: the person's to fix`;
   a link there names the link first, in doctor's words for the manifest after it:
   `which is a link to a file that does not exist; the manifest is missing, but heartbeat.json records earlier passes`

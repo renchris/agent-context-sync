@@ -6796,7 +6796,10 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     """B13 round 28 I102: the guide gave the step 3 computed outcome in full and of step 2 only "failed at
     step 2", while the report names what the config step met (a file that is not a file, a side at the status
     step, the lost manifest, its links, the unread heartbeat, a manifest too short). Each form is made from
-    `setup_report`'s own words and the guide quotes it."""
+    `setup_report`'s own words and the guide quotes it. B13 round 29 C224: the guide gave a misplaced -wal or
+    -shm the status step, "which lets init run", though init and add-source stop on either side at the config
+    step (E65, I16); the config-step form is quoted, and the status step only for a readable -shm folder on a
+    --source-local run."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6810,8 +6813,14 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     assert f"`failed at step 2 (computed: {misplaced})`" in page
     for noun in ("agentsync's state file", *setup_report._MISPLACED_ROLES.values()):
         assert f"`{noun}`" in page, noun
-    side = "install.sh exited 1 at its status step" + setup_report._side_words("shm", "a folder")
-    assert f"`{side}`" in page and f"(`{setup_report._SIDE_ROLE['wal']}` for the -wal;" in page
+    # B13 round 29 C224: init and add-source both stop on either side at the config step since E65 and I16;
+    # only a readable -shm folder on a --source-local run reaches the status step
+    shm = setup_report._side_words("shm", "a folder")
+    assert f"`failed at step 2 (computed: install.sh exited 1 at its config step{shm})`" in page
+    assert f"(`{setup_report._SIDE_ROLE['wal']}` for the -wal;" in page
+    assert "which lets init run" not in page
+    side = "install.sh exited 1 at its status step" + shm
+    assert f"--source-local, lets add-source pass, and that run reads `{side}`" in page
     lost_source = 'return f" on agentsync\'s state file, which is {fact}: {whose}", f"after {moved}"'
     assert lost_source in source and 'else "the person\'s to fix"' in source
     facts = setup_report._LOST_FACTS

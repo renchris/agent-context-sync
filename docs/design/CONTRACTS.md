@@ -32768,3 +32768,16 @@ rather than I72's (whose "a letter, digit or `.` before the URL joins its scheme
 a `.`: `3https://` and `.https://` read as paths, `seehttps://` and `x.https://` keep `<url>`, read with `_plain`
 at b2724d9c). So I72's correction is dated at both paragraphs, §16.186 E49 and §16.191 P54. Docs only; the claim
 here holds the line (`test_every_dated_line_from_round_11_on_is_held_by_a_test`).
+
+**The guide's misplaced side file names the config step, with add-source's one status-step run** (C224;
+`docs/deploy/setup-feedback.md`; from the Codex follow-up run). The "Failed at step N" bullet said "At the
+manifest's -wal or -shm, which lets init run, the step is the status step", but `_cmd_init` runs
+`_not_a_file_stop` and `doctor.state_not_a_file` judges every side (`sides_not_a_file_at`) since lane B's round 26
+E65 and round 28 I16, so a plain install or reinstall stops at its config step on either side, as does add-source
+on a -wal folder (measured by the verifier with the repo's agentsync in a throwaway home: init exits 1 on a -shm or
+-wal folder, add-source exits 1 on the -wal and 0 on the -shm, and status then FAILs `state_dir.files`). The bullet
+quotes `failed at step 2 (computed: install.sh exited 1 at its config step on the state file's shared-memory file,
+...)`, `the state file's write-ahead log` for the -wal, and the status-step form only for a folder at the -shm this
+account can read on a run that adds a folder with --source-local, as its step 1 passage already says. Not the
+finder's fix (the status step for every add-source run): it is false for the -wal, so it would make things worse.
+Test: `test_the_guide_gives_the_reports_step_2_state_outcomes`, which makes both forms from `setup_report._side_words`.
