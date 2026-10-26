@@ -31602,6 +31602,10 @@ aside, or the file restored`, matched on `_STATE_LOST_UNREAD_COPY` (a test keeps
 FAIL in the misplaced bucket. Test: `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`, and the
 unread row of the config-step words table.
 
+Amended 2026-10-26, §16.198 C105: heartbeat.json's fix comes first only where it has one (ruling 30); the outcome's
+`heartbeat.json's fix first, then the file's, the person's` and the evidence's `heartbeat.json is fixed or moved
+aside (see Doctor's heartbeat line)` are split by who owns heartbeat.json's fix, as §16.198 says.
+
 **A manifest too short to be one is never called missing** (lane B's I92 seam, ruling 20). Lane B's
 `LOST_MANIFEST_EMPTY` and its unread twin join `LOST_MANIFEST_WORDS` for a manifest.sqlite under SQLite's 100-byte
 header beside earlier passes, which status calls `empty or too short`. `_manifest_lost_kind` names them `short`
@@ -32297,6 +32301,28 @@ is left out only when what follows a stop after its last `/` reads as words (a s
 its end), so `<path> No chmod was run` keeps the row's words; a final part that may be a file's name (`Smith,
 Jones.sqlite`), a tail with no stop, and a stop before the last `/` (`/Volumes/Backup (2)/m.sqlite`) stay cut whole.
 Test: `test_a_link_target_only_the_runs_own_text_names_is_redacted` (C163's rows).
+
+**heartbeat.json's fix comes first only where it has one** (C105, C138, C148, C134's second half, C164: one
+defect, built once; ruling 30; amends §16.193 I95). Over a lost manifest beside a heartbeat.json that cannot be read, step 2's outcome
+said `heartbeat.json's fix first, then the file's, the person's` and the evidence sent the person to a heartbeat
+line with no fix, whatever the cause; a damaged heartbeat has no fix of its own (restoring the manifest clears it),
+and only this account's own heartbeat.json whose mode alone refuses it takes the agent's chmod first.
+`_heartbeat_chmod_first` decides by status's own test (`cli._heartbeat_chmod_first` over doctor's `_check_state_dir`
+and `_check_heartbeat`, imported lazily; any failure reads as no) or by install.sh's `so the fix is the agent's
+first` NEXT in the run's install.out block, which keeps the mode case once the chmod has run. In that case the
+outcome reads `heartbeat.json's chmod first, the agent's, then the file's, the person's` (`_HEARTBEAT_CHMOD_FIRST`)
+and the evidence `the agent's chmod 600 of heartbeat.json (see Doctor's heartbeat line), and the person decides if
+the manifest is still lost then`; otherwise one owner, `the person's to fix, restoring the file or moving
+heartbeat.json aside` (`_UNREAD_PERSONS`; no bracket inside `(computed: ...)`, M24), its after-words `the file was
+restored or heartbeat.json moved aside`, and the evidence `the person restores the file or moves heartbeat.json
+aside`. A manifest too short to be one beside it takes the unread order and keeps its own move, both files aside
+(`heartbeat.json was fixed, and the file restored or moved aside with heartbeat.json`), never heartbeat.json alone.
+A link into a folder that cannot be used keeps `the person's to fix, removing or re-pointing the link first`.
+`_AGENT_FIX_RE` reads `the fix is the agent's first: run ... once,` too, so that NEXT's chmod counts as the step it
+names. The guide (`docs/deploy/setup-feedback.md`) quotes both forms. Tests:
+`test_a_lost_manifest_beside_a_heartbeat_its_mode_refuses_keeps_the_agents_chmod_first`,
+`test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`, the unread row of the config-step words
+table, and `test_the_guide_gives_the_reports_step_2_state_outcomes`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 

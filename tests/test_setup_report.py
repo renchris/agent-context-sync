@@ -11010,11 +11010,13 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "person's to fix",
             "the file was restored or heartbeat.json moved aside",
         ),
-        (  # B13 round 28 ruling 21: over a heartbeat.json that cannot be read (P111), its own words
+        (  # B13 round 28 ruling 21: over a heartbeat.json that cannot be read (P111), its own words; B13
+            # round 29 ruling 30: with no chmod of its own (no NEXT for one, none at report time), the
+            # person's
             f"error: state: {db} {manifest_mod.LOST_MANIFEST_UNREAD} (fix: {doctor.LOST_MANIFEST_FIX})",
             "on agentsync's state file, which is missing beside a heartbeat.json that cannot be read: "
-            "heartbeat.json's fix first, then the file's, the person's",
-            "heartbeat.json was fixed or moved aside, or the file restored",
+            "the person's to fix, restoring the file or moving heartbeat.json aside",
+            "the file was restored or heartbeat.json moved aside",
         ),
         (  # B13 round 26 E3, E14: doctor's one FAIL for a lost manifest that is a link into a gone folder
             # (B13 round 25 D71), by the run's own line: its fix removes or re-points the link first
@@ -15243,7 +15245,8 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
         "last re-screen: not read (the manifest is missing and heartbeat.json cannot be read; the person "
         "decides: see Doctor's state_dir.manifest line)"
     ), section(text, "Environment")
-    # step 2's own line for it, as the sync prints it: the cause, and heartbeat.json's fix first
+    # step 2's own line for it, as the sync prints it: the cause, and (B13 round 29 ruling 30) damaged JSON
+    # has no fix of its own, so the person's two moves, never a heartbeat step first
     log, out = fake_mac["setup"] / "install.log", fake_mac["setup"] / "install.out"
     friction = write_friction(fake_mac, retry_friction())
     log.write_text(
@@ -15263,9 +15266,21 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
     outcome = _line(section(text, "Summary"), "- **outcome: ")
     assert outcome.split("(computed: ", 1)[1].startswith(
         "install.sh exited 1 at its config step on agentsync's state file, which is missing beside a "
-        "heartbeat.json that cannot be read: heartbeat.json's fix first, then the file's, the person's"
+        f"heartbeat.json that cannot be read: {setup_report._UNREAD_PERSONS}"
     ), outcome
     assert "records earlier passes" not in text
+    firsts = [ln for ln in text.splitlines() if "first" in ln]
+    assert "fix first" not in text and "chmod first" not in text, firsts
+    # B13 round 29 ruling 30: install.sh's NEXT recorded the mode case (the agent's chmod since run): it leads
+    out.write_text(
+        out.read_text(encoding="utf-8")
+        + "NEXT: agentsync's state file, manifest.sqlite, is missing: heartbeat.json's mode refuses this "
+        "account (a mode, not damage), so the fix is the agent's first: run chmod 600 x once, then re-run\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    outcome = _line(section(text, "Summary"), "- **outcome: ")
+    assert f"cannot be read: {setup_report._HEARTBEAT_CHMOD_FIRST})" in outcome, outcome
     for made in (log, out, friction):
         made.unlink()
     # a fifo at heartbeat.json: doctor's warn (a pass's rename replaces it) is the lost bucket's too; a
@@ -15290,6 +15305,76 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
     assert "heartbeat FAIL (the person's; see Doctor)" in line and line.endswith(" · unexpected 0"), line
     assert "heartbeat warn (heartbeat.json cannot be read" not in line, line
     assert "records earlier passes" not in text and "earlier syncs recorded" not in text
+
+
+def test_a_lost_manifest_beside_a_heartbeat_its_mode_refuses_keeps_the_agents_chmod_first(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 ruling 30 (C105, C138, C148, C134, C164): heartbeat.json's fix leads only where it has
+    one, this account's own file whose mode alone refuses it. Status's own test decides (``cli.
+    _heartbeat_chmod_first``): at 0000 the outcome and the evidence name the agent's chmod first and the
+    person's fix after it; a damaged heartbeat (the test above) is the person's, with its two moves."""
+    if os.geteuid() == 0:
+        pytest.skip("root reads a 0000 file")
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    sp = load_config(cfg).state_paths
+    db, heartbeat = expand(sp.db), expand(sp.heartbeat)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    heartbeat.chmod(0)
+    try:
+        assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_UNREAD
+        log, out = fake_mac["setup"] / "install.log", fake_mac["setup"] / "install.out"
+        write_friction(fake_mac, retry_friction())
+        log.write_text(
+            LIST_RUN
+            + install_run("2026-09-29T10:00:00Z", 1).replace(
+                "step=config seconds=1 rc=0 result=done note=add-source",
+                "step=config seconds=1 rc=1 result=failed",
+            ),
+            encoding="utf-8",
+        )
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            f"error: state: {db} {manifest_mod.LOST_MANIFEST_UNREAD} (fix: {doctor.LOST_MANIFEST_FIX})\n",
+            encoding="utf-8",
+        )
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        heartbeat.chmod(0o600)
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert outcome.split("(computed: ", 1)[1].startswith(
+        "install.sh exited 1 at its config step on agentsync's state file, which is missing beside a "
+        f"heartbeat.json that cannot be read: {setup_report._HEARTBEAT_CHMOD_FIRST})"
+    ), outcome
+    assert "heartbeat.json's chmod first, the agent's, then the file's, the person's" in outcome
+    evidence = _line(summary, "- evidence: ")
+    assert evidence.endswith(setup_report._STATE_LOST_UNREAD_CHMOD_THEN), evidence
+    assert "the agent's chmod 600 of heartbeat.json" in evidence, evidence
+    # C164: a manifest too short to be one beside it takes the unread order, and keeps its own move (both
+    # files aside, never heartbeat.json alone)
+    db.write_bytes(b"x" * 10)
+    heartbeat.chmod(0)
+    try:
+        assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY_UNREAD
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            f"error: state: {db} {manifest_mod.LOST_MANIFEST_EMPTY_UNREAD} (fix: {doctor.MANIFEST_FIX})\n",
+            encoding="utf-8",
+        )
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        heartbeat.chmod(0o600)
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert f": {setup_report._HEARTBEAT_CHMOD_FIRST})" in outcome, outcome
+    evidence = _line(summary, "- evidence: ")
+    assert evidence.endswith(setup_report._STATE_LOST_SHORT_UNREAD_CHMOD_THEN), evidence
+    assert "moves it aside and heartbeat.json with it" in evidence, evidence
 
 
 def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing(

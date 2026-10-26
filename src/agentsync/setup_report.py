@@ -3812,6 +3812,7 @@ class _Facts:
     # ruling 7): not measured, the person's, never counted with the causes a report written when idle clears
     evidence_lost: int = 0
     lost_unread: bool = False  # B13 round 28 ruling 21: those lines say heartbeat.json cannot be read
+    heartbeat_chmod: bool = False  # and its fix is the agent's chmod of its mode first (round 29 ruling 30)
     lost_short: bool = False  # lane B's I92: they say the manifest is empty or too short
     # lines of the evidence parts that say "no manifest yet" over existing mirror pages (a new start), and
     # those pages (B13 round 27 P26): not measured, and no wait measures them, only the next sync; "no sync
@@ -5853,9 +5854,10 @@ _NEXT_FIX = "next-fix"
 (``the fix is the agent's: run <it> once,``: the state folder's or file's chmod, :data:`_AGENT_FIX_RE`): the
 step NEXT names, not a separate hint, and never the person's (B13 round 23 A35)."""
 
-_AGENT_FIX_RE = re.compile(r"the fix is the agent's: run (.+?) once,")
+_AGENT_FIX_RE = re.compile(r"the fix is the agent's(?: first)?: run (.+?) once,")
 """The command install.sh's state-mode ``FAIL_NEXT`` gives the agent (A35), or its status-step NEXT
-(``STATE_CHMODS``: one ``chmod MODE <paths>`` per mode, joined by `` && ``)."""
+(``STATE_CHMODS``: one ``chmod MODE <paths>`` per mode, joined by `` && ``), or heartbeat.json's chmod its
+lost-manifest NEXT gives first (``the fix is the agent's first: run ...``; B13 round 29 C164)."""
 
 
 def _chmods(command: str) -> list[tuple[str, frozenset[str]]]:
@@ -9745,6 +9747,7 @@ def _evidence(r: _Run) -> list[str]:
     r.facts.evidence_lost = sum(out.count(line) for line in _LOST_MANIFEST_LINES)  # B13 round 24 ruling 7
     r.facts.lost_unread = _LOST_MANIFEST_UNREAD_LINE in out or _LOST_SHORT_UNREAD_LINE in out  # ruling 21
     r.facts.lost_short = _LOST_SHORT_LINE in out or _LOST_SHORT_UNREAD_LINE in out  # lane B's I92
+    r.facts.heartbeat_chmod = r.facts.lost_unread and _heartbeat_chmod_first(r)  # B13 round 29 ruling 30
     r.facts.lost_link = bool(r.facts.evidence_lost) and _lost_link(r.config)  # B13 round 26 E3, E14
     r.facts.lost_dangling = bool(r.facts.evidence_lost) and _lost_dangling(r.config)  # B13 round 27 P19
     # B13 round 27 P26: only the lines with the page count, never "no sync has run"
@@ -9838,15 +9841,37 @@ link, and the link named as status names it. Never the link's target."""
 
 
 _STATE_LOST_UNREAD_THEN = (
-    "heartbeat.json is fixed or moved aside (see Doctor's heartbeat line), and the person decides if the "
+    "the person restores the file or moves heartbeat.json aside, measures them (see Doctor's "
+    "state_dir.manifest line)"
+)
+"""What a report written after measures over a lost manifest beside a heartbeat.json that cannot be read and
+has no fix of its own (damaged JSON, a fifo, a link, another owner, an ACL): the person's two moves, never a
+heartbeat step first, as doctor's heartbeat warn has no fix (B13 round 29 ruling 30: C105, C138, C134)."""
+_STATE_LOST_UNREAD_CHMOD_THEN = (
+    "the agent's chmod 600 of heartbeat.json (see Doctor's heartbeat line), and the person decides if the "
     "manifest is still lost then, measures them (see Doctor's state_dir.manifest line)"
 )
+""":data:`_STATE_LOST_UNREAD_THEN` where heartbeat.json is this account's own file whose mode alone refuses it
+(``r.facts.heartbeat_chmod``, :func:`_heartbeat_chmod_first`): the agent's chmod first, then the manifest's
+fix, the person's (ruling 30)."""
 _STATE_LOST_UNREAD_EVIDENCE = (
     f"not measured, as the state file is {_LOST_UNREAD}: a report written after {_STATE_LOST_UNREAD_THEN}"
 )
 """:data:`_STATE_LOST_EVIDENCE` for :data:`_LOST_MANIFEST_UNREAD_LINE` lines (B13 round 28 ruling 21: I1,
-I28, I41, I53, I64, I76): never "records earlier passes", and heartbeat.json's own fix first, then the
-manifest's."""
+I28, I41, I53, I64, I76): never "records earlier passes"; the person's two moves, or with
+:data:`_STATE_LOST_UNREAD_CHMOD_THEN` the agent's chmod first (B13 round 29 ruling 30)."""
+_STATE_LOST_SHORT_UNREAD_THEN = (
+    "the person restores it, or moves it aside and heartbeat.json with it so the next sync starts a new "
+    "manifest, measures them (see Doctor's state_dir.manifest line)"
+)
+"""A manifest too short to be one beside a heartbeat.json that cannot be read: the damaged manifest's own
+moves, both files aside, never heartbeat.json alone (lane B's I92; B13 round 29 C138, C164)."""
+_STATE_LOST_SHORT_UNREAD_CHMOD_THEN = (
+    "the agent's chmod 600 of heartbeat.json (see Doctor's heartbeat line), and the person restores the "
+    "file, or moves it aside and heartbeat.json with it, if it is still lost then, measures them (see "
+    "Doctor's state_dir.manifest line)"
+)
+""":data:`_STATE_LOST_SHORT_UNREAD_THEN` in ruling 30's mode case: the unread order, the short file's move."""
 _STATE_LOST_SHORT_EVIDENCE = (
     "not measured, as the state file is empty or too short to be a manifest though heartbeat.json records "
     "earlier passes: a report written after the person restores it, or moves it aside and heartbeat.json "
@@ -9854,17 +9879,34 @@ _STATE_LOST_SHORT_EVIDENCE = (
 )
 """:data:`_STATE_LOST_EVIDENCE` for a manifest there but too short to be one (lane B's I92): its fix is the
 damaged manifest's (``doctor.MANIFEST_FIX``), both files aside, never heartbeat.json alone."""
-_STATE_LOST_UNREAD_LINK_EVIDENCE = (
-    f"not measured, as the state file is {_LOST_UNREAD}, and is {_LINK_UNUSABLE}: a report written after "
-    f"the person removes or re-points the link, and {_STATE_LOST_UNREAD_THEN}"
-)
-""":data:`_STATE_LOST_LINK_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling 21)."""
-_STATE_LOST_UNREAD_DANGLING_EVIDENCE = (
-    f"not measured, as the state file is {_LOST_UNREAD}, and is {_LINK_DANGLING}: a report written after "
-    f"{_STATE_LOST_UNREAD_THEN}"
-)
-""":data:`_STATE_LOST_DANGLING_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling
-21)."""
+
+
+def _unread_evidence(r: _Run) -> str:
+    """:data:`_STATE_LOST_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling 21), its
+    link forms after the file's fact, and its moves by who owns heartbeat.json's fix (B13 round 29 ruling
+    30)."""
+    short = r.facts.lost_short
+    then = (
+        (_STATE_LOST_SHORT_UNREAD_CHMOD_THEN if r.facts.heartbeat_chmod else _STATE_LOST_SHORT_UNREAD_THEN)
+        if short
+        else _STATE_LOST_UNREAD_CHMOD_THEN
+        if r.facts.heartbeat_chmod
+        else _STATE_LOST_UNREAD_THEN
+    )
+    fact = _LOST_FACTS["short-unread"] if short else _LOST_UNREAD
+    if short:  # lane B's I92: no link form beside a short file
+        return f"not measured, as the state file is {fact}: a report written after {then}"
+    if r.facts.lost_link:
+        return (
+            f"not measured, as the state file is {fact}, and is {_LINK_UNUSABLE}: a report written after the "
+            f"person removes or re-points the link, and {then}"
+        )
+    if r.facts.lost_dangling:
+        return (
+            f"not measured, as the state file is {fact}, and is {_LINK_DANGLING}: a report written after "
+            f"{then}"
+        )
+    return f"not measured, as the state file is {fact}: a report written after {then}"
 
 
 def _evidence_line(r: _Run) -> str:
@@ -9882,21 +9924,10 @@ def _evidence_line(r: _Run) -> str:
         f"{_plural(lost, 'line')} at the end of Status {'says' if lost == 1 else 'say'} "
         + ('"manifest: empty or too short": ' if r.facts.lost_short else '"manifest: missing": ')
         + (
-            (
-                f"not measured, as the state file is {_LOST_FACTS['short-unread']}: a report written after "
-                f"{_STATE_LOST_UNREAD_THEN}"
-                if r.facts.lost_unread
-                else _STATE_LOST_SHORT_EVIDENCE
-            )
+            _unread_evidence(r)
+            if r.facts.lost_unread  # B13 round 28 ruling 21; round 29 ruling 30
+            else _STATE_LOST_SHORT_EVIDENCE
             if r.facts.lost_short  # lane B's I92: the damaged manifest's fix, both files aside
-            else (
-                _STATE_LOST_UNREAD_LINK_EVIDENCE
-                if r.facts.lost_link
-                else _STATE_LOST_UNREAD_DANGLING_EVIDENCE
-                if r.facts.lost_dangling
-                else _STATE_LOST_UNREAD_EVIDENCE
-            )
-            if r.facts.lost_unread  # B13 round 28 ruling 21
             else _STATE_LOST_LINK_EVIDENCE
             if r.facts.lost_link
             else _STATE_LOST_DANGLING_EVIDENCE
@@ -13972,6 +14003,41 @@ def _lost_kind_of(line: str) -> str:
     return next((kind for kind, words in endings.items() if words in line), "")
 
 
+_HEARTBEAT_CHMOD_FIRST = "heartbeat.json's chmod first, the agent's, then the file's, the person's"
+"""Step 2's outcome over a lost manifest beside this account's own heartbeat.json whose mode alone refuses
+it (:func:`_heartbeat_chmod_first`): the agent's chmod 600 comes first, the manifest's fix, the person's,
+after it (B13 round 29 ruling 30: C105, C138, C148, C134, C164)."""
+_UNREAD_PERSONS = "the person's to fix, restoring the file or moving heartbeat.json aside"
+"""Step 2's outcome over a lost manifest beside any other heartbeat.json that cannot be read (damaged JSON,
+a fifo, a link, another owner, an ACL, a read-only volume): one owner, the person's, and its two moves, never
+a heartbeat step the agent runs (ruling 30). No bracket: the outcome's own ``(computed: ...)`` holds it
+(M24)."""
+_AGENT_FIRST_NEXT = "so the fix is the agent's first"
+"""install.sh's NEXT for a lost manifest beside heartbeat.json whose mode refuses this account
+(``STATE_LOST_HBFIX``): the run's record of the mode case, read when the chmod has been run since."""
+
+
+def _heartbeat_chmod_first(r: _Run, block: Sequence[str] = ()) -> bool:
+    """Whether a lost manifest beside a heartbeat.json that cannot be read has the heartbeat's own fix
+    first: status's test (``cli._heartbeat_chmod_first`` over doctor's state_dir and heartbeat checks,
+    imported lazily, as the ``doctor`` hook's lines carry no check objects), or install.sh's
+    :data:`_AGENT_FIRST_NEXT` in the run's install.out ``block``, which keeps the mode case once the agent's
+    chmod has run. Any failure reads as no: the person's fix, which is right for every other cause (B13
+    round 29 ruling 30)."""
+    if any(_AGENT_FIRST_NEXT in ln for ln in block if ln.lstrip().startswith("NEXT:")):
+        return True
+    if r.config is None:
+        return False
+    try:
+        from agentsync import cli  # noqa: PLC0415 - lazy: status's own test, never a copy of it
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        checks = [*doctor._check_state_dir(r.config), *doctor._check_heartbeat(r.config)]
+        return cli._heartbeat_chmod_first(r.config, checks) is not None
+    except Exception:
+        return False
+
+
 _DANGLING_UNUSABLE_COPY = "whose folder does not exist or refuses a write"
 """Doctor's words for a link to nothing no sync can create the file through (``doctor.DANGLING_UNUSABLE``,
 B13 round 25 D71's lost-manifest line among them): the report's copy for an installed build without the name,
@@ -14045,29 +14111,32 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             # (B13 round 26 E19) is a link too, with no step for it (B13 round 27 P33, P58). Over a
             # heartbeat.json that cannot be read, its own words and heartbeat.json's fix first (ruling 21); a
             # file there but too short (lane B's I92), the damaged manifest's moves
+            # B13 round 29 ruling 30: heartbeat.json's fix leads only where it has one, this account's chmod
+            # of its own file whose mode alone refuses it (status's test, or install.sh's NEXT for it); every
+            # other unread heartbeat is the person's, with its two moves. A short manifest keeps its own move
+            chmod = lost_kind.endswith("unread") and _heartbeat_chmod_first(r, block)
             unread = lost_kind == "unread"
             fact = _LOST_FACTS[lost_kind]
             moved = (
                 "heartbeat.json was fixed or moved aside, or the file restored"
-                if unread
+                if unread and chmod
+                else "heartbeat.json was fixed, and the file restored or moved aside with heartbeat.json"
+                if chmod
                 else "the file was restored or moved aside with heartbeat.json"
                 if lost_kind.startswith("short")
                 else "the file was restored or heartbeat.json moved aside"
             )
-            whose = (
-                "heartbeat.json's fix first, then the file's, the person's"
-                if unread
-                else "the person's to fix"
-            )
+            whose = _HEARTBEAT_CHMOD_FIRST if chmod else _UNREAD_PERSONS if unread else "the person's to fix"
+            linked = _HEARTBEAT_CHMOD_FIRST if chmod else "the person's to fix"  # the link names its moves
             if " is a symlink to " in ln and _dangling_unusable() in ln:
                 return (
                     # the file's fact first, "missing" once (B13 round 27 P103, P121, P129)
                     f" on agentsync's state file, which is {fact}, and is a link into a folder that does not "
-                    f"exist or refuses a write: {whose}, removing or re-pointing the link first",
+                    f"exist or refuses a write: {linked}, removing or re-pointing the link first",
                     "after the link was removed or pointed at a folder that exists, and "
                     + (
                         "heartbeat.json fixed or moved aside, or the file restored"
-                        if unread
+                        if chmod
                         else "the file restored or heartbeat.json moved aside"
                     ),
                 )

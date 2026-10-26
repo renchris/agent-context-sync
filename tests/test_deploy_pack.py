@@ -6787,15 +6787,17 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     flat = " ".join(source.split())
     for link in (
         'and is a link to a file that does not " f"exist: {whose}"',
-        'and is a link into a folder that does not " f"exist or refuses a write: {whose}, removing',
+        'and is a link into a folder that does not " f"exist or refuses a write: {linked}, removing',
     ):
         assert link in flat, link
     assert "`, and is a link to a file that does not exist` before the colon" in page
     assert "`, and is a link into a folder that does not exist or refuses a write` and then ends" in page
     assert f"`{setup_report._LINK_FIRST}`" in page
-    unread = "heartbeat.json's fix first, then the file's, the person's"
-    assert f'"{unread}"\n                if unread' in source
-    assert f"`{facts['unread']}: {unread}`" in page and f"`{facts['short']}`" in page
+    # B13 round 29 ruling 30: the person's two moves, and the agent's chmod first only in the mode case
+    for unread in (setup_report._UNREAD_PERSONS, setup_report._HEARTBEAT_CHMOD_FIRST):
+        assert f"`{facts['unread']}: {unread}`" in page, unread
+    assert "whose = _HEARTBEAT_CHMOD_FIRST if chmod else _UNREAD_PERSONS if unread else" in flat
+    assert f"`{facts['short']}`" in page
 
 
 def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:

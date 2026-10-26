@@ -426,8 +426,10 @@ install.log (a `--list-folders` run is not an install run):
   `, and is a link into a folder that does not exist or refuses a write` and then ends
   `, removing or re-pointing the link first` (B13 round 26 E3, E19; round 27 P121). Beside a heartbeat.json that
   cannot be read the file is
-  `missing beside a heartbeat.json that cannot be read: heartbeat.json's fix first, then the file's, the person's`
-  (B13 round 28 ruling 21), and a manifest too short to be one is
+  `missing beside a heartbeat.json that cannot be read: the person's to fix, restoring the file or moving heartbeat.json aside`
+  (B13 round 28 ruling 21), and only where heartbeat.json is this account's own file whose mode alone refuses it
+  `missing beside a heartbeat.json that cannot be read: heartbeat.json's chmod first, the agent's, then the file's, the person's`
+  (B13 round 29 ruling 30); a manifest too short to be one is
   `empty or too short to be a manifest though heartbeat.json records earlier passes` (B13 round 28 I92).
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
