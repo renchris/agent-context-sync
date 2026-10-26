@@ -895,7 +895,8 @@ def next_step(
     # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
     # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
     # published again, and running it would erase that page (B13 round 6 G30)
-    queued, kept = governance.partition_purges(config.state_paths)
+    split = governance.partition_queue(config.state_paths, config=config)
+    queued, kept = split.runnable, split.kept
     if queued and governance.hold_list_unread(config.state_paths.root):
         queued = []  # an unread hold list is no empty one: its FAIL comes first (B13 round 27 P131)
     on_hold: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
@@ -912,7 +913,8 @@ def next_step(
         exits = "; it exits 1 with the held ones still queued" if on_hold else ""
         waits.append(
             f"{plural(len(queued), 'queued purge')}: preview with `{BIN} purge --queue --dry-run` (writes "
-            f"nothing) before you run `{BIN} purge --queue` (rewrites history){exits}"
+            f"nothing{governance.looked_up_words(split.not_looked_up, queued)}) before you run "
+            f"`{BIN} purge --queue` (rewrites history){exits}"
         )
         checks.append("governance.purge_queue")
     notes += governance.kept_lines(kept)

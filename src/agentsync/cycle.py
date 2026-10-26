@@ -1974,6 +1974,8 @@ class _Cycle:
         self.cache = ConverterCache(config.cache_dir)
         self.gov = governance.load_governance(config.config_path)
         self.suppressions = governance.load_suppressions(config.state_paths.root)
+        # what the audit trail records as purged, kept out though the list lost it (B13 round 29 C172)
+        self.audited = governance.audited_suppressions(config.state_paths.root)
         self.staging = config.state_paths.staging
         self.run_id = 0
         self.changes: list[MirrorChange] = []
@@ -3305,14 +3307,10 @@ class _Cycle:
                 self.heartbeat_refused = exc
             except (OSError, ValueError):
                 pass
-        if self.heartbeat_refused is None:
-            # heartbeat.json keeps the state hold scopes, outside governance/, so a governance/ moved aside
-            # never lifts a hold; never over a hold list that lost one (B13 round 28 I89)
-            with contextlib.suppress(Exception):
-                root = self.config.state_paths.root
-                scopes = {h.scope for h in governance.state_holds(root)}
-                if not governance.lost_holds(root) and governance.recorded_hold_scopes(root) != scopes:
-                    governance.record_holds(root, scopes)
+        # hold-record.json keeps the state hold scopes, outside governance/ and apart from heartbeat.json, so
+        # neither move aside lifts a hold; with every lost hold kept (B13 round 28 I89; round 29 C199, C170)
+        with contextlib.suppress(Exception):
+            governance.record_holds(self.config.state_paths.root)
         counts = Counter(c.op.value for c in self.changes)
         if retried := self._tally[
             "legacy_retried"
@@ -3521,7 +3519,7 @@ class _Cycle:
         if retention:
             lines += ["## Retention", "", *retention, ""]
         lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
-        queued, kept = governance.partition_purges(self.config.state_paths)
+        queued, kept = governance.partition_purges(self.config.state_paths, config=self.config)
         if queued or kept:
             lines += ["## Queued purges", ""]
         if queued:
@@ -3727,9 +3725,12 @@ class _Cycle:
         acc.pass_kind = scan.pass_kind
         acc.enumeration_complete = scan.enumeration_complete
         acc.alarms += list(scan.alarms)
-        if self.suppressions.items or self.suppressions.globs:  # purged items must never come back (C15 7)
+        if self.suppressions.items or self.suppressions.globs or self.audited:  # never come back (C15 7)
             kept = tuple(
-                it for it in scan.items if not self.suppressions.matches(src.id, it.stable_id, it.rel_path)
+                it
+                for it in scan.items
+                if not self.suppressions.matches(src.id, it.stable_id, it.rel_path)
+                and not self.audited.matches(src.id, it.stable_id, it.rel_path)
             )
             if len(kept) != len(scan.items):
                 log.info("%s: %d purged item(s) suppressed", src.id, len(scan.items) - len(kept))

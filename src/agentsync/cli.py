@@ -113,6 +113,7 @@ from agentsync.manifest import (
     LOST_MANIFEST_SHORT,
     LOST_MANIFEST_WORDS,
     Manifest,
+    lost_error,
     lost_words,
 )
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
@@ -1107,7 +1108,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     """One cycle; without ``--mode`` (an agent's or a person's run, never a LaunchAgent's) the report ends
     with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
-    if _not_a_file_stop(args, config, manifest=False):  # the lock, heartbeat.json, a governance file (E38)
+    if _not_a_file_stop(args, config, manifest=False, lost=True):  # the lock, heartbeat, governance (E38)
         return EXIT_FAILED
     mode = CycleMode(args.mode) if args.mode else None
     hints = mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1"
@@ -1180,7 +1181,7 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
     if args.accept_deletions and not args.source:
         _err(f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE")
         return EXIT_USAGE
-    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+    if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
     accept = tuple(args.source) if args.accept_deletions else ()
     return _run(
@@ -1199,7 +1200,7 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     interactive sync it waits for a running cycle's lock: launchd never re-runs an operator's assertion after
     exit 75."""
     config = _config(args)
-    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+    if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
     return _run(
         config,
@@ -1354,7 +1355,7 @@ def _exclude_empty_source(config: Config, source_id: str) -> SourceConfig | None
 
 def _cmd_mat(args: argparse.Namespace) -> int:
     config = _config(args)
-    if _not_a_file_stop(args, config, manifest=False):  # sync's guard (B13 round 27 P43, P136; ruling 13)
+    if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
     budget = parse_size(args.budget, where="--budget") if args.budget is not None else None
     # an online-only recording whose download failed in this run is named once, by the cycle's alarm
@@ -1485,7 +1486,7 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
             out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
             holds = governance.config_holds(gov)
     try:
-        queued, kept = governance.partition_purges(config.state_paths)
+        queued, kept = governance.partition_purges(config.state_paths, config=config)
     except governance.GovernanceUnreadError as exc:
         line = f"status: cannot read the state: {_unread_words(exc, config=config)}"
         if line not in out:  # governance/ itself: one line, not one per file under it (I89)
@@ -2026,7 +2027,12 @@ def _listings_unread(
         r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST_WORDS) for r in checks
     )
     db = Path(state_root) / "manifest.sqlite" if state_root is not None else None
-    if lost or isinstance(exc, ManifestLostError):
+    short = any(  # there but too short: never "is missing" (B13 round 29 C128)
+        r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST_SHORT) for r in checks
+    ) or (isinstance(exc, ManifestLostError) and exc.reason in LOST_MANIFEST_SHORT)
+    if short:
+        note = doctor.LISTING_STATE_SHORT_NOTE
+    elif lost or isinstance(exc, ManifestLostError):
         note = doctor.LISTING_STATE_LOST_NOTE
     elif db is not None and doctor.state_file_kind(db) is not None:
         note = doctor.LISTING_STATE_NOT_FILE_NOTE  # a folder there: not "cannot be read" (D23)
@@ -2430,6 +2436,12 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(refused or doctor.stopped(config, "governance.suppressed", exc))
     except Exception as exc:  # valid JSON of the wrong shape: this line only (A79's reviewer)
         out.append(doctor.stopped(config, "governance.suppressed", exc))
+    else:
+        lost = governance.suppressions_lost(root)  # purges the audit trail records that the list lost (C172)
+        if lost is not None:
+            out.append(
+                _check("governance.suppressed", False, lost.detail, doctor.Severity.ERROR, fix=lost.fix)
+            )
     return out
 
 
@@ -2454,13 +2466,17 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
         # a folder (or other non-file) where the manifest belongs has no exclusion to judge, and the sync the
         # warn named stops before it applies one: state_dir.manifest FAILs it, the person's (B13 round 23 A10)
         db = expand(config.state_paths.db)
-        if doctor.state_file_kind(db) is not None:
+        kind = doctor.state_file_kind(db)
+        # a manifest lost as too short holds no rows, and the sync the warn named refuses on it (C129)
+        short = kind is None and lost_words(db) in LOST_MANIFEST_SHORT
+        if kind is not None or short:
             status = [(p, ok) for p, ok in status if p != db]
+            said = "is empty or too short to be a manifest" if short else "is not a file"
             out.append(
                 _check(
                     "governance.time_machine",
                     False,
-                    "not checked: the state file is not a file; the state_dir.manifest line says why",
+                    f"not checked: the state file {said}; the state_dir.manifest line says why",
                     doctor.Severity.INFO,
                 )
             )
@@ -2557,10 +2573,14 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_check("governance.purge_queue", False, shut, doctor.Severity.INFO))
         return out
     try:
-        queued, kept = governance.partition_purges(config.state_paths)
+        split = governance.partition_queue(config.state_paths, config=config)
     except AgentSyncError as exc:
         out.append(_refused_check(config, "governance.purge_queue", exc))
         return out
+    queued, kept = split.runnable, split.kept
+    gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
+    if gone is not None:
+        out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
     kept_text = "; ".join(governance.kept_lines(kept))
     also = f"; {kept_text}" if kept else ""
     if not queued and kept:
@@ -2570,6 +2590,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         detail = f"{plural(len(queued), 'purge request')} queued ({governance.reason_counts(queued)}){also}"
         unread = governance.hold_list_unread(config.state_paths.root)
         runnable, held = ([], []) if unread else _held_split(config, gov, queued)
+        # the ones from before the new start a run looks up in the docs history first (C102, C124)
+        detail += governance.looked_up_words(split.not_looked_up, runnable)
         if unread:
             # a hold list that cannot be read is no empty one: no run is invited, its FAIL says why (P131)
             detail += "; not run while the hold list cannot be read: the governance.hold line says why"
@@ -2998,7 +3020,7 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
         # a manifest lost from a Mac that has synced: sync's line and the person's fix, exit 1, never "0
         # findings" and a NEXT to run sync again, which stops on it (B13 round 25 D77); curate opens no
         # manifest, so its guard is here, as B89's is
-        said = _misplaced(args, ManifestLostError(f"{db} {lost}", errno.ENOENT, reason=lost))
+        said = _misplaced(args, lost_error(db, lost))  # one errno per kind (C179)
         if said is not None:
             _err(said)
             _misplaced_next(args, said)
@@ -3034,13 +3056,16 @@ def _not_a_file_state(args: argparse.Namespace) -> tuple[str, Path] | None:
     return f"error: state: {result.detail}" + (f" (fix: {result.fix})" if result.fix else ""), where
 
 
-def _not_a_file_stop(args: argparse.Namespace, config: Config, *, manifest: bool = True) -> bool:
+def _not_a_file_stop(
+    args: argparse.Namespace, config: Config, *, manifest: bool = True, lost: bool = False
+) -> bool:
     """Print status's own FAIL of a state file that is not a regular file (``doctor.state_not_a_file``: a
     folder, fifo, socket or link where the lock, heartbeat.json, a governance file, the manifest or a side of
     it belongs) as the command's ``error: state:`` line, with the NEXT (and a sync's stop record), and return
     True; else False. Judged by stat before anything opens it, so a fifo never blocks and nothing ends on a
     traceback (B13 round 26 E22, E38, E39, E40, E43, E65; ruling 13)."""
-    found = doctor.state_not_a_file(config, manifest=manifest, damaged=True)  # a damaged one too (I90)
+    # a damaged one too (I90); a lost purge only where the command publishes (B13 round 29 C172)
+    found = doctor.state_not_a_file(config, manifest=manifest, damaged=True, lost=lost)
     if found is None:
         return False
     where, result = found
@@ -3122,7 +3147,7 @@ def _cmd_checkpoint(args: argparse.Namespace) -> int:
     """Hidden alias (KISS K06): run an interactive sync, which records the checkpoint itself, behind sync's
     guard of a state file that is not a file (B13 round 27 P43)."""
     config = _config(args)
-    if _not_a_file_stop(args, config, manifest=False):
+    if _not_a_file_stop(args, config, manifest=False, lost=True):
         return EXIT_FAILED
     return _run(config, mode=None)
 
@@ -3322,7 +3347,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             return EXIT_OK
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
-        stuck, kept = governance.partition_purges(config.state_paths, left)
+        stuck, kept = governance.partition_purges(config.state_paths, left, config=config)
         if kept and all(why == governance.NEW_START_NOTE for _q, why in kept):
             # the new start's: the next sync's manifest judges them (B13 round 27 P40)
             until = "until the next sync builds the manifest"

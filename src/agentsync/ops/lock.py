@@ -594,7 +594,9 @@ def write_heartbeat(
     except ValueError as exc:
         log.warning("heartbeat %s is corrupt (%s); rewriting it", path, exc)
         current, record = {}, None
-    if record is not None:  # governance's record of the holds, kept outside governance/ (B13 round 28 I89)
+    if record is not None and not os.path.lexists(path.parent / HOLD_RECORD_NAME):
+        # round 28's record of the holds, kept only until hold-record.json replaces it (B13 round 29 C199);
+        # a source named "holds" takes its own entry below (C200, C171)
         current[HOLD_RECORD_KEY] = record
     prev_entry = current.get(source_id, {})
     prev: dict[str, object] = prev_entry if isinstance(prev_entry, dict) else {}
@@ -621,12 +623,17 @@ def write_heartbeat(
 
 
 HOLD_RECORD_KEY = "holds"
-"""heartbeat.json's list of the state hold scopes (``governance.record_holds`` writes it), beside the
-per-source objects, which every reader takes alone; each pass keeps it."""
+"""Round 28's key of the state hold scopes in heartbeat.json, a list beside the per-source objects (which
+every reader takes alone). Read only while no :data:`HOLD_RECORD_NAME` is there, and only as a list: a source
+may be named ``holds``, and its entry is an object (B13 round 29 C200, C171); a pass keeps it until then."""
+
+HOLD_RECORD_NAME = "hold-record.json"
+"""The state hold scopes' own record beside heartbeat.json (``governance.record_holds``), outside governance/
+and out of the new start's move of heartbeat.json, so neither move lifts a hold (B13 round 29 C199)."""
 
 
 def _hold_record(path: Path) -> list[str] | None:
-    """heartbeat.json's hold record (:data:`HOLD_RECORD_KEY`), or None when there is none."""
+    """heartbeat.json's round 28 hold record (:data:`HOLD_RECORD_KEY`, a list), or None when there is none."""
     text = read_regular_text(path)
     data = json.loads(text) if text else None
     value = data.get(HOLD_RECORD_KEY) if isinstance(data, dict) else None

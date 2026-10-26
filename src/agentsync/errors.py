@@ -32,9 +32,12 @@ class ManifestPathError(AgentSyncError, OSError):
 
 
 class ManifestLostError(ManifestPathError):
-    """The manifest is missing while heartbeat.json beside it records earlier passes: no new one is started
-    over that history; the person decides (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29). No ``filename``:
-    with errno and filename both set ``str()`` would read ``[Errno 2] None: ...`` (A29's reviewer)."""
+    """The manifest is missing, or is a regular file (or a link to one) too short to be one (B13 round 28
+    I92, round 29 C202), while heartbeat.json beside it records earlier passes or cannot be read (round 27
+    P111, round 29 C118): no new one is started over that history; the person decides
+    (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29). ``errno`` is ENOENT for a missing file and EINVAL for a
+    short one, built in one place (``manifest.lost_error``; round 29 C179). No ``filename``: with errno and
+    filename both set ``str()`` would read ``[Errno 2] None: ...`` (A29's reviewer)."""
 
 
 class ManifestOpenError(ManifestPathError):

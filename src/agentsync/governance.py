@@ -33,6 +33,7 @@ import contextlib
 import dataclasses
 import enum
 import errno
+import fcntl
 import hashlib
 import json
 import logging
@@ -64,6 +65,7 @@ from agentsync.manifest import Manifest, manifest_lost, migration_backups
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import HOLD_RECORD_KEY as _HOLD_RECORD_KEY
+from agentsync.ops.lock import HOLD_RECORD_NAME as _HOLD_RECORD_NAME
 from agentsync.ops.lock import SingleWriterLock, read_regular_text
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
@@ -173,6 +175,13 @@ class GovernanceDamagedError(GovernanceUnreadError):
 
     def __init__(self, path: Path, role: str, what: str) -> None:
         super().__init__(path, role, *_damaged_words(path, role, what))
+
+
+class GovernanceLostError(GovernanceUnreadError):
+    """Purges the audit trail records that the suppression list or the purge queue no longer holds (a file
+    moved aside, put back from an older copy or rewritten): the person's, in the words status prints; the
+    sync refuses until the list is put back or each purge is run again (B13 round 29 C172: a list moved aside
+    as its fix said read as no suppressions, and erased content was published again)."""
 
 
 class HoldActiveError(GovernanceError):
@@ -488,7 +497,25 @@ def _damaged_words(path: Path, role: str, what: str) -> tuple[str, str]:
         )
     else:
         fix = f"the person restores {shown} from a copy they trust, or moves it aside, keeping a copy"
+        fix += _what_the_move_leaves(role)
     return detail, fix
+
+
+def _what_the_move_leaves(role: str) -> str:
+    """What a move aside of the suppression list or the purge queue leaves to run again, after its fix's
+    "keeping a copy": never a bare move aside, which republished erased content (B13 round 29 C172)."""
+    if role == "the suppression list":
+        return (
+            ": the items it suppressed stay out by their id and path, from the audit trail, but each purge "
+            "by a source-path glob or of copied content is run again by hand before the next sync, which "
+            "refuses until then"
+        )
+    if role == "the purge queue":
+        return (
+            ": each purge it held is run by hand, with its own selector and reason, before the next sync, "
+            "which refuses until then"
+        )
+    return ""
 
 
 def audit_path(state_dir: Path) -> Path:
@@ -532,16 +559,36 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
         return detail, (
             "the person puts the real governance folder (the one holding holds.json and audit.jsonl) back "
             f"at {shown}, from wherever it was moved or from a copy; only where none was ever kept, moves "
-            f"{shown} aside, keeping a copy (a hold set earlier stays in force from heartbeat.json's record)"
+            f"{shown} aside, keeping a copy {_record_keeps(path.parent)}"
         )
     detail = f"{path} is {kind}, not a file: {role} belongs there"  # no bracket before "(fix:" (E18)
     # a folder shut to this account takes its chmod (or the person's chown) first: macOS refuses its move
     # (B13 round 27 P135, as the lock's and the heartbeat's fixes already said)
     first = doctor._opens_first(path, kind)
     fix = f"the person {first}moves {shown} aside, keeping a copy"
+    if role == HOLD_RECORD_ROLE:  # the next hold or pass writes it again (B13 round 29 C199)
+        fix += "; the next hold, release or sync writes it again from the hold list and the audit trail"
     if role == "the hold list":  # then the list itself back, so following it never leaves no holds (I87)
         fix += ", then puts the hold list back from a copy they trust"
+    fix += _what_the_move_leaves(role)
     return detail, fix
+
+
+def _record_keeps(state_dir: Path) -> str:
+    """The governance folder fix's last clause: a hold stays in force from the hold record only when that
+    record is there and names a scope; else the holds set earlier go with the folder, and the person asks the
+    records owner before any purge (B13 round 29 C199: the clause was said with no record left, and the page
+    under a hold on all was erased)."""
+    try:
+        named = recorded_hold_scopes(state_dir)
+    except AgentSyncError:
+        named = frozenset()
+    if named:
+        return f"(a hold set earlier stays in force from {HOLD_RECORD_NAME}'s record)"
+    return (
+        "(no hold record names a hold, so a hold set earlier is lost with the folder: the person checks with "
+        "the records owner, and sets each hold again, before any purge)"
+    )
 
 
 def audit_not_a_file(path: Path, kind: str) -> tuple[str, str]:
@@ -573,7 +620,9 @@ def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
         kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
         if kind is not None:
             return GovernanceNotAFileError(path, kind, role)
-    return None
+    record = hold_record_file(state_dir)  # outside governance/, the person's as the rest (B13 round 29 C199)
+    kind = doctor.governance_file_kind(record)
+    return None if kind is None else GovernanceNotAFileError(record, kind, HOLD_RECORD_ROLE)
 
 
 def governance_damaged(state_dir: Path) -> GovernanceDamagedError | None:
@@ -582,7 +631,7 @@ def governance_damaged(state_dir: Path) -> GovernanceDamagedError | None:
     error stops the read (its own line says that). Read only after :func:`governance_not_a_file` passed, so
     each is a regular file and a fifo never blocks: sync's guard refuses over it in status's words, never a
     traceback and never an exit 0 (B13 round 28 I90)."""
-    for read in (_state_holds, pending_purges, load_suppressions):
+    for read in (_state_holds, _record_scopes, pending_purges, load_suppressions):
         try:
             read(state_dir)
         except GovernanceDamagedError as exc:
@@ -731,18 +780,66 @@ def _state_holds(state_dir: Path) -> list[Hold]:
 
 
 HOLD_RECORD_KEY = _HOLD_RECORD_KEY
-"""heartbeat.json's record of the state hold scopes, a list beside the per-source entries (whose readers
-take only objects), kept outside governance/ so a governance/ moved aside never lifts a hold (B13 round 28
-I89)."""
+"""heartbeat.json's round 28 record of the state hold scopes, read only while no :data:`HOLD_RECORD_NAME` is
+there (B13 round 28 I89; round 29 C199, C200)."""
+
+HOLD_RECORD_NAME = _HOLD_RECORD_NAME
+HOLD_RECORD_ROLE = "the hold record"
+"""What hold-record.json is, in its not-a-file and damaged FAILs (B13 round 29 C199)."""
 
 
 def _heartbeat_file(state_dir: Path) -> Path:
     return expand(state_dir) / "heartbeat.json"
 
 
+def hold_record_file(state_dir: Path) -> Path:
+    """``<state_dir>/hold-record.json``: the state hold scopes, outside governance/ and apart from
+    heartbeat.json, so neither the governance folder's move aside nor the new start's move of heartbeat.json
+    takes it (B13 round 29 C199: after the new start no record was left, and following governance/'s fix let
+    ``purge docs=`` erase a page under a hold on all)."""
+    return expand(state_dir) / HOLD_RECORD_NAME
+
+
+def _record_scopes(state_dir: Path) -> frozenset[str] | None:
+    """The scopes hold-record.json names; None when no file is there. One that is there but cannot be read is
+    its GovernanceUnreadError, never no holds (ruling 19); one this account cannot open is a GovernanceError
+    caused by the PermissionError, whose FAIL gives the chmod (the ownership rule)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    path = hold_record_file(state_dir)
+    kind = doctor.governance_file_kind(path)
+    if kind is not None:
+        raise GovernanceNotAFileError(path, kind, HOLD_RECORD_ROLE)
+    try:
+        text = read_regular_text(path)
+    except UnicodeDecodeError as exc:
+        raise GovernanceDamagedError(path, HOLD_RECORD_ROLE, f"it is not JSON ({exc})") from None
+    except ValueError:
+        raise GovernanceNotAFileError(
+            path, doctor.governance_file_kind(path) or "not a regular file", HOLD_RECORD_ROLE
+        ) from None
+    except PermissionError as exc:
+        raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
+    if text is None:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise GovernanceDamagedError(path, HOLD_RECORD_ROLE, f"it is not JSON ({exc})") from None
+    scopes = data.get("holds") if isinstance(data, dict) else None
+    if not isinstance(scopes, list) or not all(isinstance(x, str) for x in scopes):
+        raise GovernanceDamagedError(path, HOLD_RECORD_ROLE, 'it is not an object with a "holds" list')
+    return frozenset(scopes)
+
+
 def recorded_hold_scopes(state_dir: Path) -> frozenset[str]:
-    """The scopes heartbeat.json's record says were held (:data:`HOLD_RECORD_KEY`); empty when there is no
-    record or it cannot be read (no record to keep: today's answer)."""
+    """The scopes the hold record says were held: hold-record.json (:func:`hold_record_file`), or, only while
+    no record file is there, heartbeat.json's round 28 ``holds`` list (:data:`HOLD_RECORD_KEY`; a dict there
+    is a source named ``holds``, never the record: C200). Empty when there is neither; a record file that
+    cannot be read raises (:func:`_record_scopes`), never no holds (B13 round 29 C199)."""
+    found = _record_scopes(state_dir)
+    if found is not None:
+        return found
     try:
         text = read_regular_text(_heartbeat_file(state_dir))
         data = json.loads(text) if text else None
@@ -751,30 +848,51 @@ def recorded_hold_scopes(state_dir: Path) -> frozenset[str]:
     scopes = data.get(HOLD_RECORD_KEY) if isinstance(data, dict) else None
     if not isinstance(scopes, list):
         return frozenset()
-    return frozenset(s for s in scopes if isinstance(s, str))
+    return frozenset(x for x in scopes if isinstance(x, str))
 
 
-def record_holds(state_dir: Path, scopes: Iterable[str]) -> None:
-    """Write ``scopes`` as heartbeat.json's hold record, into an existing regular heartbeat only (a new one
-    would read as an earlier pass to the lost-manifest guard), keeping every source's entry; best effort: a
-    heartbeat that cannot be read or written keeps the audit trail as the record."""
-    path = _heartbeat_file(state_dir)
+@contextlib.contextmanager
+def _record_lock(state_dir: Path) -> Iterator[None]:
+    """A short blocking flock on the state folder itself around the hold record's read, merge and replace:
+    a hold, its release and a pass's re-record never write over each other (B13 round 29 C175). Never the
+    single-writer lock, so no hold is refused while a sync runs, and no new file to keep in the folder."""
+    fd = os.open(expand(state_dir), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        text = read_regular_text(path)
-        data = json.loads(text) if text else None
-        if not isinstance(data, dict):
-            return
-        data[HOLD_RECORD_KEY] = sorted(set(scopes))
-        body = (json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-        fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-        try:
-            os.fchmod(fd, 0o600)
-            os.write(fd, body)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        Path(name).replace(path)
-    except (OSError, ValueError) as exc:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # closing the descriptor releases the flock
+
+
+def record_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> None:
+    """Write hold-record.json: the scopes the hold list lists (``listed``, read here when None) and every hold
+    it lost (:func:`lost_holds`), so setting or releasing one hold never drops a lost one (B13 round 29 C170:
+    a hold on another scope shrank the record, and a page under a hold on all was erased). Run after the
+    audit line, so a release just written leaves the record. Atomic, mode 0600, under :func:`_record_lock`;
+    unchanged, it is not rewritten. Best effort: a record that cannot be read or written leaves the audit
+    trail, and the record's own FAIL, to say so."""
+    path = hold_record_file(state_dir)
+    try:
+        with _record_lock(state_dir):
+            holds = _state_holds(state_dir) if listed is None else list(listed)
+            scopes = frozenset({h.scope for h in holds} | {h.scope for h in lost_holds(state_dir, holds)})
+            if _record_scopes(state_dir) == scopes:
+                return
+            body = (json.dumps({"holds": sorted(scopes)}, indent=1) + "\n").encode("utf-8")
+            fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+            try:
+                try:
+                    os.fchmod(fd, 0o600)
+                    os.write(fd, body)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                Path(name).replace(path)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    Path(name).unlink()
+                raise
+    except (OSError, AgentSyncError) as exc:
         log.debug("governance: hold record not written to %s: %s", path, exc)
 
 
@@ -811,11 +929,11 @@ def audit_holds(state_dir: Path) -> tuple[dict[str, dict[str, Any]], frozenset[s
 
 
 def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Hold]:
-    """The holds the audit trail records as set and not released, or heartbeat.json's record names with no
-    release, that holds.json (``listed``, read here when None) lacks: missing, rewritten as no holds, or
-    with governance/ moved aside. Each is in force (``origin`` ``audit``), so purge, ``purge --queue`` and
-    compaction refuse it and status shows it: following status's fix for an unreadable hold list never
-    leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19)."""
+    """The holds the audit trail records as set and not released, or the hold record names with no release
+    (:func:`recorded_hold_scopes`), that holds.json (``listed``, read here when None) lacks: missing,
+    rewritten as no holds, or with governance/ moved aside. Each is in force (``origin`` ``audit``), so
+    purge, ``purge --queue`` and compaction refuse it and status shows it: following status's fix for an
+    unreadable hold list never leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19)."""
     have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
     held, released = audit_holds(state_dir)
     out = [
@@ -877,14 +995,14 @@ def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datet
             },
         )
         audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
-    record_holds(state_dir, (h.scope for h in holds))  # outside governance/ too (I89)
+    record_holds(state_dir, holds)  # outside governance/, with every lost hold (I89; round 29 C199, C170)
     log.info("governance: %s", hold.describe())  # the CLI prints it once, on stdout (B13 round 28 I47)
     return hold
 
 
 def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | None = None) -> bool:
     """Release the state hold on ``scope``; True if one existed ; config holds live in sources.toml. A hold
-    holds.json lost but the audit trail or heartbeat.json's record keeps (:func:`lost_holds`) is released
+    holds.json lost but the audit trail or the hold record keeps (:func:`lost_holds`) is released
     too, with its own audit line, so a deliberate release never needs a set first (B13 round 28 I87)."""
     s = _check_scope(scope)
     holds = _state_holds(state_dir)
@@ -902,7 +1020,7 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
             },
         )
         audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
-    record_holds(state_dir, (h.scope for h in keep))
+    record_holds(state_dir, keep)  # a lost hold stays, a released one leaves (B13 round 29 C170)
     log.info("governance: hold %s released by %s", s, owner)  # the audit trail records it (I47)
     return True
 
@@ -1093,6 +1211,155 @@ def load_suppressions(state_dir: Path) -> Suppressions:
     return Suppressions(items, globs, paths, canonical)
 
 
+@dataclass(frozen=True, slots=True)
+class AuditedSuppressions:
+    """The items the audit trail records as purged for a reason that suppresses (every one but
+    ``upstream-deleted``), by ``(source_id, sha256(stable_id))`` and ``(source_id, sha256(rel_path))``: the
+    cycle keeps them out though the suppression list lacks them, as :func:`lost_holds` keeps a hold the hold
+    list lost (B13 round 29 C172). Globs and content hashes are never audited, so never here."""
+
+    items: frozenset[tuple[str, str]] = frozenset()
+    paths: frozenset[tuple[str, str]] = frozenset()
+
+    def __bool__(self) -> bool:
+        return bool(self.items or self.paths)
+
+    def matches(self, source_id: str, stable_id: str, rel_path: str) -> bool:
+        """True when the audit trail records this item, by its id or its exact source path, as purged."""
+        return (source_id, _sha(stable_id)) in self.items or (source_id, _sha(rel_path)) in self.paths
+
+
+def audited_suppressions(state_dir: Path) -> AuditedSuppressions:
+    """:class:`AuditedSuppressions` from the audit trail's ``purge`` lines; empty when it cannot be read."""
+    items: set[tuple[str, str]] = set()
+    paths: set[tuple[str, str]] = set()
+    for rec in _audit_events(state_dir):
+        sid = rec.get("source_id")
+        if rec.get("action") != "purge" or rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
+            continue
+        if not isinstance(sid, str):
+            continue
+        if isinstance(rec.get("stable_id_sha256"), str):
+            items.add((sid, rec["stable_id_sha256"]))
+        if isinstance(rec.get("path_sha256"), str):
+            paths.add((sid, rec["path_sha256"]))
+    return AuditedSuppressions(frozenset(items), frozenset(paths))
+
+
+def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> list[dict[str, Any]]:
+    """The audit trail's ``purge-summary`` records of each suppressing purge whose items, or whose source-path
+    glob, the suppression list (``listed``, read here when None) no longer holds, and that no later purge of
+    the same selector did again: the erased items' ids and paths are kept out from the audit trail
+    (:func:`audited_suppressions`), but their content hashes and a glob cannot be rebuilt from it, so the sync
+    refuses until the list is put back or each purge is run again (B13 round 29 C172)."""
+    sup = load_suppressions(state_dir) if listed is None else listed
+    have = {(sid, _sha(i)) for sid, i in sup.items}
+    out: list[dict[str, Any]] = []
+    group: list[dict[str, Any]] = []
+    for rec in _audit_events(state_dir):
+        action = rec.get("action")
+        if action == "purge":
+            group.append(rec)
+            continue
+        if action != "purge-summary":
+            continue
+        mine, group = [r for r in group if r.get("at") == rec.get("at")], []
+        if rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
+            continue
+        fp = rec.get("selector_sha256")
+        out = [r for r in out if r.get("selector_sha256") != fp]  # run again: what it could rebuild is back
+        gone = [r for r in mine if (r.get("source_id"), r.get("stable_id_sha256")) not in have]
+        if gone or (rec.get("selector_kind") == "path-glob" and not sup.globs):
+            out.append(rec)
+    return out
+
+
+def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> list[dict[str, Any]]:
+    """The audit trail's ``purge-enqueued`` records of purges queued and never done (no verified
+    ``purge-summary`` of the selector, no ``purge-covered`` or ``purge-forgotten`` of it) that the purge queue
+    (``queue``, read here when None) no longer holds: dropped unrun by a queue moved aside or rewritten (B13
+    round 29 C172). An entry an older build queued is judged only when the queue file is gone, since that
+    build took an entry a hand purge covered off the queue with no audit line."""
+    pend = pending_purges(state_dir) if queue is None else queue
+    have = {(q.selector.fingerprint(), q.reason.value) for q in pend}
+    gone_file = not os.path.lexists(_queue_file(state_dir))
+    open_: dict[tuple[object, object], dict[str, Any]] = {}
+    for rec in _audit_events(state_dir):
+        action, fp = rec.get("action"), rec.get("selector_sha256")
+        if action == "purge-enqueued":
+            open_[(fp, rec.get("reason"))] = rec
+        elif action == "purge-summary" and rec.get("verified") is True:
+            open_ = {k: v for k, v in open_.items() if k[0] != fp}
+        elif action in ("purge-covered", "purge-forgotten"):
+            open_.pop((fp, rec.get("reason")), None)
+    return [
+        rec
+        for key, rec in open_.items()
+        if key not in have and (gone_file or rec.get("dequeue_audited") is True)
+    ]
+
+
+def _when(recs: Sequence[Mapping[str, Any]]) -> str:
+    """Each record's reason and time, as the person finds it in their own records: ``erasure-request at
+    <iso>; ...``."""
+    return "; ".join(f"{r.get('reason')} at {r.get('at')}" for r in recs)
+
+
+def governance_lost(state_dir: Path) -> GovernanceLostError | None:
+    """The suppression list's or the purge queue's :class:`GovernanceLostError`, the first; None when
+    neither lost a purge the audit trail records, or either cannot be read (its own FAIL says why)."""
+    return suppressions_lost(state_dir) or queue_lost(state_dir)
+
+
+def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
+    """The suppression list's :class:`GovernanceLostError` (:func:`lost_suppressions`), or None."""
+    shown_bin = AGENTSYNC_BIN
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    with contextlib.suppress(Exception):
+        sup = load_suppressions(state_dir)
+        lost = lost_suppressions(state_dir, sup)
+        if lost:
+            path = _suppress_file(state_dir)
+            what = "the purged content's hashes"
+            if any(r.get("selector_kind") == "path-glob" for r in lost) and not sup.globs:
+                what += " and a source-path glob"
+            detail = (
+                f"{path} no longer lists what {plural(len(lost), 'purge')} the audit trail records "
+                f"suppressed ({_when(lost)}): the sync keeps the erased items out by their id and path, but "
+                f"cannot rebuild {what}"
+            )
+            fix = (
+                f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
+                f"runs each such purge again by hand with its own selector and reason (`{shown_bin} purge "
+                "<selector> --reason <reason>`) before the next sync, which refuses until then"
+            )
+            return GovernanceLostError(path, "the suppression list", detail, fix)
+    return None
+
+
+def queue_lost(state_dir: Path) -> GovernanceLostError | None:
+    """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None."""
+    shown_bin = AGENTSYNC_BIN
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    with contextlib.suppress(Exception):
+        gone = lost_queued(state_dir)
+        if gone:
+            path = _queue_file(state_dir)
+            detail = (
+                f"{path} no longer holds {plural(len(gone), 'purge')} the audit trail records as queued and "
+                f"not done ({_when(gone)})"
+            )
+            fix = (
+                f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
+                f"runs each purge by hand with its own selector and reason (`{shown_bin} purge <selector> "
+                "--source <source> --reason <reason>`) before the next sync, which refuses until then"
+            )
+            return GovernanceLostError(path, "the purge queue", detail, fix)
+    return None
+
+
 def _add_suppressions(
     state_dir: Path,
     items: Iterable[tuple[str, str]],
@@ -1226,6 +1493,8 @@ def enqueue_purge(
                 "selector_kind": selector.kind(),
                 "selector_sha256": selector.fingerprint(),
                 "source_id": selector.source_id,
+                # every way off the queue leaves an audit line from this build on (B13 round 29 C172)
+                "dequeue_audited": True,
             }
         )
     return True
@@ -1255,7 +1524,22 @@ def _drop_covered(state_dir: Path, selector: PurgeSelector, report: PurgeReport)
         queue = pending_purges(state_dir)
         kept = [q for q in queue if not _covers(selector, report, q)]
         if len(kept) != len(queue):
-            _write_queue(state_dir, kept)
+            # each with its purge-covered line, as the queue's run writes one: an entry off the queue with no
+            # line would read as lost (B13 round 29 C172)
+            with _audit_appender(state_dir) as audit:
+                _write_queue(state_dir, kept)
+                for e in queue:
+                    if not _covers(selector, report, e):
+                        continue
+                    audit(
+                        {
+                            "action": "purge-covered",
+                            "at": _iso(_now(None)),
+                            "covered_by_sha256": selector.fingerprint(),
+                            "reason": e.reason.value,
+                            "selector_sha256": e.selector.fingerprint(),
+                        }
+                    )
     except Exception as exc:  # the purge already verified: the queue is only tidied
         log.warning("governance: purge queue not updated after a verified purge: %s", exc)
 
@@ -3188,6 +3472,67 @@ def unresolved_purges(n: int) -> str:
     )
 
 
+UNLISTED_HEAD = "not judged yet: no sync since the new start has listed source "
+"""The first words of :func:`unlisted_note`, by which :func:`kept_lines`, the queue's run and the report
+count it (B13 round 29 C201; ruling 25)."""
+
+
+def unlisted_note(q: QueuedPurge, config: Config | None = None) -> str:
+    """Why the queue keeps an entry queued before the new start whose source no sync since has listed in full
+    (no sources row, or no ``last_full_run_id``) while the manifest holds nothing for it: nothing says whether
+    its file is still there, so it is never probed, run or invited (B13 round 29 C201: a sync that skipped the
+    source, or died after it began, let ``purge --queue`` erase its current page). A source no sync lists (not
+    in sources.toml, or paused) says so and names the by-hand purge with the entry's own reason."""
+    sel = q.selector
+    src = next((x for x in config.sources if x.id == sel.source_id), None) if config is not None else None
+    never = None
+    if config is not None and src is None:
+        never = "it is not in sources.toml"
+    elif src is not None and not src.is_live:
+        never = f"it is {src.state.value}"
+    if never is None:
+        return (
+            f"{UNLISTED_HEAD}{sel.source_id} in full, so nothing says whether its file is still there; it "
+            "stays queued until one does"
+        )
+    return (
+        f"{UNLISTED_HEAD}{sel.source_id}, and none will ({never}), so nothing judges it; to erase its page "
+        f"by hand, run `{AGENTSYNC_BIN} purge id={sel.stable_id} --source {sel.source_id} --reason "
+        f"{q.reason.value}`"
+    )
+
+
+def unlisted_purges(n: int) -> str:
+    """``n`` :func:`unlisted_note` entries of sources a sync will list, counted with agreement: no wait and no
+    invitation, a sync that lists the source first (C201)."""
+    waits, its, them = ("waits", "its", "it") if n == 1 else ("wait", "their", "them")
+    return (
+        f"{plural(n, 'queued purge')} {waits} for a sync to list {its} source in full since the new start: "
+        f"`{AGENTSYNC_BIN} purge --queue` leaves {them} queued until then"
+    )
+
+
+NOT_LOOKED_UP = "not looked up yet"
+"""What a queued entry from before the new start is once its source is listed and the manifest holds nothing
+for it, until a queue run probes the docs history for its id: runnable, so the WAITING ON YOU line and the
+governance.purge_queue warn invite the dry run first, and a hold suspends it as any queued entry
+(:attr:`QueueSplit.not_looked_up`; B13 round 29 C102, C124; ruling 25)."""
+
+
+def looked_up_words(not_looked_up: Sequence[QueuedPurge], queued: Sequence[QueuedPurge]) -> str:
+    """The clause the queued purges' invitation adds for the ones :data:`NOT_LOOKED_UP` among ``queued``
+    (those a hold left runnable), after "writes nothing": the dry run looks each id up in the docs history,
+    and the run keeps one queued if its id reaches nothing; "" when there is none (C102, C124)."""
+    n = sum(1 for q in queued if any(q is u for u in not_looked_up))
+    if not n:
+        return ""
+    whose = "its id" if n == 1 else "their ids"
+    return (
+        f"; {n} from before the new start: it looks {whose} up in the docs history, and the run keeps one "
+        "queued whose id reaches nothing"
+    )
+
+
 def _unjudged_check(db: Path) -> str:
     """The status line that FAILs a manifest no queued purge can be judged over: state_dir.files for a
     regular file this account cannot read and write (its mode), else state_dir.manifest (lost, not a file,
@@ -3249,20 +3594,46 @@ def _queued_before(q: QueuedPurge, started: str | None) -> bool:
     return queued < first
 
 
-def _unresolved(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge, started: str | None) -> bool:
-    """Whether ``q``, an entry the cycle queues (a source + id selector), was queued before this manifest's
-    first run, or the queue's last run found nothing its id reaches (``found_nothing``), and the manifest
-    holds nothing for it or its stored aliases: no row, page, tombstone or alias (:func:`_resolve_read`), so
-    no manifest read says what a run targets (B13 round 27 P112). An entry queued by this manifest's own runs
-    always has its row or tombstone here. Read-only and no git: status and the loop judge by it, and only
-    :func:`run_purge_queue` looks for the id in history (B13 round 28 I93, I109)."""
+def _after_new_start(
+    conn: sqlite3.Connection,
+    m: _ManifestRead,
+    q: QueuedPurge,
+    started: str | None,
+    config: Config | None = None,
+) -> str | None:
+    """How the split after a new start judges ``q``, an entry the cycle queues (a source + id selector) that
+    was queued before this manifest's first run, or that the queue's last run found nothing for
+    (``found_nothing``), while the manifest holds nothing for it or its stored aliases (no row, page,
+    tombstone or alias: :func:`_resolve_read`); None for any other entry. Read-only and no git (B13 round 29
+    ruling 25): :func:`unresolved_note` once a run found nothing (P112); :func:`unlisted_note` while no sync
+    since has listed its source in full (C201); else :data:`NOT_LOOKED_UP` (C102, C124), which the queue's
+    run probes in history first (B13 round 28 I93, I109)."""
     sel = q.selector
     if q.reason not in KEPT_REASONS or not (sel.source_id and sel.stable_id) or sel.docs_glob:
-        return False
+        return None
     if not (q.found_nothing or _queued_before(q, started)):
-        return False
+        return None
     mt = _resolve_read(conn, m, sel, _stored_ids(q))
-    return not mt.items and not mt.docs_paths and not mt.aliases
+    if mt.items or mt.docs_paths or mt.aliases:
+        return None
+    if q.found_nothing:
+        return unresolved_note(q)
+    if _source_unlisted(conn, sel.source_id):
+        return unlisted_note(q, config)
+    return NOT_LOOKED_UP
+
+
+def _unresolved(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge, started: str | None) -> bool:
+    """Whether :func:`_after_new_start` judges ``q`` at all (round 28's test, which the setup report still
+    reads until it takes the split by name)."""
+    return _after_new_start(conn, m, q, started) is not None
+
+
+def _source_unlisted(conn: sqlite3.Connection, source_id: str) -> bool:
+    """Whether no pass over this manifest has listed ``source_id`` in full: no sources row (a run that died
+    after it began), or no ``last_full_run_id`` (a pass that skipped it or did not complete) (C201)."""
+    row = conn.execute("SELECT last_full_run_id FROM sources WHERE source_id = ?", (source_id,)).fetchone()
+    return row is None or row[0] is None
 
 
 def _stored_ids(q: QueuedPurge) -> set[tuple[str, str]]:
@@ -3271,7 +3642,7 @@ def _stored_ids(q: QueuedPurge) -> set[tuple[str, str]]:
     return {(sid, a) for a in q.aliases} if sid else set()
 
 
-def _kept_queued(db: Path, q: QueuedPurge) -> str:
+def _kept_queued(db: Path, q: QueuedPurge, config: Config | None = None) -> str:
     """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest);
     :func:`unjudged_note` when the manifest is lost, not a file or unreadable, :data:`NEW_START_NOTE` when
     there is none (the new start), :func:`unresolved_note` when the manifest that replaced the one it was
@@ -3292,7 +3663,7 @@ def _kept_queued(db: Path, q: QueuedPurge) -> str:
                 # a manifest no sync has run over (add-source, init or a dry run made it after the new start)
                 # is the new start's, never one that holds no such file (B13 round 28 I61)
                 return NEW_START_NOTE
-            return _kept_why(conn, _read_manifest(conn), q)
+            return _kept_why(conn, _read_manifest(conn), q, config=config)
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error):  # its cause is said once per run (_unjudged_cause; P25)
@@ -3328,6 +3699,8 @@ def _kept_why(
     m: _ManifestRead,
     q: QueuedPurge,
     state: Mapping[tuple[str, str], str] | None = None,
+    *,
+    config: Config | None = None,
 ) -> str:
     """Why the queue must not run ``q`` now, or "".
 
@@ -3350,8 +3723,9 @@ def _kept_why(
     mt = _resolve_read(conn, m, q.selector, _stored_ids(q))
     listed = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir and state.get((s, i)) in _LISTED_STATES]
     note = _kept_note(q, listed)
-    if not note and _unresolved(conn, m, q, _first_run_started(conn)):  # B13 round 27 P112
-        note = unresolved_note(q)
+    if not note:  # after a new start (B13 round 27 P112; round 29 C201): one not looked up yet runs, probed
+        after = _after_new_start(conn, m, q, _first_run_started(conn), config)
+        note = "" if after in (None, NOT_LOOKED_UP) else str(after)
     return note
 
 
@@ -3403,9 +3777,29 @@ _SAID_UNJUDGED: set[tuple[str, str]] = set()
 """The (manifest path, cause) pairs :func:`partition_purges` warned of in this process (B13 round 28 I43)."""
 
 
+@dataclass(frozen=True, slots=True)
+class QueueSplit:
+    """:func:`partition_queue`: ``runnable`` (what a ``purge --queue`` runs; among them ``not_looked_up``,
+    entries from before the new start a run probes in history first, C102, C124) and ``kept``, each with
+    why (among them the :data:`UNLISTED_HEAD` and :data:`UNRESOLVED_HEAD` ones). One split every reader takes
+    by name (B13 round 29 ruling 25)."""
+
+    runnable: list[QueuedPurge]
+    kept: list[tuple[QueuedPurge, str]]
+    not_looked_up: list[QueuedPurge] = field(default_factory=list)
+
+
 def partition_purges(
-    state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None
+    state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None, *, config: Config | None = None
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
+    """:func:`partition_queue`'s runnable and kept entries."""
+    split = partition_queue(state_paths, queue, config=config)
+    return split.runnable, split.kept
+
+
+def partition_queue(
+    state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None, *, config: Config | None = None
+) -> QueueSplit:
     """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it
     keeps queued with why: an upstream deletion of a file the manifest lists again, or a label escalation of a
     file the policy publishes again (:func:`_kept_why`, the rule the run itself applies).  Read-only, the
@@ -3417,20 +3811,21 @@ def partition_purges(
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
     db = expand(state_paths.db)
     if entries and manifest_lost(db):
-        return [], [(q, UNJUDGED_NOTE) for q in entries]
+        return QueueSplit([], [(q, UNJUDGED_NOTE) for q in entries])
     if all(q.reason not in KEPT_REASONS for q in entries):
-        return entries, []
+        return QueueSplit(entries, [])
     if _unjudged(db):
-        return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
+        return QueueSplit(*_unjudged_split(entries, unjudged_note(_unjudged_check(db))))
     if not os.path.exists(db):  # noqa: PTH110 - the new start: judged by the next sync's manifest (P40)
-        return _unjudged_split(entries, NEW_START_NOTE)
+        return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
+    unprobed: list[QueuedPurge] = []
     try:
         Manifest(db).close()
         conn = _connect(db)
         try:
             started = _first_run_started(conn)
             if started is None:  # no sync has run over it: the new start's (B13 round 28 I61)
-                return _unjudged_split(entries, NEW_START_NOTE)
+                return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
             m = _read_manifest(conn)
             # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
             # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
@@ -3444,11 +3839,14 @@ def partition_purges(
                         q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current, q.aliases)
                     )
                     if not why and not any((sel.source_id, i) in info for i in (sel.stable_id, *q.aliases)):
-                        # no row under its id or a stored alias (a row: resolvable; P112, I109)
-                        why = unresolved_note(q) if _unresolved(conn, m, q, started) else ""
+                        # no row under its id or a stored alias (a row: resolvable; P112, I109, C201, C102)
+                        after = _after_new_start(conn, m, q, started, config)
+                        if after == NOT_LOOKED_UP:
+                            unprobed.append(q)
+                        why = "" if after in (None, NOT_LOOKED_UP) else str(after)
                     whys.append(why)
                 else:
-                    whys.append(_kept_why(conn, m, q, state))
+                    whys.append(_kept_why(conn, m, q, state, config=config))
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error):
@@ -3460,10 +3858,12 @@ def partition_purges(
             "governance: cannot tell which queued purges stay queued: %s", cause
         )
         _SAID_UNJUDGED.add(key)
-        return _unjudged_split(entries, unjudged_note(_unjudged_check(db)))
-    return [q for q, why in zip(entries, whys, strict=True) if not why], [
-        (q, why) for q, why in zip(entries, whys, strict=True) if why
-    ]
+        return QueueSplit(*_unjudged_split(entries, unjudged_note(_unjudged_check(db))))
+    return QueueSplit(
+        [q for q, why in zip(entries, whys, strict=True) if not why],
+        [(q, why) for q, why in zip(entries, whys, strict=True) if why],
+        unprobed,
+    )
 
 
 KEPT_PURGES = (
@@ -3588,10 +3988,16 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
     unjudged = [why for _q, why in kept if _UNJUDGED_CHECK.search(why) and why.startswith("not judged: ")]
     new_start = sum(1 for _q, why in kept if why == NEW_START_NOTE)
     unresolved = sum(1 for _q, why in kept if why.startswith(UNRESOLVED_HEAD))
+    # a source a sync will list, counted; one no sync lists, its own note with its by-hand purge (C201)
+    unlisted = [why for _q, why in kept if why.startswith(UNLISTED_HEAD)]
+    never = [why for why in unlisted if "and none will" in why]
     judged = [
         (q, why)
         for q, why in kept
-        if why not in unjudged and why != NEW_START_NOTE and not why.startswith(UNRESOLVED_HEAD)
+        if why not in unjudged
+        and why != NEW_START_NOTE
+        and not why.startswith(UNRESOLVED_HEAD)
+        and not why.startswith(UNLISTED_HEAD)
     ]
     escalations = sum(1 for q, _why in judged if q.reason is PurgeReason.LABEL_ESCALATION)
     upstream = len(judged) - escalations
@@ -3602,6 +4008,8 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
         *([kept_escalations(escalations)] if escalations else []),
         *([unjudged_purges(len(unjudged), check)] if unjudged else []),
         *([new_start_purges(new_start)] if new_start else []),
+        *([unlisted_purges(len(unlisted) - len(never))] if len(unlisted) > len(never) else []),
+        *sorted(set(never)),
         *([unresolved_purges(unresolved)] if unresolved else []),
     ]
 
@@ -3671,6 +4079,7 @@ def run_purge_queue(
         unjudged = 0  # entries no manifest read could judge: said once, with the cause
         new_start = 0  # the new start's entries, and those kept until their id is found: one counted
         unresolved = 0  # WARNING per kind after the loop, as P25 (B13 round 28 I65)
+        unlisted = 0  # entries whose source no sync since the new start listed (B13 round 29 C201)
 
         def not_run(q: QueuedPurge, why: str) -> None:
             reports.append(
@@ -3694,13 +4103,15 @@ def run_purge_queue(
                 # report.  Skipped before the kept check, which a preview would judge on a manifest it left as
                 # it is: the run's covering purge has already erased the row that check reads
                 continue
-            why = _kept_queued(sp.db, q)
+            why = _kept_queued(sp.db, q, config)
             probe = _probed(q) and (not why or why.startswith(UNRESOLVED_HEAD))
             if why and not probe:
                 if why.startswith("not judged: "):
                     unjudged += 1  # one WARNING for the run, with its cause, after the loop (P25)
                 elif why == NEW_START_NOTE:
                     new_start += 1  # one counted WARNING after the loop (P40; I65)
+                elif why.startswith(UNLISTED_HEAD) and "and none will" not in why:
+                    unlisted += 1  # one counted WARNING after the loop (C201)
                 elif why.startswith(UNRESOLVED_HEAD):
                     unresolved += 1  # one counted WARNING after the loop (P112; I65)
                 else:
@@ -3814,6 +4225,8 @@ def run_purge_queue(
             log.warning("governance: %s", new_start_purges(new_start))
         if unresolved:
             log.warning("governance: %s", unresolved_purges(unresolved))
+        if unlisted:
+            log.warning("governance: %s", unlisted_purges(unlisted))
         if unjudged:
             log.warning(
                 "governance: cannot judge %s: %s",

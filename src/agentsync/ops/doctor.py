@@ -170,6 +170,13 @@ LISTING_STATE_LOST_NOTE = (
     "as of its last walk: the state file is missing, so no sync lists it again until the person restores it "
     "or confirms a new start; the state_dir.manifest [FAIL] line says what to do first"
 )
+# The same note beside a manifest lost because it is there but too short (manifest.LOST_MANIFEST_SHORT): never
+# "is missing", and its fix is MANIFEST_FIX's, which moves heartbeat.json aside with it (B13 round 29 C128).
+LISTING_STATE_SHORT_NOTE = (
+    "as of its last walk: the state file is empty or too short to be a manifest, so no sync lists it again "
+    "until the person restores it or moves it aside with heartbeat.json; the state_dir.manifest [FAIL] line "
+    "says what to do first"
+)
 # The same note for a state file this account cannot open (its mode, its owner): the state_dir lines, not
 # state_dir.manifest, say why (B13 round 20 X15: W11 keyed only a damaged file, so the warn kept pointing at
 # WAITING ON YOU lines a status that cannot read the state never prints).
@@ -1878,7 +1885,7 @@ def governance_check(path: Path) -> str:
 
 
 def state_not_a_file(
-    config: Config, *, manifest: bool = True, damaged: bool = False
+    config: Config, *, manifest: bool = True, damaged: bool = False, lost: bool = False
 ) -> tuple[Path, CheckResult] | None:
     """The first state file that is not a regular file where one belongs, and status's own FAIL of it, judged
     by stat before anything opens it (so a fifo never blocks): a -wal or -shm (:func:`side_not_a_file`; a
@@ -1889,7 +1896,10 @@ def state_not_a_file(
     the governance files; None when none is, the state folder itself is not a folder (its own guard), or any
     check raises. Every command that opens one prints it as its ``error: state:`` line (B13 round 26 E22,
     E38, E39, E40, E43, E65; ruling 13). ``manifest=False`` skips the manifest and its sides, which a sync's
-    own open already stops on, with its lost-manifest record (``kind=lost``)."""
+    own open already stops on, with its lost-manifest record (``kind=lost``). ``lost=True`` (the sync and the
+    commands that publish as it does) adds a suppression list or a purge queue that lost a purge the audit
+    trail records (``governance.governance_lost``; B13 round 29 C172); a hold or a purge is never stopped on
+    it, so the person can run each purge again."""
     try:
         sp = config.state_paths
         if state_root_not_folder(config) is not None:
@@ -1926,6 +1936,8 @@ def state_not_a_file(
         if odd is None and damaged:  # the commands' guard: a damaged or wrong-shaped one too, read only once
             # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
             odd = governance.governance_damaged(expand(sp.root))
+        if odd is None and lost:
+            odd = governance.governance_lost(expand(sp.root))
         if odd is not None:
             return odd.path, _bad(governance_check(odd.path), odd.detail, fix=odd.fix)
     except Exception:  # the error path: never a second error over the first
@@ -2298,7 +2310,12 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     only locked, busy or not openable now. Damage deeper in a b-tree shows when a command reads it
     (``cli._state_readable``); status's own read of the loop's state is one such read, and its error FAILs
     through :func:`manifest_damaged` (B13 round 17 U64, U95), and a sync's is kept for status by
-    :func:`record_unreadable`."""
+    :func:`record_unreadable`. A lost manifest (:func:`lost_words`: a 2 to 99 byte file beside earlier passes)
+    is not probed: it is lost in every command, one state_dir.manifest FAIL and exit 1 with the lost words,
+    never "file is not a database" and exit 65, and no -wal or -shm is made beside it (B13 round 29 C192,
+    C203)."""
+    if lost_words(db) is not None:
+        return None
     try:
         # a file this account cannot read and write is not opened: a read-only open would make its -wal and
         # -shm with its own mode (0400), and every caller, a sync's state check included, would leave them so

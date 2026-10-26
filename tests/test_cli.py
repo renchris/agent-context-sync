@@ -51,6 +51,7 @@ from agentsync.errors import (
     GitError,
     LockHeldError,
     LockNotAFileError,
+    ManifestLostError,
     ManifestOpenError,
     ManifestPathError,
 )
@@ -5486,8 +5487,8 @@ def test_a_governance_folder_that_is_not_a_folder_is_one_persons_fail_naming_it(
         assert not [ln for ln in said if bad in ln], (bad, said)
     for name in ("holds.json", "purge-queue.json", "suppressed.json", "audit.jsonl"):
         assert not [ln for ln in said if f"governance/{name} is " in ln], (name, said)
-    # its second branch, followed: the thing moved aside, the real folder still away. heartbeat.json's
-    # record keeps the hold on all in force, so the page is never erased
+    # its second branch, followed: the thing moved aside, the real folder still away. hold-record.json
+    # keeps the hold on all in force, so the page is never erased
     gov.rename(root / "governance.odd")
     rc, out = _status(cfg, capsys)
     assert any(ln.startswith("HOLD: hold all (audit): lost from the hold list") for ln in out), out
@@ -5499,6 +5500,312 @@ def test_a_governance_folder_that_is_not_a_folder_is_one_persons_fail_naming_it(
     rc, out = _status(cfg, capsys)
     assert any(ln.startswith("HOLD: hold all (state)") for ln in out), out
     assert not [ln for ln in out if ln.startswith("[FAIL] governance")], out
+
+
+def _record(root: Path) -> list[str] | None:
+    path = governance.hold_record_file(root)
+    return json.loads(path.read_text(encoding="utf-8"))["holds"] if path.exists() else None
+
+
+@pytest.mark.parametrize("order", ["hold, then the new start", "the new start, then a hold"])
+def test_a_hold_stays_in_force_after_the_new_start_and_the_governance_folders_fix(
+    initialised: Config, capsys: pytest.CaptureFixture[str], order: str
+) -> None:
+    """B13 round 29 C199 (ruling 24): the hold record lived in heartbeat.json, which the new start moves
+    aside, and the governance folder's fix still said a hold "stays in force from heartbeat.json's record";
+    followed, status showed no hold and `purge docs=` erased the page under a hold on all, history and all.
+    The record is its own file, hold-record.json, which neither move takes: the hold stays in force."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    heartbeat = expand(initialised.state_paths.heartbeat)
+    if order == "hold, then the new start":
+        assert cli.main(hold) == cli.EXIT_OK
+        heartbeat.rename(root / "heartbeat.kept")
+    else:
+        heartbeat.rename(root / "heartbeat.kept")
+        assert cli.main(hold) == cli.EXIT_OK
+    assert _record(root) == ["all"] and not heartbeat.exists()
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.real")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "(a hold set earlier stays in force from hold-record.json's record)" in failed, failed
+    gov.rename(root / "governance.odd")  # the fix's second branch, followed
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (audit)") for ln in out), out
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert "purge suspended by legal/records hold" in capsys.readouterr().err
+    assert _page_kept(initialised, page)
+
+
+def test_the_governance_folders_fix_promises_no_record_that_is_not_there(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C199's control: with no hold record naming a scope, the governance folder's fix never says a hold
+    stays in force from it; it says a hold set earlier is lost with the folder, and to ask first."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    gov.mkdir(exist_ok=True)
+    gov.rename(root / "governance.real")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "stays in force" not in failed, failed
+    assert "a hold set earlier is lost with the folder" in failed, failed
+
+
+@pytest.mark.parametrize("what", ["a folder", "damaged JSON"])
+def test_a_hold_record_that_cannot_be_read_is_the_persons_never_no_holds(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """C199's new state file under ruling 13 and 19: hold-record.json that is not a file or is damaged is
+    the person's FAIL in status, every purge refuses, and the sync refuses over one that is not a file,
+    never read as a record of no holds."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    record = governance.hold_record_file(root)
+    record.unlink()
+    if what == "a folder":
+        record.mkdir()
+    else:
+        record.write_text("{", encoding="utf-8")
+    governance.governance_dir(root).rename(root / "governance.away")
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert rc == cli.EXIT_FAILED and str(record) in failed and "(fix: the person " in failed, out
+    assert not [ln for ln in out if "purge --queue" in ln or "check crashed" in ln], out
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert "Traceback" not in capsys.readouterr().err
+    assert _page_kept(initialised, page)
+
+
+def _erased(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path, str]:
+    """A synced Mac whose sample page was erased on request: the config path, the state folder, the page."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    purge = ["purge", f"docs={page}", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    capsys.readouterr()
+    return cfg, root, page
+
+
+@pytest.mark.parametrize("how", ["moved aside", "an older copy", "damaged, then moved aside"])
+def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 29 C172 (ruling 28): suppressed.json moved aside, as its damaged FAIL's bare fix said, read
+    as no suppressions, and the next sync published the erased page again. The audit trail's purge lines
+    keep the item out by its id and path; status FAILs the list for the purge it lost, the sync refuses
+    (copied-content hashes cannot be rebuilt), and running the purge again by hand clears it."""
+    cfg, root, page = _erased(initialised, capsys)
+    listed = governance._suppress_file(root)
+    if how == "damaged, then moved aside":
+        listed.write_text('{"items": 5}', encoding="utf-8")
+        _rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+        assert "is run again by hand before the next sync" in failed, failed
+    if how == "an older copy":
+        listed.write_text('{"items": [], "globs": [], "paths": [], "canonical": []}\n', encoding="utf-8")
+    else:
+        listed.rename(root / "suppressed.kept")
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and "no longer lists what 1 purge the audit trail records" in failed, out
+    assert "erasure-request at " in failed and "(fix: the person puts " in failed, failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert "no longer lists what 1 purge" in capsys.readouterr().err
+    assert not (initialised.docs_repo / page).exists()
+    # the cycle itself keeps the item out by the audit trail, past the guard
+    run_cycle(initialised, mode=CycleMode.RECONCILE)
+    assert not (initialised.docs_repo / page).exists()
+    # the fix's second branch: the purge run again by hand
+    purge = ["purge", f"docs={page}", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert not (initialised.docs_repo / page).exists()
+
+
+def test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C172's queue half: purge-queue.json damaged, then moved aside as its fix said, dropped a queued label
+    escalation with no word, and the page stayed published. Status FAILs the queue for the purge the audit
+    trail records as queued and not done, the sync refuses, and the purge run by hand clears it."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    queue = governance._queue_file(root)
+    queue.write_text('{"queue": 5}', encoding="utf-8")
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert "each purge it held is run by hand, with its own selector and reason" in failed, failed
+    queue.rename(root / "queue.kept")
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert rc == cli.EXIT_FAILED and "no longer holds 1 purge the audit trail records as queued" in failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    purge = ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert not (initialised.docs_repo / page).exists()
+
+
+def test_a_hand_purge_that_covers_a_queued_one_leaves_no_lost_entry(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C172's control: a hand `purge docs=` that did a queued purge takes it off the queue with a
+    purge-covered line, so the queue never reads as having lost it, and the sync runs."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    purge = ["purge", f"docs={page}", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    assert governance.pending_purges(root) == []
+    assert governance.read_audit(root)[-1]["action"] == "purge-covered"
+    assert governance.lost_queued(root) == [] and governance.lost_suppressions(root) == []
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_setting_or_releasing_another_hold_keeps_a_lost_hold_in_the_record(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C170: with governance/ moved aside, `hold <other>` rewrote the record as that scope
+    alone, and `purge docs=` then erased the page under the hold on all. Each write keeps the hold list's
+    holds and every lost one; a release drops only its own scope."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    governance.governance_dir(root).rename(root / "governance.away")
+    other = ["hold", "contoso-other", "--reason", "hr", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(other) == cli.EXIT_OK
+    assert _record(root) == ["all", "contoso-other"]
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (audit)") for ln in out), out
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    release = ["hold", "contoso-other", "--release", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(release) == cli.EXIT_OK
+    assert _record(root) == ["all"]
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
+    assert cli.main(["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg]) == cli.EXIT_OK
+    assert _record(root) == []
+    capsys.readouterr()
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+def test_a_source_named_holds_keeps_its_heartbeat_entry_under_a_hold(tmp_path: Path) -> None:
+    """B13 round 29 C200, C171: heartbeat.json's record key "holds" is also a valid source id; under a hold
+    each pass replaced that source's entry with the record, so it read as never run, and with it the only
+    source a lost manifest read as a first start. The record is its own file; the entry stays."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    hb = state / "heartbeat.json"
+    write_heartbeat(
+        hb, "holds", run_id=1, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+        auth_state="n/a", now_iso="2026-10-01T00:00:00Z",
+    )  # fmt: skip
+    governance.set_hold(state, "all", reason="matter 8", owner="Contoso Legal")
+    governance.record_holds(state)  # a pass's re-record
+    write_heartbeat(
+        hb, "holds", run_id=2, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+        auth_state="n/a", now_iso="2026-10-02T00:00:00Z",
+    )  # fmt: skip
+    governance.record_holds(state)
+    entry = read_heartbeat(hb)["holds"]
+    assert entry["run_id"] == 2 and entry["last_success_at"] == "2026-10-02T00:00:00Z", entry
+    assert governance.recorded_hold_scopes(state) == {"all"}
+    assert manifest_mod.lost_words(state / "manifest.sqlite") is not None
+
+
+@pytest.mark.parametrize("record", [None, []])
+def test_round_28s_record_in_heartbeat_json_is_read_until_the_record_file_replaces_it(
+    tmp_path: Path, record: list[str] | None
+) -> None:
+    """C200's migration: a heartbeat a round 28 build wrote holds the record as a "holds" list; with no
+    hold-record.json it still keeps a hold the governance folder lost, and the next pass moves it to the
+    file and drops the list. An empty record file beside it reads as empty: the list never brings back a
+    released hold."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    hb = state / "heartbeat.json"
+    hb.write_text(json.dumps({"holds": ["all"], "inbox": {"run_id": 1}}), encoding="utf-8")
+    if record is not None:
+        governance.hold_record_file(state).write_text(json.dumps({"holds": record}), encoding="utf-8")
+        assert governance.lost_holds(state) == []
+        return
+    assert [h.scope for h in governance.lost_holds(state)] == ["all"]
+    governance.record_holds(state)
+    assert _record(state) == ["all"]
+    write_heartbeat(
+        hb, "inbox", run_id=2, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+        auth_state="n/a", now_iso="2026-10-02T00:00:00Z",
+    )  # fmt: skip
+    assert "holds" not in json.loads(hb.read_text(encoding="utf-8"))
+
+
+def test_the_hold_record_never_writes_over_a_passs_heartbeat_and_waits_its_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 C175: record_holds read heartbeat.json and replaced it with no lock while a pass wrote
+    its entries, so a pass's update was lost. The record is its own file and touches no heartbeat entry, and
+    its read, merge and replace run under a short blocking flock, so a hold waits for another's write and is
+    never refused."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    hb = state / "heartbeat.json"
+    for src in ("contoso-docs", "fabrikam-mail"):
+        write_heartbeat(
+            hb, src, run_id=1, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+            auth_state="n/a", now_iso="2026-10-01T00:00:00Z",
+        )  # fmt: skip
+    governance.set_hold(state, "all", reason="matter 8", owner="Contoso Legal")
+    real = governance._record_scopes
+
+    def interleaved(state_dir: Path) -> frozenset[str] | None:
+        for src in ("contoso-docs", "fabrikam-mail"):  # a pass between the record's read and its replace
+            write_heartbeat(
+                hb, src, run_id=2, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+                auth_state="n/a", now_iso="2026-10-02T00:00:00Z",
+            )  # fmt: skip
+        return real(state_dir)
+
+    governance.hold_record_file(state).unlink()
+    monkeypatch.setattr(governance, "_record_scopes", interleaved)
+    governance.record_holds(state)
+    monkeypatch.undo()
+    beats = read_heartbeat(hb)
+    assert {k: v["run_id"] for k, v in beats.items()} == {"contoso-docs": 2, "fabrikam-mail": 2}
+    assert _record(state) == ["all"]
+    done = threading.Event()
+
+    def other_hold() -> None:
+        governance.set_hold(state, "contoso-other", reason="hr", owner="Contoso Legal")
+        done.set()
+
+    with governance._record_lock(state):
+        worker = threading.Thread(target=other_hold)
+        worker.start()
+        assert not done.wait(0.3) and _record(state) == ["all"]
+    worker.join(10)
+    assert done.is_set() and _record(state) == ["all", "contoso-other"]
 
 
 @pytest.mark.parametrize(
@@ -8780,6 +9087,15 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
     q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
     _new_start(initialised, tmp_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    # not looked up yet: invited, the dry run first (B13 round 29 C102, C124)
+    step = loop.next_step(initialised)
+    assert [w for w in step.waits if "purge --queue --dry-run" in w], step.waits
+    for argv in (["purge", "--queue", "--dry-run"], ["purge", "--queue"]):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
+        said = capsys.readouterr().out
+        assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
+    (q,) = governance.pending_purges(initialised.state_paths.root)
     runnable, kept = governance.partition_purges(initialised.state_paths)
     assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
     assert "purge docs=<page path>" in kept[0][1] and "mirror/source/" in kept[0][1]
@@ -8789,11 +9105,119 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
-    for argv in (["purge", "--queue", "--dry-run"], ["purge", "--queue"]):
-        capsys.readouterr()
-        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
-        said = capsys.readouterr().out
-        assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
+
+
+def _queue_escalation(config: Config, rel: str) -> governance.QueuedPurge:
+    """Queue a label escalation as a cycle does, a few minutes ago (before a new start the test makes)."""
+    sel = governance.PurgeSelector(stable_id=_stable_id(config, rel), source_id="source")
+    ago = datetime.now(UTC) - timedelta(minutes=5)
+    reason = governance.PurgeReason.LABEL_ESCALATION
+    assert governance.enqueue_purge(config.state_paths.root, sel, reason, now=ago)
+    (q,) = [q for q in governance.pending_purges(config.state_paths.root) if q.selector == sel]
+    return q
+
+
+@pytest.mark.parametrize("reason", ["upstream-deleted", "label-escalation"])
+@pytest.mark.parametrize("first", ["the folder away", "a run killed after it began"])
+def test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, first: str, reason: str
+) -> None:
+    """B13 round 29 C201 (ruling 25): after the new start, a first sync that skipped the source (its folder
+    away) or a run that died after it began left a manifest with a run but nothing for the source, and the
+    queued purge read "kept until its id is found": `purge --queue` probed history and erased the file's
+    current page. Until a sync lists the source in full it is not judged yet: never probed, run or invited;
+    then the file listed keeps it queued."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    q = (_queue_upstream if reason == "upstream-deleted" else _queue_escalation)(
+        initialised, "projects/sample.txt"
+    )
+    _new_start(initialised, tmp_path)
+    folder = initialised.sources[0].path
+    if first == "the folder away":
+        folder.rename(tmp_path / "away")
+        cli.main(["sync", "--config", cfg])
+        (tmp_path / "away").rename(folder)
+    else:
+        with Manifest(initialised.state_paths.db) as m:
+            m.begin_run(CycleMode.POLL, host="contoso-mac", pid=1)
+    runnable, kept = governance.partition_purges(initialised.state_paths, config=initialised)
+    assert not runnable and [w for _q, w in kept] == [governance.unlisted_note(q, initialised)], kept
+    assert kept[0][1].startswith(governance.UNLISTED_HEAD) and "stays queued until one does" in kept[0][1]
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w] and governance.unlisted_purges(1) in step.notes
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "purge --queue --dry-run" in ln], out
+    qfile = governance._queue_file(expand(initialised.state_paths.root))
+    before = (
+        qfile.read_bytes(),
+        git(repo, "rev-parse", "HEAD^{tree}"),
+        git(repo, "log", "--all", "--", _PAGE),
+    )
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert "VERIFIED" not in capsys.readouterr().out
+    after = (
+        qfile.read_bytes(),
+        git(repo, "rev-parse", "HEAD^{tree}"),
+        git(repo, "log", "--all", "--", _PAGE),
+    )
+    assert after == before
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    ((_q, why),) = governance.partition_purges(initialised.state_paths)[1]
+    assert why.startswith("stays queued: "), why
+
+
+def test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """C201's other case: a source no longer in sources.toml is never listed again, so its entry says so and
+    names the by-hand purge with its own reason, never a sync that will judge it."""
+    cfg = _synced(initialised)
+    sel = governance.PurgeSelector(stable_id="contoso-volume:gone-0042", source_id="contoso-gone")
+    ago = datetime.now(UTC) - timedelta(minutes=5)
+    reason = governance.PurgeReason.LABEL_ESCALATION
+    assert governance.enqueue_purge(initialised.state_paths.root, sel, reason, now=ago)
+    _new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    ((_q, why),) = governance.partition_purges(initialised.state_paths, config=initialised)[1]
+    assert why.startswith(governance.UNLISTED_HEAD) and "it is not in sources.toml" in why, why
+    want = "`~/.local/bin/agentsync purge id=contoso-volume:gone-0042 --source contoso-gone --reason "
+    assert want + "label-escalation`" in why, why
+    assert why in loop.next_step(initialised).notes
+
+
+def test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 29 C102, C124 (ruling 25): after the new start and a sync that listed its source, a queued
+    purge the manifest names nothing for read "kept until its id is found" with an [ok] line and no WAITING
+    ON YOU, though `purge --queue` would look it up and run it. Not looked up yet, it is invited: a wait and a
+    governance.purge_queue warn, the dry run first; a hold suspends it; once a run has looked it up and found
+    nothing it is a note again, never invited."""
+    cfg = _synced(initialised)
+    q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    _new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    split = governance.partition_queue(initialised.state_paths, config=initialised)
+    assert split.runnable == [q] and split.not_looked_up == [q] and not split.kept
+    step = loop.next_step(initialised)
+    (wait,) = [w for w in step.waits if "purge --queue" in w]
+    assert "--dry-run` (writes nothing; 1 from before the new start: it looks its id up" in wait, wait
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    assert "1 from before the new start" in warn and "purge --queue --dry-run" in warn, warn
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge --queue" in w], step.waits
+    assert cli.main(["hold", "all", "--release", "--owner", "Contoso Legal", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert "VERIFIED" not in capsys.readouterr().out
+    step = loop.next_step(initialised)
+    assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
 
 
 def _purge_section(config: Config) -> str:
@@ -9227,6 +9651,161 @@ def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_lost_never_a_ne
     db.rename(tmp_path / "manifest.kept")  # the fix, followed: it aside, and heartbeat.json with it
     expand(sp.heartbeat).rename(tmp_path / "heartbeat.kept")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+
+
+def test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 29 C118 (ruling 29): heartbeat.json as a link to nothing beside a missing manifest read as no
+    heartbeat, a first start, so a sync started a new manifest over earlier passes unasked. agentsync renames
+    a regular file there, so a person made the link: it is a heartbeat that cannot be read, lost-unread, and
+    moving it aside (the link) starts the new manifest."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db, hb = expand(sp.db), expand(sp.heartbeat)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    hb.unlink()
+    hb.symlink_to(tmp_path / "gone" / "heartbeat.json")
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_UNREAD
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and f"{db} {manifest_mod.LOST_MANIFEST_UNREAD}" in failed, failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert manifest_mod.LOST_MANIFEST_UNREAD in capsys.readouterr().err
+    assert not db.exists() and hb.is_symlink(), "no new manifest, the link left where it is"
+    db.write_bytes(b"")
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY_UNREAD
+    db.unlink()
+    hb.rename(tmp_path / "heartbeat.kept")  # the fix, followed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert db.exists()
+
+
+@pytest.mark.parametrize("body", [b"", b"j" * 50])
+def test_a_manifest_linked_to_a_file_too_short_to_be_one_is_lost(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path, body: bytes
+) -> None:
+    """B13 round 29 C202 (ruling 29): manifest.sqlite as a link to a 0-byte file beside a heartbeat that
+    records passes passed status, and the sync built a new manifest in the link's target unasked: SQLite opens
+    what the link reaches. It is lost-short, as the file itself is; the sync refuses and writes nothing
+    there; a link to a manifest of 100 bytes or more is judged as before."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    target = tmp_path / "elsewhere" / "real.sqlite"
+    target.parent.mkdir()
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    target.write_bytes(body)
+    db.symlink_to(target)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and manifest_mod.LOST_MANIFEST_EMPTY in failed, failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert manifest_mod.LOST_MANIFEST_EMPTY in capsys.readouterr().err
+    assert target.read_bytes() == body and not target.with_name("real.sqlite-wal").exists()
+    with pytest.raises(ManifestLostError) as raised:
+        Manifest(db)
+    assert raised.value.errno == errno.EINVAL
+    target.write_bytes(b"j" * 100)
+    assert manifest_mod.lost_words(db) is None
+
+
+@pytest.mark.parametrize(
+    "body", [b"jj", b"j" * 40, b"j" * 99, b"SQLite format 3\x00\x10\x00\x02\x02" + b"\x00" * 30]
+)
+def test_a_manifest_of_2_to_99_bytes_is_lost_in_every_command(
+    initialised: Config, capsys: pytest.CaptureFixture[str], body: bytes
+) -> None:
+    """B13 round 29 C192, C203 (ruling 29): a 2 to 99 byte manifest beside earlier passes was lost to status
+    and purge but "file is not a database" to sync, init, add-source, reconcile, accept-deletions and
+    checkpoint, which exited 65 with no NEXT, and status FAILed it twice; a WAL header prefix got a -wal and
+    -shm from each command. One state_dir.manifest FAIL, every command exit 1 with the lost words and a NEXT,
+    the file unchanged, and no side file written beside it."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db = expand(sp.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.write_bytes(body)
+    toml = initialised.config_path.read_bytes()
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and manifest_mod.LOST_MANIFEST_EMPTY in failed, out
+    commands = [
+        ["sync"], ["init"], ["reconcile"], ["add-source", str(initialised.sources[0].path)],
+        ["accept-deletions", "source"], ["checkpoint"], ["curate"], ["purge", "--queue"], ["compact-history"],
+    ]  # fmt: skip
+    for argv in commands:
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        said = capsys.readouterr()
+        assert manifest_mod.LOST_MANIFEST_EMPTY in said.err, (argv, said.err)
+        assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")], (argv, said.out)
+    assert db.read_bytes() == body and initialised.config_path.read_bytes() == toml
+    assert not [p for p in db.parent.iterdir() if p.name.startswith(db.name + "-")], list(db.parent.iterdir())
+
+
+def test_a_lost_manifests_error_has_one_errno_per_kind(tmp_path: Path) -> None:
+    """B13 round 29 C179: the lost manifest's error was built in two places, one always ENOENT; one helper
+    builds it, EINVAL for a short file and ENOENT for a missing one."""
+    db = tmp_path / "manifest.sqlite"
+    assert manifest_mod.lost_error(db, manifest_mod.LOST_MANIFEST).errno == errno.ENOENT
+    for short in manifest_mod.LOST_MANIFEST_SHORT:
+        exc = manifest_mod.lost_error(db, short)
+        assert exc.errno == errno.EINVAL and exc.reason == short and str(exc) == f"{db} {short}"
+
+
+def test_beside_a_manifest_too_short_the_listing_note_never_says_missing() -> None:
+    """B13 round 29 C128: beside a 0-byte manifest the heartbeat's incomplete-listing warn said "the state
+    file is missing"; it says empty or too short, with the fix that moves it aside with heartbeat.json."""
+    db = Path("/contoso/state/manifest.sqlite")
+    warn = doctor.CheckResult(
+        "heartbeat.source", False, f"{doctor.LISTING_INCOMPLETE} 5 passes", doctor.Severity.WARN, fix="x"
+    )
+    for lost in manifest_mod.LOST_MANIFEST_SHORT:
+        fail = doctor.CheckResult("state_dir.manifest", False, f"{db} {lost}", doctor.Severity.ERROR)
+        (_fail, beat) = cli._listings_unread([fail, warn], None)
+        assert beat.note == doctor.LISTING_STATE_SHORT_NOTE and "is missing" not in beat.note, beat
+    exc = manifest_mod.lost_error(db, manifest_mod.LOST_MANIFEST_EMPTY)
+    (beat,) = cli._listings_unread([warn], exc)
+    assert beat.note == doctor.LISTING_STATE_SHORT_NOTE
+    fail = doctor.CheckResult(
+        "state_dir.manifest", False, f"{db} {manifest_mod.LOST_MANIFEST}", doctor.Severity.ERROR
+    )
+    (_fail, beat) = cli._listings_unread([fail, warn], None)
+    assert beat.note == doctor.LISTING_STATE_LOST_NOTE
+
+
+@pytest.mark.parametrize(("body", "passed"), [(b"", True), (b"x", True), (b"", False)])
+def test_a_manifest_too_short_beside_earlier_passes_is_not_judged_for_time_machine(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, body: bytes, passed: bool
+) -> None:
+    """B13 round 29 C129: beside earlier passes a 0-byte manifest got a Time Machine warn whose fix, a sync,
+    refuses on it. It is not judged there; with no pass recorded (a first start) it still is."""
+    db = expand(initialised.state_paths.db)
+    mirror = expand(initialised.docs_repo) / "mirror"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.write_bytes(body)
+    if passed:
+        expand(initialised.state_paths.heartbeat).write_text(
+            '{"source": {"run_id": 3, "last_success_at": "2026-10-01T00:00:00Z"}}\n', encoding="utf-8"
+        )
+    monkeypatch.setattr(cli.governance, "time_machine_status", lambda config: [(db, False), (mirror, False)])
+    out = cli._time_machine_checks(initialised)
+    infos = [r.detail for r in out if r.severity is doctor.Severity.INFO]
+    warns = [r for r in out if r.severity is doctor.Severity.WARN]
+    said = (
+        "not checked: the state file is empty or too short to be a manifest; the state_dir.manifest line "
+        "says why"
+    )
+    if passed:
+        assert infos == [said] and len(warns) == 1 and str(db) not in warns[0].detail, out
+    else:
+        assert not infos and str(db) in warns[0].detail, out
 
 
 def test_a_short_manifest_with_no_earlier_pass_stays_a_first_start_and_junk_keeps_its_own_fail(
