@@ -734,6 +734,8 @@ class Hold:
     owner: str
     set_at: str
     origin: str
+    # a lost hold's records, by file name (``audit.jsonl``, ``hold-record.json``), which its FAIL names (C174)
+    kept_by: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """One line naming the scope, why, who and since when."""
@@ -936,6 +938,8 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
     unreadable hold list never leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19)."""
     have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
     held, released = audit_holds(state_dir)
+    recorded = recorded_hold_scopes(state_dir)
+    record = HOLD_RECORD_NAME if os.path.lexists(hold_record_file(state_dir)) else "heartbeat.json"
     out = [
         Hold(
             scope,
@@ -943,13 +947,14 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
             str(rec.get("owner") or "the records owner"),
             str(rec.get("at") or ""),
             "audit",
+            ("audit.jsonl", record) if scope in recorded else ("audit.jsonl",),
         )
         for scope, rec in sorted(held.items())
         if scope not in have
     ]
     out += [
-        Hold(scope, LOST_HOLD_REASON, "the records owner", "", "audit")
-        for scope in sorted(recorded_hold_scopes(state_dir) - have - released - set(held))
+        Hold(scope, LOST_HOLD_REASON, "the records owner", "", "audit", (record,))
+        for scope in sorted(recorded - have - released - set(held))
     ]
     return out
 
@@ -963,9 +968,12 @@ def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
     puts the hold list back, sets the hold again or releases it, never a purge first."""
     path = _holds_file(state_dir)
     by = f" set by {hold.owner}" + (f" at {hold.set_at}" if hold.set_at else "")
+    # the record that keeps it, never one that is not there: with governance/ moved aside no audit.jsonl
+    # is named (B13 round 29 C174; ruling 27)
+    kept = " and ".join(hold.kept_by or ("audit.jsonl",))
     detail = (
-        f"{path} no longer lists the hold on {hold.scope}{by} (audit.jsonl, heartbeat.json), and no release "
-        "is recorded; purge and compaction stay suspended"
+        f"{path} no longer lists the hold on {hold.scope}{by} (kept by {kept}), and no release is recorded; "
+        "purge and compaction stay suspended"
     )
     fix = (
         f"the person puts the hold list back from the copy kept, or the records owner runs `{AGENTSYNC_BIN} "
@@ -1039,16 +1047,47 @@ def state_holds(state_dir: Path) -> tuple[Hold, ...]:
     return tuple(sorted(_state_holds(state_dir), key=lambda h: h.scope))
 
 
+HOLD_LOST_WAIT = "not run while a hold the hold list lost is in force"
+"""The purge queue's words while the hold list was read but lost a hold (:func:`hold_list_state` ``lost``),
+never "cannot be read" (B13 round 29 C107, C174; ruling 27)."""
+
+HOLD_UNREAD_WAIT = "not run while the hold list cannot be read"
+"""The purge queue's words while the hold list cannot be read (:func:`hold_list_state` ``unread``)."""
+
+
+LOST_HOLD_WAIT = (
+    "the hold list lost a hold that the audit trail or the hold record keeps, so purge and compaction stay "
+    f"suspended: run `{AGENTSYNC_BIN} status`; its governance.hold [FAIL] line gives the person's fix"
+)
+"""The sync's WAITING ON YOU line for a lost hold (:func:`hold_list_state` ``lost``): no owner, no scope and
+no ``purge --queue`` (B13 round 29 C107; ruling 27)."""
+
+
+def hold_list_state(state_dir: Path) -> str | None:
+    """What the hold list is to the readers that invite a queued purge: ``unread`` when it cannot be read (not
+    a file, a link to nothing, refused, damaged, governance/ not a folder, a hold record that cannot be read),
+    ``lost`` when it reads but has lost a hold the audit trail or the hold record keeps (:func:`lost_holds`),
+    None when it reads and has lost none. One state, named by what is on disk, in status, doctor and the sync
+    (B13 round 29 C107, C174; ruling 27)."""
+    try:
+        return "lost" if lost_holds(state_dir) else None
+    except Exception:  # not a file, refused, or the wrong shape: no read, so no hold list to trust
+        return "unread"
+
+
+def hold_list_wait(state_dir: Path) -> str:
+    """:data:`HOLD_LOST_WAIT` or :data:`HOLD_UNREAD_WAIT`, by :func:`hold_list_state`."""
+    return HOLD_LOST_WAIT if hold_list_state(state_dir) == "lost" else HOLD_UNREAD_WAIT
+
+
 def hold_list_unread(state_dir: Path) -> bool:
     """Whether the state's hold list cannot be read (not a file, a link to nothing, refused, damaged, or
     governance/ not a folder) or has lost a hold the audit trail keeps (:func:`lost_holds`): status and the
     loop invite no queued purge over it, since status FAILs it and every purge refuses until the person puts
     it back (B13 round 27 P131: a dangling holds.json read as no holds, and the invited run erased a page
-    under a hold on all; round 28 I87: the same once the person followed the fix)."""
-    try:
-        return bool(lost_holds(state_dir))
-    except Exception:  # not a file, refused, or the wrong shape: no read, so no hold list to trust
-        return True
+    under a hold on all; round 28 I87: the same once the person followed the fix). :func:`hold_list_state`
+    is not None."""
+    return hold_list_state(state_dir) is not None
 
 
 def active_holds(state_dir: Path, gov: GovernanceConfig) -> tuple[Hold, ...]:

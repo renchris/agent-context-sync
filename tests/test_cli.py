@@ -5399,6 +5399,80 @@ def test_a_hold_the_audit_trail_records_stays_in_force_when_the_hold_list_loses_
     assert not (initialised.docs_repo / page).exists()
 
 
+@pytest.mark.parametrize("state", ["lost", "unread"])
+def test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], state: str
+) -> None:
+    """B13 round 29 C107, C174 (ruling 27): with a hold lost from a hold list that reads, the sync said
+    nothing, and status and doctor said the hold list "cannot be read". The sync waits on status's
+    governance.hold FAIL (no owner, no purge invited), and the queue's words say a hold the hold list lost is
+    in force; a list that really cannot be read keeps "cannot be read"."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    holds = governance._holds_file(root)
+    holds.write_text('{"holds": []}\n' if state == "lost" else "{", encoding="utf-8")
+    assert governance.hold_list_state(root) == state
+    if state == "lost":
+        step = loop.next_step(initialised)
+        assert governance.LOST_HOLD_WAIT in step.waits and "governance.hold" in step.checks, step
+        assert not [w for w in step.waits if "purge --queue" in w or "Contoso Legal" in w], step.waits
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+        said = capsys.readouterr().out
+        assert f"WAITING ON YOU: {governance.LOST_HOLD_WAIT}" in said, said
+        assert "Contoso Legal" not in said and "purge --queue" not in said, said
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    (line,) = [ln for ln in out if ln.startswith("queued purges: ")]
+    words = governance.HOLD_LOST_WAIT if state == "lost" else governance.HOLD_UNREAD_WAIT
+    assert f"; {words}: the governance.hold line says why" in warn and f"({words}: see " in line, out
+    if state == "lost":
+        assert "cannot be read" not in warn and "cannot be read" not in line, out
+
+
+def test_a_lost_holds_fail_names_the_record_that_keeps_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C174 (ruling 27): the lost hold's FAIL named "(audit.jsonl, heartbeat.json)" even with
+    governance/ moved aside, where no audit.jsonl is. It names the record that keeps the hold, in the frame
+    `set by <owner>[ at <iso>]`."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    governance._holds_file(root).write_text('{"holds": []}\n', encoding="utf-8")
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "no longer lists the hold on all set by Contoso Legal at " in failed, failed
+    assert "(kept by audit.jsonl and hold-record.json), and no release is recorded" in failed, failed
+    governance.governance_dir(root).rename(root / "governance.away")
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "the hold on all set by the records owner (kept by hold-record.json), and no" in failed, failed
+    assert "audit.jsonl" not in failed, failed
+
+
+def test_beside_a_governance_folder_that_is_not_one_the_listing_note_points_at_its_fail(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 29 C130, C152's loop half (ruling 27): with a file at governance/, the heartbeat's
+    incomplete-listing warn pointed at "each WAITING ON YOU line about" the source, which nothing printed,
+    and the loop's queue read raised. The loop reads the unreadable queue as none, and the warn names the
+    governance.hold FAIL that stops every sync."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    beats = initialised.state_paths.heartbeat
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(initialised)
+    data[sid]["consecutive_incomplete"] = 5
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    gov = governance.governance_dir(root)
+    gov.mkdir(exist_ok=True)
+    gov.rename(tmp_path / "governance.real")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    loop.next_step(initialised)  # the queue's read is no queue, never a raise (C152)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_GOVDIR_NOTE})"), warn
+    assert not [ln for ln in out if "WAITING ON YOU line about" in ln], out
+
+
 def _gone_volume(gov: Path) -> Path:
     """governance/ moved to a "volume", linked back, and the volume gone (an unmount): the moved folder."""
     vol = gov.parent / "volume"

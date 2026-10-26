@@ -895,10 +895,22 @@ def next_step(
     # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
     # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
     # published again, and running it would erase that page (B13 round 6 G30)
-    split = governance.partition_queue(config.state_paths, config=config)
+    try:
+        split = governance.partition_queue(config.state_paths, config=config)
+    except (
+        governance.GovernanceUnreadError
+    ):  # a queue, or governance/, that cannot be read: no queue, and its
+        # FAIL comes first; the listing waits below are still worked out (B13 round 29 C152)
+        split = governance.QueueSplit([], [])
     queued, kept = split.runnable, split.kept
-    if queued and governance.hold_list_unread(config.state_paths.root):
+    hold_state = governance.hold_list_state(config.state_paths.root)
+    if queued and hold_state is not None:
         queued = []  # an unread hold list is no empty one: its FAIL comes first (B13 round 27 P131)
+    if hold_state == "lost":
+        # a hold the hold list lost is in force: the person's, named by status's FAIL, with no owner (the
+        # report quotes this line) and no purge invited (B13 round 29 C107; ruling 27)
+        waits.append(governance.LOST_HOLD_WAIT)
+        checks.append("governance.hold")
     on_hold: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
     if queued:
         # a hold suspends its entries: a note, the records owner's move, never a run that refuses (B13 round

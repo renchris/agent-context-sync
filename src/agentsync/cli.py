@@ -1505,7 +1505,8 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     if queued and governance.hold_list_unread(config.state_paths.root):
         # read apart from the holds (P44), so a hold list that cannot be read invites no run here (P131)
         out.append(
-            f"queued purges: {len(queued)} (not run while the hold list cannot be read: see governance.hold)"
+            f"queued purges: {len(queued)} ({governance.hold_list_wait(config.state_paths.root)}: see "
+            "governance.hold)"
         )
     elif queued:
         runnable, on_hold = _held_split(config, gov, queued)
@@ -2038,8 +2039,18 @@ def _listings_unread(
     short = any(  # there but too short: never "is missing" (B13 round 29 C128)
         r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST_SHORT) for r in checks
     ) or (isinstance(exc, ManifestLostError) and exc.reason in LOST_MANIFEST_SHORT)
+    govdir = (
+        isinstance(exc, governance.GovernanceNotAFileError) and exc.role == governance.GOVERNANCE_DIR_ROLE
+    ) or any(  # governance/ itself not a folder: every sync refuses over it (B13 round 29 C130)
+        r.name == "governance.hold"
+        and not r.ok
+        and r.detail.endswith(f", not a folder: {governance.GOVERNANCE_DIR_ROLE} belongs there")
+        for r in checks
+    )
     if short:
         note = doctor.LISTING_STATE_SHORT_NOTE
+    elif govdir:
+        note = doctor.LISTING_STATE_GOVDIR_NOTE
     elif lost or isinstance(exc, ManifestLostError):
         note = doctor.LISTING_STATE_LOST_NOTE
     elif db is not None and doctor.state_file_kind(db) is not None:
@@ -2602,7 +2613,9 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         detail += governance.looked_up_words(split.not_looked_up, runnable)
         if unread:
             # a hold list that cannot be read is no empty one: no run is invited, its FAIL says why (P131)
-            detail += "; not run while the hold list cannot be read: the governance.hold line says why"
+            # a lost hold is no list that cannot be read: each in its own words (C107, C174; ruling 27)
+            wait = governance.hold_list_wait(config.state_paths.root)
+            detail += f"; {wait}: the governance.hold line says why"
             out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
         elif held and not runnable:
             # suspended by a hold: no fix, no run invited; the release is its records owner's (I91)

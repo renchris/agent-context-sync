@@ -177,6 +177,12 @@ LISTING_STATE_SHORT_NOTE = (
     "until the person restores it or moves it aside with heartbeat.json; the state_dir.manifest [FAIL] line "
     "says what to do first"
 )
+# The same note beside agentsync's governance folder that is not a folder (governance.governance_dir_error):
+# every sync refuses over it, so no WAITING ON YOU line and no sync is its fix (B13 round 29 C130).
+LISTING_STATE_GOVDIR_NOTE = (
+    "as of its last walk: agentsync's governance folder is not a folder, so no sync lists it again until the "
+    "person fixes it; the governance.hold [FAIL] line says what to do first"
+)
 # The same note for a state file this account cannot open (its mode, its owner): the state_dir lines, not
 # state_dir.manifest, say why (B13 round 20 X15: W11 keyed only a damaged file, so the warn kept pointing at
 # WAITING ON YOU lines a status that cannot read the state never prints).
