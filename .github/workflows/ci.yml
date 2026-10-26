@@ -34,6 +34,9 @@ name: ci
 # (B13 round 25 D83). Round 27's eight jobs and round 28's first (f04c61db to d1f72d6f) took 26:53 to 40:01 but
 # one, 49:59 (d1f72d6f, a docs-only commit; pytest's step 49:26 at 6050 tests), all green on attempt 1, five past
 # 37, which left 50 one second above that job, so it is 60: 10 minutes above it (B13 round 28 I99).
+# Round 28's six later jobs and round 29's first (71388552 to b2724d9c) took 30:19 to 44:27, all green on attempt 1
+# (the slowest 3f1dee54, pytest's step 43:58 at 6191 tests), so 60 stays 15 minutes above them and 10 above
+# 49:59 (B13 round 29 C207, C196).
 on:
   workflow_dispatch:
   push:

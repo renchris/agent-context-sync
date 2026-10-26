@@ -32727,4 +32727,16 @@ Finder's here, which puts `straße` first; neither key does, so the test pins th
 
 ### 16.202 Round 29: CI's times, the guides' hold and purge rows, the IT request's proxy and the rehearsal kit's note (2026-10-26, wave B13 round 29 lane D)
 
-Reserved for round 29 lane D of B13.
+Lane D's round 29 items (`docs/plans/bring-back-ocr.md`, "B13 round 29"; specs `round29/items/C<n>.md`, the
+verifier's corrected fix built): C207 and C196 first, then C191, C194, C186 and C224, then, after lanes RA, B and RB
+landed the words they read, C169 and C209, and last C149 and C150. C207 and C196 are one defect, built once; so are
+C149 and C150.
+
+**CI's time is the time of round 28's later jobs** (C207, C196; CLAUDE.md, `docs/lanes/COMMON.md`, ci.yml's
+note). The seven ci jobs from 71388552 to b2724d9c (round 28's six after d1f72d6f and round 29's first, read with
+`gh run view --json jobs`, all green on attempt 1) took 30:19 to 44:27; the slowest, 3f1dee54, ran pytest's step
+for 43:58 at 6191 tests, past CLAUDE.md's `about 18 to 40`. It is not a docs-only commit (it added a test to
+`tests/test_deploy_pack.py`), so nothing calls it one; only d1f72d6f is. CLAUDE.md gives `about 18 to 45 minutes`
+with the seven named and 49:59 still beside the range, COMMON.md says the same with round 29's id, and ci.yml's note
+adds a sentence after I99's: `timeout-minutes` stays 60, 15 minutes above the seven and 10 above 49:59. Test:
+`test_claude_md_gives_cis_time_and_its_limit`, which also refuses `about 18 to 40 minutes` and a docs-only 3f1dee54.
