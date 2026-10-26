@@ -32245,3 +32245,23 @@ read, `manifest.lost_words`'s list; a missing heartbeat.json or a link to nothin
 folder there the misplaced heartbeat's words first) and quotes the plain tail and NEXT as P60 quotes E19's. Test:
 `test_the_guide_gives_the_lost_unread_tail_and_next`, which reads `manifest.LOST_MANIFEST_UNREAD` and install.sh's
 `lfact`, the tail and the NEXT.
+
+### 16.198 Round 29: setup report: a lost hold's owner kept private, ruling 19's governance states, the heartbeat's own fix and the purge queue per source (2026-10-26, wave B13 round 29 lane RA)
+
+Reserved for round 29 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 29").
+
+### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
+
+Reserved for round 29 lane RB of B13.
+
+### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
+
+Reserved for round 29 lane B of B13.
+
+### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
+
+Reserved for round 29 lane E of B13.
+
+### 16.202 Round 29: CI's times, the guides' hold and purge rows, the IT request's proxy and the rehearsal kit's note (2026-10-26, wave B13 round 29 lane D)
+
+Reserved for round 29 lane D of B13.

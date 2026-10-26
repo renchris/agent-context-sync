@@ -1924,6 +1924,42 @@ first in every prompt and the harvest list in `round29/tools/harvest-lead.txt`) 
 `round29/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane changed the
 prompt. Codex reviewers run beside the Claude finders and verifiers, through `~/.claude/scripts/xvendor-review.sh`.
 
+### B13 round 29: v33 rehearsal, cross-lane review, harvest, Codex beside Claude (2026-10-26)
+
+Run `wf_bcf590be-db1` on `911987c0` (132 agents, 0 errors, 99 minutes; the guard line first in every prompt). All six
+scenarios pass their EXPECTED; no name leaks. 116 findings, 111 confirmed (0 turns, 39 wrongs, 72 small), 5 refused
+(C109, C117, C127, C136, C153). None needs prompt text: v33 stays the prompt to paste. 19 of the wrongs are data
+integrity, most on round 28's own new paths: the hold record that heartbeat.json carries leaves with the very file a
+fix moves aside, and twice a page under a hold on `all` was erased (C199, C170); a queued purge whose source no sync
+has listed since the new start is run blind (C201); a lost hold's owner prints in clear in both reports (C101); two
+link shapes beside a missing manifest start a new one unasked (C118, C202); a label fragment in RFC 2047 words
+publishes a labelled mail (C144). Codex ran once of five calls: its report review (C214 to C216) finished at 23:51, and
+Codex's own self-update at 23:50 moved its binary into `~/.codex/packages/`, where the wrapper's read-confined
+profile cannot launch it, so the core, convert and docs reviews and the second opinion failed (a launch failure, not
+a permission refusal; the wrapper's fix is dispatched to claude-infrastructure). A triage workflow (`wf_8429f764-be8`)
+placed every item once and drafted the rulings, which the lead took with two changes (C198 and C213 to the lead).
+
+Lead rulings for round 29 (in `lanes/COMMON28.md`, mirrored in `docs/lanes/COMMON.md`), all code-only: (23) a
+private value never prints in clear in either report; (24) a hold's record outside governance/ survives every move a
+fix asks for; (25) after a new start a queued purge is judged per source; (26) a purge that finds nothing leaves the
+queue only by an audited act (a `purge --queue` flag: §16.10 lets an option be added by editing its pinned list);
+(27) ruling 19's governance states are the person's in every reader; (28) no governance file's fix is a bare move
+aside; (29) a lost manifest is judged once, by `manifest.lost_words`; (30) the heartbeat's fix comes first only where
+it has a fix of its own; (31) ruling 22 holds for every conversion reason and mail label; (32) nothing invites
+`purge --queue` for an entry a hold keeps.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104, 111 over rounds 2 and 4 to 29; turns as before, then 0; wrongs as before, then 39.
+
+Lanes (`--account auto`, CONTRACTS §16.198 to §16.202, land lock `/tmp/b13-r29-land.lock`, scratch under `round29/`,
+back-channel pane 3 or its successor): RA 37 (ruling 23 first, then the report halves of 25, 27 and 30), B 41
+(rulings 24, 28, 25, 29 and 26's reason first: data integrity; one lane, since its items share governance.py and
+cli.py; ruling 29 lands with RB as one push), RB 12 (C160 first, then the install.sh halves), E 10 (ruling 31 first),
+D 9 (CI's times first; the guides after the lanes). Lead: C198 (the harvest's umbrella note, built as C199 to C206)
+and C213 (the two lane branches round 28 left: content-checked and deleted, `b13/r27-ra` and `b13/r28-rb`). The
+rehearsal kit's fix for macOS's midnight `/tmp` cleaner, which deleted the fixture's empty folder in three
+sandboxes (C149, C150), goes into round 30's script.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
