@@ -2056,9 +2056,13 @@ agentsync_dir_values() {
 # owner of each hold in the state folder's governance/holds.json (JSON escapes). Each value stripped, then each
 # of its lines stripped, and each part of a line a TAB splits (a pair holds no TAB); one a line. Not the
 # fallbacks Hold.describe() prints for a missing value ("hold = true", "sources.toml"), which Python does not
-# register either. Every read fails quietly.
+# register either. And every owner the audit trail (governance/audit.jsonl) records setting or releasing a hold,
+# read from the trail itself, so a hold the hold list lost has its owner cut whatever holds.json says, never a
+# fixed fallback ("the records owner", "lost from the hold list", "hold = true", "sources.toml"), as
+# setup_report._hold_values reads it since lane RA's round 29 ruling 23 (C101, C119, C156, C187). Only a
+# regular file is read, so a fifo there cannot hold it. Every read fails quietly.
 hold_values() {
-	local k v state="" json
+	local k v state="" json audit
 	local -a files=()
 	if [ -f "$CONFIG" ]; then
 		files+=("$CONFIG")
@@ -2068,10 +2072,11 @@ hold_values() {
 	fi
 	state="${state:-$HOME/Library/Application Support/agentsync}"
 	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
-	json="$state/governance/holds.json"
+	json="$state/governance/holds.json" audit="$state/governance/audit.jsonl"
 	[ ! -f "$json" ] || files+=("$json")
+	[ ! -f "$audit" ] || files+=("$audit")
 	[ "${#files[@]}" -gt 0 ] || return 0
-	HOLDS_JSON="$json" LC_ALL=C awk '
+	HOLDS_JSON="$json" AUDIT_JSONL="$audit" LC_ALL=C awk '
 		function hex(h,    i, v) {
 			v = 0; h = tolower(h)
 			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
@@ -2122,6 +2127,16 @@ hold_values() {
 			for (i = 1; i <= n; i++) print a[i]
 		}
 		{ sub(/\r$/, "") }
+		# an audit line that sets or releases a hold: its owner, one record a line, as JSON (ruling 23)
+		FILENAME == ENVIRON["AUDIT_JSONL"] {
+			if (match($0, /"action"[[:space:]]*:[[:space:]]*"hold-(set|released)"/) && match($0, /"owner"[[:space:]]*:[[:space:]]*"/)) {
+				s = substr($0, RSTART + RLENGTH)
+				for (i = 1; i <= length(s) && substr(s, i, 1) != "\""; i++) if (substr(s, i, 1) == "\\") i++
+				v = unesc(substr(s, 1, i - 1), 0)
+				if (v != "the records owner" && v != "lost from the hold list" && v != "hold = true" && v != "sources.toml") emit(v)
+			}
+			next
+		}
 		FILENAME == ENVIRON["HOLDS_JSON"] { text = text $0 "\n"; next }
 		q != "" {
 			buf = fresh ? $0 : buf "\n" $0; fresh = 0
@@ -3215,14 +3230,37 @@ agent_restore() {
 # never less: "hold <scope> (<origin>)[ since <iso>]: reason and owner not shown[<ending>]"; a refusal joining N
 # more reads "hold <scope> (<origin>) and N more hold(s): reasons and owners not shown[<ending>]"; the release
 # "hold <scope> released (owner not shown)". agentsync status still prints both. Before the pairs, as the Python
-# report cuts them before its pass.
+# report cuts them before its pass. A hold the hold list lost (origin "audit", governance.lost_holds) is cut too,
+# keeping agentsync's fixed reason: "hold <scope> (audit)[ since <iso>]: lost from the hold list, owner not
+# shown[<ending>]"; and its governance.hold FAIL ("... no longer lists the hold on <scope> set by <owner>[ at
+# <iso>] (kept by <records>) ...") reads "... on <scope> (owner not shown)" and then the line from its last fixed
+# anchor (the last " at <iso>", else the record clause, " (kept by " or the older " (audit.jsonl", else nothing),
+# so an owner holding one hides more, never less, as setup_report._LOST_HOLD_RE cuts it (lane RA's round 29
+# ruling 23 patterns: C101, C119, C156, C187).
 hold_cut() {
 	LC_ALL=C awk '
 		function word(s, at) { return at > 1 && substr(s, at - 1, 1) ~ /[A-Za-z0-9_]/ } # no word boundary before at
 		function ends(s, e) { return length(s) >= length(e) && substr(s, length(s) - length(e) + 1) == e }
+		# the lost hold FAIL: the owner, cut through the last fixed anchor on the line (ruling 23)
+		function lostcut(s,    out, at, rest, r, k, cut, iso) {
+			out = ""
+			iso = " at [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?"
+			while (match(s, /no longer lists the hold on [^ \t\r\f\v]+ set by /)) {
+				if (word(s, RSTART)) { out = out substr(s, 1, RSTART); s = substr(s, RSTART + 1); continue }
+				at = RSTART + RLENGTH; out = out substr(s, 1, at - 9) " (owner not shown)"
+				rest = substr(s, at); cut = ""
+				for (r = rest; match(r, iso); r = substr(r, RSTART + 1)) {
+					k = substr(r, RSTART + RLENGTH, 1)
+					if (k == "" || k ~ /[ ,;.)]/) cut = substr(r, RSTART)
+				}
+				if (cut == "") for (r = rest; (k = index(r, " (")); r = substr(r, k + 1)) if (substr(r, k, 10) == " (kept by " || substr(r, k, 13) == " (audit.jsonl") cut = substr(r, k)
+				return out cut
+			}
+			return out s
+		}
 		{
-			s = $0; out = ""; set = " \342\200\224 set by "; held = ""
-			while (match(s, /hold [^ \t\r\f\v]+ \((config|state)\): /)) {
+			s = lostcut($0); out = ""; set = " \342\200\224 set by "; held = ""
+			while (match(s, /hold [^ \t\r\f\v]+ \((config|state|audit)\): /)) {
 				at = RSTART; len = RLENGTH
 				if (word(s, at) || !index(substr(s, at + len), set)) { out = out substr(s, 1, at); s = substr(s, at + 1); continue }
 				head = substr(s, at, len - 2); whole = substr(s, at); out = out substr(s, 1, at - 1)
@@ -3233,10 +3271,14 @@ hold_cut() {
 				if (ends(tail, ". Release it first (records owner).")) end = ". Release it first (records owner)."
 				else if (ends(tail, " (purge and compaction suspended)")) end = " (purge and compaction suspended)"
 				tail = substr(tail, 1, length(tail) - length(end)); when = ""
+				reason = substr(s, at + len); j = 0
+				for (r = reason; (k = index(r, set)); r = substr(r, k + length(set))) j += k + length(set) - 1
+				reason = substr(reason, 1, j - length(set))
 				if (match(tail, / since [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?$/)) when = substr(tail, RSTART)
 				more = 0; w = substr(whole, len + 1)
-				while (match(w, /; hold [^ \t\r\f\v]+ \((config|state)\): /)) { more++; w = substr(w, RSTART + RLENGTH) }
+				while (match(w, /; hold [^ \t\r\f\v]+ \((config|state|audit)\): /)) { more++; w = substr(w, RSTART + RLENGTH) }
 				if (more) held = head " and " more " more hold" (more > 1 ? "s" : "") ": reasons and owners not shown" end
+				else if (head ~ / \(audit\)$/ && reason == "lost from the hold list") held = head when ": lost from the hold list, owner not shown" end
 				else held = head when ": reason and owner not shown" end
 				s = ""
 				break

@@ -32554,6 +32554,23 @@ link by its target and a heartbeat link to nothing as unread, and `manifest.lost
 `ManifestLostError` every raise site builds, errno EINVAL for a short file, ENOENT for a missing one); lane B's
 §16.200 holds its record.
 
+**The shell report cuts a lost hold's owner and keeps agentsync's own words** (ruling 23's install.sh half of lane
+RA's C101, C119, C156 and C187, in RA's patterns; `scripts/install.sh` hold_cut and hold_values). A hold the hold
+list lost printed its owner in clear: status's `HOLD: hold <scope> (audit): lost from the hold list — set by <owner>`,
+whose origin hold_cut did not match, and doctor's governance.hold FAIL `... no longer lists the hold on <scope> set
+by <owner>[ at <iso>] (kept by <records>) ...` (lane B's ruling 27 frame; `(audit.jsonl, heartbeat.json)` from an
+older build). hold_cut takes the `audit` origin and, for the fixed reason `lost from the hold list`, gives `hold
+<scope> (audit)[ since <iso>]: lost from the hold list, owner not shown[<ending>]`; any other reason keeps `reason
+and owner not shown`. Before that it cuts the FAIL: `... on <scope> (owner not shown)` and then the line from its
+last fixed anchor, the last ` at <iso>` followed by the line's end or one of ` ,;.)`, else the last ` (kept by ` or
+` (audit.jsonl` clause, else nothing, so an owner holding an anchor hides more, never less. hold_values also reads
+governance/audit.jsonl, a regular file only, and registers the owner of every `hold-set` and `hold-released` line,
+never a fixed fallback (`the records owner`, `lost from the hold list`, `hold = true`, `sources.toml`). Every line
+matched lane RA's `setup_report._cut_holds` on their branch (measured). Tests:
+`test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason` (the shell's lines, and the agentsync
+report's once it has `_LOST_HOLD_RE`) and `test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report`
+(an owner set and one released are cut, `the records owner` and a purge line's owner stay).
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.

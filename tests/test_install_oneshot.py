@@ -2658,6 +2658,97 @@ def test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_
     assert [red.redact(line) for line in _HOLD_LINES] == list(_HOLD_LINES.values())
 
 
+_LOST_HOLD_LINES = {
+    # a hold the hold list lost (origin audit): agentsync's fixed reason stays, the owner goes
+    "HOLD: hold all (audit): lost from the hold list — set by Avery Quill since 2026-10-22T05:32:56Z (purge "
+    "and compaction suspended)": (
+        "HOLD: hold all (audit) since 2026-10-22T05:32:56Z: lost from the hold list, owner not shown (purge "
+        "and compaction suspended)"
+    ),
+    "HOLD: hold all (audit): lost from the hold list — set by the records owner": (
+        "HOLD: hold all (audit): lost from the hold list, owner not shown"
+    ),
+    "HOLD: hold all (audit): a matter — set by Pat Doe": "HOLD: hold all (audit): reason and owner not shown",
+    # its governance.hold FAIL: cut through the last fixed anchor, the time, else the record clause
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Avery Quill at "
+    "2026-10-22T05:32:56Z (kept by audit.jsonl and hold-record.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) at "
+        "2026-10-22T05:32:56Z (kept by audit.jsonl and hold-record.json), and no release is recorded"
+    ),
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Avery Quill at "
+    "2026-10-22T05:32:56Z (audit.jsonl, heartbeat.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) at "
+        "2026-10-22T05:32:56Z (audit.jsonl, heartbeat.json), and no release is recorded"
+    ),
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by the records owner (kept "
+    "by hold-record.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) (kept by "
+        "hold-record.json), and no release is recorded"
+    ),
+    # an owner holding an anchor hides more, never less
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Pat at "
+    "2026-10-22T05:32:56Z Doe at 2026-10-22T05:32:57Z (kept by audit.jsonl), x": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) at "
+        "2026-10-22T05:32:57Z (kept by audit.jsonl), x"
+    ),
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Pat Doe": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown)"
+    ),
+}
+
+
+def test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason() -> None:
+    """B13 round 29 ruling 23 (lane RA's C101, C119, C156, C187 patterns, install.sh's hold_cut): a hold the
+    hold list lost printed its owner in clear in both reports, as status's `(audit)` HOLD: line, which
+    hold_cut did not match, and as doctor's governance.hold FAIL (`set by <owner> at <iso>`). The audit origin
+    keeps the fixed `lost from the hold list` and cuts only the owner; the FAIL reads `(owner not shown)`, cut
+    through the line's last fixed anchor, so the scope and time stay. The agentsync report gives the same
+    lines once it has lane RA's cut (setup_report._LOST_HOLD_RE)."""
+    fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
+    assert fn is not None
+    cp = subprocess.run(
+        [BASH32, "-c", fn.group(0) + "hold_cut"],
+        input="\n".join(_LOST_HOLD_LINES) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
+    )
+    assert cp.stdout.splitlines() == list(_LOST_HOLD_LINES.values())
+    if hasattr(setup_report, "_LOST_HOLD_RE"):  # lane RA's half, landing beside this one
+        red = setup_report.Redactor()
+        assert [red.redact(line) for line in _LOST_HOLD_LINES] == list(_LOST_HOLD_LINES.values())
+
+
+def test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report(tmp_path: Path) -> None:
+    """B13 round 29 ruling 23, hold_values: a hold the hold list lost keeps its owner only in the audit trail,
+    so hold_values, reading the config and holds.json, never registered it, and a line quoting it printed in
+    clear. Every owner an audit line records setting or releasing a hold is a value now, read from the trail
+    itself, never a fixed fallback ("the records owner" stays), as setup_report._hold_values reads it."""
+    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True)
+    trail = [
+        {"action": "hold-set", "at": "2026-10-22T05:32:56Z", "scope": "all", "owner": "Avery Quill"},
+        {"action": "hold-released", "at": "2026-10-22T06:00:00Z", "scope": "alpha", "owner": "Rowan Pike"},
+        {"action": "hold-set", "at": "2026-10-22T07:00:00Z", "scope": "beta", "owner": "the records owner"},
+        {"action": "purge", "at": "2026-10-22T08:00:00Z", "owner": "Sky Lund"},
+    ]
+    (state / "governance" / "audit.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in trail), encoding="utf-8"
+    )
+    said = [
+        "F4 | step 3 | question | 1 | Avery Quill said the hold stays on | -",
+        "Rowan Pike released alpha; the records owner runs hold beta again",
+        "Sky Lund is no hold owner",
+    ]
+    shown = _shell_hold_redact(tmp_path, [], said, "en_US.UTF-8")
+    assert shown == [
+        "F4 | step 3 | question | 1 | <value> said the hold stays on | -",
+        "<value> released alpha; the records owner runs hold beta again",
+        "Sky Lund is no hold owner",
+    ], shown
+
+
 def test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
