@@ -31089,6 +31089,9 @@ the phrases, so its flag-h cut needs no copy of the list (asserted). Test:
 that holds the word (a part, such as `their page`, as the line it is built into) and finds none cut, and keeps
 each phrase in one of them; and `test_a_page_hold_cuts_no_fixed_line_of_a_built_report` (a built report for a
 "Page" hold cuts none of its lines and stays public; with the value quoted it cuts that line and is private).
+Amended 2026-10-26, §16.204 C397: install.sh does print the phrases, through the status output its Doctor section
+embeds; its flag-h cut keeps a copy of both lists, kept equal by a test, and the assert that install.sh holds none
+is gone.
 
 **A two-letter hold value leaves the Redaction section whole, and says so** (P108). With a hold reason "IT", E72's
 cut turned every "it" above the Redaction section into `<value>`, while the section's own legend still read `the
@@ -31250,6 +31253,8 @@ the sync itself finished, and install.log's `step=report` line adds `closing_sta
 catalog of the closing lines, so install.sh's header says it. Test:
 `test_a_closing_status_a_signal_stopped_is_said_and_logged` (SIGKILL, SIGTERM, and a status that exits 1 on a
 `[FAIL]` line, which says nothing).
+Amended 2026-10-26, §16.204 C320: bash's own `Killed: 9` or `Terminated: 15` job line for the killed status no
+longer reaches install.out; the note above is the only line that says it.
 Amended 2026-10-25, §16.193 I27: the agentsync report reads the field: the report step's row adds `the closing
 status was stopped by SIGKILL (signal 9) before it finished, so its NEXT line may be missing`, and the Summary's
 install.sh line `, its closing status stopped by SIGKILL (signal 9)` after the exit; only a signal exit (128 + N)
@@ -32594,6 +32599,8 @@ what is there now aside, keeping a copy`. The hold list's fix takes lane B's con
 in install.sh's voice: `keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from
 a copy they trust`. Tests: the step 1 misplaced test's `governance-file`, `governance-dangling`, `holds-folder` and
 `holds-fifo` cases and the step 2 ones, through `misplaced_fix`.
+Amended 2026-10-26, §16.204 C316: the put-back names the hold list, never `it`: `then, if the hold list had listed
+any hold, put the hold list back from a copy they trust`.
 
 **A manifest there but too short is lost, never missing, after the heartbeat's chmod** (C195, with C164's install.sh
 half; `scripts/install.sh` list_folders and state_lost, `docs/deploy/data-governance.md`; ruling 30; amends §16.194
@@ -32623,6 +32630,10 @@ damaged JSON reads as the record words, which no shell read can tell. Tests: the
 `unread-folder`, `unread-mode`, `unread-dangling` and `unread-whole` rows of
 `test_the_shell_report_names_a_lost_manifests_link_on_its_stop`, and
 `test_the_shell_reports_lost_words_are_the_agentsync_reports` (the three words equal `setup_report._LOST_WAS`).
+Amended 2026-10-26, §16.204 C390: a regular heartbeat.json of damaged JSON, or of a value that is no object, now
+reads as unread through plutil; the limit left is a BOM or a plist read as an object, and a NaN as unread.
+Amended 2026-10-26, §16.204 C303: `STOP_KIND` and `STOP_LINK` cover the late block too, the latest attempt's stops
+after its end line, never an earlier attempt's.
 
 **C166, C216: governance/ that is a link to a fifo, a socket or another non-folder keeps its kind, and the reader's
 header names the folder's role (`scripts/install.sh` MISPLACED_PY, misplaced_words, step 1's `misodd` grep).**
@@ -32719,6 +32730,8 @@ counted `file=manifest` `kind=lost` one, and carries it in the row's kind (`lost
 rows use only the owner and the friction id); an orphaned, mis-stamped or unknown one is ignored.
 fallback_sync_stop_line takes the recorded kind ahead of `lost_kind_now`'s read (C165), so a stop whose manifest is
 fixed now still says `_LOST_WAS`'s words, in the attempt's block and the late one alike.
+Amended 2026-10-26, §16.204 C337: it takes `lost_kind_now`'s read, else the recorded kind, as `_stop_which` does; a
+stop whose manifest is fixed now still says the recorded words, since the read then says nothing.
 `test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded` (three kinds paired; a mis-stamped, an
 apart, an unknown and a non-manifest detail ignored; no detail line in the report).
 
@@ -33099,7 +33112,144 @@ Reserved for round 30 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
-Reserved for round 30 lane RB of B13.
+Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
+measured reason it was not built; and the install.sh halves of other lanes' items, in their words. Round 30
+rulings 39 to 44; every install.sh probe of a new agentsync name runs under the installed build and prints nothing
+when that build lacks it. A dated line this round writes reads `Amended 2026-10-26, §16.204 C<n>`.
+
+**C386: a hold scope no source names is cut from the shell report (`scripts/install.sh` hold_scopes,
+redaction_pairs; ruling 39, the shell half of lane RA's pairs).** A hold scope is free text in a source id's shape,
+so a matter name can stand there, and status's `HOLD:` line and the lost-hold FAIL printed it in clear. hold_scopes
+reads, under `LC_ALL=C` and from regular files only, each `scope` of governance/holds.json, each `scope` of an
+audit.jsonl line that sets or releases a hold, and hold-record.json's `holds` list, or, while no hold-record.json
+is there, heartbeat.json's round 28 `holds` list (a list only), as `governance.recorded_hold_scopes` reads them;
+only a scope in `config.SOURCE_ID_RE`'s shape, never `all`, each once in byte order. redaction_pairs registers each
+one that is no configured or vanished id, no `GENERIC_SOURCE_IDS` word and no word this report prints as the next
+`<source-N>`, after the vanished ids, as setup_report numbers lane RA's. No hold is refused for its scope (the
+finder's other fix would block a hold placed before its source is added). Tests:
+`test_a_hold_scope_no_source_names_is_cut_from_the_shell_report_from_every_hold_file` (the record and the
+heartbeat's list; `all` and `docs` stay), and the scopes of
+`test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report`.
+
+**C313: a hold only the record keeps is cut as a lost one (`scripts/install.sh` hold_cut; ruling 42, lane B's
+`record` origin).** hold_cut matched `(config|state|audit)`, so a `hold <scope> (record): ...` line kept its reason
+and owner. It takes `record` beside them, cut as `audit` is: `hold <scope> (record)[ since <iso>]: lost from the
+hold list, owner not shown`, before lane B's land prints one. Test:
+`test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_in_the_shell_report`.
+
+**C343 (1): the lost-hold parity assert always runs (`tests/test_install_oneshot.py`).** The `hasattr` guard on
+`setup_report._LOST_HOLD_RE`, which is on trunk, only let the Redactor half of
+`test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason` be skipped; it is gone.
+
+**C316, C333: the hold list's put-back names the hold list (`scripts/install.sh` misplaced_words; ruling 42, lane
+B's words; amends §16.199 C151).** Over a folder at holds.json on a Mac that never set a hold, the fix said `then,
+if it listed any hold, put the hold list back`, whose `it` sent a person who never set a hold to look for one. In
+install.sh's voice, as lane B's `governance.HOLD_LIST_PUT_BACK` says it: `keeping a copy, they move it aside, then,
+if the hold list had listed any hold, put the hold list back from a copy they trust`. The shorter form still waits
+for C126's strict judge in both readers. Tests: the `holds-folder` and `holds-fifo` cases of the step 1 and step 2
+misplaced tests, through `misplaced_fix`.
+
+**C338, C397: a hold value inside one of agentsync's own fixed phrases stays in the shell report
+(`scripts/install.sh` FIXED_CAPS_PHRASES, FIXED_VALUE_PHRASES, redact_stream; ruling 39; one defect from two
+finders, built once; amends §16.188 P107).** With a hold owner `IT`, the Doctor section's embedded status line
+`local sources work without IT` (every Mac with no Graph source), `name any IT action` and `IT action: ` were cut
+to `<value>` and made every shell report Private only with no issue link, while the agentsync report keeps them
+(C106, C162). install.sh carries setup_report's two lists, `|` between phrases so a trailing blank stays, and
+hands them to redact_stream's awk through ENVIRON, never `-v` and never inside the single-quoted program (an
+apostrophe). For a flag h or H pair only, a match lying wholly inside an occurrence of a phrase written out in the
+line as it stands (byte-wise, case as written, `#` one or more digits) is kept as written and makes nothing
+private, as `_in_fixed_phrase` keeps it; a folder or organisation pair is still cut, and a quoted `IT` is still cut
+and still makes the report private (D80). Tests: `test_the_shell_reports_fixed_phrases_are_the_agentsync_reports`
+(the two lists equal), `test_a_hold_value_inside_a_fixed_phrase_stays_in_both_readers` (`IT` and `Page`, both
+readers, C and en_US.UTF-8) and `test_an_it_hold_keeps_the_shell_report_public_over_agentsyncs_own_phrase`.
+
+**C339: the shell's Private only line for hold words is plural at two words (`scripts/install.sh` hold_values'
+pairs, redact_stream, fallback_redaction).** The shell kept one bit for a hold word it cut. Each flag h or H pair
+carries its accentless lower-case word as a fourth field, redact_stream counts the distinct words it cut and writes
+the count to `$HOLD_WORD_FILE`, so a word's NFC and NFD forms are one, and two or more give `Private only: hold
+reasons or owners are also words this report prints, so where <value> stands in the report's own text they can be
+read back.`, as setup_report says since C133; the shell's `Send it:` line has no singular to change. Test:
+`test_two_hold_words_the_shell_report_shows_make_its_private_line_plural`.
+
+**C337, C396, C377: a lost stop's kind is this shell's read now first, else the recorded one
+(`scripts/install.sh` fallback_sync_stop_line; ruling 44; amends §16.199 C210).** The shell let the kind
+sync-stops.log recorded replace `lost_kind_now`'s read, while `setup_report._stop_which` takes the read now on the
+attempt's open stop, so one stop read differently in the two reports and beside the bucket and Doctor. The record
+fills in only when the read says nothing (a manifest fixed now, so
+`test_the_shell_report_reads_the_lost_kind_sync_stops_log_recorded` stays as it was). C377's flip of Python (the record first) is not built: C396 measured that
+it reopens ruling 21's mismatch, an open stop's Items line against its own bucket; its cross-reader test is built.
+A known limit: the shell reads no runs table, so for a stop a later sync closed whose manifest is lost another way
+now it gives the read now, where Python gives the record. Test:
+`test_a_lost_stops_kind_is_the_read_now_first_in_both_reports` (the shell line and `_stop_which` agree on four
+read-now and recorded pairs).
+
+**C303: the late block's stops take the read now too (`scripts/install.sh` the shell report's late block; ruling
+44; amends §16.199 C165).** `STOP_LINK` and `STOP_KIND` were set around the attempt's own stops only, so the same
+stop logged after the end line lost its link (`which is a link into a folder that does not exist or refuses a
+write`, `removing or re-pointing the link first`) and its short words, while setup_report._late_stops runs
+`_with_now_words` over the latest attempt's late stops. The late block holds only the latest attempt's stops, so no
+earlier attempt's stop takes present-tense words. Test: `test_a_late_stop_takes_the_read_now_as_the_attempts_own_does`
+(a link and a short manifest, inside and late).
+
+**C390: lost_kind_now reads heartbeat.json's content (`scripts/install.sh` lost_kind_now; ruling 44; amends §16.199
+C165).** A heartbeat.json that test(1) finds a regular file this account can read is read through `/usr/bin/plutil
+-convert json` with each `null` made `0` first (an older plutil may refuse JSON null), under `LC_ALL=C`; plutil
+prints its error on stdout, so its exit code and first byte decide: anything but an object (damaged JSON, `[]`,
+`null`, an empty file) is `unread`, as `manifest.lost_words` reads it (P111), so a stop with no detail line from an
+older build says `which was missing beside a heartbeat.json that could not be read`. No plutil reads as unread, the
+cautious words with the same fix. Where the two still differ (measured on macOS 15.8.1): plutil takes a UTF-8 BOM,
+an XML plist and an old-style plist as an object, which Python calls unread, and refuses a NaN, which Python reads
+and agentsync never writes. Tests: the `unread-json`, `unread-list`, `unread-null`, `unread-empty`, `short-list` and
+`nulls` rows of `test_the_shell_report_names_a_lost_manifests_link_on_its_stop`.
+
+**C301: a stop in the end line's own second is the attempt's when it claims an error (`scripts/install.sh`
+fallback_sync_stops; lane RA's rule, the shell half).** A stop stamped in the end line's whole second (an end
+line with no fraction; with one, round 26 E77 already counts it inside) fell in neither window: the in-attempt
+filter took `at < end` and the late block needed a timed line after the end line, so the shell dropped the stop
+and the outcome hint named none. After today's pairing, unchanged, each such stop in file order claims the first
+still-unclaimed step 3 error of that same second before the closing end line that `claims()` accepts, and joins
+the attempt's rows; one that claims none is late. A `claimed` mode prints the sync-stops.log line of each stop that
+claimed one, which the late mode leaves out; the late window runs from the end line to its last timed line or the
+end line itself, whichever is later, plus 1 s. Test:
+`test_a_stop_in_the_end_lines_second_is_the_attempts_when_it_claims_an_error` (a claiming error; a `skipped: lock
+held` line and no line, both late).
+
+**C334, C347, C367: a stop on the hold record is named as itself (`scripts/install.sh` fallback_sync_stop_line;
+ruling 41, lane B's `file=hold-record`).** The shell read lane B's new role as `a state file`; its table says
+`agentsync's hold record`. Test: `test_the_shell_stop_files_are_the_agentsync_reports` (the role, and every role
+the table shares with `setup_report._SYNC_STOP_FILES` in the report's words).
+
+**C311: step 1 predicts a purge queue or suppression list that lost a purge, and the person's kinds name it
+(`scripts/install.sh` LOST_HOLD_PY, list_folders, `PERSONS_FAILS`; `agentsync.ops.doctor.PERSONS_KINDS`;
+`agentsync.setup_report._PERSONS_KINDS_COPY`; ruling 40, lane B's words).** With purge-queue.json or suppressed.json
+moved aside while the audit trail still records a purge, status FAILs governance.purge_queue or
+governance.suppressed with the person's fix, so step 2 stops at its status step, while step 1 said `(none is
+needed)` and step 2's NEXT named no kind for it. `LOST_HOLD_PY`, in the same interpreter start, adds `,lost-queue`
+or `,lost-suppressed` after its hold verdict from the build's own `governance.governance_lost(root)`, as status
+calls it, keyed on the error's file name; nothing more when the build lacks it or it raises, so an older build's
+hold verdict is unchanged. Only when no config or state tail is predicted, the NEXT ends, before the lost-hold tail
+(status's NEXT leads with governance_lost), `; step 2 stops at its status step on agentsync's purge queue, which no
+longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the
+person's (they put the purge queue back from a copy they trust, or run each such purge by hand), and
+~/.local/bin/agentsync status prints it on its governance.purge_queue line`, or the suppression list's (`which no
+longer lists what a purge the audit trail records suppressed`, `or follow the fix its status line gives`, on its
+governance.suppressed line), logged `config_err=state-queue-lost` or `state-suppressed-lost` (comma-joined with
+`state-hold-lost` when both stand); no selector, source, reason or time. The person's kinds gain `a purge queue or
+suppression list that lost a purge the audit trail records` after `a hold the hold list lost` in every code copy in
+this one commit (ruling 6): `PERSONS_FAILS` and install.sh's header, `doctor.PERSONS_KINDS`,
+`setup_report._PERSONS_KINDS_COPY` and the test literals; the prompt's own list (v33) is unchanged, as for C206.
+Tests: `test_step_1_predicts_a_purge_list_that_lost_a_purge_and_step_2_names_its_kind` (the queue and the
+suppression list, with the real agentsync, followed to the FAIL's end) and
+`test_the_lost_list_probe_rides_the_lost_hold_probe_and_is_silent_on_a_build_without_it`.
+
+**C320: a signal-killed closing status or first sync leaves no job line (`scripts/install.sh` loop_status_run,
+first_sync_run; amends §16.189 P14).** bash's own `line N: <pid> Killed: 9 <the command unexpanded>` (or
+`Terminated: 15`) for a child a signal killed reached stderr, install.out and both reports, since a simple
+command's `2>/dev/null` applies only inside the child. The closing status runs as `{ ...; } 2>/dev/null`; the first
+sync as `{ ... 2>&3 3>&-; } 3>&2 2>/dev/null`, so its own stderr still reaches install.out. closing_status and
+SYNC_RC keep 137 or 143. status_run's pipeline (rc 0 when status is killed, as tee's status wins) is a separate
+finding, not folded in. Tests: `test_a_closing_status_a_signal_stopped_is_said_and_logged` (no job line) and
+`test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr`.
 
 ### 16.205 Round 30: a lost suppression's audited way out, the records governance/ keeps outside it, a lost queued purge redone, the read-only judge and one secret alarm (2026-10-26, wave B13 round 30 lane B)
 
