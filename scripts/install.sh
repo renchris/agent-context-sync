@@ -962,13 +962,16 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	*) MISPLACED_IS="is a folder or something else that is not a file" ;;
 	esac
 	# the person's fix, in lane B's words (round 28 I87, I89, I90): never a bare move aside of the hold list or
-	# of governance/, which read as no holds, so a page under a hold on all was erased
+	# of governance/, which read as no holds, so a page under a hold on all was erased. The hold list's put-back
+	# is conditional, as lane B's words are since round 29 (ruling 28: C151, C142, C126): a list that held no
+	# hold needs none. governance/'s second clause names what is at the path, never "it", which read as the
+	# real governance folder just named (round 29 ruling 28: C114, C143)
 	MISPLACED_WHY="not damage, not a mode" MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN"
-	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then put the hold list back from a copy they trust$SHUT_OPEN"
+	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from a copy they trust$SHUT_OPEN"
 	case "$1/${2:-}" in
 	holds/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust; or, keeping a copy, they move it aside and, before any purge, set each hold it held again" ;;
 	*/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust, or move it aside, keeping a copy" ;;
-	governance/*) MISPLACED_FIX="they put the real governance folder (the one holding holds.json and audit.jsonl) back, from wherever it was moved or from a copy; only where none was ever kept, they move it aside, keeping a copy" ;;
+	governance/*) MISPLACED_FIX="they put the real governance folder (the one holding holds.json and audit.jsonl) back, from wherever it was moved or from a copy; only where none was ever kept, they move what is there now aside, keeping a copy" ;;
 	esac
 	case "$1" in
 	lock) MISPLACED_NOUN="agentsync's lock file" MISPLACED_CHECK=lock ;;

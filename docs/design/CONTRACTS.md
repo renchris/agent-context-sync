@@ -31880,6 +31880,11 @@ step 1 misplaced test, the `gov-file` and `foreign-holds` cases of the status-st
 `test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder_that_is_not_one` (following the words
 ends it).
 
+Amended 2026-10-26, §16.199 C114, C143: governance/'s fix ends `only where none was ever kept, they move what is there
+now aside, keeping a copy`, no longer `they move it aside`, whose `it` read as the real governance folder; and the
+hold list's reads `keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from a copy
+they trust` (round 29 ruling 28, lane B's C151 words).
+
 ### 16.195 Round 28: a hold never lost to a reader, no blind purge from a manifest that knows nothing, the lost-unread heartbeat (2026-10-25, wave B13 round 28 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it. Round 28 rulings 19,
@@ -32455,6 +32460,17 @@ lane RA's (C197's report half).
 `test_step_1_predicts_a_hold_the_hold_list_lost_and_step_2_names_its_kind` (moved and emptied, with the real
 agentsync, followed to a clean run) and `test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_without_it`
 (the audit trail, an empty list, a damaged list, the record alone, a build without `lost_holds`).
+
+**The governance folder's fix names what is at the path, and the hold list's put-back is conditional** (C114, C143;
+`scripts/install.sh` misplaced_words; ruling 28; one defect from two finders, built once; amends §16.194 I90). Step
+1's tail, step 2's NEXT and the status step's said of governance/ that is not a folder `...; only where none was ever
+kept, they move it aside, keeping a copy`, where the only noun `it` could point back to is the real governance folder
+just named, and a bare move aside of governance/ erased held pages (ruling 19). The finder's `the file at governance`
+was false for a link, a fifo or a socket there (the verifier's measurement), so the words name no kind: `they move
+what is there now aside, keeping a copy`. The hold list's fix takes lane B's conditional put-back (C151, C142, C126)
+in install.sh's voice: `keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from
+a copy they trust`. Tests: the step 1 misplaced test's `governance-file`, `governance-dangling`, `holds-folder` and
+`holds-fifo` cases and the step 2 ones, through `misplaced_fix`.
 
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 

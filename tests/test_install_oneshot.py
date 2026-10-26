@@ -9151,8 +9151,9 @@ folder or something else"); the generic words when that build cannot say."""
 
 def misplaced_fix(role: str, kind: str) -> str:
     """The person's fix for it, in lane B's round 28 words (I87, I89, I90): the hold list is put back after
-    its move, a damaged file restored, governance/ put back; never a bare move aside of what holds the
-    holds."""
+    its move (since round 29's ruling 28, only if it listed any hold), a damaged file restored, governance/
+    put back, and only where none was ever kept what is there now moved aside (round 29 C114, C143: "they
+    move it aside" read as the real governance folder); never a bare move aside of what holds the holds."""
     if kind == "damaged":
         if role == "holds":
             return (
@@ -9163,11 +9164,11 @@ def misplaced_fix(role: str, kind: str) -> str:
     if role == "governance":
         return (
             "they put the real governance folder (the one holding holds.json and audit.jsonl) back, from "
-            "wherever it was moved or from a copy; only where none was ever kept, they move it aside, "
-            "keeping a copy"
+            "wherever it was moved or from a copy; only where none was ever kept, they move what is there "
+            "now aside, keeping a copy"
         )
     if role == "holds":
-        back = "then put the hold list back from a copy they trust"
+        back = "then, if it listed any hold, put the hold list back from a copy they trust"  # round 29 C151
         return f"keeping a copy, they move it aside, {back}{SHUT_OPEN}"
     return f"keeping a copy, they move it aside{SHUT_OPEN}"
 
