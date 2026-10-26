@@ -846,15 +846,46 @@ _FINDER_PUNCT = "_-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$"
 that is no letter, digit or space ranks after these, then by itself."""
 _NAME_TOKEN = re.compile(r"\s+|\d+|[^\W\d_]+|.", re.S)
 _NameToken = tuple[int, int, str]
+_FINDER_MARKS = "\u0301\u0300\u0306\u0302\u030c\u030a\u0308\u030b\u0303\u0307\u0327\u0328"
+"""Combining marks in the order Finder ranks them (acute before grave, then breve, circumflex, caron, ring,
+diaeresis, double acute, tilde, dot above, cedilla, ogonek; ``E, É, è``); any other mark after these, by
+its code point (B13 round 29 C212)."""
 
 
-def _name_key(name: str) -> tuple[tuple[_NameToken, ...], tuple[int, ...]]:
+def _marks(base: list[str], name: str) -> tuple[tuple[int, ...], ...]:
+    """Fill ``base`` with ``name``'s characters in NFD less its combining marks (category Mn), and return
+    each letter's marks ranked by :data:`_FINDER_MARKS`, letters only and in order, with the trailing empty
+    entries trimmed: an unaccented name has ``()``, ``straße`` still ties with ``strasse``, and a digit run's
+    width moves no accent onto another letter (``1 Été`` before ``01 Été``, as Finder; C212)."""
+    marks: list[tuple[int, ...]] = []
+    letter = False  # whether the last base character is a letter, which a mark after it belongs to
+    for c in unicodedata.normalize("NFD", name):
+        if unicodedata.category(c) == "Mn" and base:
+            if letter:
+                rank = _FINDER_MARKS.find(c)
+                marks[-1] += (rank if rank >= 0 else len(_FINDER_MARKS) + ord(c),)
+        else:
+            base.append(c)
+            letter = c.isalpha()
+            if letter:
+                marks.append(())
+    while marks and not marks[-1]:
+        marks.pop()
+    return tuple(marks)
+
+
+def _name_key(
+    name: str,
+) -> tuple[tuple[_NameToken, ...], tuple[int, ...], tuple[tuple[int, ...], ...]]:
     """One path component's tokens ranked by class, space < punctuation < a number by its value < letters
-    case-folded, and the length of each run of digits, which only breaks a tie (``file1`` before
-    ``file01``)."""
+    case-folded, read from its letters with their accents taken off (NFD less its combining marks, so ``é``
+    and ``e`` tokenize alike, in NFC and NFD); the length of each run of digits, which only breaks a tie
+    (``file1`` before ``file01``); and the accents per letter (:func:`_marks`; B13 round 29 C212)."""
     tokens: list[_NameToken] = []
     widths: list[int] = []
-    for t in _NAME_TOKEN.findall(name):
+    base: list[str] = []
+    marks = _marks(base, name)
+    for t in _NAME_TOKEN.findall("".join(base)):
         if t.isspace():
             tokens.append((0, 0, ""))
         elif t.isdecimal():
@@ -865,23 +896,40 @@ def _name_key(name: str) -> tuple[tuple[_NameToken, ...], tuple[int, ...]]:
         else:
             rank = _FINDER_PUNCT.find(t)
             tokens.append((1, rank if rank >= 0 else len(_FINDER_PUNCT), t))
-    return tuple(tokens), tuple(widths)
+    return tuple(tokens), tuple(widths), marks
 
 
 def natural_key(
     path: str,
-) -> tuple[tuple[tuple[_NameToken, ...], ...], tuple[tuple[int, ...], ...], str, str]:
+) -> tuple[
+    tuple[tuple[_NameToken, ...], ...],
+    tuple[tuple[tuple[int, ...], ...], ...],
+    tuple[tuple[int, ...], ...],
+    str,
+    str,
+]:
     """Finder's order for folder paths (``localizedStandardCompare``): component by component, so a folder's
     children follow it; within one, space before punctuation before numbers by value before letters
-    case-folded; then the digit runs' widths, then lowercase first, then the raw path, so the order is total.
+    case-folded, an accent taken off its letter; then the accents (``e01`` before ``é1``), then the digit
+    runs' widths, then lowercase first (of the NFC form, so NFC and NFD names tie alike), then the raw path,
+    so the order is total.
     The walk sorts its unknown and empty folders, and logs them, by it once, so the alarm's first five and
     its "+N more", the stored list, the exclude line, status and ``sync -v`` all agree, as Finder lists them
     ('b 2', 'b2', 'b10'; '... 8', '... 9', '... 10'; B13 round 27 P128, round 28 I24, I105, I48). Measured
     against ``localizedStandardCompare`` on this Mac: equal on 37 named cases and on four of five random sets
     of about 180 names, two places apart on the fifth (a tie-break among names equal but for case or
-    zeros)."""
+    zeros), as round 28 measured; and, round 29 C212, on eight accent sets in NFC and in NFD (``Ecole, Été
+    2026, Etude``; ``e, é, f``; ``e1, e01, é1, é01``; ``E, É, è``; ``Viet, Viêt, Việt``), where the key
+    before put ``Été`` after ``Facture`` and, in NFD, first. Not Finder's: ``ß`` (Finder puts ``straße``
+    before ``strase``), and ``ø``, ``œ``, Thai vowels and kana, as before."""
     parts = [_name_key(part) for part in path.split("/")]
-    return tuple(t for t, _ in parts), tuple(w for _, w in parts), path.swapcase(), path
+    return (
+        tuple(t for t, _, _ in parts),
+        tuple(m for _, _, m in parts),
+        tuple(w for _, w, _ in parts),
+        unicodedata.normalize("NFC", path).swapcase(),
+        path,
+    )
 
 
 _EXCLUDE_SHOWN = 5  # folders named in one ready-to-paste exclude line; the rest are a count

@@ -16,6 +16,7 @@ import sqlite3
 import sys
 import threading
 import time
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from errno import EDEADLK
 from pathlib import Path
@@ -553,6 +554,31 @@ def test_the_empty_folders_keep_finders_order_in_the_alarm_the_stored_list_and_t
         "x/a10/c",
     ]
     assert by_key(["b2", "B 2", "b 2", "b_2", "b.2", "b-2"]) == ["b 2", "B 2", "b_2", "b-2", "b.2", "b2"]
+    # B13 round 29 C212: an accent is taken off its letter for the tokens and breaks a tie after them, before
+    # the zeros, acute before grave, in NFC and NFD alike (localizedStandardCompare, measured on this Mac)
+    finder = [
+        ["Ecole", "\u00c9t\u00e9 2026", "Etude", "Facture"],
+        ["e", "\u00e9", "f"],
+        ["\u00f1u", "nz", "oa"],
+        ["\u00d6lbild", "Oz", "Pa"],
+        ["e1", "e01", "\u00e91", "\u00e901"],
+        ["E", "\u00c9", "\u00e8"],
+        ["Ee", "\u00c9e", "\u00e8e"],
+        ["Viet", "Vi\u00eat", "Vi\u1ec7t"],
+        ["1 \u00c9t\u00e9", "01 \u00c9t\u00e9"],  # the accents per letter: a zero moves none of them
+        ["e1\u00e9", "e01\u00e9"],
+    ]
+    for form in ("NFC", "NFD"):
+        for listed in finder:
+            names = [unicodedata.normalize(form, n) for n in listed]
+            assert by_key(reversed(names)) == names, (form, names)
+    # Finder puts "straße" first; the accents' trim keeps it tied with "strasse", as the key before did
+    assert by_key(["strat", "stra\u00dfe", "strasse", "strase"]) == [
+        "strase",
+        "strasse",
+        "stra\u00dfe",
+        "strat",
+    ]
 
 
 def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
