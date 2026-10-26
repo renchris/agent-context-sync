@@ -1960,6 +1960,50 @@ and C213 (the two lane branches round 28 left: content-checked and deleted, `b13
 rehearsal kit's fix for macOS's midnight `/tmp` cleaner, which deleted the fixture's empty folder in three
 sandboxes (C149, C150), goes into round 30's script.
 
+### B13 round 29 landed (2026-10-26)
+
+All five lanes landed; the prompt is still v33. Notes `lanes/r29-<lane>.md`, lead notes `round29/lead-notes.md`. All
+114 items are built (111 from the run, and C221, C222 and C224 from the Codex follow-up `wf_ab84c1cf-f57`), each with a
+test that fails without it, measured on the pre-lane source or a mutant; C198 was the harvest's umbrella note, built
+as C199 to C206. Ruling 29's two halves landed in one push: lane B's `manifest.py` commit rode on lane RB's branch
+(`2cb94212` in `7d46666a`), after lane B's own first land went red on RB's parity test (nothing pushed). Corrections
+the lanes measured: C181's verifier fix never runs alone (a stub whose retries are used up is settled and never
+fetched again), so lane E added a once-per-manifest re-read; the verifier's pin for `ß` in C212 is not Finder's order
+on this Mac; C160 reproduces only under the Mac's UTF-8 locale (`[A-Z]` matches lowercase letters there under
+/bin/bash 3.2), which is why Codex, run in the C locale, could not reproduce it.
+
+One optional half left unbuilt, measured in lane RB's note: C145's (3), showing every per-source `alarm:` line at
+install. A v33 agent's prompt has no rule for an `alarm:` line, the round is code-only with v33 frozen, and the setup
+report already lists alarms.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `0d7dd246..673a72a0`, 9 commits |
+| RA | `19b8f77b..011195c6` and `2d245389..e8145527`, 18 commits |
+| RB | `57ff9fd2..7d46666a`, 14 commits, lane B's `manifest.py` among them |
+| B | `9ff886fe..5f7aba15` and `2ecc4d4a`, 14 commits |
+| D | `c29e522c..5f6f423b` and `6d72772b..b2b88e5d`, 9 commits |
+
+Learnings: from the fire (03:20) to the last land (17:50) took fourteen and a half hours; the lanes built for one to
+three and a half hours, and the rest was the land queue (eight lands, gates of 35 to 60 minutes) and CI (pytest's
+step up to 49 minutes, and one 40-minute wait for a macOS runner). A shared commit in a joint push wants one owner:
+lane B rebased its cherry-pick of a commit lane RB had since changed, so the `install.sh` half dropped and its
+CONTRACTS paragraph applied a second time (`a4e8a94a`, removed by `2ecc4d4a`). The classifier refused lane B's `kill`
+of its own land gate; letting the gate fail cost one gate run under the lock. A cross-vendor reviewer must run in the
+Mac's locale, or a locale defect reads as not reproducible (C160).
+
+Residuals the lanes named for round 30's harvest (in their notes): a refused audit append after a queue run's purge
+makes the sync refuse rather than publish, and a lost path-glob is flagged only when the list holds no glob at all
+(B, left as fail-closed); a regular heartbeat.json of damaged JSON keeps the record words in the shell report (RB);
+run shellcheck after every edit to a program inlined in install.sh, since two apostrophes in such comments broke the
+shell parse while the tests that read the programs passed (RB).
+
+Round 30: the round 29 workflow (`round29/round29-workflow.js` through `round30/tools/edit.py`, the guard line first
+in every prompt, the harvest list in `round30/tools/harvest-lead.txt`, the rehearsal kit's touch after every copy for
+macOS's `/tmp` cleaner) on this section's landed tip, BASE `b2724d9c`, ids C301 and up, outputs `round30/`; scenario C
+keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane changed the prompt. Codex reviewers
+run beside the Claude finders and verifiers, with the Mac's locale set.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
