@@ -1973,8 +1973,14 @@ on this Mac; C160 reproduces only under the Mac's UTF-8 locale (`[A-Z]` matches 
 /bin/bash 3.2), which is why Codex, run in the C locale, could not reproduce it.
 
 One optional half left unbuilt, measured in lane RB's note: C145's (3), showing every per-source `alarm:` line at
-install. A v33 agent's prompt has no rule for an `alarm:` line, the round is code-only with v33 frozen, and the setup
-report already lists alarms.
+install. The reason, as corrected in round 30 (C391; the first text said v33 had no `alarm:` rule at all): v33's step
+3 has an `alarm:` rule (show it, do not act on it, do not log it; README.md:569-573), but step 2, where install.sh's
+output arrives, has none, and a DLP alarm's text names `purge --queue`, so printing alarms at install waits for a
+prompt whose step 2 names `alarm:` lines as the person's (never run their commands, never purge), rehearsed with a
+published Contoso page the new rules match. The round is code-only with v33 frozen. Under v33 the person learns the
+count from the install summary's "held back: its page contained a credential" clause and, for a page already
+published, from the queued purge (status, and step 3's WAITING ON YOU line) and the WARNING in the install.out tail;
+they do not learn the stubbed page's name at install.
 
 | Lane | Landed (lane commits) |
 |---|---|
@@ -2003,6 +2009,48 @@ in every prompt, the harvest list in `round30/tools/harvest-lead.txt`, the rehea
 macOS's `/tmp` cleaner) on this section's landed tip, BASE `b2724d9c`, ids C301 and up, outputs `round30/`; scenario C
 keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane changed the prompt. Codex reviewers
 run beside the Claude finders and verifiers, with the Mac's locale set.
+
+### B13 round 30: v33 rehearsal, cross-lane review, harvest, Codex beside Claude (2026-10-26)
+
+Run `wf_3fba4411-29b` on `fa32c452` (123 agents, 0 errors, 83 minutes; the guard line first in every prompt). All six
+scenarios pass their EXPECTED; no name leaks; every fixture folder survived (the kit's touch). 107 findings, 100
+confirmed (0 turns, 27 wrongs, 73 small), 7 refuted (C330, C354, C375, C384, C388, C393, C406). None needs prompt
+text: v33 stays the prompt to paste. 16 of the wrongs are data integrity, most on round 29's own new paths: a
+suppression list that lost part of a purge passes the loss check, so purged content can be published again (C383,
+C401 to C403, C344); the records governance/ keeps do not survive the folder's loss, and the hold record's own fix
+erases a page under a hold on `all` (C381, C382, C351); a queued purge the queue lost cannot be redone from anything
+agentsync prints (C370, C312, C350); the setup report migrates and rewrites the manifest it reads (C394); the secret
+scan prints a key carried in a file's name (C328); a labelled mail an older reader let through stays published
+(C404, C360); a matter name used as a hold scope prints in a public-ready report (C386). Codex's four reviews ran
+(the locale fix held) and gave 13 of the confirmed items; its second opinion was refused by the classifier as data
+exfiltration: its prompt has no DIFF line, yet the slot's step 1 told its agent to add one, and it pasted 348 KB of
+diffs. The round stays Claude-only there (no re-ask); round 31's script writes a prompt with no DIFF line as it
+stands (`round31/tools/edit.py`). A triage workflow (`wf_41258a5e-941`) placed every item once and drafted the
+rulings, which the lead took with C391 moved to the lead.
+
+Lead rulings for round 30 (in `lanes/COMMON29.md`, mirrored in `docs/lanes/COMMON.md`), all code-only: (33) a
+suppression list that lost part of what a purge suppressed is lost, and only an audited act clears it (`purge
+--accept-lost <at>`); (34) what governance/ keeps survives the folder's loss (`purge-record.json` beside
+hold-record.json); (35) a queued purge the queue lost can be redone from what agentsync prints, and only a purge of
+that item closes it; (36) writing the setup report never writes the manifest; (37) a page the secret scan stubbed is
+announced once, by its alarm; (38) a mail an older label reader let through is screened again by the new one; (39)
+ruling 23 holds for every hold value and every one of agentsync's own words; (40) a governance list that lost what
+the audit trail records is the person's in every reader; (41) the hold record is named as itself in every reader;
+(42) ruling 28's governance fixes name what they mean, from what is on disk; (43) every purge-queue line says only
+what is true of the entries it counts; (44) both reports name a lost stop's kind one way, install.sh following
+Python; (45) ruling 31 holds for every stored reason, every spelling and its one-shot re-read. Not built by the
+lead's ruling: C371's optional (4), `--forget` running its own probe (`--forget` is the audited exit that erases
+nothing, and `purge --queue` already looks each entry up).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104, 111, 100 over rounds 2 and 4 to 30; turns as before, then 0; wrongs as before, then 27.
+
+Lanes (`--account auto`, CONTRACTS §16.203 to §16.207, land lock `/tmp/b13-r30-land.lock`, scratch under `round30/`,
+back-channel pane 3 or its successor): RA 31 (ruling 39's hold scope first, then the report halves of rulings 40,
+41, 36 and 43), B 37 (rulings 33 to 37 first: data integrity; one lane, since 33 to 35 all change governance.py's
+loss readers), RB 10 (ruling 39's install.sh half first, then ruling 44), E 8 (ruling 38 first, then 45), D 13 (CI's
+times first; the guides after the lanes; C380's /tmp note, whose kit half goes into round 31's script). Lead: C391,
+the corrected not-built reason for C145 (3) in "B13 round 29 landed" above.
 
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)

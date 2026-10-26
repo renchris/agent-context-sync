@@ -33069,3 +33069,23 @@ by id with its own reason and then `purge --queue --forget id=<its id> --source 
 `no trace`'s causes, and that only a manifest with no alias table gives the `no row` line. Test:
 `test_the_guides_purge_queue_row_names_the_sections_parts`, which reads every head and cause from setup_report and
 governance and makes the `no trace` and `no row` lines with `_purge_notes`, so the row cannot drift unnoticed again.
+
+### 16.203 Round 30: setup report: a hold scope kept private, the hold record and the lost lists as the person's, the Purge queue's columns and a report that never writes the manifest (2026-10-26, wave B13 round 30 lane RA)
+
+Reserved for round 30 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 30").
+
+### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
+
+Reserved for round 30 lane RB of B13.
+
+### 16.205 Round 30: a lost suppression's audited way out, the records governance/ keeps outside it, a lost queued purge redone, the read-only judge and one secret alarm (2026-10-26, wave B13 round 30 lane B)
+
+Reserved for round 30 lane B of B13.
+
+### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
+
+Reserved for round 30 lane E of B13.
+
+### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
+
+Reserved for round 30 lane D of B13.
