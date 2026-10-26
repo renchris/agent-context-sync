@@ -13840,6 +13840,75 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
     )
 
 
+def test_the_no_trace_line_says_forget_only_of_the_entries_a_run_looks_up_c336(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C336 (ruling 43): the no-trace line said every queued id with no row stays queued until
+    `purge --queue --forget` takes it off, while forget refuses any entry a run does not look up first, and a
+    run of the queue runs a DLP, erasure or operator entry and takes it off. The line splits by governance's
+    own test (`_probed`): those it looks up keep lane B's words, the rest get their own and never
+    `--forget`. Each line names the new start only when one of its own entries was queued before the first
+    run, and with no `_probed` (an older build) the split falls back to the same reasons, never to forget."""
+    unprobed = setup_report._NO_TRACE_RUN_UNPROBED
+    assert "--forget" not in unprobed and "stays queued" not in unprobed
+    assert {r.value for r in governance.KEPT_REASONS} == setup_report._FORGET_REASONS
+    cause = (
+        "A re-key leaves an alias, so what took such a row away is a purge that already ran, or an erasure."
+    )
+    new_start = (
+        "A re-key leaves an alias, so what took such a row away is a purge that already ran, an erasure, or "
+        "a new start (an entry queued before this manifest's first run)."
+    )
+    for probed, run in ((1, setup_report._NO_TRACE_RUN), (0, unprobed)):
+        [line] = setup_report._purge_notes(
+            Counter({"no row": 1}), Counter(), kept=0, alias_table=True, probed=probed
+        )
+        assert line == f"- no trace: 1 queued id has no row and is no alias. {cause} {run}", line
+    both = setup_report._purge_notes(
+        Counter({"no row": 3}),
+        Counter(),
+        kept=0,
+        alias_table=True,
+        probed=1,
+        split=Counter({"found nothing": 1}),
+        unprobed_before=1,
+    )
+    assert both[1:] == [
+        "- no trace: 1 queued id of an upstream deletion or a label escalation has no row and is no alias. "
+        f"{cause} {setup_report._NO_TRACE_RUN}",
+        "- no trace: 1 queued id of a DLP, erasure or operator purge has no row and is no alias. "
+        f"{new_start} {unprobed}",
+    ], both
+    # a mixed queue end to end: the kinds read by governance._probed, each counted once, and the new start
+    # named on the line of the operator entry queued before the first run, never on the upstream one's
+    seed = Seed(fake_mac["config"])
+    _one, inbox, _two = seed.ids()
+    seed.run(1, {}, day="2026-10-01")
+    seed.close()
+    reasons = governance.PurgeReason
+    for n, (reason, day) in enumerate(
+        (
+            (reasons.UPSTREAM_DELETED, datetime(2026, 10, 2, 9, 30, tzinfo=UTC)),
+            (reasons.OPERATOR, datetime(2026, 9, 1, 9, 30, tzinfo=UTC)),
+            (reasons.ERASURE_REQUEST, datetime(2026, 10, 2, 9, 30, tzinfo=UTC)),
+            (reasons.DLP_REMEDIATION, datetime(2026, 10, 2, 9, 30, tzinfo=UTC)),
+        )
+    ):
+        selector = governance.PurgeSelector(source_id=inbox, stable_id=f"id-that-was-never-a-row-{n}")
+        governance.enqueue_purge(seed.config.state_paths.root, selector, reason, now=day)
+    part = status_parts(fake_mac)[1]["Purge queue"]
+    trace = [ln for ln in part.splitlines() if ln.startswith("- no trace: ")]
+    assert trace == [
+        "- no trace: 1 queued id of an upstream deletion or a label escalation has no row and is no alias. "
+        f"{cause} {setup_report._NO_TRACE_RUN}",
+        "- no trace: 3 queued ids of a DLP, erasure or operator purge have no row and are no alias. "
+        f"{new_start} {unprobed}",
+    ], part
+    # an older governance with no _probed: the same split by reason, and no forget for the operator entry
+    monkeypatch.delattr(governance, "_probed")
+    assert status_parts(fake_mac)[1]["Purge queue"] == part
+
+
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
     fake_mac: dict[str, Path],
 ) -> None:

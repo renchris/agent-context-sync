@@ -32517,6 +32517,8 @@ of round 28's pinned head), `test_a_queued_id_the_split_judged_is_counted_once_a
 `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place`.
 Amended 2026-10-26, §16.203 C304: the split's heads name their column, `no row, not judged yet`, `no row, docs
 history not searched yet` and `no row, found nothing in the docs history`; `_SPLIT_KINDS` keeps its names.
+Amended 2026-10-26, §16.203 C336: the no-trace line ends in `_NO_TRACE_RUN` only for the entries a run looks up
+first (`governance._probed`); a DLP, erasure or operator entry's line ends in `_NO_TRACE_RUN_UNPROBED`.
 
 **A credential stub's alarm names no page in the report** (C145's report half, after lane B's sha). Lane B's alarm
 names a page the secret scan stubbed by its mirror path (`<source>: mirror/<source>/<path>.md is a `contains a
@@ -33179,6 +33181,31 @@ are what the manifest holds now and the split is governance's judgment, and `_pu
 as `no row` less the split. `_SPLIT_KINDS` and governance's `NOT_LOOKED_UP` keep their names, since status and the
 dry run read them. The guide's Purge queue row and its test give the new heads (§16.198, §16.202 amended). Test:
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304`.
+
+C336 (2026-10-26): **the no-trace line names `--forget` only for the entries a run looks up** (C336; ruling 43;
+amends §16.198 C188). The line
+said of every queued id with no row and no alias that one whose id history names nothing stays queued until `purge
+--queue --forget` takes it off. That holds only for an upstream deletion or a label escalation by source and id,
+the entries a run of the queue looks up before it runs them (`governance._probed`, which `run_purge_queue` and
+`forget_queued` both follow). A DLP, erasure or operator entry is run as it is, reads verified with nothing erased
+and leaves the queue, and forget refuses it, so the line sent the reader to a command that would refuse. The report
+now counts the no-trace ids by that same test (`_purge_split` returns the probed count beside the split, and on a
+failure counts it alone). `_is_probed` asks governance's test per entry and, where it is missing (an older
+build) or raises on that entry, applies the same rule to the reason's value (`_FORGET_REASONS`, which a test keeps
+equal to `KEPT_REASONS`), so no DLP, erasure or operator entry is ever said to wait for `--forget`. The probed ones
+keep lane B's words
+(`_NO_TRACE_RUN`). The rest get their own line, which never names `--forget`: a run does not look such a purge up
+first, but runs it, erases what history still names and takes it off the queue even when history names nothing
+(`_NO_TRACE_RUN_UNPROBED`). When the queue holds both kinds each head names its kind. Each line gives its own
+cause clause (what took such a row away), and names a new start among the causes only when one of its own
+entries was queued before the manifest's first run: `_purge_split` counts those per kind, and a probed entry
+queued before it is almost always one the split already judged, so the new start mostly belongs on the other
+line. The line over a manifest with no alias table is unchanged: it makes no claim about the run. The guide's
+Purge queue row says both kinds the same way. Test:
+`test_the_no_trace_line_says_forget_only_of_the_entries_a_run_looks_up_c336`, which checks each kind, the mixed
+lines, a queue of all four reasons end to end with the new start on the operator entry's line, and the same
+section with governance's `_probed` deleted; the new start test in tests/test_cli.py reads the erasure entry's
+new words.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

@@ -9289,12 +9289,21 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "nothing live in its place, no row at all, or not looked up (the `not looked up:` line under the "
             "table says why)."
         ]
-    split, before = _purge_split(config, no_row) if no_row else (Counter(), 0)
+    split, before, probed = _purge_split(config, no_row) if no_row else (Counter(), Counter(), 0)
     return [
         *intro,
         "",
         *_table(header, rows),
-        *_purge_notes(totals, aliased, kept=kept, alias_table=alias_table, split=split, before=before),
+        *_purge_notes(
+            totals,
+            aliased,
+            kept=kept,
+            alias_table=alias_table,
+            split=split,
+            before=before["probed"],
+            probed=probed,
+            unprobed_before=before["unprobed"],
+        ),
         *_not_looked_up(skipped),
         _purge_audit(
             governance.audit_path(config.state_paths.root), min((key[3] for key in grouped), default="")
@@ -9334,13 +9343,17 @@ it, or none will), runnable but not looked up in the docs history yet, or looked
 nothing."""
 
 
-def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counter[str], int]:
+def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counter[str], Counter[str], int]:
     """Of ``entries`` (queued ids with no row and no alias), how many governance's own split puts in each of
     :data:`_SPLIT_KINDS`, each counted once, by its names (``UNLISTED_HEAD``, ``not_looked_up``,
     ``UNRESOLVED_HEAD``: B13 round 29 ruling 25, C123, C159, C113, C180, C188, C214), and how many of the rest
     were queued before this manifest's first run (a new start the likelier cause than a purge that ran; C159:
-    never an entry the split judged). Read-only; (empty, 0) on any failure, which keeps the plain words."""
+    never an entry the split judged), counted apart for the ones a run of the queue looks up before it runs
+    them (``probed``) and the rest (``unprobed``), as each kind has a no-trace line of its own, and how many
+    of the rest are probed (:func:`_is_probed`: round 30 ruling 43, C336). Read-only; (empty, empty, the
+    probed count over every entry) on any failure, which keeps the plain words."""
     out: Counter[str] = Counter()
+    judged: set[int] = set()
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
@@ -9356,17 +9369,50 @@ def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counte
             elif why.startswith(governance.UNRESOLVED_HEAD):
                 out["found nothing"] += 1
                 judged.add(id(q))
-        before = 0
+        before: Counter[str] = Counter()
         conn = _open_manifest_ro(expand(config.state_paths.db), 0.5)
         if conn is not None:
             try:
                 started = governance._first_run_started(conn)
             finally:
                 conn.close()
-            before = sum(1 for q in entries if id(q) not in judged and governance._queued_before(q, started))
+            before = Counter(
+                "probed" if _is_probed(q) else "unprobed"
+                for q in entries
+                if id(q) not in judged and governance._queued_before(q, started)
+            )
     except Exception:
-        return Counter(), 0
-    return +out, before
+        return Counter(), Counter(), _probed_count(entries, set())
+    return +out, before, _probed_count(entries, judged)
+
+
+def _probed_count(entries: Sequence[QueuedPurge], judged: set[int]) -> int:
+    """How many of ``entries`` the split did not judge (``judged`` holds their ``id()``) a run of the queue
+    looks up before it runs them (:func:`_is_probed`), so only those are said to stay queued until
+    ``--forget`` (round 30 ruling 43, C336)."""
+    return sum(1 for q in entries if id(q) not in judged and _is_probed(q))
+
+
+_FORGET_REASONS = frozenset({"upstream-deleted", "label-escalation"})
+"""The reasons ``governance.KEPT_REASONS`` holds (a test keeps them equal): the only entries a run of the
+queue looks up first and ``--forget`` takes, read by value when governance's own test is missing or raises
+(C336)."""
+
+
+def _is_probed(q: QueuedPurge) -> bool:
+    """Whether a run of the queue looks ``q`` up before it runs it, by governance's own test (``_probed``: an
+    upstream deletion or a label escalation by source and id, no docs selector), else, on an older build with
+    no such test or one that raises on this entry, by the same rule on the reason's value
+    (:data:`_FORGET_REASONS`), so no DLP, erasure or operator entry is ever said to wait for ``--forget``
+    (round 30 ruling 43, C336)."""
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return bool(governance._probed(q))
+    except Exception:
+        sel = q.selector
+        reason = str(getattr(q.reason, "value", q.reason))
+        return reason in _FORGET_REASONS and bool(sel.source_id and sel.stable_id) and not sel.docs_glob
 
 
 _NOT_LOOKED_UP = {
@@ -9427,7 +9473,18 @@ _NO_TRACE_RUN = (
 )
 """What a run of the queue does with a queued id the manifest holds no trace of, in lane B's words (ruling 26,
 C189): it takes off only what history names; one it finds nothing for leaves the queue only by an audited
-forget, never a blind run (P112)."""
+forget, never a blind run (P112). Said only of the entries a run looks up first (``governance._probed``)."""
+
+_NO_TRACE_RUN_UNPROBED = (
+    "A run of the queue does not look a DLP, erasure or operator purge up first: it runs each one, erases "
+    "what history still names for it and takes it off the queue, even when history names nothing"
+)
+"""What a run of the queue does with a queued id of any other reason the manifest holds no trace of (round
+30 ruling 43, C336): ``run_purge_queue`` runs it unprobed and drops it, and ``forget_queued`` refuses it, so
+these words never name ``--forget``."""
+
+_NO_TRACE_KINDS = (" of an upstream deletion or a label escalation", " of a DLP, erasure or operator purge")
+"""The no-trace line's two kinds, named in its head only when the queue holds both (C336)."""
 
 
 def _split_lines(
@@ -9473,10 +9530,19 @@ def _purge_notes(
     alias_table: bool,
     split: Counter[str] | None = None,
     before: int = 0,
+    probed: int | None = None,
+    unprobed_before: int = 0,
 ) -> list[str]:
     """What the fates under the table mean for a run of the queue, in fixed words and counts: the queued ids
     that are now an alias, the ones that name a file listed now, and the ones the manifest holds no trace
     of. A line is there only when its count is not 0.
+
+    ``probed`` is how many of the no-trace ids a run of the queue looks up before it runs them (an upstream
+    deletion or a label escalation): those stay queued until ``--forget`` when history names nothing, and the
+    rest (a DLP, erasure or operator purge) a run runs and takes off, so they get their own line and words
+    (round 30 ruling 43, C336). None says them all in the first words. ``before`` and ``unprobed_before``
+    count each kind's ids queued before this manifest's first run, so a line names the new start among its
+    causes only when one of its own entries was queued before it.
 
     ``alias_table`` is False for a manifest from before ``item_aliases``. No id was looked up as an alias
     there, and a re-key by that build left none. So the last line says only that the ids have no row, not
@@ -9519,17 +9585,32 @@ def _purge_notes(
         out += _split_lines(split, AGENTSYNC_BIN, governance.unlisted_purges, governance.unresolved_purges)
     traced = fates["no row"] - sum(split.values())
     if traced > 0 and alias_table:
-        took = (
-            "a purge that already ran, an erasure, or a new start (an entry queued before this manifest's "
-            "first run)"
-            if before
-            else "a purge that already ran, or an erasure"
-        )
-        out.append(
-            f"- no trace: {_plural(traced, 'queued id')} "
-            + ("has no row and is no alias" if traced == 1 else "have no row and are no alias")
-            + f". A re-key leaves an alias, so what took such a row away is {took}. {_NO_TRACE_RUN}"
-        )
+        # round 30 ruling 43, C336: only the entries a run looks up first stay queued until --forget, and a
+        # line names the new start only when one of its own entries was queued before the first run
+        looked = traced if probed is None else max(0, min(probed, traced))
+        kinds = [
+            (n, early, run, kind)
+            for n, early, run, kind in zip(
+                (looked, traced - looked),
+                (before, unprobed_before),
+                (_NO_TRACE_RUN, _NO_TRACE_RUN_UNPROBED),
+                _NO_TRACE_KINDS,
+                strict=True,
+            )
+            if n
+        ]
+        for n, early, run, kind in kinds:
+            took = (
+                "a purge that already ran, an erasure, or a new start (an entry queued before this "
+                "manifest's first run)"
+                if early
+                else "a purge that already ran, or an erasure"
+            )
+            out.append(
+                f"- no trace: {_plural(n, 'queued id')}{kind if len(kinds) == 2 else ''} "
+                + ("has no row and is no alias" if n == 1 else "have no row and are no alias")
+                + f". A re-key leaves an alias, so what took such a row away is {took}. {run}"
+            )
     elif traced > 0:  # B13 round 29 C113, C180, C188, C214: only a manifest that has no alias table says so
         out.append(
             f"- no row: {_plural(traced, 'queued id')} "

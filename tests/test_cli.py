@@ -9635,7 +9635,9 @@ def test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start(
     assert "- no row, docs history not searched yet: 1 queued purge from before the new start; " in part, part
     assert "- no trace: 1 queued id has no row and is no alias." in part, part
     assert "a purge that already ran, an erasure, or a new start (an entry queued before" in part, part
-    assert setup_report._NO_TRACE_RUN in part, part
+    assert setup_report._NO_TRACE_RUN_UNPROBED in part, (
+        part
+    )  # an erasure request: run, never forgotten (C336)
     for never in ("not resolvable", "no alias table", "- found nothing", "takes them off the queue"):
         assert never not in part, (never, part)
     # a queue run looks it up and finds nothing: said so, never invited, still counted once
