@@ -32809,3 +32809,17 @@ shown`, its FAIL's `set by <owner>` reads `(owner not shown)` with the scope, ti
 owner the audit trail records is cut wherever a line quotes it. Test:
 `test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut`, which reads the match from
 `_build_redactor` and makes the lost hold's forms with `_cut_holds`.
+
+**The guide quotes both short-and-unread lost forms** (C209; `docs/deploy/setup-feedback.md`). The guide quoted a
+manifest too short to be one only beside a heartbeat.json that records earlier passes, the report's
+`_LOST_FACTS['short']` and install.sh's tail, and neither form beside one that cannot be read, which
+`_manifest_lost_kind` reaches as `short-unread` and install.sh as `cshort` with `cunread` (`STATE_LOST_SHORT` with
+`STATE_LOST_UNREAD` for the NEXT); data-governance.md already quotes all four of status's endings. The "Failed at
+step N" bullet adds `empty or too short to be a manifest beside a heartbeat.json that cannot be read: the person's
+to fix`, its move still `moved aside with heartbeat.json`: built after lane RA's ruling 30 (490691340), which keeps
+heartbeat.json's fix first off it but for this account's own heartbeat whose mode alone refuses it, where the chmod
+leads in the missing file's words. The step 1 passage adds install.sh's `empty or too short to be a manifest, and
+heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out` for the tail and the NEXT, with the
+damaged manifest's fix and the chmod first in the mode case (`chbmode`, `STATE_LOST_HBFIX`). Tests:
+`test_the_guide_gives_the_reports_step_2_state_outcomes` (the report's form, read from `_LOST_FACTS` and the
+source's `whose`) and `test_the_guide_gives_the_lost_unread_tail_and_next` (install.sh's two `lfact` lines).

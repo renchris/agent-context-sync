@@ -6873,7 +6873,8 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
     `setup_report`'s own words and the guide quotes it. B13 round 29 C224: the guide gave a misplaced -wal or
     -shm the status step, "which lets init run", though init and add-source stop on either side at the config
     step (E65, I16); the config-step form is quoted, and the status step only for a readable -shm folder on a
-    --source-local run."""
+    --source-local run. C209: the too-short manifest beside an unreadable heartbeat.json is quoted too, the
+    person's with its own move, never heartbeat.json's fix first."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6914,6 +6915,16 @@ def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
         assert f"`{facts['unread']}: {unread}`" in page, unread
     assert "whose = _HEARTBEAT_CHMOD_FIRST if chmod else _UNREAD_PERSONS if unread else" in flat
     assert f"`{facts['short']}`" in page
+    # B13 round 29 C209: the short manifest beside an unreadable heartbeat.json, the person's, its move kept
+    assert (
+        'whose = _HEARTBEAT_CHMOD_FIRST if chmod else _UNREAD_PERSONS if unread else "the person\'s to fix"'
+        in flat
+    )
+    assert (
+        '"the file was restored or moved aside with heartbeat.json" if lost_kind.startswith("short")' in flat
+    )
+    assert f"`{facts['short-unread']}: the person's to fix`" in page
+    assert f"`{facts['short-unread']}: {setup_report._HEARTBEAT_CHMOD_FIRST}`" not in page
 
 
 def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
@@ -6964,7 +6975,8 @@ def test_the_guide_gives_the_lost_unread_tail_and_next() -> None:
     beside a heartbeat.json that cannot be read lost, never a first start, and added its step 1 tail and step
     2 NEXT; the guide defined a lost manifest only beside a heartbeat that records an earlier pass and quoted
     neither. It widens the definition and quotes both, read from `manifest.LOST_MANIFEST_UNREAD` and
-    install.sh."""
+    install.sh. B13 round 29 C209: and the too-short manifest's tail and NEXT beside one, read from
+    install.sh's two `lfact` lines."""
     from agentsync import manifest  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6986,6 +6998,13 @@ def test_the_guide_gives_the_lost_unread_tail_and_next() -> None:
     assert "So is one beside a heartbeat.json that is there but cannot be read" in page
     assert "a missing heartbeat.json, or a link to nothing there, is still a first start" in page
     assert "B13 round 27 P111, ruling 17" in page
+    # B13 round 29 C209: the too-short manifest's tail and NEXT beside an unreadable heartbeat.json
+    short = (
+        "empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes"
+        " cannot be ruled out"
+    )
+    assert install.count(f'|| lfact="{short}"') == 2  # step 1's tail and step 2's NEXT
+    assert f"the tail and the `NEXT:` say `{short}` with the same damaged-manifest fix" in page
 
 
 def test_a_fifo_at_the_wal_stops_nothing_as_the_contract_says(tmp_path: Path) -> None:

@@ -445,7 +445,12 @@ install.log (a `--list-folders` run is not an install run):
   (B13 round 28 ruling 21), and only where heartbeat.json is this account's own file whose mode alone refuses it
   `missing beside a heartbeat.json that cannot be read: heartbeat.json's chmod first, the agent's, then the file's, the person's`
   (B13 round 29 ruling 30); a manifest too short to be one is
-  `empty or too short to be a manifest though heartbeat.json records earlier passes` (B13 round 28 I92).
+  `empty or too short to be a manifest though heartbeat.json records earlier passes` (B13 round 28 I92), and beside a
+  heartbeat.json that cannot be read
+  `empty or too short to be a manifest beside a heartbeat.json that cannot be read: the person's to fix`,
+  its move still `moved aside with heartbeat.json`, never heartbeat.json's fix first; only where heartbeat.json is
+  this account's own file whose mode alone refuses it does the chmod lead, in the same words as the missing file's
+  (B13 round 29 C209; ruling 30).
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
   line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
@@ -823,7 +828,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   earlier passes, is lost too (lane B's round 28 I92): the tail and the `NEXT:` say `empty or too short to be a
   manifest, though heartbeat.json beside it records earlier passes` and give the damaged manifest's fix, `keeping a
   copy, they restore it from a copy they trust, or move it aside and heartbeat.json with it, so the next sync starts a
-  new manifest`. A folder, a fifo, a socket or a link where the -wal
+  new manifest`. Beside a heartbeat.json that cannot be read, the tail and the `NEXT:` say
+  `empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`
+  with the same damaged-manifest fix; where heartbeat.json is this account's own and only its mode refuses it, its
+  `chmod 600` leads, as for a missing file (B13 round 29 C209). A folder, a fifo, a socket or a link where the -wal
   or -shm belongs is no mode either, judged before the side files' access (round 24 B52: it got the agent's chmod
   words, or none): `state-side-notfile`, `; step 2 stops <at its step> on <the side>, which <is what> (not damage):
   fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,
