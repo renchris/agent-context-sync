@@ -32571,6 +32571,13 @@ matched lane RA's `setup_report._cut_holds` on their branch (measured). Tests:
 report's once it has `_LOST_HOLD_RE`) and `test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report`
 (an owner set and one released are cut, `the records owner` and a purge line's owner stay).
 
+**C215: the "both readers" hold tests use the agentsync report's own Redactor (`tests/test_install_oneshot.py`).**
+`test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers` built its own Redactor with a
+copy of `setup_report`'s registration rule, so the parity it asserts held against the copy: with
+`_build_redactor`'s `exact` forced False the test stayed green (the verifier's mutation). It and its two siblings
+(the multi-line hold and the one-word hold value) now take `setup_report._build_redactor` over a `_Run` of the same
+home (`_agentsync_redactor`, HOME set to it); measured, the same mutation fails the `IT` rows in both locales.
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.

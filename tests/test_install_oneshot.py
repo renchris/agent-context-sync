@@ -40,7 +40,6 @@ import subprocess
 import sys
 import threading
 import time
-import types
 import unicodedata
 import urllib.parse
 from collections.abc import Callable, Iterable, Sequence
@@ -2850,7 +2849,17 @@ def _shell_hold_redact(
     return cp.stdout.splitlines()
 
 
-def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tmp_path: Path) -> None:
+def _agentsync_redactor(tmp_path: Path, cfg: Path, monkeypatch: pytest.MonkeyPatch) -> setup_report.Redactor:
+    """The agentsync report's own Redactor for the home ``_shell_hold_redact`` writes (B13 round 29 C215: the
+    "both readers" tests copied its hold registration rule, so a change to _build_redactor left them
+    green)."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    return setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+
+
+def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """B13 round 24 B51: redact_stream and setup_report's Redactor give the same lines for a config hold of
     several lines (TOML's multi-line and literal forms) and a hand-edited holds.json reason with a newline
     and a JSON escape in it, each read by hold_values as _hold_values reads it: the values whole and line by
@@ -2872,11 +2881,7 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
         "the legal team keeps the matter list; MATTER CONTOSO V. stays a word",
     ]
     lines = [ln for s in said for ln in s.splitlines()]
-    paths_ = types.SimpleNamespace(root=str(state))
-    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
-    red = setup_report.Redactor()
-    for value in setup_report._hold_values(run):  # as _build_redactor registers them
-        red.add("value", value, ignore_case=True)
+    red = _agentsync_redactor(tmp_path, cfg, monkeypatch)
     shown = _shell_hold_redact(tmp_path, [hold], lines)
     assert shown == [red.redact(ln) for ln in lines], shown
     for word in ("Matter", "Jane", "Pat", "Fabrikam", "Quinn"):
@@ -2885,27 +2890,23 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
 
 
 @pytest.mark.parametrize("owner", ["Early", "Mark", "Page"])
-def test_a_one_word_hold_value_is_cut_alike_by_both_readers(tmp_path: Path, owner: str) -> None:
+def test_a_one_word_hold_value_is_cut_alike_by_both_readers(
+    tmp_path: Path, owner: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """B13 round 25 D80 (D-L2), both halves: a one-word owner that is a report word in Python's list only
     (Early), in the shell's only (Mark) or in both (Page), quoted on a line other than the cut hold line, is
     cut by the shell's redact_stream and by setup_report's Redactor with lane RA's _hold_values alike."""
     hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
     line = f"F4 | step 3 | question | 1 | {owner} said the hold stays on | -"
-    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
     shown = _shell_hold_redact(tmp_path, [hold], [line])
-    cfg = tmp_path / "home" / "agent-context" / "sources.toml"
-    paths_ = types.SimpleNamespace(root=str(state))
-    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
-    red = setup_report.Redactor()
-    for value in setup_report._hold_values(run):
-        red.add("value", value, ignore_case=True)
+    red = _agentsync_redactor(tmp_path, tmp_path / "home" / "agent-context" / "sources.toml", monkeypatch)
     assert shown == [red.redact(line)] == ["F4 | step 3 | question | 1 | <value> said the hold stays on | -"]
 
 
 @pytest.mark.parametrize("lang", [None, "en_US.UTF-8"])
 @pytest.mark.parametrize("owner", ["IT", "It", "rm", "Rm"])
 def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers(
-    tmp_path: Path, owner: str, lang: str | None
+    tmp_path: Path, owner: str, lang: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Lane RA's round 28 I7, the shell half: with a hold owner "IT" the folded cut turned every "it" of the
     report's own prose into <value>. A two-letter initialism written all in capitals is cut as written (flag
@@ -2920,15 +2921,7 @@ def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_r
         "RM said rm stays",
     ]
     shown = _shell_hold_redact(tmp_path, [hold], lines, lang)
-    state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
-    cfg = tmp_path / "home" / "agent-context" / "sources.toml"
-    paths_ = types.SimpleNamespace(root=str(state))
-    run = types.SimpleNamespace(config_path=cfg, config=types.SimpleNamespace(state_paths=paths_))
-    red = setup_report.Redactor()
-    for value in setup_report._hold_values(run):
-        norm = setup_report._norm(value)
-        exact = len(norm) == 2 and value.strip().isupper() and norm in setup_report._TWO_LETTER_WORDS
-        red.add("value", value, ignore_case=not exact)
+    red = _agentsync_redactor(tmp_path, tmp_path / "home" / "agent-context" / "sources.toml", monkeypatch)
     assert shown == [red.redact(ln) for ln in lines], shown
     cut = "F4 | step 3 | question | 1 | <value> said the hold stays on | -"
     expected = {
