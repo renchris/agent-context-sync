@@ -267,6 +267,42 @@ def test_the_one_shot_re_read_never_repeats_when_its_reason_still_holds_a_path(
     assert tries == ["Contoso renamed doc.potx"]
 
 
+@pytest.mark.parametrize("where", ["another root's staging", "the home folder"])
+def test_a_stub_whose_path_is_outside_this_staging_folder_is_read_again_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """B13 round 30 C365: the two tests above reach the re-read through ``_names_a_path``'s own staging branch
+    (the reason names this config's staging folder, or is cut inside it), so they pass with
+    ``_stub_with_a_path`` returning False. A stored reason that names another root's ``/staging/`` (a moved
+    ``state_dir``) or a home folder path is one only ``_stub_with_a_path`` reads: it is converted exactly once
+    more past its retries, and never again."""
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    tries = _counted(monkeypatch)
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    assert len(tries) == 1 + cycle_mod._CONVERT_RETRIES
+    folder = (
+        "/Volumes/Contoso/agentsync/staging/ab12" if where != "the home folder" else f"{Path.home()}/Contoso"
+    )
+    row = _row(config, "Contoso renamed doc.potx")
+    with Manifest(config.state_paths.db) as m:
+        m.set_state(
+            "src",
+            row.stable_id,
+            RowState.QUARANTINED,
+            f"conversion failed: python-pptx cannot read the deck: file '{folder}/Contoso renamed doc.potx'",
+        )
+    tries.clear()
+    assert run(config).exit_code == 0
+    assert tries == ["Contoso renamed doc.potx"], "past the retries: the one-shot re-read"
+    for _ in range(2):
+        assert run(config).exit_code == 0
+    assert tries == ["Contoso renamed doc.potx"], "the re-read is recorded: never again"
+
+
 def test_pathless_replaces_the_longest_form_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """B13 round 29 C183: with ``/tmp`` resolving to ``/private/tmp``, the shorter form went first and left
     ``/private`` behind (``file '/privateContoso Q3.pptx'``). Each loop now takes the longest form first."""

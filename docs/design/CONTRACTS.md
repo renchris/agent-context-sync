@@ -33149,6 +33149,14 @@ sync with no home fold, a home folder long enough that the stored reason is cut 
 the row, the HEAD page, QUARANTINE.tsv or the source's manifest file, the reason ending `~/bin/pandoc`, and a third
 sync that leaves the page as it is).
 
+**A test reaches `_stub_with_a_path` (C365, ruling 45; tests only).** §16.201 C181's two end-to-end tests reach the
+re-read through `_names_a_path`'s own branch (a reason naming this config's staging folder, or cut inside it), so
+they passed with `_stub_with_a_path` returning False; a short `state_dir` would too. Only a stored reason whose path
+is outside this config's staging folder needs it. Test:
+`test_convert_family.py::test_a_stub_whose_path_is_outside_this_staging_folder_is_read_again_once` (the older build
+settles the stub, its reason is set to name `/Volumes/Contoso/agentsync/staging/ab12/...` or a path under the home
+folder; one run converts it once, and two more do not).
+
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
 Reserved for round 30 lane D of B13.
