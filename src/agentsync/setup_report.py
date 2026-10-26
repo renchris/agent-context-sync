@@ -1271,11 +1271,37 @@ list, so a quoted value stays cut (D80's rule fails safe); ``#`` stands for a co
 images line's ``3 files: 3 with a page``, whose ``with a page`` alone is too short to be one). A test keeps
 every literal of this module that holds the word inside one."""
 _FIXED_VALUE_RES = tuple(re.compile(re.escape(p).replace(r"\#", r"\d+")) for p in _FIXED_VALUE_PHRASES)
-_FIXED_CAPS_PHRASES = ("IT request", "IT-draft line", "IT draft: ", "left for IT", "(for IT: ")
-"""The report's own fixed phrases that hold "IT" in capitals, the one two-letter initialism of
+_FIXED_CAPS_PHRASES = (
+    "IT request",
+    "IT-draft line",
+    "IT draft: ",
+    "left for IT",
+    "(for IT: ",
+    # agentsync's own lines the report embeds (Doctor, the install.out tail, Status, Recent errors; B13 round
+    # 29 C106, C162): whole clauses, so a person's own words seldom hold one
+    "(IT's on a managed Mac)",
+    "name any IT action",
+    "IT action: ",
+    "IT app registration",
+    "work without IT",
+    "for IT: Developer ID build",
+    "for the IT admin",
+    "if IT allows it",
+    "IT must allow",
+    "ask IT for tenant admin consent",
+    "ask IT for admin consent",
+    "ask IT whether a Conditional Access",
+    "ask IT to revoke sessions",
+    "ask IT to withdraw any PPPC profile",
+    "IT fills",
+    "When IT replies",
+)
+"""agentsync's fixed phrases that hold "IT" in capitals, the one two-letter initialism of
 :data:`_TWO_LETTER_WORDS` it prints so: a hold value "IT" is cut as written (B13 round 28 I7), so the IT
-draft's line and the IT request's words would read "<value> draft"; a match inside one is the report's word,
-as :data:`_FIXED_VALUE_PHRASES` are. A test keeps every literal of this module that holds it inside one."""
+draft's line and the IT request's words would read "<value> draft", and doctor's ``local sources work without
+IT`` made every report under such a hold private only (B13 round 29 C106, C162); a match inside one is
+agentsync's word, as :data:`_FIXED_VALUE_PHRASES` are. A test keeps every literal of every module under
+src/agentsync that holds it inside one, never a bare "ask IT": a quoted value stays cut (D80)."""
 _FIXED_CAPS_RES = tuple(re.compile(re.escape(p)) for p in _FIXED_CAPS_PHRASES)
 _FIXED_VALUE_REACH = max(map(len, (*_FIXED_VALUE_PHRASES, *_FIXED_CAPS_PHRASES))) + 20  # the counts' digits
 

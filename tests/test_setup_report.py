@@ -1993,31 +1993,67 @@ def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun(fake_mac:
     red = setup_report.Redactor()
     red.add("value", "Do", ignore_case=True)
     assert red.redact("do it, Do") == "<value> it, <value>"
-    # every literal of the report's that holds "IT" reads whole under the exact cut (its fixed phrases)
-    tree = ast.parse(Path(setup_report.__file__).read_text(encoding="utf-8"))
-    skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
-    skipped |= {
-        id(leaf)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and any(isinstance(t, ast.Name) and t.id == "_FIXED_CAPS_PHRASES" for t in node.targets)
-        for leaf in ast.walk(node.value)
-    }
+    # every literal that holds "IT" reads whole under the exact cut (its fixed phrases): the report's, and
+    # (B13 round 29 C106, C162) every module's under src/agentsync, whose lines Doctor, the install.out tail,
+    # Status and Recent errors embed
     caps = re.compile(r"(?<![A-Za-z])IT(?![A-Za-z])")
-    literals = {
-        n.value
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Constant)
-        and isinstance(n.value, str)
-        and id(n) not in skipped
-        and caps.search(n.value)
-    }
-    assert literals
+    literals: set[str] = set()
+    for module in sorted(Path(setup_report.__file__).parent.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
+        skipped |= {
+            id(leaf)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "_FIXED_CAPS_PHRASES" for t in node.targets)
+            for leaf in ast.walk(node.value)
+        }
+        literals |= {
+            n.value
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and id(n) not in skipped
+            and caps.search(n.value)
+        }
+    assert len(literals) > 30, literals
     red = setup_report.Redactor()
     red.add("value", "IT", ignore_case=False)
     assert [t for t in literals if red.redact(t) != t] == [] and not red.private_only
     for phrase, rx in zip(setup_report._FIXED_CAPS_PHRASES, setup_report._FIXED_CAPS_RES, strict=True):
         assert any(rx.search(t) for t in literals), f"{phrase!r} is no fixed text of the report's"
+
+
+def test_a_capital_it_hold_value_leaves_agentsyncs_own_it_lines_whole(fake_mac: dict[str, Path]) -> None:
+    """B13 round 29 C106, C162 (ruling 23): with a hold value "IT", doctor's own ``local sources work without
+    IT``, the CLI's ``name any IT action`` and doctor's Rosetta fix ``(IT's on a managed Mac)`` were cut to
+    <value>, and the report went private only, its issue link gone, with the value quoted nowhere. Every such
+    line is agentsync's fixed phrase; a quote of the value is still cut, and still makes it private."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text(f'[governance]\nhold = true\nhold_reason = "IT"\nhold_owner = "Avery Quill"\n\n{plain}')
+    said = (
+        "[ok  ] graph.client_id — not set: Graph sources are off; local sources work without IT",
+        "run `~/.local/bin/agentsync graph login` (errors above name any IT action)",
+        "[FAIL] pandoc — no pandoc (fix: Rosetta is yours to install, not a setup step (IT's on a managed "
+        "Mac): softwareupdate --install-rosetta --agree-to-license)",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        + "\n".join(said)
+        + "\n",
+        encoding="utf-8",
+    )
+    write_friction(fake_mac, V6_HAPPY)
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    for phrase in ("local sources work without IT", "name any IT action", "(IT's on a managed Mac)"):
+        assert phrase in body, phrase
+    assert "<value>" not in body, [ln for ln in body.splitlines() if "<value>" in ln]
+    assert not red.private_only and setup_report.issue_link(text) is not None
+    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | IT said hold | -\n")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    assert "<value> said hold" in text and red.private_only and setup_report.issue_link(text) is None
 
 
 def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -> None:

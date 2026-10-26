@@ -32336,6 +32336,20 @@ with an `ok` output, which a stub is not. The lines read `- <kind> (<suffix>) fi
 meaningful for converted pages, and `_FIXED_VALUE_PHRASES` takes the new phrases. Test:
 `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line` (a quarantined `.pptx`).
 
+**Every capital-IT phrase agentsync prints is a fixed phrase** (C106, C162: one defect, built once; ruling 23).
+`_FIXED_CAPS_PHRASES` held only the report's own phrases, so with a hold value `IT` (cut as written since round 28
+I7) doctor's `local sources work without IT` (an ok line on every Mac with no IT involvement), the CLI's `name any
+IT action` and doctor's Rosetta fix `(IT's on a managed Mac)` read `<value>`, and the report went private only, its
+issue link gone, with the value quoted nowhere. The list takes a whole clause for each capital-IT literal of every
+module under src/agentsync (`IT action: `, `IT app registration`, `work without IT`, `for IT: Developer ID
+build`, `for the IT admin`, `if IT allows it`, `IT must allow`, `ask IT for tenant admin consent`, `ask IT for
+admin consent`, `ask IT whether a Conditional Access`, `ask IT to revoke sessions`, `ask IT to withdraw any PPPC
+profile`, `IT fills`, `When IT replies`), never a bare `ask IT`: a quoted value is still cut and still makes the
+report private only (D80). The I7 test's literal scan reads every module under src/agentsync, not only the
+report's, so a new message holding `IT` fails there, not in a rehearsal. Tests:
+`test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun`,
+`test_a_capital_it_hold_value_leaves_agentsyncs_own_it_lines_whole`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Reserved for round 29 lane RB of B13.
