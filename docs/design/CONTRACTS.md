@@ -32267,7 +32267,26 @@ folder there the misplaced heartbeat's words first) and quotes the plain tail an
 
 ### 16.198 Round 29: setup report: a lost hold's owner kept private, ruling 19's governance states, the heartbeat's own fix and the purge queue per source (2026-10-26, wave B13 round 29 lane RA)
 
-Reserved for round 29 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 29").
+Lane RA's round 29 items (`docs/plans/bring-back-ocr.md`, "B13 round 29"; specs `round29/items/C<n>.md`, the
+verifier's corrected fix built), in `src/agentsync/setup_report.py`, `tests/test_setup_report.py` and
+`tests/test_cli.py`'s pinned Purge queue head. Items that describe one defect are built once, and say so below. A
+dated line this round writes reads `Amended 2026-10-26, §16.198 C<n>`.
+
+**A lost hold's owner is never printed in clear** (C101, C119, C156, C187: one defect, built once; ruling 23, data
+integrity). A hold the hold list lost (origin `audit`, `governance.lost_holds`) printed its owner in Doctor's FAIL
+(`... no longer lists the hold on <scope> set by <owner> at <iso> ...`) and in the install.out tail's `HOLD:` line,
+and the report still offered the public issue link. `_HOLD_SET_RE` and `_HOLD_MORE_RE` take the `audit` origin; a
+lost hold's line keeps agentsync's fixed reason and loses its owner (`hold all (audit) since <iso>: lost from the
+hold list, owner not shown`), and any other single hold still reads `reason and owner not shown`.
+`_LOST_HOLD_RE` turns the FAIL's `set by <owner>` into `(owner not shown)`, cut through the line's last fixed anchor
+(its last ` at <iso>`, else its record clause, else the line's end), so the scope and time stay and an owner holding
+a time hides more, never less; nothing is counted, so no `<value>` stands in either line (B55). As the second layer,
+`_hold_values` registers the owner of every audit.jsonl `hold-set` and `hold-released` record, read from the trail
+itself, never `Hold.owner`, and never agentsync's fallbacks (`the records owner`, `lost from the hold list`,
+`hold = true`, `sources.toml`), which would cut the fix lines and every sources.toml path. `_LOST_HOLD_REASON` is
+kept equal to `governance.LOST_HOLD_REASON` by a test. The shell report's `hold_cut` and `hold_values` take the same
+patterns (lane RB, §16.199). Tests: `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`,
+`test_a_lost_holds_owner_is_in_no_part_of_the_report`.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 

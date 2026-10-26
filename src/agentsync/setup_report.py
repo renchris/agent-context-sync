@@ -534,9 +534,11 @@ _GOVERNANCE_TAIL_RE = re.compile(
     flags=re.S,
 )
 """A [governance] type error's value in one exception message, where it runs to the message's end (V45)."""
+_HOLD_ISO = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?"
+"""The time a hold line gives (``Hold.set_at``, ``_iso``)."""
 _HOLD_SET_RE = re.compile(
-    r"\bhold (?P<scope>\S+) \((?P<origin>config|state)\): [^\n]* — set by [^\n]*?"
-    r"(?P<when> since \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)?"
+    r"\bhold (?P<scope>\S+) \((?P<origin>config|state|audit)\): (?P<reason>[^\n]*) — set by [^\n]*?"
+    rf"(?P<when> since {_HOLD_ISO})?"
     r"(?P<end>\. Release it first \(records owner\)\.| \(purge and compaction suspended\))?[ \t]*$",
     flags=re.M,
 )
@@ -545,11 +547,28 @@ _HOLD_SET_RE = re.compile(
 refusal's ``suspended by legal/records hold: <hold>; <hold>``. Its reason and owner are free text (a matter, a
 person's name), so the report shows the scope, origin and time alone (B13 round 23 A8). Fail-safe: the match
 runs from the first hold to the line's end, keeping only a fixed ending the line closes on (``end``), so a
-stop phrase written inside a reason or owner hides more, never less (A8 review)."""
-_HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state)\): ")
+stop phrase written inside a reason or owner hides more, never less (A8 review). A hold the hold list lost
+(origin ``audit``, ``governance.lost_holds``) is matched too: its reason is agentsync's fixed
+:data:`_LOST_HOLD_REASON` and stays, and its owner, read from the audit trail, is cut (B13 round 29 C101,
+C119, C156, C187; ruling 23)."""
+_LOST_HOLD_REASON = "lost from the hold list"
+"""``governance.LOST_HOLD_REASON``, the reason a lost hold's line gives: fixed words, never a value."""
+_HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state|audit)\): ")
 """A refusal's next hold, inside a :data:`_HOLD_SET_RE` match: such a line names the first one only (A8)."""
 _HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
 """The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
+_LOST_HOLD_RE = re.compile(
+    r"(?P<head>\bno longer lists the hold on \S+) set by "
+    rf"(?:[^\n]*(?P<at> at {_HOLD_ISO}(?:[ ,;.)][^\n]*)?)"
+    r"|[^\n]*(?P<record> \((?:kept by |audit\.jsonl)[^\n]*)|[^\n]*)$",
+    flags=re.M,
+)
+"""governance.hold's FAIL for a lost hold (``governance.lost_hold_words``: ``... no longer lists the hold on
+<scope> set by <owner> at <iso> (kept by <records>), and no release is recorded ...``; before lane B's round
+29 ruling 27 words, ``(audit.jsonl, heartbeat.json)``), whose owner the audit trail gives. The owner reads
+``(owner not shown)``; the scope, the time and the fixed words after it stay. Fail-safe: the cut runs through
+the line's last fixed anchor (the last time on the line, else its record clause, else the line's end), so an
+owner holding `` at <iso>`` hides more, never less (B13 round 29 C101, C187; ruling 23)."""
 
 
 def _cut_holds(text: str) -> str:
@@ -558,7 +577,8 @@ def _cut_holds(text: str) -> str:
     shown``, with no time. Before :func:`_scrub_item_paths` too: a path in a reason would cut the line there,
     the anchor with it (B13 round 23 A8). No replacement is counted: the line says what it does not show, and
     no ``<value>`` stands in it, so the legend names none (B13 round 24 B55), as the shell report's
-    ``hold_cut`` counts none."""
+    ``hold_cut`` counts none. A lost hold keeps its fixed reason and loses its owner, in its ``HOLD:`` line
+    and in its FAIL (:data:`_LOST_HOLD_RE`; B13 round 29 ruling 23)."""
 
     def held(m: re.Match[str]) -> str:
         more = len(_HOLD_MORE_RE.findall(m.group(0)))
@@ -566,13 +586,19 @@ def _cut_holds(text: str) -> str:
         end = m["end"] or ""
         if more:
             return f"{head} and {_plural(more, 'more hold')}: reasons and owners not shown{end}"
+        if m["origin"] == "audit" and m["reason"] == _LOST_HOLD_REASON:  # fixed words: only the owner goes
+            return f"{head}{m['when'] or ''}: {_LOST_HOLD_REASON}, owner not shown{end}"
         return f"{head}{m['when'] or ''}: reason and owner not shown{end}"
 
     def released(m: re.Match[str]) -> str:
         return f"hold {m['scope']} released (owner not shown)"
 
+    def lost(m: re.Match[str]) -> str:
+        return f"{m['head']} (owner not shown){m['at'] or m['record'] or ''}"
+
     if "hold " not in text:
         return text
+    text = _LOST_HOLD_RE.sub(lost, text)
     return _HOLD_RELEASED_RE.sub(released, _HOLD_SET_RE.sub(held, text))
 
 
@@ -4921,14 +4947,21 @@ def _run_text_lines(r: _Run) -> list[str]:
     return lines
 
 
+_HOLD_ACTIONS = ("hold-set", "hold-released")
+"""The audit trail's hold records, each naming the owner who set or released a hold."""
+_HOLD_FIXED = frozenset({"the records owner", _LOST_HOLD_REASON, "hold = true", "sources.toml"})
+"""agentsync's own fallbacks for a hold's owner or reason: as values they would cut its fix lines and every
+sources.toml path (B13 round 29 ruling 23)."""
+
+
 def _hold_values(r: _Run) -> list[str]:
-    """Each hold's reason and owner as the config and holds.json give them, whole and line by line as the
-    report splits its text: a config value keeps its inner newlines, so a line of it carries no `` — set by ``
-    for :data:`_HOLD_SET_RE` to anchor on (B13 round 23 A8). A one-word line the report prints anyway
-    ("page") is kept too (B13 round 25 D80: left out, it printed in clear where a line quoted it, and the
-    shell report, whose word list differs, cut it): as a value it cuts that word from every line, and once it
-    does, the report is for a private copy only (:attr:`Redactor.value_word_shown`), as a one-word folder name
-    is (F92). Each read fails quietly."""
+    """Each hold's reason and owner as the config and holds.json give them, and each hold owner the audit
+    trail records, whole and line by line as the report splits its text: a config value keeps its inner
+    newlines, so a line of it carries no `` — set by `` for :data:`_HOLD_SET_RE` to anchor on (B13 round 23
+    A8). A one-word line the report prints anyway ("page") is kept too (B13 round 25 D80: left out, it printed
+    in clear where a line quoted it, and the shell report, whose word list differs, cut it): as a value it
+    cuts that word from every line, and once it does, the report is for a private copy only
+    (:attr:`Redactor.value_word_shown`), as a one-word folder name is (F92). Each read fails quietly."""
     from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     said: list[str] = []
@@ -4939,6 +4972,15 @@ def _hold_values(r: _Run) -> list[str]:
         with contextlib.suppress(Exception):
             for h in governance.state_holds(expand(r.config.state_paths.root)):
                 said += [h.reason, h.owner]
+        # Every owner the audit trail records setting or releasing a hold, read from the trail itself, so a
+        # hold the hold list lost (doctor's FAIL, status's ``(audit)`` line) is cut whatever holds.json says.
+        # Never a lost hold's Hold.owner nor a fixed fallback: those are agentsync's words (B13 round 29 C101,
+        # C119, C156, C187; ruling 23)
+        with contextlib.suppress(Exception):
+            for rec in governance._audit_events(expand(r.config.state_paths.root)):
+                owner = rec.get("owner")
+                if rec.get("action") in _HOLD_ACTIONS and isinstance(owner, str) and owner not in _HOLD_FIXED:
+                    said.append(owner)
     out: list[str] = []
     for value in said:
         for line in [value, *value.splitlines()]:

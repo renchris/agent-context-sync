@@ -1638,6 +1638,97 @@ def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
     assert "<value>" not in report_text, section(report_text, "Redaction")
 
 
+def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
+    """B13 round 29 C101, C119, C156, C187 (ruling 23): a hold the hold list lost (origin ``audit``) printed
+    its owner in clear in its ``HOLD:`` line and in doctor's FAIL. The ``(audit)`` line keeps the fixed
+    reason and loses the owner; the FAIL's ``set by <owner>`` reads ``(owner not shown)``, cut through the
+    line's last fixed anchor, so the scope and time stay and an owner holding a time hides more,
+    never less."""
+    assert setup_report._LOST_HOLD_REASON == governance.LOST_HOLD_REASON
+    red = setup_report.Redactor()
+    when = "2026-10-22T05:32:56Z"
+    lost = governance.Hold("all", governance.LOST_HOLD_REASON, "Avery Quill", when, "audit")
+    root = Path("/x/state")
+    detail, fix = governance.lost_hold_words(root, lost)
+    fail = f"[FAIL] governance.hold — {detail} (fix: {fix})"
+    shown = red.redact(fail)
+    assert "Avery" not in shown and "Quill" not in shown, shown
+    assert f"no longer lists the hold on all (owner not shown) at {when} (audit.jsonl" in shown, shown
+    assert shown.endswith(f"(fix: {fix})"), shown  # the fix is agentsync's words, all of them
+    assert red.redact(f"HOLD: {lost.describe()} (purge and compaction suspended)") == (
+        f"HOLD: hold all (audit) since {when}: lost from the hold list, owner not shown (purge and "
+        "compaction suspended)"
+    )
+    # a hold heartbeat.json alone recorded has no time and the fallback owner: still cut, nothing lost
+    bare = governance.Hold("all", governance.LOST_HOLD_REASON, "the records owner", "", "audit")
+    assert red.redact(bare.describe()) == "hold all (audit): lost from the hold list, owner not shown"
+    assert "on all (owner not shown) (audit.jsonl" in red.redact(governance.lost_hold_words(root, bare)[0])
+    # lane B's ruling 27 record clause, "(kept by <records>)": a hold the record alone keeps has no time
+    for line, want in (
+        (
+            f"/x/holds.json no longer lists the hold on all set by Avery Quill at {when} (kept by "
+            "audit.jsonl and hold-record.json), and no release is recorded; purge and compaction stay "
+            "suspended",
+            f"/x/holds.json no longer lists the hold on all (owner not shown) at {when} (kept by audit.jsonl "
+            "and hold-record.json), and no release is recorded; purge and compaction stay suspended",
+        ),
+        (
+            "/x/holds.json no longer lists the hold on all set by the records owner (kept by "
+            "hold-record.json), and no release is recorded; purge and compaction stay suspended",
+            "/x/holds.json no longer lists the hold on all (owner not shown) (kept by hold-record.json), and "
+            "no release is recorded; purge and compaction stay suspended",
+        ),
+    ):
+        assert red.redact(line) == want, red.redact(line)
+    # fail-safe: an owner holding a time, or the record clause, hides more, never less
+    for owner in (f"Avery at {when} Quill", "Avery (audit.jsonl) Quill", "Avery Quill (fix: none)"):
+        tricky = governance.Hold("all", governance.LOST_HOLD_REASON, owner, when, "audit")
+        for line in (governance.lost_hold_words(root, tricky)[0], tricky.describe()):
+            assert "Quill" not in red.redact(line), red.redact(line)
+    # a state hold whose reason is the lost words is a reason like any other: cut
+    state = governance.Hold("all", governance.LOST_HOLD_REASON, "Avery Quill", when, "state")
+    assert red.redact(state.describe()) == f"hold all (state) since {when}: reason and owner not shown"
+    assert not red.counts and red.total == 0, red.counts
+
+
+def test_a_lost_holds_owner_is_in_no_part_of_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C101, C119, C156, C187 (ruling 23): with holds.json rewritten as no holds, the report
+    printed the lost hold's owner twice, in Doctor's FAIL and in the install.out tail's ``HOLD:`` line, and
+    still offered the public issue link. Both lines are cut, the audit trail's owners are values whatever
+    holds.json says, and agentsync's own words (the reason, the fix's ``the records owner``) stay."""
+    cfg = fake_mac["config"]
+    hold = ["hold", "all", "--reason", "Fabrikam matter 2026-117", "--owner", "Avery Quill"]
+    assert cli.main([*hold, "--config", str(cfg)]) == 0
+    root = Path(load_config(cfg).state_paths.root).expanduser()
+    (root / "governance" / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    status = capsys.readouterr().out
+    assert "set by Avery Quill" in status, status  # the person still reads who set it
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + status,
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    for secret in ("Avery", "Quill", "Fabrikam", "2026-117"):
+        assert secret not in text, [ln for ln in text.splitlines() if secret in ln]
+    assert "hold all (audit)" in text and "lost from the hold list, owner not shown" in text, text
+    assert "no longer lists the hold on all (owner not shown) at " in section(text, "Doctor"), section(
+        text, "Doctor"
+    )
+    assert "or the records owner runs" in text and "sources.toml" in text
+    assert "<value>" not in text, section(text, "Redaction")
+    assert "Private only:" not in text and setup_report.issue_link(text) is not None
+    # the trail itself, not holds.json: with the hold list gone too, its owners are still values
+    (root / "governance" / "holds.json").unlink()
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    assert "Avery Quill" in setup_report._hold_values(r)
+    assert not {"the records owner", "lost from the hold list"} & set(setup_report._hold_values(r))
+
+
 def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private(
     fake_mac: dict[str, Path],
 ) -> None:
