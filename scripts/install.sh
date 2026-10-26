@@ -3240,7 +3240,8 @@ agent_restore() {
 # keeping agentsync's fixed reason: "hold <scope> (audit)[ since <iso>]: lost from the hold list, owner not
 # shown[<ending>]"; and its governance.hold FAIL ("... no longer lists the hold on <scope> set by <owner>[ at
 # <iso>] (kept by <records>) ...") reads "... on <scope> (owner not shown)" and then the line from its last fixed
-# anchor (the last " at <iso>", else the record clause, " (kept by " or the older " (audit.jsonl", else nothing),
+# anchor (the last record clause, " (kept by " or the older " (audit.jsonl", with the " at <iso>" right before it;
+# with no record clause, nothing),
 # so an owner holding one hides more, never less, as setup_report._LOST_HOLD_RE cuts it (lane RA's round 29
 # ruling 23 patterns: C101, C119, C156, C187).
 hold_cut() {
@@ -3248,18 +3249,21 @@ hold_cut() {
 		function word(s, at) { return at > 1 && substr(s, at - 1, 1) ~ /[A-Za-z0-9_]/ } # no word boundary before at
 		function ends(s, e) { return length(s) >= length(e) && substr(s, length(s) - length(e) + 1) == e }
 		# the lost hold FAIL: the owner, cut through the last fixed anchor on the line (ruling 23)
-		function lostcut(s,    out, at, rest, r, k, cut, iso) {
+		function lostcut(s,    out, at, rest, r, k, cut, iso, pre) {
 			out = ""
 			iso = " at [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?"
 			while (match(s, /no longer lists the hold on [^ \t\r\f\v]+ set by /)) {
 				if (word(s, RSTART)) { out = out substr(s, 1, RSTART); s = substr(s, RSTART + 1); continue }
 				at = RSTART + RLENGTH; out = out substr(s, 1, at - 9) " (owner not shown)"
 				rest = substr(s, at); cut = ""
-				for (r = rest; match(r, iso); r = substr(r, RSTART + 1)) {
-					k = substr(r, RSTART + RLENGTH, 1)
-					if (k == "" || k ~ /[ ,;.)]/) cut = substr(r, RSTART)
+				# the last record clause, with the time only when it stands right before it (lane RA after a
+				# cross-vendor review: the last time first leaked "Avery at <iso> Quill" on a line with no set time)
+				for (r = rest; (k = index(r, " (")); r = substr(r, k + 1)) if (substr(r, k, 10) == " (kept by " || substr(r, k, 13) == " (audit.jsonl") cut = substr(r, k)
+				# with no record clause, which agentsync never writes, nothing after it: the whole rest goes
+				if (cut != "") {
+					pre = substr(rest, 1, length(rest) - length(cut))
+					if (match(pre, iso "$")) cut = substr(pre, RSTART) cut
 				}
-				if (cut == "") for (r = rest; (k = index(r, " (")); r = substr(r, k + 1)) if (substr(r, k, 10) == " (kept by " || substr(r, k, 13) == " (audit.jsonl") cut = substr(r, k)
 				return out cut
 			}
 			return out s

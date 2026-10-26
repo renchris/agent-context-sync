@@ -32562,8 +32562,10 @@ by <owner>[ at <iso>] (kept by <records>) ...` (lane B's ruling 27 frame; `(audi
 older build). hold_cut takes the `audit` origin and, for the fixed reason `lost from the hold list`, gives `hold
 <scope> (audit)[ since <iso>]: lost from the hold list, owner not shown[<ending>]`; any other reason keeps `reason
 and owner not shown`. Before that it cuts the FAIL: `... on <scope> (owner not shown)` and then the line from its
-last fixed anchor, the last ` at <iso>` followed by the line's end or one of ` ,;.)`, else the last ` (kept by ` or
-` (audit.jsonl` clause, else nothing, so an owner holding an anchor hides more, never less. hold_values also reads
+last fixed anchor: the last ` (kept by ` or ` (audit.jsonl` clause, with the ` at <iso>` that stands right before
+it; with no record clause, which agentsync never writes, nothing (lane RA's order after a cross-vendor review:
+the last time first kept `Quill` of `set by Avery at <iso> Quill (kept by ...)`, and of the same line with no record
+clause). hold_values also reads
 governance/audit.jsonl, a regular file only, and registers the owner of every `hold-set` and `hold-released` line,
 never a fixed fallback (`the records owner`, `lost from the hold list`, `hold = true`, `sources.toml`). Every line
 matched lane RA's `setup_report._cut_holds` on their branch (measured). Tests:

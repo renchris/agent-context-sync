@@ -2690,6 +2690,17 @@ _LOST_HOLD_LINES = {
         "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) at "
         "2026-10-22T05:32:57Z (kept by audit.jsonl), x"
     ),
+    # the time only right before the record clause: an owner holding one hides more (lane RA, refined)
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Avery at "
+    "2026-10-22T05:32:56Z Quill (kept by hold-record.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) (kept by "
+        "hold-record.json), and no release is recorded"
+    ),
+    # with no record clause, nothing after the cut (lane RA's rule): a time there kept "Quill"
+    "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Avery at "
+    "2026-10-22T05:32:56Z Quill, and no release is recorded": (
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown)"
+    ),
     "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Pat Doe": (
         "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown)"
     ),
