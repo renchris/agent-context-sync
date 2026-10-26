@@ -12,6 +12,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -304,13 +305,20 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "3f1dee54, a docs-only" not in note and "3f1dee54, a docs-only" not in guide
 
 
-def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder() -> None:
+def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path: Path) -> None:
     """B13 round 29 C149, C150 (one defect): macOS's `com.apple.tmp_cleaner` runs daily at local midnight
     and deletes an empty folder under /tmp whose mtime is over 3 days old; `cp -Rp` keeps the fixture's, so
     every rehearsal root lost `Project Alpha/Empty Subfolder` and step 2 printed no empty-folder wait. The
     lane brief gives the cleaner's rule, the touch after each copy and restore (not `cp -R`, which resets
     file mtimes), the dirs.txt check before step 2 and the midnight caveat; the schedule and rule are read
-    from the system's own files where this Mac has them."""
+    from the system's own files where this Mac has them. B13 round 30 C329: the brief's folder list printed
+    `.`, `./Documents`, ... and dirs.txt holds `tree`, `tree/Documents`, ..., so its own comparison failed on
+    every line; the command maps the leading `.` to `tree` and diffs, read here against a tree made like the
+    fixture's, and dirs.txt is left as the earlier rehearsals compare it. C380: the note said one folder
+    touch protects a copy for 3 days, but the cleaner also deletes a file whose atime, mtime and ctime are
+    all over 3 days old, which no folder touch renews: it says so, and that a root kept longer lives under
+    ~/.cache or is copied again at each act, never `touch -a`, which makes the next sync read every file
+    again."""
     lanes = " ".join(_page("docs/lanes/COMMON.md").split())
     head = "Rehearsal kit and macOS's /tmp cleaner (round 29 C149, C150; the kit itself is the lead's):"
     assert lanes.count(head) == 1
@@ -322,10 +330,31 @@ def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder() -> None
         " -type d -exec touch {} +`",
         "never `cp -R`, which resets the file mtimes agentsync reads",
         "run it again at the start of each act",
-        "/usr/bin/find . -type d | LC_ALL=C sort)` with dirs.txt and stop on a difference",
+        "(`-type f -atime +3 -mtime +3 -ctime +3`)",
+        "so a copy under /tmp keeps its files for 3 days after its copy or restore and no longer",
+        "A rehearsal root or home kept longer lives under ~/.cache, which the cleaner never visits",
+        "never `touch -a` its files",
         "is the cleaner's doing, not agentsync's",
     ):
         assert part in note, part
+    assert "One touch protects a copy for 3 days" not in note
+    assert "LC_ALL=C sort)` with dirs.txt and stop on a difference" not in note
+    [command] = re.findall(r"run `(\(cd <home>/Library/CloudStorage/OneDrive-Contoso && [^`]*)`", note)
+    assert command.endswith(" | diff - dirs.txt") and "and stop on a non-zero exit" in note
+    # the command, run over a tree made like the fixture's, prints dirs.txt's form
+    home = tmp_path / "home"
+    tree = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    for folder in ("Documents/Copilot", "Project Alpha/Empty Subfolder"):
+        (tree / folder).mkdir(parents=True)
+    dirs = ["tree", "tree/Documents", "tree/Documents/Copilot", "tree/Project Alpha"]
+    dirs.append("tree/Project Alpha/Empty Subfolder")
+    (tmp_path / "dirs.txt").write_text("".join(f"{d}\n" for d in dirs), encoding="utf-8")
+    run = command.replace("<home>", shlex.quote(str(home)))
+    proc = subprocess.run(["/bin/sh", "-c", run], cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    (tree / "Project Alpha" / "Empty Subfolder").rmdir()
+    proc = subprocess.run(["/bin/sh", "-c", run], cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert proc.returncode == 1 and "< " not in proc.stdout and "> tree/Project Alpha/Empty" in proc.stdout
     plist = Path("/System/Library/LaunchDaemons/com.apple.tmp_cleaner.plist")
     script = Path("/usr/libexec/tmp_cleaner")
     if plist.exists() and script.exists():  # macOS only; CI's Linux steps and other hosts skip the read
@@ -334,6 +363,9 @@ def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder() -> None
         cleaner = script.read_text(encoding="utf-8")
         assert 'daily_clean_tmps_dirs="/tmp"' in cleaner and 'daily_clean_tmps_days="3"' in cleaner
         assert 'dargs="-empty -mtime +$daily_clean_tmps_days"' in cleaner
+        # B13 round 30 C380: the file rule, all three times
+        assert 'args="-atime +$daily_clean_tmps_days -mtime +$daily_clean_tmps_days"' in cleaner
+        assert 'args="${args} -ctime +$daily_clean_tmps_days"' in cleaner
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:

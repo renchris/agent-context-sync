@@ -33066,6 +33066,9 @@ before step 2, and that a wait gone just after midnight is the cleaner's. Touchi
 before install and the first sync, so agentsync's baseline is unchanged. Test:
 `test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`, which reads the schedule and rule from the
 system's own files where the Mac has them.
+Amended 2026-10-26, §16.207 C380: one touch keeps a copy's folders for 3 days, never its files: the cleaner also
+deletes a file whose atime, mtime and ctime are all over 3 days old, and `cp -Rp` gives a file only a fresh ctime,
+so a copy under /tmp keeps its files 3 days; a root kept longer lives under ~/.cache or is copied again at each act.
 
 **The guide's hold rows say a capital two-letter value is cut as written, and a lost hold's owner is cut** (C191,
 with lane RA's C187 and C133; `docs/deploy/setup-feedback.md`). The paragraph under the table gave `IT` as a
@@ -33423,3 +33426,21 @@ skipped whole, and a heredoc that never closes fails the lint. The optional wide
 openers is not built: both bodies close at a line's end (`...or "")'`), not on a line of their own, so its extractor
 would read them past their end. Tests: `test_the_split_quote_lint_finds_a_split_pair_in_a_program` and
 `test_no_single_quoted_program_is_split_by_a_pair_of_apostrophes`.
+
+**The lane brief's folder check compares like with like, and its /tmp note covers files** (C329, C380, both "a fix
+makes things worse? True"; `docs/lanes/COMMON.md`; dated line at §16.202 C149). The brief's command printed `.`,
+`./Documents`, ... while dirs.txt holds `tree`, `tree/Documents`, ..., so its own "stop on a difference" stopped
+every rehearsal before step 2 (rehearsals D, E and F each worked round it). Storing dirs.txt in the `./` form is the
+fix that makes things worse (the round 29 rehearsals' `find tree` form and round 30's kit compare the file as it
+is), so dirs.txt stays and the command maps find's leading `.` to `tree` (`LC_ALL=C sed 's#^\.#tree#'`) and pipes
+into `diff - dirs.txt`, a non-zero exit the stop. The note said one folder touch protects a copy for 3 days, but
+`/usr/libexec/tmp_cleaner` also deletes every file whose atime, mtime and ctime are all over 3 days old, `cp -Rp`
+keeps a file's atime and mtime, and neither a folder touch nor a read renews them. Touching every file with `touch
+-a` is the fix that makes things worse (a new ctime breaks `classifier`'s unchanged fast path, so the next sync reads
+and hashes every file again, and an inbox root holds each back for `quiescence_s`, output that reads as agentsync's),
+so the note says a copy under /tmp keeps its files 3 days, a root kept longer lives under ~/.cache or is copied again
+at each act, and never `touch -a`. The `StartCalendarInterval` every-minute claim is not shown (launchd reports one
+run after one midnight), so "daily at local midnight" stays. The kit itself is the lead's. Test:
+`test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`, which runs the brief's command over a tree made
+like the fixture's (exit 0, then exit 1 with the missing folder named once one is gone) and reads the file rule's
+three times from the cleaner where the Mac has it.

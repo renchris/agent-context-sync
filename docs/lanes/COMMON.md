@@ -451,12 +451,19 @@ and ctime all are. `cp -Rp` keeps the fixture's folder mtimes, so at round 29's 
 Alpha/Empty Subfolder` from the rehearsal roots' fixture copies and homes, and step 2 printed no empty-folder wait.
 Right after every `cp -Rp` of the fixture and every snapshot restore, run `/usr/bin/find <copy> -type d -exec touch
 {} +` (the shell's `find` here is bfs, which refuses the cleaner's `-dx`); never `cp -R`, which resets the file
-mtimes agentsync reads. One touch protects a copy for 3 days, so run it again at the start of each act. Right before
-step 2, and before reading a role run's state, compare `(cd <home>/Library/CloudStorage/OneDrive-Contoso &&
-/usr/bin/find . -type d | LC_ALL=C sort)` with dirs.txt and stop on a difference. A rehearsal that crosses local
-midnight checks every step after it again: an empty-folder alarm or wait gone just after 00:00 local (the parent
-folder's mtime says when) is the cleaner's doing, not agentsync's. A root that needs no /tmp path may live under
-~/.cache, which the cleaner never visits.
+mtimes agentsync reads. One touch keeps a copy's folders for 3 days, so run it again at the start of each act. It
+keeps no file: the cleaner also deletes every file whose atime, mtime and ctime are all more than 3 days old
+(`-type f -atime +3 -mtime +3 -ctime +3`), `cp -Rp` keeps each file's atime and mtime and gives it a fresh ctime,
+and neither a folder touch nor a read renews them (on APFS here a read does not move the atime), so a copy under
+/tmp keeps its files for 3 days after its copy or restore and no longer (round 30 C380). A rehearsal root or home
+kept longer lives under ~/.cache, which the cleaner never visits, or is copied again with `cp -Rp` (and the folder
+touch) at the start of each act; never `touch -a` its files, which renews their ctime, so the next sync reads and
+hashes every file again and an inbox root holds each back for its 60-second quiescence. Right before step 2, and
+before reading a role run's state, run `(cd <home>/Library/CloudStorage/OneDrive-Contoso && /usr/bin/find . -type
+d | LC_ALL=C sort | LC_ALL=C sed 's#^\.#tree#') | diff - dirs.txt` and stop on a non-zero exit: dirs.txt holds
+`tree`, `tree/Documents`, ..., so the sed maps find's leading `.` to `tree` (round 30 C329). A rehearsal that
+crosses local midnight checks every step after it again: an empty-folder alarm or wait gone just after 00:00 local
+(the parent folder's mtime says when) is the cleaner's doing, not agentsync's.
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)
