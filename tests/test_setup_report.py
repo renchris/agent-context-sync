@@ -1952,6 +1952,8 @@ def test_a_one_word_hold_value_stays_in_the_reports_own_fixed_phrases() -> None:
     # the shell report embeds agentsync status, so its flag-h cut keeps a copy of the list since B13 round 30
     # C397 (test_install_oneshot.py::test_the_shell_reports_fixed_phrases_are_the_agentsync_reports)
     for phrase, rx in zip(setup_report._FIXED_VALUE_PHRASES, setup_report._FIXED_VALUE_RES, strict=True):
+        if not page.search(phrase):  # the "audit" ones (B13 round 30 C302) are their own test's
+            continue
         assert any(rx.search(t) for t in texts), f"{phrase!r} is no fixed text of the report's"
 
 
@@ -2088,6 +2090,33 @@ def test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so(
             assert "<value> draft" not in body, body
 
 
+def agentsync_literals(word: re.Pattern[str], skip: set[str]) -> set[str]:
+    """Every string literal of every module under src/agentsync that ``word`` finds, but docstrings and the
+    literals assigned to a name in ``skip`` (a phrase list itself, a regex source never printed): the lines
+    Doctor, the install.out tail, Status and Recent errors embed are made of them (B13 round 29 C106, C162;
+    round 30 C302)."""
+    literals: set[str] = set()
+    for module in sorted(Path(setup_report.__file__).parent.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
+        skipped |= {
+            id(leaf)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id in skip for t in node.targets)
+            for leaf in ast.walk(node.value)
+        }
+        literals |= {
+            n.value
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and id(n) not in skipped
+            and word.search(n.value)
+        }
+    return literals
+
+
 def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun(fake_mac: dict[str, Path]) -> None:
     """B13 round 28 I7: with `hold all --reason IT`, the report cut the pronoun "it" in its own fixed prose
     (19 lines). An initialism written all in capitals is cut as written: with no quote of it, the body keeps
@@ -2113,26 +2142,7 @@ def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun(fake_mac:
     # every literal that holds "IT" reads whole under the exact cut (its fixed phrases): the report's, and
     # (B13 round 29 C106, C162) every module's under src/agentsync, whose lines Doctor, the install.out tail,
     # Status and Recent errors embed
-    caps = re.compile(r"(?<![A-Za-z])IT(?![A-Za-z])")
-    literals: set[str] = set()
-    for module in sorted(Path(setup_report.__file__).parent.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
-        skipped |= {
-            id(leaf)
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "_FIXED_CAPS_PHRASES" for t in node.targets)
-            for leaf in ast.walk(node.value)
-        }
-        literals |= {
-            n.value
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Constant)
-            and isinstance(n.value, str)
-            and id(n) not in skipped
-            and caps.search(n.value)
-        }
+    literals = agentsync_literals(re.compile(r"(?<![A-Za-z])IT(?![A-Za-z])"), {"_FIXED_CAPS_PHRASES"})
     assert len(literals) > 30, literals
     red = setup_report.Redactor()
     red.add("value", "IT", ignore_case=False)
@@ -2171,6 +2181,95 @@ def test_a_capital_it_hold_value_leaves_agentsyncs_own_it_lines_whole(fake_mac: 
     write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | IT said hold | -\n")
     text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     assert "<value> said hold" in text and red.private_only and setup_report.issue_link(text) is None
+
+
+_AUDIT_REGEXES = {
+    "_HOLD_SET_RE",
+    "_HOLD_MORE_RE",
+    "_LOST_RECORD_RE",
+    "_STATE_MISPLACED_RE",
+    "_GOVERNANCE_DAMAGED_RE",
+}
+"""The regex sources that hold "audit" as a word: never printed, so no fixed phrase need hold them (C302)."""
+
+
+def test_an_audit_hold_value_leaves_every_audit_line_whole_c302(tmp_path: Path) -> None:
+    """B13 round 30 C302 (ruling 39): a hold reason "Audit" cut the Purge queue part's ``- audit trail since``
+    line to ``- <value> trail since`` and made the report private only, with the value quoted nowhere;
+    doctor's and status's ``audit.jsonl``, ``the audit trail ...`` and ``with an audit line`` went the same
+    way. Every literal under src/agentsync that holds the word reads whole, as the line it is built into where
+    it is a part of one; each phrase is in one of them, and a quote of the value is still cut."""
+    literals = agentsync_literals(
+        re.compile(r"(?i)(?<![a-z])audit(?![a-z])"), {"_FIXED_VALUE_PHRASES", *_AUDIT_REGEXES}
+    )
+    when = "2026-10-22T05:32:56Z"
+    lost = [governance.Hold("all", governance.LOST_HOLD_REASON, "Avery", at, "audit") for at in (when, "")]
+    trail = governance.audit_path(tmp_path)
+    trail.parent.mkdir(parents=True)
+    trail.write_text('{"action": "purge-enqueued", "at": "2026-10-26T08:00:00Z"}\n', encoding="utf-8")
+    role = governance.GOVERNANCE_ROLES["audit.jsonl"]
+    gone = Path("/x/state/governance/audit.jsonl")
+    built = {  # a part, as the line it is built into prints it
+        "audit": [
+            *(setup_report._cut_holds(h.describe()) for h in lost),
+            setup_report._cut_holds(
+                f"suspended by legal/records hold: {lost[0].describe()}; {lost[1].describe()}"
+            ),
+        ],
+        role: [
+            *governance.audit_not_a_file(Path("/x/state/governance/audit.jsonl"), "a folder"),
+            *governance._damaged_words(Path("/x/state/governance/audit.jsonl"), role, "it is not JSON"),
+            # status's "not read" words, which the report embeds (loop_unread, "not read: status says ...")
+            cli._unread_words(governance.GovernanceDamagedError(gone, role, "it is not JSON")),
+            cli._unread_words(governance.GovernanceNotAFileError(gone, "a folder", role)),
+        ],
+        "- audit trail ": [setup_report._purge_audit(trail, day) for day in ("2026-10-26", "")],
+    }
+    assert set(built) <= literals, set(built) - literals
+    texts = [t for lit in literals for t in built.get(lit, [lit])]
+    assert len(texts) > 25, texts
+    red = setup_report.Redactor()
+    red.add("value", "Audit", ignore_case=True)
+    assert [t for t in texts if red.redact(t) != t] == [] and not red.private_only
+    audit = [p for p in setup_report._FIXED_VALUE_PHRASES if "audit" in p]
+    assert len(audit) > 20, audit
+    for phrase in audit:  # every one is agentsync's own text, never a bare "audit trail" or "audit"
+        rx = setup_report._FIXED_VALUE_RES[setup_report._FIXED_VALUE_PHRASES.index(phrase)]
+        assert any(rx.search(t) for t in texts), f"{phrase!r} is no fixed text of agentsync's"
+        assert phrase.strip() not in ("audit", "audit trail", "the audit trail", "(audit)"), phrase
+    assert (
+        red.redact("note: Audit said the audit trail stays") == "note: <value> said the <value> trail stays"
+    )
+    assert red.private_only
+
+
+@pytest.mark.usefixtures("roomy_budget")
+def test_an_audit_hold_cuts_no_fixed_line_of_a_built_report_c302(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 C302: a report built for a hold reason "Audit" with one queued purge (its audit.jsonl
+    holds the purge-enqueued line) prints the Purge queue part's trail line whole, has no <value> in its body
+    and stays public; a friction line quoting the value is cut and makes it private."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text('[governance]\nhold = true\nhold_reason = "Audit"\nhold_owner = "Avery Quill"\n\n' + plain)
+    config = load_config(cfg)
+    governance.enqueue_purge(
+        config.state_paths.root,
+        governance.PurgeSelector(source_id=config.sources[0].id, stable_id="ledger-2031"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        now=datetime(2026, 10, 26, 9, 30, tzinfo=UTC),
+    )
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert "- audit trail since 2026-10-26 (the oldest queued day): 1 purge-enqueued" in body, body
+    assert "<value>" not in body, [ln for ln in body.splitlines() if "<value>" in ln]
+    assert not red.private_only and setup_report.issue_link(text) is not None
+    write_friction(fake_mac, V6_HAPPY + "2026-09-29T10:01:20Z | step 3 | deviation | Audit said hold | -\n")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert "<value> said hold" in body and "Audit said" not in body, body
+    assert red.private_only and setup_report.issue_link(text) is None
 
 
 def test_the_two_letter_words_are_every_two_letter_word_either_report_prints() -> None:

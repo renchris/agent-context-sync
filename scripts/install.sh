@@ -1959,9 +1959,10 @@ id_key() {
 GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive files graph inbox local mail mirror notes"
 GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
 # agentsync's own fixed phrases that hold a word a one-word hold value can be, "|" between phrases:
-# setup_report._FIXED_CAPS_PHRASES ("IT" in capitals) and _FIXED_VALUE_PHRASES ("page", "#" standing for a count),
-# a test keeps each equal to its list (B13 round 30 ruling 39, C338, C397). redact_stream leaves a hold value's
-# match inside one written out in full as it is and makes nothing private, as setup_report._in_fixed_phrase does:
+# setup_report._FIXED_CAPS_PHRASES ("IT" in capitals) and _FIXED_VALUE_PHRASES ("page" and "audit", "#"
+# standing for a count), a test keeps each equal to its list (B13 round 30 ruling 39, C338, C397, C302).
+# redact_stream leaves a hold value's match inside one written out in full as it is and makes nothing private,
+# as setup_report._in_fixed_phrase does:
 # the Doctor section embeds agentsync status, whose graph.client_id line says "local sources work without IT".
 FIXED_CAPS_PHRASES="IT request|IT-draft line|IT draft: |left for IT|(for IT: |(IT's on a managed Mac)|name any IT action"
 FIXED_CAPS_PHRASES+="|IT action: |IT app registration|work without IT|for IT: Developer ID build|for the IT admin"
@@ -1976,6 +1977,16 @@ FIXED_VALUE_PHRASES+="|file has a converted page|erases its page by hand|files w
 FIXED_VALUE_PHRASES+="|has a stub page|have a stub page|erases the page and history"
 FIXED_VALUE_PHRASES+="|erase that file's page and its history|as its stub page says|existing mirror page"
 FIXED_VALUE_PHRASES+="|file: # with a page|files: # with a page|(1 page)"
+FIXED_VALUE_PHRASES+="|- audit trail since|- audit trail in all (no queued day is known)|- audit trail: no file"
+FIXED_VALUE_PHRASES+="|- audit trail: not read (over|- audit trail: cannot read: |agentsync's audit trail"
+FIXED_VALUE_PHRASES+="|governance.audit|audit.jsonl|(audit) since |(audit): lost from the hold list"
+FIXED_VALUE_PHRASES+="|(audit) and # more hold|the audit trail belongs there|the audit trail cannot be read; "
+FIXED_VALUE_PHRASES+="|the audit trail is not a file; |not the audit trail agentsync can read"
+FIXED_VALUE_PHRASES+="|the audit trail or the hold record keeps|the holds the audit trail records stay in force"
+FIXED_VALUE_PHRASES+="|from the hold list and the audit trail|by their id and path, from the audit trail"
+FIXED_VALUE_PHRASES+="|the audit trail records suppressed (|the audit trail records as queued and not done ("
+FIXED_VALUE_PHRASES+="|recorded in the audit trail|with an audit line|purge audit: |no audit line: "
+FIXED_VALUE_PHRASES+="|lost a purge the audit trail records"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

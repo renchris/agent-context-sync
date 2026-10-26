@@ -1276,13 +1276,44 @@ _FIXED_VALUE_PHRASES = (
     "file: # with a page",
     "files: # with a page",
     "(1 page)",
+    # "audit": the Purge queue part's trail line, and agentsync's own lines the report embeds (Doctor, the
+    # install.out tail, Status, Recent errors; B13 round 30 C302): whole clauses, never a bare "audit trail"
+    "- audit trail since",
+    "- audit trail in all (no queued day is known)",
+    "- audit trail: no file",
+    "- audit trail: not read (over",
+    "- audit trail: cannot read: ",
+    "agentsync's audit trail",
+    "governance.audit",
+    "audit.jsonl",
+    "(audit) since ",
+    "(audit): lost from the hold list",
+    "(audit) and # more hold",
+    "the audit trail belongs there",
+    "the audit trail cannot be read; ",
+    "the audit trail is not a file; ",
+    "not the audit trail agentsync can read",
+    "the audit trail or the hold record keeps",
+    "the holds the audit trail records stay in force",
+    "from the hold list and the audit trail",
+    "by their id and path, from the audit trail",
+    "the audit trail records suppressed (",
+    "the audit trail records as queued and not done (",
+    "recorded in the audit trail",
+    "with an audit line",
+    "purge audit: ",
+    "no audit line: ",
+    "lost a purge the audit trail records",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
 it is left as written and makes nothing private (:func:`_in_fixed_phrase`). Exact phrases only, never a word
 list, so a quoted value stays cut (D80's rule fails safe); ``#`` stands for a count the line prints (the
 images line's ``3 files: 3 with a page``, whose ``with a page`` alone is too short to be one). A test keeps
-every literal of this module that holds the word inside one."""
+every literal of this module that holds the word inside one. "audit" too (B13 round 30 C302; ruling 39): a
+hold reason "Audit" cut the trail line to ``- <value> trail since`` and made the report private only, so every
+literal of every module under src/agentsync that holds it as a word is inside one, the hold line's origin by
+the cut form :func:`_cut_holds` prints, and the file and check names by themselves."""
 _FIXED_VALUE_RES = tuple(re.compile(re.escape(p).replace(r"\#", r"\d+")) for p in _FIXED_VALUE_PHRASES)
 _FIXED_CAPS_PHRASES = (
     "IT request",

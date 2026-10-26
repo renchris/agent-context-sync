@@ -33134,6 +33134,24 @@ its scope: a refusal would block a hold set ahead of its source, or kept on a re
 shell report's `hold_scopes` reader takes the same files, fallback and rule (lane RB, §16.204). Test:
 `test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386`.
 
+C302 (2026-10-26): **a hold reason "Audit" cuts none of agentsync's own words** (ruling 39). "audit" is a word the
+report prints, so a one-word hold reason "Audit" is cut wherever it stands, and the Purge queue part's trail line
+read `- <value> trail since ...` and made the report private only, its issue link gone, with the value quoted
+nowhere; doctor's and status's lines saying `audit.jsonl`, `the audit trail ...` or `with an audit line` went the
+same way. Every printed clause of agentsync's that holds the word now joins `_FIXED_VALUE_PHRASES` whole, as C106
+did for `IT`: the trail line's five forms, `agentsync's audit trail`, the file and check names `audit.jsonl` and
+`governance.audit`, the hold line's origin in the forms the hold cut prints (`(audit) since `, `(audit): lost from
+the hold list`, `(audit) and <n> more hold`), and governance's, the CLI's and the sync's clauses (`the audit trail
+belongs there`, `the audit trail or the hold record keeps`, `with an audit line`, `purge audit: `, `no audit line: `
+and the rest). None is a bare `audit` or `audit trail`, so a person's own note quoting the value is still cut and
+still makes the report private. A test scans every literal under src/agentsync that holds the word (docstrings and
+the regex sources left out), checks each reads whole under the cut, as the line it is built into where it is a part
+of one, and that each phrase is in one of them; the page test's check that install.sh prints none of its phrases
+now covers the page phrases alone, since the shell report keeps a match inside these (lane RB, §16.204). "legal",
+"review" and "records" are report words too, so a hold reason of one of them has the same kind of cut; that is not
+built this round. Tests: `test_an_audit_hold_value_leaves_every_audit_line_whole_c302`,
+`test_an_audit_hold_cuts_no_fixed_line_of_a_built_report_c302`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

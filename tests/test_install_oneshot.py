@@ -3139,11 +3139,16 @@ _FIXED_PHRASE_LINES = {
         "images: 4 files: 4 with a page",
         "Page said the hold stays on",
     ],
+    "Audit": [
+        "- audit trail: no file",
+        "the hold list lost a hold that the audit trail or the hold record keeps",
+        "Audit said the hold stays on",
+    ],
 }
 
 
 @pytest.mark.parametrize("lang", [None, "en_US.UTF-8"])
-@pytest.mark.parametrize("owner", ["IT", "Page"])
+@pytest.mark.parametrize("owner", ["IT", "Page", "Audit"])
 def test_a_hold_value_inside_a_fixed_phrase_stays_in_both_readers(
     tmp_path: Path, owner: str, lang: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
