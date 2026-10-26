@@ -380,7 +380,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--reason",
         choices=[r.value for r in governance.PurgeReason],
-        default=governance.PurgeReason.OPERATOR.value,
         help="recorded in the audit trail (default: operator)",
     )
     p.add_argument("--queue", action="store_true", help="run every queued purge instead of SELECTOR")
@@ -390,6 +389,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "with --queue: take off the queue the entry id=<queued id> (with --source) a run looked up and "
             "found nothing for, with an audit line; nothing is erased"
+        ),
+    )
+    p.add_argument(
+        "--accept-lost",
+        metavar="AT",
+        help=(
+            "accept what the suppression list lost of the purge status names by this time, with an audit "
+            "line: a copy of its content under another name is no longer kept out; its items stay out"
         ),
     )
     p.add_argument(
@@ -3403,10 +3410,32 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     if args.queue and args.selector:
         _err("purge: pass SELECTOR or --queue, not both")
         return EXIT_USAGE
+    others = (args.queue, args.selector, args.forget is not None, args.source, args.reason, args.push)
+    if args.accept_lost is not None and any(others):
+        _err("purge: --accept-lost <at> goes alone (with --dry-run)")
+        return EXIT_USAGE
     if (args.queue or args.selector) and _lost_state_stop(args, config):
         return EXIT_FAILED  # dry run included: it would plan erasing pages no manifest read (ruling 14)
     if args.queue or args.selector:
         _open_state_or_raise(config)  # sync's own line and exit, whatever the queue holds (P24)
+    if args.accept_lost is not None:
+        # the one audited way past a lost suppression nothing can put back (B13 round 30 C344, C401)
+        lost = governance.accept_lost_suppression(config, args.accept_lost, dry_run=bool(args.dry_run))
+        what = f"the purge {governance._when(lost)}"
+        if len(lost) > 1:  # purges an older build timed to the second can share one
+            what = f"{len(lost)} purges, as that time names {len(lost)} records ({governance._when(lost)})"
+        given_up = "a copy of its content under another name is no longer kept out by the list"
+        held = governance._glob_fingerprints(governance.load_suppressions(config.state_paths.root))
+        if any(governance._glob_lost(r, held) for r in lost):  # as the FAIL judges: a held glob still guards
+            given_up += ", nor a new file under its source-path glob"
+        if args.dry_run:
+            _out(f"dry run: would accept the suppression list's loss of {what} ({given_up}); nothing written")
+        else:
+            _out(
+                f"accepted the suppression list's loss of {what} (audited): {given_up}; its items stay out "
+                "by their id and path"
+            )
+        return EXIT_OK
     if args.forget is not None:
         if not args.queue:
             _err("purge: --forget goes with --queue")
@@ -3473,7 +3502,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     rep = governance.purge(
         config,
         selector,
-        reason=governance.PurgeReason(args.reason),
+        reason=governance.PurgeReason(args.reason or governance.PurgeReason.OPERATOR.value),
         dry_run=bool(args.dry_run),
         push=bool(args.push),
     )

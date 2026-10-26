@@ -5905,21 +5905,37 @@ def _erased(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[st
     return cfg, root, page
 
 
+ACCEPT_LOST_FIX = (
+    "accepts each loss with `~/.local/bin/agentsync purge --accept-lost <at>` "
+    "(`--dry-run` first), <at> being the time status names for it, which gives up that purge's guard "
+    "against a copy of its content under another name, while its items stay out by their id and path"
+)
+
+
 @pytest.mark.parametrize("how", ["moved aside", "an older copy", "damaged, then moved aside"])
 def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync(
-    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str], how: str
 ) -> None:
     """B13 round 29 C172 (ruling 28): suppressed.json moved aside, as its damaged FAIL's bare fix said, read
     as no suppressions, and the next sync published the erased page again. The audit trail's purge lines
-    keep the item out by its id and path; status FAILs the list for the purge it lost, the sync refuses
-    (copied-content hashes cannot be rebuilt), and running the purge again by hand clears it."""
+    keep the item out by its id and path; status FAILs the list for the purge it lost and the sync refuses.
+    B13 round 30 C401, C344 (ruling 33): the purge run again by hand finds nothing (the first one erased
+    it), so it rebuilt nothing and clears nothing, where it cleared the FAIL and a copy under a new id and
+    path was published; the audit trail's content hashes keep that copy out, and the one way past is
+    `purge --accept-lost <at>`, previewed with --dry-run, which both FAILs name beside the copy."""
     cfg, root, page = _erased(initialised, capsys)
     listed = governance._suppress_file(root)
     if how == "damaged, then moved aside":
         listed.write_text('{"items": 5}', encoding="utf-8")
         _rc, out = _status(cfg, capsys)
         (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
-        assert "is run again by hand before the next sync" in failed, failed
+        tail = (
+            "keeping a copy: the items it suppressed stay out by their id and path, from the audit trail, "
+            "but the next sync refuses until each purge it recorded is put back: with no copy, the person "
+            f"{ACCEPT_LOST_FIX} (a purge run again by hand clears its record only when it finds the content "
+            "again)"
+        )
+        assert tail in failed, failed
     if how == "an older copy":
         listed.write_text('{"items": [], "globs": [], "paths": [], "canonical": []}\n', encoding="utf-8")
     else:
@@ -5931,17 +5947,259 @@ def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert "no longer lists what 1 purge" in capsys.readouterr().err
     assert not (initialised.docs_repo / page).exists()
-    # the cycle itself keeps the item out by the audit trail, past the guard
+    fix = (
+        f"(fix: the person puts {doctor._shell_path(listed)} back from a copy they trust; or, with no copy, "
+        f"{ACCEPT_LOST_FIX}; a purge run again by hand clears its record only when it finds the content "
+        "again, and the next sync refuses until then)"
+    )
+    assert fix in failed, failed
+    # the cycle itself keeps the item out by the audit trail, past the guard, and a copy of its content
+    # under a new id and path by the audit trail's hashes
+    copy = local_source_dir / "other" / "contoso-copy.txt"
+    copy.parent.mkdir()
+    copy.write_bytes((local_source_dir / "projects" / "sample.txt").read_bytes())
     run_cycle(initialised, mode=CycleMode.RECONCILE)
     assert not (initialised.docs_repo / page).exists()
-    # the fix's second branch: the purge run again by hand
+    assert not (initialised.docs_repo / "mirror" / "source" / "other").exists()
+    # the purge run again by hand finds nothing: it rebuilt nothing, so the FAIL stays
     purge = ["purge", f"docs={page}", "--reason", "erasure-request", "--config", cfg]
     assert cli.main(purge) == cli.EXIT_OK
+    assert "VERIFIED · 0 items" in capsys.readouterr().out
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    # the audited way out, the first record's time: one audit line, nothing else written
+    (first,) = governance.lost_suppressions(root)  # the rerun's own record suppressed nothing, so lost none
+    audit = governance.audit_path(root)
+    before = audit.read_bytes()
+    accept = ["purge", "--accept-lost", first["at"], "--config", cfg]
     capsys.readouterr()
+    assert cli.main([*accept, "--dry-run"]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert (
+        f"dry run: would accept the suppression list's loss of the purge erasure-request at {first['at']}"
+        in said
+    )
+    assert audit.read_bytes() == before
+    assert cli.main(accept) == cli.EXIT_OK
+    assert "(audited)" in capsys.readouterr().out
+    added = audit.read_bytes()[len(before) :].decode().splitlines()
+    assert len(added) == 1, added
+    line = json.loads(added[0])
+    assert line["action"] == "suppression-lost-accepted" and line["at_of"] == first["at"], line
+    assert line["selector_sha256"] == first["selector_sha256"] and line["reason"] == "erasure-request", line
     _rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert not (initialised.docs_repo / page).exists()
+    assert not (initialised.docs_repo / "mirror" / "source" / "other").exists()
+
+
+def test_accept_lost_takes_a_time_status_names_goes_alone_and_a_refused_audit_trail_clears_nothing(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C344 (ruling 33): `purge --accept-lost <at>` takes the time of a record the list lost,
+    nothing else (no selector, no queue, no free text); one that names no lost record is refused, and an
+    audit trail this account cannot append to refuses the act and clears nothing (A79)."""
+    cfg, root, _page = _erased(initialised, capsys)
+    governance._suppress_file(root).rename(root / "suppressed.kept")
+    (lost,) = governance.lost_suppressions(root)
+    extras = (
+        ["--queue"],
+        ["docs=mirror/x.md"],
+        ["--forget", "id=contoso-0001"],
+        ["--push"],
+        ["--source", "source"],
+        ["--reason", "operator"],
+    )
+    for extra in extras:  # C344's review: no other option is silently ignored
+        assert cli.main(["purge", "--accept-lost", lost["at"], *extra, "--config", cfg]) == cli.EXIT_USAGE, (
+            extra
+        )
+    assert cli.main(["purge", "--accept-lost", "2001-01-01T00:00:00Z", "--config", cfg]) == cli.EXIT_FAILED
+    assert "no purge at 2001-01-01T00:00:00Z is one the suppression list lost" in capsys.readouterr().err
+    audit = governance.audit_path(root)
+    before = audit.read_bytes()
+    audit.chmod(0o400)
+    try:
+        assert cli.main(["purge", "--accept-lost", lost["at"], "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        audit.chmod(0o600)
+    assert audit.read_bytes() == before and governance.lost_suppressions(root) == [lost]
+
+
+def test_accept_lost_names_how_many_records_a_shared_time_names_and_what_a_glob_record_gives_up(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C344's review: purges an older build timed to the second (the queue's run in one second) share one
+    time, so one accept cleared both unsaid. A purge's time is to the microsecond now; where an older time
+    still names two records, the dry run and the act say how many. A path-glob record's glob is kept only by
+    its fingerprint, so its FAIL, dry run and act say a new file under it is no longer kept out."""
+    cfg, root, _page = _erased(initialised, capsys)
+    (summary,) = [r for r in governance.read_audit(root) if r["action"] == "purge-summary"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z", summary["at"]), summary
+    at = "2026-10-01T00:00:00Z"
+    for n, kind in ((1, "stable-id"), (2, "path-glob")):
+        item = {"action": "purge", "at": at, "reason": "dlp-remediation", "source_id": "source"}
+        governance.append_audit(
+            root, {**item, "path_sha256": None, "stable_id_sha256": governance._sha(f"c{n}")}
+        )
+        line = {"action": "purge-summary", "at": at, "reason": "dlp-remediation", "verified": True}
+        governance.append_audit(
+            root, {**line, "selector_kind": kind, "selector_sha256": governance._sha(f"s{n}")}
+        )
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert governance.accept_lost_words(glob=True) in failed, failed
+    assert "and for a purge by a source-path glob its guard against a new file under that glob" in failed
+    capsys.readouterr()
+    assert cli.main(["purge", "--accept-lost", at, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert "loss of 2 purges, as that time names 2 records (dlp-remediation at " in said, said
+    assert "nor a new file under its source-path glob" in said, said
+    assert cli.main(["purge", "--accept-lost", at, "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert "loss of 2 purges" in said and "nor a new file under its source-path glob" in said, said
+    assert governance.lost_suppressions(root) == []
+
+
+def test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guard(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 33's review: a list put back from a copy taken between two purges of one source-path glob
+    still holds the glob, so the later purge's record is lost by its items alone. Its FAIL, dry run and act
+    said accepting it gave up the glob's guard against a new file under it, which the list still keeps; the
+    words follow what the FAIL's detail judges lost."""
+    cfg, root, _page = _erased(initialised, capsys)
+    glob = governance.PurgeSelector(source_id="source", path_glob="contoso/*")
+    governance._add_suppressions(root, [], [("source", "contoso/*")])
+    at = "2026-10-01T00:00:00Z"
+    item = {"action": "purge", "at": at, "reason": "dlp-remediation", "source_id": "source"}
+    governance.append_audit(root, {**item, "path_sha256": None, "stable_id_sha256": governance._sha("c1")})
+    line = {"action": "purge-summary", "at": at, "reason": "dlp-remediation", "verified": True}
+    line |= {"selector_kind": "path-glob", "selector_sha256": glob.fingerprint()}
+    governance.append_audit(root, line)
+    (lost,) = governance.lost_suppressions(root)
+    assert lost["at"] == at
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert governance.accept_lost_words() in failed and "source-path glob" not in failed, failed
+    capsys.readouterr()
+    for extra in (["--dry-run"], []):
+        assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_OK
+        said = capsys.readouterr().out
+        assert "loss of the purge dlp-remediation at " in said and "source-path glob" not in said, said
+    assert governance.lost_suppressions(root) == []
+
+
+def test_a_purge_run_again_that_finds_its_content_again_clears_its_lost_record(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C401's control (ruling 33): a verified run of the same selector that found content again
+    put it back on the list, and clears the earlier record."""
+    (local_source_dir / "projects" / "contoso-memo-1.txt").write_text("Memo one for Contoso.\n")
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    purge = ["purge", "path=projects/contoso-memo-*", "--source", "source", "--reason", "erasure-request"]
+    assert cli.main([*purge, "--config", cfg]) == cli.EXIT_OK
+    governance._suppress_file(root).rename(root / "suppressed.kept")
+    assert len(governance.lost_suppressions(root)) == 1
+    (local_source_dir / "projects" / "contoso-memo-2.txt").write_text("Memo two for Contoso.\n")
+    run_cycle(initialised, mode=CycleMode.RECONCILE)  # past the guard: the glob is gone with the list
+    assert (initialised.docs_repo / "mirror" / "source" / "projects" / "contoso-memo-2.txt.md").exists()
+    assert cli.main([*purge, "--config", cfg]) == cli.EXIT_OK
+    assert "VERIFIED · 1 item" in capsys.readouterr().out
+    assert governance.lost_suppressions(root) == []
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_a_lost_glob_stops_the_sync_though_the_list_holds_another(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C383, C403 (ruling 33): a path-glob purge counted as kept while the list held any glob
+    at all, so a list put back holding only another purge's glob read as losing nothing, and a new file
+    under the lost glob was published. Each audited glob is judged by its own fingerprint; an entry no purge
+    could have written (an empty glob, a source id that is not one) is skipped, never read as a glob held or
+    as a reason to judge nothing."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    for glob in ("legal/*", "misc/*"):
+        purge = [
+            "purge",
+            f"path={glob}",
+            "--source",
+            "source",
+            "--reason",
+            "erasure-request",
+            "--config",
+            cfg,
+        ]
+        assert cli.main(purge) == cli.EXIT_OK
+    listed = governance._suppress_file(root)
+    data = json.loads(listed.read_text(encoding="utf-8"))
+    assert data["globs"] == [["source", "legal/*"], ["source", "misc/*"]]
+    assert governance.lost_suppressions(root) == []
+    data["globs"] = [["source", "misc/*"]]
+    listed.write_text(json.dumps(data), encoding="utf-8")
+    (lost,) = governance.lost_suppressions(root)
+    legal = governance.PurgeSelector(source_id="source", path_glob="legal/*").fingerprint()
+    assert lost["selector_sha256"] == legal, lost
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert (
+        rc == cli.EXIT_FAILED
+        and "cannot rebuild the purged content's hashes and a source-path glob" in failed
+    )
+    (local_source_dir / "legal").mkdir()
+    (local_source_dir / "legal" / "new-brief.txt").write_text("A Contoso brief.\n")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert not (initialised.docs_repo / "mirror" / "source" / "legal").exists()
+    # hand-edited entries agentsync never writes are skipped: every audited glob is lost, and the sync stops
+    data["globs"] = [["", ""], ["Bad Id!", "legal/*"]]
+    listed.write_text(json.dumps(data), encoding="utf-8")
+    assert len(governance.lost_suppressions(root)) == 2
+    assert governance.suppressions_lost(root) is not None
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert not (initialised.docs_repo / "mirror" / "source" / "legal").exists()
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_a_list_that_kept_the_ids_but_lost_the_content_hashes_is_lost(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str], legacy: bool
+) -> None:
+    """B13 round 30 C402 (ruling 33): only the ids were compared, so a list rewritten to keep them but drop
+    the content hashes read as losing nothing, and a copy under another id and path was published. The
+    purge-summary line records the sha256 of each hash it put on the list (``canonical_sha256s``), and a
+    hash the list lost is lost; the cycle keeps the copy out by those, past the guard. A line an older build
+    wrote has no such field and skips that test."""
+    cfg, root, _page = _erased(initialised, capsys)
+    listed = governance._suppress_file(root)
+    data = json.loads(listed.read_text(encoding="utf-8"))
+    (summary,) = [r for r in governance.read_audit(root) if r["action"] == "purge-summary"]
+    assert data["canonical"] and summary["canonical_sha256s"] == sorted(
+        governance._sha(h) for h in data["canonical"]
+    )
+    data["canonical"] = []
+    listed.write_text(json.dumps(data), encoding="utf-8")
+    copy = local_source_dir / "other" / "contoso-copy.txt"
+    copy.parent.mkdir()
+    copy.write_bytes((local_source_dir / "projects" / "sample.txt").read_bytes())
+    if legacy:
+        audit = governance.audit_path(root)
+        lines = [json.loads(ln) for ln in audit.read_text(encoding="utf-8").splitlines()]
+        for rec in lines:
+            rec.pop("canonical_sha256s", None)
+        audit.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in lines), encoding="utf-8")
+        assert governance.lost_suppressions(root) == []
+        return
+    (lost,) = governance.lost_suppressions(root)
+    assert lost["at"] == summary["at"]
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    run_cycle(initialised, mode=CycleMode.RECONCILE)  # past the guard: the audit trail's hashes hold
+    assert not (initialised.docs_repo / "mirror" / "source" / "other").exists()
 
 
 def test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs(

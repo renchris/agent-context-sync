@@ -5719,9 +5719,10 @@ class _Cycle:
         if h1 is None:
             h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
         # The raw-bytes hash too: a purge recorded the H1 of its day, and a suffix whose H1 method has since
-        # changed (B13 round 4 Q76: .potx, .vsdx and .vsdm were bytes@1) must stay suppressed.
-        purged = self.suppressions.matches_content
-        if purged(h1.sha256) or purged(fetched.content_sha256):
+        # changed (B13 round 4 Q76: .potx, .vsdx and .vsdm were bytes@1) must stay suppressed. The audit
+        # trail's hashes too, though the list lost them (B13 round 30 C401).
+        listed, audited = self.suppressions.matches_content, self.audited.matches_content
+        if any(listed(h) or audited(h) for h in (h1.sha256, fetched.content_sha256)):
             self._suppress_purged_content(src, row, acc)
             return None
         c2 = classify_content(row, h1)

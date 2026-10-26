@@ -33505,7 +33505,45 @@ finding, not folded in. Tests: `test_a_closing_status_a_signal_stopped_is_said_a
 
 ### 16.205 Round 30: a lost suppression's audited way out, the records governance/ keeps outside it, a lost queued purge redone, the read-only judge and one secret alarm (2026-10-26, wave B13 round 30 lane B)
 
-Reserved for round 30 lane B of B13.
+C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost part of what a purge suppressed is lost,
+and only an audited act clears that. `lost_suppressions` judges each suppressing `purge-summary` against the list
+three ways: its items' ids, as before; a path-glob purge's own `selector_sha256` against the fingerprints of the
+globs the list holds, by one helper (`_glob_fingerprints`) that skips an entry no purge could have written (an empty
+glob, a source id that is not one), so neither "any glob at all" (round 29's `not sup.globs`, which let a list put
+back holding another purge's glob publish a new file under the lost one) nor a malformed entry reads as kept; and
+the summary's new `canonical_sha256s`, the sha256 of each content hash the purge put on the list (none for an
+upstream deletion), against the sha256 of each hash the list holds, so a list rewritten to keep the ids but drop the
+hashes is lost too. A summary an older build wrote has no `canonical_sha256s` and skips that test. The FAIL's
+"and a source-path glob" uses the same helper. A later purge of the same selector clears an earlier record only
+when it is verified and found content again (it has `purge` lines), and an earlier record with no
+`canonical_sha256s` only when the run's items (by source and `stable_id_sha256`, as the trail records them) include
+that record's own: an empty rerun, which is what a rerun of an erased item finds, or an unverified one, rebuilt
+nothing and clears nothing. `audited_suppressions` also collects `canonical_sha256s`, and the cycle's content check
+asks the list or the audit trail (`AuditedSuppressions.matches_content`, the sha256 of the fetched H1 or raw hash),
+so a copy of newly purged content under another id and path stays out while the list is lost. A purge's `at` (its
+`purge` and `purge-summary` lines) is now to the microsecond (`2026-10-26T12:00:00.123456Z`, `_iso_fine`), so the
+queue's purges in one second no longer share it; lines an older build wrote keep their seconds. The way out for a
+record nothing can put back is `purge --accept-lost <at>` (with `--dry-run`; it goes alone: a selector, `--queue`,
+`--forget`, `--source`, `--reason` or `--push` beside it is a usage error, and it takes no free text), which
+`accept_lost_suppression(config, at, *, dry_run, lock, now)` does: under the writer lock it writes one
+`suppression-lost-accepted` (`SUPPRESSION_LOST_ACCEPTED`) audit line (`at`, `at_of` the record's time, `reason`,
+`selector_kind`, `selector_sha256`) for each lost record of that time, after which `lost_suppressions` drops each
+record it names, by time and selector. Where an older time names more than one record, the dry run and the act say
+"loss of <n> purges, as that time names <n> records (...)" and accept each; a time that names no lost record is
+refused, and an audit trail it cannot append to clears nothing
+(A79). It never edits suppressed.json, and the audit trail's ids, paths and hashes stay in force. Both FAILs name
+it beside the copy (`accept_lost_words`, and `ACCEPT_LOST_WORDS` its no-glob form): the lost FAIL's fix reads "puts
+<list> back from a copy they trust; or, with no copy, accepts each loss with `~/.local/bin/agentsync purge
+--accept-lost <at>` (`--dry-run` first), <at> being the time status names for it, which gives up that purge's guard
+against a copy of its content under another name, while its items stay out by their id and path; a purge run again
+by hand clears its record only when it finds the content again, and the next sync refuses until then", with ", and
+for a purge by a source-path glob its guard against a new file under that glob" after "another name" when a lost
+record is a path-glob purge whose glob the list no longer holds (`_glob_lost`, as the FAIL's detail judges it; the
+trail keeps its glob only by fingerprint), and the dry run and the act add ", nor a new file under its source-path
+glob" for one; a list put back from a copy that still holds the glob keeps that guard, and neither says it is given
+up. The damaged list's move-aside tail says the next sync refuses until
+each purge it recorded is put back, with the no-glob words, where it said only glob and copied-content purges were
+run again.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

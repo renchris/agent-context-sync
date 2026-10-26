@@ -432,7 +432,7 @@ def test_purge_by_stable_id_removes_every_copy_and_verifies(world: World) -> Non
     assert purge_lines == [
         {
             "action": "purge",
-            "at": "2026-09-29T12:00:00Z",
+            "at": "2026-09-29T12:00:00.000000Z",  # to the microsecond (B13 round 30 C401)
             "path_sha256": sha("hr/renamed-secret.docx"),
             "reason": "erasure-request",
             "source_id": "src",
@@ -1858,3 +1858,59 @@ def test_a_hold_list_created_while_it_is_read_is_read_never_a_link_to_nothing(
     holds.symlink_to(tmp_path / "gone" / "holds.json")
     with pytest.raises(gv.GovernanceNotAFileError, match="a symlink to nothing"):
         gv._state_holds(state)
+
+
+def test_an_empty_or_unverified_run_of_a_lost_purge_clears_nothing_and_a_verified_one_clears_it(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 C401 (ruling 33): any later purge-summary of the same selector cleared an earlier lost
+    record, though an empty run (nothing left to find) or an unverified one put nothing back on the list.
+    Only a verified run that found content again clears it; it is then judged by what it put back."""
+    state = tmp_path / "state"
+    gv.governance_dir(state).mkdir(parents=True)
+    sel = gv.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042")
+
+    def run(at: str, *, verified: bool, found: bool) -> None:
+        if found:
+            item = {"action": "purge", "at": at, "reason": "erasure-request", "source_id": "contoso"}
+            gv.append_audit(
+                state, {**item, "path_sha256": None, "stable_id_sha256": gv._sha(sel.stable_id or "")}
+            )
+        summary = {"action": "purge-summary", "at": at, "reason": "erasure-request", "verified": verified}
+        gv.append_audit(state, {**summary, "selector_kind": sel.kind(), "selector_sha256": sel.fingerprint()})
+
+    run("2026-10-01T00:00:00Z", verified=True, found=True)
+    assert [r["at"] for r in gv.lost_suppressions(state)] == ["2026-10-01T00:00:00Z"]  # no list: lost
+    run("2026-10-02T00:00:00Z", verified=True, found=False)
+    run("2026-10-03T00:00:00Z", verified=False, found=True)
+    lost = [r["at"] for r in gv.lost_suppressions(state)]
+    assert lost == ["2026-10-01T00:00:00Z", "2026-10-03T00:00:00Z"], lost
+    gv.suppress_items(state, [("contoso", "contoso-volume:0042")])
+    run("2026-10-04T00:00:00Z", verified=True, found=True)
+    assert gv.lost_suppressions(state) == []
+
+
+def test_a_rerun_clears_an_older_lost_record_only_when_it_found_that_records_own_items(
+    tmp_path: Path,
+) -> None:
+    """C344's review of C401: a record an older build wrote (no ``canonical_sha256s``) was cleared by a
+    verified rerun that found any item; it is cleared only when the rerun found its own items again."""
+    state = tmp_path / "state"
+    gv.governance_dir(state).mkdir(parents=True)
+    sel = gv.PurgeSelector(source_id="contoso", path_glob="legal/*")
+
+    def run(at: str, *ids: str) -> None:
+        for i in ids:
+            item = {"action": "purge", "at": at, "reason": "erasure-request", "source_id": "contoso"}
+            gv.append_audit(state, {**item, "path_sha256": None, "stable_id_sha256": gv._sha(i)})
+        summary = {"action": "purge-summary", "at": at, "reason": "erasure-request", "verified": True}
+        gv.append_audit(state, {**summary, "selector_kind": sel.kind(), "selector_sha256": sel.fingerprint()})
+
+    run("2026-10-01T00:00:00Z", "contoso-0001")
+    gv._add_suppressions(state, [("contoso", "contoso-0002")], [("contoso", "legal/*")])
+    run("2026-10-02T00:00:00Z", "contoso-0002")  # found another item: the older record stays lost
+    assert [r["at"] for r in gv.lost_suppressions(state)] == ["2026-10-01T00:00:00Z"]
+    run("2026-10-03T00:00:00Z", "contoso-0001")  # found the older record's own item: that record clears
+    assert [r["at"] for r in gv.lost_suppressions(state)] == ["2026-10-03T00:00:00Z"]
+    gv.suppress_items(state, [("contoso", "contoso-0001")])
+    assert gv.lost_suppressions(state) == []

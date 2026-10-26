@@ -330,6 +330,12 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(_UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _iso_fine(dt: datetime) -> str:
+    """A purge's time to the microsecond: the queue's purges run in one second, and ``purge --accept-lost
+    <at>`` names one by it (B13 round 30 C344's review). Lines an older build wrote keep their seconds."""
+    return dt.astimezone(_UTC).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
 
@@ -501,14 +507,36 @@ def _damaged_words(path: Path, role: str, what: str) -> tuple[str, str]:
     return detail, fix
 
 
+def accept_lost_words(*, glob: bool = False) -> str:
+    """The suppression list's way out with no copy, in both its FAILs, beside the copy (B13 round 30 C344,
+    C401; ruling 33): the person's, after "with no copy, ". ``glob``: a lost record is a purge by a
+    source-path glob, which the audit trail keeps only by its fingerprint, so accepting it also gives up the
+    glob's guard against a new file under it (C344's review)."""
+    also = (
+        ", and for a purge by a source-path glob its guard against a new file under that glob" if glob else ""
+    )
+    return (
+        f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at>` (`--dry-run` first), <at> being "
+        "the time status names for it, which gives up that purge's guard against a copy of its content under "
+        f"another name{also}, while its items stay out by their id and path"
+    )
+
+
+ACCEPT_LOST_WORDS = accept_lost_words()
+""":func:`accept_lost_words` with no glob: the damaged list's move-aside tail, which knows no record."""
+
+
 def _what_the_move_leaves(role: str) -> str:
     """What a move aside of the suppression list or the purge queue leaves to run again, after its fix's
-    "keeping a copy": never a bare move aside, which republished erased content (B13 round 29 C172)."""
+    "keeping a copy": never a bare move aside, which republished erased content (B13 round 29 C172). The
+    list's names every suppressing purge, as :func:`lost_suppressions` judges them, and the audited way out
+    (B13 round 30 C344)."""
     if role == "the suppression list":
         return (
-            ": the items it suppressed stay out by their id and path, from the audit trail, but each purge "
-            "by a source-path glob or of copied content is run again by hand before the next sync, which "
-            "refuses until then"
+            ": the items it suppressed stay out by their id and path, from the audit trail, but the next "
+            "sync refuses until each purge it recorded is put back: with no copy, the person "
+            f"{ACCEPT_LOST_WORDS} (a purge run again by hand clears its record only when it finds the "
+            "content again)"
         )
     if role == "the purge queue":
         return (
@@ -1263,10 +1291,13 @@ class AuditedSuppressions:
     """The items the audit trail records as purged for a reason that suppresses (every one but
     ``upstream-deleted``), by ``(source_id, sha256(stable_id))`` and ``(source_id, sha256(rel_path))``: the
     cycle keeps them out though the suppression list lacks them, as :func:`lost_holds` keeps a hold the hold
-    list lost (B13 round 29 C172). Globs and content hashes are never audited, so never here."""
+    list lost (B13 round 29 C172). ``canonical`` is the sha256 of each content hash a ``purge-summary`` line
+    records (``canonical_sha256s``), so a copy under another name stays out too (B13 round 30 C401); a line an
+    older build wrote has none, and a glob is audited only by its selector's fingerprint, so never here."""
 
     items: frozenset[tuple[str, str]] = frozenset()
     paths: frozenset[tuple[str, str]] = frozenset()
+    canonical: frozenset[str] = frozenset()
 
     def __bool__(self) -> bool:
         return bool(self.items or self.paths)
@@ -1275,14 +1306,29 @@ class AuditedSuppressions:
         """True when the audit trail records this item, by its id or its exact source path, as purged."""
         return (source_id, _sha(stable_id)) in self.items or (source_id, _sha(rel_path)) in self.paths
 
+    def matches_content(self, canonical_sha256: str | None) -> bool:
+        """True when fetched content hashes (H1) to content the audit trail records as purged (never for the
+        empty file), as :meth:`Suppressions.matches_content` judges the list's."""
+        return (
+            bool(canonical_sha256)
+            and canonical_sha256 != _EMPTY_SHA256
+            and _sha(str(canonical_sha256)) in self.canonical
+        )
+
 
 def audited_suppressions(state_dir: Path) -> AuditedSuppressions:
-    """:class:`AuditedSuppressions` from the audit trail's ``purge`` lines; empty when it cannot be read."""
+    """:class:`AuditedSuppressions` from the audit trail's ``purge`` and ``purge-summary`` lines; empty when
+    it cannot be read."""
     items: set[tuple[str, str]] = set()
     paths: set[tuple[str, str]] = set()
+    canonical: set[str] = set()
     for rec in _audit_events(state_dir):
         sid = rec.get("source_id")
-        if rec.get("action") != "purge" or rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
+        if rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
+            continue
+        if rec.get("action") == "purge-summary" and isinstance(rec.get("canonical_sha256s"), list):
+            canonical |= {h for h in rec["canonical_sha256s"] if isinstance(h, str)}
+        if rec.get("action") != "purge":
             continue
         if not isinstance(sid, str):
             continue
@@ -1290,23 +1336,61 @@ def audited_suppressions(state_dir: Path) -> AuditedSuppressions:
             items.add((sid, rec["stable_id_sha256"]))
         if isinstance(rec.get("path_sha256"), str):
             paths.add((sid, rec["path_sha256"]))
-    return AuditedSuppressions(frozenset(items), frozenset(paths))
+    return AuditedSuppressions(frozenset(items), frozenset(paths), frozenset(canonical))
+
+
+SUPPRESSION_LOST_ACCEPTED = "suppression-lost-accepted"
+"""The audit line of ``purge --accept-lost <at>``: the one act that clears a lost suppression no copy and no
+run of its purge can put back (B13 round 30 C344, C401; ruling 33)."""
+
+
+def _glob_fingerprints(sup: Suppressions) -> set[str]:
+    """The selector fingerprint (:meth:`PurgeSelector.fingerprint`) of each source-path glob ``sup`` holds, as
+    the purge that stored it recorded it in its ``purge-summary``; an entry no purge could have written (an
+    empty glob, a source id that is not one: a hand edit) is skipped, never read as no globs or as a reason
+    to judge nothing (B13 round 30 C383, C403; ruling 33)."""
+    out: set[str] = set()
+    for sid, glob in sup.globs:
+        try:
+            out.add(PurgeSelector(source_id=sid or None, path_glob=glob).fingerprint())
+        except GovernanceError:
+            continue
+    return out
+
+
+def _glob_lost(rec: Mapping[str, Any], held: set[str]) -> bool:
+    """Whether ``rec`` is a path-glob purge whose own glob the list's ``held`` fingerprints lack."""
+    fp = rec.get("selector_sha256")
+    return rec.get("selector_kind") == "path-glob" and not (isinstance(fp, str) and fp in held)
 
 
 def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> list[dict[str, Any]]:
-    """The audit trail's ``purge-summary`` records of each suppressing purge whose items, or whose source-path
-    glob, the suppression list (``listed``, read here when None) no longer holds, and that no later purge of
-    the same selector did again: the erased items' ids and paths are kept out from the audit trail
-    (:func:`audited_suppressions`), but their content hashes and a glob cannot be rebuilt from it, so the sync
-    refuses until the list is put back or each purge is run again (B13 round 29 C172)."""
+    """The audit trail's ``purge-summary`` records of each suppressing purge part of whose suppression the
+    list (``listed``, read here when None) no longer holds: one of its items, its own source-path glob (by
+    fingerprint, :func:`_glob_fingerprints`), or one of the content hashes its line records
+    (``canonical_sha256s``; a line an older build wrote has none, and skips that test). The erased items'
+    ids and paths are kept out from the audit trail (:func:`audited_suppressions`), but the list's glob and
+    content guards are not, so the sync refuses until the list is put back (B13 round 29 C172; B13 round 30
+    C383, C403, C402). A later purge of the same selector clears a record only when it is verified and found
+    content again (a record an older build wrote, with no ``canonical_sha256s``, only when it found that
+    record's own items again); an empty or unverified run rebuilt nothing. A ``suppression-lost-accepted``
+    line clears the record it names, by its time and selector (:func:`accept_lost_suppression`; C401, C344;
+    ruling 33)."""
     sup = load_suppressions(state_dir) if listed is None else listed
     have = {(sid, _sha(i)) for sid, i in sup.items}
+    held_globs = _glob_fingerprints(sup)
+    held_canonical = {_sha(h) for h in sup.canonical}
     out: list[dict[str, Any]] = []
+    own: dict[int, set[tuple[object, object]]] = {}  # each lost record's items, as its purge lines name them
     group: list[dict[str, Any]] = []
     for rec in _audit_events(state_dir):
         action = rec.get("action")
         if action == "purge":
             group.append(rec)
+            continue
+        if action == SUPPRESSION_LOST_ACCEPTED:
+            named = (rec.get("at_of"), rec.get("selector_sha256"))
+            out = [r for r in out if (r.get("at"), r.get("selector_sha256")) != named]
             continue
         if action != "purge-summary":
             continue
@@ -1314,10 +1398,23 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
         if rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
             continue
         fp = rec.get("selector_sha256")
-        out = [r for r in out if r.get("selector_sha256") != fp]  # run again: what it could rebuild is back
-        gone = [r for r in mine if (r.get("source_id"), r.get("stable_id_sha256")) not in have]
-        if gone or (rec.get("selector_kind") == "path-glob" and not sup.globs):
+        found = {(r.get("source_id"), r.get("stable_id_sha256")) for r in mine}
+        if rec.get("verified") is True and mine:  # run again and found its content: that is back on the list
+            # an older record, whose hashes no line records, only when this run found its own items again
+            out = [
+                r
+                for r in out
+                if r.get("selector_sha256") != fp
+                or not (isinstance(r.get("canonical_sha256s"), list) or own[id(r)] <= found)
+            ]
+        gone = [key for key in found if key not in have]
+        hashes = rec.get("canonical_sha256s")
+        unhashed = isinstance(hashes, list) and any(
+            not isinstance(h, str) or h not in held_canonical for h in hashes
+        )
+        if gone or unhashed or _glob_lost(rec, held_globs):
             out.append(rec)
+            own[id(rec)] = found
     return out
 
 
@@ -1367,7 +1464,6 @@ def governance_lost(state_dir: Path) -> GovernanceLostError | None:
 
 def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
     """The suppression list's :class:`GovernanceLostError` (:func:`lost_suppressions`), or None."""
-    shown_bin = AGENTSYNC_BIN
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):
@@ -1376,7 +1472,9 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
         if lost:
             path = _suppress_file(state_dir)
             what = "the purged content's hashes"
-            if any(r.get("selector_kind") == "path-glob" for r in lost) and not sup.globs:
+            held = _glob_fingerprints(sup)
+            globbed = any(_glob_lost(r, held) for r in lost)  # a glob the list still holds keeps its guard
+            if globbed:
                 what += " and a source-path glob"
             detail = (
                 f"{path} no longer lists what {plural(len(lost), 'purge')} the audit trail records "
@@ -1385,8 +1483,8 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
             )
             fix = (
                 f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
-                f"runs each such purge again by hand with its own selector and reason (`{shown_bin} purge "
-                "<selector> --reason <reason>`) before the next sync, which refuses until then"
+                f"{accept_lost_words(glob=globbed)}; a purge run again by hand clears its record only when "
+                "it finds the content again, and the next sync refuses until then"
             )
             return GovernanceLostError(path, "the suppression list", detail, fix)
     return None
@@ -3254,7 +3352,7 @@ def _purge_locked(
                 notes=(note,),
                 taken_paths=tuple(sorted(taken)),
             )
-        at = _iso(_now(now))
+        at = _iso_fine(_now(now))
         notes: list[str] = []
         paths_left: list[str] = []
         result: _RewriteResult | None = None
@@ -3339,17 +3437,19 @@ def _purge_locked(
                 remote = f"not pushed: remote(s) {', '.join(sorted(names))} still hold the purged history"
             else:
                 remote = "no-remote"
+        suppressed: list[str] = []  # the content hashes the list gets, audited by their sha256 (C402)
         if reason is not PurgeReason.UPSTREAM_DELETED:
             # Erasure / DLP / label escalation / operator: the content must not come back while it exists
             # upstream -- by id (every alias), by exact source path (a safe-save gets a new id at the same
             # path) and by canonical hash (a copy under another name).
             globs = [(selector.source_id or "", selector.path_glob)] if selector.path_glob else []
+            suppressed = sorted(h for h in mt.canonical | plan.canonical if h and h != _EMPTY_SHA256)
             _add_suppressions(
                 sp.root,
                 plan.ids,
                 globs,
                 paths=sorted({(s, r) for s, _i, r, d in mt.items if not d} | plan.rel_paths),
-                canonical=sorted(mt.canonical | plan.canonical),
+                canonical=suppressed,
             )
         report = PurgeReport(
             selector=selector.kind(),
@@ -3379,6 +3479,7 @@ def _purge_locked(
             plan=plan,
             docs_paths=docs_paths,
             report=report,
+            canonical=suppressed,
         )
         if not report.verified:
             log.error(
@@ -3400,7 +3501,12 @@ def _audit_purge(
     plan: _Plan,
     docs_paths: Sequence[str],
     report: PurgeReport,
+    canonical: Sequence[str] = (),
 ) -> None:
+    """One ``purge`` line per item and the ``purge-summary`` line. The summary's ``canonical_sha256s`` is the
+    sha256 of each content hash the purge put on the suppression list (none for an upstream deletion), never
+    the hash itself: :func:`lost_suppressions` finds one the list lost, and :func:`audited_suppressions` keeps
+    a copy of the content out without the list (B13 round 30 C402, C401; ruling 33)."""
     rel_by_id = {(s, i): r for s, i, r, _d in items}
     for source_id, stable_id in sorted(plan.ids):
         rel = rel_by_id.get((source_id, stable_id))
@@ -3421,6 +3527,7 @@ def _audit_purge(
             "action": "purge-summary",
             "at": at,
             "blobs": report.blobs_targeted,
+            "canonical_sha256s": sorted({_sha(h) for h in canonical}),
             "commits_rewritten": report.commits_rewritten,
             "docs_path_sha256": sorted(_sha(p) for p in docs_paths),
             "reason": reason.value,
@@ -4154,6 +4261,49 @@ def forget_queued(
                 }
             )
     return q
+
+
+def accept_lost_suppression(
+    config: Config,
+    at: str,
+    *,
+    dry_run: bool = False,
+    lock: bool = True,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Accept what the suppression list lost of the purge run at ``at`` (the time status names it by,
+    :func:`lost_suppressions`) with a ``suppression-lost-accepted`` audit line, under the writer lock, after
+    which that record no longer stops the sync; a refused audit trail clears nothing (A79). ``dry_run``
+    returns the record and writes nothing. It gives up that purge's guard against a copy of its content under
+    another name, while its items stay out by their id and path from the audit trail: the one way out for a
+    record no copy of the list and no run of its purge can put back, as an older build's, whose content
+    hashes nothing records (B13 round 30 C344, C401; ruling 33). A purge's time is to the microsecond
+    (:func:`_iso_fine`), but lines an older build wrote, or purges given one ``now``, can share one: the act
+    then accepts each record that time names, and the CLI says how many."""
+    sp = config.state_paths
+    with _maybe_lock(sp, lock and not dry_run):
+        lost = [r for r in lost_suppressions(sp.root) if r.get("at") == at]
+        if not lost:
+            raise GovernanceError(
+                f"no purge at {at} is one the suppression list lost; `{AGENTSYNC_BIN} status` names each by "
+                "its reason and time"
+            )
+        if dry_run:
+            return lost
+        with _audit_appender(sp.root) as audit:
+            when = _iso(_now(now))
+            for rec in lost:
+                audit(
+                    {
+                        "action": SUPPRESSION_LOST_ACCEPTED,
+                        "at": when,
+                        "at_of": rec.get("at"),
+                        "reason": rec.get("reason"),
+                        "selector_kind": rec.get("selector_kind"),
+                        "selector_sha256": rec.get("selector_sha256"),
+                    }
+                )
+    return lost
 
 
 def _probed(q: QueuedPurge) -> bool:
