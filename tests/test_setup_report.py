@@ -1652,7 +1652,10 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
     fail = f"[FAIL] governance.hold — {detail} (fix: {fix})"
     shown = red.redact(fail)
     assert "Avery" not in shown and "Quill" not in shown, shown
-    assert f"no longer lists the hold on all (owner not shown) at {when} (audit.jsonl" in shown, shown
+    # lane B's ruling 27 clause reads "(kept by audit.jsonl ...)" (lane RA's relaxed pin, landed with lane B)
+    assert re.search(
+        rf"no longer lists the hold on all \(owner not shown\) at {when} \((?:kept by )?audit", shown
+    )
     assert shown.endswith(f"(fix: {fix})"), shown  # the fix is agentsync's words, all of them
     assert red.redact(f"HOLD: {lost.describe()} (purge and compaction suspended)") == (
         f"HOLD: hold all (audit) since {when}: lost from the hold list, owner not shown (purge and "
@@ -1661,7 +1664,10 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
     # a hold heartbeat.json alone recorded has no time and the fallback owner: still cut, nothing lost
     bare = governance.Hold("all", governance.LOST_HOLD_REASON, "the records owner", "", "audit")
     assert red.redact(bare.describe()) == "hold all (audit): lost from the hold list, owner not shown"
-    assert "on all (owner not shown) (audit.jsonl" in red.redact(governance.lost_hold_words(root, bare)[0])
+    assert re.search(
+        r"on all \(owner not shown\) \((?:kept by )?audit",
+        red.redact(governance.lost_hold_words(root, bare)[0]),
+    )
     # lane B's ruling 27 record clause, "(kept by <records>)": a hold the record alone keeps has no time
     for line, want in (
         (
