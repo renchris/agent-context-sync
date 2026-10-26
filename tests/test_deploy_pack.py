@@ -6833,17 +6833,29 @@ def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check()
     Swift older than 6.0 fetches nothing, and the page says that instead. B13 round 29 C194: the page named
     only `HTTPS_PROXY` and `ALL_PROXY`, and `_shell` reads `_PROXIES`' four keys as written, so a Mac with
     only `https_proxy` set fetched the file too; the page names every key of `_PROXIES`, read here, in README
-    step 1's order."""
+    step 1's order. B13 round 30 C363, C373 (one defect): the page said a newer Swift that FluidAudio's own
+    manifest refuses leaves the FluidAudio repository unfetched, but SwiftPM clones a dependency before it
+    reads that dependency's manifest (measured with a tools-99.0 dependency under Swift 6.2.4), and
+    FluidAudio's manifests at 04e363c are tools 6.0 and 6.2 (`Package@swift-6.2.swift`, which only Swift 6.2
+    or later picks), so no Swift at the helper's floor is refused there. The page drops that case and says the
+    true order for a Swift under 6.0: the helper's own manifest is refused before the clone."""
     it_request = " ".join(_page("docs/deploy/it-request.md").split())
     assert (
         "Behind a proxy (`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` or `all_proxy` in the environment, or"
         " git's http.proxy setting), the"
         " installer fetches the 87 MB file through that proxy before SwiftPM resolves the package. A Mac"
-        " whose Swift is older than 6.0 (as `swift --version` says) does not fetch it; a newer Swift that"
-        " FluidAudio's own manifest still refuses may, and the helper is then not built and the FluidAudio"
-        " repository is not fetched. It fetches the file once and keeps it in the speech helper's cache."
-        in it_request
+        " whose Swift is older than 6.0 (as `swift --version` says) does not fetch it, and SwiftPM then"
+        " refuses the helper's own manifest before it fetches the FluidAudio repository, so the helper is not"
+        " built and neither is fetched. FluidAudio's manifests at that commit need no newer Swift (6.0, and"
+        " 6.2 only for Swift 6.2 or later). It fetches the file once and keeps it in the speech helper's"
+        " cache." in it_request
     )
+    assert "FluidAudio's own manifest still refuses" not in it_request
+    assert "FluidAudio repository is not fetched" not in it_request
+    # "that commit" is the one the helper's manifest pins, and the page names it
+    package = speech._sources()["Package.swift"].decode()
+    [revision] = re.findall(r'revision: "([0-9a-f]{40})"', package)
+    assert f"pinned to commit `{revision[:7]}`" in it_request
     compile_ = inspect.getsource(speech._compile)
     assert compile_.index("_seed(") < compile_.index('"resolve"]')
     seed = inspect.getsource(speech._seed)

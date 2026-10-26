@@ -32990,6 +32990,10 @@ fetch asks the Swift nothing and the speech tests' step lists stay. The IT reque
 nothing; 6.2.4, no version and a non-zero exit seed),
 `test_speech.py::test_the_swift_check_needs_no_swift_without_a_proxy` and
 `test_deploy_pack.py::test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`.
+Amended 2026-10-26, §16.207 C363: SwiftPM clones a dependency's repository before it reads that dependency's
+manifest, so a Swift a dependency's tools version refuses has already fetched it; and FluidAudio's manifests at
+04e363c are tools 6.0 and 6.2 (`Package@swift-6.2.swift`, picked only by Swift 6.2 or later), so the case above does
+not arise at the pin. The IT request no longer says that case leaves the FluidAudio repository unfetched.
 
 **Accented folder names take Finder's order (C212; `agentsync.arm_local`; amends §16.196 I24).** `natural_key`
 put `Été 2026` after `Facture` in NFC and first in NFD (a combining mark tokenized as punctuation). `_name_key`
@@ -33368,3 +33372,14 @@ CLAUDE.md gives `about 18 to 52 minutes` with the nine named, COMMON.md says the
 sentences keep the 60 they measured against, and `tests/test_convert_recording.py`'s docstring names 70, as does a
 dated line on §16.144's W70 paragraph. Tests: `test_claude_md_gives_cis_time_and_its_limit`, which reads the limit
 from ci.yml and the docstring's number with it, and `test_the_recording_tests_limit_names_cis_own_limit`.
+
+**The IT request gives the FluidAudio fetch its true order** (C363, C373; `docs/deploy/it-request.md`; dated line at
+§16.201 C211). The page said a newer Swift that FluidAudio's own manifest still refuses may fetch the 87 MB file
+and then fetches no FluidAudio repository. SwiftPM clones a dependency before it reads that dependency's manifest
+(C363's verifier, a tools-99.0 dependency under Swift 6.2.4: `Fetched`, then the tools-version refusal, the clone
+left in `.build/repositories`), and FluidAudio's manifests at 04e363c are tools 6.0 and 6.2, so the case does not
+arise at the pin. The page keeps the true case in C373's words: a Swift older than 6.0 fetches neither, as SwiftPM
+refuses the helper's own manifest first, and FluidAudio's manifests at that commit need no newer Swift. The
+hypothetical in `speech._swift_too_old`'s docstring is lane E's file and does not say the repository goes unfetched,
+so it stays. Test: `test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which pins the
+sentence, refuses the old clause and reads "that commit" from the helper's `Package.swift` revision.

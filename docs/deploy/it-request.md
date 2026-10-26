@@ -208,8 +208,9 @@ What the user reports, and what IT does about it:
   release v0.3.1 (87 MB, a compiled Rust library). Behind a proxy (`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` or
   `all_proxy` in the environment, or git's http.proxy setting), the installer fetches the 87 MB file through that
   proxy before SwiftPM resolves the package. A Mac whose Swift is older than 6.0 (as `swift --version` says) does not
-  fetch it; a newer Swift that FluidAudio's own manifest still refuses may, and the helper is then not built and the
-  FluidAudio repository is not fetched. It fetches the file once and keeps it in the speech helper's cache. SwiftPM
+  fetch it, and SwiftPM then refuses the helper's own manifest before it fetches the FluidAudio repository, so the
+  helper is not built and neither is fetched. FluidAudio's manifests at that commit need no newer Swift (6.0, and 6.2
+  only for Swift 6.2 or later). It fetches the file once and keeps it in the speech helper's cache. SwiftPM
   refuses that file unless it matches the SHA-256 checksum pinned in FluidAudio's manifest at that commit. GitHub
   serves release files from `release-assets.githubusercontent.com`, so a proxy that allows only `github.com` blocks
   this one; the speech helper is then not built, and nothing else depends on it. An install that finds `[convert] recordings = false` in
