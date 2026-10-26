@@ -174,11 +174,11 @@
 #      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
 #      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
 #      remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not
-#      a file, a state folder that is not a folder, or a state file or folder that an ACL, a privacy
-#      setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta
-#      to install or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round
-#      13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65; round 23 ruling 6; round
-#      24 ruling 7)
+#      a file, a hold the hold list lost, a state folder that is not a folder, or a state file or folder that
+#      an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert]
+#      pandoc_path, Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to
+#      the report (B13 round 13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65; round
+#      23 ruling 6; round 24 ruling 7; round 29 ruling 27)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -1065,6 +1065,41 @@ def misplaced_kind(role, path):
 print(role, (role != "-" and misplaced_kind(role, found[0])) or "")'
 misplaced_reader() { # PYTHON [SRC]
 	with_timeout 10 "$1" -I -c "$MISPLACED_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
+}
+# Whether agentsync's hold list lost a hold its records keep as set and not released (governance.lost_holds,
+# B13 round 28 I87, I89: holds.json moved aside, rewritten as no holds, or a hold only a record names), which
+# fails step 2's status on its governance.hold line, the person's (B13 round 29 ruling 27: C122, C197, C206):
+# "lost-hold", "none", or nothing when the build cannot say (one that lacks lost_holds, a hold list or
+# governance folder it cannot read, which the misplaced and access probes judge, or any error). The build's
+# own judge as status calls it, never re-implemented here, read in the order misplaced_reader is: with SRC this
+# checkout's code, else the installed build's. Prints no scope, owner or reason: a hold's owner is a value.
+LOST_HOLD_PY='
+import os, sys
+from pathlib import Path
+
+if len(sys.argv) > 2:  # a checkout: its own code throughout, before any agentsync import (B13 round 28 I96)
+    if not os.path.isdir(os.path.join(sys.argv[2], "agentsync")):
+        sys.exit(0)
+    sys.path.insert(0, sys.argv[2])
+try:
+    from agentsync import governance
+    from agentsync.config import load_config
+    from agentsync.ops import doctor
+    from agentsync.paths import expand
+
+    lost_holds = governance.lost_holds
+    config = load_config(Path(sys.argv[1]))
+    if doctor.state_folder_unchecked(config) is not None:
+        sys.exit(0)
+    if governance.governance_dir_error(expand(config.state_paths.root)) is not None:
+        sys.exit(0)
+    root = config.state_paths.root
+    lost = lost_holds(root, governance.state_holds(root))
+except BaseException:
+    sys.exit(0)
+print("lost-hold" if lost else "none")'
+lost_hold_reader() { # PYTHON [SRC]
+	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
 }
 # The words for the manifest's -wal and -shm that are not files, from a list such as "wal-folder shm-fifo" (each
 # side, then its kind by its own lstat: folder, fifo, socket, symlink or other) that step 1's probe and step 2's
@@ -7470,7 +7505,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -7581,6 +7616,10 @@ list_folders() {
 				codd="$(LC_ALL=C grep -xE 'sideodd-(wal|shm)-(folder|fifo|socket|symlink|other)' "$tmp/cerr" | LC_ALL=C sed 's/^sideodd-//' | LC_ALL=C tr '\n' ' ' || true)"
 				cmis="$(LC_ALL=C grep -xE 'misodd-(folder|fifo|socket|other|damaged|symlink-(loop|nothing|file|folder|fifo|socket)|dir-(file|fifo|socket|other|symlink-(loop|nothing|file)))' "$tmp/cerr" | LC_ALL=C sed 's/^misodd-//' | LC_ALL=C head -n 1 || true)"
 			fi
+			# a hold the hold list lost, as this checkout's governance judges it, else the installed build's
+			# (B13 round 29 ruling 27: C122, C197, C206)
+			chold="$(lost_hold_reader "$py" "$repo/src")"
+			[ -n "$chold" ] || chold="$(lost_hold_reader "$py")"
 		fi
 	fi
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
@@ -7807,6 +7846,14 @@ list_folders() {
 		fi
 		ctail="$ctail$stail"
 		clog=" config_err=$cerr"
+	elif [ "$chold" = lost-hold ]; then
+		# A hold the hold list lost (holds.json moved aside or rewritten as no holds, or a hold only a record
+		# names) fails step 2's status on its governance.hold line, and its fix is the person's: step 1 said
+		# "(none is needed)" over that stop (B13 round 29 ruling 27: C122, C197, C206). Only when nothing else
+		# is predicted: a config-step stop comes first, and a hold list that cannot be read is the misplaced or
+		# access tail's. Fixed words: the hold's scope and owner are values, never printed here.
+		ctail="; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+		clog=" config_err=state-hold-lost"
 	fi
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
@@ -9276,7 +9323,7 @@ print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
 }
 STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

@@ -3011,9 +3011,9 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
     search, a read-only volume) is the person's, as is a manifest that is not a file, and the NEXT's kinds
     name the state folder and each of them (lane B's words)."""
     kind = (
-        "a state file that is damaged, missing after earlier syncs, another account's or not a file, a "
-        "state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a "
-        "folder above it or a read-only volume refuses"
+        "a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold "
+        "the hold list lost, a state folder that is not a folder, or a state file or folder that an ACL, a "
+        "privacy setting, a folder above it or a read-only volume refuses"
     )
     assert kind in doctor.PERSONS_KINDS
     root = tmp_path / "state"

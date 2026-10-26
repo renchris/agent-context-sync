@@ -32432,6 +32432,30 @@ fallback report, where setup_report's `value.strip().isupper()` folds and cuts t
 and `Rm` with no LANG and with `LANG=en_US.UTF-8` (`_shell_hold_redact`'s new `lang`), against setup_report's
 Redactor; the three en_US rows not in capitals fail on the range.
 
+**C122, C197, C206: step 1 predicts a hold the hold list lost, and the person's kinds name it (`scripts/install.sh`
+list_folders, `PERSONS_FAILS`; `agentsync.ops.doctor.PERSONS_KINDS`; `agentsync.setup_report._PERSONS_KINDS_COPY`;
+ruling 27; one defect from three finders, built once).** With a hold set and holds.json then moved aside or
+rewritten as `{"holds": []}` (or a hold only a record names), status FAILs governance.hold with the person's fix
+(`governance.lost_hold_words`), so step 2 stops at its status step; step 1 said `(none is needed)` and step 2's NEXT
+named no kind for it. Step 1 runs `LOST_HOLD_PY` through `lost_hold_reader` beside `config_errors`, in
+`misplaced_reader`'s order (this checkout's src, the build step 2 installs, then the installed build): the build's
+own `governance.lost_holds(root, governance.state_holds(root))`, as status calls it, after its own
+`doctor.state_folder_unchecked` and `governance.governance_dir_error` guards. It prints `lost-hold` or `none`, and
+nothing when the build lacks a name or anything raises (a hold list it cannot read is the misplaced or access
+tail's), never re-implemented. Only when no config or state tail is predicted, the NEXT ends `; step 2 stops at its
+status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not
+damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records
+owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold
+line`, with no `(none is needed)`, logged `config_err=state-hold-lost`; it names no scope, owner or reason. The
+person's kinds gain `a hold the hold list lost` after `another account's or not a file` in every code copy, in
+this one commit (ruling 6): `PERSONS_FAILS` and install.sh's header, `doctor.PERSONS_KINDS`,
+`setup_report._PERSONS_KINDS_COPY` and the test literals. The prompt's own list (v33) is unchanged: its rule reads
+any fix that "says it is mine", and step 2 keys on `not a step for you`. The report's Doctor bucket for the FAIL is
+lane RA's (C197's report half).
+`test_step_1_predicts_a_hold_the_hold_list_lost_and_step_2_names_its_kind` (moved and emptied, with the real
+agentsync, followed to a clean run) and `test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_without_it`
+(the audit trail, an empty list, a damaged list, the record alone, a build without `lost_holds`).
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.

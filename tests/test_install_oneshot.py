@@ -936,10 +936,10 @@ PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
     "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
     "docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another "
-    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
-    "privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, "
-    "Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go "
-    "on to the report; once fixed, "
+    "account's or not a file, a hold the hold list lost, a state folder that is not a folder, or a state "
+    "file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a "
+    "sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the "
+    "agent, so show them those lines and go on to the report; once fixed, "
 )
 
 
@@ -11434,6 +11434,110 @@ def test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder
         kept.rename(gov)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+LOST_HOLD_TAIL = (
+    "; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records "
+    "keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold "
+    "list back from the copy kept, or the records owner sets the hold again or releases it), and "
+    "~/.local/bin/agentsync status prints it on its governance.hold line"
+)
+"""Step 1's tail for a hold the hold list lost (B13 round 29 ruling 27: C122, C197, C206), in fixed words that
+name no scope, owner or reason."""
+
+
+@pytest.mark.parametrize("case", ["moved", "emptied"])
+def test_step_1_predicts_a_hold_the_hold_list_lost_and_step_2_names_its_kind(
+    real_env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 29 ruling 27 (C122, C197, C206; rehearsal probe LOSTHOLD), with the real agentsync: a hold on
+    `all`, then holds.json moved aside or rewritten as no holds, while the audit trail still records the hold.
+    Step 2's status FAILs governance.hold with the person's fix, but step 1 said "(none is needed)" and step
+    2's NEXT listed no kind for it. Step 1 now asks the build's own governance.lost_holds and gives a
+    status-step tail that names no scope or owner, and the NEXT's kinds name a hold the hold list lost.
+    Putting the hold list back, as the words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    owner = "Quinn Avery"
+    held = subprocess.run(
+        [agentsync, "hold", "all", "--reason", "matter 8", "--owner", owner],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert held.returncode == 0, held.stdout + held.stderr
+    holds = _state_db(env).parent / "governance" / "holds.json"
+    kept = holds.with_name("holds.json.kept")
+    if case == "moved":
+        holds.rename(kept)
+    else:
+        kept.write_bytes(holds.read_bytes())
+        holds.write_text('{"holds": []}', encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(LOST_HOLD_TAIL), last_line(listed)
+    assert "(none is needed)" not in listed.stdout + listed.stderr
+    assert owner not in listed.stdout + listed.stderr and "matter 8" not in listed.stdout + listed.stderr
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert "[FAIL] governance.hold " in cp.stdout + cp.stderr, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(PERSONS_NEXT), last_line(cp)
+    assert "a hold the hold list lost" in last_line(cp) and owner not in last_line(cp), last_line(cp)
+    kept.replace(holds)  # the person puts the hold list back from the copy kept
+    assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def _lost_hold_probe(cfg: Path, src: Path | None) -> str:
+    """install.sh's LOST_HOLD_PY, run as lost_hold_reader runs it (-I), with SRC ``src`` when given."""
+    text = INSTALL_SH.read_text()
+    code = text.split("\nLOST_HOLD_PY='", 1)[1].split("'\nlost_hold_reader() {", 1)[0]
+    argv = [sys.executable, "-I", "-c", code, str(cfg), *([str(src)] if src else [])]
+    return subprocess.run(argv, capture_output=True, text=True, check=False, timeout=60).stdout.strip()
+
+
+def test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_without_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 C206's corrected fix: step 1 asks this checkout's governance.lost_holds first (the build
+    step 2 installs), then the installed build's, as misplaced_reader does (round 28 I96), and says nothing
+    for a build that lacks it or a hold list it cannot read; a hold only the record keeps counts too."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    gov = state / "governance"
+    gov.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    assert _lost_hold_probe(cfg, src) == "none"
+    audit = {"action": "hold-set", "scope": "all", "owner": "Quinn Avery", "at": "2026-10-26T01:00:00Z"}
+    (gov / "audit.jsonl").write_text(json.dumps(audit) + "\n", encoding="utf-8")
+    assert governance.lost_holds(state), "the audit line this test writes is one lost_holds reads"
+    assert _lost_hold_probe(cfg, src) == "lost-hold"
+    (gov / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    assert _lost_hold_probe(cfg, src) == "lost-hold"
+    (gov / "holds.json").write_text("not json", encoding="utf-8")  # the misplaced probe's, never this one's
+    assert _lost_hold_probe(cfg, src) == ""
+    (gov / "holds.json").unlink()
+    (gov / "audit.jsonl").unlink()
+    (state / "heartbeat.json").write_text(json.dumps({governance.HOLD_RECORD_KEY: ["all"]}), encoding="utf-8")
+    assert _lost_hold_probe(cfg, src) == "lost-hold"  # a hold only the record names
+    older = tmp_path / "older"  # an installed build with no lost_holds: silent, never re-implemented
+    shutil.copytree(src / "agentsync", older / "agentsync")
+    gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
+    (older / "agentsync" / "governance.py").write_text(
+        gtext.replace("def lost_holds(", "def _no_lost_holds("), encoding="utf-8"
+    )
+    assert _lost_hold_probe(cfg, older) == ""
+    assert _lost_hold_probe(cfg, tmp_path / "no-checkout") == ""
 
 
 def test_a_lock_folder_beside_a_refused_remote_gives_the_locks_next(
