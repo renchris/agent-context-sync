@@ -1881,6 +1881,49 @@ pages), B 23 (ruling 19 first, then 20 and 21's doctor words), RB 24 (I52 first,
 ruling 21's tails), E 10 (I40 and I39 first, the new start's runs and kept pages, Finder order), D 17 (the guides,
 CONTRACTS records, ship-land's header). Lead: I97 (the harvest's umbrella note, built as I87 to I96).
 
+### B13 round 28 landed (2026-10-25)
+
+All five lanes landed; CI green on `3f1dee54` (ci `40260160828`); the prompt is still v33. Notes `lanes/r28-<lane>.md`,
+lead notes `round28/lead-notes.md`. All 103 lane items are built, each with a test that fails without it (I67 is a
+test-only fix, measured on a mutant); I97 was the harvest's umbrella note, built as I87 to I96. Lane B built ruling 19
+first: a hold is never lost to a reader, and no page under a hold is erased (I87, I88). Lanes B and RB landed as one
+push at lane B's request, since RB's install.sh seams for rulings 19 and 20 need B's code and B's branch alone failed
+two of RB's tests. Lane D landed I99 first: run `40200999412` (d1f72d6f, docs only) took 49:59 against the job's
+limit of 50, which is now 60.
+
+Optional halves left unbuilt, each measured in its lane's note: I53's `words=unread` field in sync-stops.log (the
+writer is lane B's `cli.py`, not the report; RA); I90's `hold --repair` (the CLI command set is frozen, and I87's
+audit replay keeps the lost holds; B); I16's listing of both sides in the sync error (the guard now stops on the -shm
+first; B); I40's converter mask of the userinfo (masking the `.url` page publishes it instead of withholding it; E);
+I71's code guard (the page is true now; D); the step 2 file-first order a verifier asked for in I50 (steps 1 and 2
+already agree; RB).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `4301c7c2..71388552`, 8 commits |
+| D | `396b16b6..03d0329f` and `221aa943..3f1dee54`, 15 commits |
+| RA | `5f816fdf..a0bf93d4`, 19 commits |
+| B | `ee12b040..f1086507`, 15 commits, in one push with RB |
+| RB | `a41aae72..be3d027d`, 13 commits |
+
+Learnings: the lanes built in half an hour (E) to two and a quarter hours (RB) and the rest was the land queue,
+again; at a load of 80 to 250 the round took seven and a half hours from the fire to the last CI read. A hook's
+prompt on `git push --delete` (lane B removing its own share branch) held lane B between one and two hours (seen at
+16:10 and 17:00, gone by 18:07) until the operator answered it. A lane branch that another lane rebases is on trunk by
+content but not by ancestry, so `round28/tools/remove-worktrees.sh` now checks content (`git cherry`, then a
+same-subject trunk commit whose `git range-diff` changes no diff line) and deletes with `-D`.
+
+Residuals the lanes named for round 29's harvest (in their notes): the report's buckets for lane B's ruling 19 FAILs
+(governance/ not a folder, a damaged hold list, a lost hold, the held-queue warn), which needed B's words on trunk
+first (RA, RB); a hold set before any sync wrote heartbeat.json has no record outside governance/ until the next pass
+(B).
+
+Round 29: the round 28 workflow (`round28/round28-workflow.js` through `round29/tools/edit.py`, with the guard line
+first in every prompt and the harvest list in `round29/tools/harvest-lead.txt`) on this section's landed tip, BASE
+`d1f72d6f`, ids C101 and up (every single capital is used in CONTRACTS §16, and C's ids stop at C18), outputs
+`round29/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since no lane changed the
+prompt. Codex reviewers run beside the Claude finders and verifiers, through `~/.claude/scripts/xvendor-review.sh`.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
