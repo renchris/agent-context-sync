@@ -7836,7 +7836,7 @@ list_folders() {
 		# status's NEXT leads with it, and only the stop that may follow is the person's (B13 round 28 ruling 21,
 		# lane B's I42: the person was asked to choose over a record no one had read)
 		lown="fixing that is the person's ($lfix)"
-		[ -z "$chbmode" ] || lown="heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still missing then, fixing that is the person's ($lfix)"
+		[ -z "$chbmode" ] || lown="heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still lost then, fixing that is the person's ($lfix)"
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact: $lown, and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		case ",$cerr," in *",state-notdir,"*) stail="; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line" ;; esac
 		git_ro_resolve
@@ -9026,7 +9026,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
 		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's
 		[ -z "$STATE_LOST_HBFIX" ] ||
-			FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first: run $STATE_LOST_HBFIX once, then re-run: $SELF$RERUN_ARGS; if the re-run stops on the missing manifest, fixing that is the person's ($lfix), not a step for the agent, so show them the error and go on to the report"
+			FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first: run $STATE_LOST_HBFIX once, then re-run: $SELF$RERUN_ARGS; if the re-run stops on the lost manifest, fixing that is the person's ($lfix), not a step for the agent, so show them the error and go on to the report"
 	elif [ "$rc" -eq 1 ] && state_owned_elsewhere; then
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then

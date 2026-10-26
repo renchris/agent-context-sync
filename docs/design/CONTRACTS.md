@@ -31766,6 +31766,9 @@ stops on the missing manifest, fixing that is the person's (...)`. Tests: the st
 `test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod` (the chmod, the re-run's
 lost-manifest NEXT, the person's new start).
 
+Amended 2026-10-26, §16.199 C195: the tail says `if the manifest is still lost then` and the NEXT `if the re-run stops
+on the lost manifest`, for a missing manifest and one too short to be one alike.
+
 **A manifest too short to be one is lost in install.sh's copies too** (lane B's round 28 I92, install.sh's half).
 Lane B's `manifest.lost_words` reads a regular file, not a link, under the 100-byte header beside a
 heartbeat.json that records passes, or cannot be read, as lost (SQLite opens 0 or 1 byte as a new database, so a
@@ -32471,6 +32474,17 @@ what is there now aside, keeping a copy`. The hold list's fix takes lane B's con
 in install.sh's voice: `keeping a copy, they move it aside, then, if it listed any hold, put the hold list back from
 a copy they trust`. Tests: the step 1 misplaced test's `governance-file`, `governance-dangling`, `holds-folder` and
 `holds-fifo` cases and the step 2 ones, through `misplaced_fix`.
+
+**A manifest there but too short is lost, never missing, after the heartbeat's chmod** (C195, with C164's install.sh
+half; `scripts/install.sh` list_folders and state_lost, `docs/deploy/data-governance.md`; ruling 30; amends §16.194
+I42). Over a 0-to-99-byte manifest beside this account's own heartbeat.json at a mode that refuses it, step 1's tail
+said the file `is empty or too short to be a manifest` and then `if the manifest is still missing then`, and step
+2's NEXT `if the re-run stops on the missing manifest`; the data governance guide said `still missing after that`.
+Each now says `still lost` and `the lost manifest`, true of a missing manifest and a short one alike (the verifier's
+one word, not a branch on the short flag; setup_report already says `still lost then`).
+`test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod` gains a `short` row (an
+empty manifest beside a heartbeat at 0000: the tail and NEXT in lane B's short-and-unread words, the chmod, the
+re-run's short NEXT, and the file aside with heartbeat.json ends it); both rows fail on `missing`.
 
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 

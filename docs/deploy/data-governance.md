@@ -73,7 +73,7 @@ is a copy that no purge reaches, so exclude it too.
   you trust, or else move heartbeat.json aside (keeping a copy) so the next sync starts a new manifest; a manifest
   too short to be one is moved aside with heartbeat.json, keeping a copy. When heartbeat.json is this account's own
   file at a mode that refuses it, status's NEXT gives its `chmod 600` first, and the manifest's fix comes only if
-  the manifest is still missing after that. A new start converts every file again and forgets the deletions, the
+  the manifest is still lost after that. A new start converts every file again and forgets the deletions, the
   deletion breaker's suspended removals and the archive it had recorded. After a restore, preview with
   `agentsync purge --queue --dry-run`, then run the purge. After a new start, run `agentsync sync` first:
   `purge --queue` before it leaves each entry queued `until the next sync builds the manifest`. After that sync,

@@ -8829,7 +8829,7 @@ STATE_LOST_UNREAD_NEXT = (
 STATE_LOST_HBMODE_TAIL = (
     f"; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which {LOST_UNREAD}: "
     "heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the "
-    "agent's to run first, once, as step 2's NEXT names it; if the manifest is still missing then, "
+    "agent's to run first, once, as step 2's NEXT names it; if the manifest is still lost then, "
     + LOST_FIX.format(it="that is")
     + ", and ~/.local/bin/agentsync status prints it on its state_dir.manifest line"
 )
@@ -8840,7 +8840,7 @@ STATE_LOST_HBMODE_NEXT = (
     f"NEXT: agentsync's state file, manifest.sqlite, {LOST_UNREAD} (the error above names it; "
     "~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's "
     "mode refuses this account (a mode, not damage), so the fix is the agent's first: run {fix} once, then "
-    "re-run: {rerun}; if the re-run stops on the missing manifest, "
+    "re-run: {rerun}; if the re-run stops on the lost manifest, "
     + LOST_FIX.format(it="that is")
     + ", not a step for the agent, so show them the error and go on to the report"
 )
@@ -11678,14 +11678,24 @@ def test_step_2_stops_on_a_lost_manifest_beside_a_heartbeat_it_cannot_read(
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+SHORT_UNREAD = (
+    "is empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes "
+    "cannot be ruled out"
+)
+"""Lane B's manifest.LOST_MANIFEST_EMPTY_UNREAD (B13 round 28 I92 with ruling 21)."""
+
+
+@pytest.mark.parametrize("manifest", ["missing", "short"])
 def test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_agents_chmod(
-    real_env: dict[str, str], wheel: Path
+    real_env: dict[str, str], wheel: Path, manifest: str
 ) -> None:
     """B13 round 28 ruling 21 (lane B's I42; install.sh's half of I5, I33, I56), with the real agentsync: the
     manifest missing beside a heartbeat.json at 0000. Steps 1 and 2 gave the person's choice (restore the
     manifest or start a new one) over a record no one had read, while its chmod 600 is the agent's and
     status's NEXT leads with it. Following the words: the chmod, then the re-run stops on the lost manifest
-    with the person's NEXT, and their new start ends it."""
+    with the person's NEXT, and their new start ends it. B13 round 29 ruling 30 (C195, C165, C164's
+    install.sh half): a manifest there but too short is "lost" there too, never "the missing manifest" or
+    "still missing", and its own fix, the file aside with heartbeat.json, ends it."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -11695,6 +11705,8 @@ def test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_
     db = _state_db(env)
     for f in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         f.unlink(missing_ok=True)
+    if manifest == "short":
+        db.write_bytes(b"")
     heartbeat = db.with_name("heartbeat.json")
     heartbeat.chmod(0)
     try:
@@ -11702,16 +11714,29 @@ def test_a_lost_manifest_beside_a_heartbeat_its_own_mode_refuses_leads_with_the_
         cp = install_sh(env, str(wheel))
     finally:
         heartbeat.chmod(0o600)
-    assert last_line(listed).endswith(STATE_LOST_HBMODE_TAIL), last_line(listed)
-    assert cp.returncode == 1, cp.stdout + cp.stderr
     fix = "chmod 600 ~/'Library/Application Support/agentsync/heartbeat.json'"
     rerun = f"{INSTALL_SH} {wheel}"
-    assert last_line(cp).startswith(STATE_LOST_HBMODE_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    tail, said = STATE_LOST_HBMODE_TAIL, STATE_LOST_HBMODE_NEXT.format(fix=fix, rerun=rerun)
+    if manifest == "short":
+        tail = tail.replace(LOST_UNREAD, SHORT_UNREAD).replace(
+            LOST_FIX.format(it="that is"), SHORT_FIX.format(it="that is")
+        )
+        said = said.replace(LOST_UNREAD, SHORT_UNREAD).replace(
+            LOST_FIX.format(it="that is"), SHORT_FIX.format(it="that is")
+        )
+    assert last_line(listed).endswith(tail), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(said), last_line(cp)
+    for shown in (last_line(listed), last_line(cp)):
+        assert "still missing" not in shown and "the missing manifest" not in shown, shown
     heartbeat.chmod(0)
     subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)  # the agent's chmod, as the NEXT names it
     lost = install_sh(env, str(wheel))
     assert lost.returncode == 1, lost.stdout + lost.stderr
-    assert last_line(lost).startswith(STATE_LOST_NEXT.format(rerun=rerun)), last_line(lost)
+    after = STATE_LOST_SHORT_NEXT if manifest == "short" else STATE_LOST_NEXT
+    assert last_line(lost).startswith(after.format(rerun=rerun)), last_line(lost)
+    if manifest == "short":  # the person's fix: the file aside, and heartbeat.json with it
+        db.rename(db.with_name("manifest.sqlite.aside"))
     heartbeat.rename(heartbeat.with_name("heartbeat.json.aside"))  # the person's new start
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
