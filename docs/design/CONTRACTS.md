@@ -33036,7 +33036,8 @@ keeping the phrases the round 25 test pins and RA's plural `it would show those 
 `<value>` row adds that such a value is matched as written. The row also gives RA's C187 cut (19b8f77b9): a hold the
 hold list lost, origin `audit`, reads `hold <source-1> (audit) since <time>: lost from the hold list, owner not
 shown`, its FAIL's `set by <owner>` reads `(owner not shown)` with the scope, time and record clause kept, and an
-owner the audit trail records is cut wherever a line quotes it. Test:
+owner the audit trail records is cut wherever a line quotes it; the row says both reports do, the installer's
+fallback report since lane RB's 29eef8c92 (`hold_cut`, `hold_values`). Test:
 `test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut`, which reads the match from
 `_build_redactor` and makes the lost hold's forms with `_cut_holds`.
 

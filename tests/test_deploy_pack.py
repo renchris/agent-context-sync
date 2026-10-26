@@ -6416,7 +6416,7 @@ def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut(
     as written, so one no line quotes keeps the report public: the guide says so, and the `<value>` row says
     it is matched as written; the match is read from `_build_redactor`. C187 (ruling 23): the agentsync
     report cuts a hold the hold list lost (origin `audit`) keeping its fixed reason, and its FAIL's owner;
-    the forms are made with `_cut_holds`."""
+    the forms are made with `_cut_holds`, and install.sh's `hold_cut` (lane RB's 29eef8c92) does the same."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -6450,6 +6450,10 @@ def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut(
     assert (
         "an owner the audit trail records is cut wherever a line quotes it, even with holds.json gone" in page
     )
+    # the shell report's hold_cut and hold_values do the same (lane RB, 29eef8c92)
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert '": lost from the hold list, owner not shown" end' in install and '" (owner not shown)"' in install
+    assert "the installer's fallback report since 29eef8c92, §16.199) both reports also cut a hold" in page
 
 
 def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
