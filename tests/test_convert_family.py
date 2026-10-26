@@ -290,21 +290,37 @@ def test_pathless_replaces_the_longest_form_first(tmp_path: Path, monkeypatch: p
         assert _homeless(f"cannot open {given}/notes.txt") == "cannot open ~/notes.txt"
 
 
-@pytest.mark.parametrize("gap", ["  ", "\t"])
+@pytest.mark.parametrize("gap", ["  ", "\t", "\\"])
 def test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed(tmp_path: Path, gap: str) -> None:
     """B13 round 29 C221: ``_reason`` collapsed whitespace first, so a staging folder with two spaces in a
-    row, or a tab, no longer matched and its path stayed in the reason."""
+    row, or a tab, no longer matched and its path stayed in the reason. B13 round 30 C364: only as written;
+    an ``OSError`` and a ``PosixPath`` print the path with ``repr`` (a tab as ``\\t``, a backslash doubled),
+    and that spelling kept the whole path."""
     from agentsync.convert import _reason  # noqa: PLC0415
 
     staged = tmp_path / f"Contoso{gap}State" / "staging" / "ab12"
     staged.mkdir(parents=True)
     src = staged / "Q3 deck.pptx"
+    src.write_bytes(b"")
     for given in (src, src.resolve()):
         said = _reason(ValueError(f"file '{given}' is not a\nPowerPoint file"), src, src.name)
         assert said == "file 'Q3 deck.pptx' is not a PowerPoint file"
         assert _reason(ValueError(f"cannot open '{given.parent}/media/x.png'"), src, src.name) == (
             "cannot open 'media/x.png'"
         )
+        assert _reason(ValueError(f"bad: {given!r}"), src, src.name) == "bad: PosixPath('Q3 deck.pptx')"
+    raised: list[OSError] = []
+    for path in (staged / "media" / "x.png", src / "x"):
+        try:
+            path.open("rb")
+        except OSError as exc:
+            raised.append(exc)
+    said = [_reason(exc, src, src.name) for exc in raised]
+    assert said == [
+        "[Errno 2] No such file or directory: 'media/x.png'",
+        "[Errno 20] Not a directory: 'Q3 deck.pptx/x'",
+    ], said
+    assert not [s for s in said if "staging" in s or "Contoso" in s]
 
 
 def test_a_staging_folder_with_two_spaces_leaks_no_path_into_the_docs_repo(tmp_path: Path) -> None:

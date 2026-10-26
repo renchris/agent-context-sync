@@ -137,12 +137,14 @@ def _pathless(text: str, src: Path, name: str) -> str:
     as ``~``: a library's error names the staged file (``~/Library/Application Support/agentsync/staging/…``),
     and a stub's reason goes into the page, ``_sync/QUARANTINE.tsv`` and the manifest (B13 round 28 I39).
     Each path's longest form goes first, so a resolved ``/private/tmp/…`` leaves no ``/private`` behind
-    (B13 round 29 C183)."""
-    for path in _longest_first(src):
-        text = text.replace(str(path), name)
-    for folder in _longest_first(src.parent):
-        if len(str(folder)) > 1:
-            text = text.replace(str(folder) + "/", "")
+    (B13 round 29 C183), and each in both its spellings, the escaped one first: an ``OSError`` or a
+    ``PosixPath`` prints its path with ``repr``, so a tab is ``\\t`` there and a backslash doubled (B13 round
+    30 C364)."""
+    for spelling in _spellings(src):
+        text = text.replace(spelling, name)
+    for spelling in _spellings(src.parent):
+        if len(spelling) > 1:
+            text = text.replace(spelling + "/", "")
     return _homeless(text)
 
 
@@ -154,16 +156,25 @@ def _homeless(text: str) -> str:
         home = Path.home()
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry: nothing to fold
         return text
-    for form in _longest_first(home):
-        if len(str(form)) > 1:
-            text = text.replace(str(form), "~")
+    for spelling in _spellings(home):
+        if len(spelling) > 1:
+            text = text.replace(spelling, "~")
     return text
 
 
-def _longest_first(path: Path) -> list[Path]:
-    """``_forms(path)``, the longest first: a form that is a substring of the other (``/tmp`` in
-    ``/private/tmp``, or a link to a suffix of itself) is replaced only after the longer one (C183)."""
-    return sorted(_forms(path), key=lambda p: len(str(p)), reverse=True)
+def _spellings(path: Path) -> list[str]:
+    """Each form of ``path`` (``_forms``) as written and as ``repr`` prints it (a tab as ``\\t``, a backslash
+    doubled, U+00A0 as ``\\xa0``), the longest first: a form that is a substring of the other (``/tmp`` in
+    ``/private/tmp``, or a link to a suffix of itself) is replaced only after the longer one (B13 round 29
+    C183), and the escaped spelling of a form, never shorter than its plain one, goes first, the plain one
+    being no substring of it (B13 round 30 C364)."""
+    found: list[str] = []
+    for form in _forms(path):
+        plain = str(form)
+        for spelling in (repr(plain)[1:-1], plain):
+            if spelling not in found:
+                found.append(spelling)
+    return sorted(found, key=len, reverse=True)
 
 
 def _forms(path: Path) -> list[Path]:
@@ -187,7 +198,7 @@ def _stub_with_a_path(reason: str) -> bool:
         home = str(Path.home())
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
         return False
-    return len(home) > 1 and home in reason
+    return len(home) > 1 and any(spelling in reason for spelling in (home, repr(home)[1:-1]))
 
 
 def _check_odf_container(src: Path) -> None:

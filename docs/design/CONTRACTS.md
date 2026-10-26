@@ -32895,6 +32895,9 @@ or a tab, no longer keeps its path (C221; codex-convert). Tests: `test_convert_f
 `test_pathless_replaces_the_longest_form_first`, `test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed`,
 `test_a_staging_folder_with_two_spaces_leaks_no_path_into_the_docs_repo` and
 `test_a_converter_that_cannot_start_names_no_home_folder` (missing and not executable, two syncs each).
+Amended 2026-10-26, §16.206 C364: a tab no longer keeps the path only where the message prints it as written; each
+form is now replaced in its `repr` spelling too, the escaped one first (`_common._spellings`, which takes
+`_longest_first`'s place).
 
 **An older build's stub with a path in its reason is converted once more past its retries (C181, ruling 31;
 `agentsync.cycle`, `agentsync.convert`; corrects §16.196 I39).** I39's re-read was dead: the leaked path only ever
@@ -33113,6 +33116,18 @@ converter option and every action key stay as they were. The re-screen refuses t
 the revision key is deleted as an older build's manifest has none, and the next sync refuses the page and queues
 its purge, then marks nothing; an encoded header under an id rule and a folded one under a name rule, `.eml` and
 `.msg`) and `test_policy.py::test_a_label_reader_revision_with_no_label_rule_screens_nothing`.
+
+**A path in its escaped spelling leaves a reason too (C364, ruling 45; `agentsync.convert`; amends §16.201 C221
+and C183).** `_pathless` and `_homeless` replaced each path as written, but an `OSError` and a `PosixPath` print
+their path with `repr`, so a staging folder with a tab (`\t`) or a backslash (doubled) kept the whole path in a
+failed conversion's reason (`[Errno 2] No such file or directory: '<staging>/media/x.png'`), and the re-read of
+§16.201 C181 wrote it again. `_common._spellings` gives every form of a path both its spellings, the escaped one
+(`repr(str(p))[1:-1]`) and the plain one, longest first, and the file loop, the folder loop and the home fold each
+take them in that order: the escaped spelling is never shorter than its plain one and the plain one is no substring
+of it, so neither replace spoils the other, and an ordinary path's two spellings are one. `_stub_with_a_path` reads
+the home folder in both. Two spaces in a row were already clean (`repr` keeps a space). Test:
+`test_convert_family.py::test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed` (two spaces, a tab and
+a backslash; a `!r` message and two real `OSError`s, neither `staging` nor `Contoso` kept).
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
