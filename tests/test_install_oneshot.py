@@ -6077,19 +6077,50 @@ def _late_stop_report(env: dict[str, str], stop_at: str) -> str:
     return report_path(env).read_text()
 
 
-@pytest.mark.parametrize("link", ["unusable", "dangling", "none"])
+@pytest.mark.parametrize(
+    "link",
+    [
+        "unusable",
+        "dangling",
+        "none",
+        "short",
+        "short-unread",
+        "unread-folder",
+        "unread-mode",
+        "unread-dangling",
+        "unread-whole",
+    ],
+)
 def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str, str], link: str) -> None:
     """B13 round 27 P127, the shell half of lane RA's report words: a step 3 stop on a lost manifest said only
     "which was missing after earlier syncs", while the manifest is a link into a folder that does not exist
     (whose link the person removes first) or a link to nothing. By this shell's own read of the link now, the
-    attempt's stop names it as the agentsync report does; a manifest that is no link keeps the plain words."""
+    attempt's stop names it as the agentsync report does; a manifest that is no link keeps the plain words.
+    B13 round 29 ruling 30 (C165): a manifest there but too short, or one beside a heartbeat.json that is no
+    file this account can read, said "missing after earlier syncs" too; by the shell's read now (test(1)
+    only, never opening heartbeat.json) it takes setup_report._LOST_WAS's words, beside the link's. A
+    manifest there in full now is no longer lost, and the read says nothing of it."""
     state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
     state.mkdir(parents=True)
     db = state / "manifest.sqlite"
+    heartbeat = state / "heartbeat.json"
+    heartbeat.write_text('{"project-alpha": {"run_id": 3}}', encoding="utf-8")
     if link == "unusable":
         db.symlink_to(Path(env["HOME"]) / "gone" / "manifest.sqlite")
-    elif link == "dangling":
+    elif link in ("dangling", "unread-dangling"):
         db.symlink_to(state / "gone.sqlite")
+    elif link.startswith("short"):
+        db.write_bytes(b"x" * 10)
+    elif link == "unread-whole":
+        db.write_bytes(b"x" * 4096)
+    if link in ("unread-folder", "short-unread", "unread-whole"):
+        heartbeat.unlink()
+        heartbeat.mkdir()
+    elif link == "unread-mode":
+        heartbeat.chmod(0)
+    elif link == "unread-dangling":
+        heartbeat.unlink()
+        heartbeat.symlink_to(state / "gone.json")
     setup = friction_path(env).parent
     setup.mkdir(parents=True)
     friction_path(env).write_text(
@@ -6103,20 +6134,39 @@ def test_the_shell_report_names_a_lost_manifests_link_on_its_stop(env: dict[str,
     (setup / "sync-stops.log").write_text(
         "2026-10-14T10:01:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
     )
-    assert install_sh(env, "--report-only").returncode == 0
+    try:
+        assert install_sh(env, "--report-only").returncode == 0
+    finally:
+        if heartbeat.is_file() and not heartbeat.is_symlink():
+            heartbeat.chmod(0o600)
     text = report_path(env).read_text()
     [line] = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
     named = {
         "unusable": " and is a link into a folder that does not exist or refuses a write",
         "dangling": " and is a link to a file that does not exist",
+        "unread-dangling": " and is a link to a file that does not exist",
     }.get(link, "")
     first = ", removing or re-pointing the link first" if link == "unusable" else ""
+    which = setup_report._SYNC_STOP_KINDS["lost"]
+    kind = {"short": "short", "short-unread": "short-unread", "unread-whole": ""}.get(
+        link, "unread" if link.startswith("unread") else ""
+    )
+    which = setup_report._LOST_WAS.get(kind, which)
+    assert which != "which was missing after earlier syncs" or kind == "", which
     assert line.startswith(
-        f"- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
-        f"syncs{named}; whether a later sync ended 0: not read by this shell fallback; the fix is the "
-        f"person's{first} (F4, "
+        f"- agentsync sync · step 3 · exited 1 on agentsync's state file, {which}{named}; whether a later "
+        f"sync ended 0: not read by this shell fallback; the fix is the person's{first} (F4, "
     ), line
     assert "gone" not in line, "never the link's target"
+
+
+def test_the_shell_reports_lost_words_are_the_agentsync_reports() -> None:
+    """B13 round 29 C165: fallback_sync_stop_line's words for a lost stop by the shell's read now are
+    setup_report._LOST_WAS's, one for one, and its plain words _SYNC_STOP_KINDS' lost one."""
+    body = INSTALL_SH.read_text().split("fallback_sync_stop_line() {", 1)[1].split("\n}\n", 1)[0]
+    kinds = dict(re.findall(r'^\t\t(unread|short|short-unread)\) why="([^"]*)" ;;$', body, re.MULTILINE))
+    assert kinds == setup_report._LOST_WAS, kinds
+    assert f'lost) why="{setup_report._SYNC_STOP_KINDS["lost"]}" ;;' in body
 
 
 _LATE_HEAD = (

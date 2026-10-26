@@ -3874,7 +3874,46 @@ lost_link_now() {
 	t="${t%/*}"
 	if [ -d "$t" ] && [ -w "$t" ] && [ -x "$t" ]; then printf dangling; else printf unusable; fi
 }
+# What the lost manifest is now, beside what, by this shell's own read, as setup_report._with_now_words reads it
+# through manifest.lost_words (B13 round 29 ruling 30: C165, C195; ruling 21 and lane B's I92): "short" for a
+# manifest that is a regular file (or a link to one, ruling 29's C202) under 100 bytes, "unread" for a
+# heartbeat.json that is there but is no regular file this account can read, or a link to nothing or a loop
+# (ruling 29's C118), "short-unread" for both, empty otherwise, and for a manifest that is there and not short
+# (no longer lost: the read says nothing of the stop). test(1) only: heartbeat.json is never opened, so
+# a fifo there cannot hold this read (round 25 D46), and a regular one with damaged JSON reads as the record
+# words, which no shell read can tell (the agentsync report names it).
+lost_kind_now() {
+	local k v state="" db hb n short="" unread=""
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	db="$state/manifest.sqlite" hb="$state/heartbeat.json"
+	if [ -f "$db" ]; then # a manifest there now is lost only while it is too short to be one
+		[ -r "$db" ] || return 0
+		n="$(LC_ALL=C wc -c <"$db" 2>/dev/null | LC_ALL=C tr -d ' ')" || n=""
+		case "$n" in '' | *[!0-9]*) return 0 ;; esac
+		[ "$n" -lt 100 ] || return 0
+		short=1
+	elif [ -e "$db" ]; then
+		return 0
+	fi
+	if [ -L "$hb" ] && [ ! -e "$hb" ]; then
+		unread=1
+	elif [ -e "$hb" ] && { [ ! -f "$hb" ] || [ ! -r "$hb" ]; }; then
+		unread=1
+	fi
+	case "$short/$unread" in
+	1/1) printf short-unread ;;
+	1/) printf short ;;
+	/1) printf unread ;;
+	esac
+}
 STOP_LINK="" # lost_link_now, for the attempt's own stops only: the read says nothing of a time after it
+STOP_KIND="" # lost_kind_now, the same
 fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	local what why whose="the person's"
 	case "$2" in
@@ -3894,8 +3933,16 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND [F<n>]
 	*) why="which this account could not open" ;;
 	esac
 	[ "$3" != agent ] || whose="the agent's chmod"
-	# a person's stop on a lost manifest that is a link now, named as the agentsync report names it (P127)
+	# a person's stop on a lost manifest that is a link now, named as the agentsync report names it (P127), and
+	# one too short to be a manifest or beside a heartbeat.json that cannot be read, in setup_report._LOST_WAS's
+	# words: "missing after earlier syncs" was false of a file that is there and claimed passes no one read
+	# (B13 round 29 ruling 30: C165)
 	if [ "$2/$3/$4" = manifest/person/lost ]; then
+		case "$STOP_KIND" in
+		unread) why="which was missing beside a heartbeat.json that could not be read" ;;
+		short) why="which was empty or too short to be a manifest after earlier syncs" ;;
+		short-unread) why="which was empty or too short to be a manifest beside a heartbeat.json that could not be read" ;;
+		esac
 		case "$STOP_LINK" in
 		unusable) why="$why and is a link into a folder that does not exist or refuses a write" whose="$whose, removing or re-pointing the link first" ;;
 		dangling) why="$why and is a link to a file that does not exist" ;;
@@ -4521,11 +4568,11 @@ fallback_body() {
 		say ""
 		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
 		say ""
-		STOP_LINK="$(lost_link_now)"
+		STOP_LINK="$(lost_link_now)" STOP_KIND="$(lost_kind_now)"
 		while read -r n p v o fl; do
 			fallback_sync_stop_line "$n" "$p" "$v" "$o" "$fl"
 		done <<<"$k"
-		STOP_LINK=""
+		STOP_LINK="" STOP_KIND=""
 	fi
 	# and those logged after the attempt's end line, in a block of their own, as the agentsync report's D5
 	# block (B13 round 26 E76): a line logged after the finish cannot have stopped the run, so no outcome reads

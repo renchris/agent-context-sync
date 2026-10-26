@@ -32486,6 +32486,24 @@ one word, not a branch on the short flag; setup_report already says `still lost 
 empty manifest beside a heartbeat at 0000: the tail and NEXT in lane B's short-and-unread words, the chmod, the
 re-run's short NEXT, and the file aside with heartbeat.json ends it); both rows fail on `missing`.
 
+**C165: the shell report's lost stop says what the manifest is now, in the agentsync report's words
+(`scripts/install.sh` lost_kind_now, fallback_sync_stop_line; ruling 30).** Every step 3 stop of kind `lost` read
+`which was missing after earlier syncs` in the shell fallback report, while setup_report says, for the same stop,
+`_LOST_WAS`'s words: a manifest there but too short to be one, or one beside a heartbeat.json that could not be read
+(ruling 21, lane B's I92). `lost_kind_now`, beside `lost_link_now` and read once for the attempt's own stops
+(`STOP_KIND`, never the late block), reads the state folder as `lost_link_now` does, with test(1) and `wc -c` only,
+never opening heartbeat.json (a fifo there cannot hold it, round 25 D46) and never importing agentsync (the shell
+report runs when that report cannot): `short` for a manifest that is a regular file, or a link to one (ruling 29's
+C202), under 100 bytes; `unread` for a heartbeat.json that is there and no regular file this account can read, a
+link to nothing or a loop (ruling 29's C118); `short-unread` for both; nothing for a manifest there in full now. For
+a person's lost stop the line then says `which was missing beside a heartbeat.json that could not be read`, `which was
+empty or too short to be a manifest after earlier syncs` or `which was empty or too short to be a manifest beside a
+heartbeat.json that could not be read`, then the link's words as before. A known limit: a regular heartbeat.json of
+damaged JSON reads as the record words, which no shell read can tell. Tests: the `short`, `short-unread`,
+`unread-folder`, `unread-mode`, `unread-dangling` and `unread-whole` rows of
+`test_the_shell_report_names_a_lost_manifests_link_on_its_stop`, and
+`test_the_shell_reports_lost_words_are_the_agentsync_reports` (the three words equal `setup_report._LOST_WAS`).
+
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 
 Reserved for round 29 lane B of B13.
