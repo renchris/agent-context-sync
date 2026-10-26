@@ -177,11 +177,16 @@ def _forms(path: Path) -> list[Path]:
 
 def _stub_with_a_path(reason: str) -> bool:
     """True for a stub whose reason holds a staging or home path, which an older build wrote and
-    ``convert_file`` now keeps out (``_pathless``; B13 round 28 I39): its converter's ``outdated`` reads it
-    again.  A failed conversion is never cached, so the re-read converts it anew; what it writes holds no
-    path, and a source's re-reads are done once a build (``cycle._REREAD_META``), so it is read once."""
-    home = str(Path.home())
-    return "/staging/" in reason or (len(home) > 1 and home in reason)
+    ``convert_file`` now keeps out (``_pathless``; B13 round 28 I39). Only a failed conversion's reason held
+    one, so the cycle converts such a stub once more past its retries, once per bytes (``cycle._retries``,
+    B13 round 29 C181). With no home folder to read, the staging words alone."""
+    if "/staging/" in reason:
+        return True
+    try:
+        home = str(Path.home())
+    except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
+        return False
+    return len(home) > 1 and home in reason
 
 
 def _check_odf_container(src: Path) -> None:

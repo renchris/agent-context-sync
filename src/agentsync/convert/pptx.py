@@ -29,7 +29,6 @@ from agentsync.convert._common import (
     _first_line,
     _gfm_table,
     _join_limited,
-    _stub_with_a_path,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.image import (
@@ -441,10 +440,11 @@ class PptxConverter:
     def outdated(self, produced: str, reason: str | None = None) -> bool:
         """True when the page this converter wrote under version ``produced`` is worth reading the deck
         again for: it was written without OCR and there is an engine now, or it was written by the field
-        build of OCR (``image._field_build``; engine or not).  A stub (``reason`` is the stub's) only when an
-        older build wrote a staging or home path into it (``_stub_with_a_path``, B13 round 28 I39)."""
+        build of OCR (``image._field_build``; engine or not).  Never for a stub (``reason`` is the stub's):
+        one an older build wrote a staging or home path into is a failed conversion's, which only the cycle's
+        one-shot re-read reaches (``cycle._retries``, B13 round 29 C181)."""
         if reason is not None:
-            return _stub_with_a_path(reason)
+            return False
         return _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced))
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:

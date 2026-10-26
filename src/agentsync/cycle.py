@@ -272,6 +272,10 @@ without a read, deleted, its source gone)."""
 _RETRY_LEGACY_META = "convert-retry-legacy:done"
 """Set once the failed-conversion stubs a build before the retry settled were given the ERROR verdict again
 (``Manifest.retry_settled_failure_rows``, B13 round 18 V65), so each gets the same bounded retries once."""
+_PATH_REREAD_META = "convert-path-reread:done"
+"""Set once the failed-conversion stubs whose reason an older build wrote a staging or home path into, and
+whose retries it used up, were given the ERROR verdict again (``_Cycle._queue_path_stubs``, B13 round 29
+C181), so the next fetch reaches ``_Cycle._retries``' one-shot re-read: a settled stub is never fetched."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -2095,6 +2099,7 @@ class _Cycle:
                 log.info("%d failed conversion(s) an older build settled are tried again", moved)
                 # and the sync's note, and the run record's count the report reads (B13 round 19 W18)
                 self._tally["legacy_retried"] = moved
+            self._queue_path_stubs()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
@@ -5769,7 +5774,10 @@ class _Cycle:
         17 U3). One whose converter could not start is converted once the converter starts, uncounted, and is
         None while it still cannot: its verdict stays ERROR, so the next cycle asks again, and the run reports
         its error line again. Any other one is converted in up to ``_CONVERT_RETRIES`` later cycles per
-        bytes (``_RETRY_META``)."""
+        bytes (``_RETRY_META``), and a stub whose reason holds a staging or home path, which an older build
+        wrote (``_stub_with_a_path``), once more past them, recorded as ``_CONVERT_RETRIES + 1`` so it never
+        repeats, whatever the new reason says (B13 round 29 C181: the retries of a stub the older build
+        settled were used up, so I39's re-read never reached it)."""
         reason = row.state_reason or ""
         if row.state is not RowState.QUARANTINED or not reason.startswith(CONVERSION_FAILED):
             return False
@@ -5778,11 +5786,50 @@ class _Cycle:
         tries = self._retry_load(src.id)
         held = tries.get(row.stable_id)
         done = held[1] if held is not None and held[0] == h1 else 0
-        if done >= _CONVERT_RETRIES:
+        if done > _CONVERT_RETRIES or (done == _CONVERT_RETRIES and not self._names_a_path(reason)):
             return False
         tries[row.stable_id] = (h1, done + 1)
         self._retry_save(src.id)
         return True
+
+    def _queue_path_stubs(self) -> None:
+        """Once per manifest (meta ``_PATH_REREAD_META``): give each failed conversion's stub whose reason
+        names a path (``_names_a_path``) the ERROR verdict again, so the cycle fetches it and ``_retries``
+        converts it once more (B13 round 29 C181). Not one whose converter could not start, which waits for
+        it, nor a local online-only one, which waits for new bytes, as ``retry_settled_failure_rows``."""
+        if self.manifest.get_meta(_PATH_REREAD_META) is not None:
+            return
+        moved = 0
+        for src in self.config.sources:
+            for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,)):
+                reason = row.state_reason or ""
+                if (
+                    not row.is_dir
+                    and not row.dataless
+                    and row.last_verdict is not Verdict.ERROR
+                    and reason.startswith(CONVERSION_FAILED)
+                    and not reason.startswith(CONVERTER_UNAVAILABLE)
+                    and self._names_a_path(reason)
+                ):
+                    self.manifest.set_verdict(src.id, row.stable_id, Verdict.ERROR)
+                    moved += 1
+        self.manifest.set_meta(_PATH_REREAD_META, "1")
+        if moved:  # a count, never a name
+            log.info(
+                "%d failed conversion(s) whose reason an older build wrote a path into are read again", moved
+            )
+
+    def _names_a_path(self, reason: str) -> bool:
+        """``_stub_with_a_path``, or a reason the manifest cut inside this Mac's staging folder: a long
+        ``state_dir`` outside the home folder puts the cut before ``/staging/`` (B13 round 29 C181)."""
+        if convert_common._stub_with_a_path(reason):
+            return True
+        text = reason.removesuffix("…")
+        for form in convert_common._forms(self.staging):
+            root = str(form) + "/"
+            if root in text or any(text.endswith(root[:n]) for n in range(12, len(root))):
+                return True
+        return False
 
     def _converter_waits(self, row: ItemRow, acc: _SourceAcc) -> bool:
         """True when ``row`` is the stub of a conversion whose converter could not start and still cannot in

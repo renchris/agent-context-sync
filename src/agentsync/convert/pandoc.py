@@ -41,7 +41,6 @@ from agentsync.convert._common import (
     _check_ooxml_family,
     _decode_text,
     _first_line,
-    _stub_with_a_path,
     _summary_from_markdown,
     _title_from_markdown,
 )
@@ -749,10 +748,11 @@ class PandocConverter:
         """True when the page this converter wrote under version ``produced`` is worth reading the file
         again for: it was written without OCR and there is an engine now, or it was written by the field
         build of OCR (``image._field_build``; engine or not, and for ``.rtf`` and ``.html`` too, whose
-        version that build changed).  A stub (``reason`` is the stub's) only when an older build wrote a
-        staging or home path into it (``_stub_with_a_path``, B13 round 28 I39)."""
+        version that build changed).  Never for a stub (``reason`` is the stub's): one an older build wrote
+        a staging or home path into is a failed conversion's, which only the cycle's one-shot re-read reaches
+        (``cycle._retries``, B13 round 29 C181)."""
         if reason is not None:
-            return _stub_with_a_path(reason)
+            return False
         return _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced))
 
     def _with_picture_text(self, engine: OcrEngine, src: Path, fmt: str, name: str) -> tuple[str, int, bool]:

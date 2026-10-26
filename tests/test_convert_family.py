@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import convert as convert_pkg
+from agentsync import cycle as cycle_mod
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file
 from agentsync.convert import pptx as pptx_mod
@@ -164,23 +165,7 @@ def test_a_word_document_named_potx_is_one_stub_converted_once(
     assert str(config.state_paths.staging).encode() not in all_objects(config.docs_repo)
 
 
-def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A row settled with the path in its reason is never converted again by itself: the converter calls the
-    older build's stub outdated, the re-read writes it without the path, and then leaves it alone."""
-    config, src = make_env(tmp_path)
-    word_package(src / "Contoso renamed doc.potx")
-    with monkeypatch.context() as mp:  # the build before I39
-        mp.setattr(pptx_mod, "_check_ooxml_family", lambda *_a: None)
-        mp.setattr(convert_pkg, "_pathless", lambda text, _src, _name: text)
-        assert run(config).exit_code == 0
-    page = "mirror/src/contoso-renamed-doc.potx.md"
-    assert str(config.state_paths.staging) in page_fm(config, page)["reason"]
-    assert run(config).exit_code == 0
-    assert page_fm(config, page)["reason"].startswith("not-ooxml: a Word document, not a deck")
-    assert str(config.state_paths.staging) not in git(config.docs_repo, "show", f"HEAD:{page}")
-    assert _leaks(config) == []
+def _counted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     tries: list[str] = []
     real = PptxConverter.convert
 
@@ -189,8 +174,69 @@ def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
         return real(self, path, name=name)
 
     monkeypatch.setattr(PptxConverter, "convert", counted)
+    return tries
+
+
+def _older_build(mp: pytest.MonkeyPatch) -> None:
+    """The build before I39 (no family check, no path fold) and before C181 (no one-shot re-read)."""
+    mp.setattr(pptx_mod, "_check_ooxml_family", lambda *_a: None)
+    mp.setattr(convert_pkg, "_pathless", lambda text, _src, _name: text)
+    mp.setattr(cycle_mod._Cycle, "_names_a_path", lambda _self, _reason: False)
+    mp.setattr(cycle_mod._Cycle, "_queue_path_stubs", lambda _self: None)
+
+
+def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row settled with the path in its reason is never converted again by itself. The older build ran
+    4 times, so its retries are used up (3 conversions: the first and ``_CONVERT_RETRIES``); this build
+    converts it once more past them, the re-read writes it without the path, and then leaves it alone
+    (B13 round 29 C181: I39's re-read went through the retries and so never reached such a stub)."""
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    tries = _counted(monkeypatch)
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    assert len(tries) == 1 + cycle_mod._CONVERT_RETRIES
+    page = "mirror/src/contoso-renamed-doc.potx.md"
+    assert str(config.state_paths.staging) in page_fm(config, page)["reason"]
+    assert "/staging/" not in (_row(config, "Contoso renamed doc.potx").state_reason or ""), "cut before it"
+    tries.clear()
     assert run(config).exit_code == 0
-    assert tries == [], "what the re-read wrote holds no path: not read again"
+    assert tries == ["Contoso renamed doc.potx"], "past the retries: the one-shot re-read"
+    assert page_fm(config, page)["reason"].startswith("not-ooxml: a Word document, not a deck")
+    assert str(config.state_paths.staging) not in git(config.docs_repo, "show", f"HEAD:{page}")
+    assert _leaks(config) == []
+    for _ in range(2):
+        assert run(config).exit_code == 0
+    assert tries == ["Contoso renamed doc.potx"], "what the re-read wrote holds no path: not read again"
+
+
+def test_the_one_shot_re_read_never_repeats_when_its_reason_still_holds_a_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C181's bound: a re-read whose new reason still names the staging folder is not converted again in
+    every cycle; the retry entry records the one-shot, so it is one extra conversion."""
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    tries = _counted(monkeypatch)
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    tries.clear()
+    with monkeypatch.context() as mp:  # this build, but its reason still holds the staging path
+        mp.setattr(pptx_mod, "_check_ooxml_family", lambda *_a: None)
+        mp.setattr(convert_pkg, "_pathless", lambda text, _src, _name: text)
+        for _ in range(3):
+            assert run(config).exit_code == 0
+        assert (
+            str(config.state_paths.staging)
+            in page_fm(config, "mirror/src/contoso-renamed-doc.potx.md")["reason"]
+        )
+    assert tries == ["Contoso renamed doc.potx"]
 
 
 def test_pathless_replaces_the_longest_form_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -280,3 +326,16 @@ def test_a_converter_that_cannot_start_names_no_home_folder(tmp_path: Path, kind
         assert reason.endswith("[convert] pandoc_path is not an absolute file: ~/bin/pandoc")
     else:
         assert "cannot run pandoc: " in reason and "~/bin/pandoc" in reason
+
+
+def test_a_stub_with_a_path_needs_no_home_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C181: ``_stub_with_a_path`` now runs in the cycle, so a Mac with no home folder to read (no HOME, no
+    password entry) gets the staging words alone, as ``_homeless`` does, never a RuntimeError."""
+    from agentsync.convert._common import _stub_with_a_path  # noqa: PLC0415
+
+    def no_home() -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(Path, "home", staticmethod(no_home))
+    assert _stub_with_a_path("file '/Volumes/x/agentsync/staging/ab12/a.pptx' is not")
+    assert not _stub_with_a_path("not-ooxml: a Word document, not a deck")

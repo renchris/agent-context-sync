@@ -24,7 +24,6 @@ from agentsync.convert._common import (
     _escape_line,
     _gfm_table,
     _join_limited,
-    _stub_with_a_path,
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
@@ -576,9 +575,10 @@ class XlsxConverter:
         return f"{_EMITTER_VERSION}+openpyxl-{_dist_version('openpyxl')}"
 
     def outdated(self, produced: str, reason: str | None = None) -> bool:
-        """True only for a stub an older build wrote a staging or home path into (``_stub_with_a_path``, B13
-        round 28 I39): an unchanged file is never converted again, so only this reads it again, once."""
-        return reason is not None and _stub_with_a_path(reason)
+        """Never: an unchanged workbook is not converted again. A stub an older build wrote a staging or home
+        path into is a failed conversion's, which the cycle's one-shot re-read reaches (``cycle._retries``,
+        B13 round 29 C181; this rule, B13 round 28 I39's, never saw one)."""
+        return False
 
     def options(self) -> Mapping[str, OptionValue]:
         """Normalised options hashed into options_hash."""
