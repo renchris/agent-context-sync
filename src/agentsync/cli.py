@@ -1945,10 +1945,11 @@ def _new_start_unsaid_line(config: Config, raw: str | None) -> list[str]:
 def _new_start_kept_lines(kept: dict[str, list[str]]) -> list[str]:
     """Status's line per source for the pages a new start kept for files still settling, which no shard
     lists until their file's pass converts it (B13 round 27 P117); read-only, it never clears the key (B13
-    round 28 I108)."""
+    round 28 I108). The file and the pronoun agree with the count, as the sync's note does (``a file`` and
+    ``it`` for one page; B13 round 29 C116, C131); ``its`` is the source's."""
     return [
-        f"new start: {plural(len(pages), 'page')} kept for files still settling in {sid}; its next complete "
-        "pass converts or removes them"
+        f"new start: {plural(len(pages), 'page')} kept for {'a file' if len(pages) == 1 else 'files'} still "
+        f"settling in {sid}; its next complete pass converts or removes {'it' if len(pages) == 1 else 'them'}"
         for sid, pages in sorted(kept.items())
     ]
 

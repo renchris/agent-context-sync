@@ -1341,8 +1341,8 @@ def test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling(
     with Manifest(db) as m:
         assert json.loads(m.get_meta("new_start_kept:inbox") or "[]") == [page_rel]
     kept_line = (
-        "new start: 1 page kept for files still settling in inbox; its next complete pass converts or "
-        "removes them"
+        "new start: 1 page kept for a file still settling in inbox; its next complete pass converts or "
+        "removes it"
     )
     assert kept_line in cli._status_lines(config), "status counts the kept page (B13 round 28 I108)"
     assert kept_line in cli._status_lines(config), "and leaves the key for the sweep"
@@ -1391,7 +1391,19 @@ def test_a_poll_new_start_keeps_the_page_of_an_inbox_file_still_settling(
         assert "inbox: 0a 0m 0r 1d" in inbox_counts, inbox_counts
     with Manifest(db) as m:
         assert not m.get_meta("new_start_kept:inbox")
-    assert not [ln for ln in cli._status_lines(config) if "kept for files still settling" in ln]
+    assert not [
+        ln for ln in cli._status_lines(config) if ln.startswith("new start: ") and " still settling in " in ln
+    ]
+
+
+def test_the_new_start_kept_line_agrees_with_its_count() -> None:
+    """B13 round 29 C116, C131: one kept page read "kept for files still settling ... removes them"."""
+    assert cli._new_start_kept_lines({"inbox": ["a.md"], "contoso-share": ["a.md", "b.md"]}) == [
+        "new start: 2 pages kept for files still settling in contoso-share; its next complete pass converts "
+        "or removes them",
+        "new start: 1 page kept for a file still settling in inbox; its next complete pass converts or "
+        "removes it",
+    ]
 
 
 def test_one_interactive_sync_waits_at_most_60s_over_every_inbox(
