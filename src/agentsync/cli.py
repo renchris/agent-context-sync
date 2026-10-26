@@ -1788,8 +1788,13 @@ def _unread_words(
     if isinstance(exc, sqlite3.Error) and doctor.side_may_explain(exc) and side is not None:
         # a -wal or -shm that is not a file: no account's access, "cannot be opened" read as one, beside the
         # state_dir.files FAIL that names the person's move aside (B13 round 25 D8)
-        role = doctor.SIDE_ROLES[doctor.side_suffix(side)]  # a linked manifest's side by its suffix (P42)
-        return f"{role} is not a file; the state_dir.files line says why"
+        # each side that is not a file, both when both are (B13 round 29 C141); a linked manifest's by its
+        # suffix (P42)
+        db = expand(config.state_paths.db) if config is not None else side
+        what, n = doctor.sides_not_files_words(doctor.sides_not_a_file_at(db))
+        if not n:
+            what, n = f"{doctor.SIDE_ROLES[doctor.side_suffix(side)]} is not a file", 1
+        return f"{what}; the state_dir.files {'line says' if n == 1 else 'lines say'} why"
     if isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc):
         # CANTOPEN, PERM, READONLY: no damage; the file's owner or mode, or its folder's (B13 round 19 W64;
         # round 20 X48: by name, so SQLITE_PERM is 3, not SQLITE_AUTH's 23)

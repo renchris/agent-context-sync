@@ -690,11 +690,13 @@ def read_regular_bytes(path: Path) -> bytes | None:
 def read_heartbeat(path: Path) -> Mapping[str, Mapping[str, object]]:
     """Return {source_id: entry}; {} if the file is missing; ValueError for one that is not a regular file
     (:func:`read_regular_text`) or not a JSON object."""
-    text = read_regular_text(path)
-    if text is None:
+    raw = read_regular_bytes(path)
+    if raw is None:
         return {}
     try:
-        data = json.loads(text)
+        data = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:  # never a bare codec message that names no file (B13 round 29 C139)
+        raise ValueError(f"{path}: not valid JSON (not UTF-8 text)") from None
     except ValueError as exc:
         raise ValueError(f"{path}: not valid JSON: {exc}") from None
     if not isinstance(data, dict):

@@ -2504,13 +2504,15 @@ def test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on(
     """B13 round 29 C177: with holds.json of the wrong shape, the sync stopped on it while status's NEXT led
     with another step. Status reads it as the sync's guard does: its NEXT names governance.hold."""
     cfg = _synced(initialised)
-    holds = governance._holds_file(expand(initialised.state_paths.root))
+    root = expand(initialised.state_paths.root)
+    holds = governance._holds_file(root)
     holds.parent.mkdir(exist_ok=True)
     holds.write_text('{"holds": "all"}\n', encoding="utf-8")
+    root.chmod(0o755)  # a state_dir FAIL the sync reads past, whose NEXT led
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert "is not the hold list agentsync can read" in capsys.readouterr().err
     _rc, out = _status(cfg, capsys)
-    assert out[0].startswith("NEXT: ") and "governance.hold" in out[0], out[:3]
+    assert out[0].startswith("NEXT: ") and "governance.hold" in out[0] and "state_dir" not in out[0], out[:3]
 
 
 def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits_ok(
@@ -5662,6 +5664,49 @@ def test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_i
     assert want in failed, failed
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert want in capsys.readouterr().err
+
+
+def test_both_side_files_not_files_are_named_both_in_statuss_cannot_read_line(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C141: with folders at both the -wal and the -shm, status's cannot-read line named only the
+    write-ahead log, under two FAIL lines. It names both, in the words the listing note uses, from one
+    helper."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    for name in ("-wal", "-shm"):
+        side = db.with_name(db.name + name)
+        side.unlink(missing_ok=True)
+        side.mkdir()
+    what, n = doctor.sides_not_files_words(doctor.sides_not_a_file_at(db))
+    assert n == 2 and what == "the state file's write-ahead log and shared-memory file are not files"
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    text = "\n".join(out)
+    assert f"{what}; the state_dir.files lines say why" in text, out
+    assert "write-ahead log is not a file; the state_dir.files line says why" not in text, out
+
+
+def test_a_heartbeat_that_is_not_utf8_is_named_in_its_warn(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 29 C139: a heartbeat.json that is not UTF-8 gave doctor's heartbeat warn a bare codec message
+    naming no file. read_heartbeat names the file; the next pass still writes a new one."""
+    cfg = _synced(initialised)
+    hb = expand(initialised.state_paths.heartbeat)
+    hb.write_bytes(b'{"a":\xff}')
+    with pytest.raises(ValueError, match="not UTF-8") as raised:
+        read_heartbeat(hb)
+    assert str(hb) in str(raised.value)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[warn] heartbeat") and "heartbeat.json" in ln], out
+    assert not [ln for ln in out if "codec can't decode" in ln], out
+    write_heartbeat(
+        hb, "source", run_id=9, pass_kind=PassKind.FULL, enumeration_complete=True, ok=True,
+        auth_state="n/a", now_iso="2026-10-02T00:00:00Z",
+    )  # fmt: skip
+    assert read_heartbeat(hb)["source"]["run_id"] == 9
 
 
 def _gone_volume(gov: Path) -> Path:

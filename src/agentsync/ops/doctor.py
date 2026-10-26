@@ -211,18 +211,29 @@ LISTING_STATE_SIDE_NOTE = (
 """:func:`listing_state_side_note` when no side is named."""
 
 
+def sides_not_files_words(sides: Sequence[Path]) -> tuple[str, int]:
+    """The words of the -wal and -shm of ``sides`` that are not files, each by the role its state_dir.files
+    FAIL gives it (:data:`SIDE_ROLES`), the write-ahead log first, and how many: ``the state file's
+    write-ahead log is not a file`` for one, ``... write-ahead log and shared-memory file are not files`` for
+    both; ("", 0) for none. One place for the two-side words, which the listing note, status's cannot-read
+    line and the setup report read (B13 round 29 C141)."""
+    suffixes = [x for x in SIDE_ROLES if any(side_suffix(side) == x for side in sides)]
+    if not suffixes:
+        return "", 0
+    if len(suffixes) == 1:
+        return f"{SIDE_ROLES[suffixes[0]]} is not a file", 1
+    return "the state file's write-ahead log and shared-memory file are not files", len(suffixes)
+
+
 def listing_state_side_note(sides: Sequence[Path]) -> str:
     """The listing note beside a -wal or -shm that is not a file, naming each by the role its state_dir.files
     FAIL gives it (:data:`SIDE_ROLES`), the write-ahead log first: "a side file of the state file" said none
     while the FAIL lines beside it named them (B13 round 27 P16, P146). :data:`LISTING_STATE_SIDE_NOTE`
     with none named."""
-    suffixes = [x for x in SIDE_ROLES if any(side_suffix(side) == x for side in sides)]
-    if not suffixes:
+    what, n = sides_not_files_words(sides)
+    if not n:
         return LISTING_STATE_SIDE_NOTE
-    if len(suffixes) == 1:
-        what, them = f"{SIDE_ROLES[suffixes[0]]} is not a file", "it"
-    else:
-        what, them = "the state file's write-ahead log and shared-memory file are not files", "them"
+    them = "it" if n == 1 else "them"
     return (
         f"as of its last walk: {what}, so no sync lists it again until the person moves {them} aside; "
         f"{LISTING_STATE_SIDE_TAIL}"
