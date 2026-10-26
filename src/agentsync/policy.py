@@ -36,6 +36,8 @@ import unicodedata
 import zipfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from email import policy as email_policy
+from email.header import decode_header
 from email.parser import BytesHeaderParser
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -452,6 +454,13 @@ def read_pdf_labels(path: Path) -> LabelReadout:
     return LabelReadout(capable=True, labels=labels_from_msip_properties(props, origin="pdf-info"))
 
 
+MSIP_HEADER_UNPARSEABLE = "msip_labels header not parseable"
+"""The error of a mail whose ``msip_labels`` header has a label fragment that does not parse: an
+``MSIP_Label_`` key that is not ``MSIP_Label_<guid>_<Attr>``, or an RFC 2047 encoded-word left undecoded.
+:func:`label_decision` refuses it under any label rule, as a binary ``.msg`` is withheld (B13 round 29
+C144)."""
+
+
 def parse_msip_labels_header(value: str) -> tuple[SensitivityLabel, ...]:
     """Parse a mail ``msip_labels`` header (``MSIP_Label_<guid>_Enabled=True; …``) into labels."""
     props: dict[str, str] = {}
@@ -462,18 +471,54 @@ def parse_msip_labels_header(value: str) -> tuple[SensitivityLabel, ...]:
     return labels_from_msip_properties(props, origin="msip_labels")
 
 
+_MSIP_ANY_KEY_RE = re.compile(
+    r"^MSIP_Label_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}_[A-Za-z_]+$"
+)
+"""An ``MSIP_Label_<guid>_<Attr>`` key of any attribute, the classic AIP client's ``Extended_MSFT_Method``
+included, which :func:`labels_from_msip_properties` reads past (C144)."""
+
+
+def msip_labels_header_parses(value: str, raw: str | None = None) -> bool:
+    """False when a fragment of the decoded header that names a label (``MSIP_Label_``, any case) or holds
+    an encoded-word (``=?``) is not one ``MSIP_Label_<guid>_<Attr>=<value>`` pair, or its value still holds
+    ``=?`` or a U+FFFD (an encoded-word in a charset Python does not know); or when ``raw``, the header as
+    written, holds an encoded-word that does not decode or decodes to nothing (``=?utf-8?b?!!?=``, which the
+    decoded text shows as an empty value). A header whose labels are all ``Enabled=False``, or that leaves
+    out ``Name`` or has attributes agentsync does not read, parses (B13 round 29 C144)."""
+    for pair in value.split(";"):
+        if "msip_label_" not in pair.lower() and "=?" not in pair:
+            continue
+        key, sep, val = pair.partition("=")
+        if not sep or _MSIP_ANY_KEY_RE.match(key.strip()) is None or "=?" in val or "\ufffd" in val:
+            return False
+    if raw is None or "=?" not in raw:
+        return True
+    try:
+        words = decode_header(raw)
+    except Exception:  # the stdlib raises several types on a damaged word: the label is unknown
+        return False
+    return all(part or charset is None for part, charset in words)
+
+
 def read_eml_labels(path: Path) -> LabelReadout:
-    """Labels from the ``msip_labels`` header of a MIME message (headers only are parsed)."""
+    """Labels from the ``msip_labels`` header of a MIME message (headers only are parsed).
+
+    Parsed with ``email.policy.default``, so an RFC 2047 encoded-word header reads as its decoded text
+    (compat32 kept it raw, and the mail was read as unlabelled: B13 round 29 C144); a label fragment that
+    still does not parse is :data:`MSIP_HEADER_UNPARSEABLE`, with whatever labels did parse."""
     try:
         with path.open("rb") as fh:
-            headers = BytesHeaderParser().parse(fh)
-        values = headers.get_all(MSIP_LABELS_HEADER) or []
-    except (OSError, ValueError, UnicodeError) as exc:
+            headers = BytesHeaderParser(policy=email_policy.default).parse(fh)
+        values = [" ".join(str(v).split()) for v in headers.get_all(MSIP_LABELS_HEADER) or []]
+        raws = [str(v) for k, v in headers.raw_items() if k.lower() == MSIP_LABELS_HEADER]
+    except (OSError, ValueError, UnicodeError, LookupError) as exc:
         return LabelReadout(capable=True, error=f"{type(exc).__name__}: {exc}")
     labels: list[SensitivityLabel] = []
     for v in values:
-        labels.extend(parse_msip_labels_header(" ".join(str(v).split())))
-    return LabelReadout(capable=True, labels=_dedupe(labels))
+        labels.extend(parse_msip_labels_header(v))
+    parses = len(raws) == len(values) and all(map(msip_labels_header_parses, values, raws))
+    error = None if parses else MSIP_HEADER_UNPARSEABLE
+    return LabelReadout(capable=True, labels=_dedupe(labels), error=error)
 
 
 MIME_HEAD_BYTES = 64 * 1024
@@ -635,6 +680,14 @@ def label_decision(readout: LabelReadout, policy: PolicyConfig) -> Screening | N
                 _one_line(f"{REFUSED_PREFIX}sensitivity label {label.display()} is excluded by [policy]"),
                 label,
             )
+    if readout.error == MSIP_HEADER_UNPARSEABLE:
+        # Under any label rule, never only refuse_unlabelled: the header names a label that cannot be read
+        # (B13 round 29 C144), as a binary .msg's label cannot be.
+        return Screening(
+            ScreenStatus.REFUSED,
+            "label-unreadable",
+            _one_line(f"{REFUSED_PREFIX}sensitivity label unreadable ({readout.error}); a label rule is set"),
+        )
     if readout.error is not None and policy.refuse_unlabelled:
         return Screening(
             ScreenStatus.REFUSED,

@@ -392,6 +392,135 @@ def test_label_decisions(fixture_files: dict[str, Path], tmp_path: Path) -> None
     assert policy.screen_item_label(None, by_name) is None
 
 
+def _mail(dest: Path, header: bytes) -> Path:
+    head = b"From: a@contoso.com\r\nSubject: s\r\nmsip_labels: "
+    dest.write_bytes(head + header + b"\r\n\r\nQuillon body\r\n")
+    return dest
+
+
+def _msip(name: str) -> str:
+    return (
+        f"MSIP_Label_{LABEL}_Enabled=True; MSIP_Label_{LABEL}_SiteId={SITE}; "
+        f"MSIP_Label_{LABEL}_Name={name}; MSIP_Label_{LABEL}_Method=Privileged"
+    )
+
+
+def _folded(dest: Path, name: str) -> Path:
+    """The header as Python's EmailMessage writes it: the SiteId chunk, too long to fold, as encoded-words
+    whose ``;`` and ``=`` are ``=3B`` and ``=3D``."""
+    from email.message import EmailMessage  # noqa: PLC0415
+
+    msg = EmailMessage()
+    msg["From"] = "a@contoso.com"
+    msg["Subject"] = "s"
+    msg["msip_labels"] = _msip(name)
+    msg.set_content("Quillon body")
+    raw = msg.as_bytes()
+    assert b"=?utf-8?q?" in raw  # the fixture is what C144 measured
+    dest.write_bytes(raw)
+    return dest
+
+
+@pytest.mark.parametrize("suffix", [".eml", ".msg"])
+@pytest.mark.parametrize("form", ["encoded", "folded"])
+def test_an_encoded_word_msip_labels_header_is_read_and_refused(
+    tmp_path: Path, suffix: str, form: str
+) -> None:
+    """B13 round 29 C144: compat32 kept RFC 2047 encoded-words raw, so a mail whose msip_labels header
+    is encoded (fully, or the chunk EmailMessage cannot fold) read as unlabelled, or lost its name, and was
+    converted under the rule that names its label. Read with email.policy.default, it decodes, for an .eml
+    and a .msg that holds MIME text alike."""
+    from email.header import Header  # noqa: PLC0415
+
+    name = "Contoso Vertraulich \u2013 Intern" if form == "encoded" else "Contoso Highly Confidential"
+    if form == "encoded":
+        mail = _mail(tmp_path / f"m{suffix}", Header(_msip(name), "utf-8").encode().encode())
+    else:
+        mail = _folded(tmp_path / f"m{suffix}", name)
+    readout = policy.read_labels(mail, name=mail.name)
+    assert readout.error is None
+    [lab] = readout.labels
+    assert (lab.label_id, lab.site_id, lab.name) == (LABEL, SITE, name)
+    for pol in (
+        PolicyConfig(exclude_label_names=(name.lower(),)),
+        PolicyConfig(exclude_label_ids=(LABEL,)),
+    ):
+        s = policy.screen_file(mail, name=mail.name, policy=pol)
+        assert s is not None and s.status is ScreenStatus.REFUSED and s.code == "label-excluded"
+    assert policy.screen_file(mail, name=mail.name, policy=PolicyConfig(refuse_unlabelled=True)) is None
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        # an encoded-word left open: its = and ; stay inside the fragment
+        b"MSIP_Label_" + LABEL.encode() + b"_Enabled=True; =?utf-8?q?MSIP=5FLabel=5F" + LABEL.encode(),
+        # a label key that is not MSIP_Label_<guid>_<Attr>
+        b"MSIP_Label_" + LABEL.encode() + b"_Enabled=True; MSIP_Label_zz_Name=Contoso Highly Confidential",
+        # an encoded-word that decodes to nothing: the name reads empty, a name rule would miss it
+        b"MSIP_Label_"
+        + LABEL.encode()
+        + b"_Enabled=True; MSIP_Label_"
+        + LABEL.encode()
+        + b"_Name==?utf-8?b?!!?=",
+        # a charset Python does not know: the name is U+FFFD where its accent was
+        b"=?x-contoso?q?MSIP=5FLabel=5F"
+        + LABEL.encode()
+        + b"=5FEnabled=3DTrue=3B_MSIP=5FLabel=5F"
+        + LABEL.encode()
+        + b"=5FName=3DContoso_=E9t=E9?=",
+    ],
+)
+def test_an_msip_labels_header_that_does_not_parse_refuses_under_any_label_rule(
+    tmp_path: Path, header: bytes
+) -> None:
+    """C144: a label fragment that does not parse is an error, never an unlabelled publish, and it refuses
+    under any active label rule (a name rule, an id rule naming another label, refuse_unlabelled), as a
+    binary .msg is withheld; with no label rule it is not screened at all."""
+    for suffix in (".eml", ".msg"):
+        mail = _mail(tmp_path / f"m{suffix}", header)
+        readout = policy.read_labels(mail, name=mail.name)
+        assert readout.error == policy.MSIP_HEADER_UNPARSEABLE
+        for pol in (
+            PolicyConfig(exclude_label_names=("contoso été",)),
+            PolicyConfig(exclude_label_ids=(OTHER_LABEL,)),
+            PolicyConfig(refuse_unlabelled=True),
+        ):
+            s = policy.screen_file(mail, name=mail.name, policy=pol)
+            assert s is not None and s.status is ScreenStatus.REFUSED and s.code == "label-unreadable"
+            assert policy.is_refusal_reason(s.reason) and policy.MSIP_HEADER_UNPARSEABLE in s.reason
+        assert policy.screen_file(mail, name=mail.name, policy=PolicyConfig()) is None
+
+
+def test_a_removed_label_or_one_without_its_name_is_no_parse_error(tmp_path: Path) -> None:
+    """C144's narrow edge: a header whose labels are all Enabled=False is a clean unlabelled readout (an
+    exclusion rule publishes it), and a label without Name is read by its id, no error."""
+    off = _mail(
+        tmp_path / "off.eml",
+        f"MSIP_Label_{LABEL}_Enabled=False; MSIP_Label_{LABEL}_SiteId={SITE}".encode(),
+    )
+    assert policy.read_eml_labels(off) == policy.LabelReadout(capable=True)
+    assert policy.screen_file(off, name="off.eml", policy=PolicyConfig(exclude_label_ids=(LABEL,))) is None
+    bare = _mail(tmp_path / "bare.eml", f"MSIP_Label_{LABEL}_Enabled=True".encode())
+    r = policy.read_eml_labels(bare)
+    assert r.error is None and [lab.label_id for lab in r.labels] == [LABEL]
+    # the classic AIP client's header: an attribute with underscores, and a key that is no label's
+    aip = _mail(
+        tmp_path / "aip.eml",
+        (
+            f"MSIP_Label_{LABEL}_Enabled=True; MSIP_Label_{LABEL}_SiteId={SITE}; "
+            f"MSIP_Label_{LABEL}_Owner=a@contoso.com; MSIP_Label_{LABEL}_Name=General; "
+            f"MSIP_Label_{LABEL}_Application=Microsoft Azure Information Protection; "
+            f"MSIP_Label_{LABEL}_Extended_MSFT_Method=Manual; Sensitivity=General"
+        ).encode(),
+    )
+    r = policy.read_eml_labels(aip)
+    assert r.error is None and [lab.name for lab in r.labels] == ["General"]
+    assert (
+        policy.screen_file(aip, name="aip.eml", policy=PolicyConfig(exclude_label_ids=(OTHER_LABEL,))) is None
+    )
+
+
 # ---------------------------------------------------------------------------------------------------------
 # encryption: C15 §9 #24 / #25, before any converter runs
 # ---------------------------------------------------------------------------------------------------------
