@@ -222,8 +222,12 @@ def _plain(text: str | bytes) -> str:
     of that folder name stays as the cause, by design: it cannot be told from Git's ``<url>: fatal: <cause>``,
     and ending only where no ``/`` follows would drop real causes (``fatal: repository '<url>' not found``);
     only a ``file://`` URL, a quoted one, or one written right after ``<``, ``~`` or ``/`` (``<https://...>``)
-    is a path (round 26 E50; round 27 P54; round 28 I72).  A letter, a digit or a ``.`` before a URL is part
-    of its scheme, so that URL still ends at Git's prefix.  SwiftPM's ``Git command '...' failed: <cause>``
+    is a path (round 26 E50; round 27 P54; round 28 I72).  A URL's scheme starts at an ASCII letter with no
+    letter, digit, ``_`` or ``.`` right before it, so a run before the scheme that starts with an ASCII letter
+    joins it (``seehttps://``, ``x.https://``, ``a3https://`` still end at Git's prefix), and one that starts
+    with a digit, ``_``, ``.`` or a non-ASCII letter makes the URL a path (``3https://...`` reads
+    ``3https:<path>``); a ``+`` or ``-`` right before the scheme stays outside the URL (B13 round 29 C185).
+    SwiftPM's ``Git command '...' failed: <cause>``
     keeps its cause: the command (``git -C`` and SwiftPM's cache), up to its own ``' failed:`` (a folder's
     apostrophe is followed by no such words), is ``<command>``, each of two on one line (B13 round 24 B39,
     round 25 D84)."""

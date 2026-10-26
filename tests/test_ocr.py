@@ -559,9 +559,20 @@ TOOL_MESSAGES: dict[str, tuple[str, str]] = {
         "error: Failed to clone repository https://git.contoso.com/srv/Q3: The request timed out",
         "error: Failed to clone repository <url>: The request timed out",
     ),
+    # B13 round 29 C184: the old line here had a space in its URL, so it never reached the cause's line end
     "a URLSession cause mid-path is still a path": (
-        "error: https://git.contoso.com/srv/The request timed out/x: y",
-        "error: https:<path>",
+        "error: Failed to clone repository https://git.contoso.com/srv/Q3: The request timed out/Fabrikam "
+        "Plans/Kit.git",
+        "error: Failed to clone repository https:<path>",
+    ),
+    # C185: a scheme starts at an ASCII letter no letter, digit, _ or . comes right before
+    "a URL whose word starts with a digit is a path": (
+        "error: 3https://git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git",
+        "error: 3https:<path>",
+    ),
+    "a URL whose word starts with a letter keeps its scheme run": (
+        "error: a3https://git.contoso.com/srv/Q3: fatal: Q4 Plans/Kit.git",
+        "error: <url>: fatal: Q4 Plans/Kit.git",
     ),
     "a cause that is neither Git's prefix nor URLSession's is a path": (
         "error: https://git.contoso.com/Kit.git: Permission denied",
@@ -1967,3 +1978,11 @@ def test_tile_pieces_are_joined_into_whole_lines_with_every_word_once(seams: Pat
     got = dict(zip(cases, json.loads(answer.stdout), strict=True))
     for name, (_, text, still_open) in cases.items():
         assert got[name] == [{"open": still_open, "text": text}], name
+
+
+def test_the_url_cut_docstring_says_a_scheme_starts_at_a_letter() -> None:
+    """B13 round 29 C185: the docstring said a digit or a ``.`` before a URL joins its scheme; one that
+    starts the run makes the URL a path (the two TOOL_MESSAGES cases above measure both)."""
+    doc = " ".join((ocr._plain.__doc__ or "").split())
+    assert "A letter, a digit or a ``.`` before a URL is part of its scheme" not in doc
+    assert "one that starts with a digit, ``_``, ``.`` or a non-ASCII letter makes the URL a path" in doc
