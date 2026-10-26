@@ -2953,8 +2953,10 @@ pacv=\1/p' || true
 				if report_word "$low" || output_word "$low" || { [ "${#low}" -eq 2 ] && two_letter_word "$low"; }; then fl=h; fi
 				# a two-letter initialism written all in capitals ("IT", "RM") is cut as written, flag H, so the
 				# pronoun "it" stays; a quoted "IT" is still cut and still makes the report private only, as
-				# setup_report registers it case-sensitively since lane RA's round 28 I7
-				case "$v" in [A-Z][A-Z]) [ "$fl" != h ] || ! two_letter_word "$low" || fl=H ;; esac
+				# setup_report registers it case-sensitively since lane RA's round 28 I7. The test is a class,
+				# not a range: under the Mac's UTF-8 locale a range follows the collation order, so [A-Z][A-Z]
+				# also matched "It", "it" and "Rm" and left their other forms in clear (B13 round 29 C160)
+				case "$v" in [[:upper:]][[:upper:]]) [ "$fl" != h ] || ! two_letter_word "$low" || fl=H ;; esac
 				;;
 			esac
 			add_forms "$v" "<value>" "$fl"

@@ -32418,7 +32418,19 @@ fails and the old one passed.
 
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
-Reserved for round 29 lane RB of B13.
+Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
+measured reason it was not built. Round 29 rulings 23 and 27 to 30; every install.sh probe of a new agentsync name
+runs under the installed build and prints nothing when that build lacks it.
+
+**C160: the shell's two-capital hold test is a class, not a range (`scripts/install.sh` hold_redaction_pairs;
+ruling 23).** Reproduced first under /bin/bash 3.2 as install.sh runs: with `LC_ALL=en_US.UTF-8` the pattern
+`[A-Z][A-Z]` follows the collation order and matches `It`, `iT`, `it`, `rm` and `Rm` as well as `IT` and `RM`, so a
+hold owner `It` or `rm` took flag H (cut as written) and left `IT said ...` and `RM said ...` in clear in the shell
+fallback report, where setup_report's `value.strip().isupper()` folds and cuts them; in the C locale only `IT` and
+`RM` match. The test is `[[:upper:]][[:upper:]]`, measured to match only `IT` and `RM` in both locales.
+`test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers` runs owners `IT`, `It`, `rm`
+and `Rm` with no LANG and with `LANG=en_US.UTF-8` (`_shell_hold_redact`'s new `lang`), against setup_report's
+Redactor; the three en_US rows not in capitals fail on the range.
 
 ### 16.200 Round 29: the hold record outside governance/, the queue per source after a new start, an audited forget and one lost-manifest judge (2026-10-26, wave B13 round 29 lane B)
 

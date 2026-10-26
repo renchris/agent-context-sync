@@ -2711,9 +2711,12 @@ def test_a_multi_line_holds_reason_and_owner_are_not_in_the_shell_fallback_repor
             assert word not in shown, (path, [ln for ln in shown.splitlines() if word in ln])
 
 
-def _shell_hold_redact(tmp_path: Path, holds: list[dict[str, str]], said: Sequence[str]) -> list[str]:
+def _shell_hold_redact(
+    tmp_path: Path, holds: list[dict[str, str]], said: Sequence[str], lang: str | None = None
+) -> list[str]:
     """``said``'s lines through the real redact_stream (hold_values, redaction_pairs, hold_cut) for a home
-    whose config is :data:`_HOLD_TOML` and whose holds.json holds ``holds``."""
+    whose config is :data:`_HOLD_TOML` and whose holds.json holds ``holds``, with LANG ``lang`` when given
+    (B13 round 29 C160: the Mac's own locale, en_US.UTF-8, which install.sh runs under)."""
     home = tmp_path / "home"
     state = home / "Library" / "Application Support" / "agentsync"
     (state / "governance").mkdir(parents=True, exist_ok=True)
@@ -2744,7 +2747,13 @@ def _shell_hold_redact(tmp_path: Path, holds: list[dict[str, str]], said: Sequen
         capture_output=True,
         text=True,
         check=False,
-        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+        env={
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin",
+            "TMPDIR": str(tmp_path),
+            **xcrun_db(),
+            **({"LANG": lang} if lang else {}),
+        },
     )
     assert cp.returncode == 0, cp.stderr
     return cp.stdout.splitlines()
@@ -2802,17 +2811,24 @@ def test_a_one_word_hold_value_is_cut_alike_by_both_readers(tmp_path: Path, owne
     assert shown == [red.redact(line)] == ["F4 | step 3 | question | 1 | <value> said the hold stays on | -"]
 
 
-@pytest.mark.parametrize("owner", ["IT", "It"])
+@pytest.mark.parametrize("lang", [None, "en_US.UTF-8"])
+@pytest.mark.parametrize("owner", ["IT", "It", "rm", "Rm"])
 def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_readers(
-    tmp_path: Path, owner: str
+    tmp_path: Path, owner: str, lang: str | None
 ) -> None:
     """Lane RA's round 28 I7, the shell half: with a hold owner "IT" the folded cut turned every "it" of the
     report's own prose into <value>. A two-letter initialism written all in capitals is cut as written (flag
     H), as setup_report now registers it case-sensitively: a quoted "IT" is still cut, the pronoun stays. A
-    value not all in capitals ("It") keeps the folded cut. Both readers give the same lines."""
+    value not all in capitals ("It", "rm", "Rm") keeps the folded cut. Both readers give the same lines, in
+    the C locale and in the Mac's own en_US.UTF-8 (B13 round 29 C160: there the shell's [A-Z][A-Z] range
+    followed the collation order, matched "It" and "rm", and left "IT said" and "RM said" in clear)."""
     hold = {"owner": owner, "reason": "Fabrikam review", "scope": "alpha", "set_at": "2026-10-21T09:00:00Z"}
-    lines = ["F4 | step 3 | question | 1 | IT said the hold stays on | -", "it stays, and It was set early"]
-    shown = _shell_hold_redact(tmp_path, [hold], lines)
+    lines = [
+        "F4 | step 3 | question | 1 | IT said the hold stays on | -",
+        "it stays, and It was set early",
+        "RM said rm stays",
+    ]
+    shown = _shell_hold_redact(tmp_path, [hold], lines, lang)
     state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
     cfg = tmp_path / "home" / "agent-context" / "sources.toml"
     paths_ = types.SimpleNamespace(root=str(state))
@@ -2824,7 +2840,13 @@ def test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun_in_both_r
         red.add("value", value, ignore_case=not exact)
     assert shown == [red.redact(ln) for ln in lines], shown
     cut = "F4 | step 3 | question | 1 | <value> said the hold stays on | -"
-    assert shown == ([cut, lines[1]] if owner == "IT" else [cut, "<value> stays, and <value> was set early"])
+    expected = {
+        "IT": [cut, lines[1], lines[2]],
+        "It": [cut, "<value> stays, and <value> was set early", lines[2]],
+        "rm": [lines[0], lines[1], "<value> said <value> stays"],
+        "Rm": [lines[0], lines[1], "<value> said <value> stays"],
+    }
+    assert shown == expected[owner], shown
 
 
 def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Path) -> None:
