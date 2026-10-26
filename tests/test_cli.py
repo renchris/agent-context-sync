@@ -6203,8 +6203,13 @@ def test_a_hold_on_all_invites_no_purge_queue_and_the_warn_names_each_reason(
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     out += capsys.readouterr().out.splitlines()
     checks = cli._governance_checks(initialised)
-    assert not [ln for ln in out if "purge --queue" in ln], out
-    assert not [c for c in checks if "purge --queue" in (c.fix or "") + c.detail], checks
+
+    # no invitation: `purge --queue` is named only after the release (B13 round 29 C132, ruling 32)
+    def invites(text: str) -> bool:
+        return "purge --queue" in text and "releases it" not in text.split("purge --queue", 1)[0]
+
+    assert not [ln for ln in out if invites(ln) or "--dry-run" in ln], out
+    assert not [c for c in checks if invites((c.fix or "") + c.detail)], checks
     release = "`~/.local/bin/agentsync hold all --release --owner <name>`"
     assert any(ln.startswith("queued purges held: 1 (") and release in ln for ln in out), out
     (warn,) = [c for c in checks if c.name == "governance.purge_queue"]
