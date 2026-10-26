@@ -12999,8 +12999,13 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
                     one = roles[0] if roles else _side_role(side_at) if side_at is not None else ""
                     said = f"{one or 'a side file of the state file'} is not a file"
                 from_side.append(f"{name} warn (not judged: {said})")
-            elif lost:  # B13 round 24 ruling 7: missing, not unreadable
-                from_lost.append(f"{name} warn (not judged: the state file is missing)")
+            elif lost:  # B13 round 24 ruling 7: missing, not unreadable; B13 round 29 C128: or too short
+                said = (
+                    "is empty or too short to be a manifest"
+                    if lost_kind.startswith("short")
+                    else "is missing"
+                )
+                from_lost.append(f"{name} warn (not judged: the state file {said})")
             elif shut != "folder":
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
             else:  # B13 round 22 Z31: the folder's words for a shut folder

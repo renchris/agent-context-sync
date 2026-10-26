@@ -15520,6 +15520,37 @@ def test_a_lost_manifest_beside_a_heartbeat_its_mode_refuses_keeps_the_agents_ch
     assert "moves it aside and heartbeat.json with it" in evidence, evidence
 
 
+def test_a_short_manifests_real_doctor_line_has_nothing_unexpected(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 C129's report half (lane B's cli half: governance.time_machine is not checked beside it):
+    over a 0-byte manifest beside a heartbeat that records passes, the real checks' Doctor line puts the lost
+    manifest's FAIL in its bucket and leaves nothing unexpected (a governance.time_machine warn whose fix is a
+    sync, which refuses there, read as unexpected)."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.name.startswith(("state_dir", "governance", "heartbeat"))
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(tmp_path / "kept.sqlite")
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.write_bytes(b"")
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "from the state file that is empty or too short to be a manifest" in line, line
+    assert line.endswith(" · unexpected 0"), line
+
+
 def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -15541,6 +15572,14 @@ def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_mi
     db.write_bytes(b"")
     assert setup_report._manifest_lost_kind(load_config(cfg)) == "short"
     fail = f"[FAIL] state_dir.manifest — {db} {words} (fix: {doctor.MANIFEST_FIX})"
+    # B13 round 29 C128's report half: the listing warn beside it is not judged, and says the file is short
+    listing = f"[warn] heartbeat.x — enumeration incomplete for 5 passes; {doctor.LISTING_STATE_SHORT_NOTE}"
+    text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", fail, listing])
+    line = _line(summary, "- doctor: ")
+    assert "heartbeat.x warn (not judged: the state file is empty or too short to be a manifest)" in line, (
+        line
+    )
+    assert "is missing" not in line and line.endswith(" · unexpected 0"), line
     text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", fail])
     fact = "empty or too short to be a manifest though heartbeat.json records earlier passes"
     assert f" · from the state file that is {fact} (1 check): state_dir.manifest FAIL (the person's" in _line(

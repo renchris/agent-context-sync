@@ -32519,6 +32519,14 @@ evidence pin (the -wal alone, whose folder breaks the read) follows. Tests:
 `test_both_side_files_not_files_are_named_in_the_outcome_and_the_evidence`,
 `test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access`.
 
+**A short manifest's listing warn and Doctor line** (C128's and C129's report halves, after lane B's sha). Beside a
+manifest there but too short to be one, the heartbeat listing warn the report does not judge said `the state file
+is missing`; it says `the state file is empty or too short to be a manifest`, as lane B's
+`doctor.LISTING_STATE_SHORT_NOTE` does. With lane B's governance.time_machine left unchecked beside it, the real
+checks' Doctor line over that state reads `unexpected 0`. Tests:
+`test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing`,
+`test_a_short_manifests_real_doctor_line_has_nothing_unexpected`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
