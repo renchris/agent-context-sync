@@ -2713,7 +2713,7 @@ def test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason() -
     hold_cut did not match, and as doctor's governance.hold FAIL (`set by <owner> at <iso>`). The audit origin
     keeps the fixed `lost from the hold list` and cuts only the owner; the FAIL reads `(owner not shown)`, cut
     through the line's last fixed anchor, so the scope and time stay. The agentsync report gives the same
-    lines once it has lane RA's cut (setup_report._LOST_HOLD_RE)."""
+    lines (setup_report._LOST_HOLD_RE; B13 round 30 C343: the parity assert always runs)."""
     fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
     assert fn is not None
     cp = subprocess.run(
@@ -2725,9 +2725,8 @@ def test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason() -
         env={"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
     )
     assert cp.stdout.splitlines() == list(_LOST_HOLD_LINES.values())
-    if hasattr(setup_report, "_LOST_HOLD_RE"):  # lane RA's half, landing beside this one
-        red = setup_report.Redactor()
-        assert [red.redact(line) for line in _LOST_HOLD_LINES] == list(_LOST_HOLD_LINES.values())
+    red = setup_report.Redactor()
+    assert [red.redact(line) for line in _LOST_HOLD_LINES] == list(_LOST_HOLD_LINES.values())
 
 
 def test_every_hold_owner_the_audit_trail_records_is_cut_from_the_shell_report(tmp_path: Path) -> None:
