@@ -6387,6 +6387,13 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
         and "the agentsync report's `Send it:` line says `it would show that word`" in page
     )
     assert '"it would show that word"' in report and private[:90] in install and private[:90] in report
+    # B13 round 29 C133: two or more words shown, in the plural
+    several = (
+        "Private only: hold reasons or owners are also words this report prints, so where <value> stands in"
+        " the report's own text they can be read back."
+    )
+    assert f"`{several}`" in page and "`it would show those words`" in page
+    assert '"it would show those words"' in report and several[:60] in report
     assert "two-letter one" in page and "keeps the report public" in page
     # B13 round 27 P63: the two-letter words either report prints, not the name-part list
     assert "it" in setup_report._TWO_LETTER_WORDS and "hr" not in setup_report._TWO_LETTER_WORDS

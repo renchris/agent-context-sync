@@ -32350,6 +32350,16 @@ report's, so a new message holding `IT` fails there, not in a rehearsal. Tests:
 `test_a_two_letter_capital_hold_value_cuts_itself_never_the_pronoun`,
 `test_a_capital_it_hold_value_leaves_agentsyncs_own_it_lines_whole`.
 
+**Two hold words shown, the Send it line says so** (C133). The Send it line chose its words from one flag, so with
+two one-word hold values shown it still said `it would show that word`. `Redactor.value_words_shown` records each
+hold word a line showed (never the words merely registered: a value no line quotes cannot be read back), and with
+two or more the Redaction section says `Private only: hold reasons or owners are also words this report prints, so
+where <value> stands in the report's own text they can be read back.` and `Send it:` `it would show those words`;
+one keeps the singular. The guide quotes both forms. Tests:
+`test_two_one_word_hold_values_shown_make_the_send_it_line_plural`,
+`test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`,
+`test_the_guide_gives_round_25s_new_report_and_installer_outputs`.
+
 ### 16.199 Round 29: the installer's two-capital hold test, the lost-hold tail, the governance fixes' words and the short manifest (2026-10-26, wave B13 round 29 lane RB)
 
 Reserved for round 29 lane RB of B13.

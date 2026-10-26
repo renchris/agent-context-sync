@@ -1755,12 +1755,12 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
     ]
     assert "<value> said the <value> hold stays on" in text
     redaction = text.split("\n## Redaction\n", 1)[1]
-    assert (
-        "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands "
-        "in the report's own text it can be read back.\n" in redaction
+    assert (  # B13 round 29 C133: both words are shown, so in the plural
+        "Private only: hold reasons or owners are also words this report prints, so where <value> stands "
+        "in the report's own text they can be read back.\n" in redaction
     ), redaction
     # B13 round 26 E6: a one-word value is a word, and no name is involved
-    assert "never as a public issue: it would show that word." in redaction, redaction
+    assert "never as a public issue: it would show those words." in redaction, redaction
     assert "that name" not in redaction, redaction
     assert setup_report.issue_link(text) is None
     # a hold of several words is cut as before, and no word of the report's is at stake
@@ -1770,6 +1770,30 @@ def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_privat
     )
     text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
     assert "Private only:" not in text and setup_report.issue_link(text) is not None
+
+
+def test_two_one_word_hold_values_shown_make_the_send_it_line_plural(fake_mac: dict[str, Path]) -> None:
+    """B13 round 29 C133: with two hold words shown, the Send it line still said "it would show that word".
+    It says "those words" when two or more were shown (never by how many were registered), and the Private
+    only line says so too; one word shown keeps the singular."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text('[governance]\nhold = true\nhold_reason = "Gateway"\nhold_owner = "Early"\n\n' + plain)
+    out = fake_mac["setup"] / "install.out"
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+    out.write_text(head + "note: Early said the Gateway hold stays on\n", encoding="utf-8")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    redaction = text.split("\n## Redaction\n", 1)[1]
+    assert red.value_words_shown == {"early", "gateway"}, red.value_words_shown
+    assert "never as a public issue: it would show those words." in redaction, redaction
+    assert "Private only: hold reasons or owners are also words this report prints" in redaction, redaction
+    assert "that word" not in redaction and setup_report.issue_link(text) is None
+    # one of them shown (the other registered and quoted nowhere): the singular
+    out.write_text(head + "note: Early said the hold stays on\n", encoding="utf-8")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    redaction = text.split("\n## Redaction\n", 1)[1]
+    assert "never as a public issue: it would show that word." in redaction, redaction
+    assert "Private only: a hold's reason or owner is also a word this report prints" in redaction, redaction
 
 
 def test_a_one_word_hold_value_stays_in_the_reports_own_fixed_phrases() -> None:

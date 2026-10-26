@@ -1370,6 +1370,8 @@ class Redactor:
         # only
         self._value_words: set[str] = set()
         self.value_word_shown = False
+        # which of them a line showed, folded: two or more make the Send it line plural (B13 round 29 C133)
+        self.value_words_shown: set[str] = set()
         # _bare(value).lower() -> placeholder of a host matched only where a URL names it, after // or @ or
         # before :<port> (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
@@ -1739,6 +1741,7 @@ class Redactor:
             self._used.add(placeholder)
             if placeholder == "<value>" and _bare(text).lower() in self._value_words:  # B13 round 25 D80
                 self.value_word_shown = True
+                self.value_words_shown.add(_bare(text).lower())
         plain = _bare(text.replace("\\", "")).lower()  # a shell- or JSON-escaped form too (B13 round 9 K10)
         if placeholder != text and self._lead_kept and plain in self._lead_kept:
             return text[: text.index(plain[0]) + 1] + placeholder  # the separator, with any escape before it
@@ -14984,9 +14987,15 @@ def _redaction_section(
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
     held = ""
+    # B13 round 29 C133: two or more of them shown, in the plural, by the words a line showed, never by the
+    # words registered (a value no line quotes is no word that can be read back)
+    several = len(red.value_words_shown) >= 2
     if red.value_word_shown:  # B13 round 25 D80: a hold's one-word value, the same rule
         held = (
-            "Private only: a hold's reason or owner is also a word this report prints, so where <value> "
+            "Private only: hold reasons or owners are also words this report prints, so where <value> stands "
+            "in the report's own text they can be read back."
+            if several
+            else "Private only: a hold's reason or owner is also a word this report prints, so where <value> "
             "stands in the report's own text it can be read back."
         )
         word.append(held)
@@ -14999,6 +15008,8 @@ def _redaction_section(
         why = (  # by flag (B13 round 26 E6): a hold's one-word value is a word, no name
             "it would show that name"
             if red.word_named_shown
+            else "it would show those words"
+            if red.value_word_shown and several
             else "it would show that word"
             if red.value_word_shown
             else "a name may be in clear"
