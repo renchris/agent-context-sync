@@ -655,6 +655,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if withheld_read := sum(s.withheld_read for s in report.sources):
             whose = "its label cannot" if withheld_read == 1 else "their labels cannot"
             split += f", {withheld_read} of them withheld: {whose} be read"
+        # after every clause the readers key on, and no bare "converted" (B13 round 29 C145)
+        if stubbed := sum(s.credential_stubbed for s in report.sources):
+            split += f"; {stubbed} of the unreadable held back: its page contained a credential"
         of_them = f"; {split}" if report.read_again and report.read_first else f" ({split})"
     # No bare "converted", "deferred" or "read again" in it: install.sh's awk adds the number after each.
     rescreened = (

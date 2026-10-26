@@ -7885,3 +7885,34 @@ def test_a_blank_diagrams_stub_an_older_build_left_is_read_again_into_a_page(
     assert rel not in (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
     _meta, body = _mirror_page(sample_config, rel)
     assert "[no text on this page]" in body
+
+
+def test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_its_page(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 29 C145: a file converted OK whose page the secret scan then made a credential stub was left
+    out of the sync line's unreadable count, and a raw WARNING named it by its volume and inode id alone. It
+    joins U once, with its own clause after the others, and an alarm names its mirror page."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)  # the builtin rules, whatever this Mac has
+    keys = "projects/Contoso keys.txt"
+    (local_source_dir / keys).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with caplog.at_level(logging.DEBUG, logger="agentsync.cycle"):
+        report = run(sample_config)
+    (src,) = [s for s in report.sources if s.source_id == SID]
+    assert (src.unreadable, src.credential_stubbed) == (1, 1), src
+    at = str(slug.mirror_rel_path(SID, keys))
+    assert any(at in a and "contains a credential" in a for a in src.alarms), src.alarms
+    warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert not [w for w in warned if "quarantined: the converted page" in w], warned
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    assert (
+        "1 unreadable, 0 failed, 0 refused; 1 of the unreadable held back: its page contained a credential)"
+        in out
+    )
+    assert run(sample_config).exit_code == 0

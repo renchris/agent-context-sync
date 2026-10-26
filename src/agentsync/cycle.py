@@ -1836,6 +1836,7 @@ class _SourceAcc:
     converter_waiting: int = 0  # a converter that could not start read nothing (B13 round 18 V13)
     refused: int = 0
     withheld_read: int = 0
+    credential_stubbed: int = 0  # of unreadable: a page the secret scan stubbed this run (C145)
     refused_unread: int = 0
     withheld_unread: int = 0
     breaker_tripped: bool = False
@@ -1906,6 +1907,7 @@ class _SourceAcc:
             conversion_failed=self.conversion_failed,
             refused=self.refused,
             withheld_read=self.withheld_read,
+            credential_stubbed=self.credential_stubbed,
             refused_unread=self.refused_unread,
             withheld_unread=self.withheld_unread,
             new=self.new,
@@ -2026,6 +2028,9 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._cannot_run_why: dict[int, BaseException] = {}  # and why not, as this cycle reads it (W51)
         self._waiting_ids: set[tuple[str, str]] = set()  # stubs counted as waiting in this cycle (W2)
+        # converted OK and counted in N this cycle; a credential stub of one joins U once (B13 round 29 C145)
+        self._converted_ok: set[tuple[str, str]] = set()
+        self._credential_counted: set[tuple[str, str]] = set()
         self._rescreen_stubs: dict[str, set[str]] | None = None  # _RESCREEN_STUBS_META, read once (Y73)
         self._rescreen_stubs_moved = False  # a conversion took one out: stored after its source's pass
         self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
@@ -5666,6 +5671,8 @@ class _Cycle:
                 self._reread_first += 1
             if result.status is ConversionStatus.UNREADABLE:
                 acc.unreadable += 1
+            elif result.status is ConversionStatus.OK:
+                self._converted_ok.add((sid, stable))
             elif result.status is ConversionStatus.FAILED:
                 acc.conversion_failed += 1
             # still in N: S counts re-screens of it (G35). An inbox duplicate is quarantined, as its row, its
@@ -6191,6 +6198,7 @@ class _Cycle:
             rewritten = (sid, stable) in self._history_hits  # rewritten this run; its committed text hits
             if self._stub_credential(sid, stable):
                 stubbed.append((sid, stable))
+                self._count_credential(sid, stable)
                 if prior or rewritten:  # published under the earlier rules: its text is in the repo's history
                     self._published_credential(sid, stable, ok if rewritten else prior)
                     purged.add((sid, stable))
@@ -6209,6 +6217,9 @@ class _Cycle:
             self.manifest, [h.path for h in lints.lint_secrets(self.repo, stub_paths)]
         ):
             self._redact(sid, stable)
+        for sid, stable in stubbed:  # after the redaction: a name that carries a key is said hashed (C145)
+            if (sid, stable) not in purged:  # a published one has its own alarm, with its queued purge
+                self._credential_alarm(sid, stable)
         redacted = sorted(
             o.output_path
             for c in self.changes
@@ -6233,8 +6244,39 @@ class _Cycle:
             return False
         stub = self._stub(row, ConversionStatus.UNREADABLE, _CREDENTIAL)
         self._publish(src, row, stub, self._acc(src), quarantine_reason=_CREDENTIAL)
-        log.warning("%s/%s quarantined: the converted page contains a credential", sid, stable)
+        # the ids at DEBUG; the page is named once, by its mirror path, in the alarm (B13 round 29 C145)
+        log.debug("%s/%s quarantined: the converted page contains a credential", sid, stable)
         return True
+
+    def _count_credential(self, sid: str, stable: str) -> None:
+        """Count a page the secret scan stubbed among the unreadable conversions, once, and only when this run
+        converted it and counted it in N: the sync line's U and the run table agree (B13 round 29 C145). An
+        item already a stub (its name carries the key) is in U already, and one this run did not convert
+        (a history hit, the archive) is in neither."""
+        if (sid, stable) not in self._converted_ok or (sid, stable) in self._credential_counted:
+            return
+        try:
+            acc = self._acc(self.config.source(sid))
+        except ConfigError:
+            return
+        self._credential_counted.add((sid, stable))
+        acc.unreadable += 1
+        acc.credential_stubbed += 1
+        self._tally["converted_unreadable"] += 1
+
+    def _credential_alarm(self, sid: str, stable: str) -> None:
+        """The source's alarm for a page the secret scan stubbed, naming it by its mirror path (hashed when
+        its name carries a key), and one WARNING marked as that alarm, so an interactive sync prints it once
+        and err.log keeps it; never the volume and inode id alone (B13 round 29 C145)."""
+        pages = sorted(o.output_path for o in self.manifest.outputs_for(sid, stable))
+        try:
+            acc = self._acc(self.config.source(sid))
+        except ConfigError:
+            return
+        page = pages[0] if pages else "a page"
+        what = f"{sid}: {page} is a `contains a credential` stub now: its converted text held one"
+        acc.alarms.append(what)
+        log.warning("%s", what, extra={ECHOED_WHEN: "alarm"})
 
     def _redact(self, sid: str, stable: str) -> None:
         """The item's name/path carries a credential: redact it everywhere it would be committed."""

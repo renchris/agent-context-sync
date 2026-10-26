@@ -4257,6 +4257,13 @@ def run_purge_queue(
                 not_run(q, why)
                 continue
             seed = _stored_ids(q)
+            if probe and not why:
+                # the dry probe can change nothing when the manifest names an item of it outside the seed: the
+                # purge targets it, so its history is walked once, not twice (B13 round 29 C178); an item
+                # under a stored alias only, a folder row or none at all keeps the probe
+                with contextlib.suppress(AgentSyncError, sqlite3.Error):
+                    mt = _resolve_manifest(expand(sp.db), q.selector, seed)
+                    probe = not any((s, i) not in seed for s, i, _r, d in mt.items if not d)
             try:
                 dry: PurgeReport | None = None
                 if probe:

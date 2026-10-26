@@ -450,6 +450,9 @@ class SourceReport:
     # ``conversion_failed``; the sync line names them apart, and the cycle reads each once its converter
     # starts (B13 round 18 V13)
     converter_waiting: int = 0
+    # of ``unreadable``: files converted this run whose page the secret scan then made a ``contains a
+    # credential`` stub, counted once each so the sync line and the run table agree (B13 round 29 C145)
+    credential_stubbed: int = 0
 
 
 SYNC_OUTPUT_END = "at the end of a sync's output"

@@ -9691,6 +9691,30 @@ def test_a_purge_queued_before_the_new_start_runs_once_its_id_reaches_the_page_h
     assert _gone_from_history(repo, blob)
 
 
+def test_a_queued_purge_the_manifest_names_walks_its_history_once(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 29 C178: every resolvable queued upstream deletion was run dry first, so its history was
+    walked twice. With its row in the manifest the dry probe can change nothing and is skipped; one run."""
+    cfg = _synced(initialised)
+    q = _queue_upstream(initialised, "projects/sample.txt")
+    db = sqlite3.connect(expand(initialised.state_paths.db))
+    with db:  # its row no longer listed (a refused row: the run goes ahead), as after the file left
+        db.execute("UPDATE items SET state = 'refused' WHERE stable_id = ?", (q.selector.stable_id,))
+    db.close()
+    real, dry = governance.purge, []
+
+    def counted(*args: Any, **kwargs: Any) -> governance.PurgeReport:
+        dry.append(bool(kwargs.get("dry_run")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(governance, "purge", counted)
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert ": VERIFIED · 1 item" in capsys.readouterr().out
+    assert dry == [False], dry
+
+
 def test_enqueue_purge_stores_the_retired_ids_beside_the_selector(initialised: Config) -> None:
     """B13 round 28 I93: the item's retired ids are stored as "aliases" beside "selector", never inside it (an
     older build runs PurgeSelector(**selector)), and read back with the entry."""
