@@ -32795,3 +32795,17 @@ before step 2, and that a wait gone just after midnight is the cleaner's. Touchi
 before install and the first sync, so agentsync's baseline is unchanged. Test:
 `test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`, which reads the schedule and rule from the
 system's own files where the Mac has them.
+
+**The guide's hold rows say a capital two-letter value is cut as written, and a lost hold's owner is cut** (C191,
+with lane RA's C187 and C133; `docs/deploy/setup-feedback.md`). The paragraph under the table gave `IT` as a
+two-letter hold value that makes both reports Private only, but since round 28 I7 (and the shell's be3d027d5)
+`_build_redactor` matches a two-letter value written all in capitals as written, so the report's own `it` and its
+`IT request` / `IT draft` words stay and a value no line but the cut hold line quotes keeps the report public, with
+its issue link (`test_setup_report.py`'s `("IT", False)` case). The paragraph says so in the verifier's words,
+keeping the phrases the round 25 test pins and RA's plural `it would show those words` (C133, 152b6316c); the
+`<value>` row adds that such a value is matched as written. The row also gives RA's C187 cut (19b8f77b9): a hold the
+hold list lost, origin `audit`, reads `hold <source-1> (audit) since <time>: lost from the hold list, owner not
+shown`, its FAIL's `set by <owner>` reads `(owner not shown)` with the scope, time and record clause kept, and an
+owner the audit trail records is cut wherever a line quotes it. Test:
+`test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut`, which reads the match from
+`_build_redactor` and makes the lost hold's forms with `_cut_holds`.

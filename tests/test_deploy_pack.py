@@ -6407,6 +6407,48 @@ def test_the_guides_failed_at_step_3_examples_are_the_reports_words() -> None:
     assert "which was missing after earlier syncs, and no later sync ended 0" not in page
 
 
+def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut() -> None:
+    """B13 round 29 C191: the guide gave `IT` as a two-letter hold value that makes both reports Private only,
+    but since round 28 I7 (and the shell's be3d027d5) a two-letter value written all in capitals is matched
+    as written, so one no line quotes keeps the report public: the guide says so, and the `<value>` row says
+    it is matched as written; the match is read from `_build_redactor`. C187 (ruling 23): the agentsync
+    report cuts a hold the hold list lost (origin `audit`) keeping its fixed reason, and its FAIL's owner;
+    the forms are made with `_cut_holds`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    source = " ".join(inspect.getsource(setup_report._build_redactor).split())
+    exact = "exact = len(_norm(value)) == 2 and value.strip().isupper() and _norm(value) in _TWO_LETTER_WORDS"
+    assert exact in source and 'red.add("value", value, ignore_case=not exact)' in source
+    assert "such as `IT`, while `HR` stays public" not in page
+    assert (
+        "round 26 E72 for a two-letter one, which since round 28 I7 is matched as written when it is all"
+        in page
+    )
+    for part in (
+        "both reports cut such a two-letter value written all in capitals (`IT`, `RM`) only as written",
+        "That report is Private only only when a line other than the cut hold line quotes the value",
+        "one quoted nowhere keeps the report public, with its issue link",
+        "Written any other way (`It`, `rm`), the value is cut in any case and still makes the report Private",
+    ):
+        assert part in page, part
+    iso = "2026-10-25T00:00:00Z"
+    held = setup_report._cut_holds(
+        f"hold contoso (audit): lost from the hold list — set by Jane Doe since {iso}"
+    )
+    assert "Jane" not in held and setup_report._LOST_HOLD_REASON == "lost from the hold list"
+    assert f"`{held.replace('contoso', '<source-1>').replace(iso, '<time>')}`" in page
+    records = "(audit.jsonl, heartbeat.json)"
+    fail = setup_report._cut_holds(
+        f"holds.json no longer lists the hold on contoso set by Jane Doe at {iso} {records}"
+    )
+    assert fail.endswith(f"on contoso (owner not shown) at {iso} {records}")
+    assert "reads `(owner not shown)` for its `set by <owner>`" in page
+    assert (
+        "an owner the audit trail records is cut wherever a line quotes it, even with holds.json gone" in page
+    )
+
+
 def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     """B13 round 26 E35, E58 (one gap, built once): round 25 added four report outputs and an installer tail
     the guide never described: D80's Private only line for a hold's one-word value (and E6's send words,
