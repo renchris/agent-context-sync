@@ -32188,6 +32188,10 @@ from `_compile`.
 Amended 2026-10-26, §16.201 C211: the code guard is built, in `_seed` after its proxy test (`_swift_too_old`, a
 `swift --version` read), so a Swift older than the packaged tools version fetches nothing, and the page says so.
 
+Amended 2026-10-26, §16.202 C194: the page names all four keys of `speech._PROXIES` (`HTTPS_PROXY`, `https_proxy`,
+`ALL_PROXY` or `all_proxy`, README step 1's order), which `_shell` reads as written; it named only the two
+upper-case ones, so a Mac with only `https_proxy` set read the page as fetching nothing through a proxy.
+
 **The guide says a late stop's reason says when the person's FAIL came** (I81; `docs/deploy/setup-feedback.md`).
 The guide said "No outcome reads it" of a step 3 stop logged after the end line, and since round 27 P101
 `compute_outcome` ends a known-cause reason, when its FAILs are all the person's and such a stop is the person's,
@@ -32740,3 +32744,12 @@ for 43:58 at 6191 tests, past CLAUDE.md's `about 18 to 40`. It is not a docs-onl
 with the seven named and 49:59 still beside the range, COMMON.md says the same with round 29's id, and ci.yml's note
 adds a sentence after I99's: `timeout-minutes` stays 60, 15 minutes above the seven and 10 above 49:59. Test:
 `test_claude_md_gives_cis_time_and_its_limit`, which also refuses `about 18 to 40 minutes` and a docs-only 3f1dee54.
+
+**The IT request names every proxy variable the seed reads** (C194; `docs/deploy/it-request.md`; dated line at
+§16.197 I71). The page's proxy clause named `HTTPS_PROXY` and `ALL_PROXY`, but `speech._PROXIES` holds
+`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` and `all_proxy` and `_shell` matches each key as written: with only
+`https_proxy` set, `_seed` fetches the 87 MB file through that proxy, the case I71 discloses (since lane E's round 29
+C211, only past the `swift --version` check). The page names the four in README step 1's order, in C211's sentence;
+docs and test only. Test:
+`test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check`, which now reads the names the page
+gives against `_PROXIES` in order.

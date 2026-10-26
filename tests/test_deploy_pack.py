@@ -6671,10 +6671,14 @@ def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check()
     (`_seed`, a curl through that proxy) before `swift package resolve`, the step that finds a too-old Swift,
     so such a Mac fetches it too, once. The page says so; the order is read from `_compile`, and `_seed`'s
     early return without a proxy from its source. Round 29 C211: the seed asks `swift --version` first, so a
-    Swift older than 6.0 fetches nothing, and the page says that instead."""
+    Swift older than 6.0 fetches nothing, and the page says that instead. B13 round 29 C194: the page named
+    only `HTTPS_PROXY` and `ALL_PROXY`, and `_shell` reads `_PROXIES`' four keys as written, so a Mac with
+    only `https_proxy` set fetched the file too; the page names every key of `_PROXIES`, read here, in README
+    step 1's order."""
     it_request = " ".join(_page("docs/deploy/it-request.md").split())
     assert (
-        "Behind a proxy (`HTTPS_PROXY` or `ALL_PROXY` in the environment, or git's http.proxy setting), the"
+        "Behind a proxy (`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` or `all_proxy` in the environment, or"
+        " git's http.proxy setting), the"
         " installer fetches the 87 MB file through that proxy before SwiftPM resolves the package. A Mac"
         " whose Swift is older than 6.0 (as `swift --version` says) does not fetch it; a newer Swift that"
         " FluidAudio's own manifest still refuses may, and the helper is then not built and the FluidAudio"
@@ -6691,6 +6695,8 @@ def test_the_it_request_says_a_proxy_fetches_the_binary_before_the_swift_check()
     assert "if final.exists():\n        return" in seed  # once: a file already seeded is kept
     assert 'if proxy == "" or (proxy is None and not _shell(_PROXIES)):\n        return' in seed
     assert set(speech._PROXIES) == {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
+    named = it_request.split("Behind a proxy (", 1)[1].split(" in the environment", 1)[0]
+    assert re.findall(r"`([A-Za-z_]+)`", named) == list(speech._PROXIES)
 
 
 def test_the_guide_says_a_late_stop_says_when_a_persons_fail_came() -> None:
