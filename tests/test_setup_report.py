@@ -13797,6 +13797,49 @@ def test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_tabl
     assert len(plain) == 1 and plain[0].startswith("- no row:") and "no alias table" in plain[0], plain
 
 
+def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 C304 with C317's half (a) (ruling 43): after a new start an entry the table counts under
+    `no row` was said on a line headed "not looked up yet", while the `not looked up` column read 0 and the
+    intro sent the reader to "the line under the table" for that column. Each split head names its column, the
+    entry is counted once (`no row` = the split lines + the no-trace line), and the intro names the line it
+    means."""
+    lines = setup_report._purge_notes(
+        Counter({"no row": 2}),
+        Counter(),
+        kept=0,
+        alias_table=True,
+        split=Counter({"not looked up yet": 1}),
+        before=1,
+    )
+    assert not [ln for ln in lines if ln.startswith(("- not looked up yet", "- not looked up:"))], lines
+    assert [ln for ln in lines if "not looked up yet" in ln] == [], lines
+    [head] = [ln for ln in lines if ln.startswith("- no row, ")]
+    assert head.startswith(
+        "- no row, docs history not searched yet: 1 queued purge from before the new start; "
+    ), head
+    assert [ln for ln in lines if ln.startswith("- no trace: 1 queued id has no row")], lines
+    assert len(lines) == 2, lines
+    for kind in setup_report._SPLIT_KINDS:
+        [line] = setup_report._purge_notes(
+            Counter({"no row": 1}), Counter(), kept=0, alias_table=True, split=Counter({kind: 1})
+        )
+        assert line.startswith("- no row, "), (kind, line)
+    seed = Seed(fake_mac["config"])
+    _one, inbox, _two = seed.ids()
+    seed.run(1, {}, day="2026-10-01")
+    seed.close()
+    governance.enqueue_purge(
+        seed.config.state_paths.root,
+        governance.PurgeSelector(source_id=inbox, stable_id="id-that-was-never-a-row"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        now=datetime(2026, 10, 2, 9, 30, tzinfo=UTC),
+    )
+    part = status_parts(fake_mac)[1]["Purge queue"]
+    assert "no row at all, or not looked up (the `not looked up:` line under the table says why)." in part, (
+        part
+    )
+
+
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
     fake_mac: dict[str, Path],
 ) -> None:

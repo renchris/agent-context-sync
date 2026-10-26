@@ -6735,7 +6735,11 @@ def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:
     )
     assert "reads `No queued id was looked up: <why>.` and the queue's own kept lines follow" in row
     # governance's split, each head on a line of its own
-    for head in ("not judged yet", "not looked up yet", "found nothing in the docs history"):
+    for head in (
+        "no row, not judged yet",
+        "no row, docs history not searched yet",
+        "no row, found nothing in the docs history",
+    ):
         assert f'out.append(f"- {head}: ' in source or f'f"- {head}: ' in source, head
         assert f"`{head}`" in row, head
     assert set(setup_report._SPLIT_KINDS) >= {"not judged yet", "not looked up yet", "found nothing"}

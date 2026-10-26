@@ -32515,6 +32515,8 @@ and `no sync has built this manifest yet` in the not-looked-up line. Tests:
 `test_the_reports_purge_queue_over_a_manifest_no_sync_has_run_over_says_nothing_yet` (tests/test_cli.py, in place
 of round 28's pinned head), `test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_table`,
 `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place`.
+Amended 2026-10-26, §16.203 C304: the split's heads name their column, `no row, not judged yet`, `no row, docs
+history not searched yet` and `no row, found nothing in the docs history`; `_SPLIT_KINDS` keeps its names.
 
 **A credential stub's alarm names no page in the report** (C145's report half, after lane B's sha). Lane B's alarm
 names a page the secret scan stubbed by its mirror path (`<source>: mirror/<source>/<path>.md is a `contains a
@@ -33117,6 +33119,8 @@ by id with its own reason and then `purge --queue --forget id=<its id> --source 
 `no trace`'s causes, and that only a manifest with no alias table gives the `no row` line. Test:
 `test_the_guides_purge_queue_row_names_the_sections_parts`, which reads every head and cause from setup_report and
 governance and makes the `no trace` and `no row` lines with `_purge_notes`, so the row cannot drift unnoticed again.
+Amended 2026-10-26, §16.203 C304: the row gives the split's heads as the report prints them, `no row, not judged
+yet`, `no row, docs history not searched yet` and `no row, found nothing in the docs history`.
 
 ### 16.203 Round 30: setup report: a hold scope kept private, the hold record and the lost lists as the person's, the Purge queue's columns and a report that never writes the manifest (2026-10-26, wave B13 round 30 lane RA)
 
@@ -33162,6 +33166,19 @@ origin `record` (`hold <scope> (record): lost from the hold list — set by <own
 (record): lost from the hold list, owner not shown`); a `(record)` line with any other reason reads `reason and
 owner not shown`, and a refusal whose next hold is one counts it. These two are the report's only patterns that
 read a hold's origin. Test: `test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_ruling_42`.
+
+C304 (2026-10-26): **the Purge queue's split heads name their column** (C304 with C317's first half; ruling 43;
+amends §16.198 C188 and §16.202 C169). After a new
+start an entry the table counts under `no row` was said on a line headed `not looked up yet`, while the `not looked
+up` column, which counts the ids the report itself did not look up, read 0 beside it, and the intro sent the reader
+to "the line under the table" for that column. The count was right; the words were one phrase with two meanings.
+Each head the split prints now starts with its column and says what is not done yet in its own words: `- no row,
+not judged yet: ...`, `- no row, docs history not searched yet: ...` and `- no row, found nothing in the docs
+history: ...`, and the intro points at the `not looked up:` line. No column is renamed or added: the six columns
+are what the manifest holds now and the split is governance's judgment, and `_purge_notes` counts the no-trace line
+as `no row` less the split. `_SPLIT_KINDS` and governance's `NOT_LOOKED_UP` keep their names, since status and the
+dry run read them. The guide's Purge queue row and its test give the new heads (§16.198, §16.202 amended). Test:
+`test_the_purge_queues_split_heads_name_their_no_row_column_c304`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

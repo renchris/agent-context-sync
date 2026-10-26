@@ -9286,7 +9286,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             f"- {_plural(len(queue), 'purge')} queued{more}. For a queued stable id the last six columns "
             "say what the manifest holds now: a live file elsewhere with the same bytes (a renamed or "
             "re-exported copy), a live file with another id at the same path, the file itself listed again, "
-            "nothing live in its place, no row at all, or not looked up (the line under the table says why)."
+            "nothing live in its place, no row at all, or not looked up (the `not looked up:` line under the "
+            "table says why)."
         ]
     split, before = _purge_split(config, no_row) if no_row else (Counter(), 0)
     return [
@@ -9433,30 +9434,34 @@ def _split_lines(
     split: Counter[str], bin_: str, unlisted: Callable[[int], str], unresolved: Callable[[int], str]
 ) -> list[str]:
     """One counted line per kind of :data:`_SPLIT_KINDS`, in governance's words where it has them
-    (``unlisted_purges``, ``unresolved_purges``); never an id, a source or a path (B13 round 29 ruling 25)."""
+    (``unlisted_purges``, ``unresolved_purges``); never an id, a source or a path (B13 round 29 ruling 25).
+    Each head names its column, ``no row``, the one the split breaks down: never a head that reads like the
+    ``not looked up`` column, which counts the ids the report itself did not look up (round 30 ruling 43, C304
+    with C317's half (a))."""
     out: list[str] = []
     n = split["not judged yet"]
     if n:
-        out.append(f"- not judged yet: {unlisted(n)}")
+        out.append(f"- no row, not judged yet: {unlisted(n)}")
     n = split["not judged, no sync lists it"]
     if n:
         it = "it" if n == 1 else "them"
         out.append(
-            f"- not judged yet: {_plural(n, 'queued purge')} of a source no sync lists (not in sources.toml, "
-            f"or paused), so nothing judges {it}: `{bin_} purge --queue --dry-run` names each, and `{bin_} "
-            "purge id=<its id> --source <its source> --reason <its reason>` erases its page by hand"
+            f"- no row, not judged yet: {_plural(n, 'queued purge')} of a source no sync lists (not in "
+            f"sources.toml, or paused), so nothing judges {it}: `{bin_} purge --queue --dry-run` names each, "
+            f"and `{bin_} purge id=<its id> --source <its source> --reason <its reason>` erases its page by "
+            "hand"
         )
     n = split["not looked up yet"]
     if n:
         ids = "its id" if n == 1 else "their ids"
         out.append(
-            f"- not looked up yet: {_plural(n, 'queued purge')} from before the new start; `{bin_} purge "
-            f"--queue --dry-run` looks {ids} up in the docs history first, and a run keeps one queued whose "
-            "id reaches nothing"
+            f"- no row, docs history not searched yet: {_plural(n, 'queued purge')} from before the new "
+            f"start; `{bin_} purge --queue --dry-run` looks {ids} up in the docs history first, and a "
+            "run keeps one queued whose id reaches nothing"
         )
     n = split["found nothing"]
     if n:
-        out.append(f"- found nothing in the docs history: {unresolved(n)}")
+        out.append(f"- no row, found nothing in the docs history: {unresolved(n)}")
     return out
 
 
