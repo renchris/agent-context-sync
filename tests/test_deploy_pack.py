@@ -6624,10 +6624,10 @@ def test_the_round_27_ra_record_says_rb_built_install_shs_halves() -> None:
         assert f"**{title}**" in rb and f'§16.189 "{title}"' in ra, title
     shell = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     install = " ".join(shell.split())
-    assert (
-        "which is missing though heartbeat.json beside it records earlier passes and is a symlink to a file"
-        " that does not exist" in install
-    )
+    # since B13 round 28 I4, I17, I33 (lane RB) the tail names the link first, composed of the link kind,
+    # the fact and the fix
+    assert 'lwhat="a symlink to a file that does not exist, and is "' in install
+    assert "manifest.sqlite, which is $lwhat$lfact:" in install
     assert "lost_link_now" in install  # P127's shell half
     claims_fn = shell[shell.index("function claims(") :]
     assert (
