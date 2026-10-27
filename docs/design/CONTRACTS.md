@@ -33480,6 +33480,45 @@ and an older converter key schema, one at an older manifest schema, a WAL manife
 holds frames a sync has not checkpointed, a held queue that every entry waits on, a folder at the -shm with no
 -wal, and a manifest no sync has run over; bytes, mode and mtime alike).
 
+C308, C309, C335, C369 (2026-10-26): **a governance list that lost what the audit trail records is the
+person's, named by its role** (ruling 40's report half, over lane B's C172; one build). A purge queue or a
+suppression list that lost a purge the audit trail records read `unexpected` in the Doctor line, a status-step
+stop over it or over a hold the hold list lost read only `its status step reported [FAIL] lines`, and the Purge
+queue part said `no purge is queued` over a lost queue. Each list is now read on its own, by
+`governance.suppressions_lost` and `governance.queue_lost` (`governance_lost` names only the first, so with both
+lost the second stayed unexpected), and bucketed only when doctor's FAIL carries governance's own words (` no
+longer lists what ` ... ` the audit trail records suppressed (`, ` no longer holds ` ... ` the audit trail records
+as queued and not done (`), and only when neither governance/ nor the file itself is not a folder, damaged or
+refused: `from a suppression list that lost a purge the audit trail records`, `from a purge queue that ...`, or
+`from a suppression list and a purge queue that ...`, each FAIL the person's. One judge, `_lost_named` (these
+reads, `_hold_lost` and doctor's words), gives the Doctor buckets and the outcome's cause: after a status step's
+`fail-lines` stop of the latest attempt, side files first, the outcome reads `install.sh exited 1 at its status
+step on agentsync's purge queue, which lost a purge the audit trail records: the person's to fix` (the
+suppression list's alike; the hold list's `which no longer lists a hold the audit trail or the hold record
+keeps`; two or three lists `which each lost a purge` or `a hold or a purge`), with no bracket, file name,
+reason, time, selector, owner or scope. The sync's own `error: state: ... no longer holds|lists what N
+purge(s) the audit trail records` line gives the same cause, and a step-3 stop on governance/ names the lost list
+by role, `on agentsync's purge queue, which lost a purge the audit trail records`, by lane B's own stop kind
+`kind=lost-list` (C345; written ahead of its record) or an older `kind=misplaced` record doctor names no kind
+for. The Purge queue part counts the lost entries in lane B's words, `- N purge(s) recorded in the audit trail
+is/are not in the queue file (see Doctor's governance.purge_queue line)`, in place of `no purge is queued` and
+beside a table, never with a selector, source, reason or time. Ruling 35's privacy guard: the lost queue's fix
+names the stable id it rebuilds in `purge id=<id>`, a volume's GUID and the file's number on it, so the
+redactor cuts each by-hand purge's id to `<its id>`, as the report's own by-hand purge prints it, before its
+value pass; no file name or glob reaches the report and it stays public only where it was. Lane B's C313 governance.hold
+FAIL of a governance folder gone whole (`<gov>/ is missing, with the hold list, agentsync's audit trail, the
+purge queue and the suppression list in it: `, written ahead of its code) keeps the lost hold's anchor, so with
+governance/ missing by the report's own lstat it reads as the folder's, `from agentsync's governance folder that
+is missing`, and the outcome `on agentsync's governance folder, which is missing: the person's to fix`, never a
+hold the hold list lost. Two new fixed phrases, in the report and install.sh alike: `lost a hold or a purge the
+audit trail records` and that FAIL's clause from `with the hold list`. Lane B's microsecond purge
+times (ruling 33) read as whole-second ones, as the trail line takes the day alone, and its
+`suppression-lost-accepted` line counts as none of the three actions. Tests:
+`test_a_lost_purge_queue_and_suppression_list_are_the_persons_c309_c335_c369`,
+`test_a_status_stop_on_a_lost_hold_names_the_hold_list_c308`, `test_a_sync_stop_on_a_lost_list_names_the_list_c335`
+(a hand-written `kind=lost-list` line too), `test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313`
+and `test_a_microsecond_audit_time_reads_as_a_whole_second_one_ruling_33`.
+
 C394, ruling 36 (2026-10-26): **a queued id the read-only split cannot judge reads as not judged, and the
 private copy stays in the state folder** (lane B's C394 fix pass). Lane B's `partition_queue_ro` keeps a queued
 upstream deletion or label escalation it cannot judge with a note that says why: `governance.SCHEMA_NOTE` over

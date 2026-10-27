@@ -111,6 +111,7 @@ import errno
 import functools
 import hashlib
 import importlib.metadata
+import itertools
 import json
 import logging
 import os
@@ -1324,6 +1325,10 @@ _FIXED_VALUE_PHRASES = (
     "purge audit: ",
     "no audit line: ",
     "lost a purge the audit trail records",
+    # the outcome over two lost governance lists, a hold list among them (B13 round 30 ruling 40)
+    "lost a hold or a purge the audit trail records",
+    # lane B's C313 gone governance folder (written ahead of its code)
+    "with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: ",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -2846,6 +2851,11 @@ time> sync-stop file=<role> rc=1 owner=<agent|person> kind=<refused|misplaced|lo
 line with no ``kind=`` (written before B13 round 24 B82) is a refusal. No ``run=`` word, so no install.log
 reader of any build takes it for an install run. A lost manifest's stop may be followed by a
 :data:`_SYNC_STOP_DETAIL_RE` line (B13 round 29 C210)."""
+_LOST_LIST_KIND = "lost-list"
+"""The ``kind=`` of a sync stop on a governance list that lost a purge the audit trail records, lane B's C345
+(ruling 40), written ahead of lane B's record: an older ``kind=misplaced`` stop on a governance file that
+doctor names no kind for, beside a lost list the report's own read finds, reads the same (B13 round 30
+C335)."""
 _SYNC_STOP_RE = re.compile(
     r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
     r"(?: kind=(?P<kind>[a-z]+(?:-[a-z]+)*))?$"
@@ -2899,10 +2909,13 @@ class _SyncStop:
     # logged in the end line's own second, after it, and joined to the attempt by the error it claims there
     # (B13 round 30 C301): :func:`_end_second_stops`, paired after the window's stops (:func:`_pair_stops`)
     at_end: bool = False
+    # the lost governance lists a stop on governance/ stood on, by the report's own read (B13 round 30 ruling
+    # 40, C335): :func:`_lost_list_names`
+    lost_list: str = ""
 
     @property
     def what(self) -> str:
-        return _SYNC_STOP_FILES.get(self.file, "a state file")
+        return self.lost_list or _SYNC_STOP_FILES.get(self.file, "a state file")
 
 
 def _whole_second(t: datetime) -> datetime:
@@ -3474,7 +3487,13 @@ def compute_outcome(
             detail += "the prompt calls running it again safe"
         elif failing and failing[0] == "config" and config_cause:
             detail = f"install.sh exited {last.rc} at its config step{config_cause}"
-        elif not failing and config_cause and any(f" on {w}," in config_cause for w in _SIDE_ROLE.values()):
+        elif (
+            not failing
+            and config_cause
+            and (
+                config_cause in _LOST_CAUSES or any(f" on {w}," in config_cause for w in _SIDE_ROLE.values())
+            )
+        ):
             detail = f"install.sh exited {last.rc} at its status step{config_cause}"
         else:
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
@@ -9430,8 +9449,9 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         if isinstance(exc.__cause__, OSError) and doctor.state_unopenable(exc.__cause__, root):
             raise _StateGovernanceShutError from exc
         raise
+    lost = _lost_queue_line(config)
     if not queue:
-        return ["- no purge is queued"]
+        return [lost] if lost else ["- no purge is queued"]
     reasons = {reason.value for reason in governance.PurgeReason}
     grouped: dict[tuple[str, str, str, str], Counter[str]] = {}
     lookups = 0
@@ -9505,6 +9525,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     split, before, probed, waits = _purge_split(config, no_row) if no_row else (Counter(), Counter(), 0, [])
     return [
         *intro,
+        *([lost] if lost else []),
         "",
         *_table(header, rows),
         *_purge_notes(
@@ -9523,6 +9544,26 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             governance.audit_path(config.state_paths.root), min((key[3] for key in grouped), default="")
         ),
     ]
+
+
+def _lost_queue_line(config: Config) -> str:
+    """The Purge queue part's count of the purges the audit trail records as queued and not done that the
+    queue file no longer holds (``governance.lost_queued``), in lane B's fixed words; "" when none is, or the
+    read fails. Never a selector, a source, a reason or a time (B13 round 30 ruling 40, C309): never "no purge
+    is queued" over a lost queue."""
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        n = len(governance.lost_queued(expand(config.state_paths.root)))
+    except Exception:
+        return ""
+    if not n:
+        return ""
+    verb = "is" if n == 1 else "are"
+    return (
+        f"- {_plural(n, 'purge')} recorded in the audit trail {verb} not in the queue file "
+        "(see Doctor's governance.purge_queue line)"
+    )
 
 
 def _governance_kept_lines(config: Config, queue: Sequence[QueuedPurge]) -> list[str]:
@@ -11559,8 +11600,24 @@ def _with_now_words(r: _Run, stops: list[_SyncStop]) -> list[_SyncStop]:
     ]
     if r.config is None:
         return stops
-    return [
+    stops = [
         dataclasses.replace(s, shape=_stop_shape(r, s)) if s.kind == "misplaced" and s.ended_ok is None else s
+        for s in stops
+    ]
+    # B13 round 30 ruling 40 (C335): a stop on governance/ over a list that lost a purge the audit trail
+    # records names the list by its role, lane B's own kind or an older misplaced one doctor gives no kind for
+    lost = (
+        _lost_list_names(r.config)
+        if any(s.file == "governance" and s.kind in (_LOST_LIST_KIND, "misplaced") for s in stops)
+        else ""
+    )
+    return [
+        dataclasses.replace(s, lost_list=lost)
+        if lost
+        and s.file == "governance"
+        and s.ended_ok is None
+        and (s.kind == _LOST_LIST_KIND or (s.kind == "misplaced" and not s.shape))
+        else s
         for s in stops
     ]
 
@@ -11759,6 +11816,7 @@ _SYNC_STOP_KINDS = {
     "refused": "which this account could not open",
     "misplaced": "which was not where or what it should be",
     "lost": "which was missing after earlier syncs",
+    _LOST_LIST_KIND: "which lost a purge the audit trail records",  # lane B's C345, ahead of it (ruling 40)
 }
 """What stopped a step-3 sync, by its sync-stops.log ``kind=``: lane B's words (B13 round 24 B82)."""
 
@@ -11779,6 +11837,8 @@ def _stop_which(stop: _SyncStop) -> str:
     target. A lost stop the read now says nothing of (closed, or an earlier attempt's) takes the kind its
     sync-stop-detail line recorded (``stop.lost_at_stop``, B13 round 29 C210)."""
     which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    if stop.lost_list:  # B13 round 30 ruling 40 (C335): an older misplaced record over a lost list too
+        return _SYNC_STOP_KINDS[_LOST_LIST_KIND]
     if stop.kind == "lost" and stop.lost_kind in _LOST_WAS:  # B13 round 28 ruling 21; lane B's I92
         which = _LOST_WAS[stop.lost_kind]
     elif stop.kind == "lost" and stop.lost_at_stop in _LOST_WAS:
@@ -11803,6 +11863,8 @@ def _stop_unread_why(stop: _SyncStop) -> str:
     this cause says what the read finds now, so a file that is there is never called missing."""
     if stop.unread:
         return stop.unread
+    if stop.lost_list or stop.kind == _LOST_LIST_KIND:  # B13 round 30 ruling 40: the list is a file, read
+        return "the state file cannot be read"
     if stop.kind == "misplaced" and stop.file in ("manifest-wal", "manifest-shm"):
         return f"{stop.what} is not a file"
     if stop.file in ("hold-record", "purge-record"):  # B13 round 30 C347: the record, whatever the kind
@@ -12908,6 +12970,10 @@ class _DoctorSort:
     damaged_words: str = ""
     from_lost_hold: list[str] = dataclasses.field(default_factory=list)
     from_held: list[str] = dataclasses.field(default_factory=list)
+    # B13 round 30 ruling 40: a suppression list or a purge queue that lost a purge the audit trail records
+    from_lost_list: list[str] = dataclasses.field(default_factory=list)
+    lost_list_words: str = ""
+    from_govgone: list[str] = dataclasses.field(default_factory=list)  # lane B's C313
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -13248,6 +13314,19 @@ def _reads_the_state_folder(name: str) -> bool:
 
 
 _GOVDIR_WORDS = "from agentsync's governance folder that is not a folder"
+_GOV_GONE = (
+    "/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in "
+    "it: "
+)
+"""Lane B's C313 governance.hold FAIL of a governance folder that is gone whole while the hold record keeps a
+hold (``<gov>/ is missing, ...``), written ahead of lane B's code: it keeps the lost hold's anchor ``no longer
+lists the hold on``, so it is read as the governance folder's, never as a hold the hold list lost (B13 round
+30, lane B's C313)."""
+_GOVGONE_WORDS = "from agentsync's governance folder that is missing"
+"""The Doctor line's bucket for :data:`_GOV_GONE`'s FAIL, the person's, the folder put back whole first (lane
+B's C313 fix: ``the person puts agentsync's governance folder (<gov>) back whole from the copy kept``)."""
+_GOVGONE_CAUSE = " on agentsync's governance folder, which is missing: the person's to fix"
+"""The status step's cause for :data:`_GOV_GONE`'s FAIL (:func:`_outcome_cause`)."""
 """The Doctor line's bucket for governance/ itself not a folder (lane B's round 28 I88, I89), the person's,
 the real governance folder put back first (B13 round 29 ruling 27: C103, C121, C137, C147, C152, C161,
 C208)."""
@@ -13266,6 +13345,25 @@ _HOLD_LOST_WAIT = "not run while a hold the hold list lost is in force"
 """Doctor's governance.purge_queue words when the hold list lost a hold (``governance.HOLD_LOST_WAIT``, lane
 B's round 29 ruling 27), as :data:`_HOLD_UNREAD_WAIT` when it cannot be read; a test keeps it equal to the
 source."""
+
+
+def _governance_gone(r: _Run) -> bool:
+    """Whether governance/ is missing by the report's own lstat and doctor's governance.hold FAIL says so in
+    lane B's C313 words (:data:`_GOV_GONE`); False when either fails (B13 round 30, lane B's C313)."""
+    if r.config is None:
+        return False
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        gov = governance.governance_dir(expand(r.config.state_paths.root))
+        if os.path.lexists(gov):
+            return False
+    except Exception:
+        return False
+    return any(
+        t == "FAIL" and m == "governance.hold" and f"{gov}{_GOV_GONE}" in d
+        for t, m, d in r.facts.doctor_problems
+    )
 
 
 def _governance_dir_not_folder(c: Config | None) -> bool:
@@ -13326,6 +13424,115 @@ def _hold_lost(c: Config | None) -> bool:
         return governance.hold_list_state(expand(c.state_paths.root)) == "lost"
     except Exception:
         return False
+
+
+_LOST_LIST_PHRASES = {
+    "governance.suppressed": (" no longer lists what ", " the audit trail records suppressed ("),
+    "governance.purge_queue": (" no longer holds ", " the audit trail records as queued and not done ("),
+}
+"""Doctor's fixed words in the FAIL of a governance list that lost a purge the audit trail records
+(``governance.suppressions_lost``, ``governance.queue_lost``; lane B's C172), by check: a FAIL of either check
+that lacks them (a ``stopped`` line) keeps its own bucket (B13 round 30 ruling 40: C309, C335, C369)."""
+_LOST_LIST_WORDS = {
+    ("governance.suppressed",): "from a suppression list that lost a purge the audit trail records",
+    ("governance.purge_queue",): "from a purge queue that lost a purge the audit trail records",
+    ("governance.suppressed", "governance.purge_queue"): (
+        "from a suppression list and a purge queue that lost a purge the audit trail records"
+    ),
+}
+"""The Doctor line's bucket for :data:`_LOST_LIST_PHRASES`' FAILs, the person's, named by the list's role,
+never a reason, a time or a selector (B13 round 30 ruling 40: C309, C335, C369)."""
+_LOST_NOUNS = {
+    "governance.hold": "hold list",
+    "governance.suppressed": "suppression list",
+    "governance.purge_queue": "purge queue",
+}
+"""Each governance list that can lose what the audit trail records, by doctor's check, in the order the
+outcome names them (B13 round 30 ruling 40)."""
+
+
+def _lost_lists(c: Config | None) -> list[str]:
+    """The checks of the governance lists that lost a purge the audit trail records, by the report's own
+    separate reads of ``governance.suppressions_lost`` and ``governance.queue_lost`` (``governance_lost``
+    names the first only, so the second would read as unexpected); a read that fails, or an installed
+    governance without it, adds nothing (B13 round 30 ruling 40: C309, C335, C369)."""
+    out: list[str] = []
+    if c is None:
+        return out
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        root = expand(c.state_paths.root)
+    except Exception:
+        return out
+    for check, name in (
+        ("governance.suppressed", "suppressions_lost"),
+        ("governance.purge_queue", "queue_lost"),
+    ):
+        try:
+            read = getattr(governance, name, None)
+            if read is not None and read(root) is not None:
+                out.append(check)
+        except Exception:
+            continue
+    return out
+
+
+def _lost_named(r: _Run, *, lists: Sequence[str] | None = None) -> list[str]:
+    """Of the governance lists that lost what the audit trail records, by the report's own reads
+    (:func:`_hold_lost`, :func:`_lost_lists`, or ``lists``), those doctor FAILs in its own fixed words, in
+    :data:`_LOST_NOUNS`' order: one judge for the Doctor buckets and the outcome (B13 round 30 ruling 40:
+    C308, C309, C335, C369)."""
+    found = list(_lost_lists(r.config) if lists is None else lists)
+    if _hold_lost(r.config) and not _governance_gone(r):  # lane B's C313: the folder's, never a lost hold
+        found.append("governance.hold")
+    phrases = {**_LOST_LIST_PHRASES, "governance.hold": ("no longer lists the hold on ",)}
+    return [
+        check
+        for check in _LOST_NOUNS
+        if check in found
+        and any(
+            t == "FAIL" and m == check and all(w in d for w in phrases[check])
+            for t, m, d in r.facts.doctor_problems
+        )
+    ]
+
+
+def _lost_cause(checks: Sequence[str]) -> str:
+    """The outcome's cause for a stop on the governance lists of ``checks`` that lost what the audit trail
+    records, by role, with no bracket, file name, reason, time or selector: the person's (B13 round 30 ruling
+    40: C308, C309, C335, C369)."""
+    named = [c for c in _LOST_NOUNS if c in checks]
+    nouns = [_LOST_NOUNS[c] for c in named]
+    names = nouns[0] if len(nouns) == 1 else f"{', '.join(nouns[:-1])} and {nouns[-1]}"
+    if named == ["governance.hold"]:
+        why = "which no longer lists a hold the audit trail or the hold record keeps"
+    elif len(named) == 1:
+        why = "which lost a purge the audit trail records"
+    elif "governance.hold" in named:
+        why = "which each lost a hold or a purge the audit trail records"
+    else:
+        why = "which each lost a purge the audit trail records"
+    return f" on agentsync's {names}, {why}: the person's to fix"
+
+
+_LOST_CAUSES = frozenset(
+    {_GOVGONE_CAUSE}
+    | {
+        _lost_cause(combo)
+        for n in range(1, len(_LOST_NOUNS) + 1)
+        for combo in itertools.combinations(_LOST_NOUNS, n)
+    }
+)
+"""Every :func:`_lost_cause`, which :func:`compute_outcome` names at the status step as it names a side
+file."""
+
+
+def _lost_list_names(c: Config | None) -> str:
+    """The lost governance lists (:func:`_lost_lists`) by role, for a sync stop on one ("agentsync's purge
+    queue"); "" when none is lost."""
+    nouns = [_LOST_NOUNS[check] for check in _lost_lists(c)]
+    return f"agentsync's {' and '.join(nouns)}" if nouns else ""
 
 
 def _queue_held(r: _Run) -> bool:
@@ -13477,6 +13684,22 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         and _hold_lost(r.config)
     )
     from_lost_hold: list[str] = []
+    gone = not notfolder and not govdir and _governance_gone(r)  # lane B's C313
+    from_govgone: list[str] = []
+    # B13 round 30 ruling 40 (C309, C335, C369): each lost list by its own read, never one judged before it
+    lost_lists = _lost_named(
+        r,
+        lists=[]
+        if notfolder or govdir
+        else [
+            n
+            for n in _lost_lists(r.config)
+            if n not in damaged and n not in misplaced_named and n not in refused
+        ],
+    )
+    lost_lists = [n for n in lost_lists if n != "governance.hold"]
+    from_lost_list: list[str] = []
+    lost_list_words = _LOST_LIST_WORDS.get(tuple(lost_lists), "")
     held_queue = not notfolder and not govdir and _queue_held(r)
     from_held: list[str] = []
     fails: list[tuple[str, str | None]] = []
@@ -13597,6 +13820,15 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_damaged.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, damaged_words))
             hold_bucket = from_damaged if name == "governance.hold" else hold_bucket
+            continue
+        if gone and tag == "FAIL" and name == "governance.hold" and _GOV_GONE in detail:
+            from_govgone.append(f"{name} FAIL{_PERSONS}")  # lane B's C313: the folder's, never a lost hold
+            fails.append((name, _GOVGONE_WORDS))
+            hold_bucket = from_govgone
+            continue
+        if tag == "FAIL" and name in lost_lists and all(w in detail for w in _LOST_LIST_PHRASES[name]):
+            from_lost_list.append(f"{name} FAIL{_PERSONS}")  # B13 round 30 ruling 40 (C309, C335, C369)
+            fails.append((name, lost_list_words))
             continue
         if (
             hold_lost
@@ -13756,6 +13988,9 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         damaged_words=damaged_words,
         from_lost_hold=from_lost_hold,
         from_held=from_held,
+        from_lost_list=from_lost_list,
+        lost_list_words=lost_list_words,
+        from_govgone=from_govgone,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -13867,8 +14102,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     for words, entries in (  # B13 round 29 ruling 27
         (_GOVDIR_WORDS, sort.from_govdir),
+        (_GOVGONE_WORDS, sort.from_govgone),  # lane B's C313
         (sort.damaged_words, sort.from_damaged),
         (_LOST_HOLD_WORDS, sort.from_lost_hold),
+        (sort.lost_list_words, sort.from_lost_list),  # B13 round 30 ruling 40
     ):
         if entries:
             parts.append(f"{words} ({_plural(len(entries), 'check')}): " + ", ".join(_fold(entries)))
@@ -15055,6 +15292,14 @@ _damaged_words``: damaged JSON, empty, or the wrong shape; lane B's round 28 I90
 ruling 27: C104, C157); the hold record and the purge record too (B13 round 30 ruling 41: C334, C395)."""
 
 
+_GOVERNANCE_LOST_RE = re.compile(
+    r"error: state: .* no longer (?P<verb>lists what|holds) \d+ purges? the audit trail records\b"
+)
+"""The line a sync prints when the suppression list or the purge queue lost a purge the audit trail records
+(``governance.suppressions_lost``, ``governance.queue_lost``; lane B's C172): the person's, named by the
+list's role, never the reasons and times the line carries (B13 round 30 ruling 40, C335)."""
+
+
 _RECORD_HOLDS_AGAIN = "each hold it named was set again"
 """What came first in a hold record's fix that a later run ended 0 after (lane B's C382: its fix sets each
 hold it named again before the move aside, as it may be the only record; B13 round 30 ruling 34, ruling
@@ -15206,6 +15451,15 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "person's to fix",
                 "after the real governance folder was put back, or, where none was ever kept, it was moved "
                 "aside",
+            )
+        gone = _GOVERNANCE_LOST_RE.search(ln.strip())  # B13 round 30 ruling 40 (C335)
+        if gone is not None:
+            if gone.group("verb") == "holds":
+                return _lost_cause(["governance.purge_queue"]), (
+                    "after it was put back from a copy they trust, or each purge was run again by hand"
+                )
+            return _lost_cause(["governance.suppressed"]), (
+                "after it was put back from a copy they trust, or each loss was accepted"
             )
         damaged = _GOVERNANCE_DAMAGED_RE.search(ln.strip())  # B13 round 29 ruling 27 (C104, C157)
         if damaged is not None:
@@ -15466,6 +15720,13 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun], *, latest: bool = True) 
             for side in _sidecars_not_files(r.config):
                 kind = doctor.state_file_kind(side) or "not a regular file"
                 return _side_words(side.name.rsplit("-", 1)[-1], kind)
+            # B13 round 30 ruling 40 (C308, C309, C335): a governance list that lost what the audit trail
+            # records, by the Doctor buckets' own judge; side files first, as they stop the sync first
+            if _governance_gone(r):  # lane B's C313: the folder's, before any list it held
+                return _GOVGONE_CAUSE
+            lost = _lost_named(r)
+            if lost:
+                return _lost_cause(lost)
     except Exception:  # a cause the report cannot read leaves the step's own words
         return None
     return words[0] if words is not None else None

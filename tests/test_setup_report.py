@@ -29,7 +29,7 @@ import types
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, urlsplit
@@ -2294,6 +2294,7 @@ _AUDIT_REGEXES = {
     "_LOST_RECORD_RE",
     "_STATE_MISPLACED_RE",
     "_GOVERNANCE_DAMAGED_RE",
+    "_GOVERNANCE_LOST_RE",
 }
 """The regex sources that hold "audit" as a word: never printed, so no fixed phrase need hold them (C302)."""
 
@@ -17573,6 +17574,297 @@ def test_a_lost_hold_and_a_held_queue_have_their_own_buckets(
     assert line.endswith(" · unexpected 0"), line
     for secret in ("Avery", "Quill", "Fabrikam"):
         assert secret not in text, secret
+
+
+def _governance_checks_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:func:`_governance_only` for a test whose sync has run (status passes the loop's checks on then)."""
+    real = cli._status_checks
+
+    def these(config: Config, **kwargs: Any) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, **kwargs)
+            if c.ok or c.name.startswith("governance") or c.name.startswith("heartbeat")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+
+
+def _lost_lists_seeded(fake_mac: dict[str, Path], capsys: pytest.CaptureFixture[str]) -> tuple[str, Path]:
+    """A synced Mac with an erasure queued by its stable id, a DLP purge queued by a docs glob and a purge run
+    by a path glob, then its purge queue and its suppression list moved aside: the stable id the lost queue's
+    fix rebuilds, and the state folder."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "Wingtip notes.txt").write_text("notes\n", encoding="utf-8")
+    (fake_mac["one"] / "Northwind plan.txt").write_text("plan\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    conn = sqlite3.connect(expand(config.state_paths.db))
+    try:
+        src, sid = conn.execute(
+            "SELECT source_id, stable_id FROM items WHERE is_dir = 0 AND name = 'Wingtip notes.txt'"
+        ).fetchone()
+    finally:
+        conn.close()
+    reasons = governance.PurgeReason
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(source_id=src, stable_id=sid), reasons.ERASURE_REQUEST
+    )
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(docs_glob=f"mirror/{src}/Wingtip*"), reasons.DLP_REMEDIATION
+    )
+    purge = ["purge", "path=Northwind*", "--source", src, "--reason", "erasure-request", "--config", str(cfg)]
+    assert cli.main(purge) == 0
+    capsys.readouterr()
+    governance._queue_file(root).rename(root / "queue.kept")
+    governance._suppress_file(root).rename(root / "suppressed.kept")
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    return sid, root
+
+
+def test_a_lost_purge_queue_and_suppression_list_are_the_persons_c309_c335_c369(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 30 ruling 40 (C309, C335, C369): a purge queue and a suppression list that lost what the
+    audit trail records (lane B's C172) read "unexpected 2", a generic status-step outcome, and "no purge is
+    queued".
+    Each list has its own read (``suppressions_lost``, ``queue_lost``: ``governance_lost`` names only the
+    first) and doctor's phrase: the person's bucket, named by role, the outcome names the lists, and the Purge
+    queue part counts the lost entries; with a list put back only the other stays, with both the words are as
+    before, and a damaged queue keeps the damaged bucket. Ruling 35's privacy guard (G): the stable id the
+    queue's fix rebuilds reaches no part of the report, cut to ``<its id>`` as the report's own by-hand purge
+    prints it, and no file name or glob does; the report stays public only where it was."""
+    _governance_checks_only(monkeypatch)
+    cfg = fake_mac["config"]
+    sid, root = _lost_lists_seeded(fake_mac, capsys)
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from a suppression list and a purge queue that lost a purge the audit trail records (2 checks): "
+        "governance.suppressed FAIL (the person's; see Doctor), governance.purge_queue FAIL (the person's; "
+        "see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    first = summary.strip().splitlines()[0]
+    assert first == (
+        "- **outcome: failed at step 2** (computed: install.sh exited 1 at its status step on agentsync's "
+        "suppression list and purge queue, which each lost a purge the audit trail records: the person's to "
+        "fix)"
+    ), first
+    part = text.split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
+    assert part.strip() == (
+        "- 2 purges recorded in the audit trail are not in the queue file (see Doctor's "
+        "governance.purge_queue line)"
+    ), part
+    # G: the rebuilt id (a volume's GUID and the file's number on it) is cut whole, wherever a line names it
+    number = sid.rsplit(":", 1)[-1]
+    for secret in (sid, number, "Wingtip", "Northwind"):
+        assert secret not in text, [ln for ln in text.splitlines() if secret in ln]
+    assert "`~/.local/bin/agentsync purge id=<its id> --source <" in section(text, "Doctor"), section(
+        text, "Doctor"
+    )
+    private = "this report is private only" in text
+    # the suppression list put back: the queue alone
+    (root / "suppressed.kept").rename(governance._suppress_file(root))
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    assert (
+        " · from a purge queue that lost a purge the audit trail records (1 check): governance.purge_queue "
+        "FAIL (the person's; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    assert (
+        summary.strip()
+        .splitlines()[0]
+        .endswith(
+            "at its status step on agentsync's purge queue, which lost a purge the audit trail records: the "
+            "person's to fix)"
+        )
+    ), summary
+    assert ("this report is private only" in text) == private
+    # a damaged queue file: the damaged bucket, never the lost one
+    governance._queue_file(root).write_text('{"queue": 5}', encoding="utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "that lost a purge the audit trail records" not in line, line
+    assert "damaged, empty or of the wrong shape" in line and line.endswith(" · unexpected 0"), line
+    # both put back: the words as before
+    (root / "queue.kept").replace(governance._queue_file(root))
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    assert "lost a purge the audit trail records" not in summary, summary
+    assert "not in the queue file" not in text
+
+
+def test_a_status_stop_on_a_lost_hold_names_the_hold_list_c308(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C308 (ruling 40): over a hold the hold list lost, the outcome said only "its status step
+    reported [FAIL] lines" while the Doctor line named the person's bucket. The status step's cause now names
+    the hold list by role, by the bucket's own judge (``_hold_lost`` and doctor's phrase), with no bracket,
+    file name, owner, reason or scope; an earlier attempt's outcome keeps the plain words, and a side file
+    that is not a file comes first, as it stops the sync first."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    root = expand(load_config(cfg).state_paths.root)
+    hold = ["hold", "all", "--reason", "Fabrikam matter", "--owner", "Avery Quill", "--config", str(cfg)]
+    assert cli.main(hold) == 0
+    (governance.governance_dir(root) / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    first = section(text, "Summary").strip().splitlines()[0]
+    computed = (
+        "install.sh exited 1 at its status step on agentsync's hold list, which no longer lists a hold the "
+        "audit trail or the hold record keeps: the person's to fix"
+    )
+    assert first == f"- **outcome: failed at step 2** (computed: {computed})", first
+    assert "(" not in first.split("computed: ", 1)[1], first
+    for secret in ("Avery", "Quill", "Fabrikam", "holds.json"):
+        assert secret not in first, secret
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", "governance.hold", "x no longer lists the hold on all (y)")]
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report._outcome_cause(r, runs) == computed.removeprefix(
+        "install.sh exited 1 at its status step"
+    )
+    assert setup_report._outcome_cause(r, runs, latest=False) is None
+    r.facts.doctor_problems = []  # no FAIL in doctor's words: no cause
+    assert setup_report._outcome_cause(r, runs) is None
+    r.facts.doctor_problems = [("FAIL", "governance.hold", "x no longer lists the hold on all (y)")]
+    shm = expand(load_config(cfg).state_paths.db).with_name("manifest.sqlite-shm")
+    shm.unlink(missing_ok=True)
+    shm.mkdir(parents=True)
+    said = setup_report._outcome_cause(r, runs)
+    assert said is not None and "shared-memory file" in said and "hold list" not in said, said
+
+
+def test_a_sync_stop_on_a_lost_list_names_the_list_c335(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C335 (ruling 40): a sync that stops on a governance list that lost a purge the audit trail
+    records read "on a governance file in the state folder, which was not where or what it should be". The
+    stop names the lost list by role and what it lost, by lane B's own kind (``kind=lost-list``, written here
+    ahead of its record, C345) and by an older ``kind=misplaced`` record doctor gives no kind for; the sync's
+    own ``error: state:`` line reads the same, never its reasons and times. A closed stop keeps its words."""
+    _governance_checks_only(monkeypatch)
+    _sid, root = _lost_lists_seeded(fake_mac, capsys)
+    (root / "suppressed.kept").rename(governance._suppress_file(root))
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    for kind in (setup_report._LOST_LIST_KIND, "misplaced"):
+        stop = setup_report._SyncStop(at, "governance", "person", None, True, kind)
+        [now] = setup_report._with_now_words(r, [stop])
+        line = setup_report._sync_stop_line(now)
+        assert "exited 1 on agentsync's purge queue, which lost a purge the audit trail records; " in line, (
+            line
+        )
+    closed = setup_report._SyncStop(at, "governance", "person", at, True, "misplaced")
+    assert setup_report._with_now_words(r, [closed]) == [closed]
+    # lane B's own record line (cli.LOST_LIST_KIND, written by hand here ahead of its code), read from the log
+    log = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+    log.write_text(
+        "2026-09-29T10:00:50Z sync-stop file=governance rc=1 owner=person kind=lost-list\n", encoding="utf-8"
+    )
+    [read] = setup_report._read_sync_stops(log, at - timedelta(minutes=1), None)
+    assert (read.file, read.owner, read.kind) == ("governance", "person", setup_report._LOST_LIST_KIND)
+    [now] = setup_report._with_now_words(r, [read])
+    assert "on agentsync's purge queue, which lost a purge the audit trail records" in (
+        setup_report._sync_stop_line(now)
+    )
+    said = (
+        "error: state: /x/governance/purge-queue.json no longer holds 1 purge the audit trail records as "
+        "queued and not done (erasure-request at 2026-10-26T23:06:36Z, a stable-id selector of source "
+        "contoso)"
+    )
+    gone = setup_report._GOVERNANCE_LOST_RE.search(said)
+    assert gone is not None and gone.group("verb") == "holds"
+    listed = (
+        "error: state: /x/governance/suppressed.json no longer lists what 2 purges the audit trail records"
+    )
+    assert setup_report._GOVERNANCE_LOST_RE.search(listed + " suppressed (") is not None
+    assert setup_report._lost_cause(["governance.purge_queue"]) in setup_report._LOST_CAUSES
+
+
+def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lane B's C313 (ruling 42, written ahead of its code): with governance/ gone whole while the hold record
+    keeps a hold, governance.hold FAILs ``<gov>/ is missing, with the hold list, agentsync's audit trail, the
+    purge queue and the suppression list in it: ``, keeping the lost hold's anchor ``no longer lists the hold
+    on``. The report reads it as the governance folder's, the person's (the folder put back whole first), in
+    the Doctor line and the status step's outcome, never as a hold the hold list lost; with the folder there,
+    the same words are not read so."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    root = expand(load_config(cfg).state_paths.root)
+    hold = ["hold", "all", "--reason", "Fabrikam matter", "--owner", "Avery Quill", "--config", str(cfg)]
+    assert cli.main(hold) == 0
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    fail = (
+        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the "
+        "suppression list in it: the hold list no longer lists the hold on all (kept by hold-record.json)"
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", "governance.hold", fail)]
+    sort = setup_report._sort_doctor(r, [])
+    assert sort.from_govgone == ["governance.hold FAIL (the person's; see Doctor)"], sort
+    assert sort.from_lost_hold == [] and sort.unexpected == [], sort
+    assert sort.fails == [("governance.hold", setup_report._GOVGONE_WORDS)]
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report._outcome_cause(r, runs) == setup_report._GOVGONE_CAUSE
+    outcome = setup_report.compute_outcome(None, runs, config_cause=setup_report._GOVGONE_CAUSE)
+    assert outcome.why[0] == (
+        "install.sh exited 1 at its status step on agentsync's governance folder, which is missing: the "
+        "person's to fix"
+    ), outcome
+    (root / "governance.kept").rename(gov)  # the folder there: never the gone folder's
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", "governance.hold", fail)]
+    assert setup_report._sort_doctor(r, []).from_govgone == []
+    assert setup_report._outcome_cause(r, runs) != setup_report._GOVGONE_CAUSE
+
+
+def test_a_microsecond_audit_time_reads_as_a_whole_second_one_ruling_33(tmp_path: Path) -> None:
+    """Lane B's ruling 33 seam: purge and purge-summary audit lines now carry microsecond times
+    (``governance._iso_fine``), older ones whole seconds. The Purge queue part's trail line reads both alike
+    from the oldest queued day, and the new ``suppression-lost-accepted`` line counts as none of its three
+    actions (a regression guard: the reader takes the day alone)."""
+    trail = tmp_path / "audit.jsonl"
+
+    def counted(fine: bool) -> str:
+        at = "2026-10-26T23:06:36.123456Z" if fine else "2026-10-26T23:06:36Z"
+        lines = [
+            {"action": "purge-enqueued", "at": "2026-10-26T08:00:00Z"},
+            {"action": "purge", "at": at},
+            {"action": "purge-summary", "at": at, "verified": True},
+            {"action": "suppression-lost-accepted", "at": at, "at_of": at, "reason": "erasure-request"},
+        ]
+        trail.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+        return setup_report._purge_audit(trail, "2026-10-26")
+
+    assert (
+        counted(True)
+        == counted(False)
+        == (
+            "- audit trail since 2026-10-26 (the oldest queued day): 1 purge-enqueued, 1 purge (one per item "
+            "erased) and 1 purge-summary (one per purge that ran) lines"
+        )
+    )
+    assert governance.SUPPRESSION_LOST_ACCEPTED == "suppression-lost-accepted"
 
 
 def test_a_lost_manifests_evidence_moves_round_28s_hold_record_first_c351(
