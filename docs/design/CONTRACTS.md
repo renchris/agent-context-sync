@@ -33945,6 +33945,25 @@ reads the per-source lines stay, since a pass's rename replaces the link. Tests:
 `test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread`,
 `test_a_heartbeat_link_to_nothing_beside_a_good_manifest_keeps_its_per_source_lines`.
 
+C321: beside a governance file the sync stops on, the incomplete-listing warn names that file's FAIL. With a folder
+at holds.json the warn's fix sent the person to a WAITING ON YOU line or another sync, while every sync stops on
+the hold list first; so did a folder at the audit trail, the purge queue, the suppression list, the hold record or
+the purge record, and damaged JSON in the hold list or the queue. `cli._listings_unread` takes the config
+(keyword `config`, from status and the report's Doctor hook) and, after the state-file branches, asks
+`cli._governance_listing_note`, keyed on the sync's own guard (`doctor.state_not_a_file(config, manifest=False,
+damaged=True, lost=True)`), never on the loop's error, which an audit trail or a suppression list that is not a
+file never raises. When that guard stops on a file under governance/ or on hold-record.json or purge-record.json
+(governance/ itself keeps `LISTING_STATE_GOVDIR_NOTE`), the note is `doctor.listing_state_governance_note(err,
+check)`: `as of its last walk: <role> is not a file; no sync lists it again until the person fixes it; the
+<check> [FAIL] line says what to do first`, with `cannot be read` for a damaged one and `has lost a purge the
+audit trail records` for a suppression list or queue that lost one (C172), the role from the error and the check
+from `governance_check`, and the fix dropped. Each clause ends `; `, so the audit trail's reads as the report's
+fixed phrase `the audit trail is not a file; `. A hold the hold list lost is not in the guard, and its sync runs,
+so its warn keeps its fix. The report's own bucket for this warn (filed with the misplaced or damaged governance
+FAIL, not under yours) is lane RA's. Tests:
+`test_beside_a_governance_file_the_sync_stops_on_the_listing_note_points_at_its_fail` (nine cases),
+`test_beside_a_hold_the_hold_list_lost_the_listing_note_keeps_its_waiting_on_you_line`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

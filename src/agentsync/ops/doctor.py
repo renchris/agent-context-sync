@@ -29,7 +29,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import quote
 
 from agentsync import arm_local, gitops, lints, materialise
@@ -73,6 +73,9 @@ from agentsync.ops.lock import (
 from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
 from agentsync.skill import AGENTSYNC_BIN, HELPER_RETRY_CLAUSE
 from agentsync.text import plural
+
+if TYPE_CHECKING:
+    from agentsync.governance import GovernanceUnreadError
 
 log = logging.getLogger(__name__)
 
@@ -243,6 +246,27 @@ def listing_state_side_note(sides: Sequence[Path]) -> str:
     return (
         f"as of its last walk: {what}, so no sync lists it again until the person moves {them} aside; "
         f"{LISTING_STATE_SIDE_TAIL if n == 1 else LISTING_STATE_SIDES_TAIL}"
+    )
+
+
+def listing_state_governance_note(err: GovernanceUnreadError, check: str) -> str:
+    """The listing note beside a governance file the sync's guard stops on (``state_not_a_file`` with
+    ``damaged`` and ``lost``: the hold list, the purge queue, the suppression list, the audit trail, the hold
+    record or the purge record), named by ``err``'s own role, never a WAITING ON YOU line: no sync runs until
+    the person fixes it, and an empty-folder exclude, which that line asks for, clears nothing (B13 round 30
+    C321). ``check`` is the FAIL that says what to do (``governance_check``). Each clause ends ``; ``, so the
+    audit trail's reads as the report's fixed phrase. Never for a hold the hold list lost: the sync runs."""
+    from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
+
+    if isinstance(err, governance.GovernanceNotAFileError):
+        said = "is not a file"
+    elif isinstance(err, governance.GovernanceLostError):
+        said = "has lost a purge the audit trail records"
+    else:
+        said = "cannot be read"
+    return (
+        f"as of its last walk: {err.role} {said}; no sync lists it again until the person fixes it; the "
+        f"{check} [FAIL] line says what to do first"
     )
 
 

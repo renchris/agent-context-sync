@@ -2087,7 +2087,11 @@ def _with_damaged_manifest(
 
 
 def _listings_unread(
-    checks: list[doctor.CheckResult], exc: Exception | None, state_root: Path | None = None
+    checks: list[doctor.CheckResult],
+    exc: Exception | None,
+    state_root: Path | None = None,
+    *,
+    config: Config | None = None,
 ) -> list[doctor.CheckResult]:
     """``checks`` with each incomplete-listing heartbeat warn worded for a state file that cannot be read
     (``doctor.LISTING_STATE_UNREADABLE_NOTE``, its fix dropped): no sync lists the source until it can, and
@@ -2097,7 +2101,9 @@ def _listings_unread(
     read: B13 round 20 X46 keeps that trigger, as a sync fix or a WAITING ON YOU pointer is wrong there too);
     a locked or busy manifest is not. A loop read this account cannot open gets
     ``doctor.LISTING_STATE_SHUT_NOTE`` (B13 round 20 X15), keyed on that read's error, never on the
-    state_dir.files check, which also FAILs a loose mode the loop reads past."""
+    state_dir.files check, which also FAILs a loose mode the loop reads past. With ``config``, a governance
+    file the sync's own guard stops on gets :func:`doctor.listing_state_governance_note` (B13 round 30
+    C321)."""
     read = isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
     lost = any(  # missing after earlier passes, not unreadable: its own note (B13 round 24 B36)
         r.name == "state_dir.manifest" and not r.ok and r.detail.endswith(LOST_MANIFEST_WORDS) for r in checks
@@ -2129,6 +2135,8 @@ def _listings_unread(
         note = doctor.listing_state_side_note(doctor.sides_not_a_file_at(db))
     elif doctor.state_unopenable(exc, state_root):
         note = doctor.LISTING_STATE_SHUT_NOTE
+    elif (governed := _governance_listing_note(config)) is not None:
+        note = governed
     else:
         return checks
     return [
@@ -2137,6 +2145,35 @@ def _listings_unread(
         else r
         for r in checks
     ]
+
+
+def _governance_listing_note(config: Config | None) -> str | None:
+    """The listing note for a governance file the sync's own guard stops on (``doctor.state_not_a_file``
+    with the sync's flags, the manifest left to the branches before), keyed on that guard, never the loop's
+    error, which an audit trail or a suppression list that is not a file never raises (B13 round 30 C321);
+    None for anything else, governance/ itself (``LISTING_STATE_GOVDIR_NOTE``) and a hold the hold list
+    lost, whose sync runs."""
+    if config is None:
+        return None
+    try:
+        found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)
+        if found is None:
+            return None
+        where, result = found
+        root = expand(config.state_paths.root)
+        records = (governance.hold_record_file(root), governance.purge_record_file(root))
+        if where.parent != governance.governance_dir(root) and where not in records:
+            return None
+        err = (
+            governance.governance_not_a_file(root)
+            or governance.governance_damaged(root)
+            or governance.governance_lost(root)
+        )
+    except Exception:  # the error path: never a second error over the first
+        return None
+    if err is None or err.path != where:
+        return None
+    return doctor.listing_state_governance_note(err, result.name)
 
 
 def _loop_read(config: Config) -> tuple[loop.NextStep | None, Exception | None]:
@@ -2166,7 +2203,9 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         loop_waits=None if step is None else step.wait_counts,
     )
     root = expand(config.state_paths.root)
-    checks = _listings_unread(_with_damaged_manifest(config, checks, state_exc), state_exc, root)
+    checks = _listings_unread(
+        _with_damaged_manifest(config, checks, state_exc), state_exc, root, config=config
+    )
     fixes = _fail_steps(checks)
     if hint_off and any(_blocks_install(r) for r in checks):  # install.sh runs no sync (B13 round 14 Q10)
         checks = [
@@ -2949,7 +2988,7 @@ def _report_hooks() -> setup_report.ReportHooks:
             found = _status_checks(config, offline=True)
         seen.append("")  # every check has run: what is left names none (the report's "a check")
         results = _with_damaged_manifest(config, found, state_exc)
-        results = _listings_unread(results, state_exc, expand(config.state_paths.root))
+        results = _listings_unread(results, state_exc, expand(config.state_paths.root), config=config)
         fixes[:] = _fail_steps(results)
         first = _state_stop_first(config, results)  # status's own lead (P23)
         manifest_first[:] = [] if first is None else [first]

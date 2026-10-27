@@ -5686,6 +5686,87 @@ def test_beside_a_governance_folder_that_is_not_one_the_listing_note_points_at_i
     assert not [ln for ln in out if "WAITING ON YOU line about" in ln], out
 
 
+def _listing_incomplete(config: Config) -> str:
+    """Mark the local source's listing incomplete for 5 passes in heartbeat.json; its id."""
+    beats = config.state_paths.heartbeat
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(config)
+    data[sid]["consecutive_incomplete"] = 5
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    return sid
+
+
+@pytest.mark.parametrize(
+    ("name", "damage", "role", "check"),
+    [
+        ("holds.json", "folder", "the hold list", "governance.hold"),
+        ("audit.jsonl", "folder", "the audit trail", "governance.audit"),
+        ("purge-queue.json", "folder", "the purge queue", "governance.purge_queue"),
+        ("suppressed.json", "folder", "the suppression list", "governance.suppressed"),
+        ("hold-record.json", "folder", "the hold record", "governance.hold"),
+        ("purge-record.json", "folder", "the purge record", "governance.suppressed"),
+        ("holds.json", "damaged", "the hold list", "governance.hold"),
+        ("purge-queue.json", "damaged", "the purge queue", "governance.purge_queue"),
+        ("suppressed.json", "lost", "the suppression list", "governance.suppressed"),
+    ],
+)
+def test_beside_a_governance_file_the_sync_stops_on_the_listing_note_points_at_its_fail(
+    initialised: Config, capsys: pytest.CaptureFixture[str], name: str, damage: str, role: str, check: str
+) -> None:
+    """B13 round 30 C321: with a governance file that is not a file or cannot be read, the incomplete-listing
+    warn sent the person to "the WAITING ON YOU line about" the source, whose empty-folder exclude clears
+    nothing: the sync stops on the file first. Keyed on the sync's own guard, never the loop's error (an
+    audit trail or a suppression list that is not a file raises none there), it names the file by its role
+    and the FAIL that says what to do, that file's own check."""
+    cfg = _erased(initialised, capsys)[0] if damage == "lost" else _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _listing_incomplete(initialised)
+    at = root / name if name.endswith("-record.json") else governance.governance_dir(root) / name
+    at.parent.mkdir(exist_ok=True)
+    at.unlink(missing_ok=True)
+    if damage == "folder":
+        at.mkdir()
+    elif damage == "lost":  # an older copy, which lost the erasure the audit trail records (C172)
+        at.write_text('{"items": [], "globs": [], "paths": [], "canonical": []}\n', encoding="utf-8")
+    else:
+        at.write_text("{", encoding="utf-8")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    said = {
+        "folder": "is not a file",
+        "damaged": "cannot be read",
+        "lost": "has lost a purge the audit trail records",
+    }[damage]
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert f"(as of its last walk: {role} {said}; no sync lists it again until the person fixes it; " in warn
+    assert warn.endswith(f"; the {check} [FAIL] line says what to do first)"), warn
+    assert [ln for ln in out if ln.startswith(f"[FAIL] {check} ")], out
+    assert not [ln for ln in out if "WAITING ON YOU line about" in ln], out
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) != cli.EXIT_OK
+
+
+def test_beside_a_hold_the_hold_list_lost_the_listing_note_keeps_its_waiting_on_you_line(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C321's other side: a hold the hold list lost FAILs governance.hold, but the sync still
+    runs and waits on it, so the incomplete-listing warn keeps its own fix, never the note that no sync lists
+    the source."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    governance._holds_file(root).write_text('{"holds": []}\n', encoding="utf-8")
+    assert governance.hold_list_state(root) == "lost"
+    sid = _listing_incomplete(initialised)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert "(fix: " in warn and "no sync lists it again" not in warn, warn
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
 def test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
