@@ -10648,6 +10648,7 @@ def test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start(
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     part = _purge_section(initialised)
     assert "- no row, docs history not searched yet: 1 queued purge from before the new start; " in part, part
+    assert "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere" in part, part
     assert "- no trace: 1 queued id has no row and is no alias." in part, part
     assert "a purge that already ran, an erasure, or a new start (an entry queued before" in part, part
     assert setup_report._NO_TRACE_RUN_UNPROBED in part, (

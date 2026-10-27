@@ -14120,9 +14120,18 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
     assert not [ln for ln in lines if ln.startswith(("- not looked up yet", "- not looked up:"))], lines
     assert [ln for ln in lines if "not looked up yet" in ln] == [], lines
     [head] = [ln for ln in lines if ln.startswith("- no row, ")]
-    assert head.startswith(
+    assert head == (
         "- no row, docs history not searched yet: 1 queued purge from before the new start; "
-    ), head
+        "`~/.local/bin/agentsync purge --queue --dry-run` looks its id up in the docs history first, and "
+        "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere"
+    ), head  # lane B's C318 ending (round 30 ruling 43), singular and plural
+    [two] = setup_report._split_lines(
+        Counter({"not looked up yet": 2}), "agentsync", lambda n: "", lambda n: ""
+    )
+    assert two.endswith(
+        "looks their ids up in the docs history first, and `agentsync purge --queue` leaves queued any whose "
+        "id is found nowhere"
+    ), two
     assert [ln for ln in lines if ln.startswith("- no trace: 1 queued id has no row")], lines
     assert len(lines) == 2, lines
     for kind in setup_report._SPLIT_KINDS:

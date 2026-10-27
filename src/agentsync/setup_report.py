@@ -9826,10 +9826,16 @@ def _split_lines(
     n = split["not looked up yet"]
     if n:
         ids = "its id" if n == 1 else "their ids"
+        # round 30 ruling 43: lane B's C318 ending (``governance.looked_up_words``), naming the real run
+        kept = (
+            "leaves it queued if that id is found nowhere"
+            if n == 1
+            else "leaves queued any whose id is found nowhere"
+        )
         out.append(
             f"- no row, docs history not searched yet: {_plural(n, 'queued purge')} from before the new "
-            f"start; `{bin_} purge --queue --dry-run` looks {ids} up in the docs history first, and a "
-            "run keeps one queued whose id reaches nothing"
+            f"start; `{bin_} purge --queue --dry-run` looks {ids} up in the docs history first, and "
+            f"`{bin_} purge --queue` {kept}"
         )
     n = split["found nothing"]
     if n:

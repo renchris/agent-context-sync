@@ -33553,6 +33553,18 @@ refuses sqlite's side files too, so the plain open stands there. Test:
 table in `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place` now reads lane B's
 schema words.
 
+C304, ruling 43 (2026-10-26): **the not-searched line names the run that keeps the id** (lane B's C318 clause).
+The Purge queue part's `- no row, docs history not searched yet: ...` line ended `and a run keeps one queued
+whose id reaches nothing`, where lane B's own clause in the loop's wait and status's warn now names the real run.
+The line ends in lane B's words: `` and `<bin> purge --queue` leaves it queued if that id is found nowhere`` for
+one, `` ... leaves queued any whose id is found nowhere`` for more. Status's lost-hold wait
+`governance.LOST_HOLD_WAIT_STATUS` needs no reader here: the report's hold bucket takes doctor's
+governance.purge_queue warn, whose wait is `governance.hold_list_wait`'s (`not run while a hold the hold list lost
+is in force`, unchanged), and status prints the new words only in its own WAITING ON YOU line, which the report's
+Loop line takes from the loop, whose `LOST_HOLD_WAIT` is unchanged. Tests:
+`test_the_purge_queues_split_heads_name_their_no_row_column_c304` (the whole line, one and two) and
+`test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start` in tests/test_cli.py.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
