@@ -1289,6 +1289,13 @@ LOST_HOLD_WAIT = (
 )
 """The sync's WAITING ON YOU line for a lost hold (:func:`hold_list_state` ``lost``): no owner, no scope and
 no ``purge --queue`` (B13 round 29 C107; ruling 27)."""
+LOST_HOLD_WAIT_STATUS = (
+    "the hold list lost a hold that the audit trail or the hold record keeps, so purge and compaction stay "
+    "suspended: the governance.hold [FAIL] line below gives the person's fix"
+)
+""":data:`LOST_HOLD_WAIT` as status prints it, above that FAIL line: never "run status" inside status's own
+output; sync, curate and STATE.md, which print no FAIL line, keep "run status" (B13 round 30 C305, C314,
+C355)."""
 
 
 def hold_list_state(state_dir: Path) -> str | None:

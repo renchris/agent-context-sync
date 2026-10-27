@@ -5631,6 +5631,13 @@ def test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it(
     assert f"; {words}: the governance.hold line says why" in warn and f"({words}: see " in line, out
     if state == "lost":
         assert "cannot be read" not in warn and "cannot be read" not in line, out
+        # B13 round 30 C305, C314, C355: status's own wait names its FAIL line below, never "run status"
+        waits = [ln for ln in out if ln.startswith("WAITING ON YOU: ")]
+        assert not [w for w in waits if "agentsync status" in w], waits
+        (wait,) = [w for w in waits if w == f"WAITING ON YOU: {governance.LOST_HOLD_WAIT_STATUS}"]
+        assert "governance.hold [FAIL] line below" in wait, wait
+        failed = next(i for i, ln in enumerate(out) if ln.startswith("[FAIL] governance.hold "))
+        assert out.index(wait) < failed, out
 
 
 def test_a_lost_holds_fail_names_the_record_that_keeps_it(

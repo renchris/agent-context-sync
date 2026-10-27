@@ -32867,6 +32867,8 @@ incomplete-listing warn's note is `doctor.LISTING_STATE_GOVDIR_NOTE` (C130). Tes
 Amended 2026-10-26, §16.205 C349: `hold_list_state` has a third state, `record`, for a hold list that reads beside a
 hold record that cannot be read, with its own wait, `HOLD_RECORD_UNREAD_WAIT` (`not run while the hold record cannot
 be read`); `unread` is the hold list's alone (ruling 41).
+Amended 2026-10-26, §16.205 C305: status prints the lost-hold wait as `LOST_HOLD_WAIT_STATUS`, which names the
+governance.hold [FAIL] line below; the sync, curate and STATE.md keep `LOST_HOLD_WAIT` (C314, C355).
 
 **C204, C205, C115, C132, C176: a held queue in every writer (`agentsync.governance`, `agentsync.cycle`; ruling 32;
 amends §16.195 I91).** STATE.md splits the queue as status and the loop do (C204). `held_purges` holds a sourceless
@@ -33837,6 +33839,16 @@ hold-record.json), and no release is recorded; ...`, and its fix opens `the pers
 report's bucket and cuts. Tests: `test_governance.py`
 `test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is_named`, `test_cli.py`
 `test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole`.
+
+C305 with C314, C355 (one defect from three finders, built once): status's own lost-hold WAITING ON YOU line told
+the reader to run status. `governance.LOST_HOLD_WAIT_STATUS` (`... so purge and compaction stay suspended: the
+governance.hold [FAIL] line below gives the person's fix`) is what status prints: `cli._build_status` swaps the
+exact line `WAITING ON YOU: <LOST_HOLD_WAIT>` for it after all three ways it builds its NEXT lines. The shared
+`LOST_HOLD_WAIT` stays as it was, `run ... status`, for sync, curate and STATE.md, which print no FAIL line (the
+verifier's correction: pointing the shared constant at a FAIL line below sent those readers to a line they do not
+print), and `loop.next_step` takes no new flag, since STATE.md shares `count_queue=False`. Test:
+`test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it` (the sync keeps `LOST_HOLD_WAIT`; status's wait names
+no status, is `LOST_HOLD_WAIT_STATUS` and comes before the `[FAIL] governance.hold` line).
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

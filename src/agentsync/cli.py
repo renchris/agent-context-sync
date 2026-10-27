@@ -2187,6 +2187,11 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
             next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes), config=config)
             if next_lines and next_lines[0].startswith("NEXT: cannot read the state"):
                 next_lines += _docs_waits(config)  # no FAIL to name: the wait still follows (D11)
+    # the loop's lost-hold wait says "run status"; status prints its FAIL line below (B13 round 30 C305, C314)
+    lost = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT
+    next_lines = [
+        loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT_STATUS if ln == lost else ln for ln in next_lines
+    ]
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)
