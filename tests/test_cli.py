@@ -11868,7 +11868,7 @@ def test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role(
 ) -> None:
     """B13 round 27 P16, P146 (one defect): beside a -wal or -shm that is not a file, the incomplete-listing
     note said "a side file of the state file" while the state_dir.files lines beside it named them. It names
-    each by its role, both when both are, and keeps the tail readers key on."""
+    each by its role, both when both are, and keeps the tail readers key on, in the plural for both (C322)."""
     _synced(initialised)
     db = expand(initialised.state_paths.db)
     for suffix in where:
@@ -11886,7 +11886,9 @@ def test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role(
     exc.sqlite_errorcode = sqlite3.SQLITE_CANTOPEN  # type: ignore[attr-defined]
     (out,) = cli._listings_unread([warn], exc, db.parent)
     assert out.note is not None and "a side file of the state file" not in out.note, out
-    assert out.note.endswith(doctor.LISTING_STATE_SIDE_TAIL), out.note
+    # one state_dir.files FAIL per side, so "lines say" for both (B13 round 30 C322)
+    tail = doctor.LISTING_STATE_SIDE_TAIL if len(where) == 1 else doctor.LISTING_STATE_SIDES_TAIL
+    assert out.note.endswith(tail), out.note
     if len(where) == 2:
         assert (
             "write-ahead log and shared-memory file are not files" in out.note

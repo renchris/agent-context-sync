@@ -202,7 +202,13 @@ LISTING_STATE_NOT_FILE_NOTE = (
 # so not the shut note's "cannot open", but the person's move aside that state_dir.files names (B13 round 25
 # D8: a folder at the -wal read "this account cannot open the state file").
 LISTING_STATE_SIDE_TAIL = "the state_dir.files [FAIL] line says what to do first"
-"""The last words of every :func:`listing_state_side_note`, for a reader that keys on the note."""
+"""The last words of a one-side :func:`listing_state_side_note` (and of :data:`LISTING_STATE_SIDE_NOTE`), for
+a reader that keys on the note; :data:`LISTING_STATE_SIDES_TAIL` ends a two-side one. Both start with ``the
+state_dir.files [FAIL] line``."""
+
+LISTING_STATE_SIDES_TAIL = "the state_dir.files [FAIL] lines say what to do first"
+"""The last words of a :func:`listing_state_side_note` naming both sides, which sits under one state_dir.files
+FAIL per side (B13 round 30 C322: "line says" above two such lines)."""
 
 LISTING_STATE_SIDE_NOTE = (
     "as of its last walk: a side file of the state file is not a file, so no sync lists it again until the "
@@ -236,7 +242,7 @@ def listing_state_side_note(sides: Sequence[Path]) -> str:
     them = "it" if n == 1 else "them"
     return (
         f"as of its last walk: {what}, so no sync lists it again until the person moves {them} aside; "
-        f"{LISTING_STATE_SIDE_TAIL}"
+        f"{LISTING_STATE_SIDE_TAIL if n == 1 else LISTING_STATE_SIDES_TAIL}"
     )
 
 

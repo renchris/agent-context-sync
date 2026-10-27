@@ -31426,6 +31426,9 @@ Tests: `test_a_state_file_a_sync_stops_on_leads_status_ahead_of_the_skill_step`,
 `test_a_stale_lock_of_a_job_under_the_default_prefix_names_its_log`, `test_only_doctor_has_a_state_not_a_file`,
 `test_a_shut_state_folder_names_the_one_check_that_fails_it`,
 `test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role`.
+Amended 2026-10-26, §16.205 C322: a one-side note ends `LISTING_STATE_SIDE_TAIL`; a note naming both sides ends
+`LISTING_STATE_SIDES_TAIL` (`the state_dir.files [FAIL] lines say what to do first`), both starting `the
+state_dir.files [FAIL] line`.
 
 **P109: under install.sh "--report-only" has its own subject (`agentsync.ops.doctor`; amends §16.132 U78).**
 `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again without --report-only, since a --report-only run builds
@@ -33924,6 +33927,13 @@ escalation) queues a source and an id, so that entry comes only from a hand-edit
 for a docstring. `governance.HELD_HEAD` (` on the hold on `) was read by nothing (`held_words` writes its own
 words) and is removed; setup_report's `_HELD_HEADS` keeps its three literals, and its docstring and a pin of
 the config form against `held_words` are lane RA's.
+
+C322: the listing note's tail has its plural. Beside folders at both the -wal and the -shm, under one
+state_dir.files FAIL per side, `listing_state_side_note` ended `the state_dir.files [FAIL] line says what to do
+first`, while status's cannot-read line below it said `lines say`. A note naming both sides ends
+`doctor.LISTING_STATE_SIDES_TAIL`, `the state_dir.files [FAIL] lines say what to do first`; a one-side note and
+`LISTING_STATE_SIDE_NOTE` keep `LISTING_STATE_SIDE_TAIL`. No reader keys on either. Test:
+`test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role` (the both case).
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
