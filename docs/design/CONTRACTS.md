@@ -33310,6 +33310,17 @@ too short to be one reads `the manifest is empty or too short, but heartbeat.jso
 `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing`.
 
+C342 (2026-10-26): **the agent's words after a link target on disk stay** (C342). Round 29's C163 review made a
+`; ` with a `/` after it on the line part of a quoted link target (`/Volumes/Legal; Client Matter/m.sqlite`), so a
+friction row's own words after one, `...; I left ~/Library alone` or `...; see /tmp/notes`, were captured and cut
+with it: safe, but the words were lost. `_said_link_targets` now takes the targets the links on disk hold
+(`_link_targets`): when a narrower form of a capture is one of them, the longer forms are the agent's words and are
+dropped, so the row reads `<path>; I left ~/Library alone`, unless the first `/` after it is glued to a name
+(`_PATH_GOES_ON_RE`: `; Client Matter/m.sqlite` may still be the path). With no link on disk the capture is cut
+whole, as before. The verifier's lookahead (end the target at `; ` unless the `/` after it is glued to a name) was
+measured and not taken: it captures only `/Volumes/Legal` from `/Volumes/Legal; Client /m.sqlite` and prints the
+rest. Test: `test_the_agents_words_after_a_link_target_on_disk_stay_c342`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

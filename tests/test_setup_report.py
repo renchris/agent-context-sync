@@ -16750,6 +16750,49 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
     assert setup_report._said_link_targets([f"{db} is a symlink to {backup}"])[0] == backup
 
 
+def test_the_agents_words_after_a_link_target_on_disk_stay_c342(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 30 C342: a "; " with a "/" after it on the line is part of the target (round 29's C163
+    review), so the agent's words after one ("; I left ~/Library alone") were captured and cut with it. When
+    a narrower form is a target a link on disk holds, the longer forms are the agent's words and are dropped,
+    so they stay; with no link on disk, or with a "/" glued to a name after it, the capture is cut whole."""
+    archive = "/Volumes/Fabrikam Archive/m.sqlite"
+    for words in ("; I left ~/Library alone", "; see /tmp/notes"):
+        row = f"m.sqlite is a symlink to {archive}{words} | -"
+        assert setup_report._said_link_targets([row], [archive]) == [archive], words
+        assert setup_report._said_link_targets([row])[0] == archive + words  # no link on disk: cut whole
+        red = setup_report.Redactor()
+        for target in setup_report._said_link_targets([row], [archive]):
+            red.add("path", target)
+        assert red.redact(row) == f"m.sqlite is a symlink to <path>{words} | -", words
+    # a target that holds "; " is on disk whole: it stays whole, and nothing after it is the agent's
+    legal = "/Volumes/Legal; Client /m.sqlite"
+    row = f"m.sqlite is a symlink to {legal} | -"
+    assert setup_report._said_link_targets([row], [legal])[0] == legal
+    assert setup_report._said_link_targets([row])[0] == legal
+    # a link on disk to the part before the "; " never shortens a capture whose rest goes on as a path
+    matter = "/Volumes/Legal; Client Matter/m.sqlite"
+    row = f"m.sqlite is a symlink to {matter} | -"
+    assert setup_report._said_link_targets([row], ["/Volumes/Legal"])[0] == matter
+    # the report: the link on disk now, and the agent's row naming it with its own words after
+    cfg = fake_mac["config"]
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    v6_install_log(fake_mac)
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    db.symlink_to(archive)
+    said = f"agentsync sync exited 1: manifest.sqlite is a symlink to {archive}; I left ~/Library alone"
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", said), V12_HAPPY)
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "Fabrikam Archive" not in text, [ln for ln in text.splitlines() if "Fabrikam Archive" in ln]
+    assert "is a symlink to <path>; I left ~/Library alone" in text, [
+        ln for ln in text.splitlines() if "I left" in ln
+    ]
+
+
 def test_a_lost_manifest_that_is_a_link_to_a_short_file_reads_as_the_short_file_c374(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

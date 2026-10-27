@@ -5026,11 +5026,12 @@ def _build_redactor(r: _Run) -> Redactor:
     # the init error print whole, as the person repairs by it: a volume's or a folder's name can name the
     # company ("/Volumes/Contoso Drive"); exact values, longest first, so a path with spaces is one (E2)
     # B13 round 27 P34: and where the run's own text says one pointed, which a link removed since leaves
-    targets: list[str] = []
+    disk: list[str] = []
     with contextlib.suppress(Exception):
-        targets += _link_targets(r)
+        disk = _link_targets(r)
+    targets = list(disk)
     with contextlib.suppress(Exception):
-        targets += _said_link_targets(_run_text_lines(r))
+        targets += _said_link_targets(_run_text_lines(r), disk)
     for target in sorted(set(targets), key=len, reverse=True):
         red.add("path", target)
     return red
@@ -5067,20 +5068,38 @@ write`` (``DANGLING_UNUSABLE``), ``..., which does not exist; the manifest ...``
 friction row (``...; no chmod was run | -``) follow it there, and the whole rest of the row was registered as
 the value, so the target alone printed whole wherever the row was quoted (B13 round 28 I55). A ``;`` or ``|``
 with no space beside it is part of the path, which may hold one, and so is a ``; `` with a ``/`` after it on
-the line (``/Volumes/Legal; Client Matter/m.sqlite``: the cross-vendor review of round 29's C163)."""
+the line (``/Volumes/Legal; Client Matter/m.sqlite``: the cross-vendor review of round 29's C163). So the
+agent's words after a ``; `` that hold a ``/`` (``...; I left ~/Library alone``) are captured with the target,
+and cut with it unless a link on disk names the target alone (:func:`_said_link_targets`; B13 round 30
+C342). A lookahead that ends the target unless the ``/`` after the ``; `` is glued to a name was measured and
+not taken: it cuts ``/Volumes/Legal; Client /m.sqlite`` to ``/Volumes/Legal`` and prints the rest."""
+_PATH_GOES_ON_RE = re.compile(r"[^/]*[^\s~/]/")
+"""What follows a target whose first ``/`` is glued to a name (``; Client Matter/m.sqlite``) may still be its
+path, so a link on disk never shortens such a capture; a ``/`` that opens a token of the agent's own (``~/``,
+`` /tmp``) does not go on (B13 round 30 C342)."""
 
 
-def _said_link_targets(lines: Iterable[str]) -> list[str]:
+def _said_link_targets(lines: Iterable[str], disk: Collection[str] = ()) -> list[str]:
     """The targets outside this home that ``lines`` name a link pointing to (:data:`_SAID_LINK_RE`), as
     written and normalized, longest first, as :func:`_link_targets` gives the links on disk (B13 round 27
     P34). Only a path two parts deep or more: "/" or "/x" as a redaction value would cut every path. Each
     target is registered as written and in its narrower forms (:func:`_said_link_forms`), so the agent's own
     words after it in a friction row stay and a later row naming the bare target cuts it (B13 round 29
-    C163)."""
+    C163). When a narrower form is a target ``disk`` holds (:func:`_link_targets`), the longer forms are the
+    agent's words and are dropped, so those words stay (``<path>; I left ~/Library alone``), unless what
+    follows it goes on as a path (:data:`_PATH_GOES_ON_RE`); with no link on disk the capture is cut whole
+    (B13 round 30 C342)."""
     found: set[str] = set()
     for line in lines:
         for m in _SAID_LINK_RE.finditer(line):
-            for form in _said_link_forms(m.group(1)):
+            forms = _said_link_forms(m.group(1))
+            known = [f for f in forms if f != m.group(1) and (f in disk or os.path.normpath(f) in disk)]
+            if known:
+                best = max(known, key=len)
+                rest = m.group(1)[len(best) :] if m.group(1).startswith(best) else "/"
+                if not _PATH_GOES_ON_RE.match(rest):
+                    forms = [f for f in forms if len(f) <= len(best)]
+            for form in forms:
                 for value in (form, os.path.normpath(form)):
                     parts = [p for p in value.split("/") if p]
                     if value.startswith("/") and len(parts) >= 2 and not _under_home(value):
