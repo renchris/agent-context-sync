@@ -33364,6 +33364,8 @@ words are the report's own past tense, not the CLI note's `now current`, as the 
 Z35). The guide's Repeat conversions row is lane D's. Test:
 `test_the_path_re_read_is_counted_and_its_history_said_c362_c319`.
 
+Ruling 35's privacy guard (2026-10-26): lane B's `governance.queue_lost` gives a queue that lost a queued purge the exact by-hand `purge id=<id> --source <src> --reason <reason>`, and the id it rebuilds is a volume's GUID and the file's number on that volume; the report cut the GUID and printed the number in clear. `Redactor.redact` and `Redactor.scrub` now cut each by-hand purge's id (`purge id=` or `purge --queue --forget id=`, up to the next blank or quote) to `<its id>`, the placeholder the report's own by-hand purge prints, and count nothing for it. Test: `test_a_lost_queues_rebuilt_purge_id_reaches_no_report_ruling_35`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

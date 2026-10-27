@@ -21434,3 +21434,59 @@ def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_p
         "2026-10-20T10:00:00Z | end | finished\n",
     )
     assert resolved.kind != "failed", resolved
+
+
+def _a_lost_queue_seeded(fake_mac: dict[str, Path], capsys: pytest.CaptureFixture[str]) -> str:
+    """A synced Mac with an erasure queued by its stable id, then its purge queue moved aside: the stable id
+    the lost queue's fix rebuilds (lane B's ruling 35, ``governance.queue_lost``)."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "Wingtip notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    conn = sqlite3.connect(expand(config.state_paths.db))
+    try:
+        src, sid = conn.execute(
+            "SELECT source_id, stable_id FROM items WHERE is_dir = 0 AND name = 'Wingtip notes.txt'"
+        ).fetchone()
+    finally:
+        conn.close()
+    governance.enqueue_purge(
+        root, governance.PurgeSelector(source_id=src, stable_id=sid), governance.PurgeReason.ERASURE_REQUEST
+    )
+    capsys.readouterr()
+    governance._queue_file(root).rename(root / "queue.kept")
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    return str(sid)
+
+
+def test_a_lost_queues_rebuilt_purge_id_reaches_no_report_ruling_35(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 30 ruling 35 (lane B's queue_lost, on main): status's governance.purge_queue FAIL for a
+    queue that lost a queued purge rebuilds the exact by-hand ``purge id=<id> --source <src> --reason
+    <reason>``, and the id is a volume's GUID and the file's number on it, which the report printed as
+    ``<guid-1>:<number>``. The report cuts each by-hand purge's id to ``<its id>``, as its own by-hand purge
+    prints it, in redact and scrub alike."""
+    real = cli._status_checks
+
+    def governance_only(config: Config, **kwargs: Any) -> list[doctor.CheckResult]:
+        return [c for c in real(config, **kwargs) if c.ok or c.name.startswith(("governance", "heartbeat"))]
+
+    monkeypatch.setattr(cli, "_status_checks", governance_only)
+    sid = _a_lost_queue_seeded(fake_mac, capsys)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    number = sid.rsplit(":", 1)[-1]
+    for secret in (sid, number):
+        assert secret not in text, [ln for ln in text.splitlines() if secret in ln]
+    assert "purge id=<its id> --source <" in text, section(text, "Doctor")
+    red = setup_report.Redactor()
+    for said in (f"run `purge id={sid} --source alpha`", f"purge --queue --forget id={sid} --source alpha"):
+        for out in (red.redact(said), red.scrub(said)):
+            assert sid not in out and number not in out and "id=<its id>" in out, out
+    assert red.redact("purge id=<its id> --source alpha") == "purge id=<its id> --source alpha"

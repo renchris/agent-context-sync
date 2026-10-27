@@ -577,6 +577,18 @@ line with none, which agentsync never writes, keeps nothing after the owner), so
 review's owner with a time and no set time)."""
 
 
+_PURGE_ID_RE = re.compile(r"(?<![\w-])(purge (?:--queue --forget )?id=)(?!<)[^\s`'\"]+")
+"""A by-hand purge's stable id in agentsync's own words (lane B's lost queue fix, ``governance.queue_lost``,
+ruling 35; the unlisted note's): a manifest id, a file's number on its volume, cut to ``<its id>`` as the
+report's own by-hand purge prints it (B13 round 30 ruling 35, C369)."""
+
+
+def _cut_purge_ids(text: str) -> str:
+    """``text`` with each by-hand purge's stable id (:data:`_PURGE_ID_RE`) cut to ``<its id>``; no replacement
+    is counted, as the report prints the same placeholder in its own by-hand purge."""
+    return _PURGE_ID_RE.sub(r"\1<its id>", text) if "id=" in text else text
+
+
 def _cut_holds(text: str) -> str:
     """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut. A
     line joining several (a refusal) reads ``hold <scope> (<origin>) and N more holds: reasons and owners not
@@ -1802,7 +1814,7 @@ class Redactor:
         """``text`` with every registered value and every email address, GUID and long hex string replaced."""
         if not self.enabled or not text:
             return text
-        text = _cut_holds(text)  # by pattern, first (B13 round 23 A8)
+        text = _cut_purge_ids(_cut_holds(text))  # by pattern, first (B13 round 23 A8; round 30 ruling 35)
         return self._compile().sub(self._replace, text)
 
     def note(self, kind: str) -> None:
@@ -1845,7 +1857,7 @@ class Redactor:
             return text
         self._counting = False
         try:
-            return self._compile().sub(self._replace, text)
+            return self._compile().sub(self._replace, _cut_purge_ids(text))
         finally:
             self._counting = True
 
