@@ -33795,6 +33795,16 @@ each its lost-hold FAIL beside the record's and no `no hold set` line, and STATE
 trail holds (`governance.hold_line`, `hold_state_lines`' own line) above `- the hold record cannot be read; ...`. A
 purge still refuses. Test: `test_cli.py` `test_an_unreadable_hold_record_hides_no_hold_the_audit_trail_keeps`.
 
+C345 and the lost list's stop kind (ruling 40): status prints `governance.purge_queue — no purge queued` only when
+`queue_lost` finds nothing, never beside the FAIL of a queue that lost a purge. A sync stopped on a suppression list
+or a purge queue that lost a purge the audit trail records (`governance.governance_lost`) records its own kind,
+`cli.LOST_LIST_KIND`: `<UTC> sync-stop file=governance rc=1 owner=person kind=lost-list`, never `misplaced`, since the
+file is where and what it should be; the FAILs' fixed phrases are `no longer lists what <n> purge(s) the audit trail
+records suppressed` (governance.suppressed) and `no longer holds <n> purge(s) the audit trail records as queued and
+not done` (governance.purge_queue). Tests: `test_cli.py`
+`test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs`,
+`test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

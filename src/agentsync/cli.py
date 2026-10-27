@@ -2699,9 +2699,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_refused_check(config, "governance.purge_queue", exc))
         return out
     queued, kept = split.runnable, split.kept
-    if not queued and not kept:  # one governance.purge_queue line in every state (B13 round 29 C155)
-        out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
     gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
+    if not queued and not kept and gone is None:  # one governance.purge_queue line in every state (C155)
+        # never "no purge queued" beside the FAIL of a queue that lost one (B13 round 30 C345; ruling 40)
+        out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
     if gone is not None:
         out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
     kept_text = "; ".join(governance.kept_lines(kept))
@@ -3202,8 +3203,22 @@ def _not_a_file_stop(
     fix = f" (fix: {result.fix})" if result.fix else ""
     said = f"error: state: {result.detail}{fix}"
     _err(said)
-    _misplaced_next(args, said, where)
+    _misplaced_next(args, said, where, kind=LOST_LIST_KIND if lost and _list_lost(config, where) else None)
     return True
+
+
+LOST_LIST_KIND = "lost-list"
+"""The ``kind=`` of a sync's stop on a suppression list or a purge queue that lost a purge the audit trail
+records (``governance.governance_lost``): the person's, its own kind, never ``misplaced``, since the file is
+where and what it should be (B13 round 30; ruling 40). The role stays ``governance``, the folder it is in."""
+
+
+def _list_lost(config: Config, where: Path) -> bool:
+    """Whether the stop at ``where`` is a governance list's lost purge, not a file that is not a file."""
+    with contextlib.suppress(Exception):  # the error path: never a second error over the first
+        gone = governance.governance_lost(expand(config.state_paths.root))
+        return gone is not None and gone.path == where
+    return False
 
 
 def _curate_findings(config: Config) -> list[LintFinding]:
@@ -3776,13 +3791,15 @@ def _state_next(
 SYNC_STOPS_LOG = setup_report._SYNC_STOPS_NAME
 """The file beside the setup log (``setup_report.default_setup_log``) where a foreground sync that stopped on
 a state file records it, one line each: ``<UTC> sync-stop file=<role> rc=1 owner=<agent|person>
-kind=<refused|misplaced|lost>``, no path. install.sh's own runs are in install.log, so only a sync that no
-install.sh runs (the setup loop's) writes it, and never a line that starts ``<at> run=``, which the
+kind=<refused|misplaced|lost|lost-list>``, no path. install.sh's own runs are in install.log, so only a sync
+that no install.sh runs (the setup loop's) writes it, and never a line that starts ``<at> run=``, which the
 install.log reader would take for an install run (B13 round 23 A9: a step-3 stop the agent's chmod fixed
 left no trace for the report; lane RA reads it). The kind says why it stopped: a state file or folder this
 account cannot open (``refused``), one not where or what it should be (``misplaced``), or a manifest missing
 after earlier syncs (``lost``, ``manifest.manifest_lost``): a lost manifest's stop was recorded as
-``file=state-folder`` and read as a refusal (B13 round 24 B27, B62, B82, B100; ruling 7)."""
+``file=state-folder`` and read as a refusal (B13 round 24 B27, B62, B82, B100; ruling 7), or a governance
+list that lost a purge the audit trail records (``lost-list``, :data:`LOST_LIST_KIND`; B13 round 30 ruling
+40)."""
 
 
 SYNC_STOP_DETAIL = {

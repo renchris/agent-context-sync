@@ -6068,8 +6068,13 @@ def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
     assert rc == cli.EXIT_FAILED and "no longer lists what 1 purge the audit trail records" in failed, out
     assert "erasure-request at " in failed and "(fix: the person puts " in failed, failed
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert "no longer lists what 1 purge" in capsys.readouterr().err
+    # the lost list's own kind in the stop record (B13 round 30; ruling 40)
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=governance rc=1 owner=person kind=lost-list", line), line
     assert not (initialised.docs_repo / page).exists()
     fix = (
         f"(fix: the person puts {doctor._shell_path(listed)} back from a copy they trust; or, with no copy, "
@@ -6348,8 +6353,15 @@ def test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs(
     rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
     assert rc == cli.EXIT_FAILED and "no longer holds 1 purge the audit trail records as queued" in failed
+    # no "no purge queued" beside the FAIL of the queue that lost one (B13 round 30 C345; ruling 40)
+    assert not [ln for ln in out if ln.startswith("[ok") and " governance.purge_queue " in ln], out
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     capsys.readouterr()
+    # the lost list's own kind, never misplaced: the file is where and what it should be (ruling 40)
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=governance rc=1 owner=person kind=lost-list", line), line
     purge = ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
     assert cli.main(purge) == cli.EXIT_OK
     capsys.readouterr()
