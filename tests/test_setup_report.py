@@ -13779,6 +13779,65 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         assert waits in part and "settled with no try left." not in part, part
 
 
+def test_the_path_re_read_is_counted_and_its_history_said_c362_c319(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 C362, C319 (ruling 45): a failure whose stored reason an older build wrote a folder path
+    into is converted once more after an upgrade, a try past the 2 the retry sentence names, and the report
+    said neither that try nor that the older build's page stays in the docs history. The run record's
+    ``path_reread`` keys (absent when 0) are counted per run and outcome, and the retry sentence takes both
+    clauses, with no count or path, only when a shown run counted one."""
+    once = "and a failure an older build stored a folder path in is tried once more after an upgrade"
+    history = "(the older build's page stays in the docs history until compaction drops it)"
+    seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute(
+        "UPDATE runs SET counts_json = ? WHERE run_id = 4",
+        (json.dumps({"converted": 1, "converted_failed": 1}),),
+    )
+    seed.close()
+    part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+    assert "- a conversion that failed is counted in each run it failed in" in part, part
+    assert once not in part and history not in part and "tried once more" not in part, "no re-read: as before"
+    for runs, want in (
+        (
+            # no shown run failed: the re-read alone brings the retry sentence and its two clauses
+            {5: {"converted": 1}, 4: {"converted": 1, "path_reread": 1, "path_reread_current": 1}},
+            "run 4, 1 file, which that run converted. An older build gave up on that file's conversion, and "
+            "its stored reason named a folder on this Mac",
+        ),
+        (
+            {4: {"converted": 0, "path_reread_waiting": 2}},
+            "run 4, 2 files, which that run left for a later sync of its source. An older build gave up on "
+            "these conversions, and their stored reasons named a folder on this Mac",
+        ),
+        (
+            {
+                5: {"converted": 1, "path_reread": 1, "path_reread_failed": 1},
+                4: {
+                    "converted": 1,
+                    "path_reread": 3,
+                    "path_reread_current": 1,
+                    "path_reread_failed": 1,
+                    "path_reread_waiting": 1,
+                },
+            },
+            "run 5, 1 file, which that run left as a stub with no try left; run 4, 4 files (1 that run "
+            "converted, 1 that run left as a stub with no try left, 1 that run left for a later sync of its "
+            "source). An older build gave up on these conversions",
+        ),
+    ):
+        seed = Seed(fake_mac["config"])
+        for run_id, counts in runs.items():
+            seed.m._db.execute(
+                "UPDATE runs SET counts_json = ? WHERE run_id = ?", (json.dumps(counts), run_id)
+            )
+        seed.close()
+        part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+        assert f"- tried once more after an upgrade: {want}" in part, part
+        assert f"once it starts, {once} {history}: a later run with no failure" in part, part
+        assert "now current" not in part, "the CLI's words: the report is read days later (Z35)"
+        assert "tried again after an upgrade" not in part, "no legacy_retried: the W18 note stays out"
+
+
 @pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])
 def test_one_repeat_conversion_is_it_never_them(fake_mac: dict[str, Path], last_used: int, said: str) -> None:
     """B13 round 16 T49, T63: the converter-cache line agreed its verb with a count of 1, then said "made

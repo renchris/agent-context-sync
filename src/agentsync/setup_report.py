@@ -1282,6 +1282,7 @@ _FIXED_VALUE_PHRASES = (
     "file: # with a page",
     "files: # with a page",
     "(1 page)",
+    "the older build's page stays in the docs history",
     # "audit": the Purge queue part's trail line, and agentsync's own lines the report embeds (Doctor, the
     # install.out tail, Status, Recent errors; B13 round 30 C302): whole clauses, never a bare "audit trail"
     "- audit trail since",
@@ -10002,18 +10003,28 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             f"- waiting for a converter that could not start: {each}. Nothing read them, so they are in no "
             f"column above; {now}",
         ]
-    if any(x.n("converted_failed") or x.n("converter_waiting") for x in runs[:_RUNS_SHOWN]):
+    # B13 round 30 C362, C319 (ruling 45): the runs that counted the one-shot re-read of a failure whose
+    # stored reason an older build wrote a folder path into, a try past the 2 the sentence below names
+    pathed = [x for x in runs[:_RUNS_SHOWN] if x.n("path_reread") or x.n("path_reread_waiting")]
+    if pathed or any(x.n("converted_failed") or x.n("converter_waiting") for x in runs[:_RUNS_SHOWN]):
         # A run with failures followed by runs with none: a retry that worked, one given up, or a file whose
         # converter still cannot start (B13 round 18 V75), which each such run counts as waiting, never in a
         # column (round 19 W52, W68). Since B13 round 17 U3 a failed conversion is tried again
-        # (cycle._CONVERT_RETRIES; a test pins the count).
+        # (cycle._CONVERT_RETRIES; a test pins the count). The path re-read's clause, with no count or path,
+        # only when a shown run counted one (C362, C319)
+        once = (
+            ", and a failure an older build stored a folder path in is tried once more after an upgrade (the "
+            "older build's page stays in the docs history until compaction drops it)"
+            if pathed
+            else ""
+        )
         out += [
             "",
             "- a conversion that failed is counted in each run it failed in and is tried again from the same "
-            "bytes in up to 2 later runs, or, when its converter could not start, once it starts: a later "
-            "run with no failure converted it, gave it up, or (its converter still not starting) left it "
-            "waiting, which that run counts as waiting for its converter, never as converted or failed, and "
-            'the files still without a page are in Quarantine by reason, class "conversion failed"',
+            f"bytes in up to 2 later runs, or, when its converter could not start, once it starts{once}: a "
+            "later run with no failure converted it, gave it up, or (its converter still not starting) left "
+            "it waiting, which that run counts as waiting for its converter, never as converted or failed, "
+            'and the files still without a page are in Quarantine by reason, class "conversion failed"',
         ]
     rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened")]
     if rescreened:
@@ -10085,6 +10096,41 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             + ("that file's conversion" if total == 1 else "these conversions")
             + (retry if any(rest for _words, rest, _waiting in said) else "")
             + (wait if any(waiting for _words, _rest, waiting in said) else ""),
+        ]
+    if pathed:
+        # B13 round 30 C362: the run's own record of the one-shot re-read, by outcome, as the note above
+        # counts legacy_*; "that run converted", never the CLI's "now current": the report is read days later
+        # (Z35)
+        def reread(x: _RunRow) -> str:
+            read = x.n("path_reread")
+            current = min(x.n("path_reread_current"), read)
+            failed = min(x.n("path_reread_failed"), read - current)
+            waiting = x.n("path_reread_waiting")  # never in path_reread
+            done = [
+                f"{n} that run {verb}"
+                for n, verb in (
+                    (current, "converted"),
+                    (failed, "left as a stub with no try left"),
+                    (waiting, "left for a later sync of its source"),
+                )
+                if n
+            ]
+            head = f"run {x.run_id}, {_plural(read + waiting, 'file')}"
+            if current + failed == read and len(done) == 1:  # a row read and gone since is in neither
+                return f"{head}, which {done[0].split(' ', 1)[1]}"
+            return f"{head} ({', '.join(done)})" if done else head
+
+        total = sum(x.n("path_reread") + x.n("path_reread_waiting") for x in pathed)
+        each = "; ".join(reread(x) for x in pathed)
+        out += [
+            "",
+            f"- tried once more after an upgrade: {each}. An older build gave up "
+            + (
+                "on that file's conversion, and its stored reason"
+                if total == 1
+                else "on these conversions, and their stored reasons"
+            )
+            + " named a folder on this Mac",
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)

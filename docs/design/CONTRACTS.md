@@ -33345,6 +33345,23 @@ log-scrub and exclude cuts uncounted, the same mismatch); the reader's text now 
 not counted: only a link target replaced by <path> is.`; a report with no `<path>` is unchanged. The shell report
 prints no count line, so install.sh has nothing to mirror. Test: `test_the_path_legend_item_names_every_use_of_path`.
 
+C362 (2026-10-26): **the report says the path re-read and the older page left in history** (C362 with C319, ruling
+45; the cycle half is §16.206's). The Repeat conversions part said a failure is tried again `in up to 2 later runs`,
+while an upgrade gives a failure whose stored reason an older build wrote a folder path into one more try past
+those, and it said nothing of that try or of the older build's page, which the re-read leaves in the docs history.
+When a shown run's record holds `path_reread` or `path_reread_waiting` (keys absent when 0), the retry sentence
+adds, after `once it starts`, `, and a failure an older build stored a folder path in is tried once more after an
+upgrade (the older build's page stays in the docs history until compaction drops it)`, with no count or path, and
+is shown for such a run even when no shown run failed; a report without those keys reads as before. A new note
+after the `tried again after an upgrade:` one counts them per run, as that note counts `legacy_*`: `- tried once
+more after an upgrade: run R, N files (C that run converted, F that run left as a stub with no try left, W that run
+left for a later sync of its source)`, or `, which that run ...` when one outcome covers them all, then `An older
+build gave up on these conversions, and their stored reasons named a folder on this Mac`. `path_reread_current` and
+`path_reread_failed` are capped by `path_reread`, and `path_reread_waiting` is counted beside it, never in it. The
+words are the report's own past tense, not the CLI note's `now current`, as the report is read days later (§16.158
+Z35). The guide's Repeat conversions row is lane D's. Test:
+`test_the_path_re_read_is_counted_and_its_history_said_c362_c319`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

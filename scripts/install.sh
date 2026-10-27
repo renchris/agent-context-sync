@@ -1977,6 +1977,7 @@ FIXED_VALUE_PHRASES+="|file has a converted page|erases its page by hand|files w
 FIXED_VALUE_PHRASES+="|has a stub page|have a stub page|erases the page and history"
 FIXED_VALUE_PHRASES+="|erase that file's page and its history|as its stub page says|existing mirror page"
 FIXED_VALUE_PHRASES+="|file: # with a page|files: # with a page|(1 page)"
+FIXED_VALUE_PHRASES+="|the older build's page stays in the docs history"
 FIXED_VALUE_PHRASES+="|- audit trail since|- audit trail in all (no queued day is known)|- audit trail: no file"
 FIXED_VALUE_PHRASES+="|- audit trail: not read (over|- audit trail: cannot read: |agentsync's audit trail"
 FIXED_VALUE_PHRASES+="|governance.audit|audit.jsonl|(audit) since |(audit): lost from the hold list"
