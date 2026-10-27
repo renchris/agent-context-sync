@@ -11193,7 +11193,8 @@ def test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread(
     """B13 round 29 C118 (ruling 29): heartbeat.json as a link to nothing beside a missing manifest read as no
     heartbeat, a first start, so a sync started a new manifest over earlier passes unasked. agentsync renames
     a regular file there, so a person made the link: it is a heartbeat that cannot be read, lost-unread, and
-    moving it aside (the link) starts the new manifest."""
+    moving it aside (the link) starts the new manifest. B13 round 30 C310: status says so in one heartbeat
+    warn, not an ok line per source."""
     cfg = _synced(initialised)
     sp = initialised.state_paths
     db, hb = expand(sp.db), expand(sp.heartbeat)
@@ -11206,6 +11207,12 @@ def test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread(
     rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
     assert rc == cli.EXIT_FAILED and f"{db} {manifest_mod.LOST_MANIFEST_UNREAD}" in failed, failed
+    # one heartbeat warn saying what the file is, never "no completed pass recorded yet" per source under a
+    # FAIL saying earlier passes cannot be ruled out (B13 round 30 C310)
+    (beat,) = [ln for ln in out if ln.startswith("[warn] heartbeat ")]
+    assert doctor.HEARTBEAT_LOST_TAIL in beat and "does not exist" in beat and "(fix:" not in beat, beat
+    assert not [ln for ln in out if ln.startswith("[ok  ] heartbeat.")], out
+    capsys.readouterr()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert manifest_mod.LOST_MANIFEST_UNREAD in capsys.readouterr().err
     assert not db.exists() and hb.is_symlink(), "no new manifest, the link left where it is"
@@ -11215,6 +11222,26 @@ def test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread(
     hb.rename(tmp_path / "heartbeat.kept")  # the fix, followed
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert db.exists()
+
+
+def test_a_heartbeat_link_to_nothing_beside_a_good_manifest_keeps_its_per_source_lines(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 30 C310's other side: beside a manifest that reads, a heartbeat.json linked to nothing is no
+    record yet, not the lost manifest's warn, and the next pass's rename replaces the link."""
+    cfg = _synced(initialised)
+    hb = expand(initialised.state_paths.heartbeat)
+    hb.unlink()
+    hb.symlink_to(tmp_path / "gone" / "heartbeat.json")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[warn] heartbeat ")], out
+    assert [
+        ln for ln in out if ln.startswith("[ok  ] heartbeat.") and "no completed pass recorded yet" in ln
+    ], out
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+    assert hb.is_file() and not hb.is_symlink()
 
 
 @pytest.mark.parametrize("body", [b"", b"j" * 50])

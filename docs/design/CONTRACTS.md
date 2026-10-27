@@ -33935,6 +33935,16 @@ first`, while status's cannot-read line below it said `lines say`. A note naming
 `LISTING_STATE_SIDE_NOTE` keep `LISTING_STATE_SIDE_TAIL`. No reader keys on either. Test:
 `test_the_listing_note_names_each_side_that_is_not_a_file_by_its_role` (the both case).
 
+C310: a heartbeat.json that is a link to nothing beside a lost manifest has the lost manifest's heartbeat warn.
+`read_heartbeat` reads such a link as no record, so `_check_heartbeat` printed `[ok] heartbeat.<id> — no completed
+pass recorded yet` for every live source under a state_dir.manifest FAIL saying earlier passes cannot be ruled
+out (C118 made that manifest lost-unread). With the link to nothing (`os.path.islink`, the target missing) and
+`lost_words` in `LOST_UNREAD`, it gives one `heartbeat` WARN, `<path>: a link to a file that does not exist;
+<HEARTBEAT_LOST_TAIL>`, with no fix, as damaged JSON does, so NEXT stays on the manifest's. Beside a manifest that
+reads the per-source lines stay, since a pass's rename replaces the link. Tests:
+`test_a_lost_manifest_beside_a_heartbeat_link_to_nothing_is_lost_unread`,
+`test_a_heartbeat_link_to_nothing_beside_a_good_manifest_keeps_its_per_source_lines`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

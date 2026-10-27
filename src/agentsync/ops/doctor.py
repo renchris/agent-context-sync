@@ -3613,6 +3613,19 @@ def _check_heartbeat(
         if refused is None:
             raise
         return [refused]
+    hb = expand(path)
+    if hb.is_symlink() and not hb.exists() and lost_words(expand(config.state_paths.db)) in LOST_UNREAD:
+        # a link to nothing reads as no record, but it is why the manifest reads lost: never "no completed
+        # pass recorded yet" per source under a FAIL saying earlier passes cannot be ruled out; the damaged
+        # file's warn, with no fix, so NEXT stays on the manifest's (B13 round 30 C310). Beside a good
+        # manifest a pass's rename replaces the link, so it keeps the per-source lines.
+        return [
+            _bad(
+                "heartbeat",
+                f"{hb}: a link to a file that does not exist; {HEARTBEAT_LOST_TAIL}",
+                Severity.WARN,
+            )
+        ]
     now = _now()
     out: list[CheckResult] = []
     for src in config.live_sources():
