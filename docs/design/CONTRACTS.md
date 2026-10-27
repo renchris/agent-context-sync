@@ -13097,6 +13097,11 @@ them: the rewrite runs only from `purge --queue`).
   any other entry left: `N queued purge(s) run; M still queued`, plus ` (K of them while their file is listed)`
   when some are kept, exit 1. The dry run's count (`N queued purge(s) previewed`) counts only the entries it
   previewed, not the ones it reports as not run.
+  Amended 2026-10-26, §16.205 C346: `while their file is listed` is said only of the kept entries a manifest read
+  found listed or published again; with only entries whose source no sync since the new start has listed, the
+  line is `N queued purge(s) run; M still queued until a sync lists its source in full` (`their` for more than
+  one), or `M still queued: no sync lists its source (see its note)` for a source no sync lists, and the
+  `(K of them ...)` clause counts the listed ones alone.
 
 Why: an entry kept because its file is listed again exits 1 on every run and clears nothing, yet the loop's
 `WAITING ON YOU` line, status and doctor's WARN told the operator (or an agent following the wait) to run it
@@ -33874,6 +33879,21 @@ saving `found_nothing` from a dry run is refused, as a preview would become an a
 `test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up` (manifest, queue and audit
 trail the same bytes after the preview; the refusal, then the run, then the forget),
 `test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verified` (each run's own note).
+
+C346 (ruling 43): `purge --queue` says `while its file is listed` only of listed entries, with its own words for a
+source no sync will list. After a new start, an entry whose source no sync had listed read `not judged yet: no sync
+since the new start has listed source <src> in full ...` and the closing line said `1 stays queued while its file
+is listed`. `cli._cmd_purge` counts as listed only the kept entries whose note is none of `NEW_START_NOTE`,
+`SCHEMA_NOTE`, `BUSY_NOTE` (the verifier's list missed these two, which no manifest read judged either) and the
+`UNLISTED_HEAD`, `UNRESOLVED_HEAD` and `not judged: ` notes. With nothing stuck and every kept entry unlisted, the
+line is `... still queued until a sync lists its source in full` (`their` for more than one), or, when no sync
+will list any of their sources, `... still queued: no sync lists its source (see its note)` (`their source (see
+their notes)`), never a wait on a sync. `K stay queued while their file is listed` needs every kept entry listed,
+and the fallback's `(K of them while ...)` counts the listed ones, left out when there are none. The Purge queue
+row of setup-feedback.md quotes the forms. Tests:
+`test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source`,
+`test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase` (and beside a listed upstream deletion, `2 still
+queued (1 of them while its file is listed)`).
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

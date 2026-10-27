@@ -5035,10 +5035,17 @@ def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
         # B13 round 16 T32: the counts by number, "1 stays queued while its file is listed" for one
         "`N queued purges run; M still queued`": "queued purge')} run; {len(left)} still queued{also}",
         "`N queued purges run; M still queued (K of them while their file is listed)`": (
-            " ({len(kept)} of them while {'its' if len(kept) == 1 else 'their'} file is listed)"
+            " ({len(listed)} of them while {'its' if len(listed) == 1 else 'their'} file is listed)"
         ),
         "`N queued purges run; K stay queued while their file is listed`": (
             'else "stay queued while their file is listed"'
+        ),
+        # B13 round 30 C346: never "while ... listed" of an entry whose source no sync has listed since
+        "`N queued purges run; M still queued until a sync lists their source in full`": (
+            'until = f"until a sync lists {its} source in full"'
+        ),
+        "`N queued purges run; M still queued: no sync lists their source (see their notes)`": (
+            "f\": no sync lists {its} source (see {'its note' if len(left) == 1 else 'their notes'})\""
         ),
     }
     for quoted, printed in forms.items():
@@ -6309,11 +6316,13 @@ _ROUND_30_B_PARAGRAPH_AMENDS = (
     ("16.200", "`governance.hold_list_state` is `unread`, `lost` or None", "§16.205 C349"),
     ("16.200", "**C151, C142, C126: the hold list's put-back", "§16.205 C316"),
     ("16.200", "`governance.hold_list_state` is `unread`, `lost` or None", "§16.205 C305"),
+    ("16.44", "`purge --queue` exits 0 when every report is verified or not run", "§16.205 C346"),
 )
 """Round 30 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C352's record file at §16.200's hold-record paragraph, C349's third hold
 list state at its lost-hold paragraph, C316's put-back words at its put-back paragraph and C305's status-only
-lost-hold wait at the lost-hold paragraph."""
+lost-hold wait at the lost-hold paragraph, and C346's listed-only closing line at §16.44's `purge --queue`
+bullet."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

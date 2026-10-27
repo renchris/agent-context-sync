@@ -10424,7 +10424,13 @@ def test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source(
         git(repo, "log", "--all", "--", _PAGE),
     )
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
-    assert "VERIFIED" not in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert "VERIFIED" not in said
+    # B13 round 30 C346: no sync has listed its file, so the closing line never says it is listed
+    assert (
+        said.splitlines()[-1] == "0 queued purges run; 1 still queued until a sync lists its source in full"
+    )
+    assert "while its file is listed" not in said, said
     after = (
         qfile.read_bytes(),
         git(repo, "rev-parse", "HEAD^{tree}"),
@@ -10453,6 +10459,20 @@ def test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase(
     want = "`~/.local/bin/agentsync purge id=contoso-volume:gone-0042 --source contoso-gone --reason "
     assert want + "label-escalation`" in why, why
     assert why in loop.next_step(initialised).notes
+    # B13 round 30 C346: its closing line waits on no sync and says nothing of a listed file
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert (
+        said.splitlines()[-1]
+        == "0 queued purges run; 1 still queued: no sync lists its source (see its note)"
+    )
+    assert "while its file is listed" not in said and "until a sync lists" not in said, said
+    # beside an upstream deletion of a listed file, only that one is counted as listed
+    _queue_upstream(initialised, "projects/sample.txt")
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out.splitlines()[-1]
+    assert said == "0 queued purges run; 2 still queued (1 of them while its file is listed)", said
 
 
 def test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up(

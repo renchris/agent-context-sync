@@ -3541,6 +3541,15 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
         stuck, kept = governance.partition_purges(config.state_paths, left, config=config)
+        # "while its file is listed" only of the kept entries a manifest read found listed or published again:
+        # never of one no sync has judged, nor of one whose source no sync lists (B13 round 30 C346)
+        unjudged = (governance.NEW_START_NOTE, governance.SCHEMA_NOTE, governance.BUSY_NOTE)
+        heads = (governance.UNLISTED_HEAD, governance.UNRESOLVED_HEAD, "not judged: ")
+        listed = [(q, why) for q, why in kept if why not in unjudged and not why.startswith(heads)]
+        unlisted = [why for _q, why in kept if why.startswith(governance.UNLISTED_HEAD)]
+        never = sum(1 for why in unlisted if "and none will" in why)  # a source no sync lists (C201)
+        only_unlisted = bool(kept) and not stuck and len(unlisted) == len(kept)
+        its = "its" if len(left) == 1 else "their"
         if kept and all(why == governance.NEW_START_NOTE for _q, why in kept):
             # the new start's: the next sync's manifest judges them (B13 round 27 P40)
             until = "until the next sync builds the manifest"
@@ -3554,7 +3563,15 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             # kept for the state file, not for a listed file: no manifest read judged them (E25)
             blind = "while the state file cannot be read"
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {blind}")
-        elif left and not stuck:
+        elif only_unlisted and not never:
+            # their source a sync will list: the run judges them once one has (C201)
+            until = f"until a sync lists {its} source in full"
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued {until}")
+        elif only_unlisted and never == len(unlisted):
+            # no sync will ever list their source: never "wait for a sync"; each note names its by-hand purge
+            until = f": no sync lists {its} source (see {'its note' if len(left) == 1 else 'their notes'})"
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{until}")
+        elif left and not stuck and len(listed) == len(kept):
             _out(
                 f"{plural(ran, 'queued purge')} run; {len(kept)} "
                 + (
@@ -3565,8 +3582,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             )
         else:
             also = (
-                f" ({len(kept)} of them while {'its' if len(kept) == 1 else 'their'} file is listed)"
-                if kept
+                f" ({len(listed)} of them while {'its' if len(listed) == 1 else 'their'} file is listed)"
+                if listed
                 else ""
             )
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
