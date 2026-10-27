@@ -129,6 +129,7 @@ import sys
 import tempfile
 import time
 import unicodedata
+import weakref
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -164,7 +165,7 @@ from agentsync.slug import slugify
 from agentsync.text import plural as _plural
 
 if TYPE_CHECKING:
-    from agentsync.governance import QueuedPurge
+    from agentsync.governance import QueuedPurge, QueueSplit
 
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES = (
@@ -4633,15 +4634,137 @@ def _open_manifest_ro(db: Path, timeout: float) -> sqlite3.Connection | None:
     two more files FAILed status and a sync. With no -wal the file is the whole database, read
     ``immutable=1``, which creates nothing; with both side files there, a plain ``mode=ro`` creates nothing;
     with a -wal and no -shm, a plain open creates a 0400 -shm and ``immutable=1`` misses the -wal's rows, so
-    nothing is opened, as ``doctor.manifest_unreadable`` skips it. A file this account can write is opened
-    as before."""
+    nothing is opened, as ``doctor.manifest_unreadable`` skips it. Every other open is
+    ``manifest.open_read_only``'s, which creates and changes no file beside a manifest this account can write
+    either: a ``mode=ro`` open of a WAL manifest created its -wal and -shm (0600), and one over a -wal with
+    frames wrote its read mark into the -shm (B13 round 30 ruling 36, C394; lane B's measure). When that
+    read opens nothing (a lost manifest, a file it cannot read) or an installed manifest lacks it, the file
+    is read ``immutable=1``, which creates nothing and fails as before on a file it cannot read. Beside a
+    side that is not a file the older open stands, as its error is what the report reads the side by
+    (:func:`_side_breaking_read`, round 25 ruling 12) and no read of the file alone may pass over it, but
+    over a private copy (:func:`_open_private_copy`): beside a folder at the -shm it created an empty 0600
+    -wal in the state folder (ruling 36's review)."""
     uri = f"file:{quote(str(db))}?mode=ro"
     if not os.access(db, os.R_OK | os.W_OK):
         if not db.with_name(db.name + "-wal").exists():
             uri += "&immutable=1"
         elif not db.with_name(db.name + "-shm").exists():
             return None
-    return sqlite3.connect(uri, uri=True, timeout=timeout)
+    sides = _sides_not_files_at(db)
+    if sides:
+        if uri.endswith("&immutable=1"):  # an immutable open creates nothing, and reads no side
+            return sqlite3.connect(uri, uri=True, timeout=timeout)
+        return _open_private_copy(db, timeout)
+    from agentsync import manifest  # noqa: PLC0415 - lazy, as the reads above
+
+    read_only = getattr(manifest, "open_read_only", None)
+    if read_only is not None:
+        conn = read_only(db, timeout)
+        if isinstance(conn, sqlite3.Connection):
+            return conn
+    return sqlite3.connect(f"file:{quote(str(db))}?mode=ro&immutable=1", uri=True, timeout=timeout)
+
+
+class _PrivateCopy(sqlite3.Connection):
+    """A connection to :func:`_open_private_copy`'s copy, whose folder goes on close (or when it is
+    collected)."""
+
+    done: Callable[[], object] | None = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self.done is not None:
+                self.done()
+
+
+def _open_private_copy(db: Path, timeout: float) -> sqlite3.Connection:
+    """``mode=ro`` over a private copy of the manifest at ``db`` in a folder of its own, beside which each of
+    its sides stands as it is beside the manifest (``doctor.manifest_sides``, where sqlite keeps them): a
+    file copied, a folder, a fifo or a socket made again with its mode, a link as a link to nothing (sqlite
+    never opens a side through a link, round 26 E62). The open fails as the plain one would, with the same
+    error, and what sqlite creates or removes (a -wal beside a folder at the -shm, a fifo at the -wal it
+    removes on close) is in that folder, never the state folder (B13 round 30 ruling 36's review, C394). The
+    folder is :func:`_private_copy_folder`'s; a state folder that refuses it refuses sqlite's side files too,
+    so the plain open stands there, creating nothing."""
+    try:
+        folder = _private_copy_folder(db)
+    except OSError:
+        return sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=timeout)
+    try:
+        copy = Path(folder) / db.name
+        shutil.copyfile(db, copy)
+        shutil.copymode(db, copy)
+        for side in _manifest_sides(db):
+            _copy_side(side, copy.with_name(copy.name + side.name.removeprefix(side.name.rsplit("-", 1)[0])))
+        conn = sqlite3.connect(
+            f"file:{quote(str(copy))}?mode=ro", uri=True, timeout=timeout, factory=_PrivateCopy
+        )
+    except BaseException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    conn.done = weakref.finalize(conn, shutil.rmtree, folder, True)
+    return conn
+
+
+def _private_copy_folder(db: Path) -> str:
+    """A new folder for :func:`_open_private_copy`'s copy: ``manifest.read_only_snapshot``'s own kind, a
+    ``manifest.RO_COPY_PREFIX`` folder beside the manifest, kept out of Time Machine, which the next read
+    sweeps if a killed report left it, never TMPDIR, where a copy of the manifest's names left the state
+    folder (lane B's C394 fix pass; B13 round 30 ruling 36). The snapshot itself is not the read here: it
+    reads the file alone past a folder at the -shm and opens nothing beside a folder at the -wal (measured),
+    so sqlite's side error, which the report reads the side by, would be gone. An installed manifest without
+    the prefix (an older build) gives the older folder in TMPDIR."""
+    try:
+        from agentsync import (  # noqa: PLC0415 - lazy: the report must import even if it is broken
+            manifest,
+            tm_exclude,
+        )
+
+        prefix = str(manifest.RO_COPY_PREFIX)
+    except Exception:  # an older build: the older folder
+        return tempfile.mkdtemp(prefix="agentsync-report-")
+    folder = tempfile.mkdtemp(prefix=prefix, dir=db.parent)
+    tm_exclude.exclude_new_file(Path(folder))
+    return folder
+
+
+def _manifest_sides(db: Path) -> list[Path]:
+    """The manifest's -wal and -shm where sqlite keeps them (``doctor.manifest_sides``: beside a linked
+    manifest's target), beside the file on a build whose doctor lacks it."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return list(doctor.manifest_sides(db))
+    except Exception:
+        return [db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")]
+
+
+def _copy_side(side: Path, there: Path) -> None:
+    """``side`` (a manifest's -wal or -shm) made again at ``there`` as what it is, for
+    :func:`_open_private_copy`; nothing when it is not there."""
+    try:
+        st = side.lstat()
+    except FileNotFoundError:
+        return
+    mode = stat.S_IMODE(st.st_mode)
+    if stat.S_ISREG(st.st_mode):
+        shutil.copyfile(side, there)
+        there.chmod(mode)
+    elif stat.S_ISDIR(st.st_mode):
+        there.mkdir(mode=mode)
+    elif stat.S_ISLNK(st.st_mode):
+        there.symlink_to(there.with_name("absent"))
+    elif stat.S_ISSOCK(st.st_mode):
+        try:
+            with socket.socket(socket.AF_UNIX) as sock:
+                sock.bind(str(there))
+            there.chmod(mode)
+        except OSError:  # a path too long for a socket: a fifo is no file either
+            os.mkfifo(there, mode)
+    else:
+        os.mkfifo(there, mode)
 
 
 def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
@@ -9379,7 +9502,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "nothing live in its place, no row at all, or not looked up (the `not looked up:` line under the "
             "table says why)."
         ]
-    split, before, probed = _purge_split(config, no_row) if no_row else (Counter(), Counter(), 0)
+    split, before, probed, waits = _purge_split(config, no_row) if no_row else (Counter(), Counter(), 0, [])
     return [
         *intro,
         "",
@@ -9393,6 +9516,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             before=before["probed"],
             probed=probed,
             unprobed_before=before["unprobed"],
+            waits=waits,
         ),
         *_not_looked_up(skipped),
         _purge_audit(
@@ -9402,17 +9526,36 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 
 
 def _governance_kept_lines(config: Config, queue: Sequence[QueuedPurge]) -> list[str]:
-    """``governance.kept_lines`` of ``governance.partition_purges`` over ``queue``: the queue's own judgment
-    when no manifest can be read (the new start's "waits for the next sync", or the unjudged words of a lost
-    manifest or one that is not a file), never words the report makes up (B13 round 28 I46). Nothing when
-    governance raises or lacks either name (an older build)."""
+    """``governance.kept_lines`` of the read-only split (:func:`_queue_split_ro`) over ``queue``: the queue's
+    own judgment when no manifest can be read (the new start's "waits for the next sync", or the unjudged
+    words of a lost manifest or one that is not a file), never words the report makes up (B13 round 28 I46).
+    Nothing when governance raises or lacks a name (an older build)."""
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        _runnable, held = governance.partition_purges(config.state_paths, queue)
+        held = _queue_split_ro(config, queue, judge=False).kept
         return [str(line) for line in governance.kept_lines(held)]
     except Exception:
         return []
+
+
+def _queue_split_ro(
+    config: Config, queue: Sequence[QueuedPurge] | None = None, *, judge: bool = True
+) -> QueueSplit:
+    """Governance's one split of ``queue`` (default the queue file) over a read that writes nothing,
+    ``governance.partition_queue_ro``: ``partition_queue`` opens a ``Manifest``, and one report run so
+    migrated the manifest, chmodded it 0600, switched it to WAL, cleared its converter cache index and left a
+    ``.pre-v1`` copy (B13 round 30 ruling 36, C394). ``judge`` passes the config, as the queue part's split
+    does. An installed governance without it (an older build) gives the unjudged split, never the opener that
+    writes. Raises what governance raises."""
+    from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    read_only = getattr(governance, "partition_queue_ro", None)
+    if read_only is not None:
+        split: QueueSplit = read_only(config.state_paths, queue, config=config if judge else None)
+        return split
+    entries = governance.pending_purges(config.state_paths.root) if queue is None else list(queue)
+    return governance.QueueSplit(*governance._unjudged_split(entries))
 
 
 def _manifest_no_run(m: _Mirror) -> bool:
@@ -9433,21 +9576,26 @@ it, or none will), runnable but not looked up in the docs history yet, or looked
 nothing."""
 
 
-def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counter[str], Counter[str], int]:
+def _purge_split(
+    config: Config, entries: Sequence[QueuedPurge]
+) -> tuple[Counter[str], Counter[str], int, list[str]]:
     """Of ``entries`` (queued ids with no row and no alias), how many governance's own split puts in each of
     :data:`_SPLIT_KINDS`, each counted once, by its names (``UNLISTED_HEAD``, ``not_looked_up``,
     ``UNRESOLVED_HEAD``: B13 round 29 ruling 25, C123, C159, C113, C180, C188, C214), and how many of the rest
     were queued before this manifest's first run (a new start the likelier cause than a purge that ran; C159:
     never an entry the split judged), counted apart for the ones a run of the queue looks up before it runs
     them (``probed``) and the rest (``unprobed``), as each kind has a no-trace line of its own, and how many
-    of the rest are probed (:func:`_is_probed`: round 30 ruling 43, C336). Read-only; (empty, empty, the
-    probed count over every entry) on any failure, which keeps the plain words."""
+    of the rest are probed (:func:`_is_probed`: round 30 ruling 43, C336). The ones the split's read could not
+    judge (:func:`_not_judged`) are counted under :data:`_NOT_JUDGED`, never a fate, and said in
+    ``governance.kept_lines``' own counted words, the fourth item (round 30 ruling 36). Read-only; (empty,
+    empty, the probed count over every entry, none) on any failure, which keeps the plain words."""
     out: Counter[str] = Counter()
     judged: set[int] = set()
+    waits: list[tuple[QueuedPurge, str]] = []
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        split = governance.partition_queue(config.state_paths, entries, config=config)
+        split = _queue_split_ro(config, entries)
         judged = {id(q) for q in split.not_looked_up}
         out["not looked up yet"] = len(split.not_looked_up)
         live = {src.id for src in config.sources if src.is_live}
@@ -9459,6 +9607,11 @@ def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counte
             elif why.startswith(governance.UNRESOLVED_HEAD):
                 out["found nothing"] += 1
                 judged.add(id(q))
+            elif _not_judged(why):
+                out[_NOT_JUDGED] += 1
+                waits.append((q, why))
+                judged.add(id(q))
+        said = [str(line) for line in governance.kept_lines(waits)] if waits else []
         before: Counter[str] = Counter()
         conn = _open_manifest_ro(expand(config.state_paths.db), 0.5)
         if conn is not None:
@@ -9472,8 +9625,26 @@ def _purge_split(config: Config, entries: Sequence[QueuedPurge]) -> tuple[Counte
                 if id(q) not in judged and governance._queued_before(q, started)
             )
     except Exception:
-        return Counter(), Counter(), _probed_count(entries, set())
-    return +out, before, _probed_count(entries, judged)
+        return Counter(), Counter(), _probed_count(entries, set()), []
+    return +out, before, _probed_count(entries, judged), said
+
+
+_NOT_JUDGED = "not judged by the read"
+"""The split's count of the queued ids its read-only read could not judge (:func:`_not_judged`): no kind of
+:data:`_SPLIT_KINDS`, as their words are governance's ``kept_lines`` (B13 round 30 ruling 36)."""
+
+
+def _not_judged(why: str) -> bool:
+    """Whether ``why``, a kept entry's note from the read-only split, says its read could not judge it:
+    ``governance.SCHEMA_NOTE`` (a manifest an older build left), ``BUSY_NOTE`` (one a sync changed under every
+    read), or ``unjudged_note``'s (one that read cannot open, at a newer schema, or that sqlite refuses):
+    never a fate of the queued id (B13 round 30 ruling 36, lane B's C394 fix pass)."""
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:
+        return False
+    notes = (getattr(governance, "SCHEMA_NOTE", None), getattr(governance, "BUSY_NOTE", None))
+    return why in notes or (why.startswith("not judged: ") and why.endswith("[FAIL] line is fixed"))
 
 
 def _probed_count(entries: Sequence[QueuedPurge], judged: set[int]) -> int:
@@ -9622,6 +9793,7 @@ def _purge_notes(
     before: int = 0,
     probed: int | None = None,
     unprobed_before: int = 0,
+    waits: Sequence[str] = (),
 ) -> list[str]:
     """What the fates under the table mean for a run of the queue, in fixed words and counts: the queued ids
     that are now an alias, the ones that name a file listed now, and the ones the manifest holds no trace
@@ -9636,7 +9808,10 @@ def _purge_notes(
 
     ``alias_table`` is False for a manifest from before ``item_aliases``. No id was looked up as an alias
     there, and a re-key by that build left none. So the last line says only that the ids have no row, not
-    what took the rows away: an earlier id of a file listed now reads the same as a purged one."""
+    what took the rows away: an earlier id of a file listed now reads the same as a purged one.
+
+    ``waits`` are governance's ``kept_lines`` for the ids the split's read could not judge (counted in
+    ``split`` under :data:`_NOT_JUDGED`), each its own ``no row, not judged`` line (round 30 ruling 36)."""
     out: list[str] = []
     renamed = sum(aliased.values())
     if renamed:
@@ -9673,6 +9848,7 @@ def _purge_notes(
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
         out += _split_lines(split, AGENTSYNC_BIN, governance.unlisted_purges, governance.unresolved_purges)
+    out += [f"- no row, not judged: {line}" for line in waits]
     traced = fates["no row"] - sum(split.values())
     if traced > 0 and alias_table:
         # round 30 ruling 43, C336: only the entries a run looks up first stay queued until --forget, and a
@@ -13154,8 +13330,9 @@ def _hold_lost(c: Config | None) -> bool:
 
 def _queue_held(r: _Run) -> bool:
     """Whether every queued purge a ``purge --queue`` would run waits on a hold in force, and one does: the
-    report's own ``governance.held_purges`` over ``partition_purges``' runnable entries, with the hold list
-    readable; False when any read fails, or an entry would run (B13 round 29 ruling 27: C108, C147, C208)."""
+    report's own ``governance.held_purges`` over the read-only split's runnable entries
+    (:func:`_queue_split_ro`; round 30 ruling 36, C394), with the hold list readable; False when any read
+    fails, or an entry would run (B13 round 29 ruling 27: C108, C147, C208)."""
     if r.config is None:
         return False
     try:
@@ -13164,8 +13341,12 @@ def _queue_held(r: _Run) -> bool:
         root = expand(r.config.state_paths.root)
         if governance.hold_list_unread(root):
             return False
-        queued, _kept = governance.partition_purges(r.config.state_paths, config=r.config)
-        runnable, held = governance.held_purges(root, governance.load_governance(r.config_path), queued)
+        queued = _queue_split_ro(r.config).runnable
+        # read_only: a sourceless entry under a one-source hold resolves through a read that writes nothing,
+        # never a Manifest (ruling 36, C394); an older governance without it raises, so no hold reads in force
+        runnable, held = governance.held_purges(
+            root, governance.load_governance(r.config_path), queued, read_only=True
+        )
         return not runnable and bool(held)
     except Exception:
         return False

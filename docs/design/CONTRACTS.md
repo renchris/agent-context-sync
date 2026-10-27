@@ -33459,6 +33459,48 @@ the report and install.sh alike; the report's own lost queue count prints lane B
 is not in the queue file (` too. Test: `test_an_audit_hold_value_leaves_every_audit_line_whole_c302`, which fails
 on a phrase no literal holds.
 
+C394 (2026-10-26): **writing the report never writes the manifest** (C394's callers; ruling 36, lane B's
+`partition_queue_ro` and `partition_purges_ro`; data integrity). The Purge queue part's split, its kept lines and
+the held-queue read called `governance.partition_queue`, which opens a `Manifest`: one report run so migrated an
+older manifest, chmodded it 0600, switched it to WAL, cleared its converter cache index and left a `.pre-v1` copy.
+The three now call only `governance.partition_queue_ro`, through one helper, `_queue_split_ro`, and the held-queue
+read passes `read_only=True` to `held_purges`, so a sourceless entry under a hold on one source resolves through a
+read that writes nothing; an installed governance without the read-only split gives the unjudged split, never the
+opener that writes. The report's own read-only open of the manifest, which its other manifest reads use, made
+files too: a `mode=ro` open of a WAL manifest this account can write created its -wal and -shm, and one over a
+-wal with frames wrote its read mark into the -shm. It now opens through `manifest.open_read_only` (the file
+alone `immutable=1`, or a private copy of the file and its -wal), and reads the file alone `immutable=1` when that
+opens nothing or is missing. Beside a side that is not a file the older open's error is what the report reads
+that side by, so that open stays, over a private copy: the manifest copied into a folder of its own, each side
+made again beside it as what it is (a file copied, a folder, a fifo or a socket with its mode, a link as a link
+to nothing), the folder removed when the connection closes; over the manifest itself it created an empty 0600
+-wal beside a folder at the -shm. Test: `test_a_built_report_leaves_the_manifest_its_wal_and_its_shm_byte_for_byte_c394`
+(each file beside the manifest hashed before and after a built report: a rollback-journal manifest at mode 0644
+and an older converter key schema, one at an older manifest schema, a WAL manifest with no -wal, one whose -wal
+holds frames a sync has not checkpointed, a held queue that every entry waits on, a folder at the -shm with no
+-wal, and a manifest no sync has run over; bytes, mode and mtime alike).
+
+C394, ruling 36 (2026-10-26): **a queued id the read-only split cannot judge reads as not judged, and the
+private copy stays in the state folder** (lane B's C394 fix pass). Lane B's `partition_queue_ro` keeps a queued
+upstream deletion or label escalation it cannot judge with a note that says why: `governance.SCHEMA_NOTE` over
+a manifest an older build left (an older schema, or a table such as the alias table missing, which the next
+sync's open adds), `governance.BUSY_NOTE` over one a sync changed under every read, besides `unjudged_note`. The
+Purge queue part read such an id with no row as `no trace`, a purge that already ran or an erasure; it now
+counts it as not judged and says it in `governance.kept_lines`' own counted words, `- no row, not judged: 1
+queued purge waits for the next sync to bring agentsync's state file to this build's schema; ...`, never a fate
+and never "not resolvable". The kept lines over a manifest no sync has run over already used `kept_lines`. The
+report's private copy of the manifest, which its open beside a side that is not a file reads, was made in
+TMPDIR, where a copy of the manifest's names left the state folder; it is now made in a `manifest.RO_COPY_PREFIX`
+(`.ro-copy-`) folder beside the manifest, kept out of Time Machine and swept by the next read if a killed report
+left it, and removed when the connection closes. It is not `manifest.read_only_snapshot` itself, as lane B's
+note asked: measured, the snapshot reads the file alone past a folder at the -shm or a fifo at the -wal, and
+opens nothing beside a folder at the -wal, so sqlite's side error, which the report reads the side by, would be
+gone. An installed manifest without the prefix keeps the TMPDIR folder; a state folder that refuses the folder
+refuses sqlite's side files too, so the plain open stands there. Test:
+`test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36`, and the manifest without an alias
+table in `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place` now reads lane B's
+schema words.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

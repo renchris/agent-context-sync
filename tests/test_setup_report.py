@@ -9,6 +9,7 @@ import ast
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import itertools
 import json
 import logging
@@ -21,6 +22,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -14212,6 +14214,195 @@ def test_the_no_trace_line_says_forget_only_of_the_entries_a_run_looks_up_c336(
     assert status_parts(fake_mac)[1]["Purge queue"] == part
 
 
+def _manifest_bytes(db: Path) -> dict[str, tuple[str, int, int]]:
+    """Each file beside and at the manifest ``db`` (its -wal, its -shm, a ``.pre-v`` copy) by name: its
+    sha256 (``folder`` for a folder), mode and mtime_ns."""
+    return {
+        p.name: (
+            "folder" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest(),
+            stat.S_IMODE(p.lstat().st_mode),
+            p.lstat().st_mtime_ns,
+        )
+        for p in sorted(db.parent.glob(db.name + "*"))
+    }
+
+
+def test_a_built_report_leaves_the_manifest_its_wal_and_its_shm_byte_for_byte_c394(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 30 C394 (ruling 36): the report's queue split called ``governance.partition_queue``, which
+    opens a ``Manifest``: one report run migrated the manifest, chmodded it 0600, switched it to WAL, cleared
+    its converter cache index and left a ``.pre-v1`` copy, and the report's own read-only open created a -wal
+    and -shm beside a WAL manifest this account can write. A built report (the queue part's split and kept
+    lines, the held-queue read) leaves the manifest, its -wal and its -shm byte for byte: a rollback-journal
+    manifest at an older converter key schema, mode 0644 (what an older build leaves); one at an older
+    manifest schema; a WAL manifest with no -wal; one whose -wal holds frames a sync has not checkpointed;
+    and one no sync has run over (the kept lines' new-start branch)."""
+    cfg = fake_mac["config"]
+    up = governance.PurgeReason.UPSTREAM_DELETED
+    day = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
+
+    def seeded(*, ran: bool = True) -> Path:
+        seed = Seed(cfg)
+        _one, inbox, _two = seed.ids()
+        seed.item(inbox, "merger.eml")  # queued, and listed again since: the judge reads its row
+        if ran:
+            seed.run(1, {}, day="2026-10-01")
+        seed.close()
+        root = seed.config.state_paths.root
+        for stable in ("id-that-was-never-a-row", "id-000001"):
+            selector = governance.PurgeSelector(source_id=inbox, stable_id=stable)
+            governance.enqueue_purge(root, selector, up, now=day)
+        return expand(seed.config.state_paths.db)
+
+    def fresh() -> None:
+        db = expand(load_config(cfg).state_paths.db)
+        for leftover in db.parent.glob(db.name + "*"):
+            leftover.unlink()
+        queue = governance._queue_file(load_config(cfg).state_paths.root)
+        queue.unlink(missing_ok=True)
+
+    def unchanged(db: Path) -> str:
+        before = _manifest_bytes(db)
+        part = status_parts(fake_mac)[1]["Purge queue"]
+        assert _manifest_bytes(db) == before, part
+        return part
+
+    def older(db: Path, key: str) -> None:
+        conn = sqlite3.connect(db)
+        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("UPDATE meta SET value = '0' WHERE key = ?", (key,))
+        conn.commit()
+        conn.close()
+        db.chmod(0o644)
+
+    for key in ("key_schema_version", "manifest_schema_version"):
+        db = seeded()
+        older(db, key)
+        assert unchanged(db)
+        fresh()
+    db = seeded()  # a WAL manifest this account can write, closed clean: no -wal, no -shm
+    assert sorted(_manifest_bytes(db)) == ["manifest.sqlite"]
+    assert "| " in unchanged(db)
+    # the same manifest while a sync holds it open, its last write not checkpointed into the file
+    sync = sqlite3.connect(db)
+    try:
+        sync.execute("PRAGMA wal_autocheckpoint=0")
+        sync.execute(
+            "INSERT INTO runs (run_id, mode, started_at, status, host, pid) VALUES (2, 'poll', "
+            "'2026-10-03T10:00:00Z', 'ok', 'h', 1)"
+        )
+        sync.commit()
+        assert sorted(_manifest_bytes(db)) == [
+            "manifest.sqlite",
+            "manifest.sqlite-shm",
+            "manifest.sqlite-wal",
+        ]
+        assert "| " in unchanged(db)
+    finally:
+        sync.close()
+    # a held queue: a sourceless docs entry that resolves to a source a hold is on, through a read that writes
+    # nothing (held_purges(read_only=True)), never a Manifest, so every entry waits on the hold
+    fresh()
+    db = seeded()
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    governance._queue_file(root).unlink()
+    inbox = config.sources[1].id
+    governance.set_hold(root, inbox, reason="Fabrikam review", owner="Avery Quill")
+    selector = governance.PurgeSelector(docs_glob=f"mirror/{inbox}/**")
+    governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION, now=day)
+    older(db, "key_schema_version")
+    before = _manifest_bytes(db)
+    assert setup_report._queue_held(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)) is True
+    assert _manifest_bytes(db) == before
+    governance.release_hold(root, inbox, owner="Avery Quill")
+    fresh()
+    # a folder at the -shm and no -wal: the open whose error names the side runs over a private copy, so no
+    # -wal is made beside the manifest (ruling 36's review)
+    db = seeded()
+    db.with_name(db.name + "-shm").mkdir()
+    unchanged(db)
+    db.with_name(db.name + "-shm").rmdir()
+    fresh()
+    db = seeded(ran=False)  # no run: the kept lines' new-start words, from the read-only split
+    unchanged(db)
+
+
+def test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 36 (lane B's C394 fix pass): the read-only split keeps a queued id it cannot judge
+    with ``governance.SCHEMA_NOTE`` (a manifest an older build left, before the next sync migrates it) or
+    ``governance.BUSY_NOTE`` (one a sync changed under every read), besides ``unjudged_note``. The Purge queue
+    part reads such an id with no row as not judged, in lane B's ``kept_lines`` counts, never a fate (``no
+    trace``) and never "not resolvable"; the kept lines over a manifest no sync has run over do the same. No
+    ``.ro-copy-*`` folder is left beside the manifest, nor the report's own copy in TMPDIR."""
+    cfg = fake_mac["config"]
+
+    def seeded(*, ran: bool = True) -> Path:
+        seed = Seed(cfg)
+        _one, inbox, _two = seed.ids()
+        if ran:
+            seed.run(1, {}, day="2026-10-01")
+        seed.close()
+        selector = governance.PurgeSelector(source_id=inbox, stable_id="id-that-was-never-a-row")
+        governance.enqueue_purge(
+            seed.config.state_paths.root,
+            selector,
+            governance.PurgeReason.UPSTREAM_DELETED,
+            now=datetime(2026, 10, 2, 9, 30, tzinfo=UTC),
+        )
+        db = expand(seed.config.state_paths.db)
+        conn = sqlite3.connect(db)
+        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("UPDATE meta SET value = '0' WHERE key = 'manifest_schema_version'")
+        conn.commit()
+        conn.close()
+        return db
+
+    def fresh(db: Path) -> None:
+        for leftover in db.parent.glob(db.name + "*"):
+            leftover.unlink()
+        governance._queue_file(load_config(cfg).state_paths.root).unlink(missing_ok=True)
+
+    tmp = Path(tempfile.gettempdir())
+    copies = set(tmp.glob("agentsync-report-*"))
+    db = seeded()
+    part = status_parts(fake_mac)[1]["Purge queue"]
+    assert f"- no row, not judged: {governance.schema_purges(1)}" in part, part
+    assert "no trace" not in part and "not resolvable" not in part, part
+
+    def changing(db: Path, timeout: float) -> None:
+        raise manifest_mod.ManifestBusyError(f"{db} changed under every read")
+
+    with monkeypatch.context() as busy:
+        busy.setattr(governance, "read_only_snapshot", changing)
+        part = status_parts(fake_mac)[1]["Purge queue"]
+    assert f"- no row, not judged: {governance.busy_purges(1)}" in part, part
+    assert "no trace" not in part and "not resolvable" not in part, part
+    assert not list(db.parent.glob(manifest_mod.RO_COPY_PREFIX + "*"))
+    fresh(db)
+    db = seeded(ran=False)  # no run: the kept lines, from the same split
+    part = status_parts(fake_mac)[1]["Purge queue"]
+    assert f"- {governance.schema_purges(1)}" in part, part
+    assert "no trace" not in part and "not resolvable" not in part, part
+    db.with_name(db.name + "-shm").mkdir()  # the side-file open, over a copy beside the manifest
+    made: list[str] = []
+    mkdtemp = tempfile.mkdtemp
+
+    def recorded(*args: Any, **kwargs: Any) -> str:
+        made.append(folder := mkdtemp(*args, **kwargs))
+        return folder
+
+    monkeypatch.setattr(setup_report.tempfile, "mkdtemp", recorded)
+    status_parts(fake_mac)
+    assert made and all(Path(f).parent == db.parent for f in made), made
+    assert all(Path(f).name.startswith(manifest_mod.RO_COPY_PREFIX) for f in made), made
+    assert not list(db.parent.glob(manifest_mod.RO_COPY_PREFIX + "*"))
+    assert set(tmp.glob("agentsync-report-*")) <= copies
+
+
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14303,8 +14494,10 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         assert raw not in text, raw
     # A manifest from before the alias table: read as it is (the report never migrates one), so an id with
     # no row is `no row`. No alias was looked up, and a re-key by that build left none, so the two re-keyed
-    # ids read the same as the purged ones. The line says so, and no line says what it cannot know: not
-    # that they are no alias, and not that a purge or an erasure took the rows.
+    # ids read the same as the purged ones; governance's read-only split keeps them unjudged until the next
+    # sync creates the table (its SCHEMA_NOTE, B13 round 30 ruling 36), and the line says so in its words.
+    # No line says what it cannot know: not that they are no alias, and not that a purge or an erasure took
+    # the rows.
     seed = Seed(fake_mac["config"])
     seed.m._db.execute("DROP TABLE item_aliases")
     seed.close()
@@ -14317,8 +14510,7 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "- still listed: 2 queued purges name a file the manifest lists now. A run of the queue keeps 1 of "
         "them queued (an upstream deletion or a label escalation of a file that is live or online-only) and "
         "erases the page and history of the other 1",
-        "- no row: 4 queued ids have no row. This manifest has no alias table, so none was looked up as an "
-        "alias: an earlier id of a file listed now cannot be told from one a purge took away",
+        f"- no row, not judged: {governance.schema_purges(4)}",
         "- not looked up: 1 queued purge was not looked up (a selector with no stable id: 1)",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
         "erased) and 1 purge-summary (one per purge that ran) lines",
