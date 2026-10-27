@@ -929,6 +929,24 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
   `state-side-refused`, `state-side-notfile`, `state-dir-write`, `state-notfile`, `state-lost`, `state-notdir`,
   `state-file-access`, `state-file-owner`, `state-file-refused` and `state-file-notfile`, never the error's text.
+  When no config-step stop is predicted, a purge queue, suppression list or hold list that lost what agentsync's
+  records keep gives a status-step tail instead, logged with its own word after `config_err=`, never one of the
+  comma-joined words above. A purge queue that no longer holds a purge the audit trail records as queued and not done
+  gives `; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge the audit trail
+  records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back
+  from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status prints it on its
+  governance.purge_queue line`, logged `state-queue-lost`; else a suppression list that lost what a purge suppressed
+  gives `; step 2 stops at its status step on agentsync's suppression list, which no longer lists what a purge the
+  audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list
+  back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it
+  on its governance.suppressed line`, logged `state-suppressed-lost` (the purge queue's first when both lost one, as
+  status's `NEXT:` leads with it; B13 round 30 ruling 40, lane RB's dc266be78, C311). A hold list that no longer lists
+  a hold its records keep as set and not released gives `; step 2 stops at its status step on agentsync's hold list,
+  which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
+  person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),
+  and ~/.local/bin/agentsync status prints it on its governance.hold line`, logged `state-hold-lost` (B13 round 29
+  ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`). Each fix is the person's; the
+  scope, owner, reason, selector and time are never printed (B13 round 30 C315).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

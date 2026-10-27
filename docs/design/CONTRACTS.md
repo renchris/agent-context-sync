@@ -33679,3 +33679,14 @@ this report prints, ... they can be read back.` at two or more, as agentsync's r
 the plural for agentsync's report only. It says the shell's line follows the same count and that its `Send it:` line
 has no singular to change. Test: `test_the_guide_gives_round_25s_new_report_and_installer_outputs`, which reads the
 plural from install.sh with the count it writes.
+
+**The guide gives step 1's lost-list tails and their words** (C315; `docs/deploy/setup-feedback.md`). Round 29's step 1
+tail for a hold the hold list lost (ruling 27), logged `config_err=state-hold-lost`, was in no guide, and lane RB's
+dc266be78 (§16.204 C311, ruling 40) added two more, a purge queue and a suppression list that lost a purge, logged
+`state-queue-lost` and `state-suppressed-lost`. Built after RB's land, as the brief asked, so the three are quoted
+once. As C315's verifier found, these words never join config_errors' comma-joined list (install.sh logs them alone,
+and only when no config-step stop is predicted), so the config_err bullet keeps its list and a sentence after it
+quotes each tail and word as install.sh writes them, that the purge queue's comes first when both it and the
+suppression list lost one, and that the hold list's follows either (`config_err=state-queue-lost,state-hold-lost`).
+Test: `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which reads the three tails and their `clog`
+words from install.sh, and checks every `state-` word install.sh logs that way is in the guide.

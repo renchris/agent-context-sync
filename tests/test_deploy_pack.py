@@ -7820,6 +7820,42 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     assert "`vanished=`, `config_err=`) are in" in row
 
 
+def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
+    """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
+    `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list
+    that lost a purge (ruling 40), logged `state-queue-lost` and `state-suppressed-lost`, were in no guide:
+    the config_err bullet lists only the words config_errors joins, which these never are. The bullet quotes
+    each tail and word as install.sh writes them, read here, and every `state-` word install.sh can log after
+    `config_err=` is in the guide."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    section = " ".join(_feedback_page().split())
+    tails = {
+        noun: tail
+        for tail, noun in re.findall(
+            r'ctail="(?:\$ctail)?(; step 2 stops at its status step on agentsync\'s'
+            r' (purge queue|suppression list|hold list)[^"]*)"',
+            script,
+        )
+    }
+    assert sorted(tails) == ["hold list", "purge queue", "suppression list"]
+    words = {
+        "purge queue": "state-queue-lost",
+        "suppression list": "state-suppressed-lost",
+        "hold list": "state-hold-lost",
+    }
+    for noun, word in words.items():
+        assert f'clog="{"$clog" if noun == "hold list" else ""},{word}"' in script, word
+        assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
+    assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
+    assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section
+    assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script
+    # every state- word install.sh can log after config_err= is one the guide names
+    logged = set(re.findall(r'clog="(?:\$clog)?,(state-[a-z-]+)"', script))
+    assert logged == set(words.values())
+    for word in logged:
+        assert f"`{word}`" in section, word
+
+
 def test_the_guides_placeholder_rows_follow_round_17s_redaction() -> None:
     """B13 round 18 V76: round 17 changed three placeholders and the guide's rows kept the old reach: U61's
     `<link-N>` is in the shell fallback report too, U8, U23 and U44 name a vanished source id
