@@ -33437,6 +33437,18 @@ evidence and Doctor's state_dir.manifest fix say one thing. Once hold-record.jso
 list, over a heartbeat.json that cannot be read, or with an installed doctor that lacks the helper, the words are
 as before. Test: `test_a_lost_manifests_evidence_moves_round_28s_hold_record_first_c351`.
 
+C328 (2026-10-26): **the stub alarm without its source still reads as one** (C328's report half; ruling 37, lane
+B's alarm). Lane B's alarm for a page the secret scan stubbed dropped its `<source>: ` head and now ends with the
+rules that hit it, ``<mirror page> is a `contains a credential` stub now: its converted text held one (<rule>,
+<rule>)``, with no parentheses when no rule is named, and its WARNING carries the same words. The report needs no
+change: `_STUB_NOW_RE` reads the first `: ` segment, which is now the alarm's own head, so the page is still cut
+and agentsync's words and the rules after it stay. Lane B's later forms read the same way: the name-only alarm
+(``... stub now: its name held one (<rule>)``) and the published page's, which leads with `a published page
+matches the secret scan's new rules: ` before the same words, its stub segment the second. A test builds each
+form with lane B's own `_credential_alarm`, `_published_credential` and `_stub_now`, with rules and with none,
+and reads it from err.log through a built report. Test:
+`test_the_stub_alarm_without_its_source_is_still_read_as_one_c328`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

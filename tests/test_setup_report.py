@@ -23,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
@@ -295,6 +296,68 @@ def test_a_credential_stubs_alarm_names_no_page_in_the_report(
     )
     split = setup_report._SPLIT_RE.search(line)
     assert split is not None and split.groups() == ("2", "0", "1", "1"), split
+
+
+@pytest.mark.parametrize("form", ["converted", "name", "published"])
+@pytest.mark.parametrize("rules", [(), ("aws-access-key", "private-key")])
+def test_the_stub_alarm_without_its_source_is_still_read_as_one_c328(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    rules: tuple[str, ...],
+    form: str,
+) -> None:
+    """B13 round 30 ruling 37 (lane B's C328): the alarm for a page the secret scan stubbed lost its
+    ``<source>: `` head and ends with the rules that hit it (``(<rule>, <rule>)``, none when no rule is
+    named); its WARNING carries the same words. Lane B's later forms too: the name-only one (``... stub now:
+    its name held one``) and the published page's, whose lead ``a published page matches the secret scan's
+    new rules: `` comes before the same words. Built by lane B's own ``_credential_alarm``,
+    ``_published_credential`` and ``_stub_now``, its stub ``: `` segment still matches ``_STUB_NOW_RE``, and
+    the report reads it from err.log as before: the page cut, agentsync's words and the rules kept."""
+    page = "mirror/src-x/Big Bank Merger/Globex terms.docx.md"
+    acc = types.SimpleNamespace(alarms=[])
+    fake = types.SimpleNamespace(
+        manifest=types.SimpleNamespace(
+            outputs_for=lambda sid, stable: [types.SimpleNamespace(output_path=page)],
+            aliases_of=lambda sid, stable: [],
+        ),
+        config=types.SimpleNamespace(
+            source=lambda sid: sid, state_paths=types.SimpleNamespace(root=tmp_path / "state")
+        ),
+        cache=types.SimpleNamespace(delete=lambda keys: 0),
+        now=lambda: datetime(2026, 10, 26, 9, 30, tzinfo=UTC),
+        _acc=lambda src: acc,
+    )
+    fake._stub_now = functools.partial(cycle._Cycle._stub_now, fake)
+    held_by = "its name" if form == "name" else "its converted text"
+    with caplog.at_level(logging.WARNING, logger="agentsync.cycle"):
+        if form == "published":
+            now_is = cycle._Cycle._stub_now(fake, "src-x", "s1", list(rules))
+            cycle._Cycle._published_credential(fake, "src-x", "s1", [], now_is=now_is)
+        else:
+            cycle._Cycle._credential_alarm(fake, "src-x", "s1", list(rules), held_by=held_by)
+    [alarm] = acc.alarms
+    if form == "published":
+        assert alarm.startswith("a published page matches the secret scan's new rules: "), alarm
+    else:
+        assert [r.getMessage() for r in caplog.records if r.name == "agentsync.cycle"] == [alarm]
+    assert not alarm.startswith("src-x: "), alarm
+    said = f"{held_by} held one" + (f" ({', '.join(rules)})" if rules else "")
+    assert f" stub now: {said}" in alarm and (form == "published" or alarm.endswith(said)), alarm
+    [head] = [part for part in alarm.split(": ") if part.endswith(" stub now")]
+    stub = setup_report._STUB_NOW_RE.fullmatch(head)
+    assert stub is not None and head == f"{page}{stub.group(1)}", head
+    assert setup_report._scrub_segment(head) == "<path> is a `contains a credential` stub now"
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(
+        log.read_text(encoding="utf-8") + f"2026-10-05 09:00:00,000 WARNING agentsync.cycle: {alarm}\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    for name in ("Big Bank", "Merger", "Globex"):
+        assert name not in text, [ln for ln in text.splitlines() if name in ln]
+    errors = section(text, "Recent errors")
+    assert alarm.replace(page, "<path>") in errors, errors
 
 
 @pytest.fixture
