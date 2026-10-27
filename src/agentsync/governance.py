@@ -63,7 +63,15 @@ from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.manifest import Manifest, manifest_lost, migration_backups, open_read_only
+from agentsync.manifest import (
+    MANIFEST_SCHEMA_VERSION,
+    Manifest,
+    ManifestBusyError,
+    manifest_lost,
+    migration_backups,
+    open_read_only,
+    read_only_snapshot,
+)
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import HOLD_RECORD_KEY as _HOLD_RECORD_KEY
@@ -3225,6 +3233,17 @@ def _resolve_manifest(db: Path, selector: PurgeSelector, ids: set[tuple[str, str
         conn.close()
 
 
+def _resolve_manifest_ro(
+    conn: sqlite3.Connection | None, selector: PurgeSelector, ids: set[tuple[str, str]]
+) -> _ManifestTargets:
+    """:func:`_resolve_manifest` over ``conn``, a :func:`manifest.open_read_only` read, which writes nothing
+    (B13 round 30 ruling 36): no targets when that read could not open it (None) or it is not at this build's
+    schema (:func:`_schema_note`), never a migration. Raises what sqlite raises."""
+    if conn is None or _schema_note(conn):
+        return _ManifestTargets([], set(), set(), set(), set(), [])
+    return _resolve_read(conn, _read_manifest(conn), selector, ids)
+
+
 def _resolve_read(
     conn: sqlite3.Connection, m: _ManifestRead, selector: PurgeSelector, ids: set[tuple[str, str]]
 ) -> _ManifestTargets:
@@ -4060,6 +4079,41 @@ def new_start_purges(n: int) -> str:
     )
 
 
+SCHEMA_NOTE = (
+    "not judged yet: agentsync's state file is not yet at the schema this build reads (an upgrade the next "
+    "sync finishes), so this read does not say whether its file is listed or published again; it is judged "
+    "after the next sync"
+)
+"""Why the setup report's read-only split (:func:`partition_queue_ro`) keeps an ``upstream-deleted`` or
+``label-escalation`` entry over a manifest an older build left, which only a sync's open migrates (B13 round
+30 C394): never :func:`unjudged_note`'s "missing or unreadable", which no status line FAILs there."""
+
+BUSY_NOTE = (
+    "not judged this time: agentsync's state file changed while it was read (a sync is writing it), so this "
+    "read does not say whether its file is listed or published again; it is judged the next time"
+)
+"""Why :func:`partition_queue_ro` keeps such an entry when the manifest changed under every read
+(``manifest.ManifestBusyError``; C394)."""
+
+
+def schema_purges(n: int) -> str:
+    """``n`` :data:`SCHEMA_NOTE` entries, counted with agreement: judged after the next sync (C394)."""
+    waits, they = ("waits", "it is") if n == 1 else ("wait", "they are")
+    return (
+        f"{plural(n, 'queued purge')} {waits} for the next sync to bring agentsync's state file to this "
+        f"build's schema; {they} judged after it: run `{AGENTSYNC_BIN} sync`"
+    )
+
+
+def busy_purges(n: int) -> str:
+    """``n`` :data:`BUSY_NOTE` entries, counted with agreement: judged the next time (C394)."""
+    was, they = ("was", "it is") if n == 1 else ("were", "they are")
+    return (
+        f"{plural(n, 'queued purge')} {was} not judged this time: agentsync's state file changed while it "
+        f"was read (a sync is writing it); {they} judged the next time"
+    )
+
+
 UNRESOLVED_HEAD = "kept until its id is found: "
 """The first words of :func:`unresolved_note`, by which :func:`kept_lines` and the CLI count it."""
 
@@ -4430,51 +4484,24 @@ def partition_queue(
 ) -> QueueSplit:
     """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it
     keeps queued with why: an upstream deletion of a file the manifest lists again, or a label escalation of a
-    file the policy publishes again (:func:`_kept_why`, the rule the run itself applies).  Read-only, the
-    manifest is read once, and an entry the cycle queues (a source + id selector) is judged by lookup, so the
-    cost is rows + entries, not their product.  A manifest that is lost, not a file or unreadable keeps those
-    entries with :data:`UNJUDGED_NOTE`, never runnable (B13 round 26 E25: run blind, one erased a current
-    page and its history); and with the manifest lost ``purge`` refuses outright, so every other entry is kept
-    with that note too and nothing invites the run (ruling 14)."""
+    file the policy publishes again (:func:`_kept_why`, the rule the run itself applies).  It opens the
+    manifest read-write, as a ``Manifest`` does, so it may migrate it (the CLI, status, the loop and the
+    cycle); :func:`partition_queue_ro` is the same judge over a read that writes nothing (B13 round 30
+    ruling 36).  The manifest is read once, and an entry the cycle queues (a source + id selector) is judged
+    by lookup, so the cost is rows + entries, not their product.  A manifest that is lost, not a file or
+    unreadable keeps those entries with :data:`UNJUDGED_NOTE`, never runnable (B13 round 26 E25: run blind,
+    one erased a current page and its history); and with the manifest lost ``purge`` refuses outright, so
+    every other entry is kept with that note too and nothing invites the run (ruling 14)."""
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
     db = expand(state_paths.db)
-    if entries and manifest_lost(db):
-        return QueueSplit([], [(q, UNJUDGED_NOTE) for q in entries])
-    if all(q.reason not in KEPT_REASONS for q in entries):
-        return QueueSplit(entries, [])
-    if _unjudged(db):
-        return QueueSplit(*_unjudged_split(entries, unjudged_note(_unjudged_check(db))))
-    if not os.path.exists(db):  # noqa: PTH110 - the new start: judged by the next sync's manifest (P40)
-        return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
-    unprobed: list[QueuedPurge] = []
+    early = _queue_unopened(entries, db)
+    if early is not None:
+        return early
     try:
         Manifest(db).close()
         conn = _connect(db)
         try:
-            started = _first_run_started(conn)
-            if started is None:  # no sync has run over it: the new start's (B13 round 28 I61)
-                return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
-            m = _read_manifest(conn)
-            # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
-            # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
-            info = {(r["source_id"], r["stable_id"]): (r["state"], bool(r["is_dir"])) for r in m.rows}
-            state = {k: st for k, (st, _d) in info.items()}
-            whys: list[str] = []
-            for q in entries:
-                sel = q.selector
-                if q.reason in KEPT_REASONS and sel.source_id and sel.stable_id and not sel.docs_glob:
-                    why = _kept_note(
-                        q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current, q.aliases)
-                    )
-                    if not why and not any((sel.source_id, i) in info for i in (sel.stable_id, *q.aliases)):
-                        # no row under its id or a stored alias (a row: resolvable; P112, I109, C201, C102)
-                        after = _after_new_start(conn, m, q, started, config)
-                        if after == NOT_LOOKED_UP:
-                            unprobed.append(q)
-                        why = "" if after in (None, NOT_LOOKED_UP) else str(after)
-                    whys.append(why)
-                else:
-                    whys.append(_kept_why(conn, m, q, state, config=config))
+            return _judge_queue(conn, entries, config)
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error):
@@ -4487,6 +4514,145 @@ def partition_queue(
         )
         _SAID_UNJUDGED.add(key)
         return QueueSplit(*_unjudged_split(entries, unjudged_note(_unjudged_check(db))))
+
+
+def partition_queue_ro(
+    state_paths: StatePaths,
+    queue: Sequence[QueuedPurge] | None = None,
+    *,
+    config: Config | None = None,
+    timeout: float = 0.5,
+) -> QueueSplit:
+    """:func:`partition_queue` for a reader that must write nothing, the setup report (B13 round 30 ruling 36,
+    C394: one report run migrated the manifest, chmodded it 0600, switched it to WAL, cleared its converter
+    cache index and left a ``.pre-v1`` copy). The same early returns and the same judge, over
+    :func:`manifest.read_only_snapshot`, never a migration, and nothing is logged. What it cannot judge keeps
+    the judged entries with a note that is true of why (C394): :data:`SCHEMA_NOTE` for a manifest an older
+    build left, before the next sync migrates it, or one without a table a ``Manifest`` adds on open;
+    :data:`BUSY_NOTE` for one that changed under every read (a sync writing it); :func:`unjudged_note` for one
+    that read cannot open, at a newer schema, or that sqlite refuses (the FAIL status prints)."""
+    entries = pending_purges(state_paths.root) if queue is None else list(queue)
+    db = expand(state_paths.db)
+    early = _queue_unopened(entries, db)
+    if early is not None:
+        return early
+    note = ""
+    try:
+        conn = read_only_snapshot(db, timeout)
+        if conn is not None:
+            try:
+                conn.row_factory = sqlite3.Row
+                note = _schema_note(conn)
+                if not note:
+                    return _judge_queue(conn, entries, config)
+            finally:
+                conn.close()
+    except ManifestBusyError:
+        note = BUSY_NOTE
+    except (AgentSyncError, sqlite3.Error, OSError):
+        note = ""
+    if note not in (SCHEMA_NOTE, BUSY_NOTE):
+        note = unjudged_note(_unjudged_check(db))
+    return QueueSplit(*_unjudged_split(entries, note))
+
+
+def partition_purges_ro(
+    state_paths: StatePaths,
+    queue: Sequence[QueuedPurge] | None = None,
+    *,
+    config: Config | None = None,
+    timeout: float = 0.5,
+) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
+    """:func:`partition_queue_ro`'s runnable and kept entries, as :func:`partition_purges` gives
+    :func:`partition_queue`'s."""
+    split = partition_queue_ro(state_paths, queue, config=config, timeout=timeout)
+    return split.runnable, split.kept
+
+
+_JUDGED_TABLES = frozenset(
+    {
+        "meta",
+        "runs",
+        "sources",
+        "items",
+        "outputs",
+        "tombstones",
+        "item_aliases",
+        "redacted_items",
+        "run_changes",
+    }
+)
+"""The tables a manifest at :data:`MANIFEST_SCHEMA_VERSION` holds that :func:`_judge_queue` reads, or that a
+``Manifest`` adds on open (``_ensure_aliases``): without one, the read-only split does not judge."""
+
+
+def _schema_note(conn: sqlite3.Connection) -> str:
+    """ "" when ``conn``'s manifest is at this build's schema version with every table the judge reads, so a
+    read-only split judges it as a migrated one would; else why not: :data:`SCHEMA_NOTE` for an older version
+    or none stored (the next sync's open migrates it) or a table missing (that open creates it), and
+    :func:`unjudged_note` for a newer or unreadable version (``Manifest`` refuses it; status FAILs it). The
+    converter key schema is not checked: an older one only clears the cache index, which the judge never
+    reads."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    row = (
+        conn.execute("SELECT value FROM meta WHERE key = 'manifest_schema_version'").fetchone()
+        if "meta" in tables
+        else None
+    )
+    try:
+        version = 0 if row is None else int(str(row[0]))
+    except ValueError:
+        return UNJUDGED_NOTE
+    if version > MANIFEST_SCHEMA_VERSION:
+        return UNJUDGED_NOTE
+    if version < MANIFEST_SCHEMA_VERSION or not tables >= _JUDGED_TABLES:
+        return SCHEMA_NOTE
+    return ""
+
+
+def _queue_unopened(entries: list[QueuedPurge], db: Path) -> QueueSplit | None:
+    """The split :func:`partition_queue` and :func:`partition_queue_ro` give before any open: a lost manifest
+    keeps every entry, a queue with nothing to judge runs whole, a manifest that is not a file or not there
+    yet keeps the judged entries with why; None when the manifest must be read."""
+    if entries and manifest_lost(db):
+        return QueueSplit([], [(q, UNJUDGED_NOTE) for q in entries])
+    if all(q.reason not in KEPT_REASONS for q in entries):
+        return QueueSplit(entries, [])
+    if _unjudged(db):
+        return QueueSplit(*_unjudged_split(entries, unjudged_note(_unjudged_check(db))))
+    if not os.path.exists(db):  # noqa: PTH110 - the new start: judged by the next sync's manifest (P40)
+        return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
+    return None
+
+
+def _judge_queue(conn: sqlite3.Connection, entries: list[QueuedPurge], config: Config | None) -> QueueSplit:
+    """The one judge of :func:`partition_queue` and :func:`partition_queue_ro` over an open manifest
+    (``conn``, rows by name): it only reads. Raises what sqlite raises."""
+    started = _first_run_started(conn)
+    if started is None:  # no sync has run over it: the new start's (B13 round 28 I61)
+        return QueueSplit(*_unjudged_split(entries, NEW_START_NOTE))
+    m = _read_manifest(conn)
+    # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
+    # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
+    info = {(r["source_id"], r["stable_id"]): (r["state"], bool(r["is_dir"])) for r in m.rows}
+    state = {k: st for k, (st, _d) in info.items()}
+    unprobed: list[QueuedPurge] = []
+    whys: list[str] = []
+    for q in entries:
+        sel = q.selector
+        if q.reason in KEPT_REASONS and sel.source_id and sel.stable_id and not sel.docs_glob:
+            why = _kept_note(
+                q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current, q.aliases)
+            )
+            if not why and not any((sel.source_id, i) in info for i in (sel.stable_id, *q.aliases)):
+                # no row under its id or a stored alias (a row: resolvable; P112, I109, C201, C102)
+                after = _after_new_start(conn, m, q, started, config)
+                if after == NOT_LOOKED_UP:
+                    unprobed.append(q)
+                why = "" if after in (None, NOT_LOOKED_UP) else str(after)
+            whys.append(why)
+        else:
+            whys.append(_kept_why(conn, m, q, state, config=config))
     return QueueSplit(
         [q for q, why in zip(entries, whys, strict=True) if not why],
         [(q, why) for q, why in zip(entries, whys, strict=True) if why],
@@ -4549,7 +4715,7 @@ _UNJUDGED_CHECK = re.compile(r"until the (\S+) \[FAIL\] line is fixed$")
 
 
 def held_purges(
-    state_dir: Path, gov: GovernanceConfig, queued: Sequence[QueuedPurge]
+    state_dir: Path, gov: GovernanceConfig, queued: Sequence[QueuedPurge], *, read_only: bool = False
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, list[Hold]]]]:
     """``queued`` (the runnable entries of :func:`partition_purges`) split by the holds in force: the ones a
     ``purge --queue`` would run, and the ones a hold suspends, each with its holds. A hold on ``all`` holds
@@ -4557,26 +4723,42 @@ def held_purges(
     cycle's DLP shape), the holds on the sources it resolves to, read-only and as the purge seeds them, folder
     rows left out (B13 round 29 C205: under a hold on its one source it was invited, then refused); a manifest
     that cannot be read keeps it runnable, as before, and a held source's id found only in history stays a
-    known gap (B13 round 28 I91). Raises what :func:`active_holds` raises; the caller's hold-list-unread
-    branch comes first."""
+    known gap (B13 round 28 I91). ``read_only`` (the setup report) resolves through one
+    :func:`manifest.open_read_only` read per call and never migrates (B13 round 30 ruling 36, C394). Raises
+    what :func:`active_holds` raises; the caller's hold-list-unread branch comes first."""
     holds = active_holds(state_dir, gov)
     one_source = any(h.scope != HOLD_ALL for h in holds)
+    db = expand(state_dir) / "manifest.sqlite"
     runnable: list[QueuedPurge] = []
     held: list[tuple[QueuedPurge, list[Hold]]] = []
-    for q in queued:
-        sid = q.selector.source_id
-        sources = [sid] if sid else []
-        if not sid and one_source:
-            try:
-                mt = _resolve_manifest(expand(state_dir) / "manifest.sqlite", q.selector, _stored_ids(q))
-                sources = sorted({s for s, _i, _r, d in mt.items if not d} | {s for s, _ in mt.aliases})
-            except (AgentSyncError, sqlite3.Error):
-                sources = []
-        blocking = blocking_holds(holds, sources)
-        if blocking:
-            held.append((q, blocking))
-        else:
-            runnable.append(q)
+    conn: sqlite3.Connection | None = None
+    opened = False  # the one read-only read, at the first entry needing it; one that raised is not retried
+    try:
+        for q in queued:
+            sid = q.selector.source_id
+            sources = [sid] if sid else []
+            if not sid and one_source:
+                try:
+                    if not read_only:
+                        mt = _resolve_manifest(db, q.selector, _stored_ids(q))
+                    else:
+                        if not opened:
+                            opened = True
+                            conn = open_read_only(db, 0.5)
+                            if conn is not None:
+                                conn.row_factory = sqlite3.Row
+                        mt = _resolve_manifest_ro(conn, q.selector, _stored_ids(q))
+                    sources = sorted({s for s, _i, _r, d in mt.items if not d} | {s for s, _ in mt.aliases})
+                except (AgentSyncError, sqlite3.Error, OSError):
+                    sources = []
+            blocking = blocking_holds(holds, sources)
+            if blocking:
+                held.append((q, blocking))
+            else:
+                runnable.append(q)
+    finally:
+        if conn is not None:
+            conn.close()
     return runnable, held
 
 
@@ -4645,6 +4827,8 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
     26 E25; round 27 P40, P112, P118)."""
     unjudged = [why for _q, why in kept if _UNJUDGED_CHECK.search(why) and why.startswith("not judged: ")]
     new_start = sum(1 for _q, why in kept if why == NEW_START_NOTE)
+    schema = sum(1 for _q, why in kept if why == SCHEMA_NOTE)
+    busy = sum(1 for _q, why in kept if why == BUSY_NOTE)
     unresolved = sum(1 for _q, why in kept if why.startswith(UNRESOLVED_HEAD))
     # a source a sync will list, counted; one no sync lists, its own note with its by-hand purge (C201)
     unlisted = [why for _q, why in kept if why.startswith(UNLISTED_HEAD)]
@@ -4653,7 +4837,7 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
         (q, why)
         for q, why in kept
         if why not in unjudged
-        and why != NEW_START_NOTE
+        and why not in (NEW_START_NOTE, SCHEMA_NOTE, BUSY_NOTE)
         and not why.startswith(UNRESOLVED_HEAD)
         and not why.startswith(UNLISTED_HEAD)
     ]
@@ -4666,6 +4850,8 @@ def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
         *([kept_escalations(escalations)] if escalations else []),
         *([unjudged_purges(len(unjudged), check)] if unjudged else []),
         *([new_start_purges(new_start)] if new_start else []),
+        *([schema_purges(schema)] if schema else []),
+        *([busy_purges(busy)] if busy else []),
         *([unlisted_purges(len(unlisted) - len(never))] if len(unlisted) > len(never) else []),
         *sorted(set(never)),
         *([unresolved_purges(unresolved)] if unresolved else []),

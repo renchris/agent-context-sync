@@ -33692,6 +33692,49 @@ records. Tests: `test_cli.py`
 `test_a_refused_purge_covered_line_is_one_error_before_the_queue_is_rewritten`; `test_governance.py`
 `test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
 
+C394 (ruling 36): writing the setup report never writes the manifest. `governance.partition_queue` is now an opener
+(`Manifest(db)` and `_connect`, which may migrate, for the CLI, status, the loop and the cycle) over one judge,
+`_judge_queue`, behind the early returns both forms share (`_queue_unopened`: a lost manifest, nothing to judge, not a
+file, the new start). `partition_queue_ro(state_paths, queue=None, *, config=None, timeout=0.5) -> QueueSplit` and
+`partition_purges_ro(...) -> (runnable, kept)` run the same judge over `manifest.read_only_snapshot`, after
+`_schema_note` finds `manifest_schema_version` equal to this build's and every table the judge reads (with
+`item_aliases`, `redacted_items` and `run_changes`), never a migration, chmod, WAL switch, cache clear or `.pre-v`
+copy, and log nothing. What they cannot judge keeps the judged entries with a note true of why: an older version, none
+stored or a table missing (an upgrade before the next sync, whose open migrates it) `SCHEMA_NOTE`, "not judged yet:
+agentsync's state file is not yet at the schema this build reads (an upgrade the next sync finishes), so this read
+does not say whether its file is listed or published again; it is judged after the next sync"; a manifest that changed
+under every read (`manifest.ManifestBusyError`) `BUSY_NOTE`, "not judged this time: agentsync's state file changed
+while it was read (a sync is writing it), so this read does not say whether its file is listed or published again; it
+is judged the next time"; a newer or unreadable version, no connection or a sqlite error `unjudged_note`, whose
+"missing or unreadable ... until the <check> [FAIL] line is fixed" is true there. `kept_lines` counts each kind in its
+own line, `schema_purges(n)` ("1 queued purge waits for the next sync to bring agentsync's state file to this build's
+schema; it is judged after it: run `~/.local/bin/agentsync sync`") and `busy_purges(n)` ("1 queued purge was not
+judged this time: agentsync's state file changed while it was read (a sync is writing it); it is judged the next
+time"). The converter key schema is not checked: an older one only clears the cache index, which the judge never
+reads, so an older build's manifest is judged as a migrated one would be. `held_purges(..., read_only=True)` resolves
+its sourceless entries the same way (`_resolve_manifest_ro`) over one `open_read_only` read per call, not one per
+entry. `open_read_only` (now `read_only_snapshot`, with None for a busy manifest) changed on contact, by measurement:
+a `mode=ro` open of a writable WAL manifest with no -wal created an empty -wal and a 0600 -shm, any open that reads a
+-wal's frames writes its read mark into the -shm while `immutable=1` misses them, and `immutable=1` reads a hot
+rollback -journal's uncommitted pages (1867 of 2000 rows, measured). So with no -journal and no -wal or an empty one
+it reads `immutable=1`, and with -wal frames or a -journal it reads a private copy of the file and its side file, in a
+`.ro-copy-` folder beside it (`manifest.RO_COPY_PREFIX`, kept out of Time Machine, removed however the read ends; one
+a killed read left is removed by the next read after an hour), never the system's temporary folder; either read is
+backed up into memory (closed again if the backup raises) and the file, -wal and -journal are stat'ed again (size,
+mtime_ns): a change, or a side file gone before its copy, reads again, and three changes are `ManifestBusyError`. No
+reader of the state folder lists it (each opens its files by name). The report's callers (`_purge_split`,
+`_queue_held`, `_governance_kept_lines`) and the unchanged-bytes report tests are lane RA's. Tests:
+`test_governance.py` `test_partition_queue_ro_judges_as_partition_queue_does`,
+`test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged`,
+`test_partition_queue_ro_leaves_an_older_builds_manifest_as_it_was`,
+`test_partition_queue_ro_reads_a_running_syncs_wal_and_changes_no_side_file`,
+`test_partition_queue_ro_keeps_a_manifest_changing_under_every_read_busy`,
+`test_partition_queue_ro_reads_again_when_the_wal_goes_before_its_copy`,
+`test_read_only_snapshot_reads_again_when_the_file_changes_under_an_immutable_read`,
+`test_read_only_snapshot_rolls_back_an_older_builds_hot_journal`,
+`test_read_only_snapshot_copies_into_the_state_folder_and_leaves_no_copy`,
+`test_held_purges_read_only_opens_the_manifest_once`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

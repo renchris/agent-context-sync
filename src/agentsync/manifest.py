@@ -19,8 +19,10 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import sqlite3
 import stat
+import tempfile
 import time
 import unicodedata
 import urllib.parse
@@ -908,24 +910,147 @@ def lost_error(db_path: Path, lost: str) -> ManifestLostError:
     return ManifestLostError(f"{db_path} {lost}", code, reason=lost)
 
 
+class ManifestBusyError(Exception):
+    """:func:`read_only_snapshot`'s manifest, -wal or -journal changed under every try (a sync writing it), so
+    no read of one state was taken (B13 round 30 C394)."""
+
+
+RO_COPY_PREFIX = ".ro-copy-"
+"""The name a :func:`read_only_snapshot` private copy's folder starts with, in the manifest's own folder:
+never the system's temporary folder, where a killed run would leave a whole manifest behind (C394). No reader
+of the state folder lists it (each opens its files by name), and the next read removes one an hour old."""
+
+_RO_COPY_STALE = 3600.0
+"""Seconds after which a :data:`RO_COPY_PREFIX` folder is one a killed read left, removed by the next read."""
+
+_RO_TRIES = 3
+
+
 def open_read_only(db_path: Path, timeout: float) -> sqlite3.Connection | None:
-    """A read-only connection to the manifest at ``db_path`` that creates no file beside it, or None when
-    every such open would, or it is not there to read: a ``mode=ro`` open of a WAL database this account
-    cannot write creates its -wal and -shm with the file's own mode (0400; B13 round 20 X78, round 21 Y70).
-    With no -wal the file is the whole database, read ``immutable=1``, which creates nothing; with both side
-    files there, a plain ``mode=ro`` creates nothing; with a -wal and no -shm nothing is opened, as
-    ``doctor.manifest_unreadable`` skips it. A lost manifest (:func:`lost_words`) or one this account cannot
-    read is not opened. The same rule as ``setup_report._open_manifest_ro``, which the report keeps for its
-    own fallbacks."""
+    """:func:`read_only_snapshot`, or None when the manifest changed under every try too."""
+    try:
+        return read_only_snapshot(db_path, timeout)
+    except ManifestBusyError:
+        return None
+
+
+def read_only_snapshot(db_path: Path, timeout: float) -> sqlite3.Connection | None:
+    """An in-memory copy of the manifest at ``db_path``, taken without creating or changing any file beside
+    it, or None when it is not there to read. With no -journal and no -wal, or an empty one, the file is the
+    whole database, read ``immutable=1``, which creates nothing: a ``mode=ro`` open of a WAL database creates
+    its -wal and -shm, 0400 when this account cannot write it (B13 round 20 X78, round 21 Y70) and 0600 when
+    it can (measured, B13 round 30 ruling 36). A -wal that holds frames (a sync running, or one that died) or
+    a -journal (an older build's rollback, which ``immutable=1`` ignores) is read from a private copy of the
+    file and its side file in a :data:`RO_COPY_PREFIX` folder beside it: any open that reads a -wal's frames
+    writes its read mark into the -shm, and ``immutable=1`` misses them (measured, ruling 36). Either read is
+    backed up into memory, then the file and its side files are stat'ed again (size, mtime): a change (a
+    checkpoint, or a writer that just opened it and may checkpoint mid-read), or a side file gone before its
+    copy, reads again; :class:`ManifestBusyError` after three tries (C394). A lost manifest
+    (:func:`lost_words`) or one this account cannot read is not opened. Raises what sqlite raises for a file
+    that is no database, unchanged under the read. ``setup_report._open_manifest_ro`` keeps the older rule for
+    the report's own fallbacks."""
     if not db_path.is_file() or lost_words(db_path) is not None or not os.access(db_path, os.R_OK):
         return None
-    uri = f"file:{urllib.parse.quote(str(db_path))}?mode=ro"
-    if not os.access(db_path, os.R_OK | os.W_OK):
-        if not db_path.with_name(db_path.name + "-wal").exists():
-            uri += "&immutable=1"
-        elif not db_path.with_name(db_path.name + "-shm").exists():
+    _sweep_ro_copies(db_path.parent)
+    for _try in range(_RO_TRIES):
+        try:
+            before = _stamps(db_path)
+        except OSError:
             return None
-    return sqlite3.connect(uri, uri=True, timeout=timeout)
+        _db, wal, journal = before
+        try:
+            if journal is None and (wal is None or wal[0] == 0):
+                mem = _immutable_read(db_path, timeout)
+            else:
+                mem = _copy_read(db_path, timeout, wal is not None, journal is not None)
+        except FileNotFoundError:
+            continue  # a side file went between the stat and its copy (a checkpoint): read again
+        except sqlite3.DatabaseError:
+            if _stamps_or_none(db_path) == before:
+                raise
+            continue  # a torn read: the file changed under it
+        except OSError:
+            return None
+        if _stamps_or_none(db_path) == before:
+            return mem
+        mem.close()
+    raise ManifestBusyError(f"{db_path} changed under every read")
+
+
+_Stamp = tuple[int, int] | None
+
+
+def _stamps(db_path: Path) -> tuple[_Stamp, _Stamp, _Stamp]:
+    """(size, mtime_ns) of ``db_path``, its -wal and its -journal, None for a side file not there; raises the
+    OSError of a manifest that is not."""
+
+    def one(path: Path) -> _Stamp:
+        try:
+            st = path.stat()
+        except FileNotFoundError:
+            return None
+        return st.st_size, st.st_mtime_ns
+
+    st = db_path.stat()
+    wal, journal = (one(db_path.with_name(db_path.name + s)) for s in ("-wal", "-journal"))
+    return (st.st_size, st.st_mtime_ns), wal, journal
+
+
+def _stamps_or_none(db_path: Path) -> tuple[_Stamp, _Stamp, _Stamp] | None:
+    try:
+        return _stamps(db_path)
+    except OSError:
+        return None
+
+
+def _into_memory(src: sqlite3.Connection) -> sqlite3.Connection:
+    """``src`` backed up into a new in-memory database, closed again when the backup raises."""
+    mem = sqlite3.connect(":memory:")
+    try:
+        src.backup(mem)
+    except BaseException:
+        mem.close()
+        raise
+    return mem
+
+
+def _immutable_read(db_path: Path, timeout: float) -> sqlite3.Connection:
+    src = sqlite3.connect(
+        f"file:{urllib.parse.quote(str(db_path))}?mode=ro&immutable=1", uri=True, timeout=timeout
+    )
+    try:
+        return _into_memory(src)
+    finally:
+        src.close()
+
+
+def _copy_read(db_path: Path, timeout: float, wal: bool, journal: bool) -> sqlite3.Connection:
+    """The file and the side files it has, copied into a private :data:`RO_COPY_PREFIX` folder beside it (kept
+    out of Time Machine), opened there (sqlite replays the -wal, or rolls the -journal back, in the copy) and
+    backed up into memory; the folder is removed however that ends."""
+    with tempfile.TemporaryDirectory(prefix=RO_COPY_PREFIX, dir=db_path.parent) as tmp:
+        tm_exclude.exclude_new_file(Path(tmp))
+        copy = Path(tmp) / db_path.name
+        shutil.copyfile(db_path, copy)
+        for suffix, there in (("-wal", wal), ("-journal", journal)):
+            if there:
+                shutil.copyfile(db_path.with_name(db_path.name + suffix), copy.with_name(copy.name + suffix))
+        src = sqlite3.connect(copy, timeout=timeout)
+        try:
+            return _into_memory(src)
+        finally:
+            src.close()
+
+
+def _sweep_ro_copies(folder: Path) -> None:
+    """Remove each :data:`RO_COPY_PREFIX` folder in ``folder`` older than an hour: one a killed read left."""
+    cutoff = time.time() - _RO_COPY_STALE
+    with contextlib.suppress(OSError):
+        for path in folder.glob(RO_COPY_PREFIX + "*"):
+            with contextlib.suppress(OSError):
+                st = path.lstat()
+                if stat.S_ISDIR(st.st_mode) and st.st_mtime < cutoff:
+                    shutil.rmtree(path, ignore_errors=True)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:

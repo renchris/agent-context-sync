@@ -15,6 +15,7 @@ import secrets
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,6 +25,7 @@ import pytest
 
 from agentsync import gitops
 from agentsync import governance as gv
+from agentsync import manifest as manifest_mod
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import ConfigError
@@ -964,6 +966,415 @@ def test_partition_purges_costs_rows_plus_entries(world: World) -> None:
     elapsed = time.monotonic() - start
     assert (len(runnable), len(kept)) == (500, 500)  # an odd id is live, an even one a tombstone
     assert elapsed < 3.0, f"{elapsed:.2f} s"
+
+
+def _state_files(folder: Path) -> dict[str, tuple[str, int]]:
+    """Every file in ``folder`` by name: its bytes' sha256 and its mode."""
+    return {
+        p.name: (hashlib.sha256(p.read_bytes()).hexdigest(), p.stat().st_mode)
+        for p in sorted(folder.iterdir())
+        if p.is_file()
+    }
+
+
+def test_partition_queue_ro_judges_as_partition_queue_does(world: World) -> None:
+    """B13 round 30 ruling 36 (C394): the setup report's split is the writing split's one judge over a read
+    that writes nothing, so on a current manifest the two give the same answer, every branch of it, and the
+    read-only one leaves the at-rest WAL manifest with no -wal or -shm beside it."""
+    sp = world.config.state_paths
+    _add_items(
+        sp.db,
+        [("src", "R1", 0, "live"), ("src", "T0", 0, "tombstone"), ("src", "T1", 0, "live")],
+        [("src", "R0", "R1"), ("src", "T0", "T1")],
+    )
+    conn = sqlite3.connect(sp.db)
+    conn.execute("UPDATE runs SET started_at = '2026-09-01T00:00:00Z'")
+    conn.execute(
+        "INSERT INTO sources (source_id, kind, config_state, config_fingerprint, last_full_run_id) "
+        "VALUES ('listed', 'local', 'live', 'x', 3)"
+    )
+    conn.commit()
+    conn.close()
+    up, le = gv.PurgeReason.UPSTREAM_DELETED, gv.PurgeReason.LABEL_ESCALATION
+    old = "2026-08-01T00:00:00Z"  # before the manifest's first run: a new start
+    queue = [
+        gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id=i), r, NOW.isoformat())
+        for i in ("R0", "R1", "T0", "K1", "G1", "S1")
+        for r in (up, le)
+    ]
+    queue += [
+        gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id="NONE"), up, old),  # its source unlisted
+        gv.QueuedPurge(gv.PurgeSelector(source_id="listed", stable_id="NONE"), up, old),  # not looked up
+        gv.QueuedPurge(gv.PurgeSelector(source_id="listed", stable_id="GONE"), up, NOW.isoformat(), (), True),
+        gv.QueuedPurge(gv.PurgeSelector(stable_id="K1"), up, NOW.isoformat()),
+        gv.QueuedPurge(
+            gv.PurgeSelector(source_id="src", stable_id="K1"), gv.PurgeReason.ERASURE_REQUEST, old
+        ),
+    ]
+    want = gv.partition_queue(sp, queue, config=world.config)
+    assert want.runnable and want.not_looked_up
+    notes = [w for _q, w in want.kept]
+    assert any(w.startswith(gv.UNLISTED_HEAD) for w in notes)
+    assert any(w.startswith(gv.UNRESOLVED_HEAD) for w in notes)
+    assert any("under a later id" in w for w in notes)
+    before = _state_files(sp.db.parent)
+    assert not {sp.db.name + "-wal", sp.db.name + "-shm"} & before.keys()
+    assert gv.partition_queue_ro(sp, queue, config=world.config) == want
+    assert gv.partition_purges_ro(sp, queue, config=world.config) == (want.runnable, want.kept)
+    assert _state_files(sp.db.parent) == before
+
+
+def _older_schema(db: Path) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE meta SET value = '0' WHERE key = 'manifest_schema_version'")
+    conn.commit()
+    conn.close()
+
+
+def _newer_schema(db: Path) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE meta SET value = '99' WHERE key = 'manifest_schema_version'")
+    conn.commit()
+    conn.close()
+
+
+def _lost_table(db: Path) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE run_changes")
+    conn.commit()
+    conn.close()
+
+
+def _sqlite_error(db: Path) -> None:
+    conn = sqlite3.connect(db)  # every table there, a column the judge reads not: sqlite refuses its read
+    conn.execute("ALTER TABLE runs RENAME COLUMN started_at TO began_at")
+    conn.commit()
+    conn.close()
+
+
+def _unreadable(db: Path) -> None:
+    db.chmod(0o000)
+
+
+def _no_file(db: Path) -> None:
+    db.unlink()
+
+
+@pytest.mark.parametrize(
+    ("damage", "note"),
+    [
+        (_older_schema, gv.SCHEMA_NOTE),
+        (_lost_table, gv.SCHEMA_NOTE),
+        (_newer_schema, gv.UNJUDGED_NOTE),
+        (_sqlite_error, gv.UNJUDGED_NOTE),
+        (_unreadable, gv.unjudged_note("state_dir.files")),
+        (_no_file, gv.NEW_START_NOTE),
+    ],
+    ids=["older-schema", "missing-table", "newer-schema", "sqlite-error", "no-connection", "no-file"],
+)
+def test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged(world: World, damage: Any, note: str) -> None:
+    """Ruling 36 (C394): a manifest the read-only split cannot judge as a migrated one would (another schema
+    version, a table missing, a read sqlite refuses, no connection, no file) gives the unjudged split, never
+    an exception or a migration: the judged entries kept with why, a DLP, erasure or operator one runnable,
+    and the state folder as it was. The why is true of the case: an older schema or a table missing (an
+    upgrade before the next sync, whose open migrates it) is SCHEMA_NOTE, never "missing or unreadable",
+    which no status line FAILs there; a newer one, which ``Manifest`` refuses, is unjudged_note."""
+    if damage is _unreadable and os.geteuid() == 0:
+        pytest.skip("root reads a 0000 file")
+    sp = world.config.state_paths
+    up = gv.PurgeReason.UPSTREAM_DELETED
+    erase = gv.QueuedPurge(
+        gv.PurgeSelector(source_id="src", stable_id="K1"), gv.PurgeReason.ERASURE_REQUEST, ""
+    )
+    judged = [gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id=i), up, "") for i in ("K1", "G1")]
+    damage(sp.db)
+    before = sorted(p.name for p in sp.db.parent.iterdir())
+    raw = sp.db.read_bytes() if damage is not _unreadable and sp.db.exists() else b""
+    split = gv.partition_queue_ro(sp, [erase, *judged], config=world.config)
+    assert (split.runnable, split.kept, split.not_looked_up) == ([erase], [(q, note) for q in judged], [])
+    assert gv.partition_purges_ro(sp, [erase, *judged]) == ([erase], [(q, note) for q in judged])
+    assert sorted(p.name for p in sp.db.parent.iterdir()) == before
+    if raw:
+        assert sp.db.read_bytes() == raw
+
+
+def test_partition_queue_ro_leaves_an_older_builds_manifest_as_it_was(world: World) -> None:
+    """Ruling 36 (C394): one setup report run over a manifest an older build left (a rollback journal, mode
+    0644, an older converter key schema) chmodded it 0600, switched it to WAL, cleared its cache index and
+    left a .pre-v1 copy. The read-only split and the read-only hold split judge it, as the key schema is no
+    part of what they read, and leave the manifest byte for byte, with no -wal, -shm or .pre-v file; the
+    writing split, over the same files, migrates it."""
+    sp = world.config.state_paths
+    conn = sqlite3.connect(sp.db)
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    conn.commit()
+    conn.close()
+    sp.db.chmod(0o644)
+    gv.set_hold(sp.root, "src", reason="case 7", owner="Contoso legal")
+    up = gv.PurgeReason.UPSTREAM_DELETED
+    listed = gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id="K1"), up, "")
+    gone = gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id="G1"), up, "")
+    sourceless = gv.QueuedPurge(gv.PurgeSelector(stable_id="K1"), gv.PurgeReason.OPERATOR, "")
+    before = _state_files(sp.db.parent)
+    split = gv.partition_queue_ro(sp, [listed, gone, sourceless], config=world.config)
+    assert split.runnable == [gone, sourceless]
+    assert [q for q, _w in split.kept] == [listed] and "lists the file as live" in split.kept[0][1]
+    runnable, held = gv.held_purges(sp.root, gv.parse_governance({}), [sourceless], read_only=True)
+    assert runnable == [] and [q for q, _h in held] == [sourceless]  # resolved to src, read only
+    after = _state_files(sp.db.parent)
+    assert after == before
+    assert after[sp.db.name][1] & 0o777 == 0o644
+    assert not any(n.endswith(("-wal", "-shm")) or ".pre-v" in n for n in after)
+    gv.partition_queue(sp, [listed, gone], config=world.config)
+    assert _state_files(sp.db.parent) != before  # the writing open migrates, as the CLI's must
+
+
+def test_partition_queue_ro_reads_a_running_syncs_wal_and_changes_no_side_file(world: World) -> None:
+    """Ruling 36 (C394): with a sync's -wal holding frames, any open that reads them writes its read mark into
+    the -shm, and an ``immutable=1`` open misses them (measured). The read-only split reads a private copy:
+    it sees the row only the -wal holds, and the manifest, its -wal and its -shm stay byte for byte."""
+    sp = world.config.state_paths
+    writer = sqlite3.connect(sp.db, isolation_level=None)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("UPDATE items SET state = 'live' WHERE source_id = 'src' AND stable_id = 'G1'")
+        before = _state_files(sp.db.parent)
+        assert {sp.db.name + "-wal", sp.db.name + "-shm"} <= before.keys()
+        q = gv.QueuedPurge(
+            gv.PurgeSelector(source_id="src", stable_id="G1"), gv.PurgeReason.UPSTREAM_DELETED, ""
+        )
+        split = gv.partition_queue_ro(sp, [q], config=world.config)
+        assert _state_files(sp.db.parent) == before
+        assert [k for k, _w in split.kept] == [q]  # G1 is listed again only in the -wal
+    finally:
+        writer.close()
+
+
+def test_partition_queue_ro_keeps_a_manifest_changing_under_every_read_busy(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C394: a manifest that changed under every read (a sync writing it) is kept with BUSY_NOTE, judged the
+    next time, never unjudged_note's "missing or unreadable"; kept_lines counts it in those words."""
+    sp = world.config.state_paths
+    up = gv.PurgeReason.UPSTREAM_DELETED
+    q = gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id="K1"), up, "")
+    real = manifest_mod._stamps
+    seen = iter(range(100))
+
+    def moving(db: Path) -> Any:
+        size_mtime, wal, journal = real(db)
+        return (size_mtime[0], next(seen)), wal, journal  # a new mtime at every stat: a writer at work
+
+    monkeypatch.setattr(manifest_mod, "_stamps", moving)
+    split = gv.partition_queue_ro(sp, [q], config=world.config)
+    assert split.kept == [(q, gv.BUSY_NOTE)]
+    assert gv.kept_lines(split.kept) == [gv.busy_purges(1)]
+    assert gv.busy_purges(1) == (
+        "1 queued purge was not judged this time: agentsync's state file changed while it was read (a sync "
+        "is writing it); it is judged the next time"
+    )
+    assert gv.kept_lines([(q, gv.SCHEMA_NOTE)] * 2) == [gv.schema_purges(2)]
+    assert gv.schema_purges(2) == (
+        "2 queued purges wait for the next sync to bring agentsync's state file to this build's schema; they "
+        "are judged after it: run `~/.local/bin/agentsync sync`"
+    )
+
+
+def test_partition_queue_ro_reads_again_when_the_wal_goes_before_its_copy(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C394: a -wal with frames that a checkpoint removes between the stat and its copy is read again, now
+    ``immutable=1`` over the checkpointed file, and judged: never kept as "missing or unreadable"."""
+    sp = world.config.state_paths
+    writer = _wal_with_frames(sp.db)
+    real = manifest_mod._copy_read
+    calls: list[int] = []
+
+    def checkpointed_first(db: Path, timeout: float, wal: bool, journal: bool) -> sqlite3.Connection:
+        calls.append(1)
+        if len(calls) == 1:
+            writer.close()  # the last connection's close checkpoints the -wal into the file and removes it
+            assert not db.with_name(db.name + "-wal").exists()
+            raise FileNotFoundError(db.with_name(db.name + "-wal"))
+        return real(db, timeout, wal, journal)
+
+    monkeypatch.setattr(manifest_mod, "_copy_read", checkpointed_first)
+    q = gv.QueuedPurge(gv.PurgeSelector(source_id="src", stable_id="G1"), gv.PurgeReason.UPSTREAM_DELETED, "")
+    split = gv.partition_queue_ro(sp, [q], config=world.config)
+    assert calls == [1]  # the second read went immutable, not through a copy
+    assert [k for k, _w in split.kept] == [q] and "lists the file as live" in split.kept[0][1]
+
+
+def test_read_only_snapshot_reads_again_when_the_file_changes_under_an_immutable_read(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C394: with no -wal or an empty one (a writer just opened it) the read is ``immutable=1``, which a
+    checkpoint mid-read tears; the file's size and mtime are read again after the read, and a change reads
+    again, so the answer is the file as it is after the change, never the torn or the older one."""
+    sp = world.config.state_paths
+    sp.db.with_name(sp.db.name + "-wal").write_bytes(b"")
+    real = manifest_mod._immutable_read
+    calls: list[int] = []
+
+    def changed_after_first(db: Path, timeout: float) -> sqlite3.Connection:
+        mem = real(db, timeout)
+        calls.append(1)
+        if len(calls) == 1:  # a writer's checkpoint lands in the file mid-read
+            conn = sqlite3.connect(db)
+            conn.execute("UPDATE items SET state = 'live' WHERE source_id = 'src' AND stable_id = 'G1'")
+            conn.commit()
+            conn.close()
+            st = db.stat()
+            os.utime(db, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+        return mem
+
+    monkeypatch.setattr(manifest_mod, "_immutable_read", changed_after_first)
+    conn = manifest_mod.read_only_snapshot(sp.db, 0.5)
+    assert conn is not None
+    try:
+        got = conn.execute("SELECT state FROM items WHERE source_id = 'src' AND stable_id = 'G1'").fetchone()
+    finally:
+        conn.close()
+    assert len(calls) == 2 and got == ("live",)
+
+
+def test_read_only_snapshot_rolls_back_an_older_builds_hot_journal(world: World) -> None:
+    """C394: ``immutable=1`` ignores a hot rollback -journal an older build left mid-write, and reads pages a
+    transaction never committed (measured: 1867 of 2000 rows). The read takes the copy path, where sqlite
+    rolls the -journal back, and the manifest and its -journal stay byte for byte."""
+    sp = world.config.state_paths
+    writer = sqlite3.connect(sp.db, isolation_level=None)
+    try:
+        writer.execute("PRAGMA journal_mode=DELETE")
+        writer.execute("BEGIN")
+        writer.executemany(
+            "INSERT INTO meta (key, value) VALUES (?, 'old')", ((f"filler-{n}",) for n in range(2000))
+        )
+        writer.execute("COMMIT")
+        writer.execute("PRAGMA cache_size=1")  # every dirty page spills into the file before the commit
+        writer.execute("BEGIN")
+        writer.execute("UPDATE meta SET value = 'new' WHERE key LIKE 'filler-%'")
+        assert sp.db.with_name(sp.db.name + "-journal").exists()
+        imm = sqlite3.connect(f"file:{sp.db}?mode=ro&immutable=1", uri=True)
+        try:
+            torn = imm.execute("SELECT count(*) FROM meta WHERE value = 'new'").fetchone()[0]
+        finally:
+            imm.close()
+        assert torn  # what immutable=1 reads: rows no commit made
+        before = _state_files(sp.db.parent)
+        conn = manifest_mod.read_only_snapshot(sp.db, 0.5)
+        assert conn is not None
+        try:
+            assert conn.execute("SELECT count(*) FROM meta WHERE value = 'new'").fetchone() == (0,)
+            assert conn.execute("SELECT count(*) FROM meta WHERE value = 'old'").fetchone() == (2000,)
+        finally:
+            conn.close()
+        assert _state_files(sp.db.parent) == before
+    finally:
+        writer.execute("ROLLBACK")
+        writer.close()
+
+
+def _wal_with_frames(db: Path) -> sqlite3.Connection:
+    writer = sqlite3.connect(db, isolation_level=None)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("PRAGMA wal_autocheckpoint=0")
+    writer.execute("UPDATE items SET state = 'live' WHERE source_id = 'src' AND stable_id = 'G1'")
+    return writer
+
+
+def test_read_only_snapshot_copies_into_the_state_folder_and_leaves_no_copy(
+    world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C394: the private copy of a manifest with -wal frames is made in a ``.ro-copy-`` folder beside it,
+    never the system's temporary folder (where a killed run leaves a whole manifest), and is gone after the
+    read, also when the backup into memory raises, which closes the in-memory database it opened; a copy
+    folder a killed read left over an hour ago is removed by the next read, a newer one is not."""
+    sp = world.config.state_paths
+    system_tmp = tmp_path / "system-tmp"
+    system_tmp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_tmp))
+    stale = sp.db.parent / ".ro-copy-killed"
+    (stale / "inner").mkdir(parents=True)
+    old = time.time() - 7200
+    os.utime(stale, (old, old))
+    fresh = sp.db.parent / ".ro-copy-running"
+    fresh.mkdir()
+    writer = _wal_with_frames(sp.db)
+    try:
+        during: list[list[str]] = []
+        real = manifest_mod._into_memory
+
+        def watched(src: sqlite3.Connection) -> sqlite3.Connection:
+            during.append(sorted(p.name for p in sp.db.parent.glob(".ro-copy-*") if p != fresh))
+            return real(src)
+
+        monkeypatch.setattr(manifest_mod, "_into_memory", watched)
+        conn = manifest_mod.read_only_snapshot(sp.db, 0.5)
+        assert conn is not None
+        conn.close()
+        assert len(during) == 1 and len(during[0]) == 1  # one copy folder, in the state folder
+        assert not stale.exists() and fresh.is_dir()
+        assert sorted(p.name for p in sp.db.parent.glob(".ro-copy-*")) == [fresh.name]
+        assert list(system_tmp.iterdir()) == []
+
+        monkeypatch.setattr(manifest_mod, "_into_memory", real)
+        opened: list[sqlite3.Connection] = []
+
+        class Refusing:
+            def __init__(self, conn: sqlite3.Connection) -> None:
+                self.conn = conn
+
+            def backup(self, target: sqlite3.Connection) -> None:
+                raise sqlite3.OperationalError("disk I/O error")
+
+            def close(self) -> None:
+                self.conn.close()
+
+        real_connect = sqlite3.connect
+
+        def connect(target: Any, *args: Any, **kwargs: Any) -> Any:
+            conn = real_connect(target, *args, **kwargs)
+            if target == ":memory:":
+                opened.append(conn)
+                return conn
+            return Refusing(conn)
+
+        monkeypatch.setattr(manifest_mod.sqlite3, "connect", connect)
+        with pytest.raises(sqlite3.OperationalError):
+            manifest_mod.read_only_snapshot(sp.db, 0.5)
+        monkeypatch.setattr(manifest_mod.sqlite3, "connect", real_connect)
+        assert sorted(p.name for p in sp.db.parent.glob(".ro-copy-*")) == [fresh.name]
+        assert opened
+        for mem in opened:
+            with pytest.raises(sqlite3.ProgrammingError):  # closed
+                mem.execute("SELECT 1")
+    finally:
+        writer.close()
+
+
+def test_held_purges_read_only_opens_the_manifest_once(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C394: held_purges(read_only=True) resolves every sourceless entry over one read-only read of the
+    manifest, never one open (and, with -wal frames, one whole copy) per entry."""
+    sp = world.config.state_paths
+    gv.set_hold(sp.root, "src", reason="case 7", owner="Contoso legal")
+    real = gv.open_read_only
+    opens: list[Path] = []
+
+    def counted(db: Path, timeout: float) -> sqlite3.Connection | None:
+        opens.append(db)
+        return real(db, timeout)
+
+    monkeypatch.setattr(gv, "open_read_only", counted)
+    queued = [
+        gv.QueuedPurge(gv.PurgeSelector(stable_id=i), gv.PurgeReason.OPERATOR, "")
+        for i in ("K1", "S1", "NONE")
+    ]
+    runnable, held = gv.held_purges(sp.root, gv.parse_governance({}), queued, read_only=True)
+    assert len(opens) == 1
+    assert [q for q, _h in held] == queued[:2] and runnable == queued[2:]
 
 
 def test_purge_works_on_a_sha256_repo(tmp_path: Path, tmp_state_dir: Path) -> None:
