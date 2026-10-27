@@ -10253,12 +10253,14 @@ link, and the link named as status names it. Never the link's target."""
 
 
 _STATE_LOST_UNREAD_THEN = (
-    "the person restores the file or moves heartbeat.json aside, measures them (see Doctor's "
+    "the person restores the file, or moves heartbeat.json aside, measures them (see Doctor's "
     "state_dir.manifest line)"
 )
 """What a report written after measures over a lost manifest beside a heartbeat.json that cannot be read and
 has no fix of its own (damaged JSON, a fifo, a link, another owner, an ACL): the person's two moves, never a
-heartbeat step first, as doctor's heartbeat warn has no fix (B13 round 29 ruling 30: C105, C138, C134)."""
+heartbeat step first, as doctor's heartbeat warn has no fix (B13 round 29 ruling 30: C105, C138, C134). The
+second move between a pair of commas, as :data:`_STATE_LOST_EVIDENCE` has it, so the comma before "measures"
+closes a pair in the plain form and in the link form's ``, and ...`` alike (B13 round 30 C307, C323)."""
 _STATE_LOST_UNREAD_CHMOD_THEN = (
     "the agent's chmod 600 of heartbeat.json (see Doctor's heartbeat line), and the person decides if the "
     "manifest is still lost then, measures them (see Doctor's state_dir.manifest line)"

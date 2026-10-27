@@ -32397,6 +32397,8 @@ names. The guide (`docs/deploy/setup-feedback.md`) quotes both forms. Tests:
 `test_a_lost_manifest_beside_a_heartbeat_its_mode_refuses_keeps_the_agents_chmod_first`,
 `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`, the unread row of the config-step words
 table, and `test_the_guide_gives_the_reports_step_2_state_outcomes`.
+Amended 2026-10-26, §16.203 C307: the evidence reads `the person restores the file, or moves heartbeat.json aside,
+measures them`, the second move between a pair of commas.
 
 **The OCR part says "converted page"** (C134's first half; amends §16.86 L5, §16.28 and §16.48). With a deck's
 stub page in Quarantine, the OCR part said `- no deck (.pptx) ... file has a page`: its query counts only files
@@ -33250,6 +33252,17 @@ file that is there (the B16 unit test's lost line, a stop no read stands behind,
 The stop's own words (what stopped it) still take the kind read now first, else the recorded one, as `_stop_which`
 does. Test: `test_an_unmeasured_lost_stop_takes_its_not_measured_cause_from_the_read_now_c341` (a file and a link
 to one, two attempts).
+
+C307 (2026-10-26): **the lost-unread evidence line's comma closes a pair** (C307 with C323; amends §16.198). Over a
+lost manifest beside a heartbeat.json that cannot be read, the evidence read `a report written after the person
+restores the file or moves heartbeat.json aside, measures them`: one comma between the subject and its verb, with
+nothing for it to pair with. Dropping it, as C323's finder asked, would leave the link form (`after the person
+removes or re-points the link, and the person restores ...`) with an `, and` that opens a pair nothing closes, and
+the seven sibling templates already close a pair with that comma. So `_STATE_LOST_UNREAD_THEN` alone now puts the
+second move between a pair of commas, as `_STATE_LOST_EVIDENCE` does: `the person restores the file, or moves
+heartbeat.json aside, measures them`; the other templates are unchanged. Test:
+`test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so` checks the plain form's literal words and the
+link form's.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

@@ -15879,6 +15879,17 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
         f'- evidence: {lost} lines at the end of Status say "manifest: missing": '
         f"{setup_report._STATE_LOST_UNREAD_EVIDENCE}"
     ), summary
+    # B13 round 30 C307, C323: the second move between a pair of commas, never one lone comma before the verb
+    assert _line(summary, "- evidence: ").endswith(
+        "a report written after the person restores the file, or moves heartbeat.json aside, measures them "
+        "(see Doctor's state_dir.manifest line)"
+    ), summary
+    run = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    run.facts.lost_link = True  # the link form: its ", and" opens the pair the same comma closes
+    assert setup_report._unread_evidence(run).endswith(
+        "after the person removes or re-points the link, and the person restores the file, or moves "
+        "heartbeat.json aside, measures them (see Doctor's state_dir.manifest line)"
+    ), setup_report._unread_evidence(run)
     assert _line(section(text, "Environment"), "- secret scan: ").endswith(
         "last re-screen: not read (the manifest is missing and heartbeat.json cannot be read; the person "
         "decides: see Doctor's state_dir.manifest line)"
