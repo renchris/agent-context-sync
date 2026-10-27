@@ -34425,3 +34425,17 @@ suppression list or purge queue that lost a purge the audit trail records logs `
 `kind=lost-list` (`cli.LOST_LIST_KIND`), which the row's kind list and role list lacked. Test:
 `test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record`, which reads the roles from `_stop_role`'s
 source, checks that each role the row lists is one it gives, and reads the kind from `cli.LOST_LIST_KIND`.
+
+**The records page names the page's id and the queued id apart** (C378, ruling 43; `docs/deploy/data-governance.md`).
+The lost manifest bullet's by-hand purge took `id=<its id>`, "the id in the page's front matter", and its forget
+took the same `id=<its id>`. For an entry `kept until its id is found` the two always differ: `run_purge_queue` marks
+it so only after a dry purge seeded with the queued id and its stored aliases reaches nothing, and that purge
+matches history pages by their front matter's `stable_id`. `forget_queued` matches the queued selector, so the
+page's id gets `no queued purge of id=...` and nothing is written. Built after lane B's 8514d5bc5 (C371), on its
+words: the by-hand purge takes `id=<the page's id>`, the forget `id=<the queued id>`, and the bullet says the queued
+id is not the page's and to copy the command from the entry's `note:` line in `agentsync purge --queue --dry-run`,
+which `unresolved_note` fills in with the queued id, the dry run's note too. Not built here, as the verifier left
+them apart: the same rename in `governance.unresolved_purges`, `setup_report._NO_TRACE_RUN` and the guide's Purge
+queue row. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`, which pins both ids and the
+pointer, refuses `id=<its id>` in the bullet, and reads the filled-in forget from `unresolved_note` with and without
+`dry_run`.

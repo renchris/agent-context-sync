@@ -7325,19 +7325,27 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
     assert "a run takes off the queue only what history names" in bullet
     by_hand = "purge id=<its id> --source <its source>"
     for reason in governance.KEPT_REASONS:  # each entry's own reason, never one fixed one (B13 round 29 C193)
-        note = governance.unresolved_note(
-            governance.QueuedPurge(
-                selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
-                reason=reason,
-                enqueued_at="2026-10-25T00:00:00Z",
-            )
+        queued = governance.QueuedPurge(
+            selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+            reason=reason,
+            enqueued_at="2026-10-25T00:00:00Z",
         )
-        assert f"{by_hand} --reason {reason.value}`" in note, note
-        assert "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
-        assert "purge --queue --forget id=contoso-volume:0042 --source contoso`" in note, note
+        for dry_run in (False, True):  # the dry run's note too, which the page points to (B13 round 30 C378)
+            note = governance.unresolved_note(queued, dry_run=dry_run)
+            assert f"{by_hand} --reason {reason.value}`" in note, note
+            assert "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
+            assert "purge --queue --forget id=contoso-volume:0042 --source contoso`" in note, note
     assert "`git log --all --name-only -- mirror/<source>/`" in bullet
-    assert f"`agentsync {by_hand} --reason <its reason> --dry-run`" in bullet
-    assert "`agentsync purge --queue --forget id=<its id> --source <its source>` takes it off" in bullet
+    # the page's id and the queued id are named apart: they differ for an entry kept until it is found (C378)
+    page_id = "`agentsync purge id=<the page's id> --source <its source> --reason <its reason> --dry-run`"
+    assert page_id in bullet
+    forget = "`agentsync purge --queue --forget id=<the queued id> --source <its source>` takes it off"
+    assert forget in bullet
+    assert (
+        "The queued id is not the page's id: copy this command from the entry's `note:` line in"
+        " `agentsync purge --queue --dry-run`, which prints it with the queued id filled in." in bullet
+    )
+    assert "id=<its id>" not in bullet
     assert (
         "`agentsync purge docs=<page path> --reason <its reason>`" in bullet
         and "is the last resort" in bullet

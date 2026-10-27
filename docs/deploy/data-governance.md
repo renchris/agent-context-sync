@@ -81,15 +81,17 @@ is a copy that no purge reaches, so exclude it too.
   looks for each entry's id in the docs history and runs the entry once it finds one; a run takes off the queue
   only what history names, and an entry whose id reaches nothing stays queued, `kept until its id is found`. To
   erase such a page by hand, find it with `git log --all --name-only -- mirror/<source>/` in the docs repo,
-  preview `agentsync purge id=<its id> --source <its source> --reason <its reason> --dry-run` with the id in the
-  page's front matter and the entry's own reason, the one `agentsync purge --queue --dry-run` shows for it
+  preview `agentsync purge id=<the page's id> --source <its source> --reason <its reason> --dry-run` with the id
+  in the page's front matter and the entry's own reason, the one `agentsync purge --queue --dry-run` shows for it
   (`upstream-deleted` leaves the file free to sync again if it comes back, `label-escalation` keeps it out), then
   run it without `--dry-run`; `agentsync purge docs=<page path> --reason <its reason>`, which erases every page
   ever at that path, a live one too, is the last resort. The entry stays queued after either: once a run of
   `agentsync purge --queue` (not `--dry-run`, which records nothing) has kept it and no page is left,
-  `agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, with an audit line, and
-  nothing else does. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27
-  P111; B13 round 28 I92, I93; B13 round 29 C193, C173, C189, C201; B13 round 30 C371).
+  `agentsync purge --queue --forget id=<the queued id> --source <its source>` takes it off, with an audit line,
+  and nothing else does. The queued id is not the page's id: copy this command from the entry's `note:` line in
+  `agentsync purge --queue --dry-run`, which prints it with the queued id filled in. `agentsync hold` and its
+  release still work (B13 round 26 E25, ruling 14; B13 round 27 P111; B13 round 28 I92, I93; B13 round 29 C193,
+  C173, C189, C201; B13 round 30 C371, C378).
 - **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
   `no longer holds` a purge the audit trail records `as queued and not done`, each named
   `<reason> at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back from a
