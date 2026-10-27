@@ -33850,6 +33850,14 @@ print), and `loop.next_step` takes no new flag, since STATE.md shares `count_que
 `test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it` (the sync keeps `LOST_HOLD_WAIT`; status's wait names
 no status, is `LOST_HOLD_WAIT_STATUS` and comes before the `[FAIL] governance.hold` line).
 
+C358 (ruling 43): `purge --queue --forget` refuses a kind it never takes by that reason. A DLP, erasure or operator
+entry was refused as one `a queue run has not looked it up`, though no run marks such an entry `found_nothing`.
+`forget_queued` now picks, of one selector's entries, a marked kept one, else any kept one, else the first, so a DLP
+entry beside an unmarked upstream deletion of the same id never says the id can never be forgotten (the verifier's
+case), and refuses a kind outside `KEPT_REASONS` with `not forgotten: a <reason> entry stays queued: --forget takes
+only an upstream-deleted or label-escalation entry a queue run found nothing for; ... purge --queue runs it` (`an`
+before a reason that opens with a vowel). Test: `test_forget_refuses_a_kind_it_never_takes_by_that_reason`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

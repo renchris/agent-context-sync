@@ -10794,6 +10794,41 @@ def test_forget_refuses_an_entry_a_run_has_not_found_nothing_for(
     )
 
 
+def test_forget_refuses_a_kind_it_never_takes_by_that_reason(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C358 (ruling 43): a DLP, erasure or operator entry was refused as one "a queue run has not
+    looked up", though no run ever makes it one --forget takes. It is refused by its kind; beside an
+    upstream deletion of the same id, the refusal is the upstream deletion's, never "never"."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    never = "--forget takes only an upstream-deleted or label-escalation entry"
+    for n, reason in enumerate(
+        (
+            governance.PurgeReason.DLP_REMEDIATION,
+            governance.PurgeReason.ERASURE_REQUEST,
+            governance.PurgeReason.OPERATOR,
+        )
+    ):
+        sel = governance.PurgeSelector(stable_id=f"contoso-volume:held-004{n}", source_id="source")
+        assert governance.enqueue_purge(root, sel, reason)
+        queued = governance.pending_purges(root)
+        capsys.readouterr()
+        argv = ["purge", "--queue", "--forget", f"id={sel.stable_id}", "--source", "source", "--config", cfg]
+        assert cli.main(argv) == cli.EXIT_FAILED, reason
+        err = capsys.readouterr().err
+        a = "a" if reason is governance.PurgeReason.DLP_REMEDIATION else "an"
+        assert f"not forgotten: {a} {reason.value} entry stays queued: {never}" in err, err
+        assert "has not looked it up" not in err and governance.pending_purges(root) == queued
+    both = governance.PurgeSelector(stable_id="contoso-volume:held-0040", source_id="source")
+    governance.enqueue_purge(root, both, governance.PurgeReason.UPSTREAM_DELETED)
+    capsys.readouterr()
+    argv = ["purge", "--queue", "--forget", f"id={both.stable_id}", "--source", "source", "--config", cfg]
+    assert cli.main(argv) == cli.EXIT_FAILED
+    err = capsys.readouterr().err
+    assert never not in err and "not forgotten: stays queued: " in err, err
+
+
 def test_a_by_hand_purge_the_cli_prints_carries_the_entrys_own_reason() -> None:
     """B13 round 29 C193: the by-hand purge in the notes had no --reason (the default, operator, suppresses
     an upstream deletion's file) or a fixed upstream-deleted (which lets a label-escalation file sync back).

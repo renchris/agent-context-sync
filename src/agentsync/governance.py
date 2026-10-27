@@ -4954,7 +4954,8 @@ def forget_queued(
     ``label-escalation`` entry a queue run looked up and found nothing for (``found_nothing``), with a
     ``purge-forgotten`` audit line, under the writer lock; a refused audit trail drops nothing (A79).
     ``dry_run`` says what it would take off and writes nothing. Any other entry is refused with why it stays
-    queued: a 0-item VERIFIED purge is P112's blind run and drops nothing, so this audited act is the only way
+    queued, a DLP, erasure or operator entry by its kind, which no run makes one this takes (B13 round 30
+    C358): a 0-item VERIFIED purge is P112's blind run and drops nothing, so this audited act is the only way
     off for an entry whose id history names nothing (B13 round 29 C173, C189; ruling 26)."""
     sp = config.state_paths
     if not (selector.source_id and selector.stable_id):
@@ -4967,9 +4968,19 @@ def forget_queued(
                 f"no queued purge of id={selector.stable_id} --source {selector.source_id}; "
                 f"`{AGENTSYNC_BIN} purge --queue --dry-run` lists the queue"
             )
-        # of entries of one selector, the one this act may take off first (the review's case of two reasons)
-        q = next((e for e in found if e.reason in KEPT_REASONS and e.found_nothing), found[0])
-        if q.reason not in KEPT_REASONS or not q.found_nothing:
+        # of entries of one selector, the one this act may take off first (the review's case of two reasons),
+        # else a kind it takes, so a DLP entry beside it never says the selector can never be forgotten (C358)
+        q = next((e for e in found if e.reason in KEPT_REASONS and e.found_nothing), None) or next(
+            (e for e in found if e.reason in KEPT_REASONS), found[0]
+        )
+        if q.reason not in KEPT_REASONS:
+            a = "an" if q.reason.value[0] in "aeiou" else "a"
+            raise GovernanceError(
+                f"not forgotten: {a} {q.reason.value} entry stays queued: --forget takes only an "
+                "upstream-deleted or label-escalation entry a queue run found nothing for; "
+                f"`{AGENTSYNC_BIN} purge --queue` runs it"
+            )
+        if not q.found_nothing:
             why = _kept_queued(sp.db, q, config) or (
                 "stays queued: a queue run has not looked it up and found nothing for it; "
                 f"`{AGENTSYNC_BIN} purge --queue` runs it"
