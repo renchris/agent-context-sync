@@ -17320,6 +17320,62 @@ def test_a_lost_hold_and_a_held_queue_have_their_own_buckets(
         assert secret not in text, secret
 
 
+def test_a_lost_manifests_evidence_moves_round_28s_hold_record_first_c351(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C351 (lane B's ruling 34): the lost manifest's evidence told the person to move
+    heartbeat.json aside, while a round 28 Mac's hold record still lives there with no hold-record.json yet,
+    so the move took the record with it. While it does, the clause leads with doctor's own one sync first
+    (``doctor.round28_first``), as Doctor's fix does; once hold-record.json is there, or with no round 28
+    list, or a doctor without the helper, it reads as before."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    root, db = expand(config.state_paths.root), expand(config.state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    governance.hold_record_file(root).unlink(missing_ok=True)
+    beat = expand(config.state_paths.heartbeat)
+    data = json.loads(beat.read_text(encoding="utf-8"))
+    beat.write_text(json.dumps({**data, governance.HOLD_RECORD_KEY: ["all"]}), encoding="utf-8")
+    assert manifest_mod.manifest_lost(db) and governance.round28_pending(root)
+    plain = setup_report._STATE_LOST_EVIDENCE
+    moves = plain.partition(": a report written after ")[2]
+    led = doctor.round28_first(root, moves)
+    assert led != moves and "heartbeat.json to hold-record.json" in led, led
+
+    def evidence() -> str:
+        _rc, text, _ = report(tmp_path, cfg)
+        line = _line(section(text, "Summary"), "- evidence: ")
+        assert line.count('"manifest: missing": ') == 1, line
+        return line.partition('"manifest: missing": ')[2]
+
+    said = evidence()
+    assert said == plain.replace(moves, led), said
+    assert said.startswith(
+        "not measured, as the state file is missing though heartbeat.json records earlier passes: a report "
+        "written after the person runs `"
+    ), said
+    [fail] = [c for c in cli._status_checks(config) if c.name == "state_dir.manifest" and not c.ok]
+    assert led.partition("; then ")[0] in str(fail.fix), fail.fix  # Doctor's fix and the evidence agree
+    with monkeypatch.context() as m:  # an installed doctor without the helper: today's words
+        m.delattr(doctor, "round28_first")
+        assert evidence() == plain
+    beat.write_text(json.dumps(data), encoding="utf-8")  # no round 28 list: as before
+    assert evidence() == plain
+    beat.write_text(json.dumps({**data, governance.HOLD_RECORD_KEY: ["all"]}), encoding="utf-8")
+    governance.hold_record_file(root).write_text('{"holds": ["all"]}', encoding="utf-8")  # moved already
+    assert evidence() == plain
+
+
 def _held_and_queued(fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     """A synced state with a hold set (so hold-record.json is written) and a queued purge (so
     purge-record.json is): its config path and state folder."""

@@ -28958,6 +28958,8 @@ Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced` (the OCR line once).
 Amended 2026-10-26, §16.203 C332: `_last_rescreen` says `not read (the manifest is missing, but heartbeat.json
 records earlier passes; the person decides: see Doctor's state_dir.manifest line)`, doctor's words.
+Amended 2026-10-26, §16.203 C351: while heartbeat.json still keeps round 28's hold record and no hold-record.json
+is there, the evidence line's moves begin with doctor's `round28_first` lead, the person's one sync first.
 
 **Lane B's words are matched through their source** (B56, B102). `_STATE_LOST`, the report's hand copy of
 `manifest.LOST_MANIFEST` that `_state_open_words` matches in the sync's `error: state:` line, had no test tying
@@ -33422,6 +33424,18 @@ in lane B's record wait, `not run while the hold record cannot be read`, as it t
 written in lane B's words, ahead of its C349 and C367),
 `test_each_fail_of_a_shared_check_sits_by_the_file_it_names_c385` and
 `test_a_sync_stop_on_either_record_names_it_whatever_its_kind_c347`.
+
+C351 (2026-10-26): **a lost manifest's evidence keeps round 28's hold record** (C351's report half; ruling 34,
+lane B's C351 with C352; amends §16.171). The evidence line over a lost manifest told the person to restore it or
+move heartbeat.json aside, in every form (missing, a link into a folder that is gone, a link to nothing, too
+short). On a round 28 Mac whose hold record still lives in heartbeat.json, with no hold-record.json yet, that
+move took the record with it, the hold dropped. While `governance.round28_pending` holds, the clause after `a
+report written after` now takes doctor's own words, by a lazy import of `doctor.round28_first`: ``the person runs
+`~/.local/bin/agentsync sync` once first, which moves round 28's hold record from heartbeat.json to
+hold-record.json before it stops on the manifest; then restores it, or moves heartbeat.json aside ...``, so the
+evidence and Doctor's state_dir.manifest fix say one thing. Once hold-record.json is there, with no round 28
+list, over a heartbeat.json that cannot be read, or with an installed doctor that lacks the helper, the words are
+as before. Test: `test_a_lost_manifests_evidence_moves_round_28s_hold_record_first_c351`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

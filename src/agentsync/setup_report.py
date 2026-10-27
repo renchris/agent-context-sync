@@ -10381,6 +10381,29 @@ _STATE_LOST_SHORT_EVIDENCE = (
 damaged manifest's (``doctor.MANIFEST_FIX``), both files aside, never heartbeat.json alone."""
 
 
+_WRITTEN_AFTER = ": a report written after "
+"""Where each lost-manifest evidence clause's moves begin (:data:`_STATE_LOST_EVIDENCE` and its forms)."""
+
+
+def _round28_first(r: _Run, evidence: str) -> str:
+    """``evidence``, a lost-manifest clause whose moves take heartbeat.json aside, with the person's one sync
+    first while heartbeat.json still keeps round 28's hold record (``doctor.round28_first``, lane B's C351;
+    ruling 34): that sync moves the record to hold-record.json before it stops on the manifest, where the
+    move aside alone took the record with it. Doctor's own words, by a lazy import, so the evidence and
+    Doctor's fix agree; today's words when the installed doctor lacks it, a read fails, or the clause has no
+    person's move (B13 round 30 C351)."""
+    head, sep, moves = evidence.partition(_WRITTEN_AFTER)
+    if r.config is None or not sep or not moves.startswith("the person "):
+        return evidence
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        first = doctor.round28_first
+        return head + sep + str(first(expand(r.config.state_paths.root), moves))
+    except Exception:
+        return evidence
+
+
 def _unread_evidence(r: _Run) -> str:
     """:data:`_STATE_LOST_EVIDENCE` for :data:`_LOST_MANIFEST_UNREAD_LINE` lines, over a heartbeat.json that
     cannot be read (B13 round 28 ruling 21: I1, I28, I41, I53, I64, I76): never "records earlier passes"; its
@@ -10422,20 +10445,23 @@ def _evidence_line(r: _Run) -> str:
         return "- evidence: not read (the Status section's parts need a config that loads)"
     lost = r.facts.evidence_lost
     # B13 round 24 ruling 7: the parts a lost manifest kept from being read were not measured, said first
+    clause = (
+        _unread_evidence(r)
+        if r.facts.lost_unread  # B13 round 28 ruling 21; round 29 ruling 30
+        else _STATE_LOST_SHORT_EVIDENCE
+        if r.facts.lost_short  # lane B's I92: the damaged manifest's fix, both files aside
+        else _STATE_LOST_LINK_EVIDENCE
+        if r.facts.lost_link
+        else _STATE_LOST_DANGLING_EVIDENCE
+        if r.facts.lost_dangling
+        else _STATE_LOST_EVIDENCE
+    )
     said_lost = (
         f"{_plural(lost, 'line')} at the end of Status {'says' if lost == 1 else 'say'} "
         + ('"manifest: empty or too short": ' if r.facts.lost_short else '"manifest: missing": ')
-        + (
-            _unread_evidence(r)
-            if r.facts.lost_unread  # B13 round 28 ruling 21; round 29 ruling 30
-            else _STATE_LOST_SHORT_EVIDENCE
-            if r.facts.lost_short  # lane B's I92: the damaged manifest's fix, both files aside
-            else _STATE_LOST_LINK_EVIDENCE
-            if r.facts.lost_link
-            else _STATE_LOST_DANGLING_EVIDENCE
-            if r.facts.lost_dangling
-            else _STATE_LOST_EVIDENCE
-        )
+        # B13 round 30 C351: round 28's hold record moved first while heartbeat.json has it; read only over a
+        # lost manifest's lines, so no other evidence line reads the state folder
+        + (_round28_first(r, clause) if lost else clause)
     )
     # B13 round 27 P26: a new start's lines were not measured either, and only the next sync measures them; a
     # lost manifest is caught before them, so the two never stand together
