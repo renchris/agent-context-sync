@@ -32446,6 +32446,10 @@ Tests: `test_a_lost_links_words_name_the_link_first_in_doctors_words`, the pins 
 `test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`,
 `test_a_step_3_stop_on_a_lost_manifest_link_names_the_link` and
 `test_the_guide_gives_the_reports_step_2_state_outcomes`.
+Amended 2026-10-26, §16.203 C374: a link can be short. The lost links these words name are links to nothing, so
+they are never the short kind and `_LINK_LOST` has no short key; a link to a regular file under 100 bytes is judged
+as that file (§16.200 C202), so beside earlier passes it is lost-short and reads in the plain short words, with no
+link form.
 
 **The Every run table says a stopped closing status** (C135; amends §16.189 P14, beside I27's line). Round 28's I27 read
 install.log's `closing_status=` into the report step's row and the Summary, but the Installer section's Every run
@@ -33274,6 +33278,15 @@ folded kinds with stubs once, builds the clause from them and sums only their co
 one folded kind has one stub. The counts, the list and each kind's own line are unchanged. Test:
 `test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325` (a converted `.potx`, a stubbed `.potx` and a
 stubbed `.pptx`).
+
+C374 (2026-10-26): **a link can be short** (C374 with C399 and C407; amends §16.198 C110). §16.198 and the
+`_LINK_LOST` docstring said a link is never short because lost_words judges a link by whether its target exists.
+Since lane B's C202 (ruling 29), lost_words follows a link, and a link to a regular file under 100 bytes beside
+earlier passes is lost-short, as that file is. The report was right all along: its link-first words serve only a
+link to nothing (`_lost_link_kind` keys on doctor's dangling target), which is never short, and a link to a short
+file gets no link kind and reads in the plain short words. Only the stated reason was wrong; the docstring now
+gives the real one, and §16.198 carries a dated line. Test:
+`test_a_lost_manifest_that_is_a_link_to_a_short_file_reads_as_the_short_file_c374`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

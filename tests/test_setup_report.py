@@ -16749,6 +16749,32 @@ def test_a_link_target_only_the_runs_own_text_names_is_redacted(
     assert setup_report._said_link_targets([f"{db} is a symlink to {backup}"])[0] == backup
 
 
+def test_a_lost_manifest_that_is_a_link_to_a_short_file_reads_as_the_short_file_c374(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 30 C374 (C399, C407): a link can be short. Since lane B's C202, lost_words follows a link,
+    so a link to a regular file under 100 bytes beside earlier passes is lost-short as that file; it takes no
+    link kind, so no link words, and reads in the plain short words. _LINK_LOST serves only a link to
+    nothing, which is never short; the stale reason "a link is never short" is gone from the report."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    db = expand(config.state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    short = tmp_path / "short.sqlite"
+    short.write_bytes(b"SQLite")
+    db.symlink_to(short)
+    assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY
+    assert setup_report._manifest_lost_kind(config) == "short"
+    assert setup_report._lost_link_kind(config) == ""
+    assert set(setup_report._LINK_LOST) == {"records", "unread"}
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    assert "a link is never short" not in source
+
+
 def test_a_lost_links_words_name_the_link_first_in_doctors_words() -> None:
     """B13 round 29 C110, C154: the report said "missing though heartbeat.json records earlier passes, and is
     a link into a folder ...", which reads as heartbeat.json being the link, while doctor's FAIL, the sync's

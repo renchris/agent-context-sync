@@ -10223,8 +10223,11 @@ _LINK_LOST_UNREAD = (
 """:data:`_LINK_LOST_RECORDS` beside a heartbeat.json that cannot be read (``manifest.
 LOST_MANIFEST_UNREAD``)."""
 _LINK_LOST = {"records": _LINK_LOST_RECORDS, "unread": _LINK_LOST_UNREAD}
-"""The manifest's words after its link, by :func:`_manifest_lost_kind` (a link is never short: lost_words
-judges a link by whether its target exists)."""
+"""The manifest's words after its link, by :func:`_manifest_lost_kind`. Only a link to nothing reaches them
+(:func:`_lost_link_kind` keys on ``doctor.dangling_target`` and ``doctor.dangling_into_unusable``), and
+lost_words never calls a link to nothing short, so there is no short key. A link to a regular file shorter
+than ``manifest.MANIFEST_MIN_BYTES`` is short (B13 round 29 C202): lost_words judges it as that file, and it
+reads as the short manifest with no link words (B13 round 30 C374, C399, C407)."""
 
 
 _STATE_LOST_EVIDENCE = (
