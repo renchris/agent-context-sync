@@ -33814,6 +33814,20 @@ stays (C333: an empty, readable hold record does not prove no hold was ever set,
 effort); the shorter form still waits for C126's strict judge in both readers. install.sh's copy (`put`) is lane RB's. Test:
 `test_cli.py` `test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold`.
 
+C324 (ruling 42): when the hold record can be read and names a scope, the governance folder's fix says a folder was
+kept and asks for it back first, naming no scope: `... from wherever it was moved or from a copy (a governance folder
+was kept: hold-record.json names a hold); only if no copy is left, moves <gov> aside, keeping a copy (a hold set
+earlier stays in force from hold-record.json's record; if a hold was ever set here that it does not name, the person
+checks with the records owner and sets it again, before any purge; ...`. The records owner's clause stays in that
+branch too, naming no scope: `record_holds` is best effort, so the record can miss a hold on all, and a person who
+followed the fix with no copy left only the named scope in force (the review of C324). The move aside is never
+dropped; an absent, empty or unreadable record keeps today's `only where none was ever kept` and the records owner's
+clause. On contact a damaged hold record beside a governance/ that is a file recursed without end (the record's fix
+read the hold list, whose error's words read the record again); `_record_rewritten` reads no hold list in a
+governance/ that is not a folder. Test: `test_governance.py`
+`test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_move_aside` (the records owner's clause
+in all four cases).
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

@@ -609,10 +609,18 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
         # never a bare move aside: the hold list and the audit trail live in it, and a governance/ moved
         # aside read as no holds, so a page under a hold on all was erased (B13 round 28 I89)
         detail = f"{path} is {kind}, not a folder: {role} belongs there"
+        # a hold record that reads and names a hold answers "was one ever kept": it was, so the folder is
+        # asked back first, by no scope, and the move aside stays the way out (B13 round 30 C324; ruling 42)
+        record = _hold_record_shown(path.parent)
+        kept = (
+            f" (a governance folder was kept: {record} names a hold); only if no copy is left, moves"
+            if _record_names_a_hold(path.parent)
+            else "; only where none was ever kept, moves"
+        )
         return detail, (
             "the person puts the real governance folder (the one holding holds.json and audit.jsonl) back "
-            f"at {shown}, from wherever it was moved or from a copy; only where none was ever kept, moves "
-            f"{shown} aside, keeping a copy {_record_keeps(path.parent)}"
+            f"at {shown}, from wherever it was moved or from a copy{kept} {shown} aside, keeping a copy "
+            f"{_record_keeps(path.parent)}"
         )
     detail = f"{path} is {kind}, not a file: {role} belongs there"  # no bracket before "(fix:" (E18)
     # a folder shut to this account takes its chmod (or the person's chown) first: macOS refuses its move
@@ -643,9 +651,14 @@ under a hold on all (B13 round 30 C382; ruling 34)."""
 def _record_rewritten(state_dir: Path) -> str:
     """The hold record's fix tail: the next hold, release or sync writes it again, said only when the hold
     list or the audit trail names a hold for it to be written from (B13 round 30 C382)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
     named = bool(audit_holds(state_dir)[0])
-    with contextlib.suppress(AgentSyncError):  # a hold list that cannot be read names none
-        named = named or bool(_state_holds(state_dir))
+    # no hold list in a governance/ that is not a folder: its error's words read this record again, which
+    # recursed without end over a damaged record (B13 round 30 C324's test)
+    if doctor.governance_dir_kind(governance_dir(state_dir)) is None:
+        with contextlib.suppress(AgentSyncError):  # a hold list that cannot be read names none
+            named = named or bool(_state_holds(state_dir))
     if not named:
         return ""
     return "; the next hold, release or sync writes it again from the hold list and the audit trail"
@@ -662,19 +675,30 @@ def _purges_rewritten(state_dir: Path) -> str:
     )
 
 
+def _record_names_a_hold(state_dir: Path) -> bool:
+    """Whether the hold record can be read and names a scope (:func:`recorded_hold_scopes`); False when it is
+    absent, empty or cannot be read, which never answers whether a hold was kept (C324)."""
+    try:
+        return bool(recorded_hold_scopes(state_dir))
+    except AgentSyncError:
+        return False
+
+
 def _record_keeps(state_dir: Path) -> str:
     """The governance folder fix's last clause: a hold stays in force from the hold record only when that
     record is there and names a scope, by the file that keeps it (hold-record.json, or heartbeat.json's round
-    28 list until a writing command moves it: C352); else the holds set earlier go with the folder, and the
-    person asks the records owner before any purge (B13 round 29 C199: the clause was said with no record
+    28 list until a writing command moves it: C352), with the records owner asked of any hold it does not
+    name, since its write is best effort (C324's review); else the holds set earlier go with the folder, and
+    the person asks the records owner before any purge (B13 round 29 C199: the clause was said with no record
     left, and the page under a hold on all was erased). Then the purges: kept out from the purge record when
     it names one, else lost with the folder and run again by hand (B13 round 30 C381; ruling 34)."""
-    try:
-        named = recorded_hold_scopes(state_dir)
-    except AgentSyncError:
-        named = frozenset()
-    if named:
-        holds = f"(a hold set earlier stays in force from {_hold_record_shown(state_dir)}'s record"
+    if _record_names_a_hold(state_dir):
+        # best effort (record_holds), so it can miss one: the records owner's clause stays, by no scope (C324)
+        holds = (
+            f"(a hold set earlier stays in force from {_hold_record_shown(state_dir)}'s record; if a hold "
+            "was ever set here that it does not name, the person checks with the records owner and sets it "
+            "again, before any purge"
+        )
     else:
         holds = (
             "(no hold record names a hold, so a hold set earlier is lost with the folder: the person checks "

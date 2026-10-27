@@ -33,6 +33,7 @@ from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.graph import auth
 from agentsync.manifest import Manifest, TombstoneRow
 from agentsync.model import PageStatus
+from agentsync.ops import doctor
 from agentsync.ops.launchd import plist_path
 from agentsync.publish import render_tombstone
 from agentsync.text import plural
@@ -2405,3 +2406,37 @@ def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_s
     gv.record_purges(state)
     assert [r["selector_sha256"] for r in gv.recorded_purges(state)] == kept
     assert [r["selector_sha256"] for r in gv.lost_queued(state)] == [first.fingerprint()]
+
+
+@pytest.mark.parametrize("record", ['{"holds": ["contoso-alpha"]}', '{"holds": []}', None, "{"])
+def test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_move_aside(
+    tmp_path: Path, record: str | None
+) -> None:
+    """B13 round 30 C324 (ruling 42): with a hold record that names a scope, the governance folder's fix
+    still said "only where none was ever kept", a condition the record answers. It says a folder was kept,
+    by no scope, and keeps the move aside as the way out; an empty, missing or unreadable record keeps
+    today's words and the records owner's clause."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    if record is not None:
+        gv.hold_record_file(state).write_text(record, encoding="utf-8")
+    gov = gv.governance_dir(state)
+    gov.write_text("not a folder\n", encoding="utf-8")
+    err = gv.governance_not_a_file(state)
+    assert err is not None
+    shown = f"moves {doctor._shell_path(gov)} aside, keeping a copy ("
+    assert shown in err.fix, err.fix
+    # the record's write is best effort, so it can miss a hold on all: the records owner is asked always
+    assert "the records owner" in err.fix and "before any purge" in err.fix, err.fix
+    if record == '{"holds": ["contoso-alpha"]}':
+        kept = "a copy (a governance folder was kept: hold-record.json names a hold); only if no copy is left"
+        assert kept in err.fix and "contoso-alpha" not in err.fix, err.fix
+        assert "only where none was ever kept" not in err.fix, err.fix
+        owner = (
+            "hold-record.json's record; if a hold was ever set here that it does not name, the person checks "
+            "with the records owner and sets it again, before any purge"
+        )
+        assert owner in err.fix, err.fix
+    else:
+        assert "from a copy; only where none was ever kept, moves " in err.fix, err.fix
+        assert "the person checks with the records owner, and sets each hold again" in err.fix, err.fix
