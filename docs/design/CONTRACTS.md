@@ -34415,3 +34415,13 @@ both landed, in their words: the row's retry sentence takes the clause where the
 starts`, and a sentence before Quarantine by reason gives the note, its three outcomes and that the sync says the same
 in its `an older build gave up on` notes. Test: `test_the_repeat_conversions_row_gives_the_path_re_read`, which reads
 the clause, the note's label and its three verbs from `_repeat_part`.
+
+**The guide's sync-stops.log row names the hold record and the purge record by their roles** (C367, the guide's
+half; ruling 41; `docs/deploy/setup-feedback.md`). Lane B's b9fc9eb55 gives `<state>/hold-record.json` the stop role
+`hold-record` and `<state>/purge-record.json` (ruling 34's purge record) `purge-record`, where both fell through to
+`state-folder` over a state folder that was fine. Built after it landed, the row's role list carries both and says
+they are named as themselves, never `state-folder`. Lane B's ruling 40 kind is in the row too: a sync stopped on a
+suppression list or purge queue that lost a purge the audit trail records logs `file=governance` with
+`kind=lost-list` (`cli.LOST_LIST_KIND`), which the row's kind list and role list lacked. Test:
+`test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record`, which reads the roles from `_stop_role`'s
+source, checks that each role the row lists is one it gives, and reads the kind from `cli.LOST_LIST_KIND`.

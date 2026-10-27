@@ -9522,6 +9522,32 @@ def test_the_value_row_names_both_reports_that_cut_a_holds_reason() -> None:
     )
 
 
+def test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record() -> None:
+    """B13 round 30 C367 (ruling 41): since lane B's b9fc9eb55 a sync that stopped on the hold record or
+    the purge record logs `file=hold-record` or `file=purge-record`, where both fell through to
+    `state-folder`. The guide's sync-stops.log row listed `manifest`, `lock`, `heartbeat`, `state-folder`.
+    It lists both new roles, read from `_stop_role`'s source, and every role it lists is one it gives;
+    and ruling 40's `kind=lost-list` (`cli.LOST_LIST_KIND`) on `file=governance`, which it lacked too."""
+    from agentsync import cli  # noqa: PLC0415
+
+    source = inspect.getsource(cli._stop_role)
+    given = set(re.findall(r'\): "([a-z-]+)",', source))
+    given |= set(re.findall(r'(?:return|else) "([a-z-]+)"', source))
+    assert {"hold-record", "purge-record", "manifest", "lock", "heartbeat", "state-folder"} <= given, given
+    page = _feedback_page()
+    [row] = [ln for ln in page.splitlines() if ln.startswith("| `~/agent-context/setup/sync-stops.log` |")]
+    [listed] = re.findall(r"the state file or folder by its role \(([^;]+), \.\.\.;", row)
+    roles = re.findall(r"`([a-z-]+)`", listed)
+    assert {"hold-record", "purge-record"} <= set(roles), roles
+    assert set(roles) <= given, set(roles) - given
+    assert "the hold record and the purge record by their own names, never `state-folder`" in row
+    # ruling 40's stop kind: a governance list that lost a purge, recorded on `file=governance`
+    [kinds] = re.findall(r"kind=<([^>]+)>`", row)
+    assert cli.LOST_LIST_KIND in kinds.split("|"), kinds
+    assert f"`kind={cli.LOST_LIST_KIND}` (`cli.LOST_LIST_KIND`, with `file=governance`," in row
+    assert "is a suppression list or purge queue that lost a purge the audit trail records" in row
+
+
 def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error() -> None:
     """B13 round 24 B80: since round 23 A9 a step 3 sync that stopped on agentsync's own state leaves a
     `sync-stops.log` line, and one a later sync ended ok after is a "worked with help" reason; since A36 an
@@ -9539,7 +9565,7 @@ def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error
         template.replace("<UTC>", "2026-10-23T10:00:00Z")
         .replace("<role>", "manifest")
         .replace("<agent|person>", "agent")
-        .replace("<refused|misplaced|lost>", "refused")
+        .replace("<refused|misplaced|lost|lost-list>", "refused")
     )
     assert setup_report._SYNC_STOP_RE.match(sample), sample
     assert "`cli.SYNC_STOPS_LOG`" in row and "0600" in row and "no `run=` word" in row
