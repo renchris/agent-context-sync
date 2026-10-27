@@ -33578,6 +33578,12 @@ generic one. `_SPLIT_RE` still reads R and K from a line with the new clause, on
 has the row. Test: `test_a_label_it_cannot_read_is_its_own_quarantine_class_c326`, and the class's two reasons
 in the mapping test's cases.
 
+C357 (2026-10-26): **the held heads are held_words' own** (lane B's C357). Lane B removed
+`governance.HELD_HEAD` and builds `held_words` inline, so `_HELD_HEADS`, which put a queue warn whose every entry
+waits on a hold with the hold, named a name that is gone. Its words are unchanged; its docstring names what
+`held_words` prints, and a test builds the words for a hold set by command and for the config's hold and finds
+one of `_HELD_HEADS` in each. Test: `test_the_held_heads_are_held_words_own_for_a_scope_and_a_config_hold_c357`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

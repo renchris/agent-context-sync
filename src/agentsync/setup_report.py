@@ -13378,8 +13378,10 @@ _HELD_WORDS = "waiting on a legal or records hold"
 held_words``): its records owner's release comes first, never a WAITING ON YOU (B13 round 29 ruling 27, C108,
 C147, C208)."""
 _HELD_HEADS = (" on the hold on ", " on the hold set in sources.toml's [governance]", " on the hold above; ")
-"""``governance.held_words``' fixed words after its count (``HELD_HEAD`` and its config form, lane B's round
-29 ruling 32), and round 28's, which an older doctor prints."""
+"""``governance.held_words``' fixed words after its count: ``on the hold on <scope>`` for a hold set by
+command and ``on the hold set in sources.toml's [governance]`` for the config's (lane B's round 29 ruling 32;
+lane B named the first ``HELD_HEAD`` until round 30, and now builds it inline, so a test builds both from
+``held_words``: C357), and round 28's ``on the hold above; ``, which an older doctor prints."""
 _HOLD_LOST_WAIT = "not run while a hold the hold list lost is in force"
 """Doctor's governance.purge_queue words when the hold list lost a hold (``governance.HOLD_LOST_WAIT``, lane
 B's round 29 ruling 27), as :data:`_HOLD_UNREAD_WAIT` when it cannot be read; a test keeps it equal to the

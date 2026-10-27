@@ -300,6 +300,18 @@ def test_a_credential_stubs_alarm_names_no_page_in_the_report(
     assert split is not None and split.groups() == ("2", "0", "1", "1"), split
 
 
+def test_the_held_heads_are_held_words_own_for_a_scope_and_a_config_hold_c357() -> None:
+    """B13 round 30 C357: lane B dropped ``governance.HELD_HEAD`` and builds ``held_words`` inline, so the
+    report's ``_HELD_HEADS`` are pinned to what it prints: for a hold set by command and for the config's
+    hold, one of them is in its words, which is how the queue warn joins the held bucket."""
+    for hold in (
+        governance.Hold("all", "Fabrikam matter", "Avery Quill", "2026-10-26T09:30:00Z", "state"),
+        governance.Hold("all", "Fabrikam matter", "Avery Quill", "", "config"),
+    ):
+        said = governance.held_words([(None, [hold])])  # type: ignore[list-item]
+        assert any(h in said for h in setup_report._HELD_HEADS), said
+
+
 def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
     """B13 round 30 C326 (lane B's sync line counts a label rule's refusal of a label it cannot read apart
     from K): the report's class for such a stub is ``label unreadable``, after ``label policy``, by lane B's
