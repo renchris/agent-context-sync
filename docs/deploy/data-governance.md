@@ -89,13 +89,28 @@ is a copy that no purge reaches, so exclude it too.
   left, `agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, with an audit line,
   and nothing else does. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27
   P111; B13 round 28 I92, I93; B13 round 29 C193, C173, C189, C201).
+- **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
+  `no longer holds` a purge the audit trail records `as queued and not done`, each named
+  `<reason> at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back from a
+  copy you trust. With no copy, run each purge by hand with what the FAIL names for it: for a purge by id the
+  manifest still names, the exact `agentsync purge id=<id> --source <source> --reason <reason>`, its id rebuilt
+  from the manifest (the audit trail keeps only the selector's hash, never its text); for one it cannot rebuild,
+  the id is the `stable_id:` line of the page's front matter in the docs repo's history
+  (`git log --all -p -- mirror/<source>/`) while no purge has erased the page, and a `path=` or `docs=` purge
+  clears it only when it erases that id; for a glob, the glob comes from your own records, and only a purge of
+  the same kind and source clears it. Preview first: `agentsync purge <selector> --dry-run` says of each lost
+  purge `this purge clears it` or `this purge does not clear it`, and `agentsync purge --queue --dry-run` names
+  each one after its summary. A verified hand purge that erases the item a lost purge by id named clears it too,
+  unless its own reason is `upstream-deleted` and the lost purge's is not (B13 round 29 C172; B13 round 30 C370,
+  C312, C350, C389).
 - **Over a lost suppression list:** while `agentsync status` FAILs `governance.suppressed` because suppressed.json
   `no longer lists what` a purge the audit trail records suppressed (an item, its source-path glob or a content
   hash), the sync refuses. The erased items stay out by their id and path from the audit trail. Put suppressed.json
   back from a copy you trust. With no copy, preview `agentsync purge --accept-lost <at> --dry-run`, `<at>` being the
   time status names beside the purge's reason, then run it without `--dry-run`: it writes one
   `suppression-lost-accepted` audit line and clears that purge's record only. It gives up that purge's guard
-  against a copy of its content under another name, while its items stay out by their id and path. A purge run
+  against a copy of its content under another name and, for a purge by a source-path glob the list no longer
+  holds, its guard against a new file under that glob, while its items stay out by their id and path. A purge run
   again by hand clears its record only when it is verified and finds the content again; one that finds nothing,
   because the first purge erased it, clears nothing (B13 round 29 C172; B13 round 30 C383, C402, C401, C344).
 
