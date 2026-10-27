@@ -33858,6 +33858,23 @@ case), and refuses a kind outside `KEPT_REASONS` with `not forgotten: a <reason>
 only an upstream-deleted or label-escalation entry a queue run found nothing for; ... purge --queue runs it` (`an`
 before a reason that opens with a vowel). Test: `test_forget_refuses_a_kind_it_never_takes_by_that_reason`.
 
+C371 (ruling 43): the dry run stays read-only, and its note and forget's refusal say that only `purge --queue`
+itself looks an entry up. A preview that found nothing for an entry's id printed `unresolved_note`, ending in a
+`purge --queue --forget` that `forget_queued` then refused, since only a run's `_write_queue` saves `found_nothing`.
+`unresolved_note(q, dry_run=True)` and `unresolved_purges(n, dry_run=True)` (the counted WARNING) are what a preview
+prints for an entry it found nothing for and no run has marked: `... only <bin> purge --queue itself looks an entry
+up for --forget (its --dry-run records nothing): once it has kept this entry and no page is left, <bin> purge --queue
+--forget id=<id> --source <src> takes this entry off, with an audit line`; an entry a run already marked keeps the
+run's words. Forget's refusal of an unmarked kept entry reads `stays queued: no run of <bin> purge --queue has looked
+it up and found nothing for it, and only that run itself looks an entry up for --forget (its --dry-run records
+nothing); <bin> purge --queue looks it up, and runs it if its id reaches a page`. The guide's Purge queue row and data-governance.md say the same (`its
+--dry-run shows the result but records nothing`; `once a run of agentsync purge --queue (not --dry-run, which records
+nothing) has kept it`). Not built, by the lead's ruling: the verifier's optional `--forget` that runs its own probe;
+saving `found_nothing` from a dry run is refused, as a preview would become an authorizing step. Tests:
+`test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up` (manifest, queue and audit
+trail the same bytes after the preview; the refusal, then the run, then the forget),
+`test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verified` (each run's own note).
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

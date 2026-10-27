@@ -4202,7 +4202,7 @@ UNRESOLVED_HEAD = "kept until its id is found: "
 """The first words of :func:`unresolved_note`, by which :func:`kept_lines` and the CLI count it."""
 
 
-def unresolved_note(q: QueuedPurge) -> str:
+def unresolved_note(q: QueuedPurge, *, dry_run: bool = False) -> str:
     """Why the queue keeps an ``upstream-deleted`` or ``label-escalation`` entry when the current manifest
     holds nothing for its source, id and stored aliases (no row, page, tombstone or alias): queued before a
     new start replaced the manifest that named it, or found by the queue's own run to reach nothing in the
@@ -4211,8 +4211,17 @@ def unresolved_note(q: QueuedPurge) -> str:
     27 P112; ruling 17).  ``purge --queue`` looks for its id in history and runs it once it finds one (B13
     round 28 I93).  By hand, a purge by the page's own id keeps another file's live page at that path; a
     purge by the path erases every page ever there, a restored file's live page too, so it is the last
-    resort."""
-    where = f"mirror/{q.selector.source_id}/" if q.selector.source_id else "mirror/"
+    resort.  ``dry_run``: a preview that found nothing records nothing, so its note says only ``purge
+    --queue`` itself looks an entry up for ``--forget`` (B13 round 30 C371; ruling 43)."""
+    sel = q.selector
+    where = f"mirror/{sel.source_id}/" if sel.source_id else "mirror/"
+    forget = f"`{AGENTSYNC_BIN} purge --queue --forget id={sel.stable_id} --source {sel.source_id}`"
+    once = (
+        f"only `{AGENTSYNC_BIN} purge --queue` itself looks an entry up for --forget (its --dry-run records "
+        "nothing): once it has kept this entry and no page is left, "
+        if dry_run
+        else "once no page is left, "
+    )
     why = q.reason.value  # the queued run's own reason, so a by-hand run suppresses as it would (C193)
     return (
         f"{UNRESOLVED_HEAD}nothing in the manifest names it (a new start replaced the one that recorded its "
@@ -4222,22 +4231,28 @@ def unresolved_note(q: QueuedPurge) -> str:
         f"`{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason {why}` with the id in the page's "
         f"front matter, which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge "
         f"docs=<page path> --reason {why}` is the last resort, for a page that id run targets nothing of. A "
-        "run takes off the queue only what history names: once no page is left, "
-        f"`{AGENTSYNC_BIN} purge --queue --forget id={q.selector.stable_id} --source {q.selector.source_id}` "
+        f"run takes off the queue only what history names: {once}{forget} "
         "takes this entry off, with an audit line"
     )
 
 
-def unresolved_purges(n: int) -> str:
-    """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118; B13 round 28 I93)."""
+def unresolved_purges(n: int, *, dry_run: bool = False) -> str:
+    """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118; B13 round 28 I93);
+    ``dry_run`` as that note's (C371)."""
     is_, its, it, stays = ("is", "its", "it", "stays") if n == 1 else ("are", "their", "they", "stay")
+    once = (
+        f"once `{AGENTSYNC_BIN} purge --queue` itself has kept an entry (only it looks an entry up for "
+        "--forget; its --dry-run records nothing) and no page is left"
+        if dry_run
+        else "once no page is left"
+    )
     return (
         f"{plural(n, 'queued purge')} {is_} kept until `{AGENTSYNC_BIN} purge --queue` finds {its} id in the "
         f"docs history; if none is found {it} {stays} queued (nothing in the manifest names {it} after a new "
         f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason <its "
         "reason>` erases a page by hand (each entry's reason is on its line when a queue run keeps it), "
-        f"and once no page is left `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source <its "
-        "source>` takes an entry off, with an audit line"
+        f"and {once} `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source <its source>` "
+        "takes an entry off, with an audit line"
     )
 
 
@@ -4981,9 +4996,12 @@ def forget_queued(
                 f"`{AGENTSYNC_BIN} purge --queue` runs it"
             )
         if not q.found_nothing:
+            # a preview looked it up but recorded nothing: only the run itself does (B13 round 30 C371)
             why = _kept_queued(sp.db, q, config) or (
-                "stays queued: a queue run has not looked it up and found nothing for it; "
-                f"`{AGENTSYNC_BIN} purge --queue` runs it"
+                f"stays queued: no run of `{AGENTSYNC_BIN} purge --queue` has looked it up and found "
+                "nothing for it, and only that run itself looks an entry up for --forget (its --dry-run "
+                f"records nothing); `{AGENTSYNC_BIN} purge --queue` looks it up, and runs it if its id "
+                "reaches a page"
             )
             raise GovernanceError(f"not forgotten: {why}")
         if dry_run:
@@ -5125,6 +5143,7 @@ def run_purge_queue(
         unjudged = 0  # entries no manifest read could judge: said once, with the cause
         new_start = 0  # the new start's entries, and those kept until their id is found: one counted
         unresolved = 0  # WARNING per kind after the loop, as P25 (B13 round 28 I65)
+        unsaved = 0  # of those, the ones a preview found nothing for and did not record (B13 round 30 C371)
         unlisted = 0  # entries whose source no sync since the new start listed (B13 round 29 C201)
         held: dict[str, int] = {}  # each hold's refusal, counted, in first-seen order (B13 round 29 C176)
 
@@ -5189,7 +5208,9 @@ def run_purge_queue(
                     )
                     if _targets_nothing(dry, seed) and not _erased_before(sp.root, q):
                         unresolved += 1  # one counted WARNING after the loop (P112; I65)
-                        not_run(dataclasses.replace(q, found_nothing=True), unresolved_note(q))
+                        unsaved += dry_run and not q.found_nothing
+                        note = unresolved_note(q, dry_run=dry_run and not q.found_nothing)
+                        not_run(dataclasses.replace(q, found_nothing=True), note)
                         continue
                 rep = (
                     dry
@@ -5295,7 +5316,7 @@ def run_purge_queue(
         if new_start:
             log.warning("governance: %s", new_start_purges(new_start))
         if unresolved:
-            log.warning("governance: %s", unresolved_purges(unresolved))
+            log.warning("governance: %s", unresolved_purges(unresolved, dry_run=bool(unsaved)))
         if unlisted:
             log.warning("governance: %s", unlisted_purges(unlisted))
         for why, k in held.items():

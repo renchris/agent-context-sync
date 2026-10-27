@@ -85,10 +85,11 @@ is a copy that no purge reaches, so exclude it too.
   page's front matter and the entry's own reason, the one `agentsync purge --queue --dry-run` shows for it
   (`upstream-deleted` leaves the file free to sync again if it comes back, `label-escalation` keeps it out), then
   run it without `--dry-run`; `agentsync purge docs=<page path> --reason <its reason>`, which erases every page
-  ever at that path, a live one too, is the last resort. The entry stays queued after either: once no page is
-  left, `agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, with an audit line,
-  and nothing else does. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27
-  P111; B13 round 28 I92, I93; B13 round 29 C193, C173, C189, C201).
+  ever at that path, a live one too, is the last resort. The entry stays queued after either: once a run of
+  `agentsync purge --queue` (not `--dry-run`, which records nothing) has kept it and no page is left,
+  `agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, with an audit line, and
+  nothing else does. `agentsync hold` and its release still work (B13 round 26 E25, ruling 14; B13 round 27
+  P111; B13 round 28 I92, I93; B13 round 29 C193, C173, C189, C201; B13 round 30 C371).
 - **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
   `no longer holds` a purge the audit trail records `as queued and not done`, each named
   `<reason> at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back from a

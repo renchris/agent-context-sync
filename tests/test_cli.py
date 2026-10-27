@@ -10735,7 +10735,8 @@ def test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verifi
         assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK, argv
         said = capsys.readouterr().out
         assert "VERIFIED" not in said and governance.pending_purges(initialised.state_paths.root) == [q], said
-        assert f"note: {governance.unresolved_note(q)}" in said, said
+        note = governance.unresolved_note(q, dry_run="--dry-run" in argv)  # C371: a preview records nothing
+        assert f"note: {note}" in said, said
     assert "1 still queued until its id is found in the docs history (see its note)" in said, said
     (entry,) = json.loads(qfile.read_text(encoding="utf-8"))["queue"]
     assert {k: v for k, v in entry.items() if k != "found_nothing"} == before[0]["queue"][0], entry
@@ -10773,6 +10774,46 @@ def test_a_queued_purge_history_names_nothing_of_leaves_only_by_its_audited_forg
     last = governance.read_audit(root)[-1]
     assert last["action"] == "purge-forgotten" and last["selector_sha256"] == q.selector.fingerprint(), last
     assert git(repo, "rev-parse", "HEAD") == head
+
+
+def test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up(
+    initialised: Config, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 30 C371 (ruling 43): the dry run's note offered a --forget that it had just refused, since a
+    preview records no found_nothing. The preview stays read-only (manifest, queue and audit trail the same
+    bytes); its note and forget's refusal say only `purge --queue` itself looks an entry up for --forget, and
+    after that run the same forget takes the entry off."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    q = _queue_upstream(initialised, None, stable_id="contoso-volume:retired-0042")
+    lock = {root / "agentsync.lock", root / "agentsync.lock.json"}  # the writer lock and its holder sidecar
+
+    def state() -> dict[Path, tuple[bytes, int]]:  # every state file's bytes and mtime, the lock aside
+        files = (f for f in root.rglob("*") if f.is_file() and f not in lock)
+        return {f: (f.read_bytes(), f.stat().st_mtime_ns) for f in files}
+
+    before = state()
+    only = "only `~/.local/bin/agentsync purge --queue` itself looks an entry up for --forget"
+    capsys.readouterr()
+    with caplog.at_level(logging.WARNING):
+        assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert f"{only} (its --dry-run records nothing): once it has kept this entry and no page is left" in said
+    assert f"note: {governance.unresolved_note(q, dry_run=True)}" in said, said
+    assert governance.unresolved_purges(1, dry_run=True) in caplog.text, caplog.text
+    assert "(only it looks an entry up for --forget; its --dry-run records nothing)" in caplog.text
+    assert state() == before, "a preview writes nothing"
+    forget = ["purge", "--queue", "--forget", "id=contoso-volume:retired-0042", "--source", "source"]
+    assert cli.main([*forget, "--config", cfg]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err
+    assert "has looked it up and found nothing for it, and only that run itself looks an entry up for " in err
+    assert "(its --dry-run records nothing)" in err and "a queue run has not looked it up" not in err, err
+    assert "purge --queue` looks it up, and runs it if its id reaches a page" in err, err
+    assert governance.pending_purges(root) == [q]
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert f"note: {governance.unresolved_note(q)}" in capsys.readouterr().out
+    assert cli.main([*forget, "--config", cfg]) == cli.EXIT_OK
+    assert governance.pending_purges(root) == []
 
 
 def test_forget_refuses_an_entry_a_run_has_not_found_nothing_for(
