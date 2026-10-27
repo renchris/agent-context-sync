@@ -865,7 +865,8 @@ def read_audit(state_dir: Path) -> list[dict[str, Any]]:
 
 @dataclass(frozen=True, slots=True)
 class Hold:
-    """One active hold: ``scope`` is ``all`` or a source id; ``origin`` is ``config`` or ``state``."""
+    """One active hold: ``scope`` is ``all`` or a source id; ``origin`` is ``config`` or ``state``, or, for a
+    hold the hold list lost (:func:`lost_holds`), ``audit`` or ``record``."""
 
     scope: str
     reason: str
@@ -1122,7 +1123,9 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
     (:func:`recorded_hold_scopes`), that holds.json (``listed``, read here when None) lacks: missing,
     rewritten as no holds, or with governance/ moved aside. Each is in force (``origin`` ``audit``), so
     purge, ``purge --queue`` and compaction refuse it and status shows it: following status's fix for an
-    unreadable hold list never leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19)."""
+    unreadable hold list never leaves a page under a hold unprotected (B13 round 28 I87, I89; ruling 19). One
+    only the hold record keeps has the origin ``record``: with no audit line for it, "(audit)" named a trail
+    that may not be there (B13 round 30 C313; ruling 42)."""
     have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
     held, released = audit_holds(state_dir)
     recorded = recorded_hold_scopes(state_dir)
@@ -1140,7 +1143,7 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
         if scope not in have
     ]
     out += [
-        Hold(scope, LOST_HOLD_REASON, "the records owner", "", "audit", (record,))
+        Hold(scope, LOST_HOLD_REASON, "the records owner", "", "record", (record,))
         for scope in sorted(recorded - have - released - set(held))
     ]
     return out
@@ -1174,19 +1177,31 @@ LOST_HOLD_REASON = "lost from the hold list"
 def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
     """governance.hold's FAIL of a lost hold (:func:`lost_holds`): the detail and the person's fix, which
     puts the hold list back, sets the hold again or releases it, never a purge first."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
     path = _holds_file(state_dir)
     by = f" set by {hold.owner}" + (f" at {hold.set_at}" if hold.set_at else "")
     # the record that keeps it, never one that is not there: with governance/ moved aside no audit.jsonl
     # is named (B13 round 29 C174; ruling 27)
     kept = " and ".join(hold.kept_by or ("audit.jsonl",))
-    detail = (
-        f"{path} no longer lists the hold on {hold.scope}{by} (kept by {kept}), and no release is recorded; "
-        "purge and compaction stay suspended"
+    lists = (
+        f"{path} no longer lists the hold on {hold.scope}{by} (kept by {kept}), and no release is recorded"
     )
+    put_back = "the person puts the hold list back from the copy kept"
+    gov = governance_dir(state_dir)
+    if not os.path.lexists(gov) and "audit.jsonl" not in hold.kept_by:
+        # the whole folder gone, the audit trail with it: named, and put back whole, never the hold list
+        # alone, which left the audit trail missing (B13 round 30 C313; ruling 42)
+        lists = (
+            f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the "
+            f"suppression list in it: {lists}"
+        )
+        shown = doctor._shell_path(gov)
+        put_back = f"the person puts agentsync's governance folder ({shown}) back whole from the copy kept"
+    detail = f"{lists}; purge and compaction stay suspended"
     fix = (
-        f"the person puts the hold list back from the copy kept, or the records owner runs `{AGENTSYNC_BIN} "
-        f"hold {hold.scope} --reason <why> --owner <name>` again, or releases it with `{AGENTSYNC_BIN} hold "
-        f"{hold.scope} --release --owner <name>`"
+        f"{put_back}, or the records owner runs `{AGENTSYNC_BIN} hold {hold.scope} --reason <why> --owner "
+        f"<name>` again, or releases it with `{AGENTSYNC_BIN} hold {hold.scope} --release --owner <name>`"
     )
     return detail, fix
 

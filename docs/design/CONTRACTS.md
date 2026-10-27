@@ -33828,6 +33828,16 @@ governance/ that is not a folder. Test: `test_governance.py`
 `test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_move_aside` (the records owner's clause
 in all four cases).
 
+C313 (ruling 42): a hold only the hold record keeps has the origin `record` (`HOLD: hold all (record): lost from the
+hold list — set by the records owner`); one the audit trail replays keeps `audit`. With governance/ missing, its lost
+hold's FAIL names the folder, `<gov>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the
+suppression list in it: <gov>/holds.json no longer lists the hold on <scope> set by the records owner (kept by
+hold-record.json), and no release is recorded; ...`, and its fix opens `the person puts agentsync's governance folder
+(<gov>) back whole from the copy kept`; the anchor `no longer lists the hold on ` and `(kept by ` stay for the
+report's bucket and cuts. Tests: `test_governance.py`
+`test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is_named`, `test_cli.py`
+`test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

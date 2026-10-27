@@ -2408,6 +2408,36 @@ def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_s
     assert [r["selector_sha256"] for r in gv.lost_queued(state)] == [first.fingerprint()]
 
 
+def test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is_named(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 C313 (ruling 42): with governance/ moved aside under a hold, describe() said "(audit)"
+    with no audit trail on disk and the FAIL named only holds.json. A hold only the record keeps is
+    ``record``; with the folder gone the FAIL names it and its fix puts it back whole; with the folder there
+    and the audit trail replaying the hold, the words are as before."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    gv.set_hold(state, "all", reason="Contoso matter", owner="Dana Example", now=NOW)
+    gov = gv.governance_dir(state)
+    gov.rename(state / "governance.kept")
+    (hold,) = gv.lost_holds(state)
+    assert hold.origin == "record" and hold.kept_by == ("hold-record.json",), hold
+    assert "hold all (record): lost from the hold list" in hold.describe()
+    detail, fix = gv.lost_hold_words(state, hold)
+    assert detail.startswith(
+        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue"
+    ), detail
+    assert "no longer lists the hold on all set by the records owner (kept by hold-record.json)" in detail
+    assert fix.startswith("the person puts agentsync's governance folder (") and " back whole " in fix, fix
+    (state / "governance.kept").rename(gov)
+    gv._holds_file(state).write_text('{"holds": []}\n', encoding="utf-8")
+    (hold,) = gv.lost_holds(state)
+    assert hold.origin == "audit", hold
+    detail, fix = gv.lost_hold_words(state, hold)
+    assert detail.startswith(f"{gv._holds_file(state)} no longer lists"), detail
+    assert fix.startswith("the person puts the hold list back from the copy kept"), fix
+
+
 @pytest.mark.parametrize("record", ['{"holds": ["contoso-alpha"]}', '{"holds": []}', None, "{"])
 def test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_move_aside(
     tmp_path: Path, record: str | None

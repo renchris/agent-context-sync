@@ -5835,7 +5835,8 @@ def test_a_governance_folder_that_is_not_a_folder_is_one_persons_fail_naming_it(
     # keeps the hold on all in force, so the page is never erased
     gov.rename(root / "governance.odd")
     rc, out = _status(cfg, capsys)
-    assert any(ln.startswith("HOLD: hold all (audit): lost from the hold list") for ln in out), out
+    # only the hold record keeps it now, the audit trail away with the real folder (B13 round 30 C313)
+    assert any(ln.startswith("HOLD: hold all (record): lost from the hold list") for ln in out), out
     assert not [ln for ln in out if "purge --queue" in ln], out
     assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
     assert _page_kept(initialised, page)
@@ -5879,7 +5880,7 @@ def test_a_hold_stays_in_force_after_the_new_start_and_the_governance_folders_fi
     assert "(a hold set earlier stays in force from hold-record.json's record; " in failed, failed
     gov.rename(root / "governance.odd")  # the fix's second branch, followed
     rc, out = _status(cfg, capsys)
-    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (audit)") for ln in out), out
+    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (record)") for ln in out), out
     assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
     assert "purge suspended by legal/records hold" in capsys.readouterr().err
     assert _page_kept(initialised, page)
@@ -6018,6 +6019,30 @@ def test_an_unreadable_hold_record_hides_no_hold_the_audit_trail_keeps(
     assert "- HOLD `all`: lost from the hold list (set by Contoso Legal" in text, text
     assert "- HOLD `contoso-alpha`: matter 9 (set by Contoso Legal" in text, text
     assert "- the hold record cannot be read; purge and compaction stay suspended" in text, text
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
+
+
+def test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C313 (ruling 42): with the whole governance folder moved aside under a hold, the FAIL
+    named only holds.json, its fix put back the hold list alone, leaving the audit trail missing, and the
+    HOLD line said "(audit)" with no audit trail on disk. The hold only the record keeps has the origin
+    ``record``, the FAIL names the folder, and its fix puts the folder back whole."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    rc, out = _status(cfg, capsys)
+    assert any(ln.startswith("HOLD: hold all (record): lost from the hold list") for ln in out), out
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    head = (
+        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression"
+    )
+    assert rc == cli.EXIT_FAILED and head in failed, failed
+    assert "no longer lists the hold on all set by the records owner (kept by hold-record.json)" in failed
+    whole = f"(fix: the person puts agentsync's governance folder ({doctor._shell_path(gov)}) back whole"
+    assert whole in failed and "puts the hold list back" not in failed, failed
     assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
     assert _page_kept(initialised, page)
 
@@ -6670,7 +6695,7 @@ def test_setting_or_releasing_another_hold_keeps_a_lost_hold_in_the_record(
     assert cli.main(other) == cli.EXIT_OK
     assert _record(root) == ["all", "contoso-other"]
     rc, out = _status(cfg, capsys)
-    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (audit)") for ln in out), out
+    assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (record)") for ln in out), out
     assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
     release = ["hold", "contoso-other", "--release", "--owner", "Contoso Legal", "--config", cfg]
     assert cli.main(release) == cli.EXIT_OK
