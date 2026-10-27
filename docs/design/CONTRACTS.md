@@ -1018,6 +1018,7 @@ class SourceReport:
     conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
     refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
     withheld_read: int = 0  # 2026-10-14 (§16.89 L33): of ``refused``, the stubs that say a label rule withheld them
+    label_unreadable: int = 0  # 2026-10-26 (§16.205 C326): of ``refused``, never withheld: its label unreadable
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
     new: int = 0  # 2026-10-16 (§16.102 N39): of the changed files, those new this run (``changed=N (K new)``)
@@ -33963,6 +33964,22 @@ so its warn keeps its fix. The report's own bucket for this warn (filed with the
 FAIL, not under yours) is lane RA's. Tests:
 `test_beside_a_governance_file_the_sync_stops_on_the_listing_note_points_at_its_fail` (nine cases),
 `test_beside_a_hold_the_hold_list_lost_the_listing_note_keeps_its_waiting_on_you_line`.
+
+C326 (the lead's ruling: K and its words unchanged): under a label rule, the files refused because their label
+cannot be read have their own clause. Since round 29 C144 a mail whose label header does not parse is refused
+`refused: sensitivity label unreadable (msip_labels header not parseable); a label rule is set` under any label
+rule, but the split's `K of them withheld: their labels cannot be read` counts only the stubs that say `withheld
+by label rule` (`Publisher.withheld`, J29), so those refusals read among the excluded labels. The cycle counts a
+refused, non-duplicate conversion whose reason starts `refused: sensitivity label unreadable`
+(`_LABEL_UNREADABLE_HEAD`; the `label-unreadable` code's reason, a damaged PDF's info under refuse_unlabelled
+too) and is not withheld in `SourceReport.label_unreadable`, still in R, and the split adds after the K clause, before
+the credential clause, `, N of them refused: its label could not be read` (`their labels` for more). K, its
+words, `_SPLIT_RE` and install.sh's readers are unchanged; the clause has no bare "converted", "deferred" or
+"read again". The setup report's own Quarantine class for these reasons (`label unreadable`, matched before the
+generic `refused: `) and its re-render of the clause are lane RA's. Test: `test_cycle.py`'s
+`test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k` (`3 refused, 1 of them
+withheld: its label cannot be read, 2 of them refused: their labels could not be read`, `_SPLIT_RE` still R=3,
+K=1).
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

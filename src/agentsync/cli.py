@@ -687,6 +687,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if withheld_read := sum(s.withheld_read for s in report.sources):
             whose = "its label cannot" if withheld_read == 1 else "their labels cannot"
             split += f", {withheld_read} of them withheld: {whose} be read"
+        # after K, which _SPLIT_RE and install.sh read, and K's words unchanged: a label rule's refusal of a
+        # label it cannot read is no "withheld" stub (B13 round 30 C326)
+        if label_unreadable := sum(s.label_unreadable for s in report.sources):
+            whose = "its label" if label_unreadable == 1 else "their labels"
+            split += f", {label_unreadable} of them refused: {whose} could not be read"
         # after every clause the readers key on, and no bare "converted" (B13 round 29 C145)
         if stubbed := sum(s.credential_stubbed for s in report.sources):
             whose = "its page" if stubbed == 1 else "their pages"  # B13 round 30 C353

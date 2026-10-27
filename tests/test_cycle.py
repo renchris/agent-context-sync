@@ -3009,6 +3009,35 @@ def test_the_sync_line_counts_every_stub_the_label_rule_withheld(
     assert "; 1 withheld unread by the label rule (" in line and "a binary .msg" not in line, line
 
 
+def test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C326: under a label rule a mail whose label header does not parse is refused (round 29
+    C144), but the split's "K of them withheld: their labels cannot be read" counted only the stubs that say
+    withheld, so those refusals read as excluded labels. They get their own clause after K, whose count and
+    words stay as they were (J29: K is the stubs that say "withheld by label rule")."""
+    for name in ("Contoso plan.eml", "Contoso notes.eml"):
+        (local_source_dir / "projects" / name).write_bytes(
+            b"Subject: Contoso plan\r\nmsip_labels: MSIP_Label_notaguid_Enabled=True;\r\n"
+            b"Content-Type: text/plain\r\n\r\nAgenda.\r\n"
+        )
+    (local_source_dir / KICKOFF_MSG).parent.mkdir(parents=True, exist_ok=True)
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(subject="Contoso kickoff", plain="Agenda.\n"))
+    report = run(config_with(tmp_path, local_source_dir, LABEL_RULE))
+    [rep] = report.sources
+    assert (rep.refused, rep.withheld_read, rep.label_unreadable) == (3, 1, 2), rep
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    want = (
+        "3 refused, 1 of them withheld: its label cannot be read, 2 of them refused: their labels could "
+        "not be read"
+    )
+    assert want in line, line
+    split = setup_report._SPLIT_RE.search(line)
+    assert split is not None and (split.group(3), split.group(4)) == ("3", "1"), line
+
+
 def test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter(
     tmp_path: Path, local_source_dir: Path
 ) -> None:

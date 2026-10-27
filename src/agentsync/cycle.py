@@ -193,6 +193,10 @@ from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
+# The head of the reason a label rule gives a file whose label cannot be read (policy.label_decision's
+# ``label-unreadable``): the sync line counts these refusals apart from K (B13 round 30 C326)
+_LABEL_UNREADABLE_HEAD = f"{content_policy.REFUSED_PREFIX}sensitivity label unreadable"
+
 _RUN_TRAILER = re.compile(r"^Agentsync-Run:\s*(\d+)\s*$", re.MULTILINE)
 _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED would be pending work again
 _PRESENT = PRESENT_STATES
@@ -1848,6 +1852,7 @@ class _SourceAcc:
     converter_waiting: int = 0  # a converter that could not start read nothing (B13 round 18 V13)
     refused: int = 0
     withheld_read: int = 0
+    label_unreadable: int = 0  # of refused: a label rule refused it, its label unreadable (C326)
     credential_stubbed: int = 0  # of unreadable: a page the secret scan stubbed this run (C145)
     refused_unread: int = 0
     withheld_unread: int = 0
@@ -1919,6 +1924,7 @@ class _SourceAcc:
             conversion_failed=self.conversion_failed,
             refused=self.refused,
             withheld_read=self.withheld_read,
+            label_unreadable=self.label_unreadable,
             credential_stubbed=self.credential_stubbed,
             refused_unread=self.refused_unread,
             withheld_unread=self.withheld_unread,
@@ -5881,6 +5887,11 @@ class _Cycle:
                 # of R, a stub that says a label rule withheld it, by the page's own test (B13 round 10 L33)
                 if self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
                     acc.withheld_read += 1
+                elif (result.reason or "").startswith(_LABEL_UNREADABLE_HEAD):
+                    # a label rule's refusal of a label it cannot read (a mail's unparseable header, a
+                    # damaged PDF's info under refuse_unlabelled): its own clause, never in K, whose stubs
+                    # say "withheld by label rule" (B13 round 30 C326)
+                    acc.label_unreadable += 1
             self._tally_converted(result, prior)
             if rescreen:
                 self._tally["rescreened"] += 1

@@ -434,6 +434,11 @@ class SourceReport:
     # refused on its compound-file head): named in the sync line's split, never in ``withheld_unread``, so the
     # line's withheld counts add up to the stubs that say so (B13 round 10 L33)
     withheld_read: int = 0
+    # of ``refused``, never of ``withheld_read``: a label rule refused it because its label cannot be read (a
+    # mail's label header that does not parse, under any label rule; any label read error under
+    # refuse_unlabelled): the sync line's own clause after K, which stays the stubs that say withheld
+    # (B13 round 30 C326)
+    label_unreadable: int = 0
     # refused with no byte read (no converter for the name, a rule that needs no bytes, a withheld online-only
     # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32); not one whose stub says
     # a label rule withheld it, which ``withheld_unread`` counts (B13 round 8 J29)
