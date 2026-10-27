@@ -2431,9 +2431,10 @@ def test_state_md_still_invites_a_purge_no_hold_keeps(
 def test_a_sourceless_queued_purge_under_a_hold_on_its_one_source_is_held(
     initialised: Config, capsys: pytest.CaptureFixture[str], shape: str
 ) -> None:
-    """B13 round 29 C205 (ruling 32): a sourceless docs= or path= entry (the cycle's DLP shape) under a hold
-    on the one source it reaches was invited, then refused. It is held by the sources it resolves to, read
-    from the manifest as the purge seeds them."""
+    """B13 round 29 C205 (ruling 32): a sourceless docs= or path= entry (the cycle never queues one; it comes
+    only from a hand-edited queue or a direct enqueue_purge call, round 30 C356) under a hold on the one
+    source it reaches was invited, then refused. It is held by the sources it resolves to, read from the
+    manifest as the purge seeds them."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
     page = "mirror/source/projects/sample.txt.md"

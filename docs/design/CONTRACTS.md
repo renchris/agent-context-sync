@@ -33917,6 +33917,14 @@ its page contained a credential` whatever S was; it now reads `their pages` for 
 clause and the retry note do. No reader keys on it (`_SPLIT_RE` stops at the withheld clause). Test:
 `test_cycle.py`'s `test_two_pages_the_secret_scan_stubs_are_said_as_their_pages`.
 
+C356, C357: two words in governance that named nothing true. `held_purges`' docstring called a sourceless `docs=`
+or `path=` entry "the cycle's DLP shape"; every `enqueue_purge` in the cycle (DLP, upstream deletion, label
+escalation) queues a source and an id, so that entry comes only from a hand-edited queue or a direct
+`enqueue_purge` call, and the docstring (and its test's) says so; the branch stays, as a guard. No test can fail
+for a docstring. `governance.HELD_HEAD` (` on the hold on `) was read by nothing (`held_words` writes its own
+words) and is removed; setup_report's `_HELD_HEADS` keeps its three literals, and its docstring and a pin of
+the config form against `held_words` are lane RA's.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

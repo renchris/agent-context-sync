@@ -4825,7 +4825,8 @@ def held_purges(
     """``queued`` (the runnable entries of :func:`partition_purges`) split by the holds in force: the ones a
     ``purge --queue`` would run, and the ones a hold suspends, each with its holds. A hold on ``all`` holds
     every entry; an entry for one source, the holds on it; a sourceless ``docs=`` or ``path=`` entry (the
-    cycle's DLP shape), the holds on the sources it resolves to, read-only and as the purge seeds them, folder
+    cycle never queues one; it comes only from a hand-edited queue or a direct :func:`enqueue_purge` call, B13
+    round 30 C356), the holds on the sources it resolves to, read-only and as the purge seeds them, folder
     rows left out (B13 round 29 C205: under a hold on its one source it was invited, then refused); a manifest
     that cannot be read keeps it runnable, as before, and a held source's id found only in history stays a
     known gap (B13 round 28 I91). ``read_only`` (the setup report) resolves through one
@@ -4875,11 +4876,6 @@ def _hold_names(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
     if any(h.origin == "config" for _q, hs in held for h in hs):
         names.append("the hold set in sources.toml's [governance]")
     return " and ".join(names)
-
-
-HELD_HEAD = " on the hold on "
-"""The fixed words after a held queue's count (":func:`held_words`"): ``1 queued purge waits on the hold on
-all; ...``; a config hold reads ``... on the hold set in sources.toml's [governance]`` (B13 round 29 C115)."""
 
 
 def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
