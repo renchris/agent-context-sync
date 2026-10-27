@@ -3494,6 +3494,9 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         ran = sum(1 for r in reports if not r.not_run)  # an entry the queue did not run stays queued
         if dry_run:
             _out(f"{plural(ran, 'queued purge')} previewed (dry run, nothing written); {len(left)} queued")
+            gone = governance.lost_queue_count_line(config.state_paths.root)  # never "0 queued" alone (C312)
+            if gone is not None:
+                _out(gone)
             return EXIT_OK
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
@@ -3540,6 +3543,9 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         push=bool(args.push),
     )
     _print_purge(rep)
+    if rep.dry_run:  # a guess at a lost queued purge's selector is checked before it runs (C312)
+        for line in governance.lost_queue_preview(config.state_paths.root, selector, rep):
+            _out(f"  lost from the queue: {line}")
     return EXIT_OK if rep.dry_run or rep.verified else EXIT_FAILED
 
 

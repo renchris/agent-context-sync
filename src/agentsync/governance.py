@@ -40,6 +40,7 @@ import logging
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import sqlite3
 import stat
@@ -62,7 +63,7 @@ from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.manifest import Manifest, manifest_lost, migration_backups
+from agentsync.manifest import Manifest, manifest_lost, migration_backups, open_read_only
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import HOLD_RECORD_KEY as _HOLD_RECORD_KEY
@@ -1671,6 +1672,234 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
     ]
 
 
+def _lost_entry(rec: Mapping[str, Any]) -> str:
+    """A lost queued purge as its ``purge-enqueued`` line names it, its selector by kind and source only (the
+    line keeps the selector's hash, never its text): ``erasure-request at <iso>, a stable-id selector of
+    source contoso`` (B13 round 30 C312; ruling 35)."""
+    sid = rec.get("source_id")
+    of = f"source {sid}" if isinstance(sid, str) and sid else "every source"
+    return f"{rec.get('reason')} at {rec.get('at')}, a {rec.get('selector_kind')} selector of {of}"
+
+
+def _manifest_ids(db: Path) -> set[tuple[str, str]]:
+    """Every (source id, stable id) the manifest at ``db`` names: its items, its tombstones and both ids of
+    each ``item_aliases`` row, read by :func:`manifest.open_read_only`, which creates no -wal or -shm beside
+    a manifest this account cannot write (B13 round 20 X78); empty when it is not there, is lost or cannot be
+    read so, which rebuilds no id, never a wrong one."""
+    out: set[tuple[str, str]] = set()
+    with contextlib.suppress(sqlite3.Error, OSError):
+        conn = open_read_only(db, 0.5)
+        if conn is None:
+            return out
+        try:
+            for sql in (
+                "SELECT source_id, stable_id FROM items",
+                "SELECT source_id, stable_id FROM tombstones",
+                "SELECT source_id, alias_id FROM item_aliases",
+                "SELECT source_id, stable_id FROM item_aliases",
+            ):
+                with contextlib.suppress(sqlite3.Error):  # a manifest older than item_aliases
+                    out |= {(str(a), str(b)) for a, b in conn.execute(sql).fetchall() if a and b}
+        finally:
+            conn.close()
+    return out
+
+
+def _rebuilt_ids(db: Path, recs: Sequence[Mapping[str, Any]]) -> dict[int, str]:
+    """For each lost stable-id ``purge-enqueued`` record of ``recs`` (by index), the stable id whose
+    selector fingerprint is the one it keeps, found among the manifest's ids of its source (aliases and
+    tombstones too): the selector rebuilt by fingerprint, so its text never enters the audit trail (B13
+    round 30 C370, C312; ruling 35)."""
+    want = {
+        n: (r.get("source_id"), r.get("selector_sha256"))
+        for n, r in enumerate(recs)
+        if r.get("selector_kind") == "stable-id"
+    }
+    if not want:
+        return {}
+    ids = _manifest_ids(db)
+    out: dict[int, str] = {}
+    for n, (src, fp) in want.items():
+        source = src if isinstance(src, str) and src else None
+        for s, i in sorted(ids):
+            if source not in (None, s):
+                continue
+            with contextlib.suppress(GovernanceError):
+                if PurgeSelector(source_id=source, stable_id=i).fingerprint() == fp:
+                    out[n] = i
+                    break
+    return out
+
+
+def _redo_command(rec: Mapping[str, Any], selector: str) -> str:
+    """The by-hand purge of a lost queued record, runnable but for a ``<...>`` the person fills in."""
+    sid = rec.get("source_id")
+    src = f" --source {sid}" if isinstance(sid, str) and sid else ""
+    return f"{AGENTSYNC_BIN} purge {selector}{src} --reason {rec.get('reason')}"
+
+
+def _redo_words(rec: Mapping[str, Any], stable_id: str | None) -> str:
+    """How a lost queued record is redone, after "for <reason> at <iso>: " (B13 round 30 C370, C312; ruling
+    35): the exact command when its id was rebuilt from the manifest; else where the id is, and that a purge
+    by path or docs glob clears it only when it erases that id; for a glob, that only the same kind and
+    source clears it, from the person's own records."""
+    kind = rec.get("selector_kind")
+    if stable_id is not None:
+        return f"`{_redo_command(rec, shlex.quote(f'id={stable_id}'))}`"
+    if kind == "stable-id":
+        sid = rec.get("source_id")
+        under = f"mirror/{sid}/" if isinstance(sid, str) and sid else "mirror/"
+        return (
+            "no manifest row names its id, which is the `stable_id:` line of the page's front matter in the "
+            f"docs repo's history under {under} while no purge has erased the page; "
+            f"`{_redo_command(rec, 'id=<that id>')}`: a `path=` or `docs=` purge clears it only when it "
+            "erases that id"
+        )
+    prefix = "path" if kind == "path-glob" else "docs"
+    return (
+        f"agentsync keeps only its selector's hash, so the glob comes from the person's own records: "
+        f"`{_redo_command(rec, f'{prefix}=<glob>')}`, as only a purge of the same kind and source clears it"
+    )
+
+
+def lost_queue_lines(state_dir: Path, gone: Sequence[Mapping[str, Any]] | None = None) -> list[str]:
+    """Each lost queued purge (:func:`lost_queued`, or ``gone``) and how it is redone, one line each:
+    ``<reason> at <iso>, a <kind> selector of source <src>: <how>`` (:func:`_redo_words`), the stable id
+    rebuilt from the manifest by fingerprint (B13 round 30 C370, C312; ruling 35)."""
+    recs = lost_queued(state_dir) if gone is None else gone
+    return [f"{_lost_entry(r)}: {w}" for r, w in zip(recs, _redo_all(state_dir, recs), strict=True)]
+
+
+def _redo_all(state_dir: Path, recs: Sequence[Mapping[str, Any]]) -> list[str]:
+    """:func:`_redo_words` of each record of ``recs``, the ids rebuilt from the state folder's manifest."""
+    ids = _rebuilt_ids(expand(state_dir) / "manifest.sqlite", recs)
+    return [_redo_words(r, ids.get(n)) for n, r in enumerate(recs)]
+
+
+def _summary_closes(summary_reason: object, rec_reason: object) -> bool:
+    """Whether a verified ``purge-summary`` of a selector closes its queued record of ``rec_reason`` in the
+    replay (:func:`lost_queued`): every reason, but an upstream-deleted run only an upstream-deleted one."""
+    upstream = PurgeReason.UPSTREAM_DELETED.value
+    return summary_reason != upstream or rec_reason == upstream
+
+
+def lost_cleared_by(
+    selector: PurgeSelector, report: PurgeReport, lost: Sequence[Mapping[str, Any]]
+) -> list[bool]:
+    """For each lost queued record of ``lost``, whether the verified purge of ``selector`` (``report``, or a
+    dry run's) clears it: its summary, when the selector is the record's own, or its items, when it erased
+    the record's stable id by its source (:func:`_lost_covered`), each by the replay's reason rule."""
+    own = selector.fingerprint()
+    erased = _erased_fingerprints(selector, report)
+    return [
+        _summary_closes(report.reason.value, r.get("reason"))
+        and (r.get("selector_sha256") == own or r.get("selector_sha256") in erased)
+        for r in lost
+    ]
+
+
+def lost_queue_preview(state_dir: Path, selector: PurgeSelector, report: PurgeReport) -> list[str]:
+    """What ``purge <selector> --dry-run`` says of each lost queued purge (:func:`lost_queued`): whether
+    this purge clears it (:func:`lost_cleared_by`) and, when not, how it is redone, so the person checks a
+    guess before running it (B13 round 30 C312; ruling 35). Empty when nothing is lost, or the trail cannot
+    be read (its own FAIL says why)."""
+    try:
+        lost = lost_queued(state_dir)
+    except (AgentSyncError, OSError):
+        return []
+    clears = lost_cleared_by(selector, report, lost)
+    return [
+        f"{_lost_entry(r)}: " + ("this purge clears it" if c else f"this purge does not clear it; {w}")
+        for r, c, w in zip(lost, clears, _redo_all(state_dir, lost), strict=True)
+    ]
+
+
+def lost_queue_count_line(state_dir: Path) -> str | None:
+    """What ``purge --queue --dry-run`` says after its summary when the queue file lost a purge the audit
+    trail records (:func:`lost_queued`), naming each; None when none is lost, or the trail cannot be read
+    (B13 round 30 C312; ruling 35)."""
+    try:
+        lost = lost_queued(state_dir)
+    except (AgentSyncError, OSError):
+        return None
+    if not lost:
+        return None
+    verb = "is" if len(lost) == 1 else "are"
+    return (
+        f"{plural(len(lost), 'purge')} the audit trail records {verb} not in the queue file "
+        f"({'; '.join(_lost_entry(r) for r in lost)}; see status's governance.purge_queue line)"
+    )
+
+
+def _erased_fingerprints(selector: PurgeSelector, report: PurgeReport) -> set[str]:
+    """The stable-id selector fingerprint of each (source, id) the purge of ``selector`` (``report``) erased,
+    as a queued entry of that item with its source keeps it (:func:`_covers` names an item by source and
+    id). A purge narrowed to another source erases none: a docs glob matches before the source, so ``purge
+    docs=mirror/<s>/... --source <other>`` lists the page's item under ``s`` though it targets the matched
+    page only, and :func:`_covers` refuses it for a queued entry so (B13 round 30 C370's review)."""
+    out: set[str] = set()
+    for s, i in report.items:
+        if selector.source_id not in (None, s):
+            continue
+        with contextlib.suppress(GovernanceError):
+            out.add(PurgeSelector(source_id=s, stable_id=i).fingerprint())
+    return out
+
+
+def _lost_covered(
+    state_dir: Path,
+    selector: PurgeSelector,
+    report: PurgeReport,
+    queue: Sequence[QueuedPurge],
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """The ``purge-covered`` line of each lost queued record (:func:`lost_queued` against ``queue``, the
+    queue as the purge found it) the verified purge of ``selector`` erased the stable id of, by the replay's
+    reason rule: a hand purge by path or docs glob of the item a lost id entry named does what it asked,
+    and needs no id in the audit trail (B13 round 30 C370; ruling 35). Its own selector's record its summary
+    closes."""
+    own = selector.fingerprint()
+    erased = _erased_fingerprints(selector, report)
+    return [
+        {
+            "action": "purge-covered",
+            "at": _iso(_now(now)),
+            "covered_by_sha256": own,
+            "reason": r.get("reason"),
+            "selector_sha256": r.get("selector_sha256"),
+        }
+        for r in lost_queued(state_dir, queue)
+        if r.get("selector_sha256") != own
+        and r.get("selector_sha256") in erased
+        and _summary_closes(report.reason.value, r.get("reason"))
+    ]
+
+
+def _reopen_lines(
+    selector: PurgeSelector, report: PurgeReport, stay: Iterable[QueuedPurge]
+) -> list[dict[str, object]]:
+    """A ``purge-enqueued`` line for each entry of ``stay`` (still on the queue after the verified purge of
+    ``selector``) of the same selector that its summary closed in the replay: a 0-item run of a queued id,
+    or a run of one reason beside another's entry, left it queued while the trail read it done, so a later
+    loss of the queue went unrefused (B13 round 30 C350; ruling 35). It copies the entry's time, reason,
+    kind and source, never its selector's text."""
+    own = selector.fingerprint()
+    return [
+        {
+            "action": "purge-enqueued",
+            "at": e.enqueued_at,
+            "reason": e.reason.value,
+            "selector_kind": e.selector.kind(),
+            "selector_sha256": own,
+            "source_id": e.selector.source_id,
+            "dequeue_audited": True,
+            "reopened_by": "purge-summary",
+        }
+        for e in stay
+        if e.selector.fingerprint() == own and _summary_closes(report.reason.value, e.reason.value)
+    ]
+
+
 def _when(recs: Sequence[Mapping[str, Any]]) -> str:
     """Each record's reason and time, as the person finds it in their own records: ``erasure-request at
     <iso>; ...``."""
@@ -1713,7 +1942,6 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
 
 def queue_lost(state_dir: Path) -> GovernanceLostError | None:
     """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None."""
-    shown_bin = AGENTSYNC_BIN
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):
@@ -1722,12 +1950,14 @@ def queue_lost(state_dir: Path) -> GovernanceLostError | None:
             path = _queue_file(state_dir)
             detail = (
                 f"{path} no longer holds {plural(len(gone), 'purge')} the audit trail records as queued and "
-                f"not done ({_when(gone)})"
+                f"not done ({'; '.join(_lost_entry(r) for r in gone)})"
             )
+            # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
+            redo = zip(gone, _redo_all(state_dir, gone), strict=True)
+            ways = "; ".join(f"for {r.get('reason')} at {r.get('at')}: {w}" for r, w in redo)
             fix = (
                 f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
-                f"runs each purge by hand with its own selector and reason (`{shown_bin} purge <selector> "
-                "--source <source> --reason <reason>`) before the next sync, which refuses until then"
+                f"runs each purge by hand before the next sync, which refuses until then ({ways})"
             )
             return GovernanceLostError(path, "the purge queue", detail, fix)
     return None
@@ -1891,33 +2121,38 @@ def _covers(selector: PurgeSelector, report: PurgeReport, entry: QueuedPurge) ->
     return report.reason is not PurgeReason.UPSTREAM_DELETED or entry.reason is PurgeReason.UPSTREAM_DELETED
 
 
-def _drop_covered(
-    state_dir: Path, selector: PurgeSelector, report: PurgeReport, *, audit: bool = True
-) -> None:
-    """Take off the queue every entry a verified purge already did (:func:`_covers`).  A queue file this build
-    cannot read or write is logged and left as it is: the purge itself is done and its report stands."""
+def _drop_covered(state_dir: Path, selector: PurgeSelector, report: PurgeReport) -> None:
+    """After a verified hand purge: take off the queue every entry it already did (:func:`_covers`), each
+    with its ``purge-covered`` line; reopen each entry of the same selector it leaves queued that its summary
+    closed in the replay (:func:`_reopen_lines`; C350); and cover each lost queued record whose id it erased
+    (:func:`_lost_covered`; C370). The lines first, then the queue: a queue rewritten with no line for what
+    it dropped would read as lost (B13 round 29 C172). A queue file this build cannot read or write, or an
+    audit trail that refuses the lines, is logged and left as it is: the purge itself is done and its report
+    stands. The queue's own run writes its lines itself, so it never calls this (B13 round 30 C389)."""
     try:
         queue = pending_purges(state_dir)
         kept = [q for q in queue if not _covers(selector, report, q)]
-        if len(kept) != len(queue):
-            # each with its purge-covered line, as the queue's run writes one: an entry off the queue with no
-            # line would read as lost (B13 round 29 C172)
+        lines: list[dict[str, object]] = [
+            {
+                "action": "purge-covered",
+                "at": _iso(_now(None)),
+                "covered_by_sha256": selector.fingerprint(),
+                "reason": e.reason.value,
+                "selector_sha256": e.selector.fingerprint(),
+            }
+            # the purge's own entry its summary closes
+            for e in queue
+            if _covers(selector, report, e) and e.selector != selector
+        ]
+        lines += _reopen_lines(selector, report, kept)
+        with contextlib.suppress(AgentSyncError, OSError):  # a trail it cannot read covers nothing lost
+            lines += _lost_covered(state_dir, selector, report, queue)
+        if lines or len(kept) != len(queue):
             with _audit_appender(state_dir) as line:
-                # the lines first: a queue rewritten with no line for what it dropped would read as lost
-                for e in queue:
-                    # the queue's own run writes its lines; the purge's own entry, its summary closes
-                    if not audit or not _covers(selector, report, e) or e.selector == selector:
-                        continue
-                    line(
-                        {
-                            "action": "purge-covered",
-                            "at": _iso(_now(None)),
-                            "covered_by_sha256": selector.fingerprint(),
-                            "reason": e.reason.value,
-                            "selector_sha256": e.selector.fingerprint(),
-                        }
-                    )
-                _write_queue(state_dir, kept)
+                for rec in lines:
+                    line(rec)
+                if len(kept) != len(queue):
+                    _write_queue(state_dir, kept)
     except Exception as exc:  # the purge already verified: the queue is only tidied
         log.warning("governance: purge queue not updated after a verified purge: %s", exc)
     record_purges(state_dir)  # its purge-covered lines (B13 round 30 C381)
@@ -3458,8 +3693,8 @@ def purge(
             now=now,
             ids=set(ids),
         )
-        if report.verified:  # never on a dry run
-            _drop_covered(sp.root, selector, report, audit=audit_covered)
+        if report.verified and audit_covered:  # never on a dry run; the queue's run audits its own (C389)
+            _drop_covered(sp.root, selector, report)
         return report
 
 
@@ -4562,6 +4797,16 @@ _HELD_WHY = "the purge failed; the log has the error"
 git failure's text can name a path or an id, and the report is printed, so that text stays in the log."""
 
 
+def _run_line(state_dir: Path, record: Mapping[str, object]) -> None:
+    """One audit line of the queue's run, before the queue file is rewritten: a trail that refuses it is a
+    GovernanceError (the CLI's one ``error:`` line, its PermissionError cause kept for the chmod), never a
+    bare OSError out of the command with the entry already off the file (B13 round 30 C389)."""
+    try:
+        append_audit(state_dir, record)
+    except OSError as exc:
+        raise GovernanceError(f"the audit trail refused a {record.get('action')} line: {exc}") from exc
+
+
 def run_purge_queue(
     config: Config,
     *,
@@ -4712,9 +4957,9 @@ def run_purge_queue(
             elif not rep.verified:
                 remaining.append(q)
             else:
-                # purge() took off the file every entry it covered: record each one as done (an erasure
-                # request keeps a record that it was fulfilled), except an entry this run already reported as
-                # staying queued: it stays, and the next run clears it
+                # purge() left the file as it was (C389): record each entry it covered as done (an erasure
+                # request keeps a record that it was fulfilled), then write the file without them, except an
+                # entry this run already reported as staying queued: it stays, and the next run clears it
                 did = [e for e in remaining if not any(e is k for k in stays) and _covers(q.selector, rep, e)]
                 later = [
                     i
@@ -4725,7 +4970,7 @@ def run_purge_queue(
                     log.info(
                         "governance: queued %s purge covered by an earlier purge in this run", e.reason.value
                     )
-                    append_audit(
+                    _run_line(
                         sp.root,
                         {
                             "action": "purge-covered",
@@ -4743,6 +4988,18 @@ def run_purge_queue(
                             "taken off the queue",
                         ),
                     )
+                # an entry of q's selector the file keeps (another reason's, staying or still to run) its
+                # summary closed in the replay: reopened, so a later loss is refused (C350); and each lost
+                # record whose id it erased is covered (C370)
+                stay = [
+                    *(e for e in remaining if not any(e is d for d in did)),
+                    *(queue[i] for i in range(n + 1, len(queue)) if i not in covered and i not in later),
+                ]
+                for line in [
+                    *_reopen_lines(q.selector, rep, stay),
+                    *_lost_covered(sp.root, q.selector, rep, queue, now),
+                ]:
+                    _run_line(sp.root, line)
                 reports[-1] = rep
                 covered.update(later)
                 remaining = [e for e in remaining if not any(e is d for d in did)]

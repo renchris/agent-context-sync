@@ -33616,6 +33616,56 @@ fix included) while `governance.round28_pending` (no hold-record.json,
 heartbeat.json's list naming a scope), so readers keyed on the fix's ending still know it. Test: `test_cli.py`
 `test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status` (sync, hold, release, purge).
 
+C370 with C312, C350, C389 (ruling 35): a queued purge the queue lost can be redone from what agentsync prints, and
+only a purge of that item closes it. With purge-queue.json gone and no copy, the FAIL named only "upstream-deleted
+at <iso>" and a `purge <selector>` no output gave the id of, a hand `purge path=` that erased that very item left
+the sync refused, and both dry runs said nothing. `queue_lost`'s detail names each lost `purge-enqueued` record as
+"<reason> at <iso>, a <kind> selector of source <src>" ("of every source" with none; `_lost_entry`), and its fix
+reads "the person puts <queue> back from a copy they trust; or, with no copy, runs each purge by hand before the
+next sync, which refuses until then (for <reason> at <iso>: <how>; ...)". `<how>` (`_redo_words`) is, for a
+stable-id record whose fingerprint `_rebuilt_ids` finds among the manifest's ids of its source (items, tombstones
+and both ids of each `item_aliases` row, read by `manifest.open_read_only`, which creates no -wal or -shm beside a
+manifest this account cannot write: `immutable=1` with no -wal, no read with a -wal and no -shm, none when lost or
+unreadable), the exact
+`` `~/.local/bin/agentsync purge id=<id> --source <src> --reason <reason>` `` (the id `shlex.quote`d); for one it
+cannot rebuild, "no manifest row names its id, which is the `stable_id:` line of the page's front matter in the docs
+repo's history under mirror/<src>/ while no purge has erased the page; `~/.local/bin/agentsync purge id=<that id>
+--source <src> --reason <reason>`: a `path=` or `docs=` purge clears it only when it erases that id" (ruling 35
+said a path= or docs= purge does not clear it, which is false: `_Rewriter._record_target` adds the page's front-matter
+id to the purge's items, so one that erases the page covers the record; "while no purge has erased the page" added,
+as after such a purge no row or page holds the id); for a glob,
+"agentsync keeps only its selector's hash, so the glob comes from the person's own records: `~/.local/bin/agentsync
+purge path=<glob> --source <src> --reason <reason>` (or `docs=<glob>`), as only a purge of the same kind and source
+clears it". `lost_queue_lines(state_dir)` gives "<entry>: <how>" per record. The return is still a
+`GovernanceLostError` (path, role, detail, fix). No selector text enters audit.jsonl or purge-record.json: the id
+is rebuilt by fingerprint, never stored. A verified hand purge writes, besides its queue entries' `purge-covered`
+lines, one (`covered_by_sha256` its selector's fingerprint, the record's `reason` and `selector_sha256`) for each
+lost record whose stable-id fingerprint by source one of its erased items has (`_lost_covered`, against the queue
+as the purge found it; a purge narrowed to another source, `docs=mirror/<s>/... --source <other>`, erases none of
+`<s>`'s, as `_covers` holds for a queued entry), by the replay's reason rule (`_summary_closes`: an upstream-deleted run covers only an
+upstream-deleted record); the queue's run does the same after each verified purge. A verified purge of a selector
+that leaves an entry of it queued (a 0-item hand run of a queued id, or a run of one reason beside another's
+entry), whose summary the replay reads as closing it, writes a `purge-enqueued` line copying the entry's time,
+reason, kind, fingerprint and source with `"dequeue_audited": true, "reopened_by": "purge-summary"`
+(`_reopen_lines`), in both paths, so a later loss of the queue is refused; the queue's own 0-item run takes its
+entry off and its summary still closes it. `purge()` takes covered entries off the file only on a hand purge
+(`_drop_covered` lost its `audit` argument); the queue's run writes each line through `_run_line` before it
+rewrites the file, and a refused line is `GovernanceError("the audit trail refused a <action> line: <OSError>")`,
+the CLI's one `error:` line, exit 1, the queue file unchanged. `purge <selector> --dry-run` adds per lost record
+"  lost from the queue: <entry>: this purge clears it" or ": this purge does not clear it; <how>"
+(`lost_queue_preview`, `lost_cleared_by`), and `purge --queue --dry-run` adds after its summary "<n> purge(s) the
+audit trail records is (are) not in the queue file (<entry>; ...; see status's governance.purge_queue line)"
+(`lost_queue_count_line`), rc 0 both. Not built: an audited forget of a lost record (C370's verifier: it would
+let an erasure be dropped unerased). Known residual: an upstream-deleted purge that erased a page a lost erasure
+record names leaves no manifest row or page holding the id, so that record is redone only from the person's own
+records. Tests: `test_cli.py`
+`test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_that_item_clears_it`,
+`test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it`,
+`test_a_zero_item_hand_purge_of_a_queued_id_reopens_it_so_a_later_queue_loss_is_refused`,
+`test_a_queue_run_reopens_a_same_selector_entry_it_leaves_queued`,
+`test_a_refused_purge_covered_line_is_one_error_before_the_queue_is_rewritten`; `test_governance.py`
+`test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

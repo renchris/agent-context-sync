@@ -1916,6 +1916,61 @@ def test_a_rerun_clears_an_older_lost_record_only_when_it_found_that_records_own
     assert gv.lost_suppressions(state) == []
 
 
+def test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 C370, C312 (ruling 35): each lost queued purge is named by reason, time, selector kind
+    and source; a stable id the manifest names (an alias too) is rebuilt by fingerprint into the exact
+    command; with no row, the fix says where the id is and that a path= or docs= purge clears it only by
+    erasing that id; a glob's text is the person's, the same kind and source. No selector text enters the
+    audit trail."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    sels = [
+        (gv.PurgeSelector(stable_id="contoso-0001", source_id="contoso"), gv.PurgeReason.ERASURE_REQUEST),
+        (gv.PurgeSelector(stable_id="contoso-old", source_id="contoso"), gv.PurgeReason.DLP_REMEDIATION),
+        (gv.PurgeSelector(stable_id="contoso-0009", source_id="contoso"), gv.PurgeReason.UPSTREAM_DELETED),
+        (gv.PurgeSelector(path_glob="legal/*", source_id="contoso"), gv.PurgeReason.LABEL_ESCALATION),
+    ]
+    for sel, reason in sels:
+        assert gv.enqueue_purge(state, sel, reason)
+    conn = sqlite3.connect(state / "manifest.sqlite")
+    conn.execute("CREATE TABLE items (source_id TEXT, stable_id TEXT)")
+    conn.execute("CREATE TABLE item_aliases (source_id TEXT, alias_id TEXT, stable_id TEXT)")
+    conn.execute("INSERT INTO items VALUES ('contoso', 'contoso-0001'), ('fabrikam', 'contoso-0009')")
+    conn.execute("INSERT INTO item_aliases VALUES ('contoso', 'contoso-old', 'contoso-0002')")
+    conn.commit()
+    conn.close()
+    gv._queue_file(state).rename(state / "queue.away")
+    lost = gv.lost_queued(state)
+    at = [r["at"] for r in lost]
+    bin_ = "~/.local/bin/agentsync purge"
+    assert gv.lost_queue_lines(state) == [
+        f"erasure-request at {at[0]}, a stable-id selector of source contoso: "
+        f"`{bin_} id=contoso-0001 --source contoso --reason erasure-request`",
+        f"dlp-remediation at {at[1]}, a stable-id selector of source contoso: "
+        f"`{bin_} id=contoso-old --source contoso --reason dlp-remediation`",
+        f"upstream-deleted at {at[2]}, a stable-id selector of source contoso: no manifest row names its id, "
+        "which is the `stable_id:` line of the page's front matter in the docs repo's history under "
+        f"mirror/contoso/ while no purge has erased the page; `{bin_} id=<that id> --source contoso --reason "
+        "upstream-deleted`: a `path=` or `docs=` purge clears it only when it erases that id",
+        f"label-escalation at {at[3]}, a path-glob selector of source contoso: agentsync keeps only its "
+        f"selector's hash, so the glob comes from the person's own records: `{bin_} path=<glob> --source "
+        "contoso --reason label-escalation`, as only a purge of the same kind and source clears it",
+    ]
+    err = gv.queue_lost(state)
+    assert err is not None
+    assert err.detail.endswith(
+        f"as queued and not done (erasure-request at {at[0]}, a stable-id selector of source contoso; "
+        f"dlp-remediation at {at[1]}, a stable-id selector of source contoso; upstream-deleted at {at[2]}, "
+        f"a stable-id selector of source contoso; label-escalation at {at[3]}, a path-glob selector of "
+        "source contoso)"
+    ), err.detail
+    assert f"(for erasure-request at {at[0]}: `{bin_} id=contoso-0001 --source contoso" in err.fix, err.fix
+    trail = gv.audit_path(state).read_text(encoding="utf-8")
+    assert "contoso-0" not in trail and "contoso-old" not in trail and "legal/" not in trail
+
+
 def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks(
     tmp_path: Path,
 ) -> None:

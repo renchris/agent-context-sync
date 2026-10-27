@@ -6259,6 +6259,246 @@ def test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open(
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
 
 
+def _lost_queue_line(cfg: str, capsys: pytest.CaptureFixture[str]) -> str | None:
+    """Status's governance.purge_queue FAIL line, or None."""
+    _rc, out = _status(cfg, capsys)
+    failed = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    return failed[0] if failed else None
+
+
+def test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_that_item_clears_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C370, C312 (ruling 35): with the queue file gone and no copy, the FAIL named only
+    "upstream-deleted at <iso>" and a `purge <selector>` no output gave the id of; both dry runs said
+    nothing. The FAIL names the entry's reason, time, kind and source and the exact command, its id rebuilt
+    from the manifest by fingerprint; both dry runs name the lost entry; the named command clears it; and
+    the audit trail and the purge record never hold the id."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.UPSTREAM_DELETED)
+    governance._queue_file(root).rename(root / "queue.away")
+    (rec,) = governance.lost_queued(root)
+    failed = _lost_queue_line(cfg, capsys)
+    assert failed is not None
+    entry = f"upstream-deleted at {rec['at']}, a stable-id selector of source source"
+    command = (
+        f"~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} --source source --reason upstream-deleted"
+    )
+    assert f"as queued and not done ({entry})" in failed, failed
+    assert f"(for upstream-deleted at {rec['at']}: `{command}`)" in failed, failed
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert (
+        f"1 purge the audit trail records is not in the queue file ({entry}; see status's "
+        "governance.purge_queue line)"
+    ) in said, said
+    other = ["purge", "path=projects/none-*", "--source", "source", "--reason", "upstream-deleted"]
+    assert cli.main([*other, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert f"  lost from the queue: {entry}: this purge does not clear it; `{command}`" in said, said
+    assert cli.main([*other, "--config", cfg]) == cli.EXIT_OK  # a path= purge that erases nothing of that id
+    assert "VERIFIED · 0 items" in capsys.readouterr().out
+    assert governance.lost_queued(root) == [rec] and _lost_queue_line(cfg, capsys) is not None
+    redo = shlex.split(command)[1:]
+    assert cli.main([*redo, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    assert f"  lost from the queue: {entry}: this purge clears it" in capsys.readouterr().out
+    assert _lost_queue_line(cfg, capsys) is not None  # a dry run writes nothing
+    assert cli.main([*redo, "--config", cfg]) == cli.EXIT_OK
+    assert _lost_queue_line(cfg, capsys) is None
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    for kept in (governance.audit_path(root), governance.purge_record_file(root)):
+        assert sid not in kept.read_text(encoding="utf-8"), kept
+
+
+def test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C370 (ruling 35): a deletion queued by id, the queue file then lost: a hand `purge
+    path=` erased that very item (VERIFIED, 1 item) and the sync still refused, as only a summary of the
+    same selector closed the record. A verified hand purge covers each lost record whose id it erased by its
+    source, with a purge-covered line that names no id; an upstream-deleted run never covers an erasure."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    for reason in (governance.PurgeReason.UPSTREAM_DELETED, governance.PurgeReason.ERASURE_REQUEST):
+        assert governance.enqueue_purge(root, selector, reason)
+    governance._queue_file(root).rename(root / "queue.away")
+    by_path = ["purge", "path=projects/sample.txt", "--source", "source", "--reason", "upstream-deleted"]
+    assert cli.main([*by_path, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    at = {r["reason"]: r["at"] for r in governance.lost_queued(root)}
+    head = "  lost from the queue: {} at {}, a stable-id selector of source source: this purge "
+    assert head.format("upstream-deleted", at["upstream-deleted"]) + "clears it\n" in said, said
+    # an upstream-deleted run suppresses nothing, so it never does an erasure
+    assert head.format("erasure-request", at["erasure-request"]) + "does not clear it; `" in said, said
+    by_path[-1] = "erasure-request"
+    assert cli.main([*by_path, "--config", cfg]) == cli.EXIT_OK
+    assert "VERIFIED · 1 item" in capsys.readouterr().out
+    covered = [r for r in governance.read_audit(root) if r["action"] == "purge-covered"]
+    assert sorted(r["reason"] for r in covered) == ["erasure-request", "upstream-deleted"], covered
+    assert {r["selector_sha256"] for r in covered} == {selector.fingerprint()}
+    assert governance.lost_queued(root) == []
+    assert _lost_queue_line(cfg, capsys) is None
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert sid not in governance.audit_path(root).read_text(encoding="utf-8")
+
+
+def test_a_lost_queued_ids_rebuild_creates_no_side_file_beside_a_manifest_this_account_cannot_write(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C370's review: the stable id of a lost queued purge was rebuilt by a plain ``mode=ro``
+    open of the manifest, so status, the queue's dry run and a hand purge's dry run each left a 0400 -wal and
+    -shm beside a 0400 manifest (the round 20 X78 regression). The manifest is read so nothing is created,
+    and the id is still rebuilt."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    db = expand(initialised.state_paths.db)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    governance._queue_file(root).rename(root / "queue.away")
+    side = [db.with_name(db.name + suffix) for suffix in ("-wal", "-shm")]
+    assert not any(p.exists() for p in side), side
+    db.chmod(0o400)
+    try:
+        failed = _lost_queue_line(cfg, capsys)
+        assert failed is not None and f"`~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} " in failed
+        assert not any(p.exists() for p in side), "status"
+        cli.main(["purge", "--queue", "--dry-run", "--config", cfg])
+        assert not any(p.exists() for p in side), "purge --queue --dry-run"
+        other = ["purge", "path=projects/none-*", "--source", "source", "--reason", "erasure-request"]
+        cli.main([*other, "--dry-run", "--config", cfg])
+        assert not any(p.exists() for p in side), "purge --dry-run"
+    finally:
+        db.chmod(0o600)
+
+
+def test_a_docs_purge_narrowed_to_another_source_clears_no_lost_queued_id(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C370's review: a docs glob matches before the source does, so `purge docs=<page>
+    --source other` listed the page's item under its own source and closed a lost queued id of it, which
+    :func:`governance._covers` refuses for a queued entry. A purge narrowed to another source clears no lost
+    record of this one, and its dry run says so."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
+    governance._queue_file(root).rename(root / "queue.away")
+    (rec,) = governance.lost_queued(root)
+    entry = f"dlp-remediation at {rec['at']}, a stable-id selector of source source"
+    narrowed = [
+        "purge",
+        "docs=mirror/source/projects/sample.txt.md",
+        "--source",
+        "other",
+        "--reason",
+        "dlp-remediation",
+    ]
+    capsys.readouterr()
+    cli.main([*narrowed, "--dry-run", "--config", cfg])
+    said = capsys.readouterr().out
+    assert f"  lost from the queue: {entry}: this purge does not clear it; `" in said, said
+    cli.main([*narrowed, "--config", cfg])
+    capsys.readouterr()
+    assert governance.lost_queued(root) == [rec]
+    assert _lost_queue_line(cfg, capsys) is not None
+
+
+def test_a_zero_item_hand_purge_of_a_queued_id_reopens_it_so_a_later_queue_loss_is_refused(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C350 (ruling 35): a 0-item verified hand purge of a queued id left it queued (it took
+    nothing off) while the replay read its summary as done; a queue then rewritten as empty lost it with no
+    refusal. The hand purge reopens each same-selector entry it leaves queued; the queue's own 0-item run,
+    which takes its entry off, still leaves nothing lost."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    selector = governance.PurgeSelector(stable_id="contoso-vol:4242", source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    hand = ["purge", "id=contoso-vol:4242", "--source", "source", "--reason", "erasure-request"]
+    assert cli.main([*hand, "--config", cfg]) == cli.EXIT_OK
+    assert "VERIFIED · 0 items" in capsys.readouterr().out
+    assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.ERASURE_REQUEST]
+    reopened = governance.read_audit(root)[-1]
+    assert reopened["action"] == "purge-enqueued" and reopened["reopened_by"] == "purge-summary", reopened
+    assert "contoso-vol" not in governance.audit_path(root).read_text(encoding="utf-8")
+    governance._queue_file(root).write_text('{"queue": []}\n', encoding="utf-8")
+    assert [r["reason"] for r in governance.lost_queued(root)] == ["erasure-request"]
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    # the control: the queue's own 0-item run takes the entry off, and its summary closes it
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert governance.pending_purges(root) == [] and governance.lost_queued(root) == []
+
+
+def test_a_queue_run_reopens_a_same_selector_entry_it_leaves_queued(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C350's queue half (ruling 35): an upstream deletion of a listed file stays queued while
+    the run erases the same item for an erasure request; the erasure's summary closed the deletion's record
+    in the replay, so a later loss of the queue went unrefused. The run reopens it."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    for reason in (governance.PurgeReason.UPSTREAM_DELETED, governance.PurgeReason.ERASURE_REQUEST):
+        assert governance.enqueue_purge(root, selector, reason)
+    cli.main(["purge", "--queue", "--config", cfg])  # its exit is the kept deletion's, not this test's
+    assert "purge stable-id (erasure-request): VERIFIED · 1 item" in capsys.readouterr().out
+    assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.UPSTREAM_DELETED]
+    governance._queue_file(root).write_text('{"queue": []}\n', encoding="utf-8")
+    assert [r["reason"] for r in governance.lost_queued(root)] == ["upstream-deleted"]
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+
+
+def test_a_refused_purge_covered_line_is_one_error_before_the_queue_is_rewritten(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C389 (ruling 35): an erasure docs= entry and a DLP id= entry it covers; the audit trail
+    refused the run's purge-covered line. purge() had already taken the DLP entry off the file, the run died
+    with a bare OSError, and the next sync refused for a purge done. The run writes the line before the
+    queue, and a refused one is one error line: both entries stay queued and nothing reads as lost."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    erasure = governance.PurgeSelector(docs_glob=page)
+    assert governance.enqueue_purge(root, erasure, governance.PurgeReason.ERASURE_REQUEST)
+    dlp = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    real = governance.append_audit
+
+    def refusing(state_dir: Path, record: Mapping[str, object]) -> None:
+        if record.get("action") == "purge-covered":
+            raise OSError(errno.EROFS, os.strerror(errno.EROFS))
+        real(state_dir, record)
+
+    monkeypatch.setattr(governance, "append_audit", refusing)
+    queue = governance._queue_file(root)
+    before = queue.read_bytes()
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err.splitlines()
+    assert err == [f"error: the audit trail refused a purge-covered line: [Errno 30] {os.strerror(30)}"], err
+    assert queue.read_bytes() == before
+    assert governance.lost_queued(root) == []
+    assert not (initialised.docs_repo / page).exists()
+    monkeypatch.setattr(governance, "append_audit", real)
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK  # the trail back: both leave
+    assert governance.pending_purges(root) == [] and governance.lost_queued(root) == []
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
 def test_a_hand_purge_that_covers_a_queued_one_leaves_no_lost_entry(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

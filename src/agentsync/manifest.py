@@ -23,6 +23,7 @@ import sqlite3
 import stat
 import time
 import unicodedata
+import urllib.parse
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
@@ -905,6 +906,26 @@ def lost_error(db_path: Path, lost: str) -> ManifestLostError:
     site builds it here, so they never drift (B13 round 29 C179, C192)."""
     code = errno.EINVAL if lost in LOST_MANIFEST_SHORT else errno.ENOENT
     return ManifestLostError(f"{db_path} {lost}", code, reason=lost)
+
+
+def open_read_only(db_path: Path, timeout: float) -> sqlite3.Connection | None:
+    """A read-only connection to the manifest at ``db_path`` that creates no file beside it, or None when
+    every such open would, or it is not there to read: a ``mode=ro`` open of a WAL database this account
+    cannot write creates its -wal and -shm with the file's own mode (0400; B13 round 20 X78, round 21 Y70).
+    With no -wal the file is the whole database, read ``immutable=1``, which creates nothing; with both side
+    files there, a plain ``mode=ro`` creates nothing; with a -wal and no -shm nothing is opened, as
+    ``doctor.manifest_unreadable`` skips it. A lost manifest (:func:`lost_words`) or one this account cannot
+    read is not opened. The same rule as ``setup_report._open_manifest_ro``, which the report keeps for its
+    own fallbacks."""
+    if not db_path.is_file() or lost_words(db_path) is not None or not os.access(db_path, os.R_OK):
+        return None
+    uri = f"file:{urllib.parse.quote(str(db_path))}?mode=ro"
+    if not os.access(db_path, os.R_OK | os.W_OK):
+        if not db_path.with_name(db_path.name + "-wal").exists():
+            uri += "&immutable=1"
+        elif not db_path.with_name(db_path.name + "-shm").exists():
+            return None
+    return sqlite3.connect(uri, uri=True, timeout=timeout)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
