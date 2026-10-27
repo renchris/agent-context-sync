@@ -32916,6 +32916,8 @@ C210). Tests: `test_the_kept_purges_line_counts_once_for_one_kind_and_totals_sev
 `test_both_side_files_not_files_are_named_both_in_statuss_cannot_read_line`,
 `test_a_lost_manifests_sync_stop_records_which_lost_kind_stopped_it`; `test_cycle.py`'s
 `test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_its_page`.
+Amended 2026-10-26, §16.205 C353: the clause reads `S of the unreadable held back: its page contained a credential`
+for one page and `... their pages contained a credential` for more.
 
 ### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
 
@@ -33909,6 +33911,11 @@ whose id is found nowhere`, read the same in the loop's wait and status's warn. 
 `no row, docs history not searched yet`) is lane RA's. Tests:
 `test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up` (the whole clause in the wait and the
 warn), `test_the_purges_from_before_the_new_start_are_named_in_the_plural`.
+
+C353: the sync line's credential clause has its plural. `cli._print_report` wrote `S of the unreadable held back:
+its page contained a credential` whatever S was; it now reads `their pages` for more than one, as the withheld
+clause and the retry note do. No reader keys on it (`_SPLIT_RE` stops at the withheld clause). Test:
+`test_cycle.py`'s `test_two_pages_the_secret_scan_stubs_are_said_as_their_pages`.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

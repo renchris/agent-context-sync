@@ -7918,6 +7918,26 @@ def test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_it
     assert run(sample_config).exit_code == 0
 
 
+def test_two_pages_the_secret_scan_stubs_are_said_as_their_pages(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 30 C353: the sync line's credential clause said "its page" whatever the count, so two stubs
+    read "2 of the unreadable held back: its page contained a credential"."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)  # the builtin rules, whatever this Mac has
+    for name in ("Contoso keys.txt", "Contoso more keys.txt"):
+        (local_source_dir / "projects" / name).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    report = run(sample_config)
+    assert sum(s.credential_stubbed for s in report.sources) == 2, report.sources
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    assert "; 2 of the unreadable held back: their pages contained a credential)" in out, out
+    assert "its page contained" not in out, out
+
+
 def _alarm_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
     return [r for r in caplog.records if getattr(r, cycle_mod.ECHOED_WHEN, None) == "alarm"]
 
