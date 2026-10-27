@@ -3490,6 +3490,10 @@ class _Cycle:
         # neither move aside lifts a hold; with every lost hold kept (B13 round 28 I89; round 29 C199, C170)
         with contextlib.suppress(Exception):
             governance.record_holds(self.config.state_paths.root)
+        # purge-record.json keeps the purge lines the same way, from the audit trail at every pass's end, so
+        # an install that purged before it existed has it too (B13 round 30 C381; ruling 34)
+        with contextlib.suppress(Exception):
+            governance.record_purges(self.config.state_paths.root)
         counts = Counter(c.op.value for c in self.changes)
         if retried := self._tally[
             "legacy_retried"

@@ -1914,3 +1914,28 @@ def test_a_rerun_clears_an_older_lost_record_only_when_it_found_that_records_own
     assert [r["at"] for r in gv.lost_suppressions(state)] == ["2026-10-03T00:00:00Z"]
     gv.suppress_items(state, [("contoso", "contoso-0001")])
     assert gv.lost_suppressions(state) == []
+
+
+def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 C381 (ruling 34): with governance/ moved aside, the queue and the audit trail went with
+    it, and a queued erasure read as none. purge-record.json, written after the queue's audit line, keeps it:
+    the queue reads as lost and the sync refuses. A new trail's lines are added after the kept ones, never in
+    their place."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    first = gv.PurgeSelector(stable_id="contoso-0001", source_id="contoso")
+    assert gv.enqueue_purge(state, first, gv.PurgeReason.ERASURE_REQUEST)
+    assert [r["action"] for r in gv.recorded_purges(state)] == ["purge-enqueued"]
+    gv.governance_dir(state).rename(state / "governance.away")
+    (lost,) = gv.lost_queued(state)
+    assert lost["selector_sha256"] == first.fingerprint()
+    assert gv.queue_lost(state) is not None
+    second = gv.PurgeSelector(stable_id="contoso-0002", source_id="contoso")
+    assert gv.enqueue_purge(state, second, gv.PurgeReason.DLP_REMEDIATION)  # a new governance/
+    kept = [r["selector_sha256"] for r in gv.recorded_purges(state)]
+    assert kept == [first.fingerprint(), second.fingerprint()]
+    gv.record_purges(state)
+    assert [r["selector_sha256"] for r in gv.recorded_purges(state)] == kept
+    assert [r["selector_sha256"] for r in gv.lost_queued(state)] == [first.fingerprint()]

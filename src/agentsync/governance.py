@@ -48,6 +48,7 @@ import tempfile
 import tomllib
 import unicodedata
 import urllib.parse
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC as _UTC
@@ -501,6 +502,12 @@ def _damaged_words(path: Path, role: str, what: str) -> tuple[str, str]:
             f"`{AGENTSYNC_BIN} hold <scope> --reason <why> --owner <name>` (until then the holds the audit "
             "trail records stay in force)"
         )
+    elif role == HOLD_RECORD_ROLE:
+        fix = _HOLDS_FIRST + f"then the person restores {shown} from a copy they trust, or moves it aside, "
+        fix += "keeping a copy" + _record_rewritten(path.parent)
+    elif role == PURGE_RECORD_ROLE:
+        fix = f"the person restores {shown} from a copy they trust, or moves it aside, keeping a copy"
+        fix += _purges_rewritten(path.parent)
     else:
         fix = f"the person restores {shown} from a copy they trust, or moves it aside, keeping a copy"
         fix += _what_the_move_leaves(role)
@@ -600,8 +607,10 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     # (B13 round 27 P135, as the lock's and the heartbeat's fixes already said)
     first = doctor._opens_first(path, kind)
     fix = f"the person {first}moves {shown} aside, keeping a copy"
-    if role == HOLD_RECORD_ROLE:  # the next hold or pass writes it again (B13 round 29 C199)
-        fix += "; the next hold, release or sync writes it again from the hold list and the audit trail"
+    if role == HOLD_RECORD_ROLE:  # each hold set again first: it may be the only record (B13 round 30 C382)
+        fix = f"{_HOLDS_FIRST}then {fix}{_record_rewritten(path.parent)}"
+    if role == PURGE_RECORD_ROLE:  # the next purge or pass writes it again, if the trail has one (C381)
+        fix += _purges_rewritten(path.parent)
     if role == "the hold list":  # then the list itself back, so following it never leaves no holds (I87)
         # conditional, one string in every reader: true on a Mac that never kept one (B13 round 29 C151,
         # C142, C126; ruling 28)
@@ -610,20 +619,67 @@ def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:
     return detail, fix
 
 
+_HOLDS_FIRST = (
+    f"the person (the records or legal owner) first sets each hold it named again with `{AGENTSYNC_BIN} hold "
+    "<scope> --reason <why> --owner <name>`; "
+)
+"""The hold record's fix opens with the holds set again, which `hold` does while the record cannot be read:
+after governance/'s move aside it may be the only record of a hold, and its bare move aside erased a page
+under a hold on all (B13 round 30 C382; ruling 34)."""
+
+
+def _record_rewritten(state_dir: Path) -> str:
+    """The hold record's fix tail: the next hold, release or sync writes it again, said only when the hold
+    list or the audit trail names a hold for it to be written from (B13 round 30 C382)."""
+    named = bool(audit_holds(state_dir)[0])
+    with contextlib.suppress(AgentSyncError):  # a hold list that cannot be read names none
+        named = named or bool(_state_holds(state_dir))
+    if not named:
+        return ""
+    return "; the next hold, release or sync writes it again from the hold list and the audit trail"
+
+
+def _purges_rewritten(state_dir: Path) -> str:
+    """The purge record's fix tail: the next purge or sync writes it again from the audit trail only when the
+    trail records a purge; else the purges it kept go with it, and each is run again by hand (C381)."""
+    if any(r.get("action") in _PURGE_ACTIONS for r in _audit_events(state_dir)):
+        return "; the next purge or sync writes it again from the audit trail"
+    return (
+        "; the audit trail records no purge, so the purges it kept are lost with it: the person asks the "
+        "records owner, and runs each erasure, DLP and label purge again by hand before the next sync"
+    )
+
+
 def _record_keeps(state_dir: Path) -> str:
     """The governance folder fix's last clause: a hold stays in force from the hold record only when that
-    record is there and names a scope; else the holds set earlier go with the folder, and the person asks the
-    records owner before any purge (B13 round 29 C199: the clause was said with no record left, and the page
-    under a hold on all was erased)."""
+    record is there and names a scope, by the file that keeps it (hold-record.json, or heartbeat.json's round
+    28 list until a writing command moves it: C352); else the holds set earlier go with the folder, and the
+    person asks the records owner before any purge (B13 round 29 C199: the clause was said with no record
+    left, and the page under a hold on all was erased). Then the purges: kept out from the purge record when
+    it names one, else lost with the folder and run again by hand (B13 round 30 C381; ruling 34)."""
     try:
         named = recorded_hold_scopes(state_dir)
     except AgentSyncError:
         named = frozenset()
     if named:
-        return f"(a hold set earlier stays in force from {HOLD_RECORD_NAME}'s record)"
+        holds = f"(a hold set earlier stays in force from {_hold_record_shown(state_dir)}'s record"
+    else:
+        holds = (
+            "(no hold record names a hold, so a hold set earlier is lost with the folder: the person checks "
+            "with the records owner, and sets each hold again, before any purge"
+        )
+    try:
+        purged = bool(recorded_purges(state_dir))
+    except AgentSyncError:  # never no purges: its own line says why (ruling 19)
+        return f"{holds}; {PURGE_RECORD_NAME} cannot be read, and its own line says why)"
+    if purged:
+        return (
+            f"{holds}; the purges run earlier stay recorded in {PURGE_RECORD_NAME}, so the next sync keeps "
+            "their items out and refuses until each is put back or accepted)"
+        )
     return (
-        "(no hold record names a hold, so a hold set earlier is lost with the folder: the person checks with "
-        "the records owner, and sets each hold again, before any purge)"
+        f"{holds}; no purge record names a purge, so an erasure, DLP or label purge run earlier is lost with "
+        "the folder too: the person runs each again by hand before the next sync)"
     )
 
 
@@ -641,7 +697,7 @@ GOVERNANCE_ROLES = {
 """What each governance file is, in the words of its not-a-file FAIL (B13 round 26 E43)."""
 
 
-def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
+def governance_not_a_file(state_dir: Path, *, record: bool = True) -> GovernanceNotAFileError | None:
     """The first governance file that is not a regular file, by its stat (``doctor.state_file_kind``, which
     opens nothing, so a fifo never blocks), as the error its readers raise; None when each is a file, a link
     to one or missing (B13 round 26 E43; ruling 13). governance/ itself first (:func:`governance_dir_error`),
@@ -656,18 +712,28 @@ def governance_not_a_file(state_dir: Path) -> GovernanceNotAFileError | None:
         kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
         if kind is not None:
             return GovernanceNotAFileError(path, kind, role)
-    record = hold_record_file(state_dir)  # outside governance/, the person's as the rest (B13 round 29 C199)
-    kind = doctor.governance_file_kind(record)
-    return None if kind is None else GovernanceNotAFileError(record, kind, HOLD_RECORD_ROLE)
+    # outside governance/, the person's as the rest (B13 round 29 C199); ``record=False``: a hold, which sets
+    # each hold again as the hold record's own fix asks first (B13 round 30 C382; ruling 34)
+    held = hold_record_file(state_dir)
+    kind = doctor.governance_file_kind(held) if record else None
+    if kind is not None:
+        return GovernanceNotAFileError(held, kind, HOLD_RECORD_ROLE)
+    purged = purge_record_file(state_dir)  # beside it (B13 round 30 C381; ruling 34); a hold only adds
+    kind = doctor.governance_file_kind(purged) if record else None
+    return None if kind is None else GovernanceNotAFileError(purged, kind, PURGE_RECORD_ROLE)
 
 
-def governance_damaged(state_dir: Path) -> GovernanceDamagedError | None:
+def governance_damaged(state_dir: Path, *, record: bool = True) -> GovernanceDamagedError | None:
     """The first governance file that is a regular file agentsync cannot read (damaged JSON, empty, or the
     wrong shape: :class:`GovernanceDamagedError`), the hold list first; None when each reads, or another
     error stops the read (its own line says that). Read only after :func:`governance_not_a_file` passed, so
     each is a regular file and a fifo never blocks: sync's guard refuses over it in status's words, never a
     traceback and never an exit 0 (B13 round 28 I90)."""
-    for read in (_state_holds, _record_scopes, pending_purges, load_suppressions):
+    reads: list[Callable[[Path], object]] = [_state_holds, pending_purges, load_suppressions]
+    if record:  # never for a hold, which only adds protection: the hold record's fix sets them first (C382)
+        reads[1:1] = [_record_scopes]
+        reads.append(recorded_purges)
+    for read in reads:
         try:
             read(state_dir)
         except GovernanceDamagedError as exc:
@@ -878,15 +944,34 @@ def recorded_hold_scopes(state_dir: Path) -> frozenset[str]:
     found = _record_scopes(state_dir)
     if found is not None:
         return found
+    return _round28_scopes(state_dir) or frozenset()
+
+
+def _round28_scopes(state_dir: Path) -> frozenset[str] | None:
+    """heartbeat.json's round 28 ``holds`` list (:data:`HOLD_RECORD_KEY`), whether or not a record file is
+    there; None when it carries none (a dict there is a source named ``holds``: C200) or cannot be read."""
     try:
         text = read_regular_text(_heartbeat_file(state_dir))
         data = json.loads(text) if text else None
     except (OSError, ValueError):
-        return frozenset()
+        return None
     scopes = data.get(HOLD_RECORD_KEY) if isinstance(data, dict) else None
     if not isinstance(scopes, list):
-        return frozenset()
+        return None
     return frozenset(x for x in scopes if isinstance(x, str))
+
+
+def _hold_record_shown(state_dir: Path) -> str:
+    """The file that keeps the hold record: hold-record.json when it is there, else heartbeat.json's round 28
+    list, one name for :func:`lost_holds` and the governance folder's fix (B13 round 30 C352)."""
+    return HOLD_RECORD_NAME if os.path.lexists(hold_record_file(state_dir)) else "heartbeat.json"
+
+
+def round28_pending(state_dir: Path) -> bool:
+    """Whether heartbeat.json still keeps round 28's hold record, naming a scope, with no hold-record.json
+    there: until a writing command moves it (:func:`carry_round28_record`), a fix that moves heartbeat.json
+    aside takes the record with it (B13 round 30 C351)."""
+    return not os.path.lexists(hold_record_file(state_dir)) and bool(_round28_scopes(state_dir))
 
 
 @contextlib.contextmanager
@@ -916,22 +1001,52 @@ def record_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> None:
             scopes = frozenset({h.scope for h in holds} | {h.scope for h in lost_holds(state_dir, holds)})
             if _record_scopes(state_dir) == scopes:
                 return
-            body = (json.dumps({"holds": sorted(scopes)}, indent=1) + "\n").encode("utf-8")
-            fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-            try:
-                try:
-                    os.fchmod(fd, 0o600)
-                    os.write(fd, body)
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
-                Path(name).replace(path)
-            except BaseException:
-                with contextlib.suppress(OSError):
-                    Path(name).unlink()
-                raise
+            _write_record(path, {"holds": sorted(scopes)})
     except (OSError, AgentSyncError) as exc:
         log.debug("governance: hold record not written to %s: %s", path, exc)
+
+
+def _write_record(path: Path, obj: object) -> None:
+    """Replace the state folder's record file ``path`` (hold-record.json, purge-record.json) with ``obj``: a
+    temporary file beside it, mode 0600, fsynced, renamed over it. The caller holds :func:`_record_lock`."""
+    body = (json.dumps(obj, indent=1, sort_keys=True) + "\n").encode("utf-8")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        try:
+            os.fchmod(fd, 0o600)
+            os.write(fd, body)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        Path(name).replace(path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(name).unlink()
+        raise
+
+
+def carry_round28_record(state_dir: Path) -> None:
+    """Move round 28's hold record from heartbeat.json to hold-record.json, once: only while no
+    hold-record.json is there and heartbeat.json keeps a ``holds`` list, merged with the hold list and the
+    holds the audit trail keeps when they read, else the list alone, so it never waits on governance/ (a link
+    to a gone volume is the case it is for). Run at the start of sync, hold, release and purge, before the
+    manifest opens and before any guard, never by status or doctor, which write nothing: a Mac upgraded from
+    round 28 whose manifest was lost never reached a pass's :func:`record_holds`, and the lost manifest's fix
+    moves heartbeat.json aside (B13 round 30 C351; ruling 34). Best effort, under :func:`_record_lock`,
+    atomic and 0600."""
+    path = hold_record_file(state_dir)
+    try:
+        with _record_lock(state_dir):
+            carried = None if os.path.lexists(path) else _round28_scopes(state_dir)
+            if carried is None:
+                return
+            scopes = set(carried)
+            with contextlib.suppress(Exception):  # an unread hold list or trail: the list alone
+                holds = _state_holds(state_dir)
+                scopes = {h.scope for h in holds} | {h.scope for h in lost_holds(state_dir, holds)}
+            _write_record(path, {"holds": sorted(scopes)})
+    except (OSError, AgentSyncError) as exc:
+        log.debug("governance: round 28 hold record not carried to %s: %s", path, exc)
 
 
 def _audit_events(state_dir: Path) -> list[dict[str, Any]]:
@@ -975,7 +1090,7 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
     have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
     held, released = audit_holds(state_dir)
     recorded = recorded_hold_scopes(state_dir)
-    record = HOLD_RECORD_NAME if os.path.lexists(hold_record_file(state_dir)) else "heartbeat.json"
+    record = _hold_record_shown(state_dir)
     out = [
         Hold(
             scope,
@@ -1286,6 +1401,111 @@ def load_suppressions(state_dir: Path) -> Suppressions:
     return Suppressions(items, globs, paths, canonical)
 
 
+PURGE_RECORD_NAME = "purge-record.json"
+"""The purges' own record beside hold-record.json, outside governance/ (:func:`record_purges`; B13 round 30
+C381; ruling 34)."""
+
+PURGE_RECORD_ROLE = "the purge record"
+"""What purge-record.json is, in its not-a-file and damaged FAILs (B13 round 30 C381; ruling 34)."""
+
+_PURGE_ACTIONS = frozenset(
+    {
+        "purge",
+        "purge-summary",
+        "purge-enqueued",
+        "purge-covered",
+        "purge-forgotten",
+        "suppression-lost-accepted",
+    }
+)
+"""The audit lines the purge record keeps: every one :func:`audited_suppressions`, :func:`lost_suppressions`
+and :func:`lost_queued` read, each hashes only, as the audit trail writes it (ruling 33's form)."""
+
+
+def purge_record_file(state_dir: Path) -> Path:
+    """``<state_dir>/purge-record.json``: the audit trail's purge lines, outside governance/, so the folder's
+    move aside never takes the record of an erasure (B13 round 30 C381: following the folder's own fix
+    published an erased page again)."""
+    return expand(state_dir) / PURGE_RECORD_NAME
+
+
+def recorded_purges(state_dir: Path) -> list[dict[str, Any]]:
+    """The purge lines purge-record.json keeps, oldest first; empty when no file is there. One that is there
+    but cannot be read is its GovernanceUnreadError, never no purges (ruling 19; C381); one this account
+    cannot open is a GovernanceError caused by the PermissionError, whose FAIL gives the chmod."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    path = purge_record_file(state_dir)
+    kind = doctor.governance_file_kind(path)
+    if kind is not None:
+        raise GovernanceNotAFileError(path, kind, PURGE_RECORD_ROLE)
+    try:
+        text = read_regular_text(path)
+    except UnicodeDecodeError as exc:
+        raise GovernanceDamagedError(path, PURGE_RECORD_ROLE, f"it is not JSON ({exc})") from None
+    except ValueError:
+        raise GovernanceNotAFileError(
+            path, doctor.governance_file_kind(path) or "not a regular file", PURGE_RECORD_ROLE
+        ) from None
+    except PermissionError as exc:
+        raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
+    if text is None:
+        return []
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise GovernanceDamagedError(path, PURGE_RECORD_ROLE, f"it is not JSON ({exc})") from None
+    lines = data.get("purges") if isinstance(data, dict) else None
+    if not isinstance(lines, list) or not all(isinstance(x, dict) for x in lines):
+        raise GovernanceDamagedError(path, PURGE_RECORD_ROLE, 'it is not an object with a "purges" list')
+    return lines
+
+
+def _line_key(rec: Mapping[str, Any]) -> str:
+    return json.dumps(rec, sort_keys=True, ensure_ascii=False)
+
+
+def _merge_purges(kept: Sequence[dict[str, Any]], audit: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``kept`` (the record's lines, in order), then each purge line of ``audit`` it lacks, line for line:
+    the union, which never shrinks, and the trail's lines written since the record last was come after it."""
+    have = Counter(_line_key(r) for r in kept)
+    out = list(kept)
+    for rec in audit:
+        if rec.get("action") not in _PURGE_ACTIONS:
+            continue
+        key = _line_key(rec)
+        if have[key]:
+            have[key] -= 1
+        else:
+            out.append(rec)
+    return out
+
+
+def _purge_events(state_dir: Path) -> list[dict[str, Any]]:
+    """The purge lines of the purge record and the audit trail together (:func:`_merge_purges`): what the
+    suppression and queue readers judge, so governance/ moved aside never reads as no purges (C381). A record
+    that cannot be read raises (:func:`recorded_purges`)."""
+    return _merge_purges(recorded_purges(state_dir), _audit_events(state_dir))
+
+
+def record_purges(state_dir: Path) -> None:
+    """Write purge-record.json: its own lines and every purge line of the audit trail it lacks
+    (:func:`_merge_purges`), never fewer. Run after each purge's, queue change's and loss acceptance's audit
+    lines, and at the end of every pass, so an install that purged before the record existed gets it on its
+    next sync. Atomic, mode 0600, under :func:`_record_lock`; unchanged, it is not rewritten. Best effort: a
+    record that cannot be read is left as it is, for its own FAIL (B13 round 30 C381; ruling 34)."""
+    path = purge_record_file(state_dir)
+    try:
+        with _record_lock(state_dir):
+            kept = recorded_purges(state_dir)
+            merged = _merge_purges(kept, _audit_events(state_dir))
+            if len(merged) == len(kept):  # unchanged, or nothing to record yet
+                return
+            _write_record(path, {"purges": merged})
+    except (OSError, AgentSyncError) as exc:
+        log.debug("governance: purge record not written to %s: %s", path, exc)
+
+
 @dataclass(frozen=True, slots=True)
 class AuditedSuppressions:
     """The items the audit trail records as purged for a reason that suppresses (every one but
@@ -1317,12 +1537,13 @@ class AuditedSuppressions:
 
 
 def audited_suppressions(state_dir: Path) -> AuditedSuppressions:
-    """:class:`AuditedSuppressions` from the audit trail's ``purge`` and ``purge-summary`` lines; empty when
-    it cannot be read."""
+    """:class:`AuditedSuppressions` from the ``purge`` and ``purge-summary`` lines of the audit trail and the
+    purge record (:func:`_purge_events`), so governance/ moved aside keeps them out (B13 round 30 C381); a
+    trail that cannot be read adds none, a purge record that cannot be read raises."""
     items: set[tuple[str, str]] = set()
     paths: set[tuple[str, str]] = set()
     canonical: set[str] = set()
-    for rec in _audit_events(state_dir):
+    for rec in _purge_events(state_dir):
         sid = rec.get("source_id")
         if rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value:
             continue
@@ -1383,7 +1604,7 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     out: list[dict[str, Any]] = []
     own: dict[int, set[tuple[object, object]]] = {}  # each lost record's items, as its purge lines name them
     group: list[dict[str, Any]] = []
-    for rec in _audit_events(state_dir):
+    for rec in _purge_events(state_dir):
         action = rec.get("action")
         if action == "purge":
             group.append(rec)
@@ -1428,7 +1649,7 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
     have = {(q.selector.fingerprint(), q.reason.value) for q in pend}
     gone_file = not os.path.lexists(_queue_file(state_dir))
     open_: dict[tuple[object, object], dict[str, Any]] = {}
-    for rec in _audit_events(state_dir):
+    for rec in _purge_events(state_dir):
         action, fp = rec.get("action"), rec.get("selector_sha256")
         if action == "purge-enqueued":
             open_[(fp, rec.get("reason"))] = rec
@@ -1649,6 +1870,7 @@ def enqueue_purge(
                 "dequeue_audited": True,
             }
         )
+    record_purges(state_dir)  # the queued purge outside governance/ too (B13 round 30 C381)
     return True
 
 
@@ -1698,6 +1920,7 @@ def _drop_covered(
                 _write_queue(state_dir, kept)
     except Exception as exc:  # the purge already verified: the queue is only tidied
         log.warning("governance: purge queue not updated after a verified purge: %s", exc)
+    record_purges(state_dir)  # its purge-covered lines (B13 round 30 C381)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -3536,6 +3759,7 @@ def _audit_purge(
             "verified": report.verified,
         },
     )
+    record_purges(state_dir)  # outside governance/, after its audit lines (B13 round 30 C381; ruling 34)
 
 
 _LISTED_STATES = ("live", "dataless")
@@ -4260,6 +4484,7 @@ def forget_queued(
                     "source_id": q.selector.source_id,
                 }
             )
+        record_purges(sp.root)  # B13 round 30 C381
     return q
 
 
@@ -4303,6 +4528,7 @@ def accept_lost_suppression(
                         "selector_sha256": rec.get("selector_sha256"),
                     }
                 )
+        record_purges(sp.root)  # the acceptance outside governance/ too, so the record's loss stays cleared
     return lost
 
 
@@ -4525,6 +4751,7 @@ def run_purge_queue(
                 )
         if not dry_run:
             _write_queue(sp.root, remaining)
+            record_purges(sp.root)  # its purge-covered lines (B13 round 30 C381)
         if new_start:
             log.warning("governance: %s", new_start_purges(new_start))
         if unresolved:

@@ -1153,6 +1153,9 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     """One cycle; without ``--mode`` (an agent's or a person's run, never a LaunchAgent's) the report ends
     with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
+    # round 28's hold record out of heartbeat.json first, before any guard or the manifest's open: a lost
+    # manifest's sync still carries it, and its fix moves heartbeat.json aside (B13 round 30 C351; ruling 34)
+    governance.carry_round28_record(config.state_paths.root)
     if _not_a_file_stop(args, config, manifest=False, lost=True):  # the lock, heartbeat, governance (E38)
         return EXIT_FAILED
     mode = CycleMode(args.mode) if args.mode else None
@@ -2429,6 +2432,21 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     return refused
 
 
+def _purge_record_checks(config: Config) -> list[doctor.CheckResult]:
+    """``governance.suppressed``'s FAIL for a purge record that cannot be read
+    (``governance.recorded_purges``), beside a governance/ that is not a folder, whose fix says the record's
+    own line says why: the record sits outside the folder, so it is read though nothing under the folder is
+    (B13 round 30 C381)."""
+    try:
+        governance.recorded_purges(expand(config.state_paths.root))
+    except AgentSyncError as exc:
+        try:
+            return [_refused_check(config, "governance.suppressed", exc)]
+        except AgentSyncError:
+            return [doctor.stopped(config, "governance.suppressed", exc)]
+    return []
+
+
 def _governance_folder_checks(config: Config) -> list[doctor.CheckResult]:
     """``governance.hold``'s FAIL for a governance/ folder this account cannot write into, with
     ``doctor.state_path_fix``'s fix (this account's chmod 700, another account's chown, the person's ACL or
@@ -2492,21 +2510,28 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
     if kind is not None:  # the words and the person's fix a hold's error gives (B13 round 25 D22, D41)
         detail, fix = governance.audit_not_a_file(audit, kind)
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
-    try:
-        governance.load_suppressions(root)
-    except governance.GovernanceUnreadError as exc:  # the person's move aside, never "crashed" (E43)
-        out.append(_refused_check(config, "governance.suppressed", exc))
-    except AgentSyncError as exc:
-        cause = exc.__cause__
-        refused = (
-            doctor.refused_state_path(config, "governance.suppressed", cause)
-            if isinstance(cause, OSError)
-            else None
-        )
-        out.append(refused or doctor.stopped(config, "governance.suppressed", exc))
-    except Exception as exc:  # valid JSON of the wrong shape: this line only (A79's reviewer)
-        out.append(doctor.stopped(config, "governance.suppressed", exc))
-    else:
+    unread = False
+    # the suppression list, then the purge record beside hold-record.json: one that cannot be read is its own
+    # FAIL, never no purges (B13 round 30 C381; ruling 34)
+    for read in (governance.load_suppressions, governance.recorded_purges):
+        try:
+            read(root)
+        except governance.GovernanceUnreadError as exc:  # the person's move aside, never "crashed" (E43)
+            out.append(_refused_check(config, "governance.suppressed", exc))
+        except AgentSyncError as exc:
+            cause = exc.__cause__
+            refused = (
+                doctor.refused_state_path(config, "governance.suppressed", cause)
+                if isinstance(cause, OSError)
+                else None
+            )
+            out.append(refused or doctor.stopped(config, "governance.suppressed", exc))
+        except Exception as exc:  # valid JSON of the wrong shape: this line only (A79's reviewer)
+            out.append(doctor.stopped(config, "governance.suppressed", exc))
+        else:
+            continue
+        unread = True
+    if not unread:
         lost = governance.suppressions_lost(root)  # purges the audit trail records that the list lost (C172)
         if lost is not None:
             out.append(
@@ -2607,6 +2632,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         # governance/ itself is not a folder: one FAIL, the person's, never "check crashed" nor a file under
         # it, and nothing under it is read (B13 round 28 I88, I89)
         out.append(_check("governance.hold", False, folder.detail, doctor.Severity.ERROR, fix=folder.fix))
+        out += _purge_record_checks(config)  # outside the folder: its fix names it (B13 round 30 C381)
         shut = "not checked: agentsync's governance folder is not a folder; the governance.hold line says why"
     else:
         root = config.state_paths.root
@@ -3136,7 +3162,12 @@ def _not_a_file_state(args: argparse.Namespace) -> tuple[str, Path] | None:
 
 
 def _not_a_file_stop(
-    args: argparse.Namespace, config: Config, *, manifest: bool = True, lost: bool = False
+    args: argparse.Namespace,
+    config: Config,
+    *,
+    manifest: bool = True,
+    lost: bool = False,
+    record: bool = True,
 ) -> bool:
     """Print status's own FAIL of a state file that is not a regular file (``doctor.state_not_a_file``: a
     folder, fifo, socket or link where the lock, heartbeat.json, a governance file, the manifest or a side of
@@ -3144,7 +3175,7 @@ def _not_a_file_stop(
     True; else False. Judged by stat before anything opens it, so a fifo never blocks and nothing ends on a
     traceback (B13 round 26 E22, E38, E39, E40, E43, E65; ruling 13)."""
     # a damaged one too (I90); a lost purge only where the command publishes (B13 round 29 C172)
-    found = doctor.state_not_a_file(config, manifest=manifest, damaged=True, lost=lost)
+    found = doctor.state_not_a_file(config, manifest=manifest, damaged=True, lost=lost, record=record)
     if found is None:
         return False
     where, result = found
@@ -3414,6 +3445,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     if args.accept_lost is not None and any(others):
         _err("purge: --accept-lost <at> goes alone (with --dry-run)")
         return EXIT_USAGE
+    if not args.dry_run:  # a preview writes nothing; a purge carries round 28's hold record first (C351)
+        governance.carry_round28_record(config.state_paths.root)
     if (args.queue or args.selector) and _lost_state_stop(args, config):
         return EXIT_FAILED  # dry run included: it would plan erasing pages no manifest read (ruling 14)
     if args.queue or args.selector:
@@ -3538,7 +3571,10 @@ def _cmd_hold(args: argparse.Namespace) -> int:
     listing = args.list or (args.scope is None and not args.release)
     # a hold and its release write holds.json and the audit trail; the list only reads holds.json, whose own
     # not-a-file error _main words the same way, so a broken audit trail never hides the holds (E43)
-    if not listing and _not_a_file_stop(args, config):
+    if not listing:
+        governance.carry_round28_record(config.state_paths.root)  # a writing command's (C351; ruling 34)
+    # a hold being set passes a hold record that cannot be read: its fix sets each hold again first (C382)
+    if not listing and _not_a_file_stop(args, config, record=bool(args.release)):
         return EXIT_FAILED
     root = config.state_paths.root
     if args.list or (args.scope is None and not args.release):

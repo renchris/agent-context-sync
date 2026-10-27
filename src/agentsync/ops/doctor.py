@@ -71,7 +71,7 @@ from agentsync.ops.lock import (
     read_regular_text,
 )
 from agentsync.paths import StatePaths, default_cache_dir, default_log_dir, expand, is_cloud_path
-from agentsync.skill import HELPER_RETRY_CLAUSE
+from agentsync.skill import AGENTSYNC_BIN, HELPER_RETRY_CLAUSE
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -1889,6 +1889,7 @@ _GOVERNANCE_CHECKS = {
     "purge-queue.json": "governance.purge_queue",
     "suppressed.json": "governance.suppressed",
     "audit.jsonl": "governance.audit",
+    "purge-record.json": "governance.suppressed",  # the state folder's, beside the hold record (C381)
 }
 """The status check that FAILs each governance file that is not a file (B13 round 26 E43)."""
 
@@ -1902,7 +1903,7 @@ def governance_check(path: Path) -> str:
 
 
 def state_not_a_file(
-    config: Config, *, manifest: bool = True, damaged: bool = False, lost: bool = False
+    config: Config, *, manifest: bool = True, damaged: bool = False, lost: bool = False, record: bool = True
 ) -> tuple[Path, CheckResult] | None:
     """The first state file that is not a regular file where one belongs, and status's own FAIL of it, judged
     by stat before anything opens it (so a fifo never blocks): a -wal or -shm (:func:`side_not_a_file`; a
@@ -1916,7 +1917,8 @@ def state_not_a_file(
     own open already stops on, with its lost-manifest record (``kind=lost``). ``lost=True`` (the sync and the
     commands that publish as it does) adds a suppression list or a purge queue that lost a purge the audit
     trail records (``governance.governance_lost``; B13 round 29 C172); a hold or a purge is never stopped on
-    it, so the person can run each purge again."""
+    it, so the person can run each purge again. ``record=False`` (a hold being set) passes a hold record that
+    cannot be read, whose own fix sets each hold again first (B13 round 30 C382; ruling 34)."""
     try:
         sp = config.state_paths
         if state_root_not_folder(config) is not None:
@@ -1949,10 +1951,12 @@ def state_not_a_file(
             return expand(sp.heartbeat), folder
         from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
 
-        odd: governance.GovernanceUnreadError | None = governance.governance_not_a_file(expand(sp.root))
+        odd: governance.GovernanceUnreadError | None = governance.governance_not_a_file(
+            expand(sp.root), record=record
+        )
         if odd is None and damaged:  # the commands' guard: a damaged or wrong-shaped one too, read only once
             # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
-            odd = governance.governance_damaged(expand(sp.root))
+            odd = governance.governance_damaged(expand(sp.root), record=record)
         if odd is None and lost:
             odd = governance.governance_lost(expand(sp.root))
         if odd is not None:
@@ -2095,6 +2099,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                     f"the person removes the link first: rm {_shell_path(expand(p))}; then "
                     + LOST_MANIFEST_FIX.removeprefix("the person ")
                 )
+                fix = round28_first(expand(sp.root), fix)  # heartbeat.json's hold record first (C351)
                 lost_link = True
             nonfile.append(_bad(name, detail, fix=fix))
             continue
@@ -2195,7 +2200,8 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         target = dangling_target(expand(sp.db))
         what = f"is a symlink to {target}, which does not exist; the manifest " if target is not None else ""
         lost = lost_words(expand(sp.db)) or LOST_MANIFEST  # an unread heartbeat says so (P111)
-        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {what}{lost}", fix=lost_fix(lost)))
+        fix = round28_first(expand(sp.root), lost_fix(lost))  # heartbeat.json's hold record first (C351)
+        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {what}{lost}", fix=fix))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600
@@ -2243,6 +2249,27 @@ HEARTBEAT_LOST_TAIL = (
 """The heartbeat warn's tail beside a lost manifest it cannot rule earlier passes out for, never "the next
 completed pass rewrites it": every sync refuses on the lost manifest until the person restores it or moves
 heartbeat.json aside (B13 round 28 I62, I32)."""
+
+
+def round28_first(state_dir: Path, fix: str) -> str:
+    """``fix``, a move of heartbeat.json aside (:data:`LOST_MANIFEST_FIX`, :data:`MANIFEST_FIX`), led by one
+    sync while heartbeat.json still keeps round 28's hold record (``governance.round28_pending``): the sync
+    moves it to hold-record.json before it stops on the manifest, where the move aside alone took the record
+    with it (B13 round 30 C351, C352; ruling 34). As the link's first step, so readers keyed on the ending
+    still know the fix."""
+    from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
+
+    try:
+        pending = governance.round28_pending(state_dir)
+    except Exception:  # the fix stands without it
+        pending = False
+    if not pending:
+        return fix
+    return (
+        f"the person runs `{AGENTSYNC_BIN} sync` once first, which moves round 28's hold record from "
+        "heartbeat.json to hold-record.json before it stops on the manifest; then "
+        + fix.removeprefix("the person ")
+    )
 
 
 def lost_fix(lost: str) -> str:
@@ -2444,14 +2471,16 @@ def _check_manifest_readable(db: Path) -> list[CheckResult]:
     recorded, command = found
     # the command that read it, never "a sync" for a purge's or curate's read (B13 round 20 X54)
     who = f"an agentsync {command}" if command else "an agentsync command"
-    return [_bad("state_dir.manifest", f"{db} cannot be read: {recorded} ({who} read it)", fix=MANIFEST_FIX)]
+    fix = round28_first(db.parent, MANIFEST_FIX)  # heartbeat.json's hold record first (C351)
+    return [_bad("state_dir.manifest", f"{db} cannot be read: {recorded} ({who} read it)", fix=fix)]
 
 
 def manifest_damaged(db: Path, exc: sqlite3.DatabaseError) -> CheckResult:
     """The ``state_dir.manifest`` FAIL for ``exc``, an error :func:`unreadable_code` accepts, read from the
     manifest at ``db``: by the schema probe, or by status's read of the loop's state, which reads a table the
     probe does not (B13 round 17 U64, U95: a damaged table page passed status with every check [ok])."""
-    return _bad("state_dir.manifest", f"{db} cannot be read: {exc}", fix=MANIFEST_FIX)
+    fix = round28_first(db.parent, MANIFEST_FIX)  # heartbeat.json's hold record first (C351)
+    return _bad("state_dir.manifest", f"{db} cannot be read: {exc}", fix=fix)
 
 
 # The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to

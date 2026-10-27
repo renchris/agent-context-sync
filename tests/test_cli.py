@@ -47,6 +47,7 @@ from agentsync import manifest as manifest_mod
 from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import (
+    AgentSyncError,
     AuthError,
     GitError,
     LockHeldError,
@@ -5843,7 +5844,7 @@ def test_a_hold_stays_in_force_after_the_new_start_and_the_governance_folders_fi
     gov.write_text("not a folder\n", encoding="utf-8")
     _rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
-    assert "(a hold set earlier stays in force from hold-record.json's record)" in failed, failed
+    assert "(a hold set earlier stays in force from hold-record.json's record; " in failed, failed
     gov.rename(root / "governance.odd")  # the fix's second branch, followed
     rc, out = _status(cfg, capsys)
     assert rc == cli.EXIT_FAILED and any(ln.startswith("HOLD: hold all (audit)") for ln in out), out
@@ -5886,7 +5887,10 @@ def test_a_hold_record_that_cannot_be_read_is_the_persons_never_no_holds(
     governance.governance_dir(root).rename(root / "governance.away")
     rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    # the person's, each hold set again first (B13 round 30 C382)
+    first = "(fix: the person (the records or legal owner) first sets each hold it named again with "
     assert rc == cli.EXIT_FAILED and str(record) in failed and "(fix: the person " in failed, out
+    assert first in failed, failed
     assert not [ln for ln in out if "purge --queue" in ln or "check crashed" in ln], out
     assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
@@ -6191,6 +6195,7 @@ def test_a_list_that_kept_the_ids_but_lost_the_content_hashes_is_lost(
         for rec in lines:
             rec.pop("canonical_sha256s", None)
         audit.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in lines), encoding="utf-8")
+        governance.purge_record_file(root).unlink()  # an older build wrote no purge record (C381)
         assert governance.lost_suppressions(root) == []
         return
     (lost,) = governance.lost_suppressions(root)
@@ -6395,6 +6400,215 @@ def test_the_hold_record_never_writes_over_a_passs_heartbeat_and_waits_its_turn(
         assert not done.wait(0.3) and _record(state) == ["all"]
     worker.join(10)
     assert done.is_set() and _record(state) == ["all", "contoso-other"]
+
+
+@pytest.mark.parametrize("shape", ["a file", "a link to nothing"])
+def test_a_glob_purge_stays_out_from_the_purge_record_when_the_governance_folder_is_lost(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    """B13 round 30 C381 (ruling 34): an erasure by a source-path glob, then governance/ moved aside and its
+    fix's second branch followed: status said nothing, the sync exited 0 and published the erased page again,
+    since the suppression list, the queue and the audit trail all lived in the folder. purge-record.json, 0600
+    beside hold-record.json, keeps the purge lines: the folder's fix says so, status FAILs the list as lost,
+    never no purges, and the sync refuses with the page still out."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = initialised.docs_repo / "mirror/source/projects/sample.txt.md"
+    purge = ["purge", "path=projects/*", "--source", "source", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK and not page.exists()
+    record = governance.purge_record_file(root)
+    assert stat.S_IMODE(record.stat().st_mode) == 0o600
+    glob = governance.PurgeSelector(source_id="source", path_glob="projects/*").fingerprint()
+    kept = governance.recorded_purges(root)
+    assert any(r["action"] == "purge-summary" and r["selector_sha256"] == glob for r in kept), kept
+    assert "projects" not in record.read_text(encoding="utf-8")  # hashes only
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.lost")
+    if shape == "a file":
+        gov.write_text("not a folder\n", encoding="utf-8")
+    else:
+        gov.symlink_to(root / "gone-volume" / "governance")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "the purges run earlier stay recorded in purge-record.json" in failed, failed
+    gov.unlink()  # the fix's second branch, followed
+    rc, out = _status(cfg, capsys)
+    (lost,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and "no longer lists what 1 purge the audit trail records" in lost, out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert not page.exists()
+    assert not _page_kept(initialised, "mirror/source/projects/sample.txt.md")
+
+
+@pytest.mark.parametrize("what", ["damaged JSON", "a folder", "mode 0000"])
+def test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """C381's new state file under rulings 13 and 19: purge-record.json that is damaged, not a file or shut
+    to this account is its owner's FAIL in status and doctor, the sync refuses, and with governance/ gone it
+    never reads as a record of no purges: the erased page stays out."""
+    cfg, root, page = _erased(initialised, capsys)
+    record = governance.purge_record_file(root)
+    assert governance.recorded_purges(root)
+    governance.governance_dir(root).rename(root / "governance.away")
+    if what == "damaged JSON":
+        record.write_text("{", encoding="utf-8")
+    elif what == "a folder":
+        record.unlink()
+        record.mkdir()
+    else:
+        record.chmod(0)
+    try:
+        with pytest.raises(AgentSyncError):
+            governance.lost_suppressions(root)
+        for command in ("status", "doctor"):
+            rc = cli.main([command, "--config", cfg])
+            out = capsys.readouterr().out.splitlines()
+            (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+            assert rc == cli.EXIT_FAILED and str(record) in failed, out
+            if what == "mode 0000":
+                assert "(fix: chmod 600 " in failed and "purge-record.json')" in failed, failed
+            else:
+                assert "(fix: the person " in failed and "the purge record" in failed, failed
+                assert "the audit trail records no purge, so the purges it kept are lost with it" in failed
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        assert "Traceback" not in capsys.readouterr().err
+        assert not (initialised.docs_repo / page).exists()
+        # beside governance/ as a file, whose fix says the record's own line says why, that line is there
+        gov = governance.governance_dir(root)
+        gov.write_text("not a folder\n", encoding="utf-8")
+        _rc, out = _status(cfg, capsys)
+        (folder,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+        assert "purge-record.json cannot be read, and its own line says why" in folder, folder
+        assert [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ") and str(record) in ln], out
+        gov.unlink()
+        # a hold only adds protection: it runs beside a purge record that cannot be read (C382's review)
+        hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+        assert cli.main(hold) == cli.EXIT_OK
+    finally:
+        if what == "mode 0000":
+            record.chmod(0o600)
+
+
+def test_the_purge_record_never_shrinks_and_an_older_install_gets_it_at_a_passs_end(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C381's backfill: an install that purged before purge-record.json existed gets it from the audit trail
+    at its next pass's end, and a trail that later loses lines never shrinks it."""
+    cfg, root, page = _erased(initialised, capsys)
+    record = governance.purge_record_file(root)
+    kept = governance.recorded_purges(root)
+    record.unlink()  # a purge an older build ran
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert governance.recorded_purges(root) == kept and stat.S_IMODE(record.stat().st_mode) == 0o600
+    governance.audit_path(root).write_text("", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # the list still holds it: nothing lost
+    assert governance.recorded_purges(root) == kept  # and the pass's write kept every line
+    assert not (initialised.docs_repo / page).exists()
+
+
+@pytest.mark.parametrize("what", ["damaged JSON", "[]", "a folder"])
+def test_the_hold_records_fix_sets_each_hold_again_first_and_a_hold_runs_over_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 30 C382 (ruling 34): after governance/'s fix, hold-record.json was the only record of a hold
+    on all; damaged, its fix said restore it or move it aside, and `hold` itself refused over it, so the move
+    aside came first and `purge docs=` erased the page. The fix sets each hold again first, `hold` runs while
+    the record cannot be read, and the "writes it again" clause is said only when a record names a hold."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.real")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    gov.rename(root / "governance.odd")  # governance/'s fix, second branch: the record alone keeps the hold
+    record = governance.hold_record_file(root)
+    assert _record(root) == ["all"]
+    if what == "a folder":
+        record.unlink()
+        record.mkdir()
+    else:
+        record.write_text("{" if what == "damaged JSON" else "[]", encoding="utf-8")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    first = (
+        "(fix: the person (the records or legal owner) first sets each hold it named again with "
+        "`~/.local/bin/agentsync hold <scope> --reason <why> --owner <name>`; then the person "
+    )
+    assert first in failed and "writes it again" not in failed, failed
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(hold) == cli.EXIT_OK  # the fix's first step, over the broken record
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "; the next hold, release or sync writes it again from the hold list and the audit trail" in failed
+    record.rename(root / "hold-record.kept")  # then the move aside, followed
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert "purge suspended by legal/records hold" in capsys.readouterr().err
+    assert _page_kept(initialised, page)
+
+
+@pytest.mark.parametrize("command", ["sync", "hold", "release", "purge"])
+def test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status(
+    initialised: Config, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    """B13 round 30 C351 with C352 (ruling 34): a Mac upgraded from round 28 kept its hold record in
+    heartbeat.json only; status's governance fix named hold-record.json, which was not there, and a lost
+    manifest's fix moved heartbeat.json aside, taking the record. The record moves to hold-record.json at the
+    start of sync, hold, release and purge, before any guard (each refuses here, over governance/ as a file),
+    never at status or doctor, which write nothing; until then every fix names heartbeat.json."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    record = governance.hold_record_file(root)
+    record.unlink()  # round 28's: the record lives in heartbeat.json alone
+    heartbeat = expand(initialised.state_paths.heartbeat)
+    data = json.loads(heartbeat.read_text(encoding="utf-8"))
+    heartbeat.write_text(json.dumps({**data, "holds": ["all"]}), encoding="utf-8")
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.real")
+    gov.write_text("not a folder\n", encoding="utf-8")
+    db = expand(initialised.state_paths.db)
+    db.rename(root / "manifest.kept")  # a lost manifest, whose fix moves heartbeat.json aside
+    capsys.readouterr()
+    gone = root / "gone-volume" / "manifest.sqlite"
+    db.symlink_to(gone)  # a link to nothing in a missing folder: "rm the link first" (C351's review)
+    _rc, out = _status(cfg, capsys)
+    (lost,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert "(fix: the person runs `~/.local/bin/agentsync sync` once first, which moves" in lost, lost
+    assert "; then removes the link first: rm " in lost and not os.path.lexists(record), lost
+    db.unlink()
+    for reader in ("status", "doctor"):
+        assert cli.main([reader, "--config", cfg]) == cli.EXIT_FAILED
+        out = capsys.readouterr().out.splitlines()
+        assert not os.path.lexists(record), reader  # status and doctor write nothing
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+        assert "stays in force from heartbeat.json's record" in failed, failed
+        (lost,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+        assert "(fix: the person runs `~/.local/bin/agentsync sync` once first, which moves" in lost, lost
+    argv = {
+        "sync": ["sync"],
+        "hold": ["hold", "contoso-other", "--reason", "matter 9", "--owner", "Contoso Legal"],
+        "release": ["hold", "all", "--release", "--owner", "Contoso Legal"],
+        "purge": ["purge", f"docs={page}"],
+    }[command]
+    assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED  # each refuses, after the carry
+    assert _record(root) == ["all"]
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert "stays in force from hold-record.json's record" in failed, failed
+    assert not [ln for ln in out if "agentsync sync` once first" in ln], out
+    heartbeat.rename(root / "heartbeat.kept")  # the lost manifest's fix, then governance/'s, followed
+    gov.rename(root / "governance.odd")
+    db.parent.joinpath("manifest.kept").rename(db)
+    assert [h.scope for h in governance.lost_holds(root, [])] == ["all"]
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
 
 
 @pytest.mark.parametrize(

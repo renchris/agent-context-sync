@@ -32791,6 +32791,8 @@ earlier is lost with the folder and the person checks with the records owner fir
 `test_a_source_named_holds_keeps_its_heartbeat_entry_under_a_hold`,
 `test_round_28s_record_in_heartbeat_json_is_read_until_the_record_file_replaces_it`,
 `test_the_hold_record_never_writes_over_a_passs_heartbeat_and_waits_its_turn`.
+Amended 2026-10-26, §16.205 C352: the folder's fix says the hold stays in force from <the record's file>'s record
+(hold-record.json, or heartbeat.json while no record file is there), and §16.205 C381 adds the purges to its bracket.
 
 **C172: lost suppressions and queued purges, from the audit trail (`agentsync.governance`, `agentsync.cycle`,
 `agentsync.cli`; ruling 28).** suppressed.json moved aside, as its bare fix said, republished an erased page, and a
@@ -33544,6 +33546,75 @@ glob" for one; a list put back from a copy that still holds the glob keeps that 
 up. The damaged list's move-aside tail says the next sync refuses until
 each purge it recorded is put back, with the no-glob words, where it said only glob and copied-content purges were
 run again.
+
+C381 (ruling 34): what governance/ keeps survives the folder's loss, as ruling 24 made holds survive. Following the
+folder's own fix (moved aside, then its second branch) republished a page an erasure purge removed, since the
+suppression list, the queue and the audit trail all lived in it. `<state>/purge-record.json`
+(`governance.PURGE_RECORD_NAME`, `purge_record_file`; role `the purge record`, `PURGE_RECORD_ROLE`) sits beside
+hold-record.json and holds `{"purges": [...]}`, the audit trail's own purge lines (`_PURGE_ACTIONS`: `purge`,
+`purge-summary`, `purge-enqueued`, `purge-covered`, `purge-forgotten`, `suppression-lost-accepted`), hashes only, in
+ruling 33's form (`canonical_sha256s`, each glob by its `selector_sha256`). `record_purges(state_dir)` writes it
+under the hold record's folder flock (`_record_lock`), atomic and 0600 through the shared `_write_record`, as the
+union of its lines and the trail's, line for line (`_merge_purges`: the trail's lines it lacks come after its own),
+so it never shrinks and is not rewritten unchanged or created empty; it runs after each purge's audit lines
+(`_audit_purge`), each queue change (`enqueue_purge`, `_drop_covered`, `forget_queued`, the queue's run) and
+`accept_lost_suppression`, and at every pass's end beside `record_holds`, so an install that purged before it
+existed gets it at its next sync. `audited_suppressions`, `lost_suppressions` and `lost_queued` read
+`_purge_events`, the record and the trail together, so with governance/ gone the cycle keeps the erased items out,
+the suppression list and the queue read as lost, and the sync refuses as C172's do. `recorded_purges` raises for a
+record that cannot be read, never no purges (ruling 19): not a file or damaged is the person's
+(`GovernanceNotAFileError`, `GovernanceDamagedError`; check governance.suppressed, `doctor._GOVERNANCE_CHECKS`;
+`governance_not_a_file` and `governance_damaged` return it after the hold record, so `doctor.state_not_a_file` and
+every command's guard stop on it), and one this account cannot open takes the agent's `chmod 600`. Its fix reads
+"the person restores <path> from a copy they trust, or moves it aside, keeping a copy" (not a file: "the person
+moves <path> aside, keeping a copy", a shut folder's chmod first), then "; the next purge or sync writes it again
+from the audit trail" when the trail records a purge, else "; the audit trail records no purge, so the purges it
+kept are lost with it: the person asks the records owner, and runs each erasure, DLP and label purge again by hand
+before the next sync". The governance folder's fix (`_record_keeps`) ends its bracket with the purges: "; the
+purges run earlier stay recorded in purge-record.json, so the next sync keeps their items out and refuses until
+each is put back or accepted)", or "; no purge record names a purge, so an erasure, DLP or label purge run earlier
+is lost with the folder too: the person runs each again by hand before the next sync)", or "; purge-record.json
+cannot be read, and its own line says why)", which status prints beside that FAIL too (`cli._purge_record_checks`,
+read though nothing under the folder is). Tests: `test_cli.py`
+`test_a_glob_purge_stays_out_from_the_purge_record_when_the_governance_folder_is_lost` (a file, a link to nothing),
+`test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges` (damaged JSON, a folder, mode 0000;
+status and doctor), `test_the_purge_record_never_shrinks_and_an_older_install_gets_it_at_a_passs_end`;
+`test_governance.py` `test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks`.
+
+C382 (ruling 34): after governance/'s fix the hold record can be the only record of a hold on all; damaged, its
+fix said restore it or move it aside, `hold` itself refused over it, and after the move `purge docs=` erased the
+page. The hold record's fix now sets each hold again first (`_HOLDS_FIRST`), in the person's words as the hold
+list's are (`doctor.PERSONS_FIX_RE` reads it as theirs, never the agent's): damaged, "the person (the records or
+legal owner) first sets each hold it named again with `~/.local/bin/agentsync hold <scope> --reason <why> --owner
+<name>`; then the person restores <path> from a copy they trust, or moves it aside, keeping a copy"; not a file, the
+same first clause, then "then the person moves <path> aside, keeping a copy". Either adds "; the next hold, release or sync
+writes it again from the hold list and the audit trail" only when the hold list or the audit trail names a hold
+(`_record_rewritten`). `hold` (setting one, never `--release`) runs while hold-record.json or purge-record.json is
+not a file or is damaged, since a hold only adds protection: `doctor.state_not_a_file(..., record=False)`,
+`governance_not_a_file(..., record=False)` and `governance_damaged(..., record=False)` pass both records and judge
+everything else; `set_hold`'s
+`record_holds` stays best effort. The finder's "until then every purge refuses" is not said: it was false. The
+verifier's third part (a `hold-set` audit line written for a record-only scope) is not built: ruling 34 does not
+adopt it, and it would create a new governance/ in the way of the folder's own put-back fix. Test: `test_cli.py`
+`test_the_hold_records_fix_sets_each_hold_again_first_and_a_hold_runs_over_it` (damaged JSON, `[]`, a folder).
+
+C351 with C352 (ruling 34): a round 28 record in heartbeat.json only (no hold-record.json) moved to the record
+file only at a pass's end or a hold or release, so a lost manifest's Mac never got one, the lost manifest's fix
+moved heartbeat.json aside and took it, and the governance folder's fix named hold-record.json, which was not
+there. `governance.carry_round28_record(state_dir)` writes hold-record.json, under `_record_lock`, atomic and 0600,
+only when none is there (`os.path.lexists`) and heartbeat.json keeps a `holds` list: that list merged with the hold
+list and the holds the audit trail keeps when they read, else the list alone, never waiting on governance/. It runs
+at the start of `sync` (before the not-a-file guard and the manifest's open, so a sync that then exits 1 has carried
+it), of `hold` and `hold --release` (not `--list`), and of `purge` (not `--dry-run`), never in status or doctor,
+which write nothing. Until it has, every fix names the file that keeps it: `_hold_record_shown` gives hold-record.json
+when it is there, else heartbeat.json, to `lost_holds` and to the governance folder's fix ("(a hold set earlier
+stays in force from heartbeat.json's record"), and `doctor.round28_first` leads the lost manifest's
+(`LOST_MANIFEST_FIX`) and the damaged manifest's (`MANIFEST_FIX`) fixes with "the person runs
+`~/.local/bin/agentsync sync` once first, which moves round 28's hold record from heartbeat.json to
+hold-record.json before it stops on the manifest; then " (the manifest link to nothing's "removes the link first"
+fix included) while `governance.round28_pending` (no hold-record.json,
+heartbeat.json's list naming a scope), so readers keyed on the fix's ending still know it. Test: `test_cli.py`
+`test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status` (sync, hold, release, purge).
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
