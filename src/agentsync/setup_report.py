@@ -8544,14 +8544,17 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
         out.append(f"- {name} ({suffix}) files with a converted page: " + ", ".join(cells))
     if folded:
         listed = folded[0] if len(folded) == 1 else f"{', '.join(folded[:-1])} or {folded[-1]}"
-        stubs = [
-            f"{_plural(stubbed[suffix], f'{name} ({suffix}) file')}"
+        # the verb counts the stubs of the kinds this clause names, never an unfolded kind's, which its own
+        # line says (B13 round 30 C325, C340, C398, C405)
+        kinds = [
+            (suffix, name)
             for suffix, name in _OCR_DOCUMENTS.items()
             if f"{name} ({suffix})" in folded and stubbed[suffix]
         ]
+        stubs = [f"{_plural(stubbed[suffix], f'{name} ({suffix}) file')}" for suffix, name in kinds]
         said = ""
         if stubs:
-            one = len(stubs) == 1 and sum(stubbed.values()) == 1
+            one = sum(stubbed[suffix] for suffix, _name in kinds) == 1
             joined = stubs[0] if len(stubs) == 1 else f"{', '.join(stubs[:-1])} and {stubs[-1]}"
             said = (
                 f" ({joined} {'has a stub page' if one else 'have a stub page'}: Quarantine by reason gives "

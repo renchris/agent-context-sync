@@ -32462,6 +32462,8 @@ line of its own adds `, N with a stub page`, the scanned PDFs' stubs among them.
 a stub page`, `has a stub page` and `have a stub page`. Tests:
 `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
 `test_ocr_part_counts_images_documents_rereads_and_time`.
+Amended 2026-10-26, §16.203 C325: the folded clause's `has` or `have` counts the stubs of the kinds it names, never a
+stub said on another kind's own line.
 
 **No dead fallback for a name the same build ships** (C167; amends §16.158 Z15). The report and manifest, doctor
 ship in one build, so the getattr fallbacks for `manifest.lost_words`, `LOST_MANIFEST_UNREAD`,
@@ -33263,6 +33265,15 @@ second move between a pair of commas, as `_STATE_LOST_EVIDENCE` does: `the perso
 heartbeat.json aside, measures them`; the other templates are unchanged. Test:
 `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so` checks the plain form's literal words and the
 link form's.
+
+C325 (2026-10-26): **the folded OCR line's verb counts only the kinds it names** (C325 with C340, C398 and C405;
+amends §16.198 C111). The verb beside the folded line's stubs was singular only when every kind's stubs summed to
+1, so a stub on a kind with a converted page of its own, which that kind's line already says (`, 1 with a stub
+page`), turned one folded deck stub into `1 deck (.pptx) file have a stub page`. `_ocr_files` now collects the
+folded kinds with stubs once, builds the clause from them and sums only their counts, so it says `has` exactly when
+one folded kind has one stub. The counts, the list and each kind's own line are unchanged. Test:
+`test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325` (a converted `.potx`, a stubbed `.potx` and a
+stubbed `.pptx`).
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

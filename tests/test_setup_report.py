@@ -12598,6 +12598,27 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
     assert [ln for ln in ocr if ln.startswith("- images that are not on this Mac: 0 files")], ocr
 
 
+def test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 C325 (C340, C398, C405): the folded line's verb summed every kind's stubs, so a stub on a
+    deck template with a converted page of its own (said on that kind's line) made one folded deck stub read
+    "1 deck (.pptx) file have a stub page". The verb counts the stubs of the kinds the clause names."""
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    seed.item(one, "ledger.pdf")
+    seed.item(one, "Contoso real.potx")
+    for name in ("Contoso template.potx", "Contoso deck.pptx"):
+        seed.item(one, name, state="quarantined", reason="not the type its name says", page="quarantined")
+    seed.close()
+    _text, parts = status_parts(fake_mac)
+    ocr = parts["OCR"].splitlines()
+    potx = next(ln for ln in ocr if ln.startswith("- deck template (.potx) files with a converted page: "))
+    assert potx.endswith(", 1 with a stub page"), ocr
+    assert [ln for ln in ocr if ln.startswith("- no ")] == [
+        "- no deck (.pptx), Word (.docx) or OpenDocument (.odt) file has a converted page (1 deck (.pptx) "
+        "file has a stub page: Quarantine by reason gives why)"
+    ], ocr
+
+
 def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     text, parts = status_parts(fake_mac)
