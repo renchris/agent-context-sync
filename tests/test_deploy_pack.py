@@ -6287,6 +6287,14 @@ _ROUND_29_RA_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C134's "converted page" at §16.28's OCR part and §16.48's `.potx`
 paragraph."""
 
+_ROUND_30_RA_PARAGRAPH_AMENDS = (
+    ("16.171", "**A lost manifest is the person's in the report**", "§16.203 C332"),
+    ("16.198", "**heartbeat.json's fix comes first only where it has one**", "§16.203 C307"),
+)
+"""Round 30 lane RA's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C332's at §16.171's lost-manifest paragraph (the secret scan line's words)
+and C307's at §16.198's heartbeat-first paragraph (the evidence line's paired commas)."""
+
 _ROUND_30_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread` |", "§16.206 C362"),)
 """Round 30 lane E's dated lines at a section its claim names with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C362's four rows in §16.28's run-record table, the path re-read's
@@ -6415,6 +6423,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_26_D_PARAGRAPH_AMENDS,
         *_ROUND_27_RA_PARAGRAPH_AMENDS,
         *_ROUND_29_RA_PARAGRAPH_AMENDS,
+        *_ROUND_30_RA_PARAGRAPH_AMENDS,
         *_ROUND_30_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
