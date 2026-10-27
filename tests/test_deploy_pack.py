@@ -6298,11 +6298,12 @@ _ROUND_30_RA_PARAGRAPH_AMENDS = (
     ("16.171", "**A lost manifest is the person's in the report**", "§16.203 C332"),
     ("16.198", "**heartbeat.json's fix comes first only where it has one**", "§16.203 C307"),
     ("16.171", "**A lost manifest is the person's in the report**", "§16.203 C351"),
+    ("16.28", "Amended 2026-10-11 by §16.47 (R33): the class `withheld by label rule`", "§16.203 C326"),
 )
 """Round 30 lane RA's dated lines at sections its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C332's at §16.171's lost-manifest paragraph (the secret scan line's words)
-and C307's at §16.198's heartbeat-first paragraph (the evidence line's paired commas), and C351's at §16.171's
-(the evidence line's round 28 lead)."""
+and C307's at §16.198's heartbeat-first paragraph (the evidence line's paired commas), C351's at §16.171's
+(the evidence line's round 28 lead), and C326's at §16.28's class table (the class ``label unreadable``)."""
 
 _ROUND_30_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread` |", "§16.206 C362"),)
 """Round 30 lane E's dated lines at a section its claim names with no item, as

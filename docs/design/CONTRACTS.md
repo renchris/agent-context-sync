@@ -8525,6 +8525,7 @@ decides before a word inside the text does.
 |---|---|
 | `withheld by label rule` | starts `no converter for ` and the suffix after it is in the report's withheld set: `_LABEL_WITHHELD` (`.msg` and the image suffixes) while a `[policy]` label rule is on, with images counted only when the OCR part reads `ready` (§16.47 R33); tried before every prefix |
 | `no converter` | starts `no converter for ` (`NO_CONVERTER_PREFIX`) |
+| `label unreadable` | starts `refused: sensitivity label unreadable` (`cycle._LABEL_UNREADABLE_HEAD`), tried before `label policy` |
 | `label policy` | starts `refused: ` (`policy.REFUSED_PREFIX`) |
 | `credential` | `contains a credential` |
 | `duplicate` | starts `duplicate-of ` |
@@ -8543,6 +8544,8 @@ Amended 2026-10-11 by §16.48 (R36): the class `damaged`, between `empty` and `n
 `QUARANTINE_CLASSES`.
 Amended 2026-10-11 by §16.47 (R33): the class `withheld by label rule`, between `label policy` and `too large` in
 `QUARANTINE_CLASSES`.
+Amended 2026-10-26, §16.203 C326: the class `label unreadable`, between `label policy` and `withheld by label rule`
+in `QUARANTINE_CLASSES`, for a label rule's refusal of a label it cannot read, which the sync line counts apart.
 Amended 2026-10-12 by §16.55: the not-the-type row lists `not-msg` and `not a zip` as the code always did. No
 reason written today starts with `not a zip`: policy's `NOT_ZIP_AT_OFFSET_0` reaches a stub only inside a
 `refused: ` reason, which is `label policy`.
@@ -33564,6 +33567,16 @@ is in force`, unchanged), and status prints the new words only in its own WAITIN
 Loop line takes from the loop, whose `LOST_HOLD_WAIT` is unchanged. Tests:
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304` (the whole line, one and two) and
 `test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start` in tests/test_cli.py.
+
+C326 (2026-10-26): **a label it cannot read is a quarantine class of its own** (C326's report half; lane B's
+sync line). Lane B's sync line now counts, after K, the files a label rule refused because their label could not
+be read (`, N of them refused: its label could not be read`, `their labels` for more), apart from the other
+refusals. Quarantine by reason read their rows as `label policy`, the generic `refused: ` class; it now gives
+them `label unreadable`, after `label policy` in `QUARANTINE_CLASSES`, by lane B's own head (`refused: sensitivity
+label unreadable`, `cycle._LABEL_UNREADABLE_HEAD`, a test keeping the report's copy equal), tried before the
+generic one. `_SPLIT_RE` still reads R and K from a line with the new clause, one or more. §16.28's class table
+has the row. Test: `test_a_label_it_cannot_read_is_its_own_quarantine_class_c326`, and the class's two reasons
+in the mapping test's cases.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

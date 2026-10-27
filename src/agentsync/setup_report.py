@@ -7541,6 +7541,7 @@ QUARANTINE_CLASSES = (
     "encrypted",
     "credential",
     "label policy",
+    "label unreadable",
     "withheld by label rule",
     "too large",
     "duplicate",
@@ -7624,6 +7625,13 @@ _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
 _PRESENT_SQL = "('live', 'dataless')"
 
 
+_LABEL_UNREADABLE_HEAD = "refused: sensitivity label unreadable"
+"""The head of a label rule's refusal of a file whose label cannot be read (``cycle._LABEL_UNREADABLE_HEAD``,
+from ``policy.label_decision``'s ``label-unreadable``; a test keeps the two equal): its own class, ``label
+unreadable``, tried before the generic ``refused: `` of ``label policy``, as the sync line counts these
+refusals apart from K (B13 round 30 C326)."""
+
+
 def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> str:
     """The fixed class (one of :data:`QUARANTINE_CLASSES`) of a manifest row's ``state_reason``. A reason is
     free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
@@ -7639,6 +7647,7 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
         return "withheld by label rule"
     starts = (
         (_NO_CONVERTER, "no converter"),
+        (_LABEL_UNREADABLE_HEAD, "label unreadable"),  # before the generic refusal (C326)
         ("refused: ", "label policy"),
         ("contains a credential", "credential"),
         ("duplicate-of ", "duplicate"),

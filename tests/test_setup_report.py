@@ -300,6 +300,26 @@ def test_a_credential_stubs_alarm_names_no_page_in_the_report(
     assert split is not None and split.groups() == ("2", "0", "1", "1"), split
 
 
+def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
+    """B13 round 30 C326 (lane B's sync line counts a label rule's refusal of a label it cannot read apart
+    from K): the report's class for such a stub is ``label unreadable``, after ``label policy``, by lane B's
+    own head (``cycle._LABEL_UNREADABLE_HEAD``), never the generic ``refused: `` one; the sync line's new
+    clause after K leaves ``_SPLIT_RE``'s R and K as they were, one refused or more."""
+    assert setup_report._LABEL_UNREADABLE_HEAD == cycle._LABEL_UNREADABLE_HEAD
+    classes = setup_report.QUARANTINE_CLASSES
+    assert classes.index("label unreadable") == classes.index("label policy") + 1
+    reason = f"{cycle._LABEL_UNREADABLE_HEAD} (Contoso reader timed out); a label rule is set"
+    assert setup_report.quarantine_class(reason) == "label unreadable"
+    assert setup_report.quarantine_class(f"{policy.REFUSED_PREFIX}no sensitivity label") == "label policy"
+    for n, whose in ((1, "its label"), (2, "their labels")):
+        line = (
+            "1 source synced (of the converted: 0 unreadable, 0 failed, 3 refused, 1 of them withheld: its "
+            f"label cannot be read, {n} of them refused: {whose} could not be read)"
+        )
+        split = setup_report._SPLIT_RE.search(line)
+        assert split is not None and split.groups() == ("0", "0", "3", "1"), split
+
+
 @pytest.mark.parametrize("form", ["converted", "name", "published"])
 @pytest.mark.parametrize("rules", [(), ("aws-access-key", "private-key")])
 def test_the_stub_alarm_without_its_source_is_still_read_as_one_c328(
@@ -13623,6 +13643,13 @@ REASONS = {
     cycle._CREDENTIAL: "credential",
     f'{policy.REFUSED_PREFIX}sensitivity label "Encrypted, too large" is excluded': "label policy",
     f"{policy.REFUSED_PREFIX}no sensitivity label; refuse_unlabelled = true": "label policy",
+    # B13 round 30 C326: a label rule's refusal of a label it cannot read, apart from the generic refusal
+    f"{policy.REFUSED_PREFIX}sensitivity label unreadable (Contoso reader timed out); a label rule is set": (
+        "label unreadable"
+    ),
+    f"{policy.REFUSED_PREFIX}sensitivity label unreadable (no label); refuse_unlabelled = true": (
+        "label unreadable"
+    ),
     "duplicate-of contoso-mail (mirror/contoso-mail/too large to mail.eml.md)": "duplicate",
     "conversion failed: the encrypted stream is too large": "conversion failed",
     cycle._SIDECAR_PATH: "path too long",
