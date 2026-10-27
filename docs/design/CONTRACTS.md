@@ -32435,6 +32435,8 @@ one keeps the singular. The guide quotes both forms. Tests:
 `test_two_one_word_hold_values_shown_make_the_send_it_line_plural`,
 `test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`,
 `test_the_guide_gives_round_25s_new_report_and_installer_outputs`.
+Amended 2026-10-26, §16.207 C339: the installer's fallback report gives the plural too, at two or more distinct
+cut hold words (lane RB's §16.204 C339), and the guide says both reports do.
 
 **A lost manifest's link is named first, in doctor's words** (C110 with C154's report words). The report said
 `from the state file that is missing though heartbeat.json records earlier passes, and is a link into a folder ...`,
@@ -33669,3 +33671,11 @@ run after one midnight), so "daily at local midnight" stays. The kit itself is t
 `test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`, which runs the brief's command over a tree made
 like the fixture's (exit 0, then exit 1 with the missing folder named once one is gone) and reads the file rule's
 three times from the cleaner where the Mac has it.
+
+**The guide says both reports' Private only line is plural at two hold words** (C339, the guide's half;
+`docs/deploy/setup-feedback.md`; dated line at §16.198 C133). Since lane RB's d8fcd25bb (§16.204 C339) the
+installer's fallback report counts the distinct hold words it cut and gives `hold reasons or owners are also words
+this report prints, ... they can be read back.` at two or more, as agentsync's report has since C133; the guide gave
+the plural for agentsync's report only. It says the shell's line follows the same count and that its `Send it:` line
+has no singular to change. Test: `test_the_guide_gives_round_25s_new_report_and_installer_outputs`, which reads the
+plural from install.sh with the count it writes.

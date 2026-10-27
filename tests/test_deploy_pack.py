@@ -6801,6 +6801,13 @@ def test_the_guide_gives_round_25s_new_report_and_installer_outputs() -> None:
     )
     assert f"`{several}`" in page and "`it would show those words`" in page
     assert '"it would show those words"' in report and several[:60] in report
+    # B13 round 30 C339: the shell's line is plural at two distinct cut words too
+    assert several[:90] in install and 'print hn > ENVIRON["HOLD_WORD_FILE"]' in install
+    assert (
+        "The installer's fallback report's Redaction section gives the same two lines, the plural when it cut"
+        " two or more distinct hold words (a word's NFC and NFD forms are one), since lane RB's d8fcd25bb"
+        " (B13 round 30 C339); its `Send it:` line has no singular to change."
+    ) in page
     assert "two-letter one" in page and "keeps the report public" in page
     # B13 round 27 P63: the two-letter words either report prints, not the name-part list
     assert "it" in setup_report._TWO_LETTER_WORDS and "hr" not in setup_report._TWO_LETTER_WORDS

@@ -125,7 +125,10 @@ own text it can be read back.`,
 the agentsync report's `Send it:` line says `it would show that word` (B13 round 26 E6), and no issue link ends the
 report. When two or more such words show, the line reads `Private only: hold reasons or owners are also words this
 report prints, so where <value> stands in the report's own text they can be read back.` and `Send it:` says `it
-would show those words` (B13 round 29 C133). Each report checks against its own word list, so the two can differ; a value met only on the cut hold line,
+would show those words` (B13 round 29 C133). The installer's fallback report's Redaction section gives the same two
+lines, the plural when it cut two or more distinct hold words (a word's NFC and NFD forms are one), since lane RB's
+d8fcd25bb (B13 round 30 C339); its `Send it:` line has no singular to change. Each report checks against its own
+word list, so the two can differ; a value met only on the cut hold line,
 which never shows it, keeps the report public (B13 round 26 E35, E58).
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
