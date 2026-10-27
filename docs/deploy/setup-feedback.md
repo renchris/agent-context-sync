@@ -877,7 +877,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   I35). Since lane B's round 28 I88 to I90 it also stops on governance/ that is not a folder (`<file>` is
   `agentsync's governance folder`, `<is what>` `is a file, not a folder` and so on, under `governance.hold`) and on a
   governance file it cannot read (`is damaged, empty or of the wrong shape, so no command can read it`, with `(not a
-  mode)`), and the fix is lane B's: the hold list goes aside `then, if it listed any hold, put the hold list back from a copy they trust` (B13 round 29 C151); a
+  mode)`), and the fix is lane B's: the hold list goes aside `then, if the hold list had listed any hold, put the hold list back from a copy they trust` (B13 round 29 C151; round 30 C316, ruling 42); a
   damaged hold list is restored, or moved aside with each hold set again before any purge; governance/ is put back
   from wherever it was moved, never moved aside bare. That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
   rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another

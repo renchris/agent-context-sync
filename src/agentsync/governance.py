@@ -587,10 +587,13 @@ def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]]
         os.close(fd)
 
 
-HOLD_LIST_PUT_BACK = "then, if it listed any hold, puts the hold list back from a copy they trust"
+HOLD_LIST_PUT_BACK = (
+    "then, if the hold list had listed any hold, puts the hold list back from a copy they trust"
+)
 """The hold list's put-back after its move aside, conditional, in every reader's words (install.sh's in its
-own voice): never "then puts the hold list back" on a Mac that never kept one (B13 round 29 C151; ruling
-28)."""
+own voice, ``put``): never "then puts the hold list back" on a Mac that never kept one (B13 round 29 C151;
+ruling 28), and no pronoun, which read as the folder just moved aside (B13 round 30 C316, C333; ruling
+42)."""
 
 
 def _not_a_file_words(path: Path, kind: str, role: str) -> tuple[str, str]:

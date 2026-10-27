@@ -5689,6 +5689,10 @@ def test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_i
     holds.parent.mkdir(exist_ok=True)
     holds.mkdir()
     want = f"moves {doctor._shell_path(holds)} aside, keeping a copy, {governance.HOLD_LIST_PUT_BACK})"
+    # no pronoun, which read as the folder just moved aside (B13 round 30 C316, C333; ruling 42)
+    assert governance.HOLD_LIST_PUT_BACK == (
+        "then, if the hold list had listed any hold, puts the hold list back from a copy they trust"
+    )
     _rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
     assert want in failed, failed

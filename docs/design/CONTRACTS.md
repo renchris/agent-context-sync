@@ -32883,6 +32883,9 @@ purge waits on the hold on all; once its records owner releases it (...), the ne
 (install.sh's in its own voice, lane RB). The shorter form for a Mac that never kept one is not built: it needs
 C126's strict judge in both readers, and the conditional clause is true there already. Test:
 `test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold`.
+Amended 2026-10-26, §16.205 C316: `governance.HOLD_LIST_PUT_BACK` reads `then, if the hold list had listed any hold,
+puts the hold list back from a copy they trust`, no pronoun (ruling 42); the shorter form still waits for C126's
+strict judge in both readers.
 
 **C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status, doctor and the commands (`agentsync.cli`,
 `agentsync.governance`, `agentsync.ops.doctor`, `agentsync.ops.lock`, `agentsync.cycle`, `agentsync.model`;
@@ -33804,6 +33807,12 @@ records suppressed` (governance.suppressed) and `no longer holds <n> purge(s) th
 not done` (governance.purge_queue). Tests: `test_cli.py`
 `test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs`,
 `test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync`.
+
+C316 with C333 (ruling 42): `governance.HOLD_LIST_PUT_BACK` reads `then, if the hold list had listed any hold, puts
+the hold list back from a copy they trust`: no pronoun, which read as the folder just moved aside. The conditional
+stays (C333: an empty, readable hold record does not prove no hold was ever set, since `record_holds` is best
+effort); the shorter form still waits for C126's strict judge in both readers. install.sh's copy (`put`) is lane RB's. Test:
+`test_cli.py` `test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_if_it_listed_a_hold`.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
