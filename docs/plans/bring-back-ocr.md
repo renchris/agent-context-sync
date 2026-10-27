@@ -2052,6 +2052,48 @@ loss readers), RB 10 (ruling 39's install.sh half first, then ruling 44), E 8 (r
 times first; the guides after the lanes; C380's /tmp note, whose kit half goes into round 31's script). Lead: C391,
 the corrected not-built reason for C145 (3) in "B13 round 29 landed" above.
 
+### B13 round 30 landed (2026-10-27)
+
+All five lanes landed; the prompt is still v33. Notes `lanes/r30-<lane>.md`, lead notes `round29/lead-notes.md`. All
+100 confirmed items are built: 99 in the lanes (RA 31, B 37, RB 10, E 8, D 13) and C391 by the lead. Three optional
+halves are not built, each with a measured reason: C371's (4), `--forget` running its own probe (the lead's ruling:
+`--forget` is the audited exit that erases nothing, and `purge --queue` already looks each entry up); C377's flip of
+the Python reader (ruling 44: C396 measured that it reopens ruling 21's mismatch; its cross-reader test is built);
+and the report's hold bucket taking status's own lost-hold wait line (lane RA: no report reader ever meets that
+line). Lane B's first land gate went red on lane RA's C302 test (four new audit-trail clauses were not fixed
+phrases; nothing pushed), so lane B reworded them to the report's existing phrases (`741c6717`; `47527de2` records
+that no new phrase is needed). Ruling 35's first build printed a rebuilt purge id's file number in clear; lane RA cut
+it in Python (`e4945ad5`) and lane RB in the shell report (`28b87af5`, grown scope).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `029256fc..42996106`, 6 commits |
+| RB | `e3846370..5f2040b8`, `2919a7b9` and `28b87af5`, 10 commits |
+| D | `85ea5288..5b612905`, `f413839f..79d712fc`, `2e52bb87` and `3890ebd2..a67420d4`, 11 commits |
+| RA | `016a5b29..c89051b3`, `f5bfa77f`, `e4945ad5` and `9ce92725..70cc2dd4`, 30 commits |
+| B | `174fde81..741c6717` and `aa2fafec..fc307fcf`, 24 commits |
+
+Learnings: from the fire (22:30 on 2026-10-26) to the last land (15:30 the next day) took 17 hours. Lane B was the
+critical path: rulings 33 to 35 change governance.py's loss readers, and lanes RA, RB and D each held a last batch
+for its land. Land gates took 50 minutes to just under 2 hours (5,960 tests at a load of 65 to 130). Lane B's
+account hit its weekly limit mid-round, and the recovery tool never moves a lead whose teammates are live, so the
+lane waited about an hour for the reset. One CI run lost its hosted runner (40523387625, attempt 1: the pytest step
+never reported); its re-run passed, and lane B landed its second batch with `--allow-red-trunk` past that run. A
+whole-tree test owned by one lane (C302's fixed-phrase scan) can turn another lane's gate red: a lane that adds
+printed words runs that test before it lands.
+
+Residuals the lanes named for round 31's harvest (in their notes): neither report cuts a `--reason` value in
+queue_lost's lines (RB); the hold reasons `legal`, `review`, `records` and `record` print as report words, the same
+class as C302 (RA); lane B's notes for lane RA (C326's class, C357's pin, C321's bucket, C318's words) and lane D
+(setup-feedback.md's roles).
+
+Round 31: the round 30 workflow (`round30/round30-workflow.js` through `round31/tools/edit.py`: the Codex second
+opinion's prompt is written as it stands, with no diff added; the rehearsal kit reruns the `shasum -c` check of every
+fixture copy before step 2 and at each act's end, keeps no copy in `/tmp` past 3 days and never touches the files,
+since agentsync reads ctime) with the harvest list in `round31/tools/harvest-lead.txt`, on this section's landed tip,
+BASE `ccf696b7`, ids C501 and up, outputs `round31/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block
+at `ed901cd3`, since no lane changed the prompt.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
