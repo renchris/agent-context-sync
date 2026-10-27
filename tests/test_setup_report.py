@@ -17798,12 +17798,12 @@ def test_a_sync_stop_on_a_lost_list_names_the_list_c335(
 def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Lane B's C313 (ruling 42, written ahead of its code): with governance/ gone whole while the hold record
-    keeps a hold, governance.hold FAILs ``<gov>/ is missing, with the hold list, agentsync's audit trail, the
-    purge queue and the suppression list in it: ``, keeping the lost hold's anchor ``no longer lists the hold
-    on``. The report reads it as the governance folder's, the person's (the folder put back whole first), in
-    the Doctor line and the status step's outcome, never as a hold the hold list lost; with the folder there,
-    the same words are not read so."""
+    """Lane B's C313 (ruling 42; its FAIL built by its own ``governance.lost_hold_words``): with governance/
+    gone whole while the hold record keeps a hold, governance.hold FAILs ``<gov>/ is missing, with the hold
+    list, agentsync's audit trail, the purge queue and the suppression list in it: ``, keeping the lost
+    hold's anchor ``no longer lists the hold on``. The report reads it as the governance folder's, the
+    person's (the folder put back whole first), in the Doctor line and the status step's outcome, never as a
+    hold the hold list lost; with the folder there, the same words are not read so."""
     _governance_only(monkeypatch)
     cfg = fake_mac["config"]
     root = expand(load_config(cfg).state_paths.root)
@@ -17814,10 +17814,10 @@ def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
     (fake_mac["setup"] / "install.log").write_text(
         install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
     )
-    fail = (
-        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the "
-        "suppression list in it: the hold list no longer lists the hold on all (kept by hold-record.json)"
-    )
+    [lost] = governance.lost_holds(root)
+    fail, fix = governance.lost_hold_words(root, lost)  # lane B's own words, built on disk
+    assert fail.startswith(f"{gov}{setup_report._GOV_GONE}") and "no longer lists the hold on all" in fail
+    assert fix.startswith("the person puts agentsync's governance folder ("), fix
     r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
     r.facts.doctor_problems = [("FAIL", "governance.hold", fail)]
     sort = setup_report._sort_doctor(r, [])
@@ -18266,6 +18266,43 @@ def test_lane_bs_record_wait_and_stop_role_read_from_hand_written_lines_c349_c36
     [stop] = setup_report._read_sync_stops(log, at.replace(second=0), at.replace(minute=30))
     assert (stop.file, stop.kind, stop.what) == ("hold-record", "misplaced", "agentsync's hold record")
     assert " on agentsync's hold record, which was " in setup_report._sync_stop_line(stop)
+
+
+def test_the_words_written_ahead_of_lane_b_are_its_own_on_disk_ruling_40_41_42(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 rulings 40-42: the words the report wrote ahead of lane B's code are lane B's names now.
+    Its record wait and its ``kind=lost-list`` are read from ``governance.HOLD_RECORD_UNREAD_WAIT`` and
+    ``cli.LOST_LIST_KIND``, the report's literal only when an older build lacks the name; the stop roles
+    ``hold-record`` and ``purge-record`` are what ``cli._stop_role`` names each record; the C313 gone-folder
+    clause is ``governance.lost_hold_words``' own (its test builds it)."""
+    assert setup_report._RECORD_UNREAD_WAIT == governance.HOLD_RECORD_UNREAD_WAIT
+    assert setup_report._LOST_LIST_KIND == cli.LOST_LIST_KIND
+    assert setup_report._record_unread_wait() == governance.HOLD_RECORD_UNREAD_WAIT
+    assert setup_report._lost_list_kind() == cli.LOST_LIST_KIND
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    config = load_config(cfg)
+    for path, role, noun in (
+        (governance.hold_record_file(root), "hold-record", "agentsync's hold record"),
+        (governance.purge_record_file(root), "purge-record", "agentsync's purge record"),
+    ):
+        assert cli._stop_role(config, path) == role
+        assert setup_report._SYNC_STOP_FILES[role] == noun
+    # the readers take lane B's name, whatever it says; an older build without it keeps the report's
+    monkeypatch.setattr(governance, "HOLD_RECORD_UNREAD_WAIT", "not run while the Contoso record is away")
+    monkeypatch.setattr(cli, "LOST_LIST_KIND", "list-lost")
+    assert setup_report._record_unread_wait() == "not run while the Contoso record is away"
+    (tmp_path / setup_report._SYNC_STOPS_NAME).write_text(
+        "2026-10-26T19:21:04Z sync-stop file=governance rc=1 owner=person kind=list-lost\n", encoding="utf-8"
+    )
+    at = datetime(2026, 10, 26, 19, 21, 4, tzinfo=UTC)
+    log = tmp_path / "install.log"
+    [stop] = setup_report._read_sync_stops(log, at.replace(second=0), at.replace(minute=30))
+    assert stop.kind == setup_report._LOST_LIST_KIND, stop
+    monkeypatch.delattr(governance, "HOLD_RECORD_UNREAD_WAIT")
+    monkeypatch.delattr(cli, "LOST_LIST_KIND")
+    assert setup_report._record_unread_wait() == setup_report._RECORD_UNREAD_WAIT
+    assert setup_report._lost_list_kind() == setup_report._LOST_LIST_KIND
 
 
 def test_a_sync_stop_on_the_hold_record_names_it_as_itself_c347(fake_mac: dict[str, Path]) -> None:

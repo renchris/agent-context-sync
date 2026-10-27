@@ -1327,7 +1327,7 @@ _FIXED_VALUE_PHRASES = (
     "lost a purge the audit trail records",
     # the outcome over two lost governance lists, a hold list among them (B13 round 30 ruling 40)
     "lost a hold or a purge the audit trail records",
-    # lane B's C313 gone governance folder (written ahead of its code)
+    # lane B's C313 gone governance folder (governance.lost_hold_words)
     "with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: ",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
@@ -2853,9 +2853,21 @@ reader of any build takes it for an install run. A lost manifest's stop may be f
 :data:`_SYNC_STOP_DETAIL_RE` line (B13 round 29 C210)."""
 _LOST_LIST_KIND = "lost-list"
 """The ``kind=`` of a sync stop on a governance list that lost a purge the audit trail records, lane B's C345
-(ruling 40), written ahead of lane B's record: an older ``kind=misplaced`` stop on a governance file that
-doctor names no kind for, beside a lost list the report's own read finds, reads the same (B13 round 30
-C335)."""
+(ruling 40): the report's copy of ``cli.LOST_LIST_KIND``, which :func:`_lost_list_kind` reads first, a test
+keeping the two equal. An older ``kind=misplaced`` stop on a governance file that doctor names no kind for,
+beside a lost list the report's own read finds, reads the same (B13 round 30 C335)."""
+
+
+def _lost_list_kind() -> str:
+    """``cli.LOST_LIST_KIND``, or :data:`_LOST_LIST_KIND` when cli does not import or has no such name (an
+    older build)."""
+    try:
+        from agentsync import cli  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _LOST_LIST_KIND
+    return str(getattr(cli, "LOST_LIST_KIND", _LOST_LIST_KIND))
+
+
 _SYNC_STOP_RE = re.compile(
     r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
     r"(?: kind=(?P<kind>[a-z]+(?:-[a-z]+)*))?$"
@@ -2981,6 +2993,7 @@ def _read_sync_stops(
         if m.group("file") == "heartbeat" and (heartbeat_at is None or heartbeat_at <= at):
             ended = None
         kind = m.group("kind") or "refused"
+        kind = _LOST_LIST_KIND if kind == _lost_list_kind() else kind  # lane B's name, read as the report's
         out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended, ok_starts is not None, kind))
         before = m.group("at") if m.group("file") == "manifest" and kind == "lost" else ""
     return out
@@ -11816,7 +11829,7 @@ _SYNC_STOP_KINDS = {
     "refused": "which this account could not open",
     "misplaced": "which was not where or what it should be",
     "lost": "which was missing after earlier syncs",
-    _LOST_LIST_KIND: "which lost a purge the audit trail records",  # lane B's C345, ahead of it (ruling 40)
+    _LOST_LIST_KIND: "which lost a purge the audit trail records",  # lane B's C345 (ruling 40)
 }
 """What stopped a step-3 sync, by its sync-stops.log ``kind=``: lane B's words (B13 round 24 B82)."""
 
@@ -12822,7 +12835,18 @@ _HOLD_UNREAD_WAIT = "not run while the hold list cannot be read"
 _RECORD_UNREAD_WAIT = "not run while the hold record cannot be read"
 """Lane B's words in the same warn when the hold record cannot be read (``governance.hold_list_state``'s
 record state, C349; B13 round 30 ruling 41), which sits with the hold record's FAIL as the hold list's
-does."""
+does: the report's copy of ``governance.HOLD_RECORD_UNREAD_WAIT``, which :func:`_record_unread_wait` reads
+first, a test keeping the two equal."""
+
+
+def _record_unread_wait() -> str:
+    """``governance.HOLD_RECORD_UNREAD_WAIT``, or :data:`_RECORD_UNREAD_WAIT` when governance does not import
+    or has no such name (an older build)."""
+    try:
+        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _RECORD_UNREAD_WAIT
+    return str(getattr(governance, "HOLD_RECORD_UNREAD_WAIT", _RECORD_UNREAD_WAIT))
 
 
 def _hold_list_unread(c: Config | None) -> bool:
@@ -13319,9 +13343,9 @@ _GOV_GONE = (
     "it: "
 )
 """Lane B's C313 governance.hold FAIL of a governance folder that is gone whole while the hold record keeps a
-hold (``<gov>/ is missing, ...``), written ahead of lane B's code: it keeps the lost hold's anchor ``no longer
-lists the hold on``, so it is read as the governance folder's, never as a hold the hold list lost (B13 round
-30, lane B's C313)."""
+hold (``<gov>/ is missing, ...``; ``governance.lost_hold_words``, inline there, so a test builds it): it
+keeps the lost hold's anchor ``no longer lists the hold on``, so it is read as the governance folder's, never
+as a hold the hold list lost (B13 round 30, lane B's C313)."""
 _GOVGONE_WORDS = "from agentsync's governance folder that is missing"
 """The Doctor line's bucket for :data:`_GOV_GONE`'s FAIL, the person's, the folder put back whole first (lane
 B's C313 fix: ``the person puts agentsync's governance folder (<gov>) back whole from the copy kept``)."""
@@ -13842,7 +13866,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             hold_bucket = from_lost_hold
             continue
         wait = next(
-            (w for w in (_HOLD_UNREAD_WAIT, _RECORD_UNREAD_WAIT, _HOLD_LOST_WAIT) if w in detail), None
+            (w for w in (_HOLD_UNREAD_WAIT, _record_unread_wait(), _HOLD_LOST_WAIT) if w in detail), None
         )
         if (
             hold_bucket is not None

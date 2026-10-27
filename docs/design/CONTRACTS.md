@@ -33519,6 +33519,19 @@ times (ruling 33) read as whole-second ones, as the trail line takes the day alo
 (a hand-written `kind=lost-list` line too), `test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313`
 and `test_a_microsecond_audit_time_reads_as_a_whole_second_one_ruling_33`.
 
+Rulings 40, 41, 42 (2026-10-26): **the words written ahead of lane B are its own names** (lane B's batch 2 on
+disk). The report wrote four of lane B's words before its code landed. Two are names lane B now exports, and the
+report reads them first, by a lazy import, keeping its own literal only for an older build without the name:
+the queue warn's record wait, `governance.HOLD_RECORD_UNREAD_WAIT` (`not run while the hold record cannot be
+read`), which sits with the hold record's FAIL, and the sync stop kind `cli.LOST_LIST_KIND` (`lost-list`), which
+a sync-stops.log line is read by. The other two are inline in lane B's code, so a test builds them there: the
+stop roles `hold-record` and `purge-record` are what `cli._stop_role` names each record, and the gone governance
+folder's clause (`<gov>/ is missing, with the hold list, ...`) is what `governance.lost_hold_words` prints when
+governance/ is gone and the hold record keeps a hold, its fix opening `the person puts agentsync's governance
+folder (`. Tests: `test_the_words_written_ahead_of_lane_b_are_its_own_on_disk_ruling_40_41_42` and
+`test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313`, which now reads lane B's built
+FAIL.
+
 C394, ruling 36 (2026-10-26): **a queued id the read-only split cannot judge reads as not judged, and the
 private copy stays in the state folder** (lane B's C394 fix pass). Lane B's `partition_queue_ro` keeps a queued
 upstream deletion or label escalation it cannot judge with a note that says why: `governance.SCHEMA_NOTE` over
