@@ -3817,8 +3817,10 @@ def _record_sync_stop(
 
 def _stop_role(config: Config, path: object) -> str:
     """The role of ``path`` in the state folder, by name: ``manifest``, ``manifest-wal``, ``manifest-shm``,
-    ``lock``, ``heartbeat``, ``holds``, ``governance`` (another file there), else ``state-folder``; with no
-    path, the first state file this account is refused (``doctor.refused_state_files``)."""
+    ``lock``, ``heartbeat``, ``holds``, ``hold-record``, ``purge-record``, ``governance`` (another file
+    there), else ``state-folder``; with no path, the first state file this account is refused
+    (``doctor.refused_state_files``). The hold record and the purge record are named as themselves, never
+    the state folder, which was fine (B13 round 30 C367; ruling 41)."""
     sp = config.state_paths
     if not isinstance(path, str | bytes | os.PathLike):
         refused = doctor.refused_state_files(config)
@@ -3836,6 +3838,8 @@ def _stop_role(config: Config, path: object) -> str:
         real(sp.lock): "lock",
         real(sp.heartbeat): "heartbeat",
         real(governance._holds_file(root)): "holds",
+        real(governance.hold_record_file(root)): "hold-record",
+        real(governance.purge_record_file(root)): "purge-record",
     }
     where = real(path)
     if where in roles:

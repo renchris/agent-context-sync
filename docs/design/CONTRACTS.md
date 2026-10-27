@@ -33758,6 +33758,14 @@ its name, redacted but never stubbed again, gets `_credential_alarm` after the r
 `test_a_stub_whose_name_carries_a_key_is_announced_by_its_alarm_hashed`,
 `test_an_archive_pages_secret_hit_keeps_its_secret_finding`.
 
+C367 (ruling 41): the hold record is named as itself in the sync's stop record. `cli._stop_role` gives
+`<state>/hold-record.json` the role `hold-record` and `<state>/purge-record.json` (ruling 34's purge record, read
+the same way) `purge-record`, where both fell through to `state-folder` over a state folder that was fine; a stop on
+either records `sync-stop file=hold-record rc=1 owner=person kind=misplaced` (or `file=purge-record`). The report's
+noun (`agentsync's hold record`), its not-measured cause and the shape entry are lane RA's, install.sh's
+`fallback_sync_stop_line` case lane RB's and the guide's sync-stops.log row lane D's. Test: `test_cli.py`
+`test_a_sync_stopped_on_the_hold_record_or_the_purge_record_records_it_as_itself`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the

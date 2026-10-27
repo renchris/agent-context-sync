@@ -5898,6 +5898,32 @@ def test_a_hold_record_that_cannot_be_read_is_the_persons_never_no_holds(
     assert _page_kept(initialised, page)
 
 
+@pytest.mark.parametrize("what", ["a folder", "damaged JSON"])
+@pytest.mark.parametrize(
+    ("name", "role"),
+    [(governance.HOLD_RECORD_NAME, "hold-record"), (governance.PURGE_RECORD_NAME, "purge-record")],
+)
+def test_a_sync_stopped_on_the_hold_record_or_the_purge_record_records_it_as_itself(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str, name: str, role: str
+) -> None:
+    """B13 round 30 C367 (ruling 41): a sync stopped on hold-record.json logged ``file=state-folder``, which
+    the report read as "agentsync's state folder, which was not where or what it should be", over a state
+    folder that was fine. The hold record, and the purge record beside it, are named as themselves."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    path = root / name
+    path.unlink(missing_ok=True)
+    if what == "a folder":
+        path.mkdir()
+    else:
+        path.write_text("{", encoding="utf-8")
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert str(path) in capsys.readouterr().err
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(rf"\S+ sync-stop file={role} rc=1 owner=person kind=misplaced", line), line
+
+
 def _erased(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path, str]:
     """A synced Mac whose sample page was erased on request: the config path, the state folder, the page."""
     cfg = _synced(initialised)
