@@ -312,6 +312,122 @@ def test_the_held_heads_are_held_words_own_for_a_scope_and_a_config_hold_c357() 
         assert any(h in said for h in setup_report._HELD_HEADS), said
 
 
+def _beside_a_listing_warn(cfg: Path) -> setup_report._DoctorSort:
+    """Doctor's sort of the state's real status checks and a heartbeat listing warn, its note attached by the
+    CLI's own ``_listings_unread`` (lane B's C321, C322)."""
+    config = load_config(cfg)
+    listing = doctor.CheckResult(
+        "heartbeat.project-x",
+        False,
+        f"{doctor.LISTING_INCOMPLETE}4 consecutive passes; deletions held",
+        doctor.Severity.WARN,
+        fix="nothing to do",
+    )
+    checks = cli._listings_unread(
+        [*cli._status_checks(config), listing], None, expand(config.state_paths.root), config=config
+    )
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [
+        (tag, name.strip(), detail)
+        for line in doctor.format_results([c for c in checks if not c.ok]).splitlines()
+        for tag, name, detail in [re.match(r"\[(\w+) *\] (\S+) +— (.*)", line).groups()]  # type: ignore[union-attr]
+    ]
+    return setup_report._sort_doctor(r, [])
+
+
+def test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c321_c322(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C321, C322 (lane B's listing notes): beside a governance file the sync stops on, the
+    heartbeat's incomplete-listing warn carries ``doctor.listing_state_governance_note`` (``as of its last
+    walk: <role> is not a file|cannot be read|has lost a purge the audit trail records; ...``), and beside a
+    side file that is not a file one ending ``doctor.LISTING_STATE_SIDE_TAIL``. Each sits with that file's
+    FAIL, the person's, never unexpected: not judged, as no sync runs until it is fixed."""
+    assert (
+        f"{doctor.LISTING_STATE_SIDE_TAIL})",
+        f"{doctor.LISTING_STATE_SIDES_TAIL})",
+    ) == setup_report._LISTING_SIDE_TAILS
+    at = Path("/x/state/governance/holds.json")
+    for role in {*governance.GOVERNANCE_ROLES.values(), "the hold record", "the purge record"}:
+        for err in (
+            governance.GovernanceNotAFileError(at, "a folder", role),
+            governance.GovernanceDamagedError(at, role, "it is not JSON"),
+            governance.GovernanceLostError(at, role, "detail", "fix"),
+        ):
+            note = doctor.listing_state_governance_note(err, "governance.purge_queue")
+            found = setup_report._LISTING_GOVERNANCE_RE.search(f"... deletions held ({note})")
+            assert found is not None and found.group("role") == role, note
+    _governance_checks_only(monkeypatch)
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    holds = governance._holds_file(root)
+    kept = holds.read_bytes()
+    holds.unlink()
+    holds.mkdir()  # the hold list not a file
+    sort = _beside_a_listing_warn(cfg)
+    assert (
+        "heartbeat.project-x warn (not judged: the hold list is not a file; no sync runs until it is fixed)"
+        in (sort.from_misplaced)
+    ), sort
+    assert sort.unexpected == [], sort
+    holds.rmdir()
+    holds.write_text("{not json", encoding="utf-8")  # the hold list damaged
+    sort = _beside_a_listing_warn(cfg)
+    assert (
+        "heartbeat.project-x warn (not judged: the hold list cannot be read; no sync runs until it is fixed)"
+        in (sort.from_damaged)
+    ), sort
+    assert sort.unexpected == [], sort
+    holds.write_bytes(kept)
+    db = expand(load_config(cfg).state_paths.db)
+    db.with_name(db.name + "-shm").unlink(missing_ok=True)
+    db.with_name(db.name + "-shm").mkdir()  # a side file not a file, beside a read it leaves whole
+    sort = _beside_a_listing_warn(cfg)
+    assert [w for w in sort.from_side if w.startswith("heartbeat.project-x warn (not judged: ")], sort
+    assert sort.unexpected == [], sort
+
+
+def test_a_listing_warn_beside_a_lost_purge_queue_is_the_persons_c321(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C321: beside a purge queue that lost a purge the audit trail records, the heartbeat's
+    listing warn (``... has lost a purge the audit trail records; ...``) sits with the lost list's FAIL."""
+    _governance_checks_only(monkeypatch)
+    _lost_lists_seeded(fake_mac, capsys)
+    sort = _beside_a_listing_warn(fake_mac["config"])
+    said = [w for w in sort.from_lost_list if w.startswith("heartbeat.project-x warn (not judged: ")]
+    assert said and said[0].endswith(
+        "has lost a purge the audit trail records; no sync runs until it is fixed)"
+    ), sort
+    assert sort.unexpected == [], sort
+
+
+def test_a_heartbeat_link_to_nothing_beside_a_lost_manifest_reads_as_the_lost_manifests_c310(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 C310 (lane B's doctor): beside a lost manifest, a heartbeat.json that is a link to nothing
+    warns ``<path>: a link to a file that does not exist; <doctor.HEARTBEAT_LOST_TAIL>``. The report's
+    lost-unread branch puts it with the lost manifest's FAIL, never unexpected."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    sp = load_config(cfg).state_paths
+    db, heartbeat = expand(sp.db), expand(sp.heartbeat)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    heartbeat.unlink()
+    heartbeat.symlink_to(heartbeat.with_name("gone.json"))
+    assert manifest_mod.lost_words(db) in doctor.LOST_UNREAD
+    _rc, text, _ = report(tmp_path, cfg)
+    assert f"a link to a file that does not exist; {doctor.HEARTBEAT_LOST_TAIL}" in section(text, "Doctor")
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "heartbeat warn (heartbeat.json cannot be read: the state_dir.manifest fix covers it)" in line, (
+        line
+    )
+    assert line.endswith(" · unexpected 0"), line
+
+
 def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
     """B13 round 30 C326 (lane B's sync line counts a label rule's refusal of a label it cannot read apart
     from K): the report's class for such a stub is ``label unreadable``, after ``label policy``, by lane B's

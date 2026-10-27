@@ -12543,6 +12543,20 @@ _LISTING_INCOMPLETE = "enumeration incomplete for "
 (``ops.doctor._check_heartbeat``). The same check also warns for no successful pass and for a last success
 older than 3 x cadence, which no wait explains and which a background sync that stopped gives too: only this
 one can be the person's."""
+_LISTING_GOVERNANCE_RE = re.compile(
+    r"\(as of its last walk: (?P<role>[a-z' -]+?) (?P<said>is not a file|cannot be read|has lost a purge the "
+    r"audit trail records); no sync lists it again until the person fixes it; the "
+    r"(?P<check>governance\.[a-z_]+) \[FAIL\] line says what to do first\)$"
+)
+"""``doctor.listing_state_governance_note`` in the brackets that end the incomplete-listing warn: lane B's
+note beside a governance file the sync's own guard stops on, by its role (B13 round 30 C321)."""
+_LISTING_SIDE_TAILS = (
+    "the state_dir.files [FAIL] line says what to do first)",
+    "the state_dir.files [FAIL] lines say what to do first)",
+)
+"""How the incomplete-listing warn ends beside a -wal or -shm that is not a file:
+``doctor.LISTING_STATE_SIDE_TAIL`` for one, ``LISTING_STATE_SIDES_TAIL`` for both, in their brackets (B13
+round 30 C322; a test keeps each equal to doctor's)."""
 
 
 def _yours_warn(name: str, detail: str, checks: Collection[str]) -> bool:
@@ -13921,20 +13935,41 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_loose.append(f"{name} FAIL{_AGENTS}")
             fails.append((name, _STATE_LOOSE_WORDS))
             continue
-        if (
-            (unreadable or notfile or shut or lost or side_read)
-            and tag == "warn"
+        listing = (
+            tag == "warn"
             and name.startswith("heartbeat.")
             and detail.startswith(_LISTING_INCOMPLETE)
             and name not in r.facts.loop_checks  # B13 round 26 E26: a purge wait is no reason to judge it
-        ):
+        )
+        governed = _LISTING_GOVERNANCE_RE.search(detail) if listing else None
+        if governed is not None:
+            # B13 round 30 C321: beside a governance file the sync stops on, with that file's FAIL, when the
+            # report's own read finds it so: no sync runs until the person fixes it
+            check, said = governed.group("check"), governed.group("said")
+            bucket = (
+                from_misplaced
+                if said == "is not a file" and check in {_check_of(n) for n in misplaced_named}
+                else from_damaged
+                if said == "cannot be read" and check in {_check_of(n) for n in damaged_named}
+                else from_lost_list
+                if said.startswith("has lost") and check in lost_lists
+                else None
+            )
+            if bucket is not None:
+                role = governed.group("role")
+                bucket.append(f"{name} warn (not judged: {role} {said}; no sync runs until it is fixed)")
+                continue
+        # B13 round 30 C322: doctor's side-file note, beside a side the report's own read finds not a file,
+        # though the read it leaves whole (a folder at the -shm alone)
+        side_note = bool(sidecars) and detail.endswith(_LISTING_SIDE_TAILS)
+        if (unreadable or notfile or shut or lost or side_read or side_note) and listing:
             # not "the loop cannot read the state": a record-only FAIL leaves the loop's read whole, and a
             # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
             if unreadable:
                 from_state.append(f"{name} warn (not judged: the state file cannot be read)")
             elif notfile:  # B13 round 25 ruling 12 (D23, D78): not a file, not unreadable
                 from_notfile.append(f"{name} warn (not judged: the state file is not a file)")
-            elif side_read and not shut:  # B13 round 25 ruling 12 (D20)
+            elif (side_read or side_note) and not shut:  # B13 round 25 ruling 12 (D20); round 30 C322
                 # B13 round 28 I31: both side files when both are not files, as the bucket names them
                 roles = list(dict.fromkeys(_side_role(p) for p in sorted(sidecars, key=_wal_first)))
                 if len(roles) == 2:

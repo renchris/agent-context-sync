@@ -33584,6 +33584,24 @@ waits on a hold with the hold, named a name that is gone. Its words are unchange
 `held_words` prints, and a test builds the words for a hold set by command and for the config's hold and finds
 one of `_HELD_HEADS` in each. Test: `test_the_held_heads_are_held_words_own_for_a_scope_and_a_config_hold_c357`.
 
+C321, C322, C310 (2026-10-26): **the listing warn beside a governance or side file the sync stops on is the
+person's** (lane B's listing notes). Beside a governance file the sync's own guard stops on, lane B's
+heartbeat warn for an incomplete listing now carries `doctor.listing_state_governance_note`, `(as of its last
+walk: <role> is not a file|cannot be read|has lost a purge the audit trail records; no sync lists it again until
+the person fixes it; the <check> [FAIL] line says what to do first)`, and the Doctor line read it as
+unexpected. It now sits with that file's FAIL, in the bucket of the kind the report's own read finds for that
+check (a governance file that is not a file, one that is damaged, a list that lost what the audit trail records),
+as `heartbeat.<id> warn (not judged: <role> <kind>; no sync runs until it is fixed)`; where the report's read
+finds no such file the warn stays where it was. Beside a -wal or -shm that is not a file the warn's note ends
+`doctor.LISTING_STATE_SIDE_TAIL` or, for both, `LISTING_STATE_SIDES_TAIL` (C322); with a folder at the -shm alone,
+which leaves the read whole, it was unexpected, and it now joins the side files' bucket whenever the report's own
+read finds a side that is not a file. A heartbeat.json that is a link to nothing beside a lost manifest warns
+`<path>: a link to a file that does not exist; <doctor.HEARTBEAT_LOST_TAIL>` (C310); the lost-unread branch
+already puts it with the lost manifest, now pinned. Tests:
+`test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c321_c322` (every role and kind of the
+note too), `test_a_listing_warn_beside_a_lost_purge_queue_is_the_persons_c321` and
+`test_a_heartbeat_link_to_nothing_beside_a_lost_manifest_reads_as_the_lost_manifests_c310`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
