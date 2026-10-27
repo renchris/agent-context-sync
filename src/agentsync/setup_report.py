@@ -11341,9 +11341,47 @@ def _measured_stops(r: _Run, lo: datetime, hi: datetime, until: datetime | None 
         if os.access(hb, os.R_OK | os.W_OK):
             beat = datetime.fromtimestamp(hb.stat().st_mtime, UTC)
     stops = _read_sync_stops(r.install_log, lo, hi, starts, beat, until=until)
-    if starts is None and _manifest_missing(expand(r.config.state_paths.db)):  # B13 round 25 D4
+    db = expand(r.config.state_paths.db)
+    # B13 round 25 D4; round 30 C341: a link to nothing is a missing manifest, as manifest.lost_words reads it
+    if starts is None and (_manifest_missing(db) or _manifest_link_to_nothing(db)):
         stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
+    elif starts is None and _manifest_short(db):  # B13 round 30 C341
+        stops = [dataclasses.replace(s, unread="the state file is empty or too short") for s in stops]
     return stops
+
+
+def _manifest_link_to_nothing(db: Path) -> bool:
+    """Whether ``db`` is now a symlink whose target is not there (a link through a file too), which
+    ``manifest.lost_words`` reads as a missing manifest (B13 round 30 C341: the cause read now, where the
+    recorded ``kind=lost`` said "missing" before). False on any other failure."""
+    try:
+        if not stat.S_ISLNK(db.lstat().st_mode):
+            return False
+    except OSError:
+        return False
+    try:
+        db.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except OSError:  # a loop, or a folder above the target this account cannot search: not "missing"
+        return False
+    return False
+
+
+def _manifest_short(db: Path) -> bool:
+    """Whether ``db`` is now a regular file, or a link to one, shorter than ``manifest.MANIFEST_MIN_BYTES``
+    (stat after lstat, as ``manifest.lost_words`` reads it): the read now that says why the runs table was
+    not read, for every attempt's stop and one with no sync-stop-detail line alike, never the kind a stop
+    recorded (B13 round 30 ruling 44, C341). False on any failure."""
+    try:
+        from agentsync.manifest import MANIFEST_MIN_BYTES  # noqa: PLC0415 - lazy: the report must import
+
+        st = db.lstat()
+        if stat.S_ISLNK(st.st_mode):
+            st = db.stat()
+        return stat.S_ISREG(st.st_mode) and st.st_size < MANIFEST_MIN_BYTES
+    except Exception:
+        return False
 
 
 def _manifest_missing(db: Path) -> bool:
@@ -11463,14 +11501,13 @@ def _stop_which(stop: _SyncStop) -> str:
 
 def _stop_unread_why(stop: _SyncStop) -> str:
     """Why whether a later sync ended 0 was not read (the runs table was not): the report's own read's cause
-    when it knows one (``stop.unread``: a manifest missing now, B13 round 25 D4), the state folder's words for
-    a state-folder stop, never "the state file" (B13 round 24 B16), a lost manifest's (ruling 7), and the
-    -wal's or -shm's for a side file that is not a file (B13 round 25 ruling 12)."""
+    when it knows one (``stop.unread``: a manifest missing now, B13 round 25 D4, or empty or too short now,
+    B13 round 30 C341), the state folder's words for a state-folder stop, never "the state file" (B13 round 24
+    B16), and the -wal's or -shm's for a side file that is not a file (B13 round 25 ruling 12). Never a lost
+    kind, read now or recorded (ruling 44): a lost stop's stop words say what stopped it, and this cause says
+    what the read finds now, so a file that is there is never called missing."""
     if stop.unread:
         return stop.unread
-    if stop.kind == "lost":
-        short = stop.lost_kind.startswith("short")  # lane B's I92
-        return "the state file is empty or too short" if short else "the state file is missing"
     if stop.kind == "misplaced" and stop.file in ("manifest-wal", "manifest-shm"):
         return f"{stop.what} is not a file"
     if stop.kind == "misplaced" and stop.file != "state-folder":  # a folder where the file belongs

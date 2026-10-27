@@ -33235,6 +33235,22 @@ second is before the stop. The shell's `fallback_sync_stops` takes the same rule
 a `skipped: lock held` one and none) and
 `test_a_sync_started_in_a_stops_own_second_ends_it_but_a_heartbeat_stops_own_run_does_not_c317`.
 
+C341 (2026-10-26): **a stop's not-measured cause comes from a read of the state file now** (ruling 44). When the
+runs table could not be read, the cause read the latest attempt's lost kind now and nothing else, so an earlier
+attempt's lost stop whose detail line recorded `short`, over a manifest still empty now, read `which was empty or
+too short to be a manifest after earlier syncs; whether a later sync ended 0: not measured (the state file is
+missing)`, though a file was there; a stop with no detail line over the same file said `missing` too. The cause
+is now set where the runs table is read (`_measured_stops`): after the missing-file check, a state file that is a
+regular file, or a link to one, shorter than `manifest.MANIFEST_MIN_BYTES` (stat after lstat, as
+`manifest.lost_words` reads it) gives `the state file is empty or too short`, for every attempt's stop and for one
+with no detail line alike, and a link to nothing now reads `the state file is missing` from the same read, as
+`lost_words` calls it a missing manifest. `_stop_unread_why` no longer reads a lost kind at all, read now or
+recorded, so a lost stop with no cause the read knows reads `the state file cannot be read`, never `missing` over a
+file that is there (the B16 unit test's lost line, a stop no read stands behind, now says so).
+The stop's own words (what stopped it) still take the kind read now first, else the recorded one, as `_stop_which`
+does. Test: `test_an_unmeasured_lost_stop_takes_its_not_measured_cause_from_the_read_now_c341` (a file and a link
+to one, two attempts).
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

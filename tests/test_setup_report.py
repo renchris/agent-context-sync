@@ -3968,9 +3968,11 @@ def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Pat
     assert line("state-folder", "agent").endswith(
         "not measured (the state folder cannot be opened); the fix is the agent's chmod"
     )
+    # B13 round 30 C341 (ruling 44): the not-measured cause is the read now's (`unread`), never the recorded
+    # kind; a stop with no read that knows a cause says the state file cannot be read
     assert line("manifest", "person", "lost") == (
         "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
-        "syncs; whether a later sync ended 0: not measured (the state file is missing); the fix is the "
+        "syncs; whether a later sync ended 0: not measured (the state file cannot be read); the fix is the "
         "person's"
     )
     assert line("state-folder", "person", "misplaced").startswith(
@@ -6892,6 +6894,49 @@ def test_a_stop_on_a_side_beside_a_linked_manifests_target_takes_doctors_kind(
     assert "which was a folder, not a file" in setup_report._sync_stop_line(
         dataclasses.replace(stop, shape=setup_report._stop_shape(r, stop))
     )
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_an_unmeasured_lost_stop_takes_its_not_measured_cause_from_the_read_now_c341(
+    fake_mac: dict[str, Path], linked: bool
+) -> None:
+    """B13 round 30 C341 (ruling 44): an earlier attempt's lost stop whose detail line recorded `short`, over
+    a manifest that is still empty now, read "which was empty or too short ...; whether a later sync ended 0:
+    not measured (the state file is missing)", as the cause read only the latest attempt's kind now, and a
+    file is there. The cause comes from a read of the state file now (stat after lstat, a link to a short file
+    the same), for every attempt's stop and one with no detail line alike, never from a recorded kind."""
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_install_log(fake_mac, start="2026-09-30T10:00:00Z", run="20260930T100000Z-77", append=True)
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        side.unlink(missing_ok=True)
+    if linked:
+        target = db.with_name("elsewhere.db")
+        target.write_bytes(b"")
+        db.symlink_to(target)
+    else:
+        db.write_bytes(b"")
+    lost = "sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(
+        f"2026-09-29T10:00:50Z {lost}2026-09-29T10:00:50Z sync-stop-detail lost=short\n"
+        f"2026-09-30T10:00:50Z {lost}",
+        encoding="utf-8",
+    )
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    text = V12_HAPPY + V12_HAPPY.replace("2026-09-29T", "2026-09-30T")
+    r.friction = setup_report.read_friction(write_friction(fake_mac, text))
+    [earlier] = setup_report._step3_stops(r, 0)
+    [latest] = setup_report._step3_stops(r, 1)
+    for stop in (earlier, latest):
+        assert not stop.measured, stop
+        line = setup_report._sync_stop_line(stop)
+        assert "not measured (the state file is empty or too short)" in line, line
+        assert "missing" not in line.split("not measured", 1)[1], line
+    assert "which was empty or too short to be a manifest" in setup_report._sync_stop_line(earlier)
+    # a lost stop with no cause the read now knows never calls a file that is there missing
+    bare = dataclasses.replace(earlier, unread="", lost_kind="", lost_at_stop="short")
+    assert setup_report._stop_unread_why(bare) == "the state file cannot be read"
 
 
 def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
