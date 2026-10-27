@@ -9,7 +9,6 @@ import ast
 import contextlib
 import dataclasses
 import functools
-import inspect
 import itertools
 import json
 import logging
@@ -15896,14 +15895,13 @@ def test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so(
     status = section(text, "Status")
     lost = status.count(setup_report._LOST_MANIFEST_UNREAD_LINE)
     assert lost >= 4 and setup_report._LOST_MANIFEST_LINE not in status, status
+    # B13 round 30 C343, C400: the words themselves, never a constant only this test read; C307, C323: the
+    # second move between a pair of commas, never one lone comma before the verb
     assert _line(summary, "- evidence: ") == (
-        f'- evidence: {lost} lines at the end of Status say "manifest: missing": '
-        f"{setup_report._STATE_LOST_UNREAD_EVIDENCE}"
-    ), summary
-    # B13 round 30 C307, C323: the second move between a pair of commas, never one lone comma before the verb
-    assert _line(summary, "- evidence: ").endswith(
-        "a report written after the person restores the file, or moves heartbeat.json aside, measures them "
-        "(see Doctor's state_dir.manifest line)"
+        f'- evidence: {lost} lines at the end of Status say "manifest: missing": not measured, as the state '
+        "file is missing beside a heartbeat.json that cannot be read: a report written after the person "
+        "restores the file, or moves heartbeat.json aside, measures them (see Doctor's state_dir.manifest "
+        "line)"
     ), summary
     run = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
     run.facts.lost_link = True  # the link form: its ", and" opens the pair the same comma closes
@@ -17204,17 +17202,27 @@ def test_a_lost_hold_and_a_held_queue_have_their_own_buckets(
         assert secret not in text, secret
 
 
-def test_the_unexpected_lists_fold_a_repeated_check() -> None:
-    """B13 round 29 C161: two unexpected FAILs of one check read "governance.hold FAIL twice" on the Doctor
-    line, as every bucket folds, and the outcome says "governance.hold twice"."""
+def test_the_unexpected_lists_fold_a_repeated_check(fake_mac: dict[str, Path]) -> None:
+    """B13 round 29 C161: two unexpected FAILs of one check read "tcc FAIL twice" on the Doctor line, as every
+    bucket folds, and the outcome says "tcc twice". B13 round 30 C343: both read from a built report's
+    output, never from the source text of the code that writes them."""
     assert setup_report._fold(["governance.hold FAIL", "governance.hold FAIL", "lock FAIL"]) == [
         "governance.hold FAIL twice",
         "lock FAIL",
     ]
-    source = inspect.getsource(setup_report._doctor_line)
-    assert "', '.join(_fold(unexpected))" in source
-    outcome = inspect.getsource(setup_report)
-    assert "why.append(f\"{_plural(len(odd), 'unexpected doctor FAIL')}: {said_odd}\")" in outcome
+    write_install_log(fake_mac)
+    write_friction(fake_mac)
+    denied = "[FAIL] tcc    — agentsync-launcher was denied (fix: System Settings > Privacy & Security)"
+
+    def doctor(config: object) -> list[str]:
+        return ["[ok  ] python — fine", denied, denied]
+
+    _text, summary = summary_of(fake_mac, doctor=doctor)
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; 2 unexpected doctor FAILs: tcc twice)"
+    ), summary
+    line = _line(summary, "- doctor: ")
+    assert "tcc FAIL twice" in line and "tcc FAIL, tcc FAIL" not in line, line
 
 
 def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dict[str, Path]) -> None:

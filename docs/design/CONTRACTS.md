@@ -33288,6 +33288,16 @@ file gets no link kind and reads in the plain short words. Only the stated reaso
 gives the real one, and §16.198 carries a dated line. Test:
 `test_a_lost_manifest_that_is_a_link_to_a_short_file_reads_as_the_short_file_c374`.
 
+C343 (2026-10-26): **no constant only a test reads, and no test of source text** (C343 with C400). The plain
+lost-unread evidence was kept as `_STATE_LOST_UNREAD_EVIDENCE`, which no code read once `_unread_evidence` built
+every form, so its test compared the code with a copy of itself; the constant is gone, its history is on
+`_unread_evidence`, the one builder, and the test pins the line's own words (in C307's corrected form). The test
+of round 29 C161's fold read the source text of `_doctor_line` and the outcome; it now builds a report whose doctor
+prints two unexpected `tcc` FAILs and checks the Doctor line's `tcc FAIL twice` and the outcome's `2 unexpected
+doctor FAILs: tcc twice`. C343's stale `_LINK_LOST` reason is C374's build; its installer test guard is lane RB's.
+Tests: `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`,
+`test_the_unexpected_lists_fold_a_repeated_check`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

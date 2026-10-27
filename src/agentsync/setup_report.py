@@ -10274,12 +10274,6 @@ _STATE_LOST_UNREAD_CHMOD_THEN = (
 """:data:`_STATE_LOST_UNREAD_THEN` where heartbeat.json is this account's own file whose mode alone refuses it
 (``r.facts.heartbeat_chmod``, :func:`_heartbeat_chmod_first`): the agent's chmod first, then the manifest's
 fix, the person's (ruling 30)."""
-_STATE_LOST_UNREAD_EVIDENCE = (
-    f"not measured, as the state file is {_LOST_UNREAD}: a report written after {_STATE_LOST_UNREAD_THEN}"
-)
-""":data:`_STATE_LOST_EVIDENCE` for :data:`_LOST_MANIFEST_UNREAD_LINE` lines (B13 round 28 ruling 21: I1,
-I28, I41, I53, I64, I76): never "records earlier passes"; the person's two moves, or with
-:data:`_STATE_LOST_UNREAD_CHMOD_THEN` the agent's chmod first (B13 round 29 ruling 30)."""
 _STATE_LOST_SHORT_UNREAD_THEN = (
     "the person restores it, or moves it aside and heartbeat.json with it so the next sync starts a new "
     "manifest, measures them (see Doctor's state_dir.manifest line)"
@@ -10302,9 +10296,11 @@ damaged manifest's (``doctor.MANIFEST_FIX``), both files aside, never heartbeat.
 
 
 def _unread_evidence(r: _Run) -> str:
-    """:data:`_STATE_LOST_EVIDENCE` over a heartbeat.json that cannot be read (B13 round 28 ruling 21), its
-    link forms after the file's fact, and its moves by who owns heartbeat.json's fix (B13 round 29 ruling
-    30)."""
+    """:data:`_STATE_LOST_EVIDENCE` for :data:`_LOST_MANIFEST_UNREAD_LINE` lines, over a heartbeat.json that
+    cannot be read (B13 round 28 ruling 21: I1, I28, I41, I53, I64, I76): never "records earlier passes"; its
+    link forms after the file's fact, and its moves by who owns heartbeat.json's fix, the person's two moves,
+    or with :data:`_STATE_LOST_UNREAD_CHMOD_THEN` the agent's chmod first (B13 round 29 ruling 30). The one
+    builder of these words: no constant copies the plain form (B13 round 30 C343, C400)."""
     short = r.facts.lost_short
     then = (
         (_STATE_LOST_SHORT_UNREAD_CHMOD_THEN if r.facts.heartbeat_chmod else _STATE_LOST_SHORT_UNREAD_THEN)
