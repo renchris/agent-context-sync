@@ -33449,6 +33449,16 @@ form with lane B's own `_credential_alarm`, `_published_credential` and `_stub_n
 and reads it from err.log through a built report. Test:
 `test_the_stub_alarm_without_its_source_is_still_read_as_one_c328`.
 
+C302 (2026-10-26): **lane B's new audit-trail words stay whole under an "Audit" hold** (C302's rule, ruling 39,
+over lane B's round 30 lines). Lane B's purge record fix tails (C381), its lost queue line (ruling 35) and its
+refused audit line (C389) hold "audit" as a word outside every fixed phrase, so a hold reason `Audit` would cut
+them and make the report private only. Lane B then worded each of them through clauses already in the fixed
+phrases (`recorded in the audit trail`, `the audit trail records suppressed (`, `no audit line: `), so no phrase
+is added for them, and the five written ahead for its older words, which no line prints any more, are gone from
+the report and install.sh alike; the report's own lost queue count prints lane B's `recorded in the audit trail
+is not in the queue file (` too. Test: `test_an_audit_hold_value_leaves_every_audit_line_whole_c302`, which fails
+on a phrase no literal holds.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
