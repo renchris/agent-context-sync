@@ -6293,7 +6293,7 @@ def test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_th
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr().out
     assert (
-        f"1 purge the audit trail records is not in the queue file ({entry}; see status's "
+        f"1 purge recorded in the audit trail is not in the queue file ({entry}; see status's "
         "governance.purge_queue line)"
     ) in said, said
     other = ["purge", "path=projects/none-*", "--source", "source", "--reason", "upstream-deleted"]
@@ -6488,7 +6488,9 @@ def test_a_refused_purge_covered_line_is_one_error_before_the_queue_is_rewritten
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     err = capsys.readouterr().err.splitlines()
-    assert err == [f"error: the audit trail refused a purge-covered line: [Errno 30] {os.strerror(30)}"], err
+    assert err == [
+        f"error: no audit line: the trail refused a purge-covered line: [Errno 30] {os.strerror(30)}"
+    ], err
     assert queue.read_bytes() == before
     assert governance.lost_queued(root) == []
     assert not (initialised.docs_repo / page).exists()
@@ -6711,7 +6713,10 @@ def test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges(
                 assert "(fix: chmod 600 " in failed and "purge-record.json')" in failed, failed
             else:
                 assert "(fix: the person " in failed and "the purge record" in failed, failed
-                assert "the audit trail records no purge, so the purges it kept are lost with it" in failed
+                assert (
+                    "no purge is recorded in the audit trail, so the purges it kept are lost with it"
+                    in failed
+                )
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
         assert "Traceback" not in capsys.readouterr().err
         assert not (initialised.docs_repo / page).exists()

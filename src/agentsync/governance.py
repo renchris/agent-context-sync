@@ -644,10 +644,10 @@ def _purges_rewritten(state_dir: Path) -> str:
     """The purge record's fix tail: the next purge or sync writes it again from the audit trail only when the
     trail records a purge; else the purges it kept go with it, and each is run again by hand (C381)."""
     if any(r.get("action") in _PURGE_ACTIONS for r in _audit_events(state_dir)):
-        return "; the next purge or sync writes it again from the audit trail"
+        return "; the next purge or sync writes it again from what is recorded in the audit trail"
     return (
-        "; the audit trail records no purge, so the purges it kept are lost with it: the person asks the "
-        "records owner, and runs each erasure, DLP and label purge again by hand before the next sync"
+        "; no purge is recorded in the audit trail, so the purges it kept are lost with it: the person asks "
+        "the records owner, and runs each erasure, DLP and label purge again by hand before the next sync"
     )
 
 
@@ -1826,7 +1826,7 @@ def lost_queue_count_line(state_dir: Path) -> str | None:
         return None
     verb = "is" if len(lost) == 1 else "are"
     return (
-        f"{plural(len(lost), 'purge')} the audit trail records {verb} not in the queue file "
+        f"{plural(len(lost), 'purge')} recorded in the audit trail {verb} not in the queue file "
         f"({'; '.join(_lost_entry(r) for r in lost)}; see status's governance.purge_queue line)"
     )
 
@@ -1927,9 +1927,9 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
             if globbed:
                 what += " and a source-path glob"
             detail = (
-                f"{path} no longer lists what {plural(len(lost), 'purge')} the audit trail records "
-                f"suppressed ({_when(lost)}): the sync keeps the erased items out by their id and path, but "
-                f"cannot rebuild {what}"
+                f"{path} no longer lists what {plural(len(lost), 'purge')} "
+                f"the audit trail records suppressed ({_when(lost)}): "
+                f"the sync keeps the erased items out by their id and path, but cannot rebuild {what}"
             )
             fix = (
                 f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
@@ -4804,7 +4804,9 @@ def _run_line(state_dir: Path, record: Mapping[str, object]) -> None:
     try:
         append_audit(state_dir, record)
     except OSError as exc:
-        raise GovernanceError(f"the audit trail refused a {record.get('action')} line: {exc}") from exc
+        raise GovernanceError(
+            f"no audit line: the trail refused a {record.get('action')} line: {exc}"
+        ) from exc
 
 
 def run_purge_queue(

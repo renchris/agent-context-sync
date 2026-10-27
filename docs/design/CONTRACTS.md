@@ -33568,8 +33568,8 @@ record that cannot be read, never no purges (ruling 19): not a file or damaged i
 every command's guard stop on it), and one this account cannot open takes the agent's `chmod 600`. Its fix reads
 "the person restores <path> from a copy they trust, or moves it aside, keeping a copy" (not a file: "the person
 moves <path> aside, keeping a copy", a shut folder's chmod first), then "; the next purge or sync writes it again
-from the audit trail" when the trail records a purge, else "; the audit trail records no purge, so the purges it
-kept are lost with it: the person asks the records owner, and runs each erasure, DLP and label purge again by hand
+from what is recorded in the audit trail" when the trail records a purge, else "; no purge is recorded in the
+audit trail, so the purges it kept are lost with it: the person asks the records owner, and runs each erasure, DLP and label purge again by hand
 before the next sync". The governance folder's fix (`_record_keeps`) ends its bracket with the purges: "; the
 purges run earlier stay recorded in purge-record.json, so the next sync keeps their items out and refuses until
 each is put back or accepted)", or "; no purge record names a purge, so an erasure, DLP or label purge run earlier
@@ -33650,11 +33650,11 @@ reason, kind, fingerprint and source with `"dequeue_audited": true, "reopened_by
 (`_reopen_lines`), in both paths, so a later loss of the queue is refused; the queue's own 0-item run takes its
 entry off and its summary still closes it. `purge()` takes covered entries off the file only on a hand purge
 (`_drop_covered` lost its `audit` argument); the queue's run writes each line through `_run_line` before it
-rewrites the file, and a refused line is `GovernanceError("the audit trail refused a <action> line: <OSError>")`,
+rewrites the file, and a refused line is `GovernanceError("no audit line: the trail refused a <action> line: <OSError>")`,
 the CLI's one `error:` line, exit 1, the queue file unchanged. `purge <selector> --dry-run` adds per lost record
 "  lost from the queue: <entry>: this purge clears it" or ": this purge does not clear it; <how>"
-(`lost_queue_preview`, `lost_cleared_by`), and `purge --queue --dry-run` adds after its summary "<n> purge(s) the
-audit trail records is (are) not in the queue file (<entry>; ...; see status's governance.purge_queue line)"
+(`lost_queue_preview`, `lost_cleared_by`), and `purge --queue --dry-run` adds after its summary "<n> purge(s)
+recorded in the audit trail is (are) not in the queue file (<entry>; ...; see status's governance.purge_queue line)"
 (`lost_queue_count_line`), rc 0 both. Not built: an audited forget of a lost record (C370's verifier: it would
 let an erasure be dropped unerased). Known residual: an upstream-deleted purge that erased a page a lost erasure
 record names leaves no manifest row or page holding the id, so that record is redone only from the person's own
