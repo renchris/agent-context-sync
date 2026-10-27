@@ -28950,6 +28950,8 @@ it, or move it aside with heartbeat.json). With heartbeat.json moved aside nothi
 Tests: `test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
 `test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons` and
 `test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced` (the OCR line once).
+Amended 2026-10-26, §16.203 C332: `_last_rescreen` says `not read (the manifest is missing, but heartbeat.json
+records earlier passes; the person decides: see Doctor's state_dir.manifest line)`, doctor's words.
 
 **Lane B's words are matched through their source** (B56, B102). `_STATE_LOST`, the report's hand copy of
 `manifest.LOST_MANIFEST` that `_state_open_words` matches in the sync's `error: state:` line, had no test tying
@@ -33297,6 +33299,16 @@ prints two unexpected `tcc` FAILs and checks the Doctor line's `tcc FAIL twice` 
 doctor FAILs: tcc twice`. C343's stale `_LINK_LOST` reason is C374's build; its installer test guard is lane RB's.
 Tests: `test_a_lost_manifest_beside_a_heartbeat_that_cannot_be_read_says_so`,
 `test_the_unexpected_lists_fold_a_repeated_check`.
+
+C332 (2026-10-26): **the secret scan line says the lost manifest in doctor's words** (C332; amends §16.171). The
+Environment section's `last re-screen` said `not read (the manifest is missing though earlier syncs recorded; ...)`:
+status's note `(earlier syncs recorded)` grafted onto a full clause, where `recorded` is a verb with no object, and
+a third wording beside doctor's FAIL and the bucket. It now reads `the manifest ` and `manifest.LOST_MANIFEST`
+(`is missing, but heartbeat.json records earlier passes`), so it follows doctor's words if they change; a manifest
+too short to be one reads `the manifest is empty or too short, but heartbeat.json records earlier passes`, without
+`to be a manifest` after `the manifest`. The unread forms and status's own note are unchanged. Tests:
+`test_a_lost_manifest_is_the_persons_and_its_parts_not_measured`,
+`test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_missing`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

@@ -5507,9 +5507,13 @@ def _last_rescreen(r: _Run) -> str:
                 "see Doctor's state_dir.manifest line)"
             )
         if lost:  # B13 round 24 ruling 7 (B4, B34, B49): lost, not a first sync
+            from agentsync import manifest  # noqa: PLC0415 - lazy, as _manifest_lost_kind's
+
+            # doctor's own words, which its FAIL and the link bucket say, never status's note "(earlier
+            # syncs recorded)" grafted onto a clause, where "recorded" has no object (B13 round 30 C332)
             return (
-                "not read (the manifest is missing though earlier syncs recorded; the person decides: see "
-                "Doctor's state_dir.manifest line)"
+                f"not read (the manifest {manifest.LOST_MANIFEST}; the person decides: see Doctor's "
+                "state_dir.manifest line)"
             )
         return "none recorded (no manifest yet)"
     except OSError as exc:
@@ -5527,12 +5531,12 @@ def _last_rescreen(r: _Run) -> str:
     short = _manifest_lost_kind(r.config)
     if short.startswith("short"):  # lane B's I92: there but too short to be a manifest, never "none recorded"
         beside = (
-            "and heartbeat.json cannot be read"
+            " and heartbeat.json cannot be read"
             if short == "short-unread"
-            else "though earlier syncs recorded"
+            else ", but heartbeat.json records earlier passes"  # doctor's, as above (C332)
         )
         return (
-            f"not read (the manifest is empty or too short {beside}; the person decides: see Doctor's "
+            f"not read (the manifest is empty or too short{beside}; the person decides: see Doctor's "
             "state_dir.manifest line)"
         )
     side = _side_breaking_read(db)  # B13 round 25 ruling 12 (D20): the -wal is not a file, not access

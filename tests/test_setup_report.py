@@ -15750,10 +15750,13 @@ def test_a_lost_manifest_is_the_persons_and_its_parts_not_measured(
     ocr = status.split("### OCR", 1)[1].split("###", 1)[0]
     assert ocr.count(setup_report._LOST_MANIFEST_LINE) == 1, ocr
     assert "no manifest yet" not in text, [ln for ln in text.splitlines() if "no manifest yet" in ln]
-    assert _line(section(text, "Environment"), "- secret scan: ").endswith(
-        "last re-screen: not read (the manifest is missing though earlier syncs recorded; the person "
-        "decides: see Doctor's state_dir.manifest line)"
+    # B13 round 30 C332: doctor's words, as its FAIL says them, never "though earlier syncs recorded"
+    scan = _line(section(text, "Environment"), "- secret scan: ")
+    assert scan.endswith(
+        "last re-screen: not read (the manifest is missing, but heartbeat.json records earlier passes; the "
+        "person decides: see Doctor's state_dir.manifest line)"
     ), section(text, "Environment")
+    assert f"(the manifest {manifest_mod.LOST_MANIFEST}; " in scan, scan
 
     # B13 round 26 E3, E14: the lost manifest a link into a folder that is gone; the bucket, the outcome's
     # cause and the evidence name the link the person removes or re-points first, never its target
@@ -16118,8 +16121,8 @@ def test_a_manifest_too_short_to_be_one_beside_earlier_passes_is_never_called_mi
         f"{setup_report._STATE_LOST_SHORT_EVIDENCE}"
     ), summary
     assert _line(section(text, "Environment"), "- secret scan: ").endswith(
-        "last re-screen: not read (the manifest is empty or too short though earlier syncs recorded; the "
-        "person decides: see Doctor's state_dir.manifest line)"
+        "last re-screen: not read (the manifest is empty or too short, but heartbeat.json records earlier "
+        "passes; the person decides: see Doctor's state_dir.manifest line)"
     )
     # step 2's own line for it: the cause and the damaged manifest's moves
     line = f"error: state: {db} {words} (fix: {doctor.MANIFEST_FIX})"
