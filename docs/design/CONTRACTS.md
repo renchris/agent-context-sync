@@ -33602,6 +33602,8 @@ already puts it with the lost manifest, now pinned. Tests:
 note too), `test_a_listing_warn_beside_a_lost_purge_queue_is_the_persons_c321` and
 `test_a_heartbeat_link_to_nothing_beside_a_lost_manifest_reads_as_the_lost_manifests_c310`.
 
+Ruling 36 and C326, review (2026-10-26): the report's private copy beside a side that is not a file now sweeps first the copies over an hour old that a killed report left (`manifest._sweep_ro_copies`): only `read_only_snapshot` swept them, and the report makes its copy only where it takes no snapshot, so with no queued upstream deletion or label escalation a whole manifest copy stayed beside the manifest. And the Quarantine part's `label policy` and new `label unreadable` classes are fixed phrases, in the report and install.sh alike: a hold reason `Label` cut them to `<value>` and made the report private only. Tests: `test_a_copy_a_killed_report_left_is_swept_by_the_next_reports_copy_ruling_36` and `test_a_label_hold_value_leaves_the_quarantine_label_classes_whole_c326`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a

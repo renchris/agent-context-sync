@@ -22673,3 +22673,40 @@ def test_a_lost_queues_rebuilt_purge_id_reaches_no_report_ruling_35(
         for out in (red.redact(said), red.scrub(said)):
             assert sid not in out and number not in out and "id=<its id>" in out, out
     assert red.redact("purge id=<its id> --source alpha") == "purge id=<its id> --source alpha"
+
+
+def test_a_label_hold_value_leaves_the_quarantine_label_classes_whole_c326() -> None:
+    """B13 round 30 C326 review: a hold reason "Label" cut the Quarantine part's ``label policy`` row, and the
+    new ``label unreadable`` one, to ``<value> ...`` and made the report private only. Both classes are fixed
+    phrases; a person's own "Label said hold" is still cut."""
+    red = setup_report.Redactor()
+    red.add("value", "Label", ignore_case=True)
+    for cls in ("label policy", "label unreadable"):
+        assert cls in setup_report.QUARANTINE_CLASSES
+        row = f"| {cls} | 1 |"
+        assert red.redact(row) == row
+    assert not red.private_only
+    assert red.redact("Label said hold") == "<value> said hold"
+
+
+def test_a_copy_a_killed_report_left_is_swept_by_the_next_reports_copy_ruling_36(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 30 ruling 36 review: the report makes its private copy only beside a side that is not a
+    file, where it takes no ``read_only_snapshot``, the only reader that swept a copy a killed read left. With
+    no queued purge (so the queue's own read-only split takes no snapshot either), a whole manifest copy a
+    killed report left two hours ago stayed beside the manifest. The report's copy now sweeps it first."""
+    seed = Seed(fake_mac["config"])
+    seed.run(1, {}, day="2026-10-01")
+    seed.close()
+    db = expand(seed.config.state_paths.db)
+    db.with_name(db.name + "-shm").mkdir()  # the side-file open: the report's own copy
+    killed = db.parent / (manifest_mod.RO_COPY_PREFIX + "killedreport")
+    killed.mkdir()
+    shutil.copyfile(db, killed / db.name)
+    old = time.time() - 7200
+    os.utime(killed / db.name, (old, old))
+    os.utime(killed, (old, old))
+    status_parts(fake_mac)
+    assert not killed.exists(), sorted(p.name for p in db.parent.iterdir())
+    assert not list(db.parent.glob(manifest_mod.RO_COPY_PREFIX + "*"))

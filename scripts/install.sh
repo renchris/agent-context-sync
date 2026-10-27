@@ -2021,6 +2021,7 @@ FIXED_VALUE_PHRASES+="|recorded in the audit trail|with an audit line|purge audi
 FIXED_VALUE_PHRASES+="|lost a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|lost a hold or a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: "
+FIXED_VALUE_PHRASES+="|label policy|label unreadable"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

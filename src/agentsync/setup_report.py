@@ -1329,6 +1329,10 @@ _FIXED_VALUE_PHRASES = (
     "lost a hold or a purge the audit trail records",
     # lane B's C313 gone governance folder (governance.lost_hold_words)
     "with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: ",
+    # the Quarantine part's two label classes (QUARANTINE_CLASSES; B13 round 30 C326 review): a hold reason
+    # "Label" cut them and made the report private only
+    "label policy",
+    "label unreadable",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -4742,12 +4746,15 @@ def _open_private_copy(db: Path, timeout: float) -> sqlite3.Connection:
 
 def _private_copy_folder(db: Path) -> str:
     """A new folder for :func:`_open_private_copy`'s copy: ``manifest.read_only_snapshot``'s own kind, a
-    ``manifest.RO_COPY_PREFIX`` folder beside the manifest, kept out of Time Machine, which the next read
-    sweeps if a killed report left it, never TMPDIR, where a copy of the manifest's names left the state
+    ``manifest.RO_COPY_PREFIX`` folder beside the manifest, kept out of Time Machine, never TMPDIR, where a
+    copy of the manifest's names left the state
     folder (lane B's C394 fix pass; B13 round 30 ruling 36). The snapshot itself is not the read here: it
     reads the file alone past a folder at the -shm and opens nothing beside a folder at the -wal (measured),
     so sqlite's side error, which the report reads the side by, would be gone. An installed manifest without
-    the prefix (an older build) gives the older folder in TMPDIR."""
+    the prefix (an older build) gives the older folder in TMPDIR. Each call first sweeps the copies over an
+    hour old that a killed report left (``manifest._sweep_ro_copies``): only the snapshot swept them, and the
+    report makes a copy only where it does not take the snapshot, so they stayed (B13 round 30 ruling 36
+    review)."""
     try:
         from agentsync import (  # noqa: PLC0415 - lazy: the report must import even if it is broken
             manifest,
@@ -4757,6 +4764,8 @@ def _private_copy_folder(db: Path) -> str:
         prefix = str(manifest.RO_COPY_PREFIX)
     except Exception:  # an older build: the older folder
         return tempfile.mkdtemp(prefix="agentsync-report-")
+    with contextlib.suppress(Exception):  # a build whose manifest lacks the sweep: nothing swept
+        manifest._sweep_ro_copies(db.parent)
     folder = tempfile.mkdtemp(prefix=prefix, dir=db.parent)
     tm_exclude.exclude_new_file(Path(folder))
     return folder
