@@ -6698,6 +6698,7 @@ def test_the_shell_stop_files_are_the_agentsync_reports() -> None:
     body = INSTALL_SH.read_text().split("fallback_sync_stop_line() {", 1)[1].split("\n}\n", 1)[0]
     table = dict(re.findall(r'^\t([a-z-]+)\) what="([^"]*)" ;;', body, re.MULTILINE))
     assert table["hold-record"] == "agentsync's hold record", table
+    assert table["purge-record"] == "agentsync's purge record", table  # lane B's round 30 C381
     shared = table.keys() & setup_report._SYNC_STOP_FILES.keys()
     assert shared >= {"manifest", "lock", "heartbeat", "holds", "governance", "state-folder"}, shared
     assert {k: table[k] for k in shared} == {k: setup_report._SYNC_STOP_FILES[k] for k in shared}
@@ -9580,6 +9581,7 @@ FILE_NOUNS = {
     "governance": "agentsync's governance folder",
     "holds": "agentsync's hold list",
     "record": "agentsync's hold record",  # lane B's round 29 C199: governance.HOLD_RECORD_ROLE's words
+    "precord": "agentsync's purge record",  # lane B's round 30 C381: governance.PURGE_RECORD_ROLE's words
     "queue": "agentsync's purge queue",
     "suppressed": "agentsync's suppression list",
     "audit": "agentsync's audit trail",
@@ -9724,6 +9726,7 @@ MISPLACED_CHECKS = {
     "governance": "governance.hold",
     "holds": "governance.hold",
     "record": "governance.hold",
+    "precord": "governance.suppressed",
     "queue": "governance.purge_queue",
     "suppressed": "governance.suppressed",
     "audit": "governance.audit",
@@ -9754,7 +9757,26 @@ def misplaced_fix(role: str, kind: str) -> str:
     its move (since round 29's ruling 28, only if it listed any hold), a damaged file restored, governance/
     put back, and only where none was ever kept what is there now moved aside (round 29 C114, C143: "they
     move it aside" read as the real governance folder); never a bare move aside of what holds the holds."""
+    # lane B's round 30 C382: the records owner sets each hold again first; C381: the purge record's rewrite
+    again = (
+        "the records or legal owner first sets each hold it named again with ~/.local/bin/agentsync hold "
+        "<scope> --reason <why> --owner <name>; then"
+    )
+    rewrite = (
+        "; the next hold, release or sync writes it again from the hold list and the audit trail, if either "
+        "names a hold"
+    )
+    precord = (
+        "; the next purge or sync writes it again from what is recorded in the audit trail, if a purge is "
+        "recorded in the audit trail"
+    )
     if kind == "damaged":
+        if role == "record":
+            return (
+                f"{again} they restore it from a copy they trust, or move it aside, keeping a copy{rewrite}"
+            )
+        if role == "precord":
+            return f"they restore it from a copy they trust, or move it aside, keeping a copy{precord}"
         if role == "holds":
             return (
                 "they restore it from a copy they trust; or, keeping a copy, they move it aside and, before "
@@ -9772,8 +9794,9 @@ def misplaced_fix(role: str, kind: str) -> str:
         back = "then, if the hold list had listed any hold, put the hold list back from a copy they trust"
         return f"keeping a copy, they move it aside, {back}{SHUT_OPEN}"
     if role == "record":  # lane B's round 29 C199: written again from the hold list and the audit trail
-        again = "the next hold, release or sync writes it again from the hold list and the audit trail"
-        return f"keeping a copy, they move it aside{SHUT_OPEN}; {again}"
+        return f"{again}, keeping a copy, they move it aside{SHUT_OPEN}{rewrite}"
+    if role == "precord":
+        return f"keeping a copy, they move it aside{SHUT_OPEN}{precord}"
     return f"keeping a copy, they move it aside{SHUT_OPEN}"
 
 
@@ -11593,6 +11616,48 @@ def test_a_dangling_manifest_link_after_earlier_passes_is_a_lost_manifest_at_ste
     assert again.returncode == 0, again.stdout + again.stderr
 
 
+ROUND28_FIRST = (
+    "they run ~/.local/bin/agentsync sync once first, which moves round 28's hold record from heartbeat.json "
+    "to hold-record.json before it stops on the manifest; then "
+)
+"""What every fix that moves heartbeat.json aside says first while a round 28 hold record is only there (B13
+round 30 ruling 34, lane B's C351 words in install.sh's voice)."""
+
+
+def test_a_lost_manifests_fix_names_a_sync_first_while_round_28s_hold_record_is_only_in_heartbeat(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 30 ruling 34 (C351, C352), with the real agentsync: a round 28 hold record lives in
+    heartbeat.json until a sync, hold, release or purge moves it to hold-record.json, so following the lost
+    manifest's fix (move heartbeat.json aside) took the hold's only record with it. While no hold-record.json
+    is there and heartbeat.json lists holds, step 1's tail and step 2's NEXT name the sync first; once the
+    record file is there they say the fix as before."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (
+        db,
+        db.with_name(db.name + "-wal"),
+        db.with_name(db.name + "-shm"),
+        db.with_name("hold-record.json"),
+    ):
+        f.unlink(missing_ok=True)
+    heartbeat = db.with_name("heartbeat.json")
+    beat = json.loads(heartbeat.read_text(encoding="utf-8"))
+    heartbeat.write_text(json.dumps({**beat, "holds": ["all"]}, indent=1), encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    assert ROUND28_FIRST in last_line(listed), last_line(listed)
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    assert ROUND28_FIRST in last_line(lost), last_line(lost)
+    db.with_name("hold-record.json").write_text('{"holds": ["all"]}', encoding="utf-8")
+    assert ROUND28_FIRST not in last_line(install_sh(env, "--list-folders"))
+
+
 @pytest.mark.parametrize("link", ["dangling", "gone"])
 def test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2(
     real_env: dict[str, str], wheel: Path, link: str
@@ -11928,6 +11993,12 @@ def test_the_installers_governance_nouns_are_doctors_roles() -> None:
     assert FILE_NOUNS["record"] == noun
     assert f'\trecord) MISPLACED_NOUN="{noun}" MISPLACED_CHECK=governance.hold ;;\n' in text
     assert f'\t\trole-record) fnoun="{noun}" ;;\n' in text
+    # lane B's round 30 C381: the purge record, under governance.suppressed
+    record = governance.__dict__.get("PURGE_RECORD_ROLE", "the purge record")
+    noun = "agentsync's " + str(record).removeprefix("the ")
+    assert FILE_NOUNS["precord"] == noun
+    assert f'\tprecord) MISPLACED_NOUN="{noun}" MISPLACED_CHECK=governance.suppressed ;;\n' in text
+    assert f'\t\trole-precord) fnoun="{noun}" ;;\n' in text
     assert "agentsync's governance file " not in text
 
 
@@ -13072,15 +13143,19 @@ def test_governance_folder_words_never_call_it_a_folder_when_the_kind_is_unknown
     ], cp.stdout
 
 
-def test_list_folders_names_the_hold_record_this_account_cannot_read(env: dict[str, str]) -> None:
+@pytest.mark.parametrize(("name", "role"), [("hold-record.json", "record"), ("purge-record.json", "precord")])
+def test_list_folders_names_the_hold_record_this_account_cannot_read(
+    env: dict[str, str], name: str, role: str
+) -> None:
     """B13 round 29 ruling 24 (lane B's C199, install.sh's state probe): the hold record moved out of
     heartbeat.json into its own state file, <state>/hold-record.json, which every lost-hold check reads, so
     status FAILs one this account cannot read with the agent's chmod 600 (lane B's words). Step 1's probe read
     the lock, the heartbeat and the governance files only and said "(none is needed)"; it names the record
-    now, by its own noun, and the chmod as the agent's."""
+    now, by its own noun, and the chmod as the agent's. B13 round 30 ruling 34 (lane B's C381): the purge
+    record beside it, read by the suppression and queue readers, the same way."""
     _config_step_2_stops_on(env, "clean-real")
-    record = _state_db(env).parent / "hold-record.json"
-    record.write_text('{"holds": ["all"]}', encoding="utf-8")
+    record = _state_db(env).parent / name
+    record.write_text('{"holds": ["all"]}' if role == "record" else '{"purges": []}', encoding="utf-8")
     record.chmod(0)
     _tool_python(env)
     try:
@@ -13088,24 +13163,35 @@ def test_list_folders_names_the_hold_record_this_account_cannot_read(env: dict[s
     finally:
         record.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert last_line(cp).endswith(file_tail("state-file-access", "record")), last_line(cp)
+    assert last_line(cp).endswith(file_tail("state-file-access", role)), last_line(cp)
     assert install_log(env)[-2].endswith(" config_err=state-file-access"), install_log(env)[-2]
 
 
-def test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("name", "role", "check"),
+    [
+        ("hold-record.json", "record", "governance.hold"),
+        ("purge-record.json", "precord", "governance.suppressed"),
+    ],
+)
+def test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list(
+    tmp_path: Path, name: str, role: str, check: str
+) -> None:
     """B13 round 29 ruling 24 (lane B's C199): doctor.state_not_a_file returns the hold record under the
     governance.hold check, which MISPLACED_PY read as the hold list, so the words would name holds.json and
     its put-back for a file the next hold, release or sync writes again. It is the role "record" now, by its
-    own path, with lane B's fix; a build that never returns it is unchanged."""
+    own path, with lane B's fix; a build that never returns it is unchanged. B13 round 30 ruling 34: the purge
+    record under governance.suppressed is the role "precord", never the suppression list (lane B's C381), and
+    the hold record's fix sets each hold again first (C382)."""
     src = tmp_path / "src" / "agentsync"
     (src / "ops").mkdir(parents=True)
-    for name in ("__init__.py", "ops/__init__.py"):
-        (src / name).write_text("", encoding="utf-8")
+    for init in ("__init__.py", "ops/__init__.py"):
+        (src / init).write_text("", encoding="utf-8")
     (src / "config.py").write_text("def load_config(path):\n    return path\n", encoding="utf-8")
     (src / "ops" / "doctor.py").write_text(
         "import types\nfrom pathlib import Path\n\n\n"
         "def state_not_a_file(config, damaged=False):\n"
-        "    return Path('/x/hold-record.json'), types.SimpleNamespace(name='governance.hold')\n\n\n"
+        f"    return Path('/x/{name}'), types.SimpleNamespace(name='{check}')\n\n\n"
         "def governance_file_kind(path):\n    return 'a fifo'\n",
         encoding="utf-8",
     )
@@ -13120,20 +13206,20 @@ def test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list(tmp
         check=False,
         timeout=60,
     )
-    assert cp.stdout.strip() == "record fifo", cp.stdout + cp.stderr
+    assert cp.stdout.strip() == f"{role} fifo", cp.stdout + cp.stderr
     [fn] = re.findall(r"(?ms)^misplaced_words\(\) \{.*?^\}$", text)
     words = subprocess.run(
         [
             BASH32,
             "-c",
-            f'{fn}\nSHUT_OPEN=""\nmisplaced_words record fifo; echo "$MISPLACED_NOUN|$MISPLACED_FIX"',
+            f'{fn}\nSHUT_OPEN=""\nmisplaced_words {role} fifo; echo "$MISPLACED_NOUN|$MISPLACED_FIX"',
         ],
         capture_output=True,
         text=True,
         check=True,
     )
-    fix = misplaced_fix("record", "fifo").replace(SHUT_OPEN, "")  # no folder shut to this account here
-    assert words.stdout.strip() == f"{FILE_NOUNS['record']}|{fix}", words.stdout
+    fix = misplaced_fix(role, "fifo").replace(SHUT_OPEN, "")  # no folder shut to this account here
+    assert words.stdout.strip() == f"{FILE_NOUNS[role]}|{fix}", words.stdout
 
 
 @pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])

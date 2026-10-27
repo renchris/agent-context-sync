@@ -33505,6 +33505,30 @@ SYNC_RC keep 137 or 143. status_run's pipeline (rc 0 when status is killed, as t
 finding, not folded in. Tests: `test_a_closing_status_a_signal_stopped_is_said_and_logged` (no job line) and
 `test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr`.
 
+**C381, C382, C351: the purge record, the hold record's fix and a sync before heartbeat.json moves
+(`scripts/install.sh` MISPLACED_PY, misplaced_words, step 1's state probe, fallback_sync_stop_line, round28_pending;
+ruling 34, lane B's words).** Lane B's `<state>/purge-record.json` (0600, checked under governance.suppressed) is
+read wherever hold-record.json is: MISPLACED_PY names it the role `precord` by its own path, never the suppression
+list; misplaced_words gives `agentsync's purge record` and, in install.sh's voice, `keeping a copy, they move it
+aside; the next purge or sync writes it again from what is recorded in the audit trail, if a purge is recorded in
+the audit trail` (a damaged one restored first; `recorded in the audit trail` is one of ruling 39's fixed phrases,
+so a hold named `audit` stays in it); step 1's access probe reads it beside hold-record.json, so a 0000 or another account's one
+fails step 1 as status does; and a `file=purge-record` stop is `agentsync's purge record`. The hold record's fix
+now sets each hold again first (C382): `the records or legal owner first sets each hold it named again with
+~/.local/bin/agentsync hold <scope> --reason <why> --owner <name>; then, keeping a copy, they move it aside; the
+next hold, release or sync writes it again from the hold list and the audit trail, if either names a hold`, a
+damaged one `then they restore it from a copy they trust, or move it aside, keeping a copy`, in the same frame;
+the shell cannot read lane B's condition, so the rewrite clause is conditional in its words. While a round 28 hold
+record is only in heartbeat.json (no hold-record.json, and heartbeat.json's top-level `holds` a list naming a scope,
+read by `round28_pending` from disk), step 1's and step 2's lost-manifest fixes, which move heartbeat.json aside,
+open `they run ~/.local/bin/agentsync sync once first, which moves round 28's hold record from heartbeat.json to
+hold-record.json before it stops on the manifest; then ` (C351), as `doctor.round28_first` prefixes them. Tests:
+the `precord` rows of `test_the_misplaced_reader_names_the_hold_record_apart_from_the_hold_list`,
+`test_list_folders_names_the_hold_record_this_account_cannot_read` and
+`test_the_installers_governance_nouns_are_doctors_roles`, `misplaced_fix`'s record words, the purge-record row of
+`test_the_shell_stop_files_are_the_agentsync_reports`, and
+`test_a_lost_manifests_fix_names_a_sync_first_while_round_28s_hold_record_is_only_in_heartbeat`.
+
 ### 16.205 Round 30: a lost suppression's audited way out, the records governance/ keeps outside it, a lost queued purge redone, the read-only judge and one secret alarm (2026-10-26, wave B13 round 30 lane B)
 
 C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost part of what a purge suppressed is lost,

@@ -942,6 +942,25 @@ STOPS_BOTH="at its config step (at its status step when it adds a folder with --
 # list, the audit trail), as its error line, status and the report name it (B13 round 28 ruling 22: I3, I15,
 # I34, I44, I57, I86, I100: holds.json had two names in one run, the old one beside "the hold list"). 1
 # for a role it does not know.
+# Whether a round 28 hold record is only in heartbeat.json: no hold-record.json in the state folder, and
+# heartbeat.json a regular file whose top-level "holds" is a list naming a scope (a "holds" object is a source of
+# that name), as governance.round28_pending reads it; until a sync, hold, release or purge has moved it to
+# hold-record.json, every fix that moves heartbeat.json aside names a sync first, or the move takes the hold's only
+# record with it (B13 round 30 ruling 34: C351, C352, lane B's words). The state folder as hold_values finds it.
+ROUND28_FIRST="they run ~/.local/bin/agentsync sync once first, which moves round 28's hold record from heartbeat.json to hold-record.json before it stops on the manifest; then "
+round28_pending() {
+	local k v state=""
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	[ ! -e "$state/hold-record.json" ] && [ ! -L "$state/hold-record.json" ] || return 1
+	[ -f "$state/heartbeat.json" ] && [ -r "$state/heartbeat.json" ] || return 1
+	LC_ALL=C tr -d ' \t\r\n' <"$state/heartbeat.json" 2>/dev/null | LC_ALL=C grep -q '"holds":\["'
+}
 misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLACED_IS, MISPLACED_WHY, MISPLACED_FIX
 	# what is there, from the fixed token the probes read with the installed build's own judge for that role,
 	# as the error line above names it (B13 round 28 I20, I35); the generic words when that build cannot say.
@@ -975,11 +994,20 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	# folder just named (round 29 ruling 28: C114, C143)
 	MISPLACED_WHY="not damage, not a mode" MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN"
 	[ "$1" != holds ] || MISPLACED_FIX="keeping a copy, they move it aside, then, if the hold list had listed any hold, put the hold list back from a copy they trust$SHUT_OPEN"
-	# the hold record outside governance/, which the next hold, release or sync writes again from the hold list and
-	# the audit trail, in lane B's words (round 29 ruling 24: C199)
-	[ "$1" != record ] || MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN; the next hold, release or sync writes it again from the hold list and the audit trail"
+	# the hold record outside governance/: the records or legal owner sets each hold it named again first, then
+	# the move aside, and the next hold, release or sync writes it again where the hold list or the audit trail
+	# names a hold, in lane B's words (round 29 ruling 24: C199; round 30 ruling 34: C382)
+	local again="the records or legal owner first sets each hold it named again with ~/.local/bin/agentsync hold <scope> --reason <why> --owner <name>; then"
+	local rewrite="; the next hold, release or sync writes it again from the hold list and the audit trail, if either names a hold"
+	[ "$1" != record ] || MISPLACED_FIX="$again, keeping a copy, they move it aside$SHUT_OPEN$rewrite"
+	# the purge record outside governance/, which the next purge or sync writes again from what is recorded in
+	# the audit trail where a purge is (B13 round 30 ruling 34: C381, lane B's words; ruling 39 keeps it whole)
+	local precord="; the next purge or sync writes it again from what is recorded in the audit trail, if a purge is recorded in the audit trail"
+	[ "$1" != precord ] || MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN$precord"
 	case "$1/${2:-}" in
 	holds/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust; or, keeping a copy, they move it aside and, before any purge, set each hold it held again" ;;
+	record/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="$again they restore it from a copy they trust, or move it aside, keeping a copy$rewrite" ;;
+	precord/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust, or move it aside, keeping a copy$precord" ;;
 	*/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust, or move it aside, keeping a copy" ;;
 	governance/*) MISPLACED_FIX="they put the real governance folder (the one holding holds.json and audit.jsonl) back, from wherever it was moved or from a copy; only where none was ever kept, they move what is there now aside, keeping a copy" ;;
 	esac
@@ -989,6 +1017,7 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	governance) MISPLACED_NOUN="agentsync's governance folder" MISPLACED_CHECK=governance.hold ;;
 	holds) MISPLACED_NOUN="agentsync's hold list" MISPLACED_CHECK=governance.hold ;;
 	record) MISPLACED_NOUN="agentsync's hold record" MISPLACED_CHECK=governance.hold ;;
+	precord) MISPLACED_NOUN="agentsync's purge record" MISPLACED_CHECK=governance.suppressed ;;
 	queue) MISPLACED_NOUN="agentsync's purge queue" MISPLACED_CHECK=governance.purge_queue ;;
 	suppressed) MISPLACED_NOUN="agentsync's suppression list" MISPLACED_CHECK=governance.suppressed ;;
 	audit) MISPLACED_NOUN="agentsync's audit trail" MISPLACED_CHECK=governance.audit ;;
@@ -1033,6 +1062,8 @@ if found is not None and found[0].name == "governance":  # governance/ itself, u
     role = "governance"
 if found is not None and found[0].name == "hold-record.json":  # lane B round 29 C199: the hold record, apart
     role = "record"
+if found is not None and found[0].name == "purge-record.json":  # lane B round 30 C381: the purge record, apart
+    role = "precord"
 
 
 def misplaced_kind(role, path):
@@ -4170,6 +4201,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 	heartbeat) what="agentsync's heartbeat file" ;;
 	holds) what="agentsync's hold list" ;;
 	hold-record) what="agentsync's hold record" ;; # lane B's file=hold-record (B13 round 30 ruling 41: C334, C347, C367)
+	purge-record) what="agentsync's purge record" ;; # lane B's file=purge-record (B13 round 30 ruling 34: C381)
 	governance) what="a governance file in the state folder" ;;
 	state-folder) what="agentsync's state folder" ;;
 	*) what="a state file" ;;
@@ -7678,6 +7710,7 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
         (gov, rw | os.X_OK, 0o700, "governance"),
         (gov / "holds.json", r, 0o400, "holds"),
         (db.parent / "hold-record.json", r, 0o400, "record"),  # lane B round 29 C199: read by every lost-hold check
+        (db.parent / "purge-record.json", r, 0o400, "precord"),  # lane B round 30 C381: read by the purge readers
         (gov / "purge-queue.json", r, 0o400, "queue"),
         (gov / "suppressed.json", r, 0o400, "suppressed"),
         (gov / "audit.jsonl", os.W_OK, 0o200, "audit"),
@@ -7917,7 +7950,7 @@ list_folders() {
 			if config_errors "$py" "$cmisread" >"$tmp/cerr" 2>/dev/null; then
 				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-side-notfile|state-dir-write|state-notfile|state-lost|state-notdir|state-file-access|state-file-owner|state-file-refused|state-file-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
-				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|record|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
+				crole="$(LC_ALL=C grep -E '^role-(lock|heartbeat|governance|holds|record|precord|queue|suppressed|audit)$' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				clink="$(LC_ALL=C grep -xE 'lost-(link|dangling)' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				cunread="$(LC_ALL=C grep -x 'lost-unread' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
 				chbmode="$(LC_ALL=C grep -x 'lost-hbmode' "$tmp/cerr" | LC_ALL=C head -n 1 || true)"
@@ -8084,6 +8117,7 @@ list_folders() {
 		role-governance) fnoun="agentsync's governance folder" ;;
 		role-holds) fnoun="agentsync's hold list" ;;
 		role-record) fnoun="agentsync's hold record" ;;
+		role-precord) fnoun="agentsync's purge record" ;;
 		role-queue) fnoun="agentsync's purge queue" ;;
 		role-suppressed) fnoun="agentsync's suppression list" ;;
 		role-audit) fnoun="agentsync's audit trail" ;;
@@ -8145,6 +8179,7 @@ list_folders() {
 		# heartbeat.json is this account's own, at a mode that refuses it: its chmod 600 is the agent's, first, as
 		# status's NEXT leads with it, and only the stop that may follow is the person's (B13 round 28 ruling 21,
 		# lane B's I42: the person was asked to choose over a record no one had read)
+		! round28_pending || lfix="$ROUND28_FIRST$lfix" # a round 28 hold record goes with heartbeat.json (C351)
 		lown="fixing that is the person's ($lfix)"
 		[ -z "$chbmode" ] || lown="heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still lost then, fixing that is the person's ($lfix)"
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact: $lown, and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
@@ -9349,6 +9384,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			lfact="empty or too short to be a manifest, though heartbeat.json beside it records earlier passes"
 			[ -z "$STATE_LOST_UNREAD" ] || lfact="empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		fi
+		! round28_pending || lfix="$ROUND28_FIRST$lfix" # a round 28 hold record goes with heartbeat.json (C351)
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
 		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's
