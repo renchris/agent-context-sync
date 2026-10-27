@@ -33536,8 +33536,8 @@ read wherever hold-record.json is: MISPLACED_PY names it the role `precord` by i
 list; misplaced_words gives `agentsync's purge record` and, in install.sh's voice, `keeping a copy, they move it
 aside; the next purge or sync writes it again from what is recorded in the audit trail, if a purge is recorded in
 the audit trail` (a damaged one restored first; `recorded in the audit trail` is one of ruling 39's fixed phrases,
-so a hold named `audit` stays in it); step 1's access probe reads it beside hold-record.json, so a 0000 or another account's one
-fails step 1 as status does; and a `file=purge-record` stop is `agentsync's purge record`. The hold record's fix
+so a hold named `audit` stays in it); step 1's access probe reads it beside hold-record.json, so a 0000 or another
+account's one fails step 1 as status does; and a `file=purge-record` stop is `agentsync's purge record`. The hold record's fix
 now sets each hold again first (C382): `the records or legal owner first sets each hold it named again with
 ~/.local/bin/agentsync hold <scope> --reason <why> --owner <name>; then, keeping a copy, they move it aside; the
 next hold, release or sync writes it again from the hold list and the audit trail, if either names a hold`, a
@@ -33552,6 +33552,14 @@ the `precord` rows of `test_the_misplaced_reader_names_the_hold_record_apart_fro
 `test_the_installers_governance_nouns_are_doctors_roles`, `misplaced_fix`'s record words, the purge-record row of
 `test_the_shell_stop_files_are_the_agentsync_reports`, and
 `test_a_lost_manifests_fix_names_a_sync_first_while_round_28s_hold_record_is_only_in_heartbeat`.
+
+**Ruling 35's rebuilt purge id in the shell report (`scripts/install.sh` redact_stream; lane RA's report half).**
+Governance's queue_lost fix (§16.205) prints a lost queued purge's exact `purge id=<guid>:<file number>`, and the
+shell report copies status's lines whole, so redact_stream's first stages now write the id of a `purge id=` or
+`purge --queue --forget id=` as `<its id>`, its words kept, as setup_report._PURGE_ID_RE does: the id runs to a
+blank, backtick or quote, one already a placeholder (`<that id>`) stays, and a word ending in `purge` (`pre-purge`)
+is not the command. `<its id>` joins the placeholders the line holds from the start, so a folder named `id` never
+cuts inside it. Test: `test_a_by_hand_purges_id_is_cut_from_the_shell_report_as_the_agentsync_report_cuts_it`.
 
 ### 16.205 Round 30: a lost suppression's audited way out, the records governance/ keeps outside it, a lost queued purge redone, the read-only judge and one secret alarm (2026-10-26, wave B13 round 30 lane B)
 

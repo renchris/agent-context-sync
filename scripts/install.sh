@@ -3446,8 +3446,12 @@ redact_stream() {
 	# word (install.log's args, a re-run line in the friction log) is <path> first: its octal bytes match no
 	# pair, so it would show the escaped folder name. awk too: macOS awk's index and substr are byte-wise, but a
 	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
-	# own ("Jane" + U+2019), and the placeholder match runs on every line.
+	# own ("Jane" + U+2019), and the placeholder match runs on every line. A by-hand purge's id (governance's
+	# queue_lost fix rebuilds `purge id=<guid>:<file number>`) is <its id>, its words kept, as
+	# setup_report._PURGE_ID_RE writes it: the id runs to a blank, backtick or quote, and one already a
+	# placeholder stays (B13 round 30 ruling 35, lane RA's report half).
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
+		LC_ALL=C sed -E "s/(^|[^A-Za-z0-9_-])(purge (--queue --forget )?id=)[^<[:space:]\`'\"][^[:space:]\`'\"]*/\\1\\2<its id>/g" |
 		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" \
@@ -3648,7 +3652,7 @@ redact_stream() {
 	{
 		m = 0; s = $0
 		while (1) {
-			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|label|remote|value|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
+			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|label|remote|value|org|Org|team|TEAMID|its id|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
 			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
 			if ((r = own_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = OL }
 			if (!RSTART) break

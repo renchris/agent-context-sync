@@ -3074,6 +3074,32 @@ def test_a_hold_value_never_cuts_a_short_word_from_the_shell_report(tmp_path: Pa
     assert shown == ["set by <value>\tIT", "the <value> list and it stay", "the <value> list"], shown
 
 
+def test_a_by_hand_purges_id_is_cut_from_the_shell_report_as_the_agentsync_report_cuts_it(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 ruling 35: governance's queue_lost fix rebuilds the exact `purge id=<guid>:<file number>`
+    of a lost queued purge, and the shell report copies status's lines whole. As lane RA's
+    setup_report._PURGE_ID_RE does, the id is <its id> up to a blank, backtick or quote, in both purge forms;
+    the words stay, an id already a placeholder stays, and a word ending in "purge" is not the command."""
+    said = [
+        "(for erasure at 2026-10-27T09:00:00Z: `~/.local/bin/agentsync purge id=3f9c2b1e-77aa:2425184270 "
+        "--source alpha --reason erasure`)",
+        "run `~/.local/bin/agentsync purge --queue --forget id=b2:17` once",
+        'purge id="q1" and purge id=x9\tnext',
+        "`~/.local/bin/agentsync purge id=<that id> --source alpha`; purge id=<its id> stays",
+        "pre-purge id=keep7 and xpurge id=keep8",
+    ]
+    shown = _shell_hold_redact(tmp_path, [], said)
+    assert shown == [
+        "(for erasure at 2026-10-27T09:00:00Z: `~/.local/bin/agentsync purge id=<its id> "
+        "--source alpha --reason erasure`)",
+        "run `~/.local/bin/agentsync purge --queue --forget id=<its id>` once",
+        'purge id="q1" and purge id=<its id>\tnext',
+        "`~/.local/bin/agentsync purge id=<that id> --source alpha`; purge id=<its id> stays",
+        "pre-purge id=keep7 and xpurge id=keep8",
+    ], shown
+
+
 @pytest.mark.parametrize("owner", ["Mark", "Early", "Page", "IT"])  # IT: lane RA's round 26 E72
 def test_a_one_word_hold_value_that_is_a_report_word_makes_the_shell_report_private(
     env: dict[str, str], folder: Path, wheel: Path, owner: str
