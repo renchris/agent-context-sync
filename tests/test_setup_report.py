@@ -6345,6 +6345,109 @@ def test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outco
     assert "after attempt 1's end line" not in summary and "- F5 · step 3 · error" in summary, summary
 
 
+_LATE_BLOCK = (
+    "Step-3 sync stops agentsync logged after attempt 1's end line (they do not change the outcome):"
+)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_stop_in_the_end_lines_own_second_lands_in_one_window_c301(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 C301 with C317's half (b) (rulings 11, 44): a sync stop logged in the same whole second as
+    the end line fell in neither window, the attempt's (before the end line) nor the late one (which needed a
+    timed line after it), so a person's stop the agent logged in that second read "worked with help" with no
+    stop line. After the window's pairing such a stop claims an unclaimed error of its own second before the
+    end line and is the attempt's; one that claims none is late, shown apart, and changes no outcome."""
+    lost = "2026-09-29T10:01:10Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    error = "2026-09-29T10:01:10Z | step 3 | error | " + _LOST_LINE + " | -\n"
+    _two_records(fake_mac, "", "")
+    _no_ok_run(fake_mac)
+    stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+
+    def summary(errors: str, log: str, end: str = "2026-09-29T10:01:10Z") -> str:
+        text = V12_HAPPY.replace("2026-09-29T10:01:10Z | end", f"{end} | end")
+        write_friction(fake_mac, _insert_before(f"{end} | end", errors, text))
+        stops.write_text(log, encoding="utf-8")
+        return summary_of(fake_mac)[1]
+
+    # stop, claiming error and end line in one second: the attempt's, failed at step 3, one Items line
+    for end, at in (("2026-09-29T10:01:10Z", "10:01:10Z"), ("2026-09-29T10:01:10.400Z", "10:01:10.300Z")):
+        got = summary(error.replace("10:01:10Z", at), lost, end)
+        assert got.strip().startswith("- **outcome: failed at step 3**"), (end, got)
+        assert "exited 1 on agentsync's state file" in got.strip().splitlines()[0], got
+        [item] = _items_of(got)
+        assert item.startswith("- agentsync sync · step 3 · exited 1 on agentsync's state file, "), got
+        assert item.endswith("(F4: the agent's account of it)"), got
+        assert _LATE_BLOCK not in got, got
+    # a stop stamped after a fractional end line, in its second: a whole-second error there claims it; a
+    # fractional one earlier in the second than the stop is before it, so the stop is late
+    for at, ours in (("10:01:10Z", True), ("10:01:10.300Z", False)):
+        got = summary(
+            error.replace("10:01:10Z", at),
+            lost.replace("10:01:10Z", "10:01:10.600Z"),
+            "2026-09-29T10:01:10.400Z",
+        )
+        assert got.strip().startswith("- **outcome: failed at step 3**") is ours, (at, got)
+        assert (_LATE_BLOCK in got) is not ours, (at, got)
+    # no error, or one that claims nothing: late, shown apart, and the outcome is the one without the stop
+    for errors in ("", error.replace(_LOST_LINE, "agentsync sync skipped: lock held")):
+        plain = summary(errors, "")
+        got = summary(errors, lost)
+        assert got.strip().splitlines()[0] == plain.strip().splitlines()[0], (errors, got)
+        assert "failed at step 3" not in got.strip().splitlines()[0], got
+        block = got.split(_LATE_BLOCK, 1)[1].split(setup_report.RUN_METADATA_HEADING, 1)[0]
+        [line] = [ln for ln in block.splitlines() if ln.startswith("- ")]
+        assert line.startswith("- agentsync sync · step 3 · exited 1 on agentsync's state file, "), block
+    # a stop in the next second after the end line, with nothing logged later, is no part of the attempt
+    got = summary(error, lost.replace("10:01:10Z", "10:01:11Z"))
+    assert _LATE_BLOCK not in got and "failed at step 3" not in got.strip().splitlines()[0], got
+    # the review of C301 (ruling 11): inside the window too, a whole-second error in a fractional stop's own
+    # second is at or after it and pairs, as the end-second pass pairs it; a fractional one earlier is before,
+    # so the stop stands alone (a person's stop fails the step either way)
+    for at, ours in (("10:00:50Z", True), ("10:00:50.300Z", False)):
+        got = summary(error.replace("10:01:10Z", at), lost.replace("10:01:10Z", "10:00:50.700Z"))
+        [item] = _items_of(got)  # paired: the stop's Items line gives the agent's account of it
+        assert item.endswith("(F4: the agent's account of it)") is ours, (at, got)
+    stop = setup_report._SyncStop(
+        datetime(2026, 9, 29, 10, 0, 50, 700000, tzinfo=UTC), "manifest", "person", None, True, "lost"
+    )
+    tied = setup_report.FrictionEvent(
+        4, stop.at.replace(microsecond=0), 3, "error", "agentsync sync exited 1", "-"
+    )
+    assert len(setup_report._pair_stops([stop], [tied])) == 1
+    assert len(setup_report._pair_stops([dataclasses.replace(stop, at_end=True)], [tied])) == 1
+
+
+def test_a_sync_started_in_a_stops_own_second_ends_it_but_a_heartbeat_stops_own_run_does_not_c317(
+    tmp_path: Path,
+) -> None:
+    """B13 round 30 C317's half (b): a sync that started in the same whole second as a stop and ended ok was
+    not counted as ending it ("no sync ended 0 after it"), as the pairing took only a later start. A stopped
+    sync has no ok row of its own, so a start in the stop's second pairs; a heartbeat stop's own run still
+    ends ok, so it pairs only with a later start; a fractional start earlier in the second is before it."""
+    log = tmp_path / "install.log"
+    at = datetime(2026, 10, 26, 19, 21, 4, tzinfo=UTC)
+    lo, hi = at.replace(second=0), at.replace(minute=30)
+
+    def ended(line: str, starts: list[datetime], **kw: Any) -> datetime | None:
+        (tmp_path / setup_report._SYNC_STOPS_NAME).write_text(line + "\n", encoding="utf-8")
+        [stop] = setup_report._read_sync_stops(log, lo, hi, starts, **kw)
+        return stop.ended_ok
+
+    lost = "2026-10-26T19:21:04Z sync-stop file=manifest rc=1 owner=person kind=lost"
+    assert ended(lost, [at]) == at
+    assert ended(lost, [at.replace(second=5)]) == at.replace(second=5)  # the next second, as before
+    assert ended(lost, [at.replace(second=3)]) is None
+    half = at.replace(microsecond=500000)
+    assert ended(lost, [half]) == half
+    stamped = lost.replace("19:21:04Z", "19:21:04.700Z")
+    assert ended(stamped, [at]) == at  # a whole-second start in the stop's second: order unknown, it pairs
+    assert ended(stamped, [at.replace(microsecond=200000)]) is None  # earlier in the second: before it
+    beat = "2026-10-26T19:21:04Z sync-stop file=heartbeat rc=1 owner=agent"
+    later = at.replace(second=30)
+    assert ended(beat, [at], heartbeat_at=later, until=at.replace(second=20)) is None
+    assert ended(beat, [at.replace(second=6)], heartbeat_at=later) == at.replace(second=6)
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_the_friction_line_counts_a_stop_logged_after_the_end_line(fake_mac: dict[str, Path]) -> None:
     """B13 round 26 E7: with a stop logged after the end line, the friction line counted the 2 stops in the

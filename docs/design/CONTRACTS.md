@@ -29781,6 +29781,9 @@ agent's account of it)` and out of Agent friction. No outcome reads them. Test:
 Amended 2026-10-24, §16.188 P101: no outcome kind reads them still, but a known-cause reason whose FAILs are all
 the person's, beside a person's stop logged after the end line, ends `, still standing when this report ran, after
 a sync stop logged after attempt N's end line: the person's to fix`.
+Amended 2026-10-26, §16.203 C301: the window runs from the end line to the end of the whole second of the later of
+it and the attempt's last timed line, so it needs no line after the end line; a stop in the end line's own second
+that claims an error the attempt logged in that second is the attempt's, never shown here.
 
 **No manifest over existing mirror pages, in status's words** (lane B's D26, its report half, built here at lane B's
 ask; §16.180). After the person's new start (the manifest and heartbeat.json moved aside, the mirror pages left),
@@ -33206,6 +33209,31 @@ Purge queue row says both kinds the same way. Test:
 lines, a queue of all four reasons end to end with the new start on the operator entry's line, and the same
 section with governance's `_probed` deleted; the new start test in tests/test_cli.py reads the erasure entry's
 new words.
+
+C301 (2026-10-26): **every sync stop lands in exactly one window, the end line's own second included** (C301 with
+C317's second half; rulings 11 and 44; amends §16.178 D5). The attempt's window ends before the end line and the late window needed a timed line
+after it, so a stop stamped in the end line's whole second, with nothing logged later, was in neither: a person's
+stop the agent logged in that same second read `worked with help` with no stop line, while the same state one call
+later read `failed at step 3`. The windows now meet. Today's window, from the attempt's begin to before the end
+line, pairs its stops as before (`_stop_pairs`), with ruling 11's tie: a whole-second error in a fractional
+stop's own second is at or after it, as in the pass below (`_tied_or_after`). Then each stop stamped at or after the end line and inside its
+whole second (before the next attempt's begin), in time order, claims the first report-step error before the end
+line that the first pass left unclaimed, that is stamped in the stop's own whole second and at or after it (a
+whole-second stamp in that second may be either; a fractional one earlier in the second is before it), and that
+`_claims` accepts (`_end_second_stops`; such a stop is marked `at_end`, and `_pair_stops` pairs it only after the
+others, so no pairing the window made moves and the stop-after-next bound is the same). A stop that claims one is
+the attempt's: it counts for the outcome, has its Items line and counts on the friction line. A stop that claims
+none is late: the late window runs from the end line to the end of the whole second of the later of the end line and
+the attempt's last timed line, takes out the stops the attempt claimed, and stays display only, paired only with
+errors after the end line. A plain inclusive bound was not built: an unclaimed stop of a sync run right after the
+report in the same second would then turn into one of the outcome's reasons. A stop in the next second, with nothing
+logged later, is still in neither, as before. C317's half (b): a sync whose ok run started in the stop's own second
+now ends that stop (both stamps are whole seconds, and a stopped sync has no ok row of its own), except for a
+heartbeat stop, whose own run still ends ok, so only a later start ends it; a fractional start earlier in the
+second is before the stop. The shell's `fallback_sync_stops` takes the same rule (lane RB). Tests:
+`test_a_stop_in_the_end_lines_own_second_lands_in_one_window_c301` (whole and fractional stamps, a claiming error,
+a `skipped: lock held` one and none) and
+`test_a_sync_started_in_a_stops_own_second_ends_it_but_a_heartbeat_stops_own_run_does_not_c317`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

@@ -2878,10 +2878,26 @@ class _SyncStop:
     # the lost kind that stopped it, by the sync-stop-detail line under it (B13 round 29 C210): kept for a
     # closed stop or an earlier attempt's, of which the read now says nothing
     lost_at_stop: str = ""
+    # logged in the end line's own second, after it, and joined to the attempt by the error it claims there
+    # (B13 round 30 C301): :func:`_end_second_stops`, paired after the window's stops (:func:`_pair_stops`)
+    at_end: bool = False
 
     @property
     def what(self) -> str:
         return _SYNC_STOP_FILES.get(self.file, "a state file")
+
+
+def _whole_second(t: datetime) -> datetime:
+    """``t`` cut to its whole second: the second a whole-second stamp (sync-stops.log's, the runs table's)
+    stands for."""
+    return t.replace(microsecond=0)
+
+
+def _tied_or_after(t: datetime, at: datetime) -> bool:
+    """Whether stamp ``t`` may be at or after ``at``: later, or a whole-second ``t`` in ``at``'s own second,
+    whose order inside that second no stamp records (B13 round 30 C301, C317; ruling 11: "an error in the
+    same second as a stop is at or after it"). A fractional ``t`` earlier in the second is before."""
+    return t >= at or (t.microsecond == 0 and t == _whole_second(at))
 
 
 def _read_sync_stops(
@@ -2901,9 +2917,12 @@ def _read_sync_stops(
     heartbeat stop pairs only when ``heartbeat_at``, the time the heartbeat file was last written (when this
     account can read and write it now), is after the stop: a sync whose heartbeat write is refused still ends
     its run ``ok`` (round 23 ruling 5; the review of A9). ``until``: no start at or after it pairs, so an
-    earlier attempt's stop is never fixed by a later attempt's sync (B13 round 27 P123). A
-    :data:`_SYNC_STOP_DETAIL_RE` line names the lost kind of the stop on the line right before it, only when
-    the two stamps are equal and that stop is the manifest's ``kind=lost``; any other is skipped (C210)."""
+    earlier attempt's stop is never fixed by a later attempt's sync (B13 round 27 P123). A start in the
+    stop's own second pairs (:func:`_tied_or_after`: both stamps are whole seconds, and a stopped sync has
+    no ok row of its own), except for a heartbeat stop, whose own run still ends ok, so only a later start
+    fixes it (B13 round 30 C317). A :data:`_SYNC_STOP_DETAIL_RE` line names the lost kind of the stop on
+    the line right before it, only when the two stamps are equal and that stop is the manifest's
+    ``kind=lost``; any other is skipped (C210)."""
     try:
         text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -2919,7 +2938,15 @@ def _read_sync_stops(
         at = parse_time(m.group("at")) if m is not None else None
         if m is None or at is None or at < lo or (hi is not None and at >= hi) or m.group("rc") == "0":
             continue
-        ended = min((t for t in ok_starts or () if t > at and (until is None or t < until)), default=None)
+        beat = m.group("file") == "heartbeat"
+        ended = min(
+            (
+                t
+                for t in ok_starts or ()
+                if (t > at or (not beat and _tied_or_after(t, at))) and (until is None or t < until)
+            ),
+            default=None,
+        )
         if m.group("file") == "heartbeat" and (heartbeat_at is None or heartbeat_at <= at):
             ended = None
         kind = m.group("kind") or "refused"
@@ -3129,8 +3156,11 @@ def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_Syn
 def _pair_stops(
     stops: Sequence[_SyncStop], errors: Sequence[FrictionEvent]
 ) -> list[tuple[_SyncStop, FrictionEvent]]:
-    """:func:`_stop_pairs`' order rule over ``errors`` (timed report-step errors, in log order)."""
-    ordered = sorted(stops, key=lambda s: s.at)
+    """:func:`_stop_pairs`' order rule over ``errors`` (timed report-step errors, in log order). The stops
+    in the end line's own second (``at_end``) claim after the rest, so they move no pairing the window made:
+    each, in time order, the first error left unclaimed in its own second that :func:`_claims` accepts (B13
+    round 30 C301)."""
+    ordered = sorted((s for s in stops if not s.at_end), key=lambda s: s.at)
     claimed: set[int] = set()
     pairs: list[tuple[_SyncStop, FrictionEvent]] = []
     for i, stop in enumerate(ordered):
@@ -3141,8 +3171,24 @@ def _pair_stops(
                 for e in errors
                 if e.line not in claimed
                 and e.at is not None
-                and e.at >= stop.at
+                and _tied_or_after(e.at, stop.at)  # ruling 11, as the end-second pass (C301 review)
                 and (bound is None or e.at < bound)
+                and _claims(stop, e)
+            ),
+            None,
+        )
+        if error is not None:
+            claimed.add(error.line)
+            pairs.append((stop, error))
+    for stop in sorted((s for s in stops if s.at_end), key=lambda s: s.at):
+        error = next(
+            (
+                e
+                for e in errors
+                if e.line not in claimed
+                and e.at is not None
+                and _whole_second(e.at) == _whole_second(stop.at)
+                and _tied_or_after(e.at, stop.at)
                 and _claims(stop, e)
             ),
             None,
@@ -11157,10 +11203,43 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     if nxt is None:
         with contextlib.suppress(OSError):
             last = max(last, datetime.fromtimestamp(r.friction_path.stat().st_mtime, UTC))
-    hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
+    end = _attempt_end(att)
+    hi = end or nxt or last + timedelta(seconds=1)
     # B13 round 27 P123: an earlier attempt's stop pairs only with a sync of its own, never a later attempt's
     stops = _measured_stops(r, lo, hi, until=hi if nxt is not None else None)
+    if end is not None:  # B13 round 30 C301: a stop in the end line's own second that the attempt claims
+        stops += _end_second_stops(r, att, stops, end, nxt)
     return _with_now_words(r, stops) if nxt is None else stops
+
+
+def _end_second_stops(
+    r: _Run, att: Attempt, stops: Sequence[_SyncStop], end: datetime, nxt: datetime | None
+) -> list[_SyncStop]:
+    """B13 round 30 C301 with C317's half (b) (rulings 11, 44): the step-3 sync stops logged at or after the
+    attempt's end line ``end`` and inside its whole second (before ``nxt``, the next attempt's begin),
+    which neither window held: the attempt's ends before the end line, and the late one needed a timed line
+    after it. After the window's own stops (``stops``) have paired, each, in time order, claims the first
+    report-step error before the end line left unclaimed in its own second that :func:`_claims` accepts;
+    those that claim one are the attempt's (``at_end``), and the rest are late (:func:`_late_stops`). So
+    every stop lands in one window: one whose error line the agent logged in that second is the attempt's,
+    and one no line claims (a sync run right after the report in the same second) changes no outcome."""
+    top = _whole_second(end) + timedelta(seconds=1)
+    if nxt is not None:
+        top = min(top, nxt)
+    if top <= end:
+        return []
+    # an earlier attempt's stop pairs only with a sync of its own (P123): none starts after its end's second
+    tail = _measured_stops(r, end, top, until=top if nxt is not None else None)
+    if not tail:
+        return []
+    tail = [dataclasses.replace(s, at_end=True) for s in tail]
+    errors = [
+        e
+        for e in _run_events(att)
+        if e.kind == "error" and e.step == att.layout.report_step and e.at is not None
+    ]
+    claimed = {id(s) for s, _e in _pair_stops([*stops, *tail], errors)}
+    return [s for s in tail if id(s) in claimed]
 
 
 def _with_now_words(r: _Run, stops: list[_SyncStop]) -> list[_SyncStop]:
@@ -11289,7 +11368,10 @@ def _late_stops(r: _Run, index: int) -> list[tuple[_SyncStop, FrictionEvent | No
     never enters), each with the agent's report-step error after the end line that claims it (the order rule
     of :func:`_stop_pairs`). For display only: a line logged after the finish cannot have stopped the run, so
     no outcome reads them (:func:`_run_events`), and an end line that cut the stop off while the agent's line
-    for it stayed in the attempt showed the line alone. Empty with no end line."""
+    for it stayed in the attempt showed the line alone. Empty with no end line.
+    B13 round 30 C301: the window runs from the end line to the end of the whole second of the later of it
+    and the attempt's last timed line, so a stop in the end line's own second is late with nothing logged
+    after it, unless the attempt claimed it (:func:`_end_second_stops`), which is never shown twice."""
     fr = r.friction
     if fr is None or not 0 <= index < len(fr.attempts):
         return []
@@ -11299,10 +11381,18 @@ def _late_stops(r: _Run, index: int) -> list[tuple[_SyncStop, FrictionEvent | No
         return []
     events = list(att.events)
     after = events[next((i for i, e in enumerate(events) if e.kind == "finished"), len(events)) + 1 :]
-    last = max((e.at for e in after if e.at is not None), default=None)
-    if last is None or last <= end:
-        return []
-    stops = _measured_stops(r, end, last + timedelta(seconds=1))
+    last = max((e.at for e in after if e.at is not None), default=end)
+    stops = _measured_stops(r, end, _whole_second(max(last, end)) + timedelta(seconds=1))
+    if stops:
+        claimed = Counter((s.at, s.file, s.owner, s.kind) for s in _step3_stops(r, index) if s.at_end)
+        kept: list[_SyncStop] = []
+        for s in stops:
+            key = (s.at, s.file, s.owner, s.kind)
+            if claimed[key]:
+                claimed[key] -= 1
+            else:
+                kept.append(s)
+        stops = kept
     if index == len(fr.attempts) - 1:  # B13 round 28 I9, I37: the words now, as the stops before the end line
         stops = _with_now_words(r, stops)
     errors = [e for e in after if e.kind == "error" and e.step == att.layout.report_step and e.at is not None]
