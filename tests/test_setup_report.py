@@ -17320,6 +17320,377 @@ def test_a_lost_hold_and_a_held_queue_have_their_own_buckets(
         assert secret not in text, secret
 
 
+def _held_and_queued(fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A synced state with a hold set (so hold-record.json is written) and a queued purge (so
+    purge-record.json is): its config path and state folder."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    assert (
+        cli.main(
+            ["hold", "all", "--reason", "Fabrikam matter", "--owner", "Avery Quill", "--config", str(cfg)]
+        )
+        == 0
+    )
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id=config.sources[0].id, stable_id="s1"),
+        governance.PurgeReason.OPERATOR,
+    )
+    assert governance.hold_record_file(root).is_file()
+    assert governance.purge_record_file(root).is_file()
+    return cfg, root
+
+
+def _hold_wait(config_path: Path) -> str:
+    """The hold bucket's wait doctor's governance.purge_queue warn gives now, by cli's own checks: lane B's
+    record wait where its build has it, else the hold list's."""
+    checks = cli._governance_checks(load_config(config_path))
+    [warn] = [r for r in checks if r.name == "governance.purge_queue" and not r.ok]
+    return next(
+        w for w in (setup_report._RECORD_UNREAD_WAIT, setup_report._HOLD_UNREAD_WAIT) if w in warn.detail
+    )
+
+
+@pytest.mark.parametrize("state", ["folder", "damaged", "wrong-shape"])
+def test_a_hold_record_that_is_not_a_file_or_damaged_is_the_persons_by_its_own_name_c334(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """B13 round 30 ruling 41 (C334, C347, C368, C385, C395): with hold-record.json a folder or damaged, the
+    outcome said only "its config step failed with rc 1", Doctor counted governance.hold's FAIL and the queue
+    warn it causes "unexpected 2", and the sync's error read as a governance file. Each reader names the
+    hold record as itself, never the hold list: its own bucket, the person's, with the queue warn; the
+    outcome's words and the hold record's set-again first; the error's fixed words."""
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    record = governance.hold_record_file(root)
+    record.unlink()
+    if state == "folder":
+        record.mkdir()
+    else:
+        record.write_text("@@ not json" if state == "damaged" else "[]", encoding="utf-8")
+    with pytest.raises(governance.GovernanceUnreadError) as broken:
+        governance.lost_holds(root)
+    assert broken.value.role == governance.HOLD_RECORD_ROLE
+    _step_2_stopped_on(fake_mac, f"error: state: {broken.value}")
+    wait = _hold_wait(cfg)
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    what = "not a file" if state == "folder" else "damaged, empty or of the wrong shape"
+    assert (
+        f" · from agentsync's hold record that is {what} (2 checks): governance.hold FAIL (the person's; see "
+        f"Doctor), governance.purge_queue warn ({wait})"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    outcome = _line(summary, "- **outcome: ")
+    said = "a folder, not a file" if state == "folder" else "damaged, empty or of the wrong shape"
+    assert f"on agentsync's hold record, which is {said}: the person's to fix" in outcome, outcome
+    assert "hold list" not in outcome, outcome
+    assert setup_report._why_not_read(broken.value) == (
+        "agentsync's hold record cannot be read; Doctor's governance.hold line says why"
+    )
+    for secret in ("Avery", "Quill", "Fabrikam"):
+        assert secret not in text, secret
+
+
+def test_a_broken_hold_list_keeps_its_words_beside_a_broken_hold_record_c385(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 41 (C368, C385): holds.json and hold-record.json both broken share governance.hold;
+    doctor's FAIL names holds.json first, so the bucket is the hold list's, never the record's, and nothing
+    is unexpected; the record's own key never takes holds.json's path."""
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    holds = governance.governance_dir(root) / "holds.json"
+    record = governance.hold_record_file(root)
+    for state in ("damaged", "folder"):
+        for p in (holds, record):
+            if p.is_dir():
+                p.rmdir()
+            else:
+                p.unlink(missing_ok=True)
+            if state == "folder":
+                p.mkdir()
+            else:
+                p.write_text("@@ not json", encoding="utf-8")
+        found = (
+            setup_report._damaged_governance(load_config(cfg))
+            if state == "damaged"
+            else setup_report._misplaced_state(load_config(cfg))
+        )
+        assert found["governance.hold"] == holds and found["governance.hold_record"] == record, found
+        _rc, text, _ = report(tmp_path, cfg)
+        line = _line(section(text, "Summary"), "- doctor: ")
+        what = "not a file" if state == "folder" else "damaged, empty or of the wrong shape"
+        assert f" · from agentsync's hold list that is {what} (2 checks): governance.hold FAIL" in line, line
+        assert "hold record" not in line, line
+        assert line.endswith(" · unexpected 0"), line
+
+
+@pytest.mark.parametrize(
+    ("broken", "buckets"),
+    [
+        (
+            {"holds.json": "damaged", "hold-record.json": "0000"},
+            [
+                "from agentsync's hold list that is damaged, empty or of the wrong shape (2 checks): "
+                "governance.hold FAIL (the person's; see Doctor), governance.purge_queue warn (",
+            ],
+        ),
+        (
+            {"suppressed.json": "damaged", "purge-record.json": "0000"},
+            [
+                "from agentsync's suppression list that is damaged, empty or of the wrong shape (1 check): "
+                "governance.suppressed FAIL (the person's; see Doctor)",
+                f"{setup_report._REFUSED_WORDS} (1 check): governance.suppressed FAIL{setup_report._AGENTS}",
+            ],
+        ),
+        (
+            {"suppressed.json": "damaged", "purge-record.json": "folder"},
+            [
+                "from agentsync's suppression list that is damaged, empty or of the wrong shape (1 check): "
+                "governance.suppressed FAIL (the person's; see Doctor)",
+                "from agentsync's purge record that is not a file (1 check): governance.suppressed FAIL (the "
+                "person's; see Doctor)",
+            ],
+        ),
+    ],
+    ids=["hold-list-damaged-record-0000", "list-damaged-record-0000", "list-damaged-record-folder"],
+)
+def test_each_fail_of_a_shared_check_sits_by_the_file_it_names_c385(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    broken: dict[str, str],
+    buckets: list[str],
+) -> None:
+    """B13 round 30 ruling 41's review: two files share each record's check, and the Doctor sort bucketed a
+    FAIL by its check, so a damaged holds.json beside a hold record at mode 0000 read as the agent's chmod,
+    and a damaged suppression list beside a purge record at 0000 or a folder took the record's bucket. Each
+    FAIL sits by the file its own line names: the person's damaged list in its own words, the record's
+    0000 the agent's, the record's folder its own; nothing unexpected."""
+    if os.geteuid() == 0 and "0000" in broken.values():
+        pytest.skip("root opens a mode-000 file")
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    gov = governance.governance_dir(root)
+    shut: list[Path] = []
+    for name, state in broken.items():
+        p = root / name if name.endswith("-record.json") else gov / name
+        if state == "0000":
+            p.chmod(0o000)
+            shut.append(p)
+            continue
+        p.unlink(missing_ok=True)
+        if state == "folder":
+            p.mkdir()
+        else:
+            p.write_text("@@ not json", encoding="utf-8")
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        for p in shut:
+            p.chmod(0o600)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    for bucket in buckets:
+        assert f" · {bucket}" in line, line
+    assert line.endswith(" · unexpected 0"), line
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_hold_record_this_account_cannot_read_is_the_agents_chmod_c368(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 41 (C368, C385): a hold record at mode 0000 was "unexpected 1: governance.hold
+    FAIL". It sits in the bucket of state files this account cannot use, the agent's (doctor's chmod 600),
+    with the queue warn it causes."""
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    record = governance.hold_record_file(root)
+    record.chmod(0o000)
+    try:
+        wait = _hold_wait(cfg)
+        assert setup_report._refused_files(load_config(cfg)) == {
+            "governance.hold_record": setup_report._AGENTS
+        }
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        record.chmod(0o600)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        f"{setup_report._REFUSED_WORDS} (2 checks): governance.hold FAIL{setup_report._AGENTS}, "
+        f"governance.purge_queue warn ({wait})"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+
+
+@pytest.mark.parametrize("state", ["folder", "damaged", "refused"])
+def test_a_purge_record_that_cannot_be_read_is_read_by_its_own_name_c381(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """B13 round 30 ruling 41 with ruling 34 (lane B's C381): purge-record.json shares governance.suppressed
+    with suppressed.json; a folder there, a damaged one, or one at mode 0000 was "unexpected". Each sits in
+    its bucket by the record's own key and name ("agentsync's purge record"), never the suppression list's,
+    and the error's fixed words name it."""
+    if state == "refused" and os.geteuid() == 0:
+        pytest.skip("root opens a mode-000 file")
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    record = governance.purge_record_file(root)
+    if state == "refused":
+        record.chmod(0o000)
+    else:
+        record.unlink()
+        if state == "folder":
+            record.mkdir()
+        else:
+            record.write_text("@@ not json", encoding="utf-8")
+    try:
+        if state != "refused":
+            with pytest.raises(governance.GovernanceUnreadError) as broken:
+                governance.recorded_purges(root)
+            assert setup_report._why_not_read(broken.value) == (
+                "agentsync's purge record cannot be read; Doctor's governance.suppressed line says why"
+            )
+            _step_2_stopped_on(fake_mac, f"error: state: {broken.value}")
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        record.chmod(0o600)
+    summary = section(text, "Summary")
+    line = _line(summary, "- doctor: ")
+    bucket = {
+        "folder": "from agentsync's purge record that is not a file",
+        "damaged": "from agentsync's purge record that is damaged, empty or of the wrong shape",
+        "refused": setup_report._REFUSED_WORDS,
+    }[state]
+    assert f" · {bucket} (" in line and "governance.suppressed FAIL" in line, line
+    assert "suppression list" not in line, line
+    assert line.endswith(" · unexpected 0"), line
+    if state != "refused":
+        said = "a folder, not a file" if state == "folder" else "damaged, empty or of the wrong shape"
+        outcome = _line(summary, "- **outcome: ")
+        assert f"on agentsync's purge record, which is {said}: the person's to fix" in outcome, outcome
+
+
+@pytest.mark.parametrize("damaged", [False, True])
+def test_a_run_that_ended_0_after_a_broken_hold_record_came_after_each_hold_set_again_c382(
+    fake_mac: dict[str, Path], tmp_path: Path, damaged: bool
+) -> None:
+    """B13 round 30 ruling 41 with lane B's C382 (ruling 34): the hold record's fix sets each hold it named
+    again before its move aside, as it may be the only record; a run that ended 0 after a config step that
+    stopped on it came after both, never "after it was moved aside" alone, and the hold list keeps its own."""
+    record = expand(load_config(fake_mac["config"]).state_paths.root) / "hold-record.json"
+    line = (
+        f"error: state: {record} is not the hold record agentsync can read: it is not JSON (x)"
+        if damaged
+        else f"error: state: {record} is a folder, not a file: the hold record belongs there"
+    )
+    write_friction(fake_mac, retry_friction())
+    failed = install_run("2026-09-29T10:00:00Z", 1).replace(
+        "step=config seconds=1 rc=0 result=done note=add-source", "step=config seconds=1 rc=1 result=failed"
+    )
+    (fake_mac["setup"] / "install.log").write_text(
+        LIST_RUN + failed + install_run("2026-09-29T10:20:00Z", 0), encoding="utf-8"
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        f"# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n{line}\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    item = _line(section(text, "Summary"), "- install.sh · step 2 · run 20260929T100000Z")
+    moved = "restored from a copy they trust or moved aside, keeping a copy" if damaged else "moved aside"
+    assert "on agentsync's hold record, which is " in item, item
+    assert item.endswith(f"and ended 0 after each hold it named was set again, and it was {moved}"), item
+
+
+@pytest.mark.parametrize(
+    ("file", "kind"),
+    [("purge-record", "misplaced"), ("purge-record", "refused"), ("hold-record", "refused")],
+)
+def test_a_sync_stop_on_either_record_names_it_whatever_its_kind_c347(
+    fake_mac: dict[str, Path], file: str, kind: str
+) -> None:
+    """B13 round 30 ruling 41's review: a ``file=purge-record`` stop read as "a state file", and a refused
+    hold record's not-measured cause called it "the state file". Each record's stop names it, in the words
+    install.sh's fallback gives (``agentsync's hold record``, ``agentsync's purge record``), and its cause is
+    the record's own, of either kind; a misplaced purge record takes doctor's kind for it now."""
+    noun = {"hold-record": "agentsync's hold record", "purge-record": "agentsync's purge record"}[file]
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    stop = setup_report._SyncStop(at, file, "person", None, False, kind)
+    assert stop.what == noun
+    line = setup_report._sync_stop_line(stop)
+    assert f" on {noun}, which " in line and f"({noun} cannot be read)" in line, line
+    assert "state file" not in line and "state folder" not in line, line
+    if kind == "misplaced":
+        cfg = fake_mac["config"]
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        record = expand(load_config(cfg).state_paths.root) / f"{file}.json"
+        detail = f"{record} is a folder, not a file: the purge record belongs there (fix: x)"
+        r.facts.doctor_problems.append(("FAIL", "governance.suppressed", detail))
+        shaped = dataclasses.replace(stop, shape=setup_report._stop_shape(r, stop))
+        assert f"on {noun}, which was a folder, not a file" in setup_report._sync_stop_line(shaped)
+
+
+def test_lane_bs_record_wait_and_stop_role_read_from_hand_written_lines_c349_c367(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 41, ahead of lane B's code: its queue warn's record wait (C349, ``not run while the
+    hold record cannot be read``) sits with the hold record's FAIL as the hold list's wait does, and its
+    sync-stops.log role ``file=hold-record`` (C367) reads as the hold record; each from a line written here,
+    in the words lane B's note fixed, so the readers meet its code when it lands."""
+    assert setup_report._RECORD_UNREAD_WAIT == "not run while the hold record cannot be read"
+    _cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    record = governance.hold_record_file(root)
+    record.unlink()
+    record.mkdir()
+    fail = (
+        f"[FAIL] governance.hold — {record} is a folder, not a file: the hold record belongs there (fix: the "
+        f"person moves {record} aside, keeping a copy)"
+    )
+    for wait in (setup_report._RECORD_UNREAD_WAIT, setup_report._HOLD_UNREAD_WAIT):
+        warn = f"[warn] governance.purge_queue — 1 purge request queued, {wait}"
+        _text, summary = summary_of(fake_mac, doctor=lambda config, w=warn: ["[ok  ] python — fine", fail, w])
+        line = _line(summary, "- doctor: ")
+        assert (
+            " · from agentsync's hold record that is not a file (2 checks): governance.hold FAIL (the "
+            f"person's; see Doctor), governance.purge_queue warn ({wait})"
+        ) in line, line
+        assert line.endswith(" · unexpected 0"), line
+    log = tmp_path / "install.log"
+    at = datetime(2026, 10, 26, 19, 21, 4, tzinfo=UTC)
+    (tmp_path / setup_report._SYNC_STOPS_NAME).write_text(
+        "2026-10-26T19:21:04Z sync-stop file=hold-record rc=1 owner=person kind=misplaced\n", encoding="utf-8"
+    )
+    [stop] = setup_report._read_sync_stops(log, at.replace(second=0), at.replace(minute=30))
+    assert (stop.file, stop.kind, stop.what) == ("hold-record", "misplaced", "agentsync's hold record")
+    assert " on agentsync's hold record, which was " in setup_report._sync_stop_line(stop)
+
+
+def test_a_sync_stop_on_the_hold_record_names_it_as_itself_c347(fake_mac: dict[str, Path]) -> None:
+    """B13 round 30 ruling 41 (C347): a sync stop on hold-record.json was logged and read as "agentsync's
+    state folder, which was not where or what it should be; ... not measured (the state folder is not a
+    folder)". Lane B's ``file=hold-record`` reads as the hold record itself: its name, doctor's kind for it
+    now, and a not-measured cause that never calls a folder that is fine "not a folder" nor the record "the
+    state file"; the hold list's stop keeps its own name."""
+    cfg = fake_mac["config"]
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    record = expand(load_config(cfg).state_paths.root) / "hold-record.json"
+    detail = f"{record} is a folder, not a file: the hold record belongs there (fix: x)"
+    r.facts.doctor_problems.append(("FAIL", "governance.hold", detail))
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    stop = setup_report._SyncStop(at, "hold-record", "person", None, False, "misplaced")
+    assert stop.what == "agentsync's hold record"
+    assert setup_report._stop_shape(r, stop) == "a folder"
+    line = setup_report._sync_stop_line(dataclasses.replace(stop, shape=setup_report._stop_shape(r, stop)))
+    assert "on agentsync's hold record, which was a folder, not a file" in line, line
+    assert "(agentsync's hold record cannot be read)" in line, line
+    assert "state folder" not in line and "the state file" not in line, line
+    assert "on agentsync's hold record, which was not where or what it should be" in (
+        setup_report._sync_stop_line(stop)
+    )
+    holds = setup_report._sync_stop_line(dataclasses.replace(stop, file="holds"))
+    assert "on agentsync's hold list, which was " in holds and "hold record" not in holds, holds
+
+
 def test_the_unexpected_lists_fold_a_repeated_check(fake_mac: dict[str, Path]) -> None:
     """B13 round 29 C161: two unexpected FAILs of one check read "tcc FAIL twice" on the Doctor line, as every
     bucket folds, and the outcome says "tcc twice". B13 round 30 C343: both read from a built report's
@@ -17343,6 +17714,12 @@ def test_the_unexpected_lists_fold_a_repeated_check(fake_mac: dict[str, Path]) -
     assert "tcc FAIL twice" in line and "tcc FAIL, tcc FAIL" not in line, line
 
 
+_STOP_FILES_LANE_RB = frozenset({"purge-record"})
+"""Stop roles whose install.sh ``fallback_sync_stop_line`` case lane RB adds in its own commit (B13 round 30
+ruling 41's review): skipped only while the shell has no case for them, so the case is held to the report's
+words the moment it lands."""
+
+
 def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dict[str, Path]) -> None:
     """B13 round 27 P120: the report called governance/holds.json "agentsync's holds file" in its Doctor
     bucket and its step 3 stop lines, while doctor, status and the error beside them say "the hold list". One
@@ -17355,6 +17732,8 @@ def test_the_hold_list_is_named_as_doctor_names_it_in_every_reader(fake_mac: dic
         assert setup_report._MISPLACED_ROLES[check] == setup_report._SYNC_STOP_FILES[file]
     shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     for file, words in setup_report._SYNC_STOP_FILES.items():
+        if file in _STOP_FILES_LANE_RB and f"\t{file}) " not in shell:
+            continue  # lane RB's case, not landed yet; once it is, its words are held here
         assert f'\t{file}) what="{words}" ;;' in shell, file
     stop = setup_report._SyncStop(
         datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC), "holds", "person", None, kind="misplaced"

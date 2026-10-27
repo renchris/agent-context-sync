@@ -426,9 +426,11 @@ install.log (a `--list-folders` run is not an install run):
   `failed at step 2 (computed: install.sh exited 1 at its config step on <what>, which is <kind>, not a file: the person's to fix)`,
   where <what> is the Doctor bucket's noun for the file
   (`agentsync's state file`, `agentsync's lock file`, `agentsync's heartbeat file`, `agentsync's hold list`,
-  `agentsync's purge queue`, `agentsync's suppression list` or `agentsync's audit trail`) and <kind> is what sits
+  `agentsync's purge queue`, `agentsync's suppression list`, `agentsync's audit trail`, `agentsync's hold record`
+  or `agentsync's purge record`) and <kind> is what sits
   there (a folder, a fifo, a symlink to nothing, a symlink loop; `which is not a regular file` when no kind is
-  known; B13 round 27 P110, P126). A misplaced -wal or -shm reads
+  known; B13 round 27 P110, P126). The hold record's run that ended 0 came after each hold it named was set
+  again, then its move aside (B13 round 30 ruling 41, with lane B's C382). A misplaced -wal or -shm reads
   `failed at step 2 (computed: install.sh exited 1 at its config step on the state file's shared-memory file, which is a folder, not a file: the person's to fix)`
   (`the state file's write-ahead log` for the -wal; B13 round 25 ruling 12): init and add-source both stop on either
   side, since lane B's round 26 E65 and round 28 I16 (B13 round 29 C224: this said the -wal or -shm lets init run,

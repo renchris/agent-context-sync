@@ -33388,6 +33388,41 @@ Z35). The guide's Repeat conversions row is lane D's. Test:
 
 Ruling 35's privacy guard (2026-10-26): lane B's `governance.queue_lost` gives a queue that lost a queued purge the exact by-hand `purge id=<id> --source <src> --reason <reason>`, and the id it rebuilds is a volume's GUID and the file's number on that volume; the report cut the GUID and printed the number in clear. `Redactor.redact` and `Redactor.scrub` now cut each by-hand purge's id (`purge id=` or `purge --queue --forget id=`, up to the next blank or quote) to `<its id>`, the placeholder the report's own by-hand purge prints, and count nothing for it. Test: `test_a_lost_queues_rebuilt_purge_id_reaches_no_report_ruling_35`.
 
+C334 (2026-10-26): **the hold record and the purge record are read as themselves** (C334, C347, C368, C385, C395,
+one defect; ruling 41, with ruling 34's purge record). Lane B's hold-record.json and purge-record.json sit beside
+governance/ and share a status check with another file: the hold record governance.hold with holds.json, the purge
+record governance.suppressed with suppressed.json. The report knew neither, so a record that was a folder, damaged
+or at mode 0000 read `unexpected 1: governance.hold FAIL` (with the queue warn it causes, `unexpected 2`), the
+config step's outcome said only that it failed, and a sync stop on the record named the state folder. Each record
+now has its own report key, `governance.hold_record` and `governance.purge_record`, with the nouns `agentsync's
+hold record` and `agentsync's purge record` (lane B's roles `the hold record` and `the purge record`), and one
+helper maps the key back to its check. Under the shared check alone, a broken record would be called the hold
+list and the person sent to holds.json, the move aside ruling 19 guards against. The readers that take it: the
+not-a-file one (by the report's own lstat, after the files under governance/), the damaged one (the two records
+read as `governance.governance_damaged` reads them, each error keyed by its own role, the first kept), the refused
+one (a read test, as the file is replaced by rename, so this account's 0000 is the agent's chmod 600), the error's
+fixed words (`agentsync's hold record cannot be read; Doctor's governance.hold line says why`), the config step's
+outcome (`on agentsync's hold record, which is a folder, not a file: the person's to fix`), and the sync stop's
+roles `file=hold-record` and `file=purge-record` (lane B's C367, C381), named as install.sh's fallback names them,
+whose not-measured cause is `<noun> cannot be read` for a stop of any kind, never the state folder or the state
+file. Each FAIL of a shared check is bucketed by the file its own line names (`<path> is ...`, `<path> cannot be
+opened ...`), never by the check: a damaged holds.json beside a hold record at mode 0000 keeps the person's
+damaged bucket, and the record's FAIL alone is the agent's chmod; a damaged suppression list beside a purge record
+at 0000 or a folder keeps its own words beside the record's. Doctor's FAIL names holds.json first when both are broken, so
+the bucket is then the hold list's, in its words. A run that ended 0 after a broken hold record came `after each
+hold it named was set again`, then its move, as lane B's C382 fix asks first. The hold bucket takes the queue warn
+in lane B's record wait, `not run while the hold record cannot be read`, as it takes the hold list's. Tests:
+`test_a_hold_record_that_is_not_a_file_or_damaged_is_the_persons_by_its_own_name_c334`,
+`test_a_broken_hold_list_keeps_its_words_beside_a_broken_hold_record_c385`,
+`test_a_hold_record_this_account_cannot_read_is_the_agents_chmod_c368`,
+`test_a_purge_record_that_cannot_be_read_is_read_by_its_own_name_c381`,
+`test_a_run_that_ended_0_after_a_broken_hold_record_came_after_each_hold_set_again_c382`,
+`test_a_sync_stop_on_the_hold_record_names_it_as_itself_c347` and
+`test_lane_bs_record_wait_and_stop_role_read_from_hand_written_lines_c349_c367` (the wait and the role from lines
+written in lane B's words, ahead of its C349 and C367),
+`test_each_fail_of_a_shared_check_sits_by_the_file_it_names_c385` and
+`test_a_sync_stop_on_either_record_names_it_whatever_its_kind_c347`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
