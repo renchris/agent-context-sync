@@ -328,6 +328,62 @@ def test_an_archive_page_the_new_rules_match_is_deleted_and_queues_a_purge(
     assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) and "keys" not in a for a in hit)
 
 
+def test_an_archive_pages_secret_hit_keeps_its_secret_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 30 ruling 37 (C328): the first scan's findings are dropped for a page stubbed or redacted,
+    which its alarm says; an ``archive/`` copy is neither (it is deleted and its purge queued), so its
+    SECRET finding is kept."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    config, src = make_env(tmp_path)
+    with config.config_path.open("a", encoding="utf-8") as fh:
+        fh.write("\n[governance]\narchive = true\n")
+    kept = "archive/src/keys.txt.md"
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+        (src / "keys.txt").unlink()
+        for _ in range(2):  # a local file must be absent from two complete passes
+            run(config)
+        assert (config.docs_repo / kept).is_file()
+    again = run(config)
+    assert again.exit_code == 0
+    secret = [f for f in again.lint_findings if f.code == "SECRET"]
+    assert [f.path for f in secret] == [kept], again.lint_findings
+    assert secret[0].message.startswith("aws-access-key at line ")
+
+
+def test_a_published_page_stubbed_again_names_its_page_and_rules_in_its_alarm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C328: a published page the new rules match is stubbed, so its first-scan findings are dropped, and its
+    one alarm, the purge's, named neither the page nor the rule. It names the page as it is after any
+    redaction (hashed when its name carries the key, never that name) and the rule, after the fixed words
+    the report and the tests match on, and no SECRET finding is left."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    config, src = make_env(tmp_path)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    keyed = f"{AWS_KEY}.txt"
+    (src / keyed).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert not [f for f in again.lint_findings if f.code == "SECRET"], again.lint_findings
+    alarms = [a for s in again.sources for a in s.alarms]
+    head = "a published page matches the secret scan's new rules: "
+    hit = sorted(a for a in alarms if a.startswith(head))
+    assert len(hit) == 2, alarms
+    said = "is a `contains a credential` stub now: its converted text held one (aws-access-key); "
+    assert [a for a in hit if a.startswith(f"{head}mirror/src/keys.txt.md {said}")], hit
+    (hashed,) = [a for a in hit if "mirror/src/keys.txt.md" not in a]
+    assert hashed.startswith(f"{head}mirror/src/redacted-") and f".md {said}" in hashed, hashed
+    assert AWS_KEY.lower() not in hashed.lower()
+    assert all(a.endswith(cycle._PURGE_QUEUE_STEPS) for a in hit)
+
+
 def test_the_rules_identity_moves_with_a_pattern_the_version_and_gitleaks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -697,6 +753,30 @@ def test_a_stub_named_after_a_credential_is_redacted_when_the_rules_change(
         assert m.is_redacted("src", stable)
     assert git(config.docs_repo, "grep", "-il", "spring2026", "HEAD", "--", "mirror", check=False) == ""
     assert any("named after a credential" in a for s in again.sources for a in s.alarms)  # history: purge
+
+
+def test_a_stub_whose_name_carries_a_key_is_announced_by_its_alarm_hashed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C328: an existing stub whose key is only in its name is redacted and its first-scan findings dropped,
+    and its alarm says so, by the hashed page and the rule, never by the name that carries the key."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    config, src = make_env(tmp_path)
+    (src / "password=Spring2026.bin").write_bytes(b"\x00\x01 Contoso")
+    with monkeypatch.context() as mp:
+        mp.setattr(
+            lints, "SECRET_PATTERNS", tuple(r for r in lints.SECRET_PATTERNS if r[0] != "generic-password")
+        )
+        assert run(config).exit_code == 0
+    again = run(config)
+    assert again.exit_code == 0
+    assert not [f for f in again.lint_findings if f.code == "SECRET"], again.lint_findings
+    alarms = [a for s in again.sources for a in s.alarms]
+    said = [a for a in alarms if "is a `contains a credential` stub now" in a]
+    assert len(said) == 1, alarms
+    assert said[0].startswith("mirror/src/redacted-"), said
+    assert said[0].endswith(".md is a `contains a credential` stub now: its name held one (generic-password)")
+    assert "spring2026" not in " ".join(alarms).lower()
 
 
 def test_a_rescan_hit_in_a_source_the_run_did_not_select_writes_it_no_heartbeat(

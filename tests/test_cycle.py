@@ -7916,3 +7916,84 @@ def test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_it
         in out
     )
     assert run(sample_config).exit_code == 0
+
+
+def _alarm_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if getattr(r, cycle_mod.ECHOED_WHEN, None) == "alarm"]
+
+
+def test_a_page_the_secret_scan_stubs_is_announced_once_by_its_alarm_with_its_rule(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 30 ruling 37 (C328): a stubbed page printed its alarm and then a `warning SECRET` line
+    pointing at a line the committed stub no longer has, and the alarm repeated the source id it is printed
+    under. It is one alarm now, ending with the rule that hit it and no line number, logged with the very
+    words the sync prints, so an interactive sync hides the held WARNING."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    keys = "projects/Contoso keys.txt"
+    (local_source_dir / keys).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with caplog.at_level(logging.DEBUG, logger="agentsync.cycle"):
+        report = run(sample_config)
+    at = str(slug.mirror_rel_path(SID, keys))
+    (src,) = [s for s in report.sources if s.source_id == SID]
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    assert "warning SECRET" not in out and " at line " not in out, out
+    assert not [f for f in report.lint_findings if f.code == "SECRET"], report.lint_findings
+    state = (sample_config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "SECRET" not in state
+    assert list(src.alarms) == [
+        f"{at} is a `contains a credential` stub now: its converted text held one (aws-access-key)"
+    ]
+    assert [line for line in out.splitlines() if at in line] == [f"    alarm: {src.alarms[0]}"], out
+    (record,) = _alarm_records(caplog)
+    assert record.getMessage() == src.alarms[0] and cli._printed(record, report)
+
+
+def test_a_key_in_a_files_name_reaches_no_output_through_its_secret_findings(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ruling 37 (C328): a file whose name and text both carry a key is stubbed and redacted, its alarm naming
+    the hashed page (round 29 C145), but the first scan's findings still named the page by its key-bearing
+    path, on stdout and in STATE.md. None of stdout, STATE.md or the log (err.log) holds that path now."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    rel = f"projects/{AWS_KEY}.txt"
+    (local_source_dir / rel).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with caplog.at_level(logging.DEBUG, logger="agentsync.cycle"):
+        report = run(sample_config)
+    keyed = str(slug.mirror_rel_path(SID, rel))
+    (src,) = [s for s in report.sources if s.source_id == SID]
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    state = (sample_config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    logged = "\n".join(r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
+    for said in (out, state, logged):
+        assert keyed not in said and AWS_KEY.lower() not in said.lower(), said
+    assert any("redacted-" in a and a.endswith("(aws-access-key)") for a in src.alarms), src.alarms
+
+
+def test_a_sidecars_secret_hit_is_said_by_its_pages_alarm(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling 37 (C328): a hit in a page's text sidecar maps to its page, so the page's alarm names the rule
+    and no SECRET finding names the sidecar."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 10, sidecars={"full-text.txt": f"aws key {AWS_KEY}\n"})
+    report = run(config)
+    assert report.exit_code == 0
+    fm, _body = _recording_page(config, MEETING)
+    assert fm["reason"] == "contains a credential"
+    alarms = [a for s in report.sources for a in s.alarms]
+    assert [a for a in alarms if a.endswith("its converted text held one (aws-access-key)")], alarms
+    assert not [f for f in report.lint_findings if f.code == "SECRET"], report.lint_findings

@@ -6366,23 +6366,36 @@ class _Cycle:
         credential`` stub (the sidecars go with the page).  The stubs are scanned again: a hit there comes
         from the item's metadata (its file name / mail subject), so the item's path is redacted everywhere
         it would be committed (stub, shard, QUARANTINE.tsv, CHANGELOG, commit body) and its page moves to a
-        hashed name.  A credential that survives even that blocks the commit."""
+        hashed name.  A credential that survives even that blocks the commit.  A page stubbed or redacted
+        here is announced once, by its alarm, with the rules that hit it: its first scan's findings are
+        dropped, whose line numbers point at text the stub no longer holds and whose path may carry the key
+        (B13 round 30 ruling 37, C328)."""
         scanned = self.ok_pages | self.stub_pages | self.archive_pages
         pages = sorted(p for p in scanned if (self.repo / p).is_file())
         if not pages:
             return
         hits = lints.lint_secrets(self.repo, pages)
-        self.findings += hits
         hit_pages = sorted({self.sidecar_page.get(h.path, h.path) for h in hits})
+        # each hit's owner and rule, read before a redaction moves its page (a sidecar's hit is its page's)
+        owner_of = {p: o for p in hit_pages if (o := _owner(self.manifest, p)) is not None}
+        rules: dict[tuple[str, str], set[str]] = {}
+        for h in hits:
+            owner = owner_of.get(self.sidecar_page.get(h.path, h.path))
+            if owner is not None:
+                rules.setdefault(owner, set()).add(h.message.partition(" at line ")[0])
+        redacted_now: set[tuple[str, str]] = set()
         for page in (p for p in hit_pages if p in self._archive_ids):
             self._archived_credential(page)
         hit_pages = [p for p in hit_pages if p not in self.archive_pages]
         stubbed: list[tuple[str, str]] = []
-        purged: set[tuple[str, str]] = set()
+        named: list[tuple[str, str]] = []  # already a stub: the credential is in its name
+        published: dict[tuple[str, str], list[OutputRow]] = {}
         for sid, stable in _owners(self.manifest, hit_pages):
             pages_of = {o.output_path for o in self.manifest.outputs_for(sid, stable)}
             if pages_of and pages_of <= (self.stub_pages - self.ok_pages):
-                self._redact(sid, stable)  # already a stub: the credential is in the name
+                self._redact(sid, stable)
+                redacted_now.add((sid, stable))
+                named.append((sid, stable))
                 continue
             ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
             prior = [o for o in ok if o.output_path in self._published_pages]
@@ -6391,8 +6404,8 @@ class _Cycle:
                 stubbed.append((sid, stable))
                 self._count_credential(sid, stable)
                 if prior or rewritten:  # published under the earlier rules: its text is in the repo's history
-                    self._published_credential(sid, stable, ok if rewritten else prior)
-                    purged.add((sid, stable))
+                    published[(sid, stable)] = ok if rewritten else prior
+        purged = set(published)
         for sid, stable in sorted(self._history_hits - purged):
             # the committed text matches and the page this run wrote does not: an edit removed the key, the
             # file is another stub now, or it was deleted; the key is in the docs repo's history all the same
@@ -6408,9 +6421,24 @@ class _Cycle:
             self.manifest, [h.path for h in lints.lint_secrets(self.repo, stub_paths)]
         ):
             self._redact(sid, stable)
+            redacted_now.add((sid, stable))
         for sid, stable in stubbed:  # after the redaction: a name that carries a key is said hashed (C145)
-            if (sid, stable) not in purged:  # a published one has its own alarm, with its queued purge
-                self._credential_alarm(sid, stable)
+            held = sorted(rules.get((sid, stable), ()))
+            if (sid, stable) in published:  # its own alarm, with its queued purge, names the page and rules
+                now_is = self._stub_now(sid, stable, held)
+                self._published_credential(sid, stable, published[(sid, stable)], now_is=now_is)
+            else:
+                self._credential_alarm(sid, stable, held)
+        for sid, stable in named:  # its findings are dropped below: its alarm says it, hashed (C328)
+            self._credential_alarm(sid, stable, sorted(rules.get((sid, stable), ())), held_by="its name")
+        # the archive's and an unstubbed page keep their findings; the rest are said by their alarm (C328)
+        said = set(stubbed) | redacted_now
+        self.findings += [
+            h
+            for h in hits
+            if (page := self.sidecar_page.get(h.path, h.path)) in self.archive_pages
+            or owner_of.get(page) not in said
+        ]
         redacted = sorted(
             o.output_path
             for c in self.changes
@@ -6455,19 +6483,33 @@ class _Cycle:
         acc.credential_stubbed += 1
         self._tally["converted_unreadable"] += 1
 
-    def _credential_alarm(self, sid: str, stable: str) -> None:
-        """The source's alarm for a page the secret scan stubbed, naming it by its mirror path (hashed when
-        its name carries a key), and one WARNING marked as that alarm, so an interactive sync prints it once
-        and err.log keeps it; never the volume and inode id alone (B13 round 29 C145)."""
-        pages = sorted(o.output_path for o in self.manifest.outputs_for(sid, stable))
+    def _credential_alarm(
+        self, sid: str, stable: str, rules: Sequence[str] = (), *, held_by: str = "its converted text"
+    ) -> None:
+        """The source's alarm for a page the secret scan stubbed (:meth:`_stub_now`: by its mirror path,
+        hashed when its name carries a key, ending with the rules that hit it, never a line number of text the
+        stub no longer holds), and one WARNING with the same words marked as that alarm, so an interactive
+        sync prints it once (:func:`cli._printed` matches the two exactly) and err.log keeps it; never the
+        volume and inode id alone (B13 round 29 C145), and no ``<source>: `` before it, which the sync prints
+        the alarm under and its ``mirror/<source>/`` path names (B13 round 30 ruling 37, C328). ``held_by`` is
+        "its name" for a stub the scan found the key in the name of (C328)."""
         try:
             acc = self._acc(self.config.source(sid))
         except ConfigError:
             return
-        page = pages[0] if pages else "a page"
-        what = f"{sid}: {page} is a `contains a credential` stub now: its converted text held one"
+        what = self._stub_now(sid, stable, rules, held_by=held_by)
         acc.alarms.append(what)
         log.warning("%s", what, extra={ECHOED_WHEN: "alarm"})
+
+    def _stub_now(
+        self, sid: str, stable: str, rules: Sequence[str], *, held_by: str = "its converted text"
+    ) -> str:
+        """``<mirror page> is a `contains a credential` stub now: <held_by> held one (<rule>, <rule>)``, the
+        page read after any redaction, so a name that carries a key is said hashed (C145, C328)."""
+        pages = sorted(o.output_path for o in self.manifest.outputs_for(sid, stable))
+        page = pages[0] if pages else "a page"
+        what = f"{page} is a `contains a credential` stub now: {held_by} held one"
+        return f"{what} ({', '.join(rules)})" if rules else what
 
     def _redact(self, sid: str, stable: str) -> None:
         """The item's name/path carries a credential: redact it everywhere it would be committed."""
@@ -6571,6 +6613,12 @@ def _in_head(repo: Path, path: str) -> bool:
         return gitops.run_git(repo, "cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
     except AgentSyncError:
         return False
+
+
+def _owner(manifest: Manifest, path: str) -> tuple[str, str] | None:
+    """The (source, stable id) whose output is ``path``, or None."""
+    out = manifest.output_by_path(path)
+    return None if out is None else (out.source_id, out.stable_id)
 
 
 def _owners(manifest: Manifest, paths: Sequence[str]) -> list[tuple[str, str]]:

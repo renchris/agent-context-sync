@@ -33735,6 +33735,29 @@ reader of the state folder lists it (each opens its files by name). The report's
 `test_read_only_snapshot_copies_into_the_state_folder_and_leaves_no_copy`,
 `test_held_purges_read_only_opens_the_manifest_once`.
 
+C328 (ruling 37): a page the secret scan stubbed is announced once, by its alarm. `_quarantine_secrets` no longer adds
+the first scan's SECRET findings wholesale: it maps each hit to its page (`sidecar_page`, so a sidecar's hit is its
+page's) and that page to its owner before any redaction moves it, and keeps a finding only for an archive page or a
+page whose owner was neither stubbed nor sent to `_redact` (a `_stub_credential` that returned False). The alarm keeps
+what the dropped finding alone said, the rule names, sorted and joined after the words (`_stub_now`):
+`mirror/<source>/<path>.md is a `contains a credential` stub now: its converted text held one (<rule>, <rule>)`, never
+a line number of text the stub no longer holds; a redacted page keeps its hashed name (round 29 C145), so the path
+that carries a key reaches neither stdout, STATE.md nor err.log. The alarm drops its `<source>: ` prefix (the sync
+prints it under that source, and its `mirror/<source>/` path names it) and its WARNING logs the same string, so
+`cli._printed` still matches; `setup_report._STUB_NOW_RE` matches the new words' first `: `-segment unchanged (lane RA
+adds that test). Every page whose findings are dropped is announced: a published page stubbed again, whose only alarm
+is the purge's, has that alarm name the page after the redaction and the rules, `a published page matches the secret
+scan's new rules: <page> is a `contains a credential` stub now: its converted text held one (<rule>); <n> cached
+conversion(s) deleted, purge queued (preview ...)`, its fixed head unchanged; an existing stub whose key is only in
+its name, redacted but never stubbed again, gets `_credential_alarm` after the redaction with `held_by="its name"`:
+`mirror/<source>/redacted-<hash>.md is a `contains a credential` stub now: its name held one (<rule>)`. Tests:
+`test_cycle.py` `test_a_page_the_secret_scan_stubs_is_announced_once_by_its_alarm_with_its_rule`,
+`test_a_key_in_a_files_name_reaches_no_output_through_its_secret_findings`,
+`test_a_sidecars_secret_hit_is_said_by_its_pages_alarm`; `test_credential_rescreen.py`
+`test_a_published_page_stubbed_again_names_its_page_and_rules_in_its_alarm`,
+`test_a_stub_whose_name_carries_a_key_is_announced_by_its_alarm_hashed`,
+`test_an_archive_pages_secret_hit_keeps_its_secret_finding`.
+
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
 Round 30's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 30"; specs `round30/items/C<n>.md`, the
