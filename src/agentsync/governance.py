@@ -4305,15 +4305,21 @@ governance.purge_queue warn invite the dry run first, and a hold suspends it as 
 
 def looked_up_words(not_looked_up: Sequence[QueuedPurge], queued: Sequence[QueuedPurge]) -> str:
     """The clause the queued purges' invitation adds for the ones :data:`NOT_LOOKED_UP` among ``queued``
-    (those a hold left runnable), after "writes nothing": the dry run looks each id up in the docs history,
-    and the run keeps one queued if its id reaches nothing; "" when there is none (C102, C124)."""
+    (those a hold left runnable), after "writes nothing" in the loop's wait and after status's "N purge
+    requests queued (...)": each actor named, since status names no dry run before it, so the dry run looks
+    each id up in the docs history and ``purge --queue`` leaves queued one whose id is found nowhere; "" when
+    there is none (C102, C124; B13 round 30 C318, ruling 43)."""
     n = sum(1 for q in queued if any(q is u for u in not_looked_up))
     if not n:
         return ""
-    whose = "its id" if n == 1 else "their ids"
+    if n == 1:
+        return (
+            "; for the 1 from before the new start, the dry run looks its id up in the docs history, and "
+            f"`{AGENTSYNC_BIN} purge --queue` leaves it queued if that id is found nowhere"
+        )
     return (
-        f"; {n} from before the new start: it looks {whose} up in the docs history, and the run keeps one "
-        "queued whose id reaches nothing"
+        f"; for the {n} from before the new start, the dry run looks their ids up in the docs history, and "
+        f"`{AGENTSYNC_BIN} purge --queue` leaves queued any whose id is found nowhere"
     )
 
 

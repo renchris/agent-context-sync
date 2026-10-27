@@ -10491,11 +10491,17 @@ def test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up(
     assert split.runnable == [q] and split.not_looked_up == [q] and not split.kept
     step = loop.next_step(initialised)
     (wait,) = [w for w in step.waits if "purge --queue" in w]
-    assert "--dry-run` (writes nothing; 1 from before the new start: it looks its id up" in wait, wait
+    # B13 round 30 C318: each actor named, in the wait and in status's warn, which names no dry run before it
+    clause = (
+        "; for the 1 from before the new start, the dry run looks its id up in the docs history, and "
+        "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere"
+    )
+    assert f"--dry-run` (writes nothing{clause}) before you run " in wait, wait
     capsys.readouterr()
     _rc, out = _status(cfg, capsys)
     (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
-    assert "1 from before the new start" in warn and "purge --queue --dry-run" in warn, warn
+    assert "1 purge request queued (1 upstream-deleted: " in warn and clause in warn, warn
+    assert "the dry run looks its id up" in warn and "purge --queue --dry-run" in warn, warn
     hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
     assert cli.main(hold) == cli.EXIT_OK
     step = loop.next_step(initialised)
@@ -10506,6 +10512,28 @@ def test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up(
     assert "VERIFIED" not in capsys.readouterr().out
     step = loop.next_step(initialised)
     assert not [w for w in step.waits if "purge" in w] and governance.unresolved_purges(1) in step.notes
+
+
+def test_the_purges_from_before_the_new_start_are_named_in_the_plural(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 30 C318 (ruling 43): two entries from before the new start, not looked up yet: the clause
+    names the dry run and `purge --queue` in the plural, never "it" or "the run"."""
+    cfg = _synced(initialised)
+    for n in (1, 2):
+        _queue_upstream(initialised, None, stable_id=f"contoso-volume:retired-004{n}")
+    _new_start(initialised, tmp_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    clause = (
+        "; for the 2 from before the new start, the dry run looks their ids up in the docs history, and "
+        "`~/.local/bin/agentsync purge --queue` leaves queued any whose id is found nowhere"
+    )
+    (wait,) = [w for w in loop.next_step(initialised).waits if "purge --queue" in w]
+    assert wait.startswith("2 queued purges: preview with ") and f"(writes nothing{clause}) " in wait, wait
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    assert clause in warn and " it looks " not in warn and "the run keeps" not in warn, warn
 
 
 def _purge_section(config: Config) -> str:

@@ -6317,12 +6317,13 @@ _ROUND_30_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C151, C142, C126: the hold list's put-back", "§16.205 C316"),
     ("16.200", "`governance.hold_list_state` is `unread`, `lost` or None", "§16.205 C305"),
     ("16.44", "`purge --queue` exits 0 when every report is verified or not run", "§16.205 C346"),
+    ("16.200", "One split, `governance.partition_queue(state_paths, queue=None", "§16.205 C318"),
 )
 """Round 30 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C352's record file at §16.200's hold-record paragraph, C349's third hold
 list state at its lost-hold paragraph, C316's put-back words at its put-back paragraph and C305's status-only
-lost-hold wait at the lost-hold paragraph, and C346's listed-only closing line at §16.44's `purge --queue`
-bullet."""
+lost-hold wait at the lost-hold paragraph, C346's listed-only closing line at §16.44's `purge --queue`
+bullet and C318's named actors at §16.200's queue-split paragraph."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

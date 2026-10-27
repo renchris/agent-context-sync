@@ -32829,6 +32829,9 @@ run probed it: `unresolved_note`, a note and [ok] (P112). Tests:
 `test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source` (the folder away, a run killed after it
 began; both reasons), `test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase`,
 `test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up`; P112's test takes the new split.
+Amended 2026-10-26, §16.205 C318: `looked_up_words` names each actor, `for the 1 from before the new start, the
+dry run looks its id up in the docs history, and ... purge --queue leaves it queued if that id is found nowhere`
+(plural: `their ids`, `leaves queued any whose id is found nowhere`).
 
 **C118, C202, C190, C192, C203, C179, C128, C129: one lost-manifest judge (`agentsync.manifest`,
 `agentsync.ops.doctor`, `agentsync.cli`, `agentsync.errors`; ruling 29; amends §16.189 P111, §16.194 I92 and
@@ -33894,6 +33897,18 @@ row of setup-feedback.md quotes the forms. Tests:
 `test_after_the_new_start_a_purge_waits_for_a_sync_that_lists_its_source`,
 `test_a_purge_for_a_source_no_sync_lists_names_its_by_hand_erase` (and beside a listed upstream deletion, `2 still
 queued (1 of them while its file is listed)`).
+
+C318 (ruling 43; lane B's part): the clause for entries from before the new start names the dry run and `purge
+--queue`, singular and plural. `governance.looked_up_words` read `; 1 from before the new start: it looks its id up in
+the docs history, and the run keeps one queued whose id reaches nothing`: in status's governance.purge_queue warn,
+after `N purge requests queued (...)`, `it` had no antecedent, and `the run` was the real run while the only run
+named was the dry run. It now reads `; for the 1 from before the new start, the dry run looks its id up in the docs
+history, and <bin> purge --queue leaves it queued if that id is found nowhere`, and for N > 1 `; for the N from
+before the new start, the dry run looks their ids up in the docs history, and <bin> purge --queue leaves queued any
+whose id is found nowhere`, read the same in the loop's wait and status's warn. The report's own line (setup_report,
+`no row, docs history not searched yet`) is lane RA's. Tests:
+`test_a_purge_from_before_the_new_start_is_invited_until_a_run_looks_it_up` (the whole clause in the wait and the
+warn), `test_the_purges_from_before_the_new_start_are_named_in_the_plural`.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
