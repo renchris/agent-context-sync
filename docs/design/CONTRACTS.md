@@ -33707,3 +33707,13 @@ quotes each tail and word as install.sh writes them, that the purge queue's come
 suppression list lost one, and that the hold list's follows either (`config_err=state-queue-lost,state-hold-lost`).
 Test: `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which reads the three tails and their `clog`
 words from install.sh, and checks every `state-` word install.sh logs that way is in the guide.
+
+**The guide's Repeat conversions row gives the path re-read** (C362, C319, the guide's half; ruling 45;
+`docs/deploy/setup-feedback.md`). Lane E's ea5dc78aa tries once more a failure whose stored reason an older build
+wrote a folder path into, and lane RA's f5bfa77fc says so in the report's retry sentence (`, and a failure an older
+build stored a folder path in is tried once more after an upgrade (the older build's page stays in the docs history
+until compaction drops it)`, no count or path) and in a `tried once more after an upgrade:` note per run. Built after
+both landed, in their words: the row's retry sentence takes the clause where the report puts it, after `once it
+starts`, and a sentence before Quarantine by reason gives the note, its three outcomes and that the sync says the same
+in its `an older build gave up on` notes. Test: `test_the_repeat_conversions_row_gives_the_path_re_read`, which reads
+the clause, the note's label and its three verbs from `_repeat_part`.

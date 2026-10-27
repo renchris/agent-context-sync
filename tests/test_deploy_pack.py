@@ -9626,6 +9626,32 @@ def test_the_ocr_row_says_a_deleted_files_count_goes_at_the_next_sync() -> None:
     assert "and, until that sync or in a record an older build left, `deleted` or `with no row`)" in row
 
 
+def test_the_repeat_conversions_row_gives_the_path_re_read() -> None:
+    """B13 round 30 C362, C319 (ruling 45): lane E's one-shot re-read of a failure whose stored reason
+    an older build wrote a folder path into is said in the report's retry sentence (lane RA's clause, no
+    count or path) and its `tried once more after an upgrade:` note; the guide's row mirrors both, each
+    read here from `_repeat_part`, and names the sync's own notes."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    part = " ".join(inspect.getsource(setup_report._repeat_part).split())
+    row = _guide_line("Repeat conversions")
+    [once] = re.findall(r'once = \( "(, and a failure [^"]*)" "([^"]*)" if pathed', part)
+    clause = "".join(once)
+    assert clause.endswith("(the older build's page stays in the docs history until compaction drops it)")
+    assert f"once it starts{clause}, so a later run with no failure" in row
+    note = re.search(r'f"- (tried once more after an upgrade): \{each\}', part)
+    assert note is not None and f"a `{note.group(1)}:` note under the table then gives, per run" in row
+    verbs = re.findall(r'\(\w+, "([a-z ]+)"\)', part.split("def reread", 1)[1].split("total =", 1)[0])
+    assert verbs == ["converted", "left as a stub with no try left", "left for a later sync of its source"]
+    for verb in verbs:
+        assert f"`that run {verb}`" in row, verb
+    assert "named a folder on this Mac" in part and "their stored reasons named a folder on this Mac" in row
+    from agentsync import cli  # noqa: PLC0415
+
+    assert "an older build gave up on" in inspect.getsource(cli)
+    assert "the sync says the same in its `an older build gave up on` notes" in row
+
+
 def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     """B13 round 20 X67: the row named the re-screen note and the converter-waiting line but not round 19
     W18's `tried again after an upgrade:` note, so an old conversion error back in the runs after an
