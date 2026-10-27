@@ -3712,18 +3712,29 @@ class _Cycle:
             lines += ["## Retention", "", *retention, ""]
         try:
             lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
-        except governance.GovernanceUnreadError:
-            # a hold list that cannot be read is no empty one; the other extras stay (B13 round 29 C204)
+        except governance.GovernanceError:
+            # a hold list that cannot be read is no empty one; the other extras stay (B13 round 29 C204), one
+            # this account cannot open too, and a hold record is named as itself (B13 round 30 C348, C349)
+            root = self.config.state_paths.root
+            record = governance.hold_list_state(root) == "record"
+            what = governance.HOLD_RECORD_ROLE if record else "the hold list"
+            # the holds that read, above it, as status lists them: the config's, the list's and those only
+            # the audit trail keeps, read without the record (B13 round 30 C349's review)
+            shown = list(governance.config_holds(self.gov))
+            with contextlib.suppress(AgentSyncError):
+                listed = governance.state_holds(root)
+                shown += [*listed, *governance.audit_lost_holds(root, listed)]
             lines += [
                 "## Legal / records holds",
                 "",
-                "- the hold list cannot be read; purge and compaction stay suspended: status's "
+                *(governance.hold_line(h) for h in shown),
+                f"- {what} cannot be read; purge and compaction stay suspended: status's "
                 "governance.hold line says why",
                 "",
             ]
         try:
             queued, kept = governance.partition_purges(self.config.state_paths, config=self.config)
-        except governance.GovernanceUnreadError:  # its own FAIL in status; no queue invited
+        except governance.GovernanceError:  # its own FAIL in status; no queue invited (C348)
             queued, kept = [], []
         if queued or kept:
             lines += ["## Queued purges", ""]

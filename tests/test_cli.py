@@ -2357,12 +2357,26 @@ def _state_md(config: Config) -> str:
     return config.layout.state_md.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("how", ["a hold on all", "a lost hold", "a hold list that cannot be read"])
+_REFUSED = pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+
+
+@pytest.mark.parametrize(
+    "how",
+    [
+        "a hold on all",
+        "a lost hold",
+        "a hold list that cannot be read",
+        pytest.param("a hold list refused", marks=_REFUSED),
+        pytest.param("a hold record refused", marks=_REFUSED),
+    ],
+)
 def test_state_md_invites_no_queued_purge_a_hold_keeps(
-    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+    initialised: Config, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture, how: str
 ) -> None:
     """B13 round 29 C204 (ruling 32): STATE.md invited `purge --queue` under a hold on all and under a lost
-    hold, where status and the sync invite nothing. It splits the queue as they do, in ruling 27's words."""
+    hold, where status and the sync invite nothing. It splits the queue as they do, in ruling 27's words.
+    B13 round 30 C348: a hold list or hold record this account cannot open (chmod 0) dropped every STATE.md
+    extra, and the log said STATE.md was not written; the extras stay, the hold record named as itself."""
     _cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
     holds = governance._holds_file(root)
     if how == "a lost hold":
@@ -2371,6 +2385,15 @@ def test_state_md_invites_no_queued_purge_a_hold_keeps(
     if how == "a hold list that cannot be read":
         holds.write_text("{", encoding="utf-8")
         run_cycle(initialised, mode=CycleMode.RECONCILE)
+    refused = {"a hold list refused": holds, "a hold record refused": governance.hold_record_file(root)}
+    if how in refused:
+        caplog.clear()
+        refused[how].chmod(0)
+        try:
+            run_cycle(initialised, mode=CycleMode.RECONCILE)
+        finally:
+            refused[how].chmod(0o600)
+        assert "STATE.md not written" not in caplog.text, caplog.text
     text = _state_md(initialised)
     # no invitation: the held note names `purge --queue` only after the release (C132)
     assert "purge --queue --dry-run" not in text and "(rewrites history)" not in text, text
@@ -2381,8 +2404,13 @@ def test_state_md_invites_no_queued_purge_a_hold_keeps(
         )
     elif how == "a lost hold":
         assert f"waiting; {governance.HOLD_LOST_WAIT}: status's governance.hold line says why" in text, text
+    elif how == "a hold record refused":
+        wait = governance.HOLD_RECORD_UNREAD_WAIT
+        assert f"waiting; {wait}: status's governance.hold line says why" in text, text
+        assert "- the hold record cannot be read; purge and compaction stay suspended" in text, text
     else:
         assert f"waiting; {governance.HOLD_UNREAD_WAIT}: status's governance.hold line says why" in text, text
+        assert "- the hold list cannot be read; purge and compaction stay suspended" in text, text
 
 
 def test_state_md_still_invites_a_purge_no_hold_keeps(
@@ -5922,6 +5950,72 @@ def test_a_sync_stopped_on_the_hold_record_or_the_purge_record_records_it_as_its
     assert str(path) in capsys.readouterr().err
     (line,) = stops.read_text(encoding="utf-8").splitlines()
     assert re.fullmatch(rf"\S+ sync-stop file={role} rc=1 owner=person kind=misplaced", line), line
+
+
+@pytest.mark.parametrize("what", ["the wrong shape", pytest.param("refused", marks=_REFUSED)])
+def test_a_hold_record_that_cannot_be_read_hides_no_hold_the_hold_list_lists(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 30 C349 (ruling 41): beside a holds.json that reads fine, a hold record of the wrong shape
+    or at mode 0 dropped the hold on all from status (no [ok] line, no HOLD: line) and the queue said "not
+    run while the hold list cannot be read"; at mode 0 status also lost its own tail and its pointer. The
+    holds the list lists stay listed, the queue waits in the hold record's own words, and the pointer names
+    the governance.hold FAIL."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    record = governance.hold_record_file(root)
+    if what == "refused":
+        record.chmod(0)
+    else:
+        record.write_text('{"holds": "all"}', encoding="utf-8")
+    try:
+        _rc, out = _status(cfg, capsys)
+    finally:
+        record.chmod(0o600)
+    assert [ln for ln in out if ln.startswith("[ok  ] governance.hold ") and "hold all (state)" in ln], out
+    assert [ln for ln in out if ln.startswith("HOLD: hold all (state): matter 8")], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ") and "hold-record.json" in ln], out
+    wait = governance.HOLD_RECORD_UNREAD_WAIT
+    (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    assert f"; {wait}: the governance.hold line says why" in warn, warn
+    assert f"queued purges: 1 ({wait}: see governance.hold)" in out, out
+    assert not [ln for ln in out if governance.HOLD_UNREAD_WAIT in ln], out
+    if what == "refused":
+        said = (
+            "hold-record.json cannot be opened: Permission denied; the governance.hold [FAIL] line says why"
+        )
+        assert f"status: cannot read the state: {said}" in out, out
+
+
+def test_an_unreadable_hold_record_hides_no_hold_the_audit_trail_keeps(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 30 C349's review: with holds.json listing one source's hold, the hold on all kept only by the
+    audit trail, and a hold record of "{", lost_holds raised before it returned the trail's holds, so status
+    listed only the list's, its governance.hold check none of them, and STATE.md only "the hold record cannot
+    be read". Each names the hold on all now, read without the record, and a purge still refuses."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    one = ["hold", "contoso-alpha", "--reason", "matter 9", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(one) == cli.EXIT_OK
+    holds = governance._holds_file(root)
+    data = json.loads(holds.read_text(encoding="utf-8"))
+    data["holds"] = [h for h in data["holds"] if h["scope"] != "all"]
+    holds.write_text(json.dumps(data), encoding="utf-8")
+    governance.hold_record_file(root).write_text("{", encoding="utf-8")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("HOLD: hold all (audit): lost from the hold list")], out
+    assert [ln for ln in out if ln.startswith("HOLD: hold contoso-alpha (state): matter 9")], out
+    lost = "no longer lists the hold on all set by Contoso Legal"
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ") and lost in ln], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ") and "hold-record.json" in ln], out
+    assert not [ln for ln in out if "no hold set" in ln], out
+    run_cycle(initialised, mode=CycleMode.RECONCILE)
+    text = _state_md(initialised)
+    assert "- HOLD `all`: lost from the hold list (set by Contoso Legal" in text, text
+    assert "- HOLD `contoso-alpha`: matter 9 (set by Contoso Legal" in text, text
+    assert "- the hold record cannot be read; purge and compaction stay suspended" in text, text
+    assert cli.main(["purge", f"docs={page}", "--config", cfg]) == cli.EXIT_FAILED
+    assert _page_kept(initialised, page)
 
 
 def _erased(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path, str]:

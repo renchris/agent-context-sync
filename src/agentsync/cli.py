@@ -1530,9 +1530,19 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     if gov is not None:
         try:
             holds = governance.active_holds(config.state_paths.root, gov)
-        except governance.GovernanceUnreadError as exc:
+        except AgentSyncError as exc:
+            if not isinstance(exc, governance.GovernanceUnreadError) and not isinstance(
+                exc.__cause__, PermissionError
+            ):
+                raise
+            # one this account cannot open keeps the lines below too, and a hold record that cannot be read
+            # hides none of the holds the hold list lists (B13 round 30 C349; ruling 41)
             out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
             holds = governance.config_holds(gov)
+            with contextlib.suppress(AgentSyncError):  # the list's own failure: its line above
+                listed = governance.state_holds(config.state_paths.root)
+                # and the holds only the audit trail keeps, read without the record (C349's review)
+                holds = (*holds, *listed, *governance.audit_lost_holds(config.state_paths.root, listed))
     try:
         queued, kept = governance.partition_purges(config.state_paths, config=config)
     except governance.GovernanceUnreadError as exc:
@@ -1750,7 +1760,8 @@ def _says_why(config: Config | None, filename: object) -> str | None:
     """The words that point at the status line judging ``filename``, a path in the state folder this account
     was refused: the state_dir lines for the folder, any path in a folder it cannot search, and the files
     state_dir.files judges (the manifest, its -wal and -shm, the token cache); the lock, heartbeat,
-    governance.hold or governance.purge_queue [FAIL] line for its own file; None for any other path, which no
+    governance.hold (holds.json and the hold record: C349) or governance.purge_queue [FAIL] line for its own
+    file; None for any other path, which no
     line judges (B13 round 21 Y43, Y45: "the state_dir lines say why" was added for any EACCES, over
     state_dir lines that read [ok]). With no config (``None``), the state_dir lines, as before."""
     if config is None:
@@ -1776,6 +1787,7 @@ def _says_why(config: Config | None, filename: object) -> str | None:
         real(sp.lock): "lock",
         real(sp.heartbeat): "heartbeat",
         real(governance._holds_file(root)): "governance.hold",
+        real(governance.hold_record_file(root)): "governance.hold",  # the hold record's own FAIL (C349)
         real(governance._queue_file(root)): "governance.purge_queue",
     }
     check = checks.get(path)
@@ -2638,12 +2650,20 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         root = config.state_paths.root
         try:
             holds = governance.state_holds(root)
-            lost = governance.lost_holds(root, holds)
         except AgentSyncError as exc:  # holds.json this account cannot open: one FAIL, not a crash (X73)
             out.append(_refused_check(config, "governance.hold", exc))
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
-            if not holds and not lost and not governance.config_holds(gov):
+            # the hold record read apart, so one that cannot be read hides none of the holds the list lists
+            # (B13 round 30 C349; ruling 41)
+            record_read = True
+            try:
+                lost = governance.lost_holds(root, holds)
+            except AgentSyncError as exc:
+                out.append(_refused_check(config, "governance.hold", exc))
+                # the holds only the audit trail keeps are read without the record (C349's review)
+                record_read, lost = False, governance.audit_lost_holds(root, holds)
+            if record_read and not holds and not lost and not governance.config_holds(gov):
                 # one governance.hold line in every state, an ok one when it read and holds none (C155)
                 out.append(
                     _check("governance.hold", True, "no hold set (hold list read)", doctor.Severity.INFO)

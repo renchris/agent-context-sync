@@ -1119,6 +1119,27 @@ def lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Ho
     return out
 
 
+def audit_lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> list[Hold]:
+    """The holds the audit trail records as set and not released that holds.json (``listed``, read here when
+    None) lacks, read without the hold record: what status, its governance.hold check and STATE.md list when
+    the hold record cannot be read, which :func:`lost_holds` raises on before it returns them, so an
+    unreadable record hid a hold on all only the trail keeps (B13 round 30 C349's review)."""
+    have = {h.scope for h in (_state_holds(state_dir) if listed is None else listed)}
+    held, _released = audit_holds(state_dir)
+    return [
+        Hold(
+            scope,
+            LOST_HOLD_REASON,
+            str(rec.get("owner") or "the records owner"),
+            str(rec.get("at") or ""),
+            "audit",
+            ("audit.jsonl",),
+        )
+        for scope, rec in sorted(held.items())
+        if scope not in have
+    ]
+
+
 LOST_HOLD_REASON = "lost from the hold list"
 """The reason of a hold :func:`lost_holds` keeps in force (B13 round 28 I87)."""
 
@@ -1214,6 +1235,11 @@ never "cannot be read" (B13 round 29 C107, C174; ruling 27)."""
 HOLD_UNREAD_WAIT = "not run while the hold list cannot be read"
 """The purge queue's words while the hold list cannot be read (:func:`hold_list_state` ``unread``)."""
 
+HOLD_RECORD_UNREAD_WAIT = "not run while the hold record cannot be read"
+"""The purge queue's words while the hold list reads but the hold record cannot be (:func:`hold_list_state`
+``record``): never "the hold list cannot be read" over a holds.json that reads fine (B13 round 30 C349;
+ruling 41)."""
+
 
 LOST_HOLD_WAIT = (
     "the hold list lost a hold that the audit trail or the hold record keeps, so purge and compaction stay "
@@ -1225,19 +1251,26 @@ no ``purge --queue`` (B13 round 29 C107; ruling 27)."""
 
 def hold_list_state(state_dir: Path) -> str | None:
     """What the hold list is to the readers that invite a queued purge: ``unread`` when it cannot be read (not
-    a file, a link to nothing, refused, damaged, governance/ not a folder, a hold record that cannot be read),
-    ``lost`` when it reads but has lost a hold the audit trail or the hold record keeps (:func:`lost_holds`),
-    None when it reads and has lost none. One state, named by what is on disk, in status, doctor and the sync
-    (B13 round 29 C107, C174; ruling 27)."""
+    a file, a link to nothing, refused, damaged, governance/ not a folder), ``record`` when it reads but the
+    hold record cannot be (not a file, refused, damaged: the hold record named as itself, B13 round 30 C349;
+    ruling 41), ``lost`` when both read and the list has lost a hold the audit trail or the hold record keeps
+    (:func:`lost_holds`), None when it reads and has lost none. One state, named by what is on disk, in
+    status, doctor and the sync (B13 round 29 C107, C174; ruling 27)."""
     try:
-        return "lost" if lost_holds(state_dir) else None
+        listed = _state_holds(state_dir)
     except Exception:  # not a file, refused, or the wrong shape: no read, so no hold list to trust
         return "unread"
+    try:
+        return "lost" if lost_holds(state_dir, listed) else None
+    except Exception:  # the hold record's own FAIL says why; the list read
+        return "record"
 
 
 def hold_list_wait(state_dir: Path) -> str:
-    """:data:`HOLD_LOST_WAIT` or :data:`HOLD_UNREAD_WAIT`, by :func:`hold_list_state`."""
-    return HOLD_LOST_WAIT if hold_list_state(state_dir) == "lost" else HOLD_UNREAD_WAIT
+    """:data:`HOLD_LOST_WAIT`, :data:`HOLD_RECORD_UNREAD_WAIT` or :data:`HOLD_UNREAD_WAIT`, by
+    :func:`hold_list_state`."""
+    state = hold_list_state(state_dir)
+    return {"lost": HOLD_LOST_WAIT, "record": HOLD_RECORD_UNREAD_WAIT}.get(state or "", HOLD_UNREAD_WAIT)
 
 
 def hold_list_unread(state_dir: Path) -> bool:
@@ -1245,8 +1278,8 @@ def hold_list_unread(state_dir: Path) -> bool:
     governance/ not a folder) or has lost a hold the audit trail keeps (:func:`lost_holds`): status and the
     loop invite no queued purge over it, since status FAILs it and every purge refuses until the person puts
     it back (B13 round 27 P131: a dangling holds.json read as no holds, and the invited run erased a page
-    under a hold on all; round 28 I87: the same once the person followed the fix). :func:`hold_list_state`
-    is not None."""
+    under a hold on all; round 28 I87: the same once the person followed the fix), or whose hold record
+    cannot be read (C349). :func:`hold_list_state` is not None."""
     return hold_list_state(state_dir) is not None
 
 
@@ -1278,13 +1311,15 @@ def hold_state_lines(state_dir: Path, gov: GovernanceConfig) -> list[str]:
     holds = active_holds(state_dir, gov)
     if not holds:
         return []
-    lines = ["## Legal / records holds", ""]
-    lines += [
+    return ["## Legal / records holds", "", *(hold_line(h) for h in holds), ""]
+
+
+def hold_line(h: Hold) -> str:
+    """STATE.md's line for the hold ``h``."""
+    return (
         f"- HOLD `{h.scope}`: {h.reason} (set by {h.owner}"
         f"{', ' + h.set_at if h.set_at else ''}, {h.origin}); purge and compaction suspended"
-        for h in holds
-    ]
-    return [*lines, ""]
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------

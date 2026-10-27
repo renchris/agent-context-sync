@@ -32864,6 +32864,9 @@ naming status's governance.hold FAIL, with no owner, no scope and no purge (C107
 incomplete-listing warn's note is `doctor.LISTING_STATE_GOVDIR_NOTE` (C130). Tests:
 `test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it`, `test_a_lost_holds_fail_names_the_record_that_keeps_it`,
 `test_beside_a_governance_folder_that_is_not_one_the_listing_note_points_at_its_fail`.
+Amended 2026-10-26, §16.205 C349: `hold_list_state` has a third state, `record`, for a hold list that reads beside a
+hold record that cannot be read, with its own wait, `HOLD_RECORD_UNREAD_WAIT` (`not run while the hold record cannot
+be read`); `unread` is the hold list's alone (ruling 41).
 
 **C204, C205, C115, C132, C176: a held queue in every writer (`agentsync.governance`, `agentsync.cycle`; ruling 32;
 amends §16.195 I91).** STATE.md splits the queue as status and the loop do (C204). `held_purges` holds a sourceless
@@ -33765,6 +33768,32 @@ either records `sync-stop file=hold-record rc=1 owner=person kind=misplaced` (or
 noun (`agentsync's hold record`), its not-measured cause and the shape entry are lane RA's, install.sh's
 `fallback_sync_stop_line` case lane RB's and the guide's sync-stops.log row lane D's. Test: `test_cli.py`
 `test_a_sync_stopped_on_the_hold_record_or_the_purge_record_records_it_as_itself`.
+
+C349 (ruling 41): a hold record that cannot be read hides no hold the hold list lists. `governance.hold_list_state`
+reads holds.json first (`unread` when it fails) and then the record, through `lost_holds(state_dir, listed)`, whose
+failure is the new state `record`; `hold_list_wait` gives it `HOLD_RECORD_UNREAD_WAIT`, `not run while the hold record
+cannot be read`, and `hold_list_unread` still counts it, so no purge is invited. Status's governance.hold check reads
+the record in its own try, after the [ok] line of each hold listed, and adds the record's FAIL there; status's HOLD:
+lines fall back to the config hold and the listed holds, keep the lines after them over a record this account cannot
+open (a `GovernanceError` caused by a `PermissionError`), and `_says_why` points that record at the governance.hold
+FAIL. Lane RA adds the wait to the report's hold bucket. Test: `test_cli.py`
+`test_a_hold_record_that_cannot_be_read_hides_no_hold_the_hold_list_lists`.
+
+C348 (ruling 41): STATE.md's extras catch `GovernanceError` around the holds and the queue, not only
+`GovernanceUnreadError`, so a hold list or hold record this account cannot open (chmod 0) no longer drops every
+extra under a false `STATE.md not written`; the holds part says `- the hold record cannot be read; purge and
+compaction stay suspended: status's governance.hold line says why` (or `the hold list`, by `hold_list_state`). Test:
+`test_cli.py` `test_state_md_invites_no_queued_purge_a_hold_keeps`'s two refused cases.
+
+C349 with C348, the review: a hold record that cannot be read hides no hold the audit trail keeps either.
+`lost_holds` read the record before it returned the audit-replayed holds, so over a record of `{` status's HOLD:
+lines listed only the hold list's, its governance.hold check (`lost = None`) none of the trail's, and STATE.md only
+the record's line, dropping a hold on all only the trail kept. `governance.audit_lost_holds(state_dir, listed=None)`
+gives the trail's set-and-not-released holds that holds.json lacks without reading the record (origin `audit`, kept
+by `audit.jsonl`); status's fallback lists them after the config and listed holds, the governance.hold check gives
+each its lost-hold FAIL beside the record's and no `no hold set` line, and STATE.md lists the config, listed and
+trail holds (`governance.hold_line`, `hold_state_lines`' own line) above `- the hold record cannot be read; ...`. A
+purge still refuses. Test: `test_cli.py` `test_an_unreadable_hold_record_hides_no_hold_the_audit_trail_keeps`.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 

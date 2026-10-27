@@ -6306,9 +6306,11 @@ _ROUND_30_B_PARAGRAPH_AMENDS = (
         "earlier stays in force from hold-record.json's record)` only when that record names a scope",
         "§16.205 C352",
     ),
+    ("16.200", "`governance.hold_list_state` is `unread`, `lost` or None", "§16.205 C349"),
 )
-"""Round 30 lane B's dated line at a section its claim names with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: C352's record file at §16.200's hold-record paragraph."""
+"""Round 30 lane B's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C352's record file at §16.200's hold-record paragraph, C349's third hold
+list state at its lost-hold paragraph and C316's put-back words at its put-back paragraph."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
