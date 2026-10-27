@@ -33321,6 +33321,14 @@ whole, as before. The verifier's lookahead (end the target at `; ` unless the `/
 measured and not taken: it captures only `/Volumes/Legal` from `/Volumes/Legal; Client /m.sqlite` and prints the
 rest. Test: `test_the_agents_words_after_a_link_target_on_disk_stay_c342`.
 
+C359 (2026-10-26): **the lost hold's record clause is pinned as landed** (C359). While lane B's ruling 27 clause
+was landing beside this lane's cut, the test of a lost hold's FAIL accepted both `(kept by audit.jsonl` and round
+28's bare `(audit.jsonl`; both halves have landed, and `governance.lost_hold_words` always writes `(kept by
+<records>)`, so the optional words only let the old wording through. The test now pins `(kept by audit.jsonl),
+and no release` exactly, and its hold that only the record keeps is built as governance builds one, kept by
+`heartbeat.json`, and pinned `(kept by heartbeat.json), and no release`, as its comment always said. Test:
+`test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`.
+
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 
 Lane RB's items, each built to its verifier's corrected fix with a test that fails without it, or recorded with a
