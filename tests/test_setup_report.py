@@ -720,6 +720,10 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     while the log scrub, --source-local arguments and exclude lines print <path> too, and a report whose only
     <path>s were those had no item at all. The item names both uses, and stands whenever the body shows
     <path>; only a replaced link target counts."""
+    uncounted = (
+        " A <path> that cuts an item path or document name in a log line, a --source-local argument or an "
+        "exclude entry is not counted: only a link target replaced by <path> is."
+    )
     red = setup_report.Redactor()
     red.add("path", "/Volumes/Contoso Drive/state")
     target = red.redact("state: /Volumes/Contoso Drive/state is a symlink")
@@ -736,8 +740,14 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
             legend
         )
         assert ("path 1" in tail[3]) is counted, tail[3]
+        assert tail[3].endswith(uncounted), tail[3]  # B13 round 30 C331: the count says what it leaves out
     tail = setup_report._redaction_section(setup_report.Redactor(), [], (), "nothing cut\n")
     assert "<path>" not in "\n".join(tail)
+    # B13 round 30 C331: a body whose only <path>s are a --source-local cut and a log-scrub cut says they are
+    # not counted, and "path" is no kind
+    cut = f"- install.sh args=--source-local ~/<path>\n{logged}\n"
+    tail = setup_report._redaction_section(setup_report.Redactor(), [], (), cut)
+    assert tail[3].startswith("0 replacements of 0 values (none).") and tail[3].endswith(uncounted), tail[3]
     # B13 round 28 I10, I38, I51: the report's own sentences that explain <path> (the Installer note's, the
     # Recent errors header's) replace nothing: no item for them alone, and none beside a counted target
     # keeps the item and its count
@@ -748,6 +758,7 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     )
     tail = setup_report._redaction_section(setup_report.Redactor(), [], (), own)
     assert not [ln for ln in tail if ln.startswith("Placeholders used: ") and "<path>" in ln], tail
+    assert uncounted not in tail[3], tail[3]  # C331: nothing cut, nothing to say
     for body, counted in ((own + f"{logged}\n", False), (own + f"{target}\n", True)):
         tail = setup_report._redaction_section(red if counted else setup_report.Redactor(), [], (), body)
         legend = next(ln for ln in tail if ln.startswith("Placeholders used: "))

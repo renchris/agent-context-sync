@@ -31068,6 +31068,9 @@ document name in a log line, a --source-local argument or an exclude entry, cut 
 `_redaction_section` shows the item whenever the body shows `<path>`, as the shell's `legend_kinds` greps its body.
 Only a replaced link target is counted (`path N` in the kinds stays a count of replacements). Test:
 `test_the_path_legend_item_names_every_use_of_path`.
+Amended 2026-10-26, §16.203 C331: where the body shows `<path>`, the count line now says so: `A <path> that cuts an
+item path or document name in a log line, a --source-local argument or an exclude entry is not counted: only a link
+target replaced by <path> is.`
 
 **The two-letter words include doctor's, status's and the loop's** (P39). E72's `_TWO_LETTER_WORDS` and its test
 read only setup_report's and install.sh's literals, while the report embeds doctor's, status's and the loop's
@@ -33328,6 +33331,17 @@ was landing beside this lane's cut, the test of a lost hold's FAIL accepted both
 and no release` exactly, and its hold that only the record keeps is built as governance builds one, kept by
 `heartbeat.json`, and pinned `(kept by heartbeat.json), and no release`, as its comment always said. Test:
 `test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays`.
+
+C331 (2026-10-26): **the Redaction count says which `<path>` it leaves out** (C331; amends §16.188 P38). A
+`--source-local` argument cut to `<path>`, a log line's item path and an exclude entry show `<path>` and the legend
+names them, but P38 counts only a replaced link target, while the count line said the unnumbered kinds, `path`
+among them, `are counted each time a value was replaced`: a report whose only `<path>` was a cut argument read `0
+replacements of 0 values (none)`. P38's rule stands (counting the `--source-local` cut alone would leave the
+log-scrub and exclude cuts uncounted, the same mismatch); the reader's text now states it. When the body shows
+`<path>` outside the report's own sentences about it (the probe the legend item already uses), the count line ends
+`A <path> that cuts an item path or document name in a log line, a --source-local argument or an exclude entry is
+not counted: only a link target replaced by <path> is.`; a report with no `<path>` is unchanged. The shell report
+prints no count line, so install.sh has nothing to mirror. Test: `test_the_path_legend_item_names_every_use_of_path`.
 
 ### 16.204 Round 30: the installer's hold scopes and fixed phrases, a stop's kind read now first, and the lost lists at step 1 (2026-10-26, wave B13 round 30 lane RB)
 

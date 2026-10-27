@@ -15740,6 +15740,14 @@ def _redaction_section(
     # B13 round 28 I10, I38, I51: never on the report's own words that explain <path>, which replace nothing
     probe = functools.reduce(lambda text, own: text.replace(own, ""), _OWN_PATH_PHRASES, body)
     shown = [k for k in _LEGEND if k in red.kinds_used() or (k == "path" and "<path>" in probe)]
+    # B13 round 30 C331: and the count says so where the body shows one, as "counted each time a value was
+    # replaced" reads as if it were counted
+    uncounted = (
+        " A <path> that cuts an item path or document name in a log line, a --source-local argument or an "
+        "exclude entry is not counted: only a link target replaced by <path> is."
+        if "<path>" in probe
+        else ""
+    )
     legend = " · ".join(_legend_item(red, k, body) for k in shown)
     if _NOT_IN_CONFIG in body:  # U8: the fallback label, where the report shows one
         legend = f"{legend} · {_NOT_IN_CONFIG_LEGEND}" if legend else _NOT_IN_CONFIG_LEGEND
@@ -15813,7 +15821,7 @@ def _redaction_section(
         "are counted "
         f"each time this report shows one. The unnumbered kinds ({unnumbered}) are counted each time a value "
         "was replaced, even in a line that was cut short later, because the report also writes ~/ paths and "
-        "template fields of its own, and those are not replacements.",
+        f"template fields of its own, and those are not replacements.{uncounted}",
         f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
         "anything else confidential (a project name inside a log line, say) is yours to remove.",
         check,
