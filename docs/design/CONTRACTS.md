@@ -34542,6 +34542,16 @@ A governance folder that is not a folder, whose note (`doctor.LISTING_STATE_GOVD
 WAITING ON YOU line. Test: `test_a_listing_warn_the_loop_names_beside_a_governance_stop_is_that_stops_c519` (the hold
 list not a file, damaged, and the governance folder a file, each with and without the loop naming the heartbeat).
 
+**The Loop line's lost-hold wait points at Doctor's line** (C508; ruling 60; `src/agentsync/setup_report.py`). Over a
+lost hold the report's `loop_next` hook takes `loop.next_step`'s lines, so the Loop line paired status's NEXT (`its fix
+on the [FAIL] line below is the person's`) with the sync's WAITING ON YOU form, `run `~/.local/bin/agentsync status`;
+its governance.hold [FAIL] line gives the person's fix`, which status itself never prints (it swaps in
+`LOST_HOLD_WAIT_STATUS`). `_loop_line` replaces that tail, `_LOST_HOLD_RUN_STATUS` (kept equal to
+`governance.LOST_HOLD_WAIT`'s by the test), with `Doctor's governance.hold [FAIL] line gives the person's fix`, never
+naming `agentsync status` in the report; the NEXT keeps `is the person's, not a step for the agent`, which the report
+counts a person's stop by, and sync, curate and STATE.md keep their form. Test:
+`test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508`.
+
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
 Reserved for round 31 lane RB of B13.

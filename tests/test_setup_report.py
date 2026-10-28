@@ -10092,6 +10092,25 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
     assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
 
 
+def test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508(fake_mac: dict[str, Path]) -> None:
+    """B13 round 31 C508 (ruling 60): over a lost hold the Loop line paired status's NEXT with the sync's
+    WAITING ON YOU form, ``run `~/.local/bin/agentsync status`; its governance.hold [FAIL] line gives the
+    person's fix``, which status itself never prints. The report holds Doctor's governance.hold line, so the
+    Loop line says that; the NEXT keeps the words the report counts a person's stop by."""
+    assert governance.LOST_HOLD_WAIT.endswith(setup_report._LOST_HOLD_RUN_STATUS)
+    step = (
+        "NEXT: the governance.hold check failed: its fix on the [FAIL] line below is the person's, not a "
+        "step for the agent: show it to them"
+    )
+    wait = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert "WAITING ON YOU: the hold list lost a hold" in line, line
+    assert line.endswith("suspended: Doctor's governance.hold [FAIL] line gives the person's fix"), line
+    assert "agentsync status`" not in line and "is the person's, not a step for the agent" in line, line
+
+
 def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac: dict[str, Path]) -> None:
     """Bring-back S11: the wait for an empty cloud folder prints a ready-to-paste exclude line naming folders
     below a source root, which the Redactor has never seen. The report shows agentsync's own globs as written

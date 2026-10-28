@@ -14961,6 +14961,15 @@ def _eval_by_name(line: str, config: Config) -> str:
     return line.replace(loop._shown(config.config_path), _CONFIG_SHOWN.format(config.config_path.name))
 
 
+_LOST_HOLD_RUN_STATUS = (
+    f"run `{AGENTSYNC_BIN} status`; its governance.hold [FAIL] line gives the person's fix"
+)
+"""The tail of ``governance.LOST_HOLD_WAIT``, the sync's form of a lost hold's wait (a test keeps it so)."""
+_LOST_HOLD_IN_DOCTOR = "Doctor's governance.hold [FAIL] line gives the person's fix"
+"""That tail as the Loop line says it: the report holds Doctor's governance.hold line, and status, whose NEXT
+the line pairs with it, never says "run status" (B13 round 31 C508; ruling 60)."""
+
+
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
@@ -15007,7 +15016,11 @@ def _loop_line(r: _Run) -> str:
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
         text += f" (the loop's own read; {_DAMAGE_SEEN})"
-    waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
+    waits = [
+        ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR)
+        for ln in lines
+        if ln.startswith("WAITING ON YOU: ")
+    ]
     if waits:
         shown = _stopped_wait(found, waits)
         rest = [w for w in waits if w is not shown]
