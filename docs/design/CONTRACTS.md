@@ -34668,3 +34668,15 @@ the same margin), `timeout-minutes` is 80, about 20 minutes above 59:43; C372's 
 `tests/test_convert_recording.py`'s docstring names 80, as does a dated line on §16.144's W70 paragraph, sent to lane
 E first. The verifier's "keep 70" (it meets the 10-minute rule) is the ruling's to overrule, and it did. Tests:
 `test_claude_md_gives_cis_time_and_its_limit` and `test_the_recording_tests_limit_names_cis_own_limit`.
+
+**The records page lists the hold record and the purge record where copies live** (C558;
+`docs/deploy/data-governance.md`). Round 30 ruling 34 put `<state>/purge-record.json` (a copy of every purge line of
+the audit trail, hashes and source ids, a union that never shrinks, `governance.record_purges`) and
+`<state>/hold-record.json` (the hold scopes, `record_holds`) outside governance/, but the Where copies live table
+named neither. Each has its own row, in the verifier's corrected words: the purge record's sha256 fields, no content,
+bounded by nothing and kept by design as the audit is; the hold record's scopes only, no reason, owner or hashes,
+shrinking when a hold is released (the finder's "hashes" and "never shrinks" were wrong for it); `offboard` removes
+both with the state folder. The Logs row's bound gave the audit trail the logs' rotation, but `append_audit` never
+rotates it: the bound now says the audit trail is append-only. Test:
+`test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live`, which reads both names from
+governance and the purge record's "never shrinks" from its docstrings.

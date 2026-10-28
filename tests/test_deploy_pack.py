@@ -7079,6 +7079,33 @@ def test_the_records_page_says_accept_lost_clears_every_record_its_time_names() 
     assert "timed to the microsecond" in bullet and "an older build timed purges to the second" in bullet
 
 
+def test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live() -> None:
+    """B13 round 31 C558: since round 30 ruling 34 the state folder keeps purge-record.json, a copy of every
+    purge line of the audit trail that never shrinks, and hold-record.json, the hold scopes, both outside
+    governance/; the page's Where copies live table named neither, and gave the audit trail the logs' rotation
+    for its bound. Each record has its own row, the purge record's kept by design and the hold record's
+    shrinking on a release, and the audit trail is append-only."""
+    from agentsync import governance  # noqa: PLC0415
+
+    page = (ROOT / "docs" / "deploy" / "data-governance.md").read_text(encoding="utf-8")
+    table = page.split("## Where copies live", 1)[1].split("\n\n", 2)[1]
+    rows = {line.split(" | ", 1)[0]: line for line in table.splitlines() if line.startswith("| `")}
+    purge = rows[f"| `…/agentsync/{governance.PURGE_RECORD_NAME}`"]
+    hold = rows[f"| `…/agentsync/{governance.HOLD_RECORD_NAME}`"]
+    assert "sha256 of the stable id, source path, docs paths, selector and content" in purge
+    assert "no content" in purge and "never shrinks" in purge and "kept by design" in purge
+    assert "`offboard` removes it with the state folder" in purge
+    assert "the hold scopes only (`all` or source ids); no reason, owner or hashes" in hold
+    assert (
+        "it shrinks when a hold is released" in hold and "`offboard` removes it with the state folder" in hold
+    )
+    assert "never shrinks" in (governance.record_purges.__doc__ or "") + (
+        governance._merge_purges.__doc__ or ""
+    )
+    logs = rows["| `~/Library/Logs/agentsync`, `…/governance/audit.jsonl`"]
+    assert "for the logs; the audit trail is append-only" in logs
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)
