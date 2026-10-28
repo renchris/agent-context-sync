@@ -8336,7 +8336,7 @@ list_folders() {
 		# heartbeat.json is this account's own, at a mode that refuses it: its chmod 600 is the agent's, first, as
 		# status's NEXT leads with it, and only the stop that may follow is the person's (B13 round 28 ruling 21,
 		# lane B's I42: the person was asked to choose over a record no one had read)
-		! round28_pending || lfix="$ROUND28_FIRST$lfix" # a round 28 hold record goes with heartbeat.json (C351)
+		! round28_pending || lfix="$ROUND28_FIRST${lfix/they remove the link first; /they remove the link; }" # a round 28 hold record goes with heartbeat.json (C351); its lead says "first" once (B13 round 31 ruling 60: C543, lane B's words)
 		lown="fixing that is the person's ($lfix)"
 		[ -z "$chbmode" ] || lown="heartbeat.json's mode refuses this account (a mode, not damage), so the chmod 600 that fixes it is the agent's to run first, once, as step 2's NEXT names it; if the manifest is still lost then, fixing that is the person's ($lfix)"
 		case ",$cerr," in *",state-lost,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is $lwhat$lfact: $lown, and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
@@ -9550,7 +9550,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			lfact="empty or too short to be a manifest, though heartbeat.json beside it records earlier passes"
 			[ -z "$STATE_LOST_UNREAD" ] || lfact="empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		fi
-		! round28_pending || lfix="$ROUND28_FIRST$lfix" # a round 28 hold record goes with heartbeat.json (C351)
+		! round28_pending || lfix="$ROUND28_FIRST${lfix/they remove the link first; /they remove the link; }" # a round 28 hold record goes with heartbeat.json (C351); its lead says "first" once (B13 round 31 ruling 60: C543, lane B's words)
 		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
 		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's

@@ -34681,6 +34681,14 @@ it reads; setup_report keys the same dedupe on the stop itself and had no race. 
 `test_the_late_block_leaves_out_the_claimed_stop_from_the_window_it_reads`, with a 212-line log and a PATH `tail`
 that appends an older line before each read of it.
 
+**The lost manifest link's fix says `first` once after round 28's lead, in the installer too** (C543's install.sh
+twin, lane B's words; ruling 60; `scripts/install.sh`). With a lost manifest that is a link into a folder that is
+gone and round 28's hold record still only in heartbeat.json, step 1's tail and step 2's NEXT read `they run
+~/.local/bin/agentsync sync once first, ...; then they remove the link first; then ...`. Where round28_pending puts
+`ROUND28_FIRST` before it, both sites now take `${lfix/they remove the link first; /they remove the link; }`, as lane
+B's doctor.round28_first drops `first` from its link clause only when that lead is added; the plain case keeps it.
+Test: `test_a_lost_manifest_links_fix_says_first_once_after_round_28s_lead`, with the real agentsync, both ways.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

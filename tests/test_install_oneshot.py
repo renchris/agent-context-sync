@@ -11842,6 +11842,43 @@ def test_a_lost_manifests_fix_names_a_sync_first_while_round_28s_hold_record_is_
     assert ROUND28_FIRST not in last_line(install_sh(env, "--list-folders"))
 
 
+def test_a_lost_manifest_links_fix_says_first_once_after_round_28s_lead(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 31 ruling 60 (C543, lane B's words, install.sh's twin), with the real agentsync: a lost
+    manifest that is a link into a folder that is gone, beside a heartbeat.json that still keeps round 28's
+    hold record. Step 1's tail and step 2's NEXT read `they run ~/.local/bin/agentsync sync once first, ...;
+    then they remove the link first; then ...`: `first` twice. After the lead the link clause drops it,
+    as doctor.round28_first does; without the lead it keeps it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    for f in (
+        db,
+        db.with_name(db.name + "-wal"),
+        db.with_name(db.name + "-shm"),
+        db.with_name("hold-record.json"),
+    ):
+        f.unlink(missing_ok=True)
+    db.symlink_to(db.parent / "gone" / "manifest.sqlite")
+    heartbeat = db.with_name("heartbeat.json")
+    beat = json.loads(heartbeat.read_text(encoding="utf-8"))
+    heartbeat.write_text(json.dumps({**beat, "holds": ["all"]}, indent=1), encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    lost = install_sh(env, str(wheel))
+    assert lost.returncode == 1, lost.stdout + lost.stderr
+    for shown in (last_line(listed), last_line(lost)):
+        assert f"{ROUND28_FIRST}they remove the link; then " in shown, shown
+        assert "remove the link first" not in shown and shown.count(" first") == 1, shown
+    db.with_name("hold-record.json").write_text('{"holds": ["all"]}', encoding="utf-8")  # the record moved
+    for shown in (last_line(install_sh(env, "--list-folders")), last_line(install_sh(env, str(wheel)))):
+        assert ROUND28_FIRST not in shown and "they remove the link first; then " in shown, shown
+
+
 @pytest.mark.parametrize("link", ["dangling", "gone"])
 def test_a_lost_manifest_link_beside_a_heartbeat_it_cannot_read_says_both_at_steps_1_and_2(
     real_env: dict[str, str], wheel: Path, link: str
