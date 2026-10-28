@@ -7161,6 +7161,63 @@ def test_the_guide_gives_the_hold_record_and_the_purge_record_their_own_step_1_t
     assert "hold record" not in files and "purge record" not in files
 
 
+def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(tmp_path: Path) -> None:
+    """B13 round 31 C573's (c) with C504 (ruling 61): the kit note gave the folder touch and the dirs.txt
+    check but not the shasum rerun the rehearsals ran, and a probe that moved a fixture file out of its
+    copy for an upstream deletion left that copy's check failing by design (8 of 9). The note says when to
+    rerun every copy's check and to stop on a non-zero exit, and that a probe deletes a file it made
+    itself, never a manifest file, or names the one it moves and checks it where it went. The command, run
+    over a copy made like the fixture's, passes, still passes after a made-up file comes and goes, and
+    fails once a manifest file is gone."""
+    raw = (ROOT / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8")
+    lanes = " ".join(raw.split())
+    head = "Rehearsal kit and macOS's /tmp cleaner (round 29 C149, C150; the kit itself is the lead's):"
+    note = lanes.split(head, 1)[1].split(" Tools CI lacks (round 18):", 1)[0]
+    for part in (
+        "Right after every `cp -Rp`, right before step 2 and at each act's end, rerun every copy's shasum"
+        " check,",
+        "and stop on a non-zero exit. A probe that needs an upstream deletion deletes a file it made itself",
+        "never a manifest file; one that must move a manifest file names that one file",
+        "its hash checked where it went against its manifest line (round 31 C573, C504)",
+    ):
+        assert part in note, part
+    [command] = re.findall(r"rerun every copy's shasum check,\s+`\((sed [^`]*)\)`", raw)
+    assert command == "sed 's|  tree/|  <copy>/|' manifest.sha256 | shasum -a 256 -c -"
+    if shutil.which("shasum") is None:
+        pytest.skip("shasum is macOS's; the note's words are checked above")
+    tree = tmp_path / "tree"
+    (tree / "Project Beta" / "Meetings").mkdir(parents=True)
+    (tree / "Project Beta" / "Meetings" / "Beta retro.txt").write_text("retro\n", encoding="utf-8")
+    (tree / "notes.txt").write_text("notes\n", encoding="utf-8")
+    listed = subprocess.run(
+        ["shasum", "-a", "256", "tree/notes.txt", "tree/Project Beta/Meetings/Beta retro.txt"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    (tmp_path / "manifest.sha256").write_text(listed, encoding="utf-8")
+    copy = tmp_path / "root" / "copy"
+    copy.parent.mkdir()
+    subprocess.run(["cp", "-Rp", str(tree), str(copy)], check=True)
+    run = command.replace("<copy>", str(copy))
+
+    def check() -> int:
+        return subprocess.run(
+            ["/bin/sh", "-c", run], cwd=tmp_path, capture_output=True, check=False
+        ).returncode
+
+    assert check() == 0
+    made_up = copy / "Project Beta" / "Meetings" / "Contoso extra.txt"
+    subprocess.run(
+        ["cp", "-p", str(copy / "Project Beta" / "Meetings" / "Beta retro.txt"), str(made_up)], check=True
+    )
+    made_up.unlink()  # the probe's upstream deletion, of a file it made itself
+    assert check() == 0
+    (copy / "Project Beta" / "Meetings" / "Beta retro.txt").unlink()  # a manifest file gone
+    assert check() != 0
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

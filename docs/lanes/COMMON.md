@@ -584,9 +584,14 @@ touch) at the start of each act; never `touch -a` its files, which renews their 
 hashes every file again and an inbox root holds each back for its 60-second quiescence. Right before step 2, and
 before reading a role run's state, run `(cd <home>/Library/CloudStorage/OneDrive-Contoso && /usr/bin/find . -type
 d | LC_ALL=C sort | LC_ALL=C sed 's#^\.#tree#') | diff - dirs.txt` and stop on a non-zero exit: dirs.txt holds
-`tree`, `tree/Documents`, ..., so the sed maps find's leading `.` to `tree` (round 30 C329). A rehearsal that
-crosses local midnight checks every step after it again: an empty-folder alarm or wait gone just after 00:00 local
-(the parent folder's mtime says when) is the cleaner's doing, not agentsync's.
+`tree`, `tree/Documents`, ..., so the sed maps find's leading `.` to `tree` (round 30 C329). Right after every `cp
+-Rp`, right before step 2 and at each act's end, rerun every copy's shasum check,
+`(sed 's|  tree/|  <copy>/|' manifest.sha256 | shasum -a 256 -c -)`, and stop on a non-zero exit. A probe that needs
+an upstream deletion deletes a file it made itself (a `cp -p` of a fixture file under a made-up name, synced before
+it goes), never a manifest file; one that must move a manifest file names that one file, and its copy's check passes
+only when that file is the one line missing, its hash checked where it went against its manifest line (round 31 C573,
+C504). A rehearsal that crosses local midnight checks every step after it again: an empty-folder alarm or wait gone
+just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing, not agentsync's.
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)

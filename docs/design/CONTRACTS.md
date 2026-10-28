@@ -34693,3 +34693,17 @@ as install.sh builds them. The shared `<file>` list stays without them: state-fi
 governance/, where neither record lives. Test:
 `test_the_guide_gives_the_hold_record_and_the_purge_record_their_own_step_1_tails`, which builds each fix from
 install.sh's `again`, `rewrite`, `precord` and `SHUT_OPEN`.
+
+**The lane brief reruns every copy's shasum check, and no probe breaks it** (C573's (c) with C504, ruling 61; built
+once; `docs/lanes/COMMON.md`). The rehearsals reran the fixture's `shasum -a 256 -c` on every copy (rehearsal C 25
+times, every line OK), but the kit note gave only the folder touch and the dirs.txt check; and two probes that needed
+an upstream deletion moved a fixture file out of their copy, so the end-of-act check on those copies failed by design
+(8 of 9, rehearsal A's K2). The note says to rerun every copy's `(sed 's|  tree/|  <copy>/|' manifest.sha256 | shasum
+-a 256 -c -)` right after every `cp -Rp`, right before step 2 and at each act's end, and stop on a non-zero exit; a
+probe that needs an upstream deletion deletes a file it made itself, never a manifest file, or names the one manifest
+file it moves, whose hash is checked where it went. Not "move it after the end-of-act check", which leaves the
+probe's evidence unchecked (C504's verifier). C503, C528 and C573's (a) and (b) (C329's sed form with dirs.txt's full
+path, and this rule, in round 32's brief through `tools/edit.py`) are the lead's kit edits, not the repo's. Test:
+`test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, which runs the note's command over a
+copy made like the fixture's: it passes, still passes after a made-up file comes and goes, and fails once a manifest
+file is gone.
