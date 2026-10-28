@@ -7106,6 +7106,61 @@ def test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copie
     assert "for the logs; the audit trail is append-only" in logs
 
 
+def test_the_guide_gives_the_hold_record_and_the_purge_record_their_own_step_1_tails() -> None:
+    """B13 round 31 C556: step 1's state-file-notfile paragraph covered a lock, heartbeat or governance file
+    and quoted the generic move aside, while install.sh's misplaced_words gives the hold record (set each hold
+    it named again first) and the purge record (written again from the audit trail) their own fixes since
+    round 30 ruling 34; read as written, the guide led a person to move the hold record aside bare, the loss
+    C382 closed. The paragraph names both records with their nouns and checks, and quotes each fix, not a
+    file and damaged, as install.sh writes it; the shared `<file>` list stays without them."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [shut] = re.findall(r'^SHUT_OPEN="([^"]*)"$', install, re.M)
+    [again] = re.findall(r'^\tlocal again="([^"]*)"$', install, re.M)
+    [rewrite] = re.findall(r'^\tlocal rewrite="([^"]*)"$', install, re.M)
+    [precord] = re.findall(r'^\tlocal precord="([^"]*)"$', install, re.M)
+    restore = "they restore it from a copy they trust, or move it aside, keeping a copy"
+    shell = {
+        "record": f"{again}, keeping a copy, they move it aside{shut}{rewrite}",
+        "record/damaged": f"{again} {restore}{rewrite}",
+        "precord": f"keeping a copy, they move it aside{shut}{precord}",
+        "precord/damaged": f"{restore}{precord}",
+    }
+    # install.sh's own lines, as the words are built there
+    assert (
+        '[ "$1" != record ] || MISPLACED_FIX="$again, keeping a copy, they move it aside$SHUT_OPEN$rewrite"'
+        in install
+    )
+    assert (
+        '[ "$1" != precord ] || MISPLACED_FIX="keeping a copy, they move it aside$SHUT_OPEN$precord"'
+        in install
+    )
+    assert (
+        f'record/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="$again {restore}$rewrite" ;;' in install
+    )
+    assert f'precord/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="{restore}$precord" ;;' in install
+    assert 'record) MISPLACED_NOUN="agentsync\'s hold record" MISPLACED_CHECK=governance.hold ;;' in install
+    assert (
+        'precord) MISPLACED_NOUN="agentsync\'s purge record" MISPLACED_CHECK=governance.suppressed ;;'
+        in install
+    )
+    guide = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    [para] = re.findall(
+        r"A lock, heartbeat or governance file, or the hold record or the purge record in the state"
+        r" folder, that is not a regular file where one belongs (.*?) A state folder of this",
+        guide,
+    )
+    for kind, words in shell.items():
+        assert f"`{words}`" in para, kind
+    assert (
+        "the hold record, hold-record.json, is `agentsync's hold record` under `governance.hold`, and the"
+        " purge record, purge-record.json, `agentsync's purge record` under `governance.suppressed`" in para
+    )
+    assert "B13 round 31 C556" in para
+    # the shared `<file>` list, which state-file-owner reads too, names neither record
+    [files] = re.findall(r"`<file>` names the first one it stopped on, in fixed words \((.*?)\)", guide)
+    assert "hold record" not in files and "purge record" not in files
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

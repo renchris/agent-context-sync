@@ -860,7 +860,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   names a folder shut to this account, they open it first, as status says), not a step for the agent, ...`; with
   both, `(the error above names the first; ...): fixing them is the person's (keeping a copy, they move each aside;
   ...)`, since moving the one the error names alone led to a second stop on the other). A lock, heartbeat or
-  governance file that is not a regular file where one belongs (a folder, a fifo, a link: whatever the installed
+  governance file, or the hold record or the purge record in the state folder, that is not a regular file where
+  one belongs (a folder, a fifo, a link: whatever the installed
   agentsync's own `doctor.state_not_a_file` finds first, never a copy of its kinds, and nothing from a build without
   it), which init stops on before it opens anything and add-source opens past, is the person's, judged first after
   `state-notdir` (`<file>` and `<check>` as below): `state-file-notfile`, `; step 2 stops at its config step (at
@@ -868,7 +869,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   fixing that is the person's (keeping a copy, they move it aside; if status names a folder shut to this account,
   they open it first, as status says), and ~/.local/bin/agentsync status prints it on its <check> line` (`<check>`
   is `lock`, `heartbeat`, `governance.hold`, `governance.purge_queue`, `governance.suppressed` or
-  `governance.audit`), and step 2's config step its own `NEXT:` (`<file> <is what> (the error above names it;
+  `governance.audit`; the hold record, hold-record.json, is `agentsync's hold record` under `governance.hold`, and
+  the purge record, purge-record.json, `agentsync's purge record` under `governance.suppressed`, named so in this
+  sentence only), and step 2's config step its own `NEXT:` (`<file> <is what> (the error above names it;
   ~/.local/bin/agentsync status prints it and its fix on its <check> line): fixing it is the person's (...), not a
   step for the agent, so show them the error and go on to the report; ...`), where it said `fix the error above`
   (B13 round 27 ruling 16, the round's two turns: P22, P124, P57, P110, P113, P125, P142). `<is what>` names what
@@ -884,7 +887,20 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   from wherever it was moved, never moved aside bare. That last clause, in each of them, is since B13 round 25 D79 (CONTRACTS §16.179): macOS refuses to copy or
   rename a folder this account cannot read, write and search, so status names the `chmod 700` (or, for another
   account's, the `sudo chown`) to run first; only then, since B13 round 26 E16 (CONTRACTS §16.184): said of a folder
-  this account can open, a fifo or a link, it sent the person looking for a step status does not name. A state folder of this
+  this account can open, a fifo or a link, it sent the person looking for a step status does not name. The hold record
+  and the purge record keep what governance/ lost, so neither is moved aside bare; install.sh gives the hold record
+  `the records or legal owner first sets each hold it named again with ~/.local/bin/agentsync hold <scope> --reason
+  <why> --owner <name>; then, keeping a copy, they move it aside; if status names a folder shut to this account, they
+  open it first, as status says; the next hold, release or sync writes it again from the hold list and the audit
+  trail, if either names a hold`, or, damaged, `the records or legal owner first sets each hold it named again with
+  ~/.local/bin/agentsync hold <scope> --reason <why> --owner <name>; then they restore it from a copy they trust, or
+  move it aside, keeping a copy; the next hold, release or sync writes it again from the hold list and the audit
+  trail, if either names a hold`, and the purge record `keeping a copy, they move it aside; if status names a folder
+  shut to this account, they open it first, as status says; the next purge or sync writes it again from what is
+  recorded in the audit trail, if a purge is recorded in the audit trail`, or, damaged, `they restore it from a copy
+  they trust, or move it aside, keeping a copy; the next purge or sync writes it again from what is recorded in the
+  audit trail, if a purge is recorded in the audit trail` (B13 round 30 ruling 34: C381, C382; B13 round 31 C556). A
+  state folder of this
   account's own that it can open but not write, holding the manifest, its -wal and its -shm, is opened past by init,
   so step 2 stops at its status step on the chmod 700 (round 24 B12): `state-dir-write`, `; step 2 stops at its
   status step on agentsync's state folder, which this account can open but not write (a mode, not damage): the chmod

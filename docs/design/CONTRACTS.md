@@ -34680,3 +34680,16 @@ both with the state folder. The Logs row's bound gave the audit trail the logs' 
 rotates it: the bound now says the audit trail is append-only. Test:
 `test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live`, which reads both names from
 governance and the purge record's "never shrinks" from its docstrings.
+
+**The guide gives the hold record and the purge record their own step 1 tails** (C556;
+`docs/deploy/setup-feedback.md`). install.sh's `misplaced_words` gives `<state>/hold-record.json` (role `record`) and
+`<state>/purge-record.json` (`precord`) their own fixes since round 30 ruling 34 (C382: the records or legal owner
+sets each hold the record named again first; C381: the next purge or sync writes the purge record again), but step
+1's state-file-notfile paragraph covered only a lock, heartbeat or governance file and quoted the generic move aside,
+which, read as written, moved the hold record aside bare, the loss C382 closed. The paragraph's opening covers both
+records, names their nouns and checks (`agentsync's hold record` under `governance.hold`, `agentsync's purge record`
+under `governance.suppressed`) in that sentence only, and quotes the four fixes (each record not a file and damaged)
+as install.sh builds them. The shared `<file>` list stays without them: state-file-owner fires only in a sticky
+governance/, where neither record lives. Test:
+`test_the_guide_gives_the_hold_record_and_the_purge_record_their_own_step_1_tails`, which builds each fix from
+install.sh's `again`, `rewrite`, `precord` and `SHUT_OPEN`.
