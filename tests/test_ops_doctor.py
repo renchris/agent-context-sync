@@ -1328,6 +1328,66 @@ def test_a_manifest_this_account_cannot_write_is_not_probed_so_one_chmod_fixes_i
     writer.close()
 
 
+def _wal_manifest(db: Path) -> list[Path]:
+    """A WAL database at ``db``, closed clean (no -wal, no -shm); its two side paths."""
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE t (k TEXT)")
+    conn.execute("INSERT INTO t VALUES ('contoso')")
+    conn.commit()
+    conn.close()
+    sides = [db.with_name(db.name + s) for s in ("-wal", "-shm")]
+    assert not any(os.path.lexists(p) for p in sides)
+    return sides
+
+
+def test_the_damage_probe_makes_no_wal_or_shm_beside_a_clean_wal_manifest_c526(sample_config: Config) -> None:
+    """B13 round 31 C526: the damage probe's plain ``mode=ro`` open of a clean WAL manifest this account can
+    write created an empty -wal and a 32 KB -shm, and the setup report's last probe left both. A clean file is
+    read ``immutable=1``: the probe, and doctor's whole run, leave the manifest alone; with both sides there
+    the plain read makes nothing; a -wal with frames and no -shm, which any open would make, is not read."""
+    db = sample_config.state_paths.db
+    sides = _wal_manifest(db)
+    before = (db.read_bytes(), db.stat().st_mtime_ns)
+    assert doctor.manifest_unreadable(db) is None
+    assert not any(os.path.lexists(p) for p in sides), "the probe created side files"
+    run_checks(sample_config)
+    assert not any(os.path.lexists(p) for p in sides), "doctor created side files"
+    assert (db.read_bytes(), db.stat().st_mtime_ns) == before
+    held = sqlite3.connect(db)  # a sync holding it open, a write not checkpointed: both sides there
+    try:
+        held.execute("PRAGMA wal_autocheckpoint=0")
+        held.execute("INSERT INTO t VALUES ('fabrikam')")
+        held.commit()
+        assert all(p.is_file() for p in sides)
+        assert doctor.manifest_unreadable(db) is None
+        assert sides[1].is_file() and sides[0].stat().st_size > 0
+        sides[1].replace(db.with_name("held-shm"))  # frames and no -shm: not read, so none is made
+        assert doctor.manifest_unreadable(db) is None
+        assert not os.path.lexists(sides[1])
+        db.with_name("held-shm").replace(sides[1])
+    finally:
+        held.close()
+
+
+def test_the_immutable_probe_reads_a_change_under_it_as_busy_and_damage_as_damage_c526(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C526: an ``immutable=1`` read takes no lock, so a checkpoint during it can show torn pages: an error
+    while the file or its -wal changed under the read is busy (None), never damage; damage on a file that did
+    not change is still the error."""
+    db = sample_config.state_paths.db
+    sides = _wal_manifest(db)
+    with db.open("r+b") as fh:  # the header gone: no database
+        fh.write(b"contoso!" * 12)
+    found = doctor.manifest_unreadable(db)
+    assert isinstance(found, sqlite3.DatabaseError), found
+    assert not any(os.path.lexists(p) for p in sides)
+    calls = iter(range(100))
+    monkeypatch.setattr(doctor, "_probe_stamps", lambda real: ((next(calls), 0), None))
+    assert doctor.manifest_unreadable(db) is None
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_the_rest_say_not_checked(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch

@@ -23107,6 +23107,8 @@ archive it recorded; legal holds are kept, in governance/holds.json`.
 Amended 2026-10-22, §16.167 A29: MANIFEST_FIX moves heartbeat.json aside with the manifest, as no sync starts a new
 manifest while heartbeat.json records earlier passes; a manifest lost from a Mac that has synced FAILs
 state_dir.manifest with `doctor.LOST_MANIFEST_FIX`, the person's.
+Amended 2026-10-28, §16.210 C526: the read is `file:...?mode=ro&immutable=1` over a clean file (no -journal, no -wal
+or an empty one, not both sides), `mode=ro` as here only with both sides or a -journal.
 
 **T19: a missing root whose app folder is gone names the sign-in first (`agentsync.loop`; amends §16.119 S3).**
 With the provider folder itself gone (signed out, `provider_state` `signed-out`), the wait read `renamed, moved or
@@ -26313,6 +26315,8 @@ make no side files either; the FAIL already stands, the damage check waits for t
 chmod is the whole fix. `manifest_unreadable`'s docstring no longer says the read creates no file. Test: `test_ops_doctor.py::test_a_manifest_this_account_cannot_write_is_not_probed_so_one_chmod_fixes_it`.
 Amended 2026-10-20, §16.152 Y70: the setup report's own read-only opens did make them; `_open_manifest_ro` reads
 such a file `immutable=1`, or not at all with a -wal and no -shm.
+Amended 2026-10-28, §16.210 C526: over a file it can write the probe made them too (an empty -wal and a -shm); it now
+reads a clean file `immutable=1` and makes neither.
 
 **X73: a state folder this account cannot look inside (`agentsync.ops.doctor`, `agentsync.cli`).** With the state
 folder at mode 0000 (or 0700 root's, after a first sudo sync under umask 077), the files loop's lstat raised
@@ -34824,6 +34828,23 @@ manifest with no -wal and one with no run; a `Manifest` opened after the block m
 -wal, a -wal at 0000, a folder at the -journal, a state folder at 0500: the same error and code inside and outside)
 and `test_a_side_file_gone_between_its_checks_is_no_refusal_under_read_only_reads_c560`; `test_cli.py`
 `test_status_says_the_same_state_and_next_under_read_only_reads_over_a_side_it_cannot_use_c560` (the four states).
+
+C526 (2026-10-28): **doctor's damage probe makes no -wal or -shm** (residue of ruling 36). After a sync the state
+folder held manifest.sqlite alone; one setup report left an empty 0600 -wal and a 32 KB -shm beside it, made by
+`doctor.manifest_unreadable`'s plain `mode=ro` open of a WAL manifest this account can write, the report's last
+manifest open. `doctor._probe_uri` picks an open that creates nothing: a clean file (no -journal, no -wal or an empty
+one, and not both sides there) is the whole database, read `file:...?mode=ro&immutable=1`, with (size, mtime_ns) of
+the file and its -wal (`doctor._probe_stamps`) taken before and after, and an error while either changed is busy
+(None), never damage, since an immutable read takes no lock; with both sides there a plain `mode=ro`, which then makes
+nothing; with a -journal (an older build's rollback, which an immutable read would show as torn pages) a plain
+`mode=ro` as before; a -wal with frames and no -shm, which any open makes, is not read (None). It is not
+`read_only_snapshot`, whose full-file copy would run on every status and every sync's state check. Damage on a file
+that did not change is still the error. Tests: `test_ops_doctor.py`
+`test_the_damage_probe_makes_no_wal_or_shm_beside_a_clean_wal_manifest_c526` (the probe and doctor's run leave a clean
+WAL manifest alone; both sides held by a sync, and frames with no -shm, make nothing),
+`test_the_immutable_probe_reads_a_change_under_it_as_busy_and_damage_as_damage_c526`; `test_cli.py`
+`test_the_report_hooks_leave_a_clean_wal_manifest_without_a_wal_or_shm_c526` (the setup report's Doctor, Status and
+Loop hooks under `manifest.read_only_reads`, and a status run).
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

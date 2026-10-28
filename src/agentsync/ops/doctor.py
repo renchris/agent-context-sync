@@ -2375,8 +2375,9 @@ def _sql_name(name: object) -> str:
 
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
-    open (nothing is written; a WAL database's -wal and -shm are created if absent, with the file's own mode,
-    so status does not probe a file this account cannot write: B13 round 20 X78) of its schema, which every
+    open that creates nothing (:func:`_probe_uri`; a plain ``mode=ro`` open of a WAL database made its -wal
+    and -shm, with the file's own mode, so status does not probe a file this account cannot write: B13 round
+    20 X78, and one setup report left both beside a clean manifest: round 31 C526) of its schema, which every
     open of the manifest reads first (a header alone can be intact over a damaged schema page), and of each
     b-tree's first entry: a table's row, ``SELECT * FROM "<table>" NOT INDEXED LIMIT 1``, one page per
     table, its root and the leaf the first row is on (B13 round 19 W41: damage under the cache or outputs
@@ -2393,13 +2394,20 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     C203)."""
     if lost_words(db) is not None:
         return None
+    real = Path(os.path.realpath(db))  # sqlite keeps the sides beside a link's target
+    stamps: tuple[tuple[int, int] | None, ...] | None = None
     try:
         # a file this account cannot read and write is not opened: a read-only open would make its -wal and
         # -shm with its own mode (0400), and every caller, a sync's state check included, would leave them so
         # (B13 round 20 X78); state_dir.files FAILs it, and the damage check waits for the chmod
         if db.exists() and not os.access(db, os.R_OK | os.W_OK):
             return None
-        conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
+        uri = _probe_uri(db, real)
+        if uri is None:
+            return None
+        if uri.endswith("&immutable=1"):
+            stamps = _probe_stamps(real)
+        conn = sqlite3.connect(uri, uri=True, timeout=0.5)
         try:
             trees = conn.execute(
                 "SELECT type, name, tbl_name FROM sqlite_master"
@@ -2422,9 +2430,48 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
+        if stamps is not None and _probe_stamps(real) != stamps:
+            return None  # the file or its -wal changed under the immutable read: busy, never damage (C526)
         if unreadable_code(exc):
             return exc
     return None
+
+
+def _probe_uri(db: Path, real: Path) -> str | None:
+    """The read-only open :func:`manifest_unreadable` reads ``db`` (sides beside ``real``) through, one that
+    creates no file beside it (B13 round 31 C526): with no -journal and no -wal or an empty one, and not both
+    sides there, the file is the whole database, read ``immutable=1``, which takes no lock, so the caller
+    stamps it before and after; with both sides there, a plain ``mode=ro``, which then makes nothing; with a
+    -journal (an older build's rollback, which ``immutable=1`` would read as torn pages), a plain ``mode=ro``
+    as before. A -wal with frames and no -shm, which any open makes, is not read: None."""
+
+    def side(suffix: str) -> os.stat_result | None:
+        try:
+            return os.lstat(real.with_name(real.name + suffix))
+        except OSError:
+            return None
+
+    plain = f"file:{quote(str(db))}?mode=ro"
+    wal, shm, journal = side("-wal"), side("-shm"), side("-journal")
+    if journal is not None or (wal is not None and shm is not None):
+        return plain
+    if wal is not None and not (stat.S_ISREG(wal.st_mode) and wal.st_size == 0):
+        return None
+    return plain + "&immutable=1"
+
+
+def _probe_stamps(real: Path) -> tuple[tuple[int, int] | None, ...]:
+    """(size, mtime_ns) of the manifest at ``real`` and of its -wal, None for one not there: what an immutable
+    read is checked against (C526)."""
+
+    def one(path: Path) -> tuple[int, int] | None:
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        return st.st_size, st.st_mtime_ns
+
+    return one(real), one(real.with_name(real.name + "-wal"))
 
 
 _UNREADABLE_RECORD = "manifest-unreadable.json"

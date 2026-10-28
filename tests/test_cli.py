@@ -12475,3 +12475,27 @@ def test_status_says_the_same_state_and_next_under_read_only_reads_over_a_side_i
     assert [ln for ln in outside if ln.startswith("NEXT: ")], outside
     assert [ln for ln in outside if ln.startswith("status: cannot read the state")], outside
     assert inside == outside
+
+
+def test_the_report_hooks_leave_a_clean_wal_manifest_without_a_wal_or_shm_c526(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C526: after a sync the state folder held manifest.sqlite alone, and one setup report left
+    an empty -wal and a 32 KB -shm beside it: doctor's damage probe, the report's last manifest open, read it
+    with a plain ``mode=ro``. The setup report's Doctor, Status and Loop hooks, under
+    ``manifest.read_only_reads``, and a status run leave the manifest alone and make neither side."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    capsys.readouterr()
+    assert sorted(_manifest_files(db)) == ["manifest.sqlite"]
+    before = _manifest_files(db)
+    hooks = cli._report_hooks()
+    assert hooks.doctor is not None and hooks.status is not None and hooks.loop_next is not None
+    with manifest_mod.read_only_reads():
+        hooks.doctor(initialised)
+        hooks.status(initialised)
+        hooks.loop_next(initialised)
+    assert _manifest_files(db) == before
+    cli.main(["status", "--config", cfg])
+    capsys.readouterr()
+    assert sorted(_manifest_files(db)) == ["manifest.sqlite"]
