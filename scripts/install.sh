@@ -5282,8 +5282,11 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <source-[0-9] "*)
 		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
 		say "  agentsync's own words, such as docs or inbox, only for a cloud folder; also the id of a source still mirrored"
-		say "  whose [[source]] block is gone, as doctor's config.vanished_sources line and the sync's refusal quote it; a"
-		say "  number can be missing"
+		# and a hold's scope no source names, which redaction_pairs registers as a source id (B13 round 30 C386;
+		# round 31 ruling 56: C501 with C534, C566, lane RA's clause)
+		say "  whose [[source]] block is gone, as doctor's config.vanished_sources line and the sync's refusal quote it;"
+		say "  also a hold's scope that no source names, as status's HOLD: line and the lost-hold FAIL print it; a number"
+		say "  can be missing"
 		;;
 	esac
 	case "$used" in *" <path> "*)

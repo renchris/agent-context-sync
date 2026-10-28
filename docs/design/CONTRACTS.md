@@ -34689,6 +34689,14 @@ gone and round 28's hold record still only in heartbeat.json, step 1's tail and 
 B's doctor.round28_first drops `first` from its link clause only when that lead is added; the plain case keeps it.
 Test: `test_a_lost_manifest_links_fix_says_first_once_after_round_28s_lead`, with the real agentsync, both ways.
 
+**The shell report's `<source-N>` legend names a hold's scope** (C501 with C534, C566, the shell half of lane RA's
+clause; ruling 56; `scripts/install.sh`). Since C386 redaction_pairs registers a hold's scope that names no source as
+a source id, but the item still listed only a configured id, its folder's `<folder-N>`, agentsync's own words and a
+vanished source's id. It keeps its text and adds `also a hold's scope that no source names, as status's HOLD: line
+and the lost-hold FAIL print it;` before `a number can be missing`, rewrapped to its width (lane RA amends §16.203
+and §16.204). Tests: `test_the_shell_legend_names_a_holds_scope_that_no_source_names`, forced to the shell fallback
+with a hold on a matter name, and `test_the_folder_legend_names_a_project_folder_only_where_one_is_shown`.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

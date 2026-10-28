@@ -2861,6 +2861,34 @@ def test_a_hold_scope_no_source_names_is_cut_from_the_shell_report_from_every_ho
         assert name not in "\n".join(shown), shown
 
 
+def test_the_shell_legend_names_a_holds_scope_that_no_source_names(env: dict[str, str]) -> None:
+    """B13 round 31 ruling 56 (C501 with C534, C566; lane RA's clause, the shell half): since C386 a hold's
+    scope that names no source is cut as `<source-N>`, but the legend's item still read `a configured source
+    id, ...; also the id of a source still mirrored whose [[source]] block is gone`, so the reader could not
+    tell what such a number stands for. Forced to the shell fallback, a hold on a matter name reads as
+    `<source-1>`, the name is in no line, and the item names a hold's scope."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True)
+    audit = {
+        "action": "hold-set",
+        "at": "2026-10-22T05:32:56Z",
+        "scope": "contoso-matter",
+        "owner": "Avery Quill",
+    }
+    (state / "governance" / "audit.jsonl").write_text(json.dumps(audit) + "\n", encoding="utf-8")
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-22T05:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n2026-10-22T05:40:00Z | step 2 | "
+        "clean | status said HOLD: hold contoso-matter (audit) since 2026-10-22T05:32:56Z | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "HOLD: hold <source-1> (audit) since 2026-10-22T05:32:56Z" in text, text
+    assert "contoso-matter" not in text, text
+    source = text.split("\n- <source-N>: ", 1)[1].split("\n- ", 1)[0].split("\nRead the report", 1)[0]
+    assert "also a hold's scope that no source names" in " ".join(source.split()), source
+
+
 def test_a_hold_only_the_record_keeps_is_cut_as_a_lost_one_in_the_shell_report() -> None:
     """B13 round 30 ruling 42 (C313), hold_cut's half: a hold only hold-record.json keeps has the origin
     `record`, and hold_cut, matching `(config|state|audit)`, left its reason and owner whole. It is cut as the
@@ -20613,7 +20641,10 @@ def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
         # on its own is not
         assert re.search(r" notes in <folder-(\d+)>; full <folder-\d+>; file notes/plan\.md \|", text), text
     source = text.split("\n- <source-N>: ", 1)[1].split("\n- ", 1)[0].split("\nRead the report", 1)[0]
-    assert " ".join(source.split()).endswith("the sync's refusal quote it; a number can be missing"), source
+    assert " ".join(source.split()).endswith(  # B13 round 31 ruling 56 (C501): a hold's scope named
+        "the sync's refusal quote it; also a hold's scope that no source names, as status's HOLD: line and "
+        "the lost-hold FAIL print it; a number can be missing"
+    ), source
 
 
 def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: dict[str, str]) -> None:
