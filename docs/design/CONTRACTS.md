@@ -34439,3 +34439,23 @@ them apart: the same rename in `governance.unresolved_purges`, `setup_report._NO
 queue row. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`, which pins both ids and the
 pointer, refuses `id=<its id>` in the bullet, and reads the filled-in forget from `unresolved_note` with and without
 `dry_run`.
+
+### 16.208 Round 31: setup report: a typed folder and every hold word cut, the source legend, a signal stop's words and a lost hold's report fix (2026-10-28, wave B13 round 31 lane RA)
+
+Reserved for round 31 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 31").
+
+### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
+
+Reserved for round 31 lane RB of B13.
+
+### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
+
+Reserved for round 31 lane B of B13.
+
+### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
+
+Reserved for round 31 lane E of B13.
+
+### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)
+
+Reserved for round 31 lane D of B13.

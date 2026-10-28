@@ -2094,6 +2094,46 @@ since agentsync reads ctime) with the harvest list in `round31/tools/harvest-lea
 BASE `ccf696b7`, ids C501 and up, outputs `round31/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block
 at `ed901cd3`, since no lane changed the prompt.
 
+### B13 round 31: v33 rehearsal, cross-lane review, harvest, Codex beside Claude (2026-10-28)
+
+Run `wf_79385220-d33` on `c8a4298b` (99 agents, 0 errors, 8 hours 44 minutes). All six scenarios pass their
+EXPECTED; no name leaks; every fixture copy matched its folder list and its `shasum` check. 84 findings, 83 after
+dedupe, 77 confirmed (0 turns, 19 wrongs, 58 small), 6 refuted (C509, C555, C568, C570, C572, C574). None needs
+prompt text: v33 stays the prompt to paste. 7 of the wrongs are data integrity, most on round 30's own new paths: a
+lost erasure hidden behind an ok line (C539); the staging path kept in a page, QUARANTINE.tsv and the manifest (C546,
+C547); a project name behind a link printed in a public-ready report (C529); install.sh's governance-folder fix
+moving a kept folder aside and dropping its holds (C521); round 28's hold record lost with heartbeat.json (C580); and
+more suppressions accepted than meant (C582, C553). Codex's four reviews ran and gave 9 findings, and its second
+opinion ran this time (round 31's script adds no diff to a prompt with no DIFF line): 19 opinions, none disputed. A
+triage workflow (`wf_70d91859-298`) placed every item once and drafted the rulings.
+
+Lead rulings for round 31 (in `lanes/COMMON30.md`, mirrored in `docs/lanes/COMMON.md`), all code-only: (46) a queued
+purge the queue lost is always shown, and closes only when the queue's own run would close it; (47) `--accept-lost`
+and every line that names it say exactly what accepting clears and gives up; (48) ruling 45 holds for every stored
+reason already written and every spelling; (49) a typed folder is cut wherever a report prints it; (50) install.sh's
+governance-folder fix says a folder was kept when the hold record names a hold; (51) the records page's lost-manifest
+steps keep every hold; (52) ruling 36 holds for every manifest read a report makes, side files included; (53) a
+re-screen the mail label reader queued is counted and named as the reader's; (54) ruling 45's re-read says what each
+row came to, on every upgrade path; (55) ruling 39 holds for every hold word (record, records, legal, label, review);
+(56) the `<source-N>` legend names what C386 registers; (57) install.sh's sync-stop kinds are
+setup_report._SYNC_STOP_KINDS, every one; (58) a signal stop is named by its signal in every reader, never in a
+nested bracket; (59) the label-unreadable share of the refused count reads apart from the withheld share; (60) beside
+a governance stop, every reader gives that stop's own fix and wait; (61) the rehearsal kit checks each fixture copy
+mechanically; (62) the lead's calls: C565 is built, which reverses round 30's not-built ruling on C371's (4)
+(`--forget` running its own probe: the verifier measured that without it, forgetting one entry forces every runnable
+queued erasure to run first), and C571 raises ci.yml's limit from 70 to 80 minutes (the slowest round 30 job took
+59:43; round 29 raised 60 to 70 at the same margin). The kit halves of C503, C504, C528 and C573 are the lead's, in
+round 32's script.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104, 111, 100, 77 over rounds 2 and 4 to 31; turns as before, then 0; wrongs as before, then 19.
+
+Lanes (`--account auto`, CONTRACTS §16.208 to §16.212, land lock `/tmp/b13-r31-land.lock`, scratch under `round31/`,
+back-channel pane 3 or its successor): RA 16 (ruling 49's typed folder first, then ruling 55's hold words in one
+commit with install.sh's list), B 17 (ruling 46 first: data integrity; then 47, 52, 59, 60 and C565), RB 9 (ruling
+50's kept folder first, then 57 and 58), E 19 (ruling 48 first: data integrity; then 53 and 54), D 16 (rulings 51 and
+47's pages first; CI's limit; the guides after the lanes).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
