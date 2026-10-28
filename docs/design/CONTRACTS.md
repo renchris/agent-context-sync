@@ -34746,6 +34746,13 @@ match was. No table or redo text outlives the call (no module-level cache), so a
 same process reads the manifest again. Test: `test_governance.py`
 `test_a_lost_queued_ids_rebuild_fingerprints_each_manifest_id_once_per_source`.
 
+C542 (2026-10-28): **`governance.partition_purges_ro` and `governance.lost_queue_lines` are gone, since only tests
+read them (C343, C400).** The report reads `partition_queue_ro` itself, and `queue_lost` and `lost_queue_preview`
+build their own lines from `_lost_entry` and `_redo_all`, which stay. The C394 and C370 paragraphs above keep their
+names as history. The exact pin of each lost record's redo (stable id, alias, no manifest row, glob), in order, now
+reads `queue_lost(state).fix`'s `for <reason> at <iso>: <how>` parts, joined with "; ". Test: `test_governance.py`
+`test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
 Round 31's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 31"; specs `round31/items/C<n>.md`, the

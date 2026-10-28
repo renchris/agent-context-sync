@@ -1878,14 +1878,6 @@ def _redo_words(rec: Mapping[str, Any], stable_id: str | None) -> str:
     )
 
 
-def lost_queue_lines(state_dir: Path, gone: Sequence[Mapping[str, Any]] | None = None) -> list[str]:
-    """Each lost queued purge (:func:`lost_queued`, or ``gone``) and how it is redone, one line each:
-    ``<reason> at <iso>, a <kind> selector of source <src>: <how>`` (:func:`_redo_words`), the stable id
-    rebuilt from the manifest by fingerprint (B13 round 30 C370, C312; ruling 35)."""
-    recs = lost_queued(state_dir) if gone is None else gone
-    return [f"{_lost_entry(r)}: {w}" for r, w in zip(recs, _redo_all(state_dir, recs), strict=True)]
-
-
 def _redo_all(state_dir: Path, recs: Sequence[Mapping[str, Any]]) -> list[str]:
     """:func:`_redo_words` of each record of ``recs``, the ids rebuilt from the state folder's manifest."""
     ids = _rebuilt_ids(expand(state_dir) / "manifest.sqlite", recs)
@@ -4695,19 +4687,6 @@ def partition_queue_ro(
     if note not in (SCHEMA_NOTE, BUSY_NOTE):
         note = unjudged_note(_unjudged_check(db))
     return QueueSplit(*_unjudged_split(entries, note))
-
-
-def partition_purges_ro(
-    state_paths: StatePaths,
-    queue: Sequence[QueuedPurge] | None = None,
-    *,
-    config: Config | None = None,
-    timeout: float = 0.5,
-) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
-    """:func:`partition_queue_ro`'s runnable and kept entries, as :func:`partition_purges` gives
-    :func:`partition_queue`'s."""
-    split = partition_queue_ro(state_paths, queue, config=config, timeout=timeout)
-    return split.runnable, split.kept
 
 
 _JUDGED_TABLES = frozenset(

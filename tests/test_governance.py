@@ -1021,7 +1021,6 @@ def test_partition_queue_ro_judges_as_partition_queue_does(world: World) -> None
     before = _state_files(sp.db.parent)
     assert not {sp.db.name + "-wal", sp.db.name + "-shm"} & before.keys()
     assert gv.partition_queue_ro(sp, queue, config=world.config) == want
-    assert gv.partition_purges_ro(sp, queue, config=world.config) == (want.runnable, want.kept)
     assert _state_files(sp.db.parent) == before
 
 
@@ -1093,7 +1092,6 @@ def test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged(world: World, da
     raw = sp.db.read_bytes() if damage is not _unreadable and sp.db.exists() else b""
     split = gv.partition_queue_ro(sp, [erase, *judged], config=world.config)
     assert (split.runnable, split.kept, split.not_looked_up) == ([erase], [(q, note) for q in judged], [])
-    assert gv.partition_purges_ro(sp, [erase, *judged]) == ([erase], [(q, note) for q in judged])
     assert sorted(p.name for p in sp.db.parent.iterdir()) == before
     if raw:
         assert sp.db.read_bytes() == raw
@@ -2357,19 +2355,6 @@ def test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_f
     lost = gv.lost_queued(state)
     at = [r["at"] for r in lost]
     bin_ = "~/.local/bin/agentsync purge"
-    assert gv.lost_queue_lines(state) == [
-        f"erasure-request at {at[0]}, a stable-id selector of source contoso: "
-        f"`{bin_} id=contoso-0001 --source contoso --reason erasure-request`",
-        f"dlp-remediation at {at[1]}, a stable-id selector of source contoso: "
-        f"`{bin_} id=contoso-old --source contoso --reason dlp-remediation`",
-        f"upstream-deleted at {at[2]}, a stable-id selector of source contoso: no manifest row names its id, "
-        "which is the `stable_id:` line of the page's front matter in the docs repo's history under "
-        f"mirror/contoso/ while no purge has erased the page; `{bin_} id=<that id> --source contoso --reason "
-        "upstream-deleted`: a `path=` or `docs=` purge clears it only when it erases that id",
-        f"label-escalation at {at[3]}, a path-glob selector of source contoso: agentsync keeps only its "
-        f"selector's hash, so the glob comes from the person's own records: `{bin_} path=<glob> --source "
-        "contoso --reason label-escalation`, as only a purge of the same kind and source clears it",
-    ]
     err = gv.queue_lost(state)
     assert err is not None
     assert err.detail.endswith(
@@ -2378,7 +2363,21 @@ def test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_f
         f"a stable-id selector of source contoso; label-escalation at {at[3]}, a path-glob selector of "
         "source contoso)"
     ), err.detail
-    assert f"(for erasure-request at {at[0]}: `{bin_} id=contoso-0001 --source contoso" in err.fix, err.fix
+    # each record's redo, in order, in the fix's own form (C542: lost_queue_lines, only tests read, is gone)
+    ways = [
+        f"for erasure-request at {at[0]}: `{bin_} id=contoso-0001 --source contoso --reason erasure-request`",
+        f"for dlp-remediation at {at[1]}: `{bin_} id=contoso-old --source contoso --reason dlp-remediation`",
+        f"for upstream-deleted at {at[2]}: no manifest row names its id, "
+        "which is the `stable_id:` line of the page's front matter in the docs repo's history under "
+        f"mirror/contoso/ while no purge has erased the page; `{bin_} id=<that id> --source contoso --reason "
+        "upstream-deleted`: a `path=` or `docs=` purge clears it only when it erases that id",
+        f"for label-escalation at {at[3]}: agentsync keeps only its "
+        f"selector's hash, so the glob comes from the person's own records: `{bin_} path=<glob> --source "
+        "contoso --reason label-escalation`, as only a purge of the same kind and source clears it",
+    ]
+    assert err.fix.endswith(
+        f"runs each purge by hand before the next sync, which refuses until then ({'; '.join(ways)})"
+    ), err.fix
     trail = gv.audit_path(state).read_text(encoding="utf-8")
     assert "contoso-0" not in trail and "contoso-old" not in trail and "legal/" not in trail
 
