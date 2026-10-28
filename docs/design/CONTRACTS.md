@@ -34942,3 +34942,15 @@ one. The two sentences swap, the parenthesis names the suppression list and why,
 byte for byte. install.sh's comment order (8205-8207) is lane RB's. Test:
 `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which reads the order from `governance_lost`'s source
 and checks the suppression list's tail comes before the queue's.
+
+**The records page says an update screens mail again for a new label reader** (C559, ruling 53's guide half;
+`docs/deploy/data-governance.md`). Since round 30 C404 (§16.206) a moved `LABEL_READER_REVISION` re-screens every
+published or label-refused `.eml` and `.msg` once while a label rule is on, which can refuse pages and queue
+`label-escalation` purges after an upgrade, while the page said only that a policy change re-screens. Built after lane
+E's 46a029853 (C505 with C518, C524, C548), in its words: the page says an update whose mail label reader can read a
+label the old one missed does the same for mail once (not a binary `.msg` withheld by its name), that a page the new
+reader finds an excluded label on is refused and its purge queued, that the sync counts the share apart
+(`re-screened <n> for a new mail label reader`) and logs a WARNING, that STATE.md says `the mail label reader changed:
+<n> mail files not yet re-screened` until each is fetched, and that a [policy] re-screen still pending keeps its own
+words. Test: `test_the_records_page_says_an_update_screens_mail_again_for_a_new_label_reader`, which reads the sync's
+share and STATE.md's head from `cli` and `cycle`.

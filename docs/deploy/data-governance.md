@@ -164,9 +164,16 @@ editing `sources.toml`.
   published, `agentsync purge --queue` skips it and prints `note: stays queued: ...`, because running it would
   erase the current page and stop the file syncing. If the policy refuses the file again, the next `agentsync
   purge --queue` runs the entry. To erase the file anyway, run `agentsync purge path=<its path> --source <its
-  source> --reason label-escalation`, which also takes the entry off the queue. A policy change re-screens every label-capable item. Under a label rule, a
-  save that changes only a file's label, not its content, is screened at the next sync that fetches the file, and
-  its page is withheld or restored to match the new label (CONTRACTS §16.60 F72).
+  source> --reason label-escalation`, which also takes the entry off the queue. A policy change re-screens every
+  label-capable item. An agentsync update whose mail label reader can read a label the old one missed does the same
+  for mail, once: while a label rule is on, every published or label-refused `.eml` and `.msg` is screened again (not
+  a binary `.msg` withheld by its name), and a page the new reader finds an excluded label on is refused and its
+  `label-escalation` purge queued. The sync counts that share apart from a rule change's, `re-screened <n> for a new
+  mail label reader`, logs a WARNING, and until every such file is fetched `_sync/STATE.md` says `the mail label
+  reader changed: <n> mail files not yet re-screened`; a [policy] re-screen still pending covers the mail already and
+  keeps its own words (CONTRACTS §16.206 C404; B13 round 31 C559, lane E's C505, C518, C548). Under a label rule, a
+  save that changes only a file's label, not its content, is screened at the next sync that fetches the file, and its
+  page is withheld or restored to match the new label (CONTRACTS §16.60 F72).
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
   stub. It is never decrypted. An S/MIME-encrypted or IRM-protected (rpmsg) `.msg` is also an UNREADABLE stub
   (`encrypted` / `IRM-protected`), and an Outlook-format `.msg` that carries an encrypted Office attachment is

@@ -7218,6 +7218,27 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
     assert check() != 0
 
 
+def test_the_records_page_says_an_update_screens_mail_again_for_a_new_label_reader() -> None:
+    """B13 round 31 C559 (ruling 53): since round 30 C404 a moved LABEL_READER_REVISION re-screens every
+    published or label-refused `.eml` and `.msg` once while a label rule is on, which can refuse pages and
+    queue `label-escalation` purges after an upgrade, and the records page said only that a policy change
+    re-screens. It says so, with the sync's count and STATE.md's words in lane E's form, read here."""
+    from agentsync import cli, cycle  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    said = "re-screened <n> for a new mail label reader"
+    assert "for a new mail label reader" in inspect.getsource(cli)
+    assert said in page.replace("`", "")
+    source = inspect.getsource(cycle)
+    assert '"the mail label reader changed: %d mail %s"' in source
+    assert "'the mail label reader changed' if reader else '[policy] changed'" in source
+    assert "`the mail label reader changed: <n> mail files not yet re-screened`" in page
+    assert "every published or label-refused `.eml` and `.msg` is screened again" in page
+    assert (
+        "its `label-escalation` purge queued" in page and "(not a binary `.msg` withheld by its name)" in page
+    )
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)
