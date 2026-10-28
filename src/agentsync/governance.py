@@ -1737,12 +1737,15 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
     ``purge-summary`` of the selector, no ``purge-covered`` or ``purge-forgotten`` of it) that the purge queue
     (``queue``, read here when None) no longer holds: dropped unrun by a queue moved aside or rewritten (B13
     round 29 C172). An entry an older build queued is judged only when the queue file is gone, since that
-    build took an entry a hand purge covered off the queue with no audit line."""
+    build took an entry a hand purge covered off the queue with no audit line. It replays the purge record's
+    and the trail's lines, or the trail's alone when the record cannot be read (:func:`_queue_events`), so
+    no reader (status, the report's count, a dry run's preview, a hand purge's ``purge-covered`` line) misses
+    a lost purge behind the record's error (B13 round 31 C539 and its review; ruling 46)."""
     pend = pending_purges(state_dir) if queue is None else queue
     have = {(q.selector.fingerprint(), q.reason.value) for q in pend}
     gone_file = not os.path.lexists(_queue_file(state_dir))
     open_: dict[tuple[object, object], dict[str, Any]] = {}
-    for rec in _purge_events(state_dir):
+    for rec in _queue_events(state_dir):
         action, fp = rec.get("action"), rec.get("selector_sha256")
         if action == "purge-enqueued":
             open_[(fp, rec.get("reason"))] = rec
@@ -1762,6 +1765,15 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
         for key, rec in open_.items()
         if key not in have and (gone_file or rec.get("dequeue_audited") is True)
     ]
+
+
+def _queue_events(state_dir: Path) -> list[dict[str, Any]]:
+    """:func:`_purge_events`, or the audit trail's lines alone when the purge record cannot be read (its own
+    governance.suppressed FAIL says why), for :func:`lost_queued` (B13 round 31 C539's review)."""
+    try:
+        return _purge_events(state_dir)
+    except (AgentSyncError, OSError):
+        return _audit_events(state_dir)
 
 
 def _lost_entry(rec: Mapping[str, Any]) -> str:
@@ -2000,7 +2012,15 @@ def _when(recs: Sequence[Mapping[str, Any]]) -> str:
 
 def governance_lost(state_dir: Path) -> GovernanceLostError | None:
     """The suppression list's or the purge queue's :class:`GovernanceLostError`, the first; None when
-    neither lost a purge the audit trail records, or either cannot be read (its own FAIL says why)."""
+    neither lost a purge the audit trail records, or either cannot be read (its own FAIL says why). The
+    commands' guard: None too over a purge record this account cannot open, so the sync stops on that record
+    in its own refused kind, with the chmod that fixes it, never as the person's lost list (B13 round 31
+    C539's review); status's governance.purge_queue line reads :func:`queue_lost` itself."""
+    try:
+        recorded_purges(state_dir)
+    except GovernanceError as exc:
+        if type(exc) is GovernanceError:  # refused open: no Unread kind, its cause the PermissionError
+            return None
     return suppressions_lost(state_dir) or queue_lost(state_dir)
 
 
@@ -2033,7 +2053,11 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
 
 
 def queue_lost(state_dir: Path) -> GovernanceLostError | None:
-    """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None."""
+    """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None. A purge record that
+    cannot be read (its own governance.suppressed FAIL says why) is judged past, from the audit trail alone
+    (:func:`lost_queued`), so a queued purge the queue lost is never hidden behind the record's error (B13
+    round 31 C539; ruling 46); a sync over that record still stops on the record's own error first
+    (:func:`governance_damaged`, :func:`governance_lost`)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):

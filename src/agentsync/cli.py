@@ -2330,6 +2330,13 @@ def _check(
 
 _PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
 
+_TRAIL_ALONE = (
+    "judged from agentsync's audit trail alone, which shows no queued purge the queue lost: the purge record "
+    "cannot be read, and the governance.suppressed line says why"
+)
+"""governance.purge_queue's clause over a purge record that cannot be read and a queue that lost nothing
+(B13 round 31 C539 and its review): its own [info] line with nothing queued, after the kept entries' line."""
+
 _PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy")
 
 
@@ -2775,16 +2782,30 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_refused_check(config, "governance.purge_queue", exc))
         return out
     queued, kept = split.runnable, split.kept
+    # the purge record read apart: one that cannot be read never reads as "no purge queued", and the queue's
+    # loss is judged from the audit trail alone, each lost entry FAILed with its redo (B13 round 31 C539;
+    # ruling 46), as the hold record's C349
+    record_read = True
+    try:
+        governance.recorded_purges(config.state_paths.root)
+    except (AgentSyncError, OSError):  # its governance.suppressed FAIL says why
+        record_read = False
     gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
     if not queued and not kept and gone is None:  # one governance.purge_queue line in every state (C155)
         # never "no purge queued" beside the FAIL of a queue that lost one (B13 round 30 C345; ruling 40)
-        out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
+        if record_read:
+            out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
+        else:  # an [info] line, never a second FAIL of the record, nor "no longer holds" (C539)
+            out.append(_check("governance.purge_queue", False, _TRAIL_ALONE, doctor.Severity.INFO))
     if gone is not None:
         out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
     kept_text = "; ".join(governance.kept_lines(kept))
     also = f"; {kept_text}" if kept else ""
-    if not queued and kept:
+    if not queued and kept and record_read:
         out.append(_check("governance.purge_queue", True, kept_text, doctor.Severity.INFO))
+    elif not queued and kept:  # never [ok] over a record that cannot be read (C539's review)
+        trail = "" if gone is not None else f"; {_TRAIL_ALONE}"
+        out.append(_check("governance.purge_queue", False, kept_text + trail, doctor.Severity.INFO))
     if queued:
         # each reason actually queued, never a fixed list that misnamed a published credential (I91)
         detail = f"{plural(len(queued), 'purge request')} queued ({governance.reason_counts(queued)}){also}"

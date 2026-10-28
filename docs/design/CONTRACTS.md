@@ -34070,6 +34070,9 @@ records suppressed` (governance.suppressed) and `no longer holds <n> purge(s) th
 not done` (governance.purge_queue). Tests: `test_cli.py`
 `test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs`,
 `test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync`.
+Amended 2026-10-28, §16.210 C539: `no purge queued` also needs the purge record read; one that cannot be read gives
+the one `[info]` line `judged from agentsync's audit trail alone, ...`, and `queue_lost` judges the loss from the
+trail.
 
 C316 with C333 (ruling 42): `governance.HOLD_LIST_PUT_BACK` reads `then, if the hold list had listed any hold, puts
 the hold list back from a copy they trust`: no pronoun, which read as the folder just moved aside. The conditional
@@ -34713,7 +34716,26 @@ hold as set and not released` is install.sh's own and reaches no report line, so
 
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
-Reserved for round 31 lane B of B13.
+C539 (2026-10-28): **a purge record that cannot be read never hides a queued purge the queue lost (ruling 46).**
+`governance.queue_lost` read the record through `lost_queued` inside a blanket suppression, so a damaged
+purge-record.json returned None and status printed `[ok  ] governance.purge_queue — no purge queued` beside the
+record's governance.suppressed FAIL and a lost erasure. Now `lost_queued` replays the trail's lines alone
+(`_queue_events`, falling back to `_audit_events`) when `_purge_events` raises, so each lost entry keeps its
+governance.purge_queue FAIL with its redo, in status, the sync's guard, the listing note, the setup report's count,
+both dry runs' lost lines and a hand purge's `purge-covered` line (`_lost_covered`) alike. Status reads the record
+apart, as the hold record's C349: `no purge queued` only when it read; else, with nothing queued, kept or lost, one
+`[info] governance.purge_queue — judged from agentsync's audit trail alone, which shows no queued purge the queue
+lost: the purge record cannot be read, and the governance.suppressed line says why` (no second FAIL, no ` no longer
+holds `; "agentsync's audit trail" and "the purge record cannot be read" are fixed phrases of the report's value
+screen); with kept entries only, their line is `[info]`, never `[ok  ]`, the same clause after it when nothing is
+lost. A damaged record still stops the sync first on its own error (`governance_damaged` runs before
+`governance_lost`), and a record this account cannot open, which `governance_damaged` passes, makes
+`governance_lost` (the commands' guard) return None, so the sync stops on it in its own kind (`file=purge-record
+owner=agent kind=refused`, the chmod on stderr) and, after the chmod, beside a lost queue as the lost list
+(`kind=lost-list`). Tests: `test_cli.py` `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`,
+`test_a_purge_record_this_account_cannot_open_stops_the_sync_on_its_chmod_before_a_lost_queue`,
+`test_every_reader_of_a_lost_queue_judges_it_from_the_trail_past_an_unreadable_purge_record`,
+`test_a_kept_queued_purge_beside_an_unreadable_purge_record_is_never_ok`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

@@ -6350,6 +6350,12 @@ lost-hold wait at the lost-hold paragraph, C346's listed-only closing line at §
 bullet, C318's named actors at §16.200's queue-split paragraph, C353's plural at its status-and-doctor
 paragraph and C322's two-side tail at §16.190's status-and-doctor paragraph."""
 
+_ROUND_31_B_PARAGRAPH_AMENDS = (
+    ("16.205", "C345 and the lost list's stop kind (ruling 40): status prints", "§16.210 C539"),
+)
+"""Round 31 lane B's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C539's unread purge record at §16.205's C345 paragraph."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -6477,6 +6483,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_30_E_PARAGRAPH_AMENDS,
         *_ROUND_30_B_PARAGRAPH_AMENDS,
         *_ROUND_31_E_PARAGRAPH_AMENDS,
+        *_ROUND_31_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

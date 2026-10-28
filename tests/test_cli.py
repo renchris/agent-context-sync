@@ -6489,6 +6489,135 @@ def test_a_purge_queue_that_lost_a_queued_purge_stops_the_sync_until_it_runs(
     assert not (initialised.docs_repo / page).exists()
 
 
+def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C539 (ruling 46): with purge-record.json damaged, status printed the record's
+    governance.suppressed FAIL beside "[ok] governance.purge_queue — no purge queued", since queue_lost
+    swallowed the record's error into None, though the queue had lost an erasure. The loss is judged from
+    the audit trail alone, the entry FAILed with its redo; with nothing lost, one [info] line, no ok."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    record = governance.purge_record_file(root)
+    record.write_text("{", encoding="utf-8")
+    # nothing queued or lost: one [info] line, never "no purge queued" nor a second FAIL of the record
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ") and str(record) in ln], out
+    (only,) = [ln for ln in out if " governance.purge_queue " in ln]
+    assert only.startswith("[info] ") and "judged from agentsync's audit trail alone" in only, only
+    assert " no longer holds " not in only, only
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    governance._queue_file(root).rename(root / "queue.kept")
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert "no longer holds 1 purge the audit trail records as queued" in failed, failed
+    assert f"`{cli.loop.BIN} purge id={sid} --source source --reason erasure-request`" in failed, failed
+    assert not [ln for ln in out if " governance.purge_queue " in ln and not ln.startswith("[FAIL]")], out
+    # the record's own error still stops the sync first, in its own kind, never the lost list's
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert " kind=lost-list" not in line, line
+
+
+def test_a_purge_record_this_account_cannot_open_stops_the_sync_on_its_chmod_before_a_lost_queue(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C539's review: with this account's own purge-record.json at mode 0000 and the queue
+    lost, the guard judged the loss from the trail and the sync stopped as the person's lost list, with no
+    chmod. It stops on the record in its own refused kind with the chmod, status still FAILs the lost entry,
+    and after the chmod the stop is the lost list's."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    governance._queue_file(root).rename(root / "queue.kept")
+    record = governance.purge_record_file(root)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    record.chmod(0)
+    try:
+        _rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+        assert "no longer holds 1 purge the audit trail records as queued" in failed, failed
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        said = capsys.readouterr()
+        assert "chmod 600 " in said.err and "purge-record.json" in said.err, said.err
+        assert "this account cannot open a state file" in said.out, said.out
+        (line,) = stops.read_text(encoding="utf-8").splitlines()
+        assert re.fullmatch(r"\S+ sync-stop file=purge-record rc=1 owner=agent kind=refused", line), line
+    finally:
+        record.chmod(0o600)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    last = stops.read_text(encoding="utf-8").splitlines()[-1]
+    assert re.fullmatch(r"\S+ sync-stop file=governance rc=1 owner=person kind=lost-list", last), last
+
+
+def test_every_reader_of_a_lost_queue_judges_it_from_the_trail_past_an_unreadable_purge_record(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C539's review: only status's guard read past an unreadable purge record, so the setup
+    report's count, the dry runs and a hand purge missed the lost queue; a hand `purge path=` under a 0000
+    record wrote no purge-covered line and the entry never closed. Every reader replays the trail alone."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    governance._queue_file(root).rename(root / "queue.kept")
+    record = governance.purge_record_file(root)
+    kept = record.read_bytes()
+    record.write_text("{", encoding="utf-8")
+    assert [r["reason"] for r in governance.lost_queued(root)] == ["erasure-request"]
+    assert setup_report._lost_queue_line(initialised).startswith(
+        "- 1 purge recorded in the audit trail is not"
+    )
+    assert governance.lost_queue_count_line(root) is not None
+    record.write_bytes(kept)
+    record.chmod(0)
+    try:
+        hand = ["purge", "path=projects/sample.txt", "--source", "source", "--reason", "erasure-request"]
+        assert cli.main([*hand, "--config", cfg]) == cli.EXIT_OK
+        assert "VERIFIED · 1 item" in capsys.readouterr().out
+        covered = [r for r in governance.read_audit(root) if r["action"] == "purge-covered"]
+        assert [r["selector_sha256"] for r in covered] == [selector.fingerprint()], covered
+    finally:
+        record.chmod(0o600)
+    assert governance.lost_queued(root) == []
+    assert _lost_queue_line(cfg, capsys) is None
+
+
+def test_a_kept_queued_purge_beside_an_unreadable_purge_record_is_never_ok(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C539's review: with only a kept upstream deletion queued and the purge record damaged,
+    status printed `[ok  ] governance.purge_queue — 1 upstream deletion stays queued ...`. The kept line is
+    [info], judged from the trail alone, one line, never ` no longer holds `."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.UPSTREAM_DELETED)
+    _rc, out = _status(cfg, capsys)
+    (ok,) = [ln for ln in out if re.match(r"\[.{4}\] governance\.purge_queue ", ln)]
+    assert ok.startswith("[ok  ] ") and "stays queued" in ok, ok
+    governance.purge_record_file(root).write_text("{", encoding="utf-8")
+    _rc, out = _status(cfg, capsys)
+    (only,) = [ln for ln in out if re.match(r"\[.{4}\] governance\.purge_queue ", ln)]
+    assert only.startswith("[info] ") and "stays queued" in only, only
+    assert "judged from agentsync's audit trail alone, which shows no queued purge the queue lost" in only, (
+        only
+    )
+    assert " no longer holds " not in only, only
+
+
 def test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
