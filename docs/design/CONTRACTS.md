@@ -35392,3 +35392,13 @@ reader finds an excluded label on is refused and its purge queued, that the sync
 <n> mail files not yet re-screened` until each is fetched, and that a [policy] re-screen still pending keeps its own
 words. Test: `test_the_records_page_says_an_update_screens_mail_again_for_a_new_label_reader`, which reads the sync's
 share and STATE.md's head from `cli` and `cycle`.
+
+**The records page splits a new start's queue by reason** (C581, ruling 51; `docs/deploy/data-governance.md`). The
+lost manifest bullet's new-start part said `purge --queue` leaves each entry queued until the next sync, then looks
+each one's id up, takes off only what history names and keeps the rest `kept until its id is found`, and gave
+`--forget` for any of them; but only upstream-deleted and label-escalation entries (`governance.KEPT_REASONS`) are
+kept or looked up. A DLP, erasure or operator entry runs as any purge once the manifest is no longer reported lost,
+before the first sync too, leaves the queue once its purge verifies, and `--forget` refuses it (lane B's C565,
+01595791a). The bullet now splits the queue by reason before the pinned sentence that opens `After a new start, run`,
+whose words stay. Test: `test_the_records_page_binds_the_new_start_queue_rules_to_the_kept_reasons`, which reads
+`KEPT_REASONS`, `PurgeReason` and `forget_queued`'s refusal from `governance`.

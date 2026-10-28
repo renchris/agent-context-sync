@@ -7286,6 +7286,36 @@ def test_the_records_page_says_an_update_screens_mail_again_for_a_new_label_read
     )
 
 
+def test_the_records_page_binds_the_new_start_queue_rules_to_the_kept_reasons() -> None:
+    """B13 round 31 C581 (ruling 51): the lost manifest bullet's new-start part said `purge --queue` leaves
+    each entry queued, looks each one's id up, takes off only what history names and keeps one `kept until
+    its id is found`, and gave `--forget`, all of every reason; but only upstream-deleted and
+    label-escalation entries (KEPT_REASONS) are kept or looked up, a DLP, erasure or operator entry runs as
+    a purge once the manifest is no longer lost and leaves the queue once its purge verifies, and
+    `--forget` refuses it. The bullet splits the queue by reason before the pinned new-start sentence."""
+    from agentsync import governance  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost manifest:\*\* (.*?)(?= - \*\*| ## )", page)
+    kept = {r.value for r in governance.KEPT_REASONS}
+    assert kept == {"upstream-deleted", "label-escalation"}
+    others = {r.value for r in governance.PurgeReason} - kept
+    assert others == {"dlp-remediation", "erasure-request", "operator"}
+    split = (
+        "A new start splits the queue by reason. DLP, erasure and operator entries are never kept or"
+        " looked up: once the manifest is no longer reported lost, `agentsync purge --queue` runs them as"
+        " it would any purge, before the first sync too, and each leaves the queue once its purge verifies,"
+        " even if it erased nothing; `--forget` refuses them. Upstream-deleted and label-escalation entries"
+        " by source and id, the ones the sync queues for a file that may come back, wait and are looked up,"
+        " as follows (B13 round 31 C581)."
+    )
+    assert split in bullet
+    assert bullet.index(split) < bullet.index("After a new start, run `agentsync sync` first:")
+    forget = inspect.getsource(governance.forget_queued)
+    assert "if q.reason not in KEPT_REASONS:" in forget
+    assert "entry stays queued: --forget takes only an " in forget
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

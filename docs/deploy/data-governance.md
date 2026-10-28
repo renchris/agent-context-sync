@@ -82,8 +82,13 @@ is a copy that no purge reaches, so exclude it too.
   file at a mode that refuses it, status's NEXT gives its `chmod 600` first, and the manifest's fix comes only if
   the manifest is still lost after that. A new start converts every file again and forgets the deletions, the
   deletion breaker's suspended removals and the archive it had recorded. After a restore, preview with
-  `agentsync purge --queue --dry-run`, then run the purge. After a new start, run `agentsync sync` first:
-  `purge --queue` before it leaves each entry queued `until the next sync builds the manifest`, and an entry whose
+  `agentsync purge --queue --dry-run`, then run the purge. A new start splits the queue by reason. DLP, erasure and
+  operator entries are never kept or looked up: once the manifest is no longer reported lost, `agentsync purge
+  --queue` runs them as it would any purge, before the first sync too, and each leaves the queue once its purge
+  verifies, even if it erased nothing; `--forget` refuses them. Upstream-deleted and label-escalation entries by
+  source and id, the ones the sync queues for a file that may come back, wait and are looked up, as follows (B13 round
+  31 C581). After a new start, run `agentsync sync` first: `purge --queue` before it leaves each entry queued `until
+  the next sync builds the manifest`, and an entry whose
   source that sync did not list in full stays `not judged yet` until a sync does. After that, `purge --queue`
   looks for each entry's id in the docs history and runs the entry once it finds one; a run takes off the queue
   only what history names, and an entry whose id reaches nothing stays queued, `kept until its id is found`. To
