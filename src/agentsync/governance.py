@@ -1813,7 +1813,10 @@ def _rebuilt_ids(db: Path, recs: Sequence[Mapping[str, Any]]) -> dict[int, str]:
     """For each lost stable-id ``purge-enqueued`` record of ``recs`` (by index), the stable id whose
     selector fingerprint is the one it keeps, found among the manifest's ids of its source (aliases and
     tombstones too): the selector rebuilt by fingerprint, so its text never enters the audit trail (B13
-    round 30 C370, C312; ruling 35)."""
+    round 30 C370, C312; ruling 35). Each id is fingerprinted once per record source (None: every source),
+    the first in sorted order kept for each fingerprint, so 300 lost records over 20,000 ids is no 300 scans
+    of them (B13 round 31 C538). Nothing outlives the call: after a purge, the next one reads the manifest
+    again."""
     want = {
         n: (r.get("source_id"), r.get("selector_sha256"))
         for n, r in enumerate(recs)
@@ -1821,17 +1824,26 @@ def _rebuilt_ids(db: Path, recs: Sequence[Mapping[str, Any]]) -> dict[int, str]:
     }
     if not want:
         return {}
-    ids = _manifest_ids(db)
+    ids = sorted(_manifest_ids(db))
+    tables: dict[str | None, dict[str, str]] = {}
+
+    def table(source: str | None) -> dict[str, str]:
+        # the fingerprint hashes the source too, so a table per record source, never one over every source
+        if source not in tables:
+            found: dict[str, str] = {}
+            for s, i in ids:
+                if source not in (None, s):
+                    continue
+                with contextlib.suppress(GovernanceError):  # an invalid source: every one raises, none found
+                    found.setdefault(PurgeSelector(source_id=source, stable_id=i).fingerprint(), i)
+            tables[source] = found
+        return tables[source]
+
     out: dict[int, str] = {}
     for n, (src, fp) in want.items():
         source = src if isinstance(src, str) and src else None
-        for s, i in sorted(ids):
-            if source not in (None, s):
-                continue
-            with contextlib.suppress(GovernanceError):
-                if PurgeSelector(source_id=source, stable_id=i).fingerprint() == fp:
-                    out[n] = i
-                    break
+        if isinstance(fp, str) and (hit := table(source).get(fp)) is not None:
+            out[n] = hit
     return out
 
 

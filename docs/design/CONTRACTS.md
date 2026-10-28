@@ -34737,6 +34737,15 @@ owner=agent kind=refused`, the chmod on stderr) and, after the chmod, beside a l
 `test_every_reader_of_a_lost_queue_judges_it_from_the_trail_past_an_unreadable_purge_record`,
 `test_a_kept_queued_purge_beside_an_unreadable_purge_record_is_never_ok`.
 
+C538 (2026-10-28): **a lost queued purge's id is rebuilt with each manifest id fingerprinted once per record
+source.** `governance._rebuilt_ids` walked every manifest id of a lost stable-id record's source, one
+`PurgeSelector` fingerprint each, per record: 300 lost records over 20,000 ids took about 30 s for each of status's
+reads. It now builds one fingerprint-to-id table per record source (None: every source; the fingerprint hashes the
+source, so never one table over all), the first id in sorted order kept for each fingerprint, as the scan's first
+match was. No table or redo text outlives the call (no module-level cache), so a command run after a purge in the
+same process reads the manifest again. Test: `test_governance.py`
+`test_a_lost_queued_ids_rebuild_fingerprints_each_manifest_id_once_per_source`.
+
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
 Round 31's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 31"; specs `round31/items/C<n>.md`, the

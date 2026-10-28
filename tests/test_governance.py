@@ -2383,6 +2383,48 @@ def test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_f
     assert "contoso-0" not in trail and "contoso-old" not in trail and "legal/" not in trail
 
 
+def test_a_lost_queued_ids_rebuild_fingerprints_each_manifest_id_once_per_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 31 C538: each lost stable-id record walked every manifest id of its source, one fingerprint
+    each, so 300 lost records over 20,000 ids took about 30 s per status check. Each id is fingerprinted once
+    per record source; a source-narrowed and an unnarrowed record are both rebuilt, the first in sorted
+    order, and nothing outlives the call, so a manifest that changed is read again."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    db = state / "manifest.sqlite"
+    ids = [f"contoso-{n:04d}" for n in range(40)]
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE items (source_id TEXT, stable_id TEXT)")
+    conn.executemany("INSERT INTO items VALUES (?, ?)", [("contoso", i) for i in ids])
+    conn.execute("INSERT INTO items VALUES ('fabrikam', 'fabrikam-0001')")
+    conn.commit()
+    conn.close()
+    sels = [gv.PurgeSelector(stable_id=f"contoso-gone-{n}", source_id="contoso") for n in range(8)]
+    sels += [gv.PurgeSelector(stable_id="contoso-0007", source_id="contoso")]
+    sels += [gv.PurgeSelector(stable_id="fabrikam-0001")]  # every source
+    for sel in sels:
+        assert gv.enqueue_purge(state, sel, gv.PurgeReason.ERASURE_REQUEST)
+    gv._queue_file(state).rename(state / "queue.away")
+    lost = gv.lost_queued(state)
+    assert [r.get("source_id") for r in lost] == ["contoso"] * 9 + [None]
+    calls: list[str | None] = []
+    fingerprint = gv.PurgeSelector.fingerprint
+
+    def counted(self: gv.PurgeSelector) -> str:
+        calls.append(self.source_id)
+        return fingerprint(self)
+
+    monkeypatch.setattr(gv.PurgeSelector, "fingerprint", counted)
+    assert gv._rebuilt_ids(db, lost) == {8: "contoso-0007", 9: "fabrikam-0001"}
+    assert calls.count("contoso") <= len(ids) and calls.count(None) <= len(ids) + 1, len(calls)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM items WHERE stable_id = 'contoso-0007'")
+    conn.commit()
+    conn.close()
+    assert gv._rebuilt_ids(db, lost) == {9: "fabrikam-0001"}
+
+
 def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks(
     tmp_path: Path,
 ) -> None:
