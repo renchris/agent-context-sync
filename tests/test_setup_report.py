@@ -480,10 +480,10 @@ def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
     reason = f"{cycle._LABEL_UNREADABLE_HEAD} (Contoso reader timed out); a label rule is set"
     assert setup_report.quarantine_class(reason) == "label unreadable"
     assert setup_report.quarantine_class(f"{policy.REFUSED_PREFIX}no sensitivity label") == "label policy"
-    for n, whose in ((1, "its label"), (2, "their labels")):
+    for n, whose in ((1, "its label data"), (2, "their label data")):
         line = (
             "1 source synced (of the converted: 0 unreadable, 0 failed, 3 refused, 1 of them withheld: its "
-            f"label cannot be read, {n} of them refused: {whose} could not be read)"
+            f"label cannot be read, {n} of them under a label rule because {whose} did not parse)"
         )
         split = setup_report._SPLIT_RE.search(line)
         assert split is not None and split.groups() == ("0", "0", "3", "1"), split

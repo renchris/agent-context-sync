@@ -3030,10 +3030,38 @@ def test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart
     cli._print_report(report)
     line = capsys.readouterr().out.splitlines()[-1]
     want = (
-        "3 refused, 1 of them withheld: its label cannot be read, 2 of them refused: their labels could "
-        "not be read"
+        "3 refused, 1 of them withheld: its label cannot be read, 2 of them under a label rule because their "
+        "label data did not parse"
     )
     assert want in line, line
+    split = setup_report._SPLIT_RE.search(line)
+    assert split is not None and (split.group(3), split.group(4)) == ("3", "1"), line
+
+
+def test_under_a_name_rule_the_label_clauses_name_their_causes_and_say_refused_once_c525(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C525/C522: under a label rule the split read "2 of them withheld: their labels cannot be
+    read, 2 of them refused: their labels could not be read", two clauses apart only in tense, and a second
+    "refused" inside a group already all refused. K keeps its words (``_SPLIT_RE`` and install.sh read them);
+    L names its own cause, so "refused" is said once, in R."""
+    for name in ("Contoso plan.eml", "Contoso notes.eml"):
+        (local_source_dir / "projects" / name).write_bytes(
+            b"Subject: Contoso plan\r\nmsip_labels: MSIP_Label_notaguid_Enabled=True;\r\n"
+            b"Content-Type: text/plain\r\n\r\nAgenda.\r\n"
+        )
+    (local_source_dir / KICKOFF_MSG).parent.mkdir(parents=True, exist_ok=True)
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(subject="Contoso kickoff", plain="Agenda.\n"))
+    rule = '\n[policy]\nexclude_label_names = ["Contoso Confidential"]\n'
+    report = run(config_with(tmp_path, local_source_dir, rule))
+    [rep] = report.sources
+    assert (rep.refused, rep.withheld_read, rep.label_unreadable) == (3, 1, 2), rep
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert "3 refused, 1 of them withheld: its label cannot be read, " in line, line
+    assert ", 2 of them under a label rule because their label data did not parse" in line, line
+    assert line.count("refused") == 1 and ", 3 refused" in line, line
     split = setup_report._SPLIT_RE.search(line)
     assert split is not None and (split.group(3), split.group(4)) == ("3", "1"), line
 

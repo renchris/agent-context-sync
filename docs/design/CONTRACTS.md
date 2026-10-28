@@ -33607,6 +33607,8 @@ label unreadable`, `cycle._LABEL_UNREADABLE_HEAD`, a test keeping the report's c
 generic one. `_SPLIT_RE` still reads R and K from a line with the new clause, one or more. §16.28's class table
 has the row. Test: `test_a_label_it_cannot_read_is_its_own_quarantine_class_c326`, and the class's two reasons
 in the mapping test's cases.
+Amended 2026-10-28, §16.210 C525: the clause now reads `, N of them under a label rule because its label data did not
+parse` (`their label data` for more), with no second "refused"; `_SPLIT_RE` still reads R and K.
 
 C357 (2026-10-26): **the held heads are held_words' own** (lane B's C357). Lane B removed
 `governance.HELD_HEAD` and builds `held_words` inline, so `_HELD_HEADS`, which put a queue warn whose every entry
@@ -34245,6 +34247,10 @@ generic `refused: `) and its re-render of the clause are lane RA's. Test: `test_
 `test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k` (`3 refused, 1 of them
 withheld: its label cannot be read, 2 of them refused: their labels could not be read`, `_SPLIT_RE` still R=3,
 K=1).
+Amended 2026-10-28, §16.210 C525: the clause after K now reads `, N of them under a label rule because its label data
+did not parse` (`their label data` for more); K's words, `_SPLIT_RE` and install.sh's readers are unchanged.
+Amended 2026-10-28, §16.210 C525: the test's line now reads `3 refused, 1 of them withheld: its label cannot be read,
+2 of them under a label rule because their label data did not parse`, `_SPLIT_RE` still R=3, K=1.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
@@ -34862,6 +34868,19 @@ installed manifest without it (`setup_report`, lane RA). Tests: `test_manifest.p
 name, keep their target's mode) and `test_the_sweep_removes_a_two_hour_old_copy_holding_a_side_folder_it_cannot_list_c541`
 (a fresh copy stays), and `test_remove_ro_copy_never_follows_a_link_put_at_a_side_after_its_lstat_c541` (a side
 judged a folder and a link by its chmod: the folder outside keeps its mode).
+
+C525 (2026-10-28): **under a label rule the label clauses name their causes and say "refused" once** (with C522;
+ruling 59). The split read `2 of them withheld: their labels cannot be read, 2 of them refused: their labels could
+not be read`, two clauses apart only in tense, and a second "refused" inside a group R already counts whole. K's clause
+keeps its words (`_SPLIT_RE`, install.sh and the setup report's re-render read them); L's clause, after K and before
+the credential clause, is now `, N of them under a label rule because its label data did not parse` (`their label
+data` for more), with no "refused", "converted", "deferred", "read again", "first read", "of them a first" or "of them
+read for". C522's own words (`N of them because their labels could not be read`) are not built. Tests: `test_cycle.py`
+`test_under_a_name_rule_the_label_clauses_name_their_causes_and_say_refused_once_c525` (two Contoso mails with an
+msip_labels header that does not parse and one .msg under `exclude_label_names`: K's words, the new clause, "refused"
+only in `, 3 refused`, `_SPLIT_RE` R=3 and K=1) and
+`test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k`; `test_setup_report.py`
+`test_a_label_it_cannot_read_is_its_own_quarantine_class_c326` builds the new clause.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
