@@ -33244,8 +33244,8 @@ as `no row` less the split. `_SPLIT_KINDS` and governance's `NOT_LOOKED_UP` keep
 dry run read them. The guide's Purge queue row and its test give the new heads (§16.198, §16.202 amended). Test:
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304`.
 Amended 2026-10-28, §16.208 C510: the middle head reads `- no row, no real queue run has searched the docs history
-yet: ...`, since a dry run searches the history and records nothing, and its tail says the dry run `looks its id up
-and records nothing`; no head holds `not looked up`.
+yet: ...`, since a dry run searches the history and writes nothing, and its tail says the dry run `looks its id up
+and writes nothing`; no head holds `not looked up` or a hold word (ruling 55).
 
 C336 (2026-10-26): **the no-trace line names `--forget` only for the entries a run looks up** (C336; ruling 43;
 amends §16.198 C188). The line
@@ -34504,7 +34504,10 @@ each part into the line it prints (the `(record)` origin's three forms through `
 record's not-a-file, damaged and unread words, the sync-stop line's `file=hold-record`), and `_FIXED_VALUE_PHRASES`
 gains each printed clause whole, never a bare word and none with `|`; never-printed literals (regex sources, word
 lists, dict keys, the manifest's SQL, the OCR filter's Lua, the docs repo's README and skill text) are skipped by
-name. The re-read sentence reads `the newest run that says what its re-read looked for` (dated line at §16.80 K5).
+name. The re-read sentence reads `the newest run that says what its re-read looked for` (dated line at §16.80 K5), and
+the per-source re-read table's cell for a source with no re-read record reads `not recorded`, not `no record`: a
+bare two-word cell could only be kept by a fragment phrase, which would leave a person's own `no record` whole.
+A phrase is three words or more, or holds a mark no prose has (`.`, `_`, `=`, `/`, `(`, `:`, `'`, `-`).
 install.sh's FIXED_VALUE_PHRASES takes the same phrases in the same commit, as the parity test reads both; its shell
 probe is lane RB's. A quoted value is still cut and still makes the report private. Tests:
 `test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502` (per word) and
@@ -34564,7 +34567,7 @@ queued purge from before the new start`: the head is chosen from governance's st
 The finder's `not looked up by a queue run yet` would bring back the phrase C304 removed (one phrase with two meanings
 beside the `not looked up` column), so the head reads `- no row, no real queue run has searched the docs history yet:
 N queued purge(s) from before the new start; `~/.local/bin/agentsync purge --queue --dry-run` looks its id up and
-records nothing, and `~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere`; the dry run
+writes nothing (never `records nothing`, which a hold value "Records" would cut, ruling 55), and `~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere`; the dry run
 stays read-only and `_SPLIT_KINDS` and `NOT_LOOKED_UP` keep their names. The guide's Purge queue row
 (`docs/deploy/setup-feedback.md`), `tests/test_deploy_pack.py`'s head tuple and test_cli's pins move with it. Tests:
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304` (which now asserts no head holds `not looked up`

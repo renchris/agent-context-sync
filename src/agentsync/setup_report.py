@@ -1372,7 +1372,6 @@ _FIXED_VALUE_PHRASES = (
     "- re-read: no source has a record, and no file on this Mac",
     "by whichever build wrote the record.",
     "is a record another build or engine left",
-    " no record ",
     "and the record keeps its count",
     "inbox source with a record (",
     "inbox sources with a record (",
@@ -1421,7 +1420,8 @@ _FIXED_VALUE_PHRASES = (
     "a recording's label cannot be read",
     "this recording's own label cannot be read",
     "the label of a binary .msg",
-    "the label of a ",
+    "withheld by label rule: the label of a ",
+    "label rule is set and the label of a ",
     "is converted and its label screened",
     "an .eml's label is read.",
     "a PDF's label is read.",
@@ -1447,7 +1447,7 @@ _FIXED_VALUE_PHRASES = (
     "the previous label reader",
     "sensitivity_label",
     "launchd_label_prefix",
-    "launchd label ",
+    "launchd label '",
     "lock label must be 1-64 non-whitespace characters",
     "or a label that blocks download",
     "its lit samples show another label",
@@ -9012,7 +9012,7 @@ def _reread_lines(
         if mine is not None and looked is not None and _reread_number(mine["for"]) != looked.n("reread_for"):
             mine = None  # left by another build or engine: no cycle goes by it
         if not records:
-            finished = "no record"
+            finished = "not recorded"  # B13 round 31 ruling 55: no hold word in a bare table cell
         elif mine is None:
             finished = "not started"
         else:
@@ -10002,10 +10002,10 @@ def _split_lines(
             else "leaves queued any whose id is found nowhere"
         )
         # B13 round 31 C510: the real run, which the dry run is not, is the one that has not searched yet; a
-        # dry run searches but records nothing, so the head never says the history is unsearched after one
+        # dry run searches but writes nothing, so the head never says the history is unsearched after one
         out.append(
             f"- no row, no real queue run has searched the docs history yet: {_plural(n, 'queued purge')} "
-            f"from before the new start; `{bin_} purge --queue --dry-run` looks {ids} up and records "
+            f"from before the new start; `{bin_} purge --queue --dry-run` looks {ids} up and writes "
             f"nothing, and `{bin_} purge --queue` {kept}"
         )
     n = split["found nothing"]
@@ -16734,7 +16734,7 @@ and ``/private/tmp/...`` are both ``~``): it reads as a contradiction, so it is 
 round 6 G41). A note whose forms still differ (``~/OneDrive/...`` stored as ``~/Library/CloudStorage/...``)
 stays."""
 _ADDED_TYPED_RE = re.compile(
-    r"(?P<lead>\badded source '[^']*' to \S+ |\badded inbox source '[^']*' )"
+    r"(?P<lead>\badded source '[^']*' to .+? |\badded inbox source '[^']*' )"
     r"\((?P<typed>.+?), stored as (?P<stored>.+?)\)(?=:)"
 )
 """add-source's and init's ``(<typed>, stored as <stored>)`` note, after :data:`_SAME_STORED_RE` collapsed one

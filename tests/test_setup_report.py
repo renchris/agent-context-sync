@@ -2669,11 +2669,11 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
         "its label cannot": ["1 of them withheld: its label cannot be read"],
         "its label": ["1 of them withheld: its label cannot be read"],
         "sensitivity label ": ["refused: sensitivity label Contoso Secret is excluded by [policy]"],
+        "launchd label ": ["launchd label 'com.contoso.x y' is invalid: use letters, digits, '.', '-', '_'"],
         " with a record (": [
             "all 2 local or inbox sources with a record (x)",
             "its one local or inbox source with a record (x)",
         ],
-        "no record": ["| <folder-3> | no record | 2 | 1 | 0 | 0 | 0 | no |"],
     }
     return [t for lit in sorted(literals) for t in built.get(lit, [lit])]
 
@@ -2696,7 +2696,12 @@ def test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502(word: str)
     every = [t for w in _HOLD_WORDS for t in _hold_word_texts(w, Path("/x/state"))]
     for phrase in (p for p in setup_report._FIXED_VALUE_PHRASES if rx.search(p)):  # agentsync's, never a word
         found = setup_report._FIXED_VALUE_RES[setup_report._FIXED_VALUE_PHRASES.index(phrase)]
-        assert len(phrase.split()) > 1 or re.search(r"[._=-]", phrase), phrase
+        # never a fragment (round 30's two Quarantine class names are cells of their own, C326)
+        assert (
+            phrase in ("label policy", "label unreadable")
+            or len(phrase.split()) > 2
+            or re.search(r"[._=/(:'-]", phrase)
+        ), phrase
         assert any(found.search(t) for t in every), f"{phrase!r} is no fixed text of agentsync's"
     quote = f"note: {word.capitalize()} said the hold stays"
     assert red.redact(quote) == "note: <value> said the hold stays" and red.private_only
@@ -13185,7 +13190,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         # one PDF without an identity and one scan OCR was not run on; the online-only image does not wait
         "| <folder-2> | no | 2 | 0 | 1 | 1 | 2 | yes |",
         # the image with the no-converter stub and the deck of the field build; the Word file is online-only
-        "| <folder-3> | no record | 2 | 1 | 0 | 0 | 0 | no |",
+        "| <folder-3> | not recorded | 2 | 1 | 0 | 0 | 0 | no |",
     ]
     # OCR is off in this test (AGENTSYNC_OCR=0) and no run says what its re-read looked for: the table says
     # both, so its counts are not read as what a cycle is about to do.
@@ -13447,7 +13452,7 @@ def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]
         "- images that are not on this Mac: 2 files, 0.0 MB (1 online-only, 1 of a Graph source; none is "
         "downloaded for OCR;" in parts["OCR"]
     )
-    assert reread_rows(parts["OCR"]) == {"<folder-2>": ["no record", "1", "0", "0", "0", "0", "no"]}, (
+    assert reread_rows(parts["OCR"]) == {"<folder-2>": ["not recorded", "1", "0", "0", "0", "0", "no"]}, (
         "a Graph source has no row: nothing of it is read again"
     )
     assert "tailspin-drive" not in text
@@ -14584,7 +14589,7 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
     [head] = [ln for ln in lines if ln.startswith("- no row, ")]
     assert head == (
         "- no row, no real queue run has searched the docs history yet: 1 queued purge from before the new "
-        "start; `~/.local/bin/agentsync purge --queue --dry-run` looks its id up and records nothing, and "
+        "start; `~/.local/bin/agentsync purge --queue --dry-run` looks its id up and writes nothing, and "
         "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere"
     ), head  # lane B's C318 ending (round 30 ruling 43), singular and plural; B13 round 31 C510's head
     # B13 round 31 C510: a dry run searches the history and records nothing, so the head names the real run
@@ -14594,7 +14599,7 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
         Counter({"not looked up yet": 2}), "agentsync", lambda n: "", lambda n: ""
     )
     assert two.endswith(
-        "looks their ids up and records nothing, and `agentsync purge --queue` leaves queued any whose id is "
+        "looks their ids up and writes nothing, and `agentsync purge --queue` leaves queued any whose id is "
         "found nowhere"
     ), two
     assert two.startswith(
@@ -19277,7 +19282,7 @@ def test_an_id_that_starts_as_a_folder_name_does_is_one_placeholder(fake_mac: di
     assert len(rows) == 1 and re.fullmatch(
         r"\| <source-\d+> \| refused \| no converter \| 1 \| 0 \| - \|", rows[0]
     )
-    assert re.search(r"^\| <source-\d+> \| no record \| 1 \|", parts["OCR"], flags=re.MULTILINE)
+    assert re.search(r"^\| <source-\d+> \| not recorded \| 1 \|", parts["OCR"], flags=re.MULTILINE)
     assert not re.search(r">-?hr\b", text), "no part of the id is left beside a placeholder"
 
 
