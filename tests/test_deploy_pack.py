@@ -7037,6 +7037,28 @@ def test_the_records_page_runs_the_sync_first_while_heartbeat_keeps_round_28s_ho
     assert "restore manifest.sqlite from a copy you trust, or else move heartbeat.json aside" in bullet
 
 
+def test_the_records_page_says_accept_lost_clears_every_record_its_time_names() -> None:
+    """B13 round 31 C582 with C553 (ruling 47): the page said `--accept-lost <at>` writes one audit line and
+    clears that purge's record only, but `accept_lost_suppression` accepts every lost record whose time is
+    `<at>`, and an older build's whole-second times can share one. The page says one line per record that time
+    names, that only an older build's time can name several, and the dry run's own count words."""
+    from agentsync import cli, governance  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost suppression list:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert "clears that purge's record only" not in bullet
+    assert (
+        "it writes one `suppression-lost-accepted` audit line for each lost purge record that time names and "
+        "clears those records only" in bullet
+    )
+    source = inspect.getsource(cli._cmd_purge)
+    [said] = re.findall(r'f"\{len\(lost\)\} (purges, as that time names) \{len\(lost\)\} records', source)
+    assert f"`loss of <n> {said} <n> records`" in bullet
+    assert 'r.get("at") == at' in inspect.getsource(governance.accept_lost_suppression)
+    assert governance._iso_fine(datetime(2026, 10, 1, tzinfo=UTC)).endswith(":00.000000Z")
+    assert "timed to the microsecond" in bullet and "an older build timed purges to the second" in bullet
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

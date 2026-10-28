@@ -116,7 +116,11 @@ is a copy that no purge reaches, so exclude it too.
   hash), the sync refuses. The erased items stay out by their id and path from the audit trail. Put suppressed.json
   back from a copy you trust. With no copy, preview `agentsync purge --accept-lost <at> --dry-run`, `<at>` being the
   time status names beside the purge's reason, then run it without `--dry-run`: it writes one
-  `suppression-lost-accepted` audit line and clears that purge's record only. It gives up that purge's guard
+  `suppression-lost-accepted` audit line for each lost purge record that time names and clears those records only.
+  A purge this build runs is timed to the microsecond, so its time names one record; an older build timed purges to
+  the second, so one time can name several: the dry run then says `loss of <n> purges, as that time names <n>
+  records`, and the act accepts every one of them, so put suppressed.json back instead if you do not mean to accept
+  them all (B13 round 31 C582, C553). It gives up that purge's guard
   against a copy of its content under another name and, for a purge by a source-path glob the list no longer
   holds, its guard against a new file under that glob, while its items stay out by their id and path. A purge run
   again by hand clears its record only when it is verified and finds the content again; one that finds nothing,

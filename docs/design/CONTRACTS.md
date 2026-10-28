@@ -34470,3 +34470,15 @@ before its lost-manifest stop unless `--dry-run`, so the bullet says a real purg
 phrases test_the_records_page_says_purge_stops_over_a_lost_manifest pins stay word for word. Test:
 `test_the_records_page_runs_the_sync_first_while_heartbeat_keeps_round_28s_hold_record`, which reads the step from
 `round28_first` over a heartbeat.json holding a hold on `all` and checks it comes before `Follow status's fix:`.
+
+**The records page says `--accept-lost` clears every record its time names** (C582 with C553, ruling 47; built
+once; `docs/deploy/data-governance.md`). The lost suppression list bullet said the act writes one
+`suppression-lost-accepted` audit line and clears that purge's record only, but `governance.accept_lost_suppression`
+takes every lost record whose `at` is the time given and writes a line for each, and an older build timed its purges
+to the second (`_iso_fine`, §16.205 C344's review, gives this build's the microsecond), so one time can name several:
+a reader who meant to give up one purge's guards gave up each purge sharing its second. The page says one line for
+each lost purge record that time names, that only an older build's time can name several, the dry run's own count
+words (`loss of <n> purges, as that time names <n> records`, from `_cmd_purge`), and to put suppressed.json back
+instead when not every one is meant. Its next sentence is lane B's (C537 makes it plural) and lands after this. The
+code needs no change. Test: `test_the_records_page_says_accept_lost_clears_every_record_its_time_names`, which reads
+the count words from `_cmd_purge`'s source and the match from `accept_lost_suppression`'s.
