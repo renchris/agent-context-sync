@@ -314,6 +314,12 @@ _MAIL_SUFFIXES = (".eml", ".msg")
 _READER_RESCREEN = "label-reader:"
 """How ``_RESCREEN_META`` begins when a label reader's revision, not [policy], queued the re-screen, so
 STATE.md's line does not say [policy] changed (B13 round 30 C404)."""
+_RESCREEN_READER_META = "rescreen-reader"
+"""A JSON object ``{source_id: [stable_id, ...]}`` of the mail the label reader's re-screen marked
+(``_Cycle._check_label_reader``) and no sync has converted yet, kept while no [policy] re-screen is pending
+(a [policy] re-screen clears it), so the sync that converts one, the one that queued it or a later one,
+counts it in ``rescreened_reader``, never as a file converted again from the same bytes (B13 round 31 C505,
+C517, C518, C524, C544). Each cycle's first read drops one that waits no more."""
 _SECRET_RULES_META = "secret_rules"
 """Manifest meta: the JSON ``lints.secret_rules_identity()`` of the last secret-scan re-screen.  When the
 identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
@@ -603,6 +609,12 @@ def _without_options_hash(page: str) -> str:
     """A page with its frontmatter's ``options_hash:`` line taken out."""
     head, sep, body = page.partition("\n---\n")
     return "\n".join(ln for ln in head.split("\n") if not ln.startswith("options_hash: ")) + sep + body
+
+
+def _rescreen_suffixes(pending: str | None) -> Sequence[str]:
+    """What a pending re-screen marked: mail alone under the label reader's own marker, every label-capable
+    suffix under [policy]'s (B13 round 31 C548)."""
+    return _MAIL_SUFFIXES if (pending or "").startswith(_READER_RESCREEN) else _LABEL_CAPABLE
 
 
 def _one_line(text: str, limit: int = 300) -> str:
@@ -2055,6 +2067,8 @@ class _Cycle:
         self._credential_counted: set[tuple[str, str]] = set()
         self._rescreen_stubs: dict[str, set[str]] | None = None  # _RESCREEN_STUBS_META, read once (Y73)
         self._rescreen_stubs_moved = False  # a conversion took one out: stored after its source's pass
+        self._reader_keys: dict[str, set[str]] | None = None  # _RESCREEN_READER_META, read once (C518)
+        self._reader_keys_moved = False  # a conversion took one out: stored after its source's pass
         self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
         self._reread_n = 0  # files read again
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
@@ -2151,9 +2165,11 @@ class _Cycle:
                 self._run_source(src, arms.get(src.id), fp_changed)
                 self._flush_changes()
                 self._rescreen_stubs_save()
+                self._reader_keys_save()
             self._recording_pass()  # after every source's queue and re-reads: nothing waits behind it
             self._flush_changes()
             self._rescreen_stubs_save()
+            self._reader_keys_save()
             if self._reread_n:  # one line a cycle, and a count: never a name
                 log.info(
                     "%d file(s) converted before a capability this install has were read again; %d of "
@@ -2553,6 +2569,7 @@ class _Cycle:
         loosening must re-publish files refused under them.  The fingerprint lives in the manifest's meta
         table; a manifest without one re-screens once when label rules are active."""
         self._rescreen_stubs_load()  # before this cycle's verdicts: a stub that waits no more leaves
+        self._reader_keys_load()  # and the reader's record, before a conversion reads its hash again (C518)
         policy = self.publisher.content_policy
         current = policy.fingerprint()
         stored = self.manifest.get_meta(_POLICY_META)
@@ -2562,6 +2579,11 @@ class _Cycle:
             self._policy_rescreened = self._queue_rescreen(
                 _LABEL_CAPABLE, sorted(label_withheld_suffixes()), "[policy] changed: %d label-capable %s"
             )
+        if self._policy_rescreened and self._reader_keys_load():
+            # a [policy] re-screen marks the mail too, and the sync line counts it as the rule's (C518)
+            self._reader_keys = {}
+            self._reader_keys_moved = True
+            self._reader_keys_save()
         self.manifest.set_meta(_POLICY_META, current)
 
     def _check_label_reader(self) -> None:
@@ -2570,32 +2592,66 @@ class _Cycle:
         move with the reader, and an unchanged file is never fetched, so a mail an older reader let through
         stayed published (B13 round 30 C404, C360). The revision is written whatever the rule, so an install
         with no rule never pays; a rule set later re-screens through ``_check_policy_change``. Only mail:
-        no other reader changed, and a binary ``.msg`` withheld by its name stays as it is."""
+        no other reader changed, and a binary ``.msg`` withheld by its name stays as it is.
+
+        While no [policy] re-screen is pending, the rows it marks join ``_RESCREEN_READER_META``, so each is
+        counted as the reader's when it is converted, in this sync or a later one (B13 round 31 C518). A
+        [policy] re-screen still pending covers the mail already: its marker stays, never overwritten by the
+        reader's, and its line keeps counting every label-capable file (C548, C540)."""
         revision = str(content_policy.LABEL_READER_REVISION)
         if self.manifest.get_meta(_LABEL_READER_META) == revision:
             return
         if self.publisher.content_policy.labels_active and not self._policy_rescreened:
+            policy_pending = self._policy_pending()
+            marked: set[tuple[str, str]] = set()
             self._queue_rescreen(
                 _MAIL_SUFFIXES,
                 (),
                 "the mail label reader changed: %d mail %s",
-                pending=_READER_RESCREEN + revision,
+                pending=None if policy_pending else _READER_RESCREEN + revision,
+                marked=marked,
             )
+            if marked and not policy_pending:
+                keys = self._reader_keys_load()
+                for sid, stable in marked:
+                    keys.setdefault(sid, set()).add(stable)
+                self._reader_keys_moved = True
+                self._reader_keys_save()
         self.manifest.set_meta(_LABEL_READER_META, revision)
 
+    def _policy_pending(self) -> bool:
+        """Whether a [policy] re-screen is still pending: ``_RESCREEN_META`` holds a fingerprint, not a
+        reader's marker, and a label-capable file still waits (a marker a crashed run left with nothing
+        behind it is none; B13 round 31 C540)."""
+        stored = self.manifest.get_meta(_RESCREEN_META) or ""
+        return (
+            bool(stored)
+            and not stored.startswith(_READER_RESCREEN)
+            and self.manifest.pending_named(_LABEL_CAPABLE) > 0
+        )
+
     def _queue_rescreen(
-        self, suffixes: Sequence[str], withheld: Sequence[str], said: str, *, pending: str | None = None
+        self,
+        suffixes: Sequence[str],
+        withheld: Sequence[str],
+        said: str,
+        *,
+        pending: str | None = None,
+        marked: set[tuple[str, str]] | None = None,
     ) -> bool:
         """Mark the rows named with one of ``suffixes`` for a re-screen (``Manifest.mark_for_rescreen``, a
         withheld stub of one of ``withheld`` included), keep the stubs it queues for the sync that converts
         them, and log the count (``said``: a format with ``%d`` and the noun's ``%s``; never a name).
         ``pending`` is what ``_RESCREEN_META`` keeps while the re-screen is incomplete (the [policy]
-        fingerprint when None). Returns whether any row was marked."""
+        fingerprint when None); for the label reader's, None while a [policy] re-screen is pending, whose
+        marker then stays (B13 round 31 C548). ``marked`` takes the rows marked. Returns whether any row was
+        marked."""
         stubs = self._rescreen_stubs_load()
         policy = self.publisher.content_policy
         queued: set[tuple[str, str]] = set()
-        marked = self.manifest.mark_for_rescreen(
-            suffixes, withheld, unread_only=policy.labels_active, queued=queued
+        reader = said.startswith("the mail label reader")
+        count = self.manifest.mark_for_rescreen(
+            suffixes, withheld, unread_only=policy.labels_active, queued=queued, marked=marked
         )
         if queued:  # added to what an earlier change queued and no sync has converted yet
             for sid, stable in queued:
@@ -2606,15 +2662,17 @@ class _Cycle:
                     stubs.setdefault(sid, set()).add(stable)
             self._rescreen_stubs_moved = True
             self._rescreen_stubs_save()
-        if marked:
-            self.manifest.set_meta(_RESCREEN_META, policy.fingerprint() if pending is None else pending)
+        if count:
+            if not (reader and pending is None):  # a pending [policy] marker stays (C548)
+                self.manifest.set_meta(_RESCREEN_META, policy.fingerprint() if pending is None else pending)
             log.warning(
                 said + " queued for a re-screen",
-                marked,
-                "file" if marked == 1 else "files",
-                extra={ECHOED_WHEN: "rescreen"},
+                count,
+                "file" if count == 1 else "files",
+                # the reader's is printed only when the sync line names the reader's share (C518)
+                extra={ECHOED_WHEN: "reader-rescreen" if reader else "rescreen"},
             )
-        return bool(marked)
+        return bool(count)
 
     def _rerender_stubs(self) -> None:
         """Re-render, once per ``publish.STUB_RENDER``, every stub whose text the stored state alone decides
@@ -3009,22 +3067,24 @@ class _Cycle:
         )
 
     def _rescreen_lines(self) -> list[str]:
-        """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left)."""
+        """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left). Under the
+        label reader's own marker, only mail counts: it marked nothing else (B13 round 31 C548)."""
         pending = self.manifest.get_meta(_RESCREEN_META)
         if not pending:  # never set, or "" since the last re-screen finished
             return []
-        left = self.manifest.pending_named(_LABEL_CAPABLE)
+        left = self.manifest.pending_named(_rescreen_suffixes(pending))
         if left == 0:
             self.manifest.set_meta(_RESCREEN_META, "")
             return []
         reader = pending.startswith(
             _READER_RESCREEN
         )  # a label reader's revision queued it, not [policy] (C404)
+        noun = "mail file" if reader else "label-capable file"
         return [
             "## Content policy",
             "",
             f"- {'the mail label reader changed' if reader else '[policy] changed'}: "
-            f"{plural(left, 'label-capable file')} not yet re-screened (fetched and "
+            f"{plural(left, noun)} not yet re-screened (fetched and "
             "screened as the byte budget allows); until then "
             + ("its mirror page reflects" if left == 1 else "their mirror pages reflect")
             + (" the previous label reader" if reader else " the previous policy"),
@@ -3427,6 +3487,7 @@ class _Cycle:
             read_first=self._reread_first,
             rescreened=self._tally["rescreened"],
             rescreened_unchanged=self._tally["rescreened_unchanged"],
+            rescreened_reader=self._tally["rescreened_reader"],
             rescreen_left=self._rescreen_left(),
             converter_down=any(self._cannot_run.values()),
             legacy_retried=self._tally["legacy_retried"],
@@ -3534,12 +3595,12 @@ class _Cycle:
         return engine_only and (graph or row.dataless)
 
     def _rescreen_left(self) -> int:
-        """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is
-        pending or the manifest cannot say (B13 round 16 T33)."""
+        """The [policy] re-screen's backlog after this run, as STATE.md's line counts it (mail only under
+        the label reader's marker, C548); 0 when none is pending or the manifest cannot say (B13 round 16
+        T33)."""
         try:
-            return (
-                self.manifest.pending_named(_LABEL_CAPABLE) if self.manifest.get_meta(_RESCREEN_META) else 0
-            )
+            pending = self.manifest.get_meta(_RESCREEN_META)
+            return self.manifest.pending_named(_rescreen_suffixes(pending)) if pending else 0
         except sqlite3.Error:
             return 0
 
@@ -3702,7 +3763,9 @@ class _Cycle:
         were last converted in the run just before.  ``rescreened``: of the converted (not of the
         ``converted_seen``: a label-rule change gives a new action key, B13 round 8 J30), files converted
         again because a [policy] or secret-rule change forgot their hashes (B13 round 5 F35);
-        ``rescreened_unchanged``: of those, the ones whose pages came out the same.
+        ``rescreened_unchanged``: of those, the ones whose pages came out the same; ``rescreened_reader``: of
+        ``rescreened``, the mail the label reader's re-screen marked (``_RESCREEN_READER_META``), never in
+        ``converted_seen``: the reader's revision is no converter option (B13 round 31 C517, C518).
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
         of them that kept their page.  ``reread_first``: of the ``reread``, those whose bytes were read for
         the first time (a no-converter stub's re-read is the first read of its bytes), so they are in
@@ -5929,9 +5992,11 @@ class _Cycle:
         if self._in_recording_pass and self._helper_failed(row.name, result):
             raise _HelperDown
         self._rescreen_stub_done(sid, stable)  # converted: a rule change's queue holds it no more (Y73)
+        reader = self._reader_key_done(sid, stable) and rescreen  # the label reader's re-screen (C518)
         # the run that last converted this file from these bytes, asked before this one is recorded (the
-        # run record): a copy of a file another run converted is no file converted again
-        prior = self._converted_before(outs, result.action_key)
+        # run record): a copy of a file another run converted is no file converted again; nor is a mail the
+        # label reader's re-screen converted, which keeps its action key (B13 round 31 C517, C544)
+        prior = None if reader else self._converted_before(outs, result.action_key)
         if result.action_key and result.status in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             self.manifest.record_cache(
                 result.action_key,
@@ -6000,6 +6065,8 @@ class _Cycle:
             self._tally_converted(result, prior)
             if rescreen:
                 self._tally["rescreened"] += 1
+                if reader:
+                    self._tally["rescreened_reader"] += 1
         if rescreen and intact and duplicate is None and self._stub_unchanged(src, fresh, outs, result):
             # A re-screened refusal that gives the stub it has (B13 round 8 J28): settled as the H2 cutoff
             # settles a page, keeping its old options_hash as an unchanged page does.
@@ -6109,6 +6176,55 @@ class _Cycle:
             if not ids:
                 del self._rescreen_stubs_load()[source_id]
             self._rescreen_stubs_moved = True
+
+    def _reader_keys_load(self) -> dict[str, set[str]]:
+        """The ``_RESCREEN_READER_META`` record, read once a cycle; a value it cannot read counts as none. A
+        row that waits no more is dropped: gone, its source removed, or its hash known again (converted,
+        or new bytes read)."""
+        if self._reader_keys is None:
+            stored: dict[str, set[str]] = {}
+            with contextlib.suppress(ValueError, TypeError, AttributeError):
+                for sid, ids in json.loads(self.manifest.get_meta(_RESCREEN_READER_META) or "{}").items():
+                    stored[str(sid)] = {str(stable) for stable in ids}
+            sources = {s.id for s in self.config.sources}
+            kept = {
+                sid: live
+                for sid, ids in stored.items()
+                if sid in sources
+                and (
+                    live := {
+                        stable
+                        for stable in ids
+                        if (row := self.manifest.get_item(sid, stable)) is not None
+                        and row.content_sha256 is None
+                    }
+                )
+            }
+            self._reader_keys = kept
+            self._reader_keys_moved = kept != stored
+            self._reader_keys_save()
+        return self._reader_keys
+
+    def _reader_key_done(self, source_id: str, stable: str) -> bool:
+        """``stable`` was converted: whether the label reader's re-screen marked it; it leaves the record."""
+        ids = self._reader_keys_load().get(source_id)
+        if ids is None or stable not in ids:
+            return False
+        ids.discard(stable)
+        if not ids:
+            del self._reader_keys_load()[source_id]
+        self._reader_keys_moved = True
+        return True
+
+    def _reader_keys_save(self) -> None:
+        """Store the record when a row left it or joined it this cycle; one write a source, not a file."""
+        if self._reader_keys is None or not self._reader_keys_moved:
+            return
+        value = json.dumps(
+            {sid: sorted(ids) for sid, ids in sorted(self._reader_keys.items())}, separators=(",", ":")
+        )
+        self.manifest.set_meta(_RESCREEN_READER_META, value)
+        self._reader_keys_moved = False
 
     def _rescreen_stubs_save(self) -> None:
         """Store the record when a stub left it or joined it this cycle; one write a source, not a file."""
@@ -6912,9 +7028,10 @@ line (B13 round 17 U68)."""
 
 ECHOED_WHEN = "agentsync_echoed_when"
 """The ``extra`` key on a WARNING whose words the sync's own report may print: ``"alarm"`` (the message is one
-of a source's alarm lines), ``"checkpoint"`` (the held-checkpoint line) or ``"rescreen"`` (the run line's
-re-screen count). A run that prints its report holds such a record back from its stderr and logs it after
-the cycle only when the report did not print it; the LaunchAgent's job keeps it in its err.log, as
+of a source's alarm lines), ``"checkpoint"`` (the held-checkpoint line), ``"rescreen"`` (the run line's
+re-screen count) or ``"reader-rescreen"`` (its mail label reader's share, B13 round 31 C518). A run that
+prints its report holds such a record back from its stderr and logs it after the cycle only when the report
+did not print it; the LaunchAgent's job keeps it in its err.log, as
 ``arm_local.ECHOED_ALARM`` (B13 round 16 T33, T56; round 15 S2, S13). ``"error"``: a converter that could not
 start, which the run's error lines name for each file it left (B13 round 17 U3)."""
 

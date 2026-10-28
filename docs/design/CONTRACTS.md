@@ -1050,6 +1050,7 @@ class CycleReport:
     read_first: int = 0  # 2026-10-12 (§16.56 F86)
     rescreened: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
     rescreened_unchanged: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
+    rescreened_reader: int = 0  # 2026-10-28 (§16.211 C518): of rescreened, the mail the label reader's re-screen marked
     rescreen_left: int = 0  # 2026-10-18 (§16.125 T33; round 16 lane B)
     converter_down: bool = False  # 2026-10-19 (§16.138 V57): a converter could not start for a file this run
     legacy_retried: int = 0  # 2026-10-20 (§16.144 W18): an older build's settled failures retried from this run
@@ -15282,6 +15283,9 @@ output other than `skipped-dataless` or `tombstone` (a page made from read bytes
 line ends `; re-screened S for a rule change (also counted above, K of them unchanged)`, after every parsed
 clause and with no bare `converted`, `deferred` or `read again`, so install.sh's `SYNC_SUMMARY_RE`, its awk and
 `_CONVERTED_LINE_RE` read the line as before. Test: `test_a_policy_rescreen_is_counted_apart_on_the_sync_line`.
+Amended 2026-10-28, §16.211 C505, C518, C524: the mail the label reader's re-screen converted is counted in
+`rescreened_reader` too, and the clause names that share apart: `re-screened M for a new mail label reader`, or
+`re-screened S-M for a rule change and M for a new mail label reader`, with the same parenthesis.
 Amended 2026-10-20, §16.150 X34: a no-converter stub counts too when its pages were made from read bytes (an output
 whose converter id is not `none`: a binary .msg read, then withheld by a label rule), or when a label rule withheld it
 by its name and that sync's [policy] change queued it, not a later sync while
@@ -34232,6 +34236,9 @@ the revision key is deleted as an older build's manifest has none, and the next 
 its purge, then marks nothing; an encoded header under an id rule and a folded one under a name rule, `.eml` and
 `.msg`), `test_policy.py::test_a_label_reader_revision_with_no_label_rule_screens_nothing` and
 `test_policy.py::test_a_label_reader_re_screen_does_not_say_policy_changed`.
+Amended 2026-10-28, §16.211 C505, C517, C518, C548, C540: the rows the reader marks are kept in their own record
+and counted as the reader's when converted (`rescreened_reader`, never `converted_seen`); a reader marker never
+overwrites a pending [policy] one, and under its own marker STATE.md says `N mail files` and counts mail only.
 
 **A path in its escaped spelling leaves a reason too (C364, ruling 45; `agentsync.convert`; amends §16.201 C221
 and C183).** `_pathless` and `_homeless` replaced each path as written, but an `OSError` and a `PosixPath` print
@@ -34514,6 +34521,49 @@ alone, a trailing slash or none, only at a path's end (the end, a space, a quote
 the plain spelling is no substring of the escaped one, false for a path ending in a backslash; both now say only
 that spellings are replaced longest first (two different spellings never have one length). Test:
 `test_convert_family.py::test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash`.
+
+**The mail label reader's re-screen is counted and named as its own, row by row (C505 with C517, C518, C524,
+C544, ruling 53; `agentsync.cycle`, `agentsync.cli`, `agentsync.model`, `agentsync.manifest`; amends §16.206 C404
+and §16.57 F35).** After an upgrade over a label rule, §16.206 C404's re-screen of every `.eml` and `.msg` row was
+said on the sync line, in step 2 and in the report as a re-screen `for a rule change`, though no rule changed;
+the reader's WARNING was held back because the line printed a re-screen count; and, since the reader's revision
+is no converter option, a mail it converted kept its action key and counted as a file converted again from the
+same bytes (`converted_seen`, and `converted_again` after a run that converted it), the report's sign of a loop.
+`Manifest.mark_for_rescreen` takes a `marked` out-set; `_check_label_reader` keeps the rows it marks in a
+persisted meta record, `rescreen-reader` (`{source_id: [stable_id, ...]}`, read at each cycle's start, a row
+dropped once its hash is known again or it is gone), while no [policy] re-screen is pending; a [policy]
+re-screen clears it, since it marks the mail too and counts it as the rule's. A conversion of a row in it, with
+the row's hashes forgotten (`rescreen`), takes `prior=None` and adds to `rescreened_reader` (run record and
+`CycleReport`, a share of `rescreened`), so it is never `converted_seen` or `converted_again`, in the sync that
+queued it or a later one. `LABEL_READER_REVISION` stays out of `PolicyConfig.fingerprint()` and the converter
+options (C544's option would move every mail's action key, while the per-row record moves none). The sync line
+says `; re-screened M for a new mail label reader (also counted above, K of them unchanged)`, or `; re-screened
+S-M for a rule change and M for a new mail label reader (...)` for a mixed run, with no bare `converted`,
+`deferred` or `read again`; the reader's WARNING carries its own `ECHOED_WHEN` value, `reader-rescreen`, under a
+pending [policy] marker too, and counts as printed only when `rescreened_reader` is above 0 and none of its mail is left. The report's re-screen
+bullets and Repeat conversions note (lane RA) and the records page (lane D) take the count and the words. Tests:
+`test_policy.py::test_the_label_readers_re_screen_is_counted_and_named_as_its_own` (the CLI line names the
+reader and no rule change; the run record's `converted` 2, `rescreened` 2, `rescreened_reader` 2 and no
+`converted_seen` or `converted_again`),
+`test_policy.py::test_a_reader_re_screen_finished_in_a_later_sync_is_still_the_readers`,
+`test_policy.py::test_the_sync_line_splits_a_rule_change_from_the_readers_share` and
+`test_policy.py::test_the_readers_warning_counts_as_printed_only_when_the_line_names_the_reader`.
+
+**A reader marker never overwrites a pending [policy] one, and counts mail only (C548 with C540, ruling 53;
+`agentsync.cycle`; amends §16.206 C404).** `_queue_rescreen` wrote the reader's `label-reader:N` marker over a
+[policy] fingerprint still pending, so STATE.md blamed the reader for a `.docx` it never marks; and under its own
+marker `_rescreen_lines` and `_rescreen_left` counted every pending label-capable row, new deferred files
+included, which also held back the reader's WARNING. A [policy] re-screen counts as pending
+(`Cycle._policy_pending`) while `policy_rescreen_pending` holds a fingerprint and a label-capable file still
+waits (a marker a crashed run left with nothing behind it is none); then the reader marks its mail but keeps the
+[policy] marker, whose line and count stay true, and keeps no rows of its own. `_rescreen_suffixes` gives mail
+alone under the reader's marker, every label-capable suffix under [policy]'s, for both counts; the reader's line
+says `N mail files`. C548's finder fix (count mail under any marker) was not built: it dropped a [policy]
+backlog's `.docx` rows from STATE.md once the reader's marker replaced the [policy] one, which this build never
+lets happen. Tests: `test_policy.py::test_a_reader_re_screen_never_overwrites_a_pending_policy_one` (a [policy]
+change that converts nothing, then the revision deleted: the fingerprint stays, STATE.md says `[policy] changed: 2
+label-capable files`), `test_policy.py::test_the_readers_own_marker_counts_mail_only` and
+`test_policy.py::test_a_label_reader_re_screen_does_not_say_policy_changed` (its reader line now `2 mail files`).
 
 
 ### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)

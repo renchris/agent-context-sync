@@ -520,7 +520,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     .msg on this Mac, read and then refused: B13 round 10 L33; "withheld by the label rule" read as if the
     other R were refused for another cause, while the label rule refused them too: B13 round 25 D25), as
     ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side (B13 round 5
-    F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
+    F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``, with
+    ``M for a new mail label reader`` in place of or after the rule's share for the mail the label reader's
+    re-screen converted (B13 round 31 C505, C518, C524): a
     [policy] or secret-rule re-screen converts a file again for that rule change, so it is in N, and counted
     again in S (F35): the bytes its pages were made from, or a stub a label rule withheld by its name that a
     [policy] change queued, this run's or an earlier one's, for which it may be the first read of its bytes
@@ -698,9 +700,15 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             split += f"; {stubbed} of the unreadable held back: {whose} contained a credential"
         of_them = f"; {split}" if report.read_again and report.read_first else f" ({split})"
     # No bare "converted", "deferred" or "read again" in it: install.sh's awk adds the number after each.
+    # The mail label reader's share is named apart: it re-screens for a new reader, not a rule change (B13
+    # round 31 C505, C518, C524)
+    rule = report.rescreened - report.rescreened_reader
+    shares = ([f"{rule} for a rule change"] if rule else []) + (
+        [f"{report.rescreened_reader} for a new mail label reader"] if report.rescreened_reader else []
+    )
     rescreened = (
-        f"; re-screened {report.rescreened} for a rule change (also counted above, "
-        f"{report.rescreened_unchanged} of them unchanged)"
+        f"; re-screened {' and '.join(shares)} (also counted above, {report.rescreened_unchanged} of them "
+        "unchanged)"
         if report.rescreened
         else ""
     )
@@ -794,6 +802,8 @@ def _printed(record: logging.LogRecord, report: CycleReport) -> bool:
         return report.checkpoint == "held"
     if when == "rescreen":  # re-screened this run, none of the [policy] change's files still waiting
         return report.rescreened > 0 and report.rescreen_left == 0
+    if when == "reader-rescreen":  # the sync line names the reader's share, and none of its mail waits (C518)
+        return report.rescreened_reader > 0 and report.rescreen_left == 0
     return bool(getattr(record, ECHOED_ALARM, False))
 
 

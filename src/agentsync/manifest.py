@@ -2365,6 +2365,7 @@ class Manifest:
         *,
         unread_only: bool = False,
         queued: set[tuple[str, str]] | None = None,
+        marked: set[tuple[str, str]] | None = None,
     ) -> int:
         """Queue every published or policy-refused file named with one of ``suffixes`` for a re-screen.
 
@@ -2384,7 +2385,10 @@ class Manifest:
 
         ``queued``: when given, the (source_id, stable_id) of every row the ``withheld_suffixes`` arm marks
         are added to it, so the sync that converts one, this one or a later one, counts it as re-screened
-        (B13 round 21 Y73)."""
+        (B13 round 21 Y73).
+
+        ``marked``: when given, the (source_id, stable_id) of every row marked are added to it, so the cycle
+        can count the mail label reader's re-screen as its own, row by row (B13 round 31 C518)."""
         from agentsync.convert import NO_CONVERTER_PREFIX  # noqa: PLC0415 - the manifest imports no converter
 
         like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
@@ -2400,13 +2404,20 @@ class Manifest:
                     (*withheld, *(f"%{s.lower()}" for s in suffixes)),
                 )
             )
+        where = (
+            "WHERE is_dir = 0 AND (state IN ('live', 'dataless') "
+            f"OR (state = 'refused' AND (state_reason LIKE 'refused: %'{named}))) AND ({like})"
+        )
+        args = (*withheld, *(f"%{s.lower()}" for s in suffixes))
+        if marked is not None:
+            marked.update(
+                (str(r[0]), str(r[1]))
+                for r in self._db.execute(f"SELECT source_id, stable_id FROM items {where}", args)
+            )
         cur = self._db.execute(
             "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
-            "canonical_parts = NULL, last_verdict = ? WHERE is_dir = 0 "
-            "AND (state IN ('live', 'dataless') "
-            f"OR (state = 'refused' AND (state_reason LIKE 'refused: %'{named}))) "
-            f"AND ({like})",
-            (Verdict.MAYBE_CHANGED.value, *withheld, *(f"%{s.lower()}" for s in suffixes)),
+            f"canonical_parts = NULL, last_verdict = ? {where}",
+            (Verdict.MAYBE_CHANGED.value, *args),
         )
         return int(cur.rowcount)
 

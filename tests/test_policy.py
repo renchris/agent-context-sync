@@ -595,7 +595,7 @@ def test_a_label_reader_re_screen_does_not_say_policy_changed() -> None:
     for pending, said, tail in (
         (
             cycle._READER_RESCREEN + "2",
-            "- the mail label reader changed: 2 label-capable files",
+            "- the mail label reader changed: 2 mail files",  # B13 round 31 C548: it marked only mail
             "label reader",
         ),
         ("sha256:abc", "- [policy] changed: 2 label-capable files", "policy"),
@@ -898,3 +898,181 @@ def test_page_says_withheld_names_every_reader() -> None:
     missing = sorted(c for c in callers if c not in doc and shown.get(c, c) not in doc)
     assert not missing, missing
     assert "QUARANTINE.tsv" in doc and "no-engine stub read" in doc, doc
+
+
+def _older_reader_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: str = "") -> tuple[Any, Path]:
+    """A label rule on, a labelled and an unlabelled mail synced by the compat32 reader (the labelled one
+    published), then the revision key deleted, as an older build's manifest has none."""
+    import sqlite3  # noqa: PLC0415
+
+    from test_review_fixes import make_env, run  # noqa: PLC0415
+
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n{extra}')
+    _mail(src / "Contoso Plan.eml", Header(_msip("Contoso Highly Confidential"), "utf-8").encode().encode())
+    (src / "Contoso Note.eml").write_bytes(b"From: a@contoso.com\r\nSubject: n\r\n\r\nQuillon note\r\n")
+    with monkeypatch.context() as mp:
+        mp.setattr(policy, "read_eml_labels", _compat32_reader)
+        assert run(config).exit_code == 0
+    with sqlite3.connect(config.state_paths.db) as db:
+        db.execute("DELETE FROM meta WHERE key = ?", (cycle._LABEL_READER_META,))
+    return config, src
+
+
+def test_the_label_readers_re_screen_is_counted_and_named_as_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C505, C517, C518, C524, C544 (ruling 53): after an upgrade over a label rule, the mail the
+    new label reader re-screened was said as a re-screen "for a rule change", though no rule changed, and,
+    keeping its action key, counted as a file converted again from the same bytes in the run just before:
+    the report's sign of a loop. It is counted in ``rescreened_reader``, named on the sync line as the
+    reader's, and never ``converted_seen`` or ``converted_again``."""
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, _src = _older_reader_setup(tmp_path, monkeypatch)
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    out = capsys.readouterr().out
+    assert "re-screened 2 for a new mail label reader (also counted above, 1 of them unchanged)" in out, out
+    assert "rule change" not in out, out
+    record = _run_record(config)
+    assert (record["converted"], record["rescreened"], record["rescreened_reader"]) == (2, 2, 2), record
+    assert "converted_seen" not in record and "converted_again" not in record, record
+
+
+def test_a_reader_re_screen_finished_in_a_later_sync_is_still_the_readers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C518: the rows the reader marked are kept in the manifest's own record, so a sync that converts them
+    after the one that queued them (a byte budget, a stopped run) still counts them as the reader's."""
+    from test_cycle import _run_record  # noqa: PLC0415
+    from test_review_fixes import run  # noqa: PLC0415
+
+    config, _src = _older_reader_setup(tmp_path, monkeypatch)
+    with monkeypatch.context() as mp:  # the sync that queues them converts nothing
+        mp.setattr(cycle._Cycle, "_process_batch", lambda *_a, **_k: None)
+        run(config)
+    record = _run_record(config)
+    assert "rescreened" not in record, record
+    report = run(config)
+    assert (report.rescreened, report.rescreened_reader) == (2, 2)
+    record = _run_record(config)
+    assert record["rescreened_reader"] == 2 and "converted_seen" not in record, record
+
+
+def test_the_sync_line_splits_a_rule_change_from_the_readers_share(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """C524: one run can re-screen mail for the reader and other files for a secret or [policy] rule: the
+    clause names both shares, with no bare converted, deferred or read again (install.sh's awk)."""
+    import re  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import CycleReport  # noqa: PLC0415
+
+    def clause(rescreened: int, reader: int) -> str:
+        report = CycleReport(
+            run_id=1,
+            mode=cycle.CycleMode.POLL,
+            sources=(),
+            changes=(),
+            commit_sha=None,
+            rescreened=rescreened,
+            rescreened_reader=reader,
+        )
+        capsys.readouterr()
+        cli._print_report(report)
+        return next(ln for ln in capsys.readouterr().out.splitlines() if "re-screened" in ln)
+
+    assert "re-screened 3 for a rule change and 1 for a new mail label reader (also counted" in clause(4, 1)
+    assert "re-screened 4 for a rule change (also counted" in clause(4, 0)
+    assert "re-screened 4 for a new mail label reader (also counted" in clause(4, 4)
+    for line in (clause(4, 1), clause(4, 4)):
+        tail = line[line.index("re-screened") :]
+        assert not re.search(r"\bconverted\b|\bdeferred\b|\bread again\b", tail), tail
+
+
+def test_the_readers_warning_counts_as_printed_only_when_the_line_names_the_reader() -> None:
+    """C518: the reader's WARNING was held back whenever the line counted any re-screen, so a reader's
+    re-screen said as "a rule change" hid the one line that named the reader."""
+    import logging  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import CycleReport  # noqa: PLC0415
+
+    record = logging.LogRecord("agentsync", logging.WARNING, "", 0, "the mail label reader changed", (), None)
+    setattr(record, cycle.ECHOED_WHEN, "reader-rescreen")
+
+    def report(**kw: int) -> CycleReport:
+        return CycleReport(run_id=1, mode=cycle.CycleMode.POLL, sources=(), changes=(), commit_sha=None, **kw)  # type: ignore[arg-type]
+
+    assert not cli._printed(record, report(rescreened=2))
+    assert cli._printed(record, report(rescreened=2, rescreened_reader=2))
+    assert not cli._printed(record, report(rescreened=2, rescreened_reader=2, rescreen_left=1))
+
+
+def test_a_reader_re_screen_never_overwrites_a_pending_policy_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_files: dict[str, Path],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B13 round 31 C548 with C540: the reader's marker replaced a [policy] re-screen still pending, so
+    STATE.md blamed the reader for a .docx it never marks; and under its own marker the line counted every
+    label-capable row pending for any cause. A pending [policy] marker stays, with its full count; the
+    reader's own marker counts mail only."""
+    import sqlite3  # noqa: PLC0415
+
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+    from test_review_fixes import make_env, run, write_config  # noqa: PLC0415
+
+    other = "11111111-2222-3333-4444-555555555555"
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n')
+    (src / "Contoso Plan.eml").write_bytes(b"From: a@contoso.com\r\nSubject: p\r\n\r\nQuillon plan\r\n")
+    (src / "Contoso Brief.docx").write_bytes(fixture_files["sample.docx"].read_bytes())
+    assert run(config).exit_code == 0
+    text = config.config_path.read_text(encoding="utf-8").replace(LABEL, other)
+    config = write_config(tmp_path, text)
+    state = config.docs_repo / "_sync" / "STATE.md"
+    with monkeypatch.context() as mp:  # a [policy] change, and a sync that converts nothing
+        mp.setattr(cycle._Cycle, "_process_batch", lambda *_a, **_k: None)
+        run(config)
+        with Manifest(config.state_paths.db) as m:
+            fingerprint = m.get_meta(cycle._RESCREEN_META) or ""
+        assert fingerprint.startswith("sha256:")
+        with sqlite3.connect(config.state_paths.db) as db:
+            db.execute("DELETE FROM meta WHERE key = ?", (cycle._LABEL_READER_META,))
+        run(config)
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle._RESCREEN_META) == fingerprint, "the [policy] marker stays"
+        assert m.get_meta(cycle._RESCREEN_READER_META) in (None, "{}"), "the mail is the rule's"
+    said = state.read_text(encoding="utf-8")
+    assert "- [policy] changed: 2 label-capable files not yet re-screened" in said, said
+    assert "label reader" not in said
+    # the reader's WARNING is its own, so a sync line that names only the rule's share never swallows it
+    tags = [
+        getattr(r, cycle.ECHOED_WHEN, None) for r in caplog.records if "mail label reader" in r.getMessage()
+    ]
+    assert tags == ["reader-rescreen"], tags
+
+
+def test_the_readers_own_marker_counts_mail_only() -> None:
+    """C548 (a): under the reader's marker, a pending .docx (a new file, deferred) is no mail the reader
+    marked: with no mail left, the line clears and nothing is counted left."""
+
+    class _Manifest:
+        def __init__(self) -> None:
+            self.meta = {cycle._RESCREEN_META: cycle._READER_RESCREEN + "2"}
+
+        def get_meta(self, key: str) -> str | None:
+            return self.meta.get(key)
+
+        def set_meta(self, key: str, value: str) -> None:
+            self.meta[key] = value
+
+        def pending_named(self, suffixes: tuple[str, ...]) -> int:
+            return 0 if set(suffixes) <= {".eml", ".msg"} else 5
+
+    fake = type("C", (), {"manifest": _Manifest()})()
+    assert cycle._Cycle._rescreen_left(fake) == 0  # type: ignore[arg-type]
+    assert cycle._Cycle._rescreen_lines(fake) == []  # type: ignore[arg-type]
