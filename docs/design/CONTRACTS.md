@@ -21523,6 +21523,9 @@ error above; ~/.local/bin/agentsync sync prints it again): fixing it is the pers
 show them the error and go on to the report; once it is fixed, the next run is: <install.sh and its options>`, in
 `config_failed`'s shape; the re-run keeps its `%q` form. Another exit code keeps `fix what the first sync printed
 above`. Test: `test_first_sync_failure_fails_the_run_before_the_agent` (78, 1).
+Amended 2026-10-28, §16.209 C515: a signal's exit (129 to 192) has its own branch, `the first sync was stopped by
+SIG<NAME> (signal N) before it finished, ...; it is safe to re-run once: ...`, then the report; another exit code
+still keeps `fix what the first sync printed above`.
 
 **A known count takes its noun from the count** (Q39, Q44: Q44 is Q39's install.sh half, built once; amends §16.39
 N36). Step 1's list says `already synced on this Mac: 1 folder (marked ...)` or `N folders`, and its keep NEXTs
@@ -34635,6 +34638,18 @@ SIGKILL (signal 9))`), the verifier's makes-worse case. rc_meaning's default bra
 phrase standing alone (`stopped by SIG<NAME> (signal N)`, `exit N` for a code no signal names), which rc_meaning's
 default calls and the note calls directly; rc_meaning 143 is unchanged for its bracketed callers. Test:
 `test_a_closing_status_a_signal_stopped_is_said_and_logged`, whose SIGTERM row reads `stopped by SIGTERM (signal 15)`.
+
+**A first sync a signal stopped is safe to re-run once** (C515; ruling 58; amends §16.111 Q22; `scripts/install.sh`).
+A signal's exit (129 to 192) at the first sync took the generic branch, `fix what the first sync printed above
+(stopped by SIGKILL (signal 9)), then re-run`, but since C320 the sync may have printed nothing above, and a signal
+to the sync alone is no error it reported (one to the whole run goes to on_signal, whose NEXT already says it is
+safe to re-run). A branch before the generic one says `the first sync was <rc_signal_words> before it finished, by
+something outside install.sh, not by an error it reported; it is safe to re-run once: <install.sh and its options>;
+if the re-run is stopped the same way, show the person this line and go on to the report`, its error line `the first
+sync (agentsync sync --once) was <rc_signal_words> before it finished`. The bound keeps a memory kill that repeats
+from looping; it never says nothing was printed, since a sync can warn before it is killed, and never that the
+cause was outside the sync's own work. install.log's step line is unchanged (no new note for the report to read).
+Test: `test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr` (SIGKILL, SIGTERM).
 
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 

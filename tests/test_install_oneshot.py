@@ -1071,7 +1071,7 @@ def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
         assert "the report" not in last_line(cp)
 
 
-@pytest.mark.parametrize("rc", ["78", "65", "1"])
+@pytest.mark.parametrize("rc", ["78", "65", "1", "170"])
 def test_first_sync_failure_fails_the_run_before_the_agent(
     env: dict[str, str], folder: Path, wheel: Path, rc: str
 ) -> None:
@@ -1092,6 +1092,7 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
         "78": "configuration invalid",
         "65": "the state file, manifest.sqlite, cannot be read: the person's to fix",
         "1": "failed",
+        "170": "exit 170",  # B13 round 31 C515's review: in the signal range, but no signal on macOS
     }[rc]
     assert f"the first sync (agentsync sync --once) exited {rc} ({meaning})" in cp.stderr
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
@@ -1368,7 +1369,10 @@ def test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr(
 ) -> None:
     """B13 round 30 C320: a first sync a signal killed printed bash's own job line ("line N: <pid> Killed: 9
     "$AGENTSYNC" sync ...") into install.out. The sync's own stderr still reaches it, through fd 3; the job
-    line does not, and install.log keeps the sync's rc."""
+    line does not, and install.log keeps the sync's rc. B13 round 31 ruling 58 (C515): its NEXT said `fix what
+    the first sync printed above (stopped by SIGKILL (signal 9))`, but a sync a signal stopped alone reported
+    no error and printed nothing to fix; it says so, safe to re-run once, then the report, never that nothing
+    was printed."""
     cp = install_sh(
         {**env, "STUB_SYNC_ERR": "stub sync complaint", "STUB_SYNC_SIGNAL": signal_name},
         str(wheel),
@@ -1377,6 +1381,15 @@ def test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr(
     )
     out = install_out(env).read_text()
     assert "stub sync complaint" in cp.stderr and "stub sync complaint" in out, cp.stderr
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    said = f"stopped by SIG{signal_name} (signal {rc - 128})"
+    assert f"error: the first sync (agentsync sync --once) was {said} before it finished\n" in cp.stderr
+    assert last_line(cp) == (
+        f"NEXT: the first sync was {said} before it finished, by something outside install.sh, not by an "
+        f"error it reported; it is safe to re-run once: {INSTALL_SH} {wheel}; if the re-run is stopped the "
+        f"same way, show the person this line and go on to the report [setup report: {report_path(env)}]"
+    ), last_line(cp)
+    assert "fix what the first sync printed above" not in cp.stdout + cp.stderr
     for text in (cp.stdout, cp.stderr, out):
         assert not re.search(r"Killed: 9|Terminated: 15", text), text
     assert any(" step=first-sync " in ln and f" rc={rc} " in f"{ln} " for ln in install_log(env)), (

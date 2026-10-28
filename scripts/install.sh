@@ -10108,6 +10108,17 @@ else
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		NEXT_MSG="agentsync's state file cannot be read (the first sync's error above, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		exit 1
+	elif [ "$SYNC_RC" -ge 129 ] && [ "$SYNC_RC" -le 192 ] && case "$(rc_signal_words "$SYNC_RC")" in "stopped by "*) true ;; *) false ;; esac; then
+		# A signal stopped the sync alone (a signal to the whole run goes to on_signal): it reported no error,
+		# and since C320 nothing above may be its, so there is nothing to fix. Safe to re-run once, as
+		# on_signal's NEXT says; a memory kill can repeat, so a second stop goes to the report (B13 round 31
+		# ruling 58: C515). It never says nothing was printed: a sync can warn before it is killed. Only a code
+		# kill -l names: 160 to 192 are no signal on macOS, a plain exit for the branch below.
+		step_end failed "$SYNC_RC"
+		LAST_ERROR="the first sync (agentsync sync --once) was $(rc_signal_words "$SYNC_RC") before it finished"
+		printf 'error: %s\n' "$LAST_ERROR" >&2
+		NEXT_MSG="the first sync was $(rc_signal_words "$SYNC_RC") before it finished, by something outside install.sh, not by an error it reported; it is safe to re-run once: $SELF$RERUN_ARGS; if the re-run is stopped the same way, show the person this line and go on to the report"
+		exit 1
 	else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC ($(rc_meaning "$SYNC_RC"))"
