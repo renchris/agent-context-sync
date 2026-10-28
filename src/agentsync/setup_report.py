@@ -1458,6 +1458,10 @@ _FIXED_VALUE_PHRASES = (
     "MSIP_Label_",
     "msip_label_",
     "label_policy",
+    # lane E's sync line and warning (B13 round 31 ruling 53, C518): `re-screened M for a new mail label
+    # reader`, and the reader's `the mail label reader changed` warning
+    "for a new mail label reader",
+    "the mail label reader",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so

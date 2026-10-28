@@ -2074,6 +2074,7 @@ FIXED_VALUE_PHRASES+="|launchd label '|lock label must be 1-64 non-whitespace ch
 FIXED_VALUE_PHRASES+="|or a label that blocks download|its lit samples show another label|of the label's lit speech"
 FIXED_VALUE_PHRASES+="|a lit label follows sound|the text of a name label or a camera picture"
 FIXED_VALUE_PHRASES+="|the one label the meeting app lit|MSIP_Label_|msip_label_|label_policy"
+FIXED_VALUE_PHRASES+="|for a new mail label reader|the mail label reader"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
