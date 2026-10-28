@@ -1010,7 +1010,8 @@ _LEGEND = {
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
     "path": (  # every <path> the body can show, the uncounted ones too (B13 round 27 P38)
         "<path> a link's target outside this home (a state file's or the docs repo's), or an item path or "
-        "document name in a log line, a --source-local argument or an exclude entry, cut as its section says"
+        "document name in a log line, a --source-local argument, an added source's typed folder or an "
+        "exclude entry, cut as its section says"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -16443,8 +16444,9 @@ def _redaction_section(
     # B13 round 30 C331: and the count says so where the body shows one, as "counted each time a value was
     # replaced" reads as if it were counted
     uncounted = (
-        " A <path> that cuts an item path or document name in a log line, a --source-local argument or an "
-        "exclude entry is not counted: only a link target replaced by <path> is."
+        " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
+        "added source's typed folder or an exclude entry is not counted: only a link target replaced by "
+        "<path> is."
         if "<path>" in probe
         else ""
     )
@@ -16552,6 +16554,13 @@ _SAME_STORED_RE = re.compile(r"\((.+?), stored as \1\)")
 and ``/private/tmp/...`` are both ``~``): it reads as a contradiction, so it is shown as ``(<typed>)`` (B13
 round 6 G41). A note whose forms still differ (``~/OneDrive/...`` stored as ``~/Library/CloudStorage/...``)
 stays."""
+_ADDED_TYPED_RE = re.compile(
+    r"(?P<lead>\badded source '[^']*' to \S+ |\badded inbox source '[^']*' )"
+    r"\((?P<typed>.+?), stored as (?P<stored>.+?)\)(?=:)"
+)
+"""add-source's and init's ``(<typed>, stored as <stored>)`` note, after :data:`_SAME_STORED_RE` collapsed one
+whose forms redact alike: the typed form is the folder as the person gave it, a link's own name included,
+so it is cut as a ``--source-local`` argument is, and not counted (B13 round 31 C529, ruling 49; C331)."""
 _SOURCE_LOCAL_RE = re.compile(
     r"""(--source-local[ =]|\badd-source )"""
     r"""(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
@@ -16635,6 +16644,15 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
         opened, closed = "", ""
     pieces = _PLACEHOLDER_RE.split(_shell_unquote(word))
     text = "".join(piece if i % 2 else red.redact(piece) for i, piece in enumerate(pieces))
+    return m.group(1) + opened + _cut_path(text) + closed + tail
+
+
+def _cut_path(text: str) -> str:
+    """A redacted path cut to ``<path>`` at its first component that is not a placeholder, ``~``, ``.`` or
+    ``..``, a fixed macOS component, the provider folder (the one after ``CloudStorage``) or a generic
+    folder: the rule a ``--source-local`` argument (:func:`_source_local_shown`) and an added source's typed
+    folder (:data:`_ADDED_TYPED_RE`) share, so the two never show the same folder two ways (B13 round 31
+    C529, ruling 49)."""
     parts = text.split("/")
     for i, part in enumerate(parts):
         known = (
@@ -16646,8 +16664,14 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
             or (i > 0 and parts[i - 1] == "CloudStorage")
         )
         if not known:
-            return m.group(1) + opened + "/".join([*parts[:i], "<path>"]) + closed + tail
-    return m.group(1) + opened + text + closed + tail
+            return "/".join([*parts[:i], "<path>"])
+    return text
+
+
+def _typed_cut(m: re.Match[str]) -> str:
+    """:data:`_ADDED_TYPED_RE`'s note with its typed folder cut by :func:`_cut_path` and its stored form as
+    it is (the configured root, already redacted and shown in the sources table)."""
+    return f"{m.group('lead')}({_cut_path(m.group('typed'))}, stored as {m.group('stored')})"
 
 
 _AGENT_AT = r"(?:^ *\d+  \s*(?:[-*]\s+)?\**(?i:agent)\**\s*:\s*\**\s*| · agent: |; agent )"
@@ -16695,7 +16719,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
     def plain(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
         if ", stored as " in line:
-            line = _SAME_STORED_RE.sub(r"(\1)", line)
+            line = _ADDED_TYPED_RE.sub(_typed_cut, _SAME_STORED_RE.sub(r"(\1)", line))
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)
         return (

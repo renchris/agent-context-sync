@@ -34468,7 +34468,21 @@ pointer, refuses `id=<its id>` in the bullet, and reads the filled-in forget fro
 
 ### 16.208 Round 31: setup report: a typed folder and every hold word cut, the source legend, a signal stop's words and a lost hold's report fix (2026-10-28, wave B13 round 31 lane RA)
 
-Reserved for round 31 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 31").
+**An added source's typed folder is cut as its `--source-local` argument is** (C529, ruling 49;
+`src/agentsync/setup_report.py`). add-source's note `added source '<id>' to <file> (<typed>, stored as <stored>):`
+(and init's `added inbox source '<id>' (<typed>, stored as <stored>)`) gives the folder as the person typed it, a
+link's own name included, and only the Redactor cut it, so `(~/Contoso Plans Link/<folder-1>, stored as ...)` printed
+a project name behind a link on the very report whose install.log line cut the same argument to `~/<path>`.
+`_ADDED_TYPED_RE` reads the note after `_SAME_STORED_RE`'s collapse (a note whose two forms redact alike is still
+shown once as `(<typed>)`), and `_cut_path`, the rule `_source_local_shown` now calls too, cuts the typed form at its
+first component that is no placeholder, `~`, `.` or `..`, fixed macOS component, provider folder or generic folder;
+the stored form, the configured root shown in the sources table, stays. The cut is not counted (C331), and the C331
+sentence and the legend's `<path>` item name `an added source's typed folder`. A typed `~/OneDrive/Plans` now reads
+`~/<path>` too: the reader loses that the person typed it through a ~/OneDrive link, the cut the install.log line
+already makes. The shell report's bare-path pairs are lane RB's (§16.209). Tests:
+`test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_c529`, and
+`test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once` and `test_the_path_legend_item_names_every_use_of_path`
+with their new words.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 

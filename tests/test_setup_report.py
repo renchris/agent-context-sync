@@ -934,8 +934,9 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     <path>s were those had no item at all. The item names both uses, and stands whenever the body shows
     <path>; only a replaced link target counts."""
     uncounted = (
-        " A <path> that cuts an item path or document name in a log line, a --source-local argument or an "
-        "exclude entry is not counted: only a link target replaced by <path> is."
+        " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
+        "added source's typed folder or an exclude entry is not counted: only a link target replaced by "
+        "<path> is."
     )
     red = setup_report.Redactor()
     red.add("path", "/Volumes/Contoso Drive/state")
@@ -19735,9 +19736,47 @@ def test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once() -> None:
         "(~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
     )
     assert out[2] == (
-        "added source 'plans' to ~/agent-context/sources.toml (~/OneDrive/Plans, stored as "
+        "added source 'plans' to ~/agent-context/sources.toml (~/<path>, stored as "
         "~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
-    ), "two forms that still differ keep the note"
+    ), "two forms that still differ keep the note, the typed one cut as a --source-local argument is (C529)"
+
+
+def test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_c529() -> None:
+    """B13 round 31 C529 (ruling 49): the typed form in add-source's `(<typed>, stored as <stored>)` note is
+    the folder as the person gave it, a link's own name included, and only the Redactor cut it, so a project
+    name behind a link (`~/Contoso Plans Link/Project Alpha`) printed in clear on the very report whose
+    install.log line cut the same argument to `~/<path>`. It is cut by the argument's rule, the stored form
+    stays, a note whose forms redact alike is still shown once, and the cut is not counted."""
+    red = setup_report.Redactor()
+    home, stored = "/tmp/contoso-rehearsal/home4", "/private/tmp/contoso-rehearsal/home4"
+    red.add("home", home)
+    red.add("home", stored)
+    red.add("org", "Contoso", fuzzy=True)
+    red.add("folder", "Project Alpha")
+    typed = f"{home}/Contoso Plans Link/Project Alpha"
+    cloud = f"{stored}/Library/CloudStorage/OneDrive-Contoso/Project Alpha"
+    lines = [
+        f"args=--source-local '{typed}'",
+        f"added source 'project-alpha' to {stored}/agent-context/sources.toml ({typed}, stored as {cloud}):",
+        f"added inbox source 'inbox' ({home}/agent-context/inbox, stored as {stored}/agent-context/inbox): "
+        "drop files you save by hand here",
+        f"added source 'plans' to {stored}/agent-context/sources.toml ({home}/Documents/Plans, stored as "
+        f"{stored}/Library/CloudStorage/OneDrive-Contoso/Plans):",
+    ]
+    before = dict(red.counts)
+    out = setup_report._redact_lines(red, lines).splitlines()
+    assert out[0] == "args=--source-local '~/<path>'"
+    assert out[1] == (
+        "added source 'project-alpha' to ~/agent-context/sources.toml "
+        "(~/<path>, stored as ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>):"
+    ), out[1]
+    assert "Plans Link" not in "\n".join(out)
+    assert out[2] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    assert out[3] == (
+        "added source 'plans' to ~/agent-context/sources.toml (~/Documents/<path>, stored as "
+        "~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
+    ), "a generic home folder stays, as in a --source-local argument"
+    assert red.counts.get("path", 0) == before.get("path", 0), "the cut is not counted (C331)"
 
 
 def test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt() -> None:
