@@ -2150,6 +2150,14 @@ class _Cycle:
                 log.info("%d failed conversion(s) an older build settled are tried again", moved)
                 # and the sync's note, and the run record's count the report reads (B13 round 19 W18)
                 self._tally["legacy_retried"] = moved
+                # of those, the ones whose stored reason named a folder, read before a conversion rewrites it:
+                # the legacy retry took them before the path re-read could (B13 round 31 C506)
+                self._tally["legacy_pathed"] = sum(
+                    1
+                    for sid, stable in self._legacy_moved
+                    if (row := self.manifest.get_item(sid, stable)) is not None
+                    and self._names_a_path(row.state_reason or "")
+                )
             self._queue_path_stubs()
             self._fold_escaped_reasons()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
@@ -3491,6 +3499,7 @@ class _Cycle:
             rescreen_left=self._rescreen_left(),
             converter_down=any(self._cannot_run.values()),
             legacy_retried=self._tally["legacy_retried"],
+            legacy_pathed=self._tally["legacy_pathed"],
             legacy_cleared=cleared,
             legacy_settled=settled,
             legacy_waiting=waiting,
@@ -3750,7 +3759,9 @@ class _Cycle:
         the retry words for the rest (B13 round 22 Z35, after Z55's note; together never more than
         ``legacy_retried``); ``legacy_waiting``: of those, the ``no converter`` stubs a later run reads again
         once a converter for them is ready, neither settled nor retried (B13 round 23 A63; with the two
-        before it never more than ``legacy_retried``); ``path_reread``: stubs whose reason an older build
+        before it never more than ``legacy_retried``); ``legacy_pathed``: of the ``legacy_retried``, those
+        whose stored reason named a folder on this Mac (``_names_a_path``), which the path re-read then never
+        counts (B13 round 31 C506); ``path_reread``: stubs whose reason an older build
         wrote a path into that this run converted once more past their retries (``_retries``' one-shot, B13
         round 29 C181), ``path_reread_current`` and ``path_reread_failed`` the ones of them live now and still
         a stub, and ``path_reread_waiting`` the ones this run queued for it and did not read, which a later

@@ -1057,6 +1057,7 @@ class CycleReport:
     legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
     legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
     legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
+    legacy_pathed: int = 0  # 2026-10-28 (§16.211 C506): of legacy_retried, those whose stored reason named a folder (the note's)
     path_reread: int = 0  # 2026-10-26 (§16.206 C362): stubs with an older build's path converted once more past their retries
     path_reread_current: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones live now (the note's)
     path_reread_failed: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones still a stub, not tried again (the note's)
@@ -8136,6 +8137,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
 | `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them. **Amended 2026-10-22, §16.175 B73:** nor a recording only a download would read. **Amended 2026-10-22, §16.171 B74:** it says `that run refused with no converter for its type` |
+| `legacy_pathed` | **Amended 2026-10-28, §16.211 C506:** of the `legacy_retried`, the ones whose stored reason named a folder on this Mac (`Cycle._names_a_path`, read before a conversion rewrites it): the legacy retry took them before §16.201 C181's one-shot re-read could, so `path_reread` never counts them; the sync's legacy note says `(its stored reason named a folder on this Mac)` |
 | `path_reread` | **Amended 2026-10-26, §16.206 C362:** stubs whose reason an older build wrote a staging or home path into that this run converted once more past their retries (§16.201 C181's one-shot re-read, `Cycle._retries`); the sync's notes say each outcome |
 | `path_reread_current` | **Amended 2026-10-26, §16.206 C362:** of those, the ones live (or dataless) after this run |
 | `path_reread_failed` | **Amended 2026-10-26, §16.206 C362:** of those, the ones still a stub (failed again, or settled as unreadable or refused), which no later run converts until the bytes change; with `path_reread_current` always `path_reread` |
@@ -34301,18 +34303,23 @@ out of time; not one this run converted from new bytes, removed or re-keyed into
 notes, the CLI prints one note per count, each keeping `an older build gave up on ` (install.sh's grep, unchanged)
 and holding no bare `converted`, `deferred` or `read again` (install.sh's awk): `note: N conversion(s) an older
 build gave up on (its stored reason named a folder on this Mac) was tried once more in this sync and is now
-current`, `... was tried once more in this sync and failed again; it is not tried again` and `... is tried once more
+current`, `... was tried once more in this sync and is still a stub; this sync's counts say why (failed, unreadable
+or refused), and it is not tried again` and `... is tried once more
 in the next sync of its source`. The older build's commit of such a stub keeps the path in the docs history on
 purpose, as for any page a later build rewrites: the re-read queues no purge, scheduled compaction drops it after
 `[governance] history_days` (default 30) and `compaction_slack_days` (7), and under `[governance] archive`, or
 while a hold suspends compaction, it stays until the person chooses to purge that page, which rewrites the whole
 history. The setup report's retry sentence and the guide say so, with no count or path (lanes RA and D). Tests:
 `test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it` (a run
-of the other source says it waits, the next sync that it failed again, the one after nothing; the run record's
+of the other source says it waits, the next sync that it is still a stub, the one after nothing; the run record's
 counts), `test_convert_family.py::test_a_path_re_read_that_converts_says_it_is_now_current`,
 `test_convert_family.py::test_a_queued_path_stub_with_new_bytes_is_no_waiting_re_read` and
 `test_convert_family.py::test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once` (an earlier
 commit still holds the staging path, and no purge is queued).
+Amended 2026-10-28, §16.211 C545, C523, C506, C549: the second note said `failed again` of a row left an unreadable
+or refused stub; it says the file is still a stub and this sync's counts say why (C545, C523). A legacy retry that
+takes a stub whose stored reason named a folder counts it in `legacy_pathed`, and its legacy note says so, with
+`path_reread` untouched (C506). The staging re-read test sizes its root to about 160 characters (C549).
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
@@ -34568,6 +34575,37 @@ label-capable files`), `test_policy.py::test_the_readers_own_marker_counts_mail_
 and its docstring said a relabel folds into H1, which F72 decided against (a relabelled copy of purged content
 would escape its purge). It is removed with its §15 stub; H1 still leaves the label parts out. Test:
 `test_policy.py::test_h1_ignores_a_relabel` (the H1 check alone, and no such function).
+
+**The re-read's note says what each row came to (C545 with C523, ruling 54; `agentsync.cli`; amends §16.206
+C362).** The path re-read's second note said `failed again` of every row still a stub, but its count holds failed,
+unreadable and refused stubs alike: after an upgrade a Word document named `.potx` became an unreadable stub
+while the same sync's line said `0 failed`. The note now says the file `is still a stub; this sync's counts say
+why (failed, unreadable or refused), and it is not tried again`, keeping `an older build gave up on ` and no bare
+`converted`, `deferred` or `read again`; no new count, as the report's `left as a stub` already reads true
+(C523's split into a settled count was not built: the reword makes the note true for all three with no new field).
+Test: `test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it`.
+
+**A legacy retry that took a path stub says so (C506, ruling 54; `agentsync.cycle`, `agentsync.cli`,
+`agentsync.model`; amends §16.28 and §16.206 C362).** On the upgrade path from a build before the retry, §16.144
+W18's legacy retry moves the stub whose stored reason named the staging folder before `_queue_path_stubs` can (it
+skips a row already ERROR), so neither the path re-read's note nor its count fired, and the report's history
+clause never printed. Right after `retry_settled_failure_rows` returns, before any conversion rewrites a reason,
+the cycle counts the moved rows whose stored reason `_names_a_path` reads, `legacy_pathed` (run record and
+`CycleReport`); `path_reread` and its notes stay untouched, as counting the legacy rows there would put them in
+two notes (C506's finder fix, measured worse). Every legacy note says `an older build gave up on (its stored reason
+named a folder on this Mac)` when all of them did; when only some did, one more note says `of those, N
+conversion(s) an older build gave up on was tried again with a stored reason that named a folder on this Mac`.
+The report's pathed clause and bullet follow (lane RA). Tests:
+`test_convert_family.py::test_a_legacy_retry_of_a_stub_whose_reason_named_a_folder_says_so` (an older build's four
+syncs, the `convert-retry%` keys deleted as a build before the retry has none; one note, with the folder clause;
+`legacy_retried` 1, `legacy_pathed` 1, no `path_reread`) and
+`test_convert_family.py::test_a_legacy_retry_of_some_stubs_with_a_folder_says_how_many`.
+
+**The staging re-read test holds on a short tmp folder (C549, ruling 54; tests only).**
+`test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once` asserted that the stored reason was cut
+before `/staging/`, true only when the tmp folder's path is long; it failed on a short one. Its root is sized to
+about 160 characters (`_sized_root`), so `/staging/` starts past the stored 200-character cut and the whole
+staging path fits the page's 300.
 
 ### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)
 

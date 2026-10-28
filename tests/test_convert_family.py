@@ -214,6 +214,14 @@ def _older_build(mp: pytest.MonkeyPatch) -> None:
     mp.setattr(cycle_mod._Cycle, "_queue_path_stubs", lambda _self: None)
 
 
+def _sized_root(tmp_path: Path) -> Path:
+    """A root of about 160 characters (B13 round 31 C549): ``/staging/`` starts past the stored reason's cut
+    (200), and the whole staging path fits the page's (300), whatever the length of the tmp folder."""
+    base = tmp_path / ("Contoso " * 30)[: max(12, 160 - len(str(tmp_path.resolve())))].strip()
+    base.mkdir()
+    return base
+
+
 def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -221,7 +229,7 @@ def test_a_stub_an_older_build_wrote_a_staging_path_into_is_read_again_once(
     4 times, so its retries are used up (3 conversions: the first and ``_CONVERT_RETRIES``); this build
     converts it once more past them, the re-read writes it without the path, and then leaves it alone
     (B13 round 29 C181: I39's re-read went through the retries and so never reached such a stub)."""
-    config, src = make_env(tmp_path)
+    config, src = make_env(_sized_root(tmp_path))
     word_package(src / "Contoso renamed doc.potx")
     tries = _counted(monkeypatch)
     with monkeypatch.context() as mp:
@@ -325,8 +333,9 @@ def test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_re
 ) -> None:
     """B13 round 30 C362, C327: the one-shot re-read was a log.info line a default sync never prints, so its
     error came back with nothing saying why, and no count reached the run record. A run of another source
-    queues it and says the next sync of its source reads it; that sync says it failed again and is not tried
-    again; the one after says nothing. Every note keeps "an older build gave up on ", install.sh's grep."""
+    queues it and says the next sync of its source reads it; that sync says it is still a stub and is not
+    tried again; the one after says nothing. Every note keeps "an older build gave up on ", install.sh's
+    grep."""
     from agentsync import cli  # noqa: PLC0415
     from test_cycle import _run_record  # noqa: PLC0415
 
@@ -351,8 +360,10 @@ def test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_re
     cli.main(["sync", "--config", cfg])
     out = capsys.readouterr().out
     assert _notes(out) == [
-        f"  note: 1 conversion {_SAID} was tried once more in this sync and failed again; "
-        "it is not tried again"
+        # B13 round 31 C545, C523: the .potx is an unreadable stub now, and the same line says 0 failed, so
+        # never "failed again"
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub; this sync's "
+        "counts say why (failed, unreadable or refused), and it is not tried again"
     ], out
     record = _run_record(config)
     assert (record["path_reread"], record["path_reread_failed"]) == (1, 1)
@@ -804,3 +815,56 @@ def test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash
     staged = tmp_path / "Contoso state" / "staging" / "abc0123456789def"
     said = _pathless(f"[Errno 21] Is a directory: '{staged}/'", staged / "deck.pdf", "deck.pdf")
     assert said == f"[Errno 21] Is a directory: '{_FOLDER_WORD}'", said
+
+
+def test_a_legacy_retry_of_a_stub_whose_reason_named_a_folder_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C506: on the upgrade path from a build before the retry, the legacy retry takes the stub
+    whose stored reason named the staging folder before the path re-read can, so no note said so and
+    ``path_reread`` stayed 0. ``legacy_pathed`` counts it, and its legacy note says the reason named a
+    folder; ``path_reread`` is untouched."""
+    import sqlite3  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    with sqlite3.connect(config.state_paths.db) as db:  # a build that predates the retry
+        db.execute("DELETE FROM meta WHERE key LIKE 'convert-retry%'")
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    notes = _notes(capsys.readouterr().out)
+    assert [n for n in notes if "(its stored reason named a folder on this Mac)" in n] == notes, notes
+    assert len(notes) == 1, notes
+    record = _run_record(config)
+    assert (record["legacy_retried"], record["legacy_pathed"]) == (1, 1), record
+    assert "path_reread" not in record, record
+
+
+def test_a_legacy_retry_of_some_stubs_with_a_folder_says_how_many(capsys: pytest.CaptureFixture[str]) -> None:
+    """C506: when only some of the legacy retry's stubs named a folder, a note of its own counts them."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import CycleMode, CycleReport  # noqa: PLC0415
+
+    report = CycleReport(
+        run_id=1,
+        mode=CycleMode.POLL,
+        sources=(),
+        changes=(),
+        commit_sha=None,
+        legacy_retried=3,
+        legacy_pathed=1,
+    )
+    cli._print_report(report)
+    notes = _notes(capsys.readouterr().out)
+    assert notes[-1] == (
+        "  note: of those, 1 conversion an older build gave up on was tried again with a stored reason that "
+        "named a folder on this Mac"
+    ), notes
+    assert not [n for n in notes if re.search(r"\bconverted\b|\bdeferred\b|\bread again\b", n)]

@@ -489,10 +489,13 @@ def _out_path_reread_notes(report: CycleReport) -> None:
             f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
             f"sync and {'is' if n == 1 else 'are'} now current"
         )
-    if n := report.path_reread_failed:
+    if (
+        n := report.path_reread_failed
+    ):  # failed, unreadable or refused: never "failed again" (B13 round 31 C545)
         _out(
             f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
-            f"sync and failed again; {'it is' if n == 1 else 'they are'} not tried again"
+            f"sync and {'is' if n == 1 else 'are'} still a stub; this sync's counts say why (failed, "
+            f"unreadable or refused), and {'it is' if n == 1 else 'they are'} not tried again"
         )
     if n := report.path_reread_waiting:
         _out(
@@ -624,19 +627,26 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # (B13 round 21 Y28), the ones it settled as unreadable, refused or removed say that no try is left
         # (round 22 Z55); a ``no converter`` stub a later sync reads once its converter is ready (the OCR
         # engine for an image) is neither settled nor retried, and says so (round 23 A63); each note keeps
-        # "an older build gave up on ", which install.sh's grep shows
+        # "an older build gave up on ", which install.sh's grep shows. A stored reason that named a folder is
+        # said as the path re-read's notes say it, in every note when all of them did, else in a note of its
+        # own (B13 round 31 C506)
+        gave_up = "an older build gave up on " + (
+            "(its stored reason named a folder on this Mac) "
+            if report.legacy_pathed >= report.legacy_retried
+            else ""
+        )
         cleared = min(report.legacy_cleared, report.legacy_retried)
         settled = min(report.legacy_settled, report.legacy_retried - cleared)
         waiting = min(report.legacy_waiting, report.legacy_retried - cleared - settled)
         if cleared:
             _out(
-                f"  note: {plural(cleared, 'conversion')} an older build gave up on "
+                f"  note: {plural(cleared, 'conversion')} {gave_up}"
                 f"{'was' if cleared == 1 else 'were'} tried again in this sync and "
                 f"{'is' if cleared == 1 else 'are'} now current"
             )
         if settled:
             _out(
-                f"  note: {plural(settled, 'conversion')} an older build gave up on "
+                f"  note: {plural(settled, 'conversion')} {gave_up}"
                 f"{'was' if settled == 1 else 'were'} tried again in this sync and "
                 f"{'is' if settled == 1 else 'are'} settled; this sync's counts say how (unreadable, refused "
                 f"or removed), and {'it is' if settled == 1 else 'they are'} not tried again"
@@ -644,7 +654,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if waiting:
             one = waiting == 1
             _out(
-                f"  note: {plural(waiting, 'conversion')} an older build gave up on "
+                f"  note: {plural(waiting, 'conversion')} {gave_up}"
                 f"{'was' if one else 'were'} tried again in this sync and {'is' if one else 'are'} refused "
                 f"until a converter for {'its' if one else 'their'} type is ready (the OCR engine for an "
                 f"image); the next sync that has one reads {'it' if one else 'them'} again, and "
@@ -655,9 +665,15 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             whose = "its source" if n == 1 else "their sources"
             are = "is" if n == 1 else "are"
             _out(
-                f"  note: {plural(n, 'conversion')} an older build gave up on {are} tried "
+                f"  note: {plural(n, 'conversion')} {gave_up}{are} tried "
                 f"again, up to {tries} in the syncs of {whose} from this one on; "
                 f"{'its error' if n == 1 else 'their errors'} may show again until those tries are used"
+            )
+        if 0 < (n := report.legacy_pathed) < report.legacy_retried:
+            _out(
+                f"  note: of those, {plural(n, 'conversion')} an older build gave up on "
+                f"{'was' if n == 1 else 'were'} tried again with a stored reason that named a folder on this "
+                "Mac"
             )
     _out_path_reread_notes(report)
     converted = sum(s.converted for s in report.sources)

@@ -6310,6 +6310,10 @@ _ROUND_30_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread` |", "§16.206 C362"),
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C362's four rows in §16.28's run-record table, the path re-read's
 counts."""
 
+_ROUND_31_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_pathed` |", "§16.211 C506"),)
+"""Round 31 lane E's dated line at a section its claim names with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C506's row in §16.28's run-record table."""
+
 _ROUND_30_B_PARAGRAPH_AMENDS = (
     (
         "16.200",
@@ -6457,6 +6461,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_30_RA_PARAGRAPH_AMENDS,
         *_ROUND_30_E_PARAGRAPH_AMENDS,
         *_ROUND_30_B_PARAGRAPH_AMENDS,
+        *_ROUND_31_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

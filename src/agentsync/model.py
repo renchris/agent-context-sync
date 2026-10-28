@@ -528,6 +528,10 @@ class CycleReport:
     # (the OCR engine for an image): "is refused until a converter for its type is ready", neither the
     # settled words nor the retry words, and the run record keeps it (``legacy_waiting``; B13 round 23 A63)
     legacy_waiting: int = 0
+    # of ``legacy_retried``, the ones whose stored reason named a folder on this Mac (``_names_a_path``):
+    # the legacy retry took them before the path re-read could; its note says so, ``path_reread`` untouched
+    # (B13 round 31 C506)
+    legacy_pathed: int = 0
     # stubs whose reason an older build wrote a staging or home path into, converted once more past their
     # retries in this run (``Cycle._retries``' one-shot, B13 round 29 C181): of them, the ones live now and
     # the ones still a stub, never read again; and the ones this run queued for it but did not read (another
