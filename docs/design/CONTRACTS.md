@@ -34429,6 +34429,8 @@ quotes each tail and word as install.sh writes them, that the purge queue's come
 suppression list lost one, and that the hold list's follows either (`config_err=state-queue-lost,state-hold-lost`).
 Test: `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which reads the three tails and their `clog`
 words from install.sh, and checks every `state-` word install.sh logs that way is in the guide.
+**Amended 2026-10-28, §16.212 C532:** the suppression list's tail comes first when both lists lost a purge, as
+`governance.governance_lost` reads it first; the guide said the purge queue's.
 
 **The guide's Repeat conversions row gives the path re-read** (C362, C319, the guide's half; ruling 45;
 `docs/deploy/setup-feedback.md`). Lane E's ea5dc78aa tries once more a failure whose stored reason an older build
@@ -34707,3 +34709,13 @@ path, and this rule, in round 32's brief through `tools/edit.py`) are the lead's
 `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, which runs the note's command over a
 copy made like the fixture's: it passes, still passes after a made-up file comes and goes, and fails once a manifest
 file is gone.
+
+**The guide gives the suppression list's step 1 tail first when both lists lost a purge** (C532;
+`docs/deploy/setup-feedback.md`; dated line at §16.207 C315). Step 1's lost-list probe reads
+`governance.governance_lost`, which returns `suppressions_lost(state_dir) or queue_lost(state_dir)`, so with both
+lists moved aside it prints `none,lost-suppressed` and logs `state-suppressed-lost`, as status's `NEXT:` leads with
+the governance.suppressed line; the guide put the purge queue's tail first and said it comes first when both lost
+one. The two sentences swap, the parenthesis names the suppression list and why, and the tails and logged words stay
+byte for byte. install.sh's comment order (8205-8207) is lane RB's. Test:
+`test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which reads the order from `governance_lost`'s source
+and checks the suppression list's tail comes before the queue's.

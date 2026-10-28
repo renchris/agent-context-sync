@@ -8079,7 +8079,9 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     that lost a purge (ruling 40), logged `state-queue-lost` and `state-suppressed-lost`, were in no guide:
     the config_err bullet lists only the words config_errors joins, which these never are. The bullet quotes
     each tail and word as install.sh writes them, read here, and every `state-` word install.sh can log after
-    `config_err=` is in the guide."""
+    `config_err=` is in the guide. B13 round 31 C532: it said the purge queue's tail comes first when both
+    lists lost a purge, but step 1 reads `governance_lost`, which returns the suppression list's first, as
+    status's NEXT leads with it; the guide gives the suppression list first and says so."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     section = " ".join(_feedback_page().split())
     tails = {
@@ -8101,6 +8103,14 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
     assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
     assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section
+    from agentsync import governance  # noqa: PLC0415
+
+    assert "return suppressions_lost(state_dir) or queue_lost(state_dir)" in inspect.getsource(
+        governance.governance_lost
+    )
+    assert section.index(tails["suppression list"]) < section.index(tails["purge queue"])
+    assert "(the suppression list's when both lost one, as status's `NEXT:` leads with it" in section
+    assert "the purge queue's first when both lost one" not in section
     assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script
     # every state- word install.sh can log after config_err= is one the guide names
     logged = set(re.findall(r'clog="(?:\$clog)?,(state-[a-z-]+)"', script))
