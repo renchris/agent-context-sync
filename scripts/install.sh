@@ -2141,6 +2141,7 @@ FIXED_VALUE_PHRASES+="|or a label that blocks download|its lit samples show anot
 FIXED_VALUE_PHRASES+="|a lit label follows sound|the text of a name label or a camera picture"
 FIXED_VALUE_PHRASES+="|the one label the meeting app lit|MSIP_Label_|msip_label_|label_policy"
 FIXED_VALUE_PHRASES+="|for a new mail label reader|the mail label reader"
+FIXED_VALUE_PHRASES+="|The label rule did not change: a mail an older label reader let through"
 FIXED_VALUE_PHRASES+="|under a label rule because its label data did not parse"
 FIXED_VALUE_PHRASES+="|under a label rule because their label data did not parse"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a

@@ -8962,6 +8962,17 @@ def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() 
     assert f"`{note.group(1)}:`" in row and f"{note.group(2)}'s options" in row
     assert "a file re-screened after a secret-rule change is counted" in row
     assert "counts files converted again from the bytes their own page was made from, right after" not in row
+    # B13 round 31 ruling 53 and C506: the reader's own note and the legacy retry's folder clause
+    reader = re.search(r'f"- (re-screened for a new mail label reader): \{each\}', source)
+    assert reader is not None and f"`{reader.group(1)}:`" in row
+    assert (
+        "of them for a new mail label reader" in source and "`N of them for a new mail label reader`" in row
+    )
+    for said in (
+        "and its stored reason named a folder on this Mac",
+        "had a stored reason that named a folder",
+    ):
+        assert said in source and said in row, said
 
 
 def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:

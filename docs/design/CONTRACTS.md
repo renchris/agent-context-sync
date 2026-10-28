@@ -34648,6 +34648,23 @@ one file. The sentence reads `No run reads a file waiting for its converter, so 
 any count. Test: `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`, now with
 a one-run, one-file case.
 
+**A re-screen the mail label reader queued has its own note, and a legacy retry's folder is said** (ruling 53, the
+report's half of lane E's C505 with C517, C518, C524, C544; C506, ruling 54, its report half;
+`src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). Lane E's run record counts `rescreened_reader`, the
+share of `rescreened` the new mail label reader queued, and `legacy_pathed`, the legacy retries whose stored reason
+named a folder on this Mac. Repeat conversions gives a run whose re-screens were all the reader's its own note, `-
+re-screened for a new mail label reader: run N, F files (K came out the same). The label rule did not change: a mail an
+older label reader let through is screened again by the new one, and is counted apart from the 'same bytes' column`,
+never `for a rule change`; a mixed run keeps the rule's note with `; R of them for a new mail label reader` in its
+bracket. The rule's note ended mid-sentence (`one re-screened for a secret rule is`); it ends `is counted`, as the
+guide's row says. A legacy retry with `legacy_pathed` adds `, and its stored reason named a folder on this Mac` (`, and
+N of them had a stored reason that named a folder on this Mac`) to its `tried again after an upgrade:` note, and the
+retry sentence takes the one-shot clause, with no second `tried once more` note for the same files; an older record
+reads both counts as 0. The guide's Repeat conversions row says both, and `The label rule did not change: a mail an
+older label reader let through` joins ruling 55's phrases. Tests: `test_repeat_conversions_part_reads_the_run_records_and_the_cache`
+(a reader-only and a mixed run), `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (one and
+two files with `legacy_pathed`) and `test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` in test_deploy_pack (lane E's 46a029853 and 77672c89a).
+
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
 **The installer's governance-folder fix says a folder was kept when the hold record names a hold** (C521, C324's

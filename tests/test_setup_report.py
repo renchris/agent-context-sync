@@ -14280,6 +14280,31 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         noun = "that file's conversion" if counts["legacy_retried"] == 1 else "these conversions"
         assert f"- tried again after an upgrade: {want} An older build had given up on {noun}" in part, part
         assert ("an old conversion error can show in those runs" in part) == retry, part
+        assert "named a folder on this Mac" not in part and "tried once more after an upgrade" not in part
+    # B13 round 31 C506 (ruling 54, lane E's legacy_pathed): a legacy retry of a failure whose stored reason
+    # named a folder says so in its bullet, and the retry sentence takes the one-shot clause, with no second
+    # "tried once more" bullet for the same files
+    for counts, folder in (
+        (
+            {"legacy_retried": 1, "legacy_cleared": 1, "legacy_pathed": 1},
+            "that file's conversion, and its stored reason named a folder on this Mac",
+        ),
+        (
+            {"legacy_retried": 3, "legacy_cleared": 3, "legacy_pathed": 2},
+            "these conversions, and 2 of them had a stored reason that named a folder on this Mac",
+        ),
+    ):
+        seed = Seed(fake_mac["config"])
+        seed.m._db.execute(
+            "UPDATE runs SET counts_json = ? WHERE run_id = 4", (json.dumps({"converted": 1, **counts}),)
+        )
+        seed.close()
+        part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+        assert f"An older build had given up on {folder}" in part, part
+        assert (
+            "a failure an older build stored a folder path in is tried once more after an upgrade" in part
+        ), part
+        assert "tried once more after an upgrade:" not in part, part
     # B13 round 23 A63: a stub left for its converter, which the first run with one reads again, is neither
     # settled with no try left nor given the retry words
     waits = (
@@ -14476,8 +14501,30 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     assert (
         "- re-screened for a rule change: run 5, 11 files (10 came out the same). A label rule is one of "
         "the converter's options, so a file re-screened for a label-rule change is a new conversion and is "
-        "not in the 'same bytes' column; one re-screened for a secret rule is\n" in part + "\n"
+        "not in the 'same bytes' column; one re-screened for a secret rule is counted\n" in part + "\n"
     ), part
+    # B13 round 31 ruling 53 (lane E's rescreened_reader): a run whose re-screens were all the new mail label
+    # reader's has its own bullet, never "for a rule change"; a mixed run names the reader's share
+    for counts, said, never in (
+        (
+            {"converted": 3, "rescreened": 3, "rescreened_unchanged": 2, "rescreened_reader": 3},
+            "- re-screened for a new mail label reader: run 5, 3 files (2 came out the same). The label "
+            "rule did not change: a mail an older label reader let through is screened again by the new "
+            "one, and is counted apart from the 'same bytes' column",
+            "re-screened for a rule change",
+        ),
+        (
+            {"converted": 4, "rescreened": 4, "rescreened_unchanged": 1, "rescreened_reader": 2},
+            "- re-screened for a rule change: run 5, 4 files (1 came out the same; 2 of them for a new mail "
+            "label reader). A label rule",
+            "re-screened for a new mail label reader:",
+        ),
+    ):
+        seed = Seed(fake_mac["config"])
+        seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 5", (json.dumps(counts),))
+        seed.close()
+        part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+        assert said in part and never not in part, part
 
 
 def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record(

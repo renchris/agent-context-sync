@@ -1460,6 +1460,7 @@ _FIXED_VALUE_PHRASES = (
     # reader`, and the reader's `the mail label reader changed` warning
     "for a new mail label reader",
     "the mail label reader",
+    "The label rule did not change: a mail an older label reader let through",
     # lane B's sync line (B13 round 31 ruling 59, C525): `, L of them under a label rule because its label
     # data did not parse`, which the report re-renders (C567)
     "under a label rule because its label data did not parse",
@@ -10436,7 +10437,10 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         ]
     # B13 round 30 C362, C319 (ruling 45): the runs that counted the one-shot re-read of a failure whose
     # stored reason an older build wrote a folder path into, a try past the 2 the sentence below names
-    pathed = [x for x in runs[:_RUNS_SHOWN] if x.n("path_reread") or x.n("path_reread_waiting")]
+    reread_runs = [x for x in runs[:_RUNS_SHOWN] if x.n("path_reread") or x.n("path_reread_waiting")]
+    # B13 round 31 C506 (ruling 54, lane E's legacy_pathed): a legacy retry of a failure whose stored reason
+    # named a folder is the same one-shot read again, so the clause shows for it too, with no second bullet
+    pathed = [x for x in runs[:_RUNS_SHOWN] if x in reread_runs or x.n("legacy_pathed")]
     if pathed or any(x.n("converted_failed") or x.n("converter_waiting") for x in runs[:_RUNS_SHOWN]):
         # A run with failures followed by runs with none: a retry that worked, one given up, or a file whose
         # converter still cannot start (B13 round 18 V75), which each such run counts as waiting, never in a
@@ -10457,20 +10461,39 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "it waiting, which that run counts as waiting for its converter, never as converted or failed, "
             'and the files still without a page are in Quarantine by reason, class "conversion failed"',
         ]
-    rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened")]
+    # B13 round 31 ruling 53 (lane E's rescreened_reader, a share of rescreened): a run whose re-screens were
+    # all the new mail label reader's has its own bullet, never "for a rule change"; a mixed run names it
+    reader = [
+        x for x in runs[:_RUNS_SHOWN] if x.n("rescreened") and x.n("rescreened_reader") >= x.n("rescreened")
+    ]
+    rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened") and x not in reader]
     if rescreened:
         # a re-screen after a label-rule change is a new conversion (the rule is one of the converter's
         # options), so the "same bytes" column read 0 for runs that re-read unchanged files (B13 round 8 J30)
-        each = "; ".join(
-            f"run {x.run_id}, {_plural(x.n('rescreened'), 'file')} ({x.n('rescreened_unchanged')} came "
-            "out the same)"
-            for x in rescreened
-        )
+        def ruled(x: _RunRow) -> str:
+            by_reader = min(x.n("rescreened_reader"), x.n("rescreened"))
+            also = f"; {by_reader} of them for a new mail label reader" if by_reader else ""
+            same = f"{x.n('rescreened_unchanged')} came out the same{also}"
+            return f"run {x.run_id}, {_plural(x.n('rescreened'), 'file')} ({same})"
+
+        each = "; ".join(ruled(x) for x in rescreened)
         out += [
             "",
             f"- re-screened for a rule change: {each}. A label rule is one of the converter's options, so a "
             "file re-screened for a label-rule change is a new conversion and is not in the 'same bytes' "
-            "column; one re-screened for a secret rule is",
+            "column; one re-screened for a secret rule is counted",
+        ]
+    if reader:
+        each = "; ".join(
+            f"run {x.run_id}, {_plural(x.n('rescreened'), 'file')} ({x.n('rescreened_unchanged')} came out "
+            "the same)"
+            for x in reader
+        )
+        out += [
+            "",
+            f"- re-screened for a new mail label reader: {each}. The label rule did not change: a mail an "
+            "older label reader let through is screened again by the new one, and is counted apart from the "
+            "'same bytes' column",
         ]
     if any(x.n("converted_unreadable") for x in runs[:_RUNS_SHOWN]):
         out += [
@@ -10521,14 +10544,24 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "its type (an engine built, or [convert] ocr or recordings turned back on), so an old conversion "
             "error can show in that run"
         )
+        # B13 round 31 C506 (ruling 54): lane E's legacy_pathed, those whose stored reason named a folder
+        named = min(sum(x.n("legacy_pathed") for x in upgraded), total)
+        folder = (
+            ""
+            if not named
+            else ", and its stored reason named a folder on this Mac"
+            if total == 1
+            else f", and {named} of them had a stored reason that named a folder on this Mac"
+        )
         out += [
             "",
             f"- tried again after an upgrade: {each}. An older build had given up on "
             + ("that file's conversion" if total == 1 else "these conversions")
+            + folder
             + (retry if any(rest for _words, rest, _waiting in said) else "")
             + (wait if any(waiting for _words, _rest, waiting in said) else ""),
         ]
-    if pathed:
+    if reread_runs:
         # B13 round 30 C362: the run's own record of the one-shot re-read, by outcome, as the note above
         # counts legacy_*; "that run converted", never the CLI's "now current": the report is read days later
         # (Z35)
@@ -10551,8 +10584,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 return f"{head}, which {done[0].split(' ', 1)[1]}"
             return f"{head} ({', '.join(done)})" if done else head
 
-        total = sum(x.n("path_reread") + x.n("path_reread_waiting") for x in pathed)
-        each = "; ".join(reread(x) for x in pathed)
+        total = sum(x.n("path_reread") + x.n("path_reread_waiting") for x in reread_runs)
+        each = "; ".join(reread(x) for x in reread_runs)
         out += [
             "",
             f"- tried once more after an upgrade: {each}. An older build gave up "
