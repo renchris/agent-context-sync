@@ -25089,6 +25089,8 @@ Amended 2026-10-20, §16.146 X2, X10: the note's tail is the manifest's state no
 file(s) still wait(s): its stub is / their stubs are in Quarantine by reason, class "conversion failed", until a
 run in which the converter starts converts it/them`, or `none waits now: Quarantine by reason holds no stub of a
 file waiting for its converter`.
+Amended 2026-10-28, §16.208 C527: the sentence after the runs reads `No run reads a file waiting for its converter, so
+none is in a column above`, true of one file and of several, with no pronoun picked from the runs' sum.
 
 **A manifest this account cannot open fails a Doctor line, and the report points at it** (W64; amends §16.128 U21).
 With manifest.sqlite at mode 0000 (or another account's, after a sudo sync) status exited 0 with `[ok]
@@ -34568,6 +34570,14 @@ stays read-only and `_SPLIT_KINDS` and `NOT_LOOKED_UP` keep their names. The gui
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304` (which now asserts no head holds `not looked up`
 or `not searched yet`), `test_the_guides_purge_queue_row_names_the_sections_parts` and
 `test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start`.
+
+**The Repeat conversions note on a waiting converter takes no pronoun from a sum** (C527;
+`src/agentsync/setup_report.py`; dated line at the round 19 W52/W68 entry). One run of one file read `run 14, 1 file.
+Nothing read them, so they are in no column above`. Choosing `it` from the runs' total would be wrong too: a file
+whose converter cannot start is counted again in each run it still waits in, so two runs of `1 file` are most likely
+one file. The sentence reads `No run reads a file waiting for its converter, so none is in a column above`, true for
+any count. Test: `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`, now with
+a one-run, one-file case.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 

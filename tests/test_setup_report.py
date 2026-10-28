@@ -14485,9 +14485,9 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     assert "| 3 | poll | ok | 2026-10-06T10:00:00Z | 0 | 0 | 0 | 0 | 0 |" in part, "no column is added"
     # B13 round 20 X2, X10: whether a stub waits is the manifest's now; this one has none
     assert (
-        "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. Nothing read them, "
-        "so they are in no column above; none waits now: Quarantine by reason holds no stub of a file "
-        "waiting for its converter\n" in part
+        "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. No run reads a file "
+        "waiting for its converter, so none is in a column above; none waits now: Quarantine by reason holds "
+        "no stub of a file waiting for its converter\n" in part
     ), part
     assert "- a conversion that failed is counted in each run it failed in" in part, "no run has a failure"
     rows = {ln.split(" | ")[0]: ln for ln in parts["OCR"].splitlines() if re.match(r"\| \d", ln)}
@@ -14500,6 +14500,16 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     seed.close()
     part = status_parts(fake_mac)[1]["Repeat conversions"]
     assert "waiting for a converter" not in part and "a conversion that failed" not in part, part
+    # B13 round 31 C527: one run of one file reads true too, no pronoun picked from a sum
+    seed = Seed(fake_mac["config"])
+    seed.run(4, {"converted": 0, "converter_waiting": 1})
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert (
+        "- waiting for a converter that could not start: run 4, 1 file. No run reads a file waiting for its "
+        "converter, so none is in a column above;" in part
+    ), part
+    assert "Nothing read them" not in part, part
 
 
 def test_the_waiting_files_note_says_whether_a_stub_waits_now_from_the_manifest(
