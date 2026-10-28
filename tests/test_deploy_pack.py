@@ -7816,10 +7816,12 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     codes = {v for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
     assert {0, 1, 2, 65, 75, 77, 78, 79} <= codes, "the scan is broken"
     assert codes <= set(setup_report.EXIT_MEANINGS)
-    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", SCRIPTS[0].read_text(encoding="utf-8"), re.M | re.S)
-    assert fn is not None
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", script, re.M | re.S)
+    sig = re.search(r"^rc_signal_words\(\) \{\n.*?^\}\n", script, re.M | re.S)  # its default (C513)
+    assert fn is not None and sig is not None
     order = sorted(codes)
-    run = fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done'
+    run = sig.group(0) + fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done'
     cp = subprocess.run(
         ["/bin/bash", "-c", run, "-", *map(str, order)], capture_output=True, text=True, check=True
     )
@@ -7840,7 +7842,7 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
         spawn,
     }
     cp = subprocess.run(
-        ["/bin/bash", "-c", fn.group(0) + 'rc_meaning "$1"', "-", str(spawn)],
+        ["/bin/bash", "-c", sig.group(0) + fn.group(0) + 'rc_meaning "$1"', "-", str(spawn)],
         capture_output=True,
         text=True,
         check=True,

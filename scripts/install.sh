@@ -1548,11 +1548,18 @@ show_version() { # the compat line last: step 1 of the setup prompt reads the la
 	fi
 	say "setup-prompt-compat $SETUP_PROMPT_COMPAT"
 }
-# What an agentsync (or launchd) exit code means, for the messages.
-# A signal's exit (128 + N) that no line above names reads "stopped by SIG<NAME> (signal N)", the phrase
-# ocr._ended gives a converter that a signal stopped (B13 round 3 R81).
-rc_meaning() {
+# A signal's exit (128 + N), standing alone: "stopped by SIG<NAME> (signal N)", the phrase ocr._ended gives a
+# converter that a signal stopped (B13 round 3 R81) and setup_report._closing_stopped gives a closing status; "exit
+# N" for any other code. Where the words stand alone (never inside a caller's bracket), so a signal is named one way
+# in this run's lines and the report (B13 round 31 ruling 58: C513, C515).
+rc_signal_words() {
 	local n=""
+	case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
+	if [ -n "$n" ]; then printf 'stopped by SIG%s (signal %s)' "${n#SIG}" "$(($1 - 128))"; else printf 'exit %s' "$1"; fi
+}
+# What an agentsync (or launchd) exit code means, for the messages.
+# A signal's exit (128 + N) that no line above names reads as rc_signal_words gives it.
+rc_meaning() {
 	case "$1" in
 	0) printf 'ok' ;;
 	1) printf 'failed' ;;
@@ -1569,10 +1576,7 @@ rc_meaning() {
 	129) printf 'stopped by SIGHUP' ;;
 	130) printf 'stopped by SIGINT' ;;
 	143) printf 'stopped by SIGTERM, perhaps a tool timeout' ;; # no inner brackets: callers wrap it (B13 round 20 X7)
-	*)
-		case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
-		if [ -n "$n" ]; then printf 'stopped by SIG%s (signal %s)' "${n#SIG}" "$(($1 - 128))"; else printf 'exit %s' "$1"; fi
-		;;
+	*) rc_signal_words "$1" ;;
 	esac
 }
 # with_timeout's watchdog, and start_pandoc_once's limit: kills PID once LIMIT seconds have passed. It waits
@@ -10329,7 +10333,9 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	# one stopped after its NEXT left that NEXT in it. The exit stays: the sync itself finished
 	with_progress "status" loop_status_run || srun=$?
 	if [ "$srun" -ge 128 ]; then
-		say "note: the closing status was $(rc_meaning "$srun") before it finished, so its NEXT line may be missing here: $AGENTSYNC status prints it again"
+		# R81's phrase standing alone, as the report's _closing_stopped says it, never rc_meaning's 143 aside,
+		# which ran into "before it finished" (B13 round 31 ruling 58: C513)
+		say "note: the closing status was $(rc_signal_words "$srun") before it finished, so its NEXT line may be missing here: $AGENTSYNC status prints it again"
 		LOOP_STOPPED="$srun"
 	fi
 	cleared_listings

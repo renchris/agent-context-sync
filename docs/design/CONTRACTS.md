@@ -31291,6 +31291,8 @@ install.sh line `, its closing status stopped by SIGKILL (signal 9)` after the e
 is read, never echoed.
 Amended 2026-10-26, §16.198 C135: and the Installer section's Every run table's end cell adds the same `, its
 closing status stopped by SIGKILL (signal 9)` after the exit, so that table never shows such a run as a plain exit 0.
+Amended 2026-10-28, §16.209 C513: the note names the signal as `rc_signal_words` gives it, R81's phrase standing
+alone (`stopped by SIGTERM (signal 15)`), never `<rc_meaning>`, whose 143 aside ran into `before it finished`.
 
 **Every friction stamp setup_report reads, the shell reads** (P145; amends §16.184 E77; dated line at §16.179 D79).
 The shell's readers took `...:SSZ` and, since E77, a fraction, while `_ISO_TIME` and `parse_time` read an offset
@@ -34623,6 +34625,16 @@ state folder`, as the agentsync report says it with no config; an older `kind=mi
 lost now (Python's `stop.lost_list`) is not read by the shell. Four findings, one defect, built once. Test:
 `test_the_shell_reports_sync_stop_kinds_are_the_agentsync_reports`, which reads every single-tab arm and asserts the
 table equals _SYNC_STOP_KINDS, `refused` as the `*)` default, and renders a `kind=lost-list` stop.
+
+**A closing status a signal stopped is named by its signal, as the report names it** (C513; ruling 58; amends §16.189
+P14; `scripts/install.sh`). P14's note took `rc_meaning`, whose 143 reads `stopped by SIGTERM, perhaps a tool
+timeout` with no bracket because its callers wrap it (X7); this caller does not, so the aside ran into the clause
+after it (`... perhaps a tool timeout before it finished`), and the report's `_closing_stopped` names the same stop
+`stopped by SIGTERM (signal 15)`. Wrapping it here would nest a bracket for every other signal (`was (stopped by
+SIGKILL (signal 9))`), the verifier's makes-worse case. rc_meaning's default branch moves into `rc_signal_words`, R81's
+phrase standing alone (`stopped by SIG<NAME> (signal N)`, `exit N` for a code no signal names), which rc_meaning's
+default calls and the note calls directly; rc_meaning 143 is unchanged for its bracketed callers. Test:
+`test_a_closing_status_a_signal_stopped_is_said_and_logged`, whose SIGTERM row reads `stopped by SIGTERM (signal 15)`.
 
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 

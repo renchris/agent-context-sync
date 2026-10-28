@@ -1318,7 +1318,10 @@ def test_the_loops_next_falls_back_when_status_prints_none(
     ("signal_name", "said"),
     [
         ("KILL", "stopped by SIGKILL (signal 9)"),
-        ("TERM", "stopped by SIGTERM, perhaps a tool timeout"),
+        (
+            "TERM",
+            "stopped by SIGTERM (signal 15)",
+        ),  # B13 round 31 ruling 58 (C513): R81's phrase, the report's
         ("", ""),
     ],
 )
@@ -1328,7 +1331,9 @@ def test_a_closing_status_a_signal_stopped_is_said_and_logged(
     """B13 round 27 P14 (rehearsal c): a closing status killed by a signal ended the run 0 on the fallback
     NEXT with nothing said, as `|| true` dropped its rc. The run says so above the NEXT, which falls back as
     before, keeps exit 0 (the sync itself finished) and logs closing_status=<rc> on install.log's report
-    line. A status that exits 1 on a [FAIL] line is no stop (the empty case)."""
+    line. A status that exits 1 on a [FAIL] line is no stop (the empty case). B13 round 31 ruling 58 (C513):
+    the note names the signal in R81's phrase, as the report's _closing_stopped does, never rc_meaning's 143
+    aside, which read `stopped by SIGTERM, perhaps a tool timeout before it finished`."""
     failed = "[FAIL] sources.alpha — a stub failure (fix: run the stub again)"
     out = "NEXT: run the stub's own step" if signal_name else failed
     cp = install_sh(
@@ -14260,11 +14265,20 @@ def test_a_signal_exit_is_named_by_its_signal() -> None:
     """``rc_meaning`` names any signal's exit (128 + N) as ``stopped by SIG<NAME> (signal N)``, the phrase of
     ``ocr._ended``: a first sync jetsam killed read "exit 137". 129, 130 and 143 keep their words, and a code
     that is no signal's stays ``exit N`` (B13 round 2 R81)."""
-    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
-    assert fn is not None
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", text, re.M | re.S)
+    # B13 round 31 ruling 58 (C513): its default branch is rc_signal_words, R81's phrase standing alone
+    sig = re.search(r"^rc_signal_words\(\) \{\n.*?^\}\n", text, re.M | re.S)
+    assert fn is not None and sig is not None
     codes = ["137", "134", "141", "143", "130", "200", "1", "64", "65"]
     cp = subprocess.run(
-        [BASH32, "-c", fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done', "-", *codes],
+        [
+            BASH32,
+            "-c",
+            sig.group(0) + fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done',
+            "-",
+            *codes,
+        ],
         capture_output=True,
         text=True,
         check=True,
