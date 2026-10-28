@@ -592,3 +592,215 @@ def test_a_stub_with_a_path_needs_no_home_folder(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(Path, "home", staticmethod(no_home))
     assert _stub_with_a_path("file '/Volumes/x/agentsync/staging/ab12/a.pptx' is not")
     assert not _stub_with_a_path("not-ooxml: a Word document, not a deck")
+
+
+def _round29_build(mp: pytest.MonkeyPatch) -> None:
+    """The round 29 build: plain spellings only (before C364), no escaped fold (before C546)."""
+    from agentsync.convert import _common  # noqa: PLC0415
+
+    mp.setattr(
+        _common, "_spellings", lambda path: sorted({str(f) for f in _common._forms(path)}, key=len)[::-1]
+    )
+    mp.setattr(cycle_mod._Cycle, "_fold_escaped_reasons", lambda _self: None)
+
+
+def test_a_stub_a_round_29_build_wrote_an_escaped_staging_path_into_is_folded_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 31 C546: a round 29 build folded only the plain spelling of the staging folder, and an
+    ``OSError`` prints its path with ``repr`` (a tab as ``\\t``), so with ``state_dir`` under a folder with a
+    tab the staging path stayed in the page, QUARANTINE.tsv and the manifest. Its one-shot re-read was
+    used, so no conversion ever wrote the reason again. One full sync folds it in place, converting
+    nothing."""
+    from test_review_fixes import cfg_text, write_config  # noqa: PLC0415
+
+    src = tmp_path / "source"
+    src.mkdir()
+    (src / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    text = cfg_text(tmp_path, src).replace(str(tmp_path / "state"), str(tmp_path / "Contoso\tState"))
+    config = write_config(tmp_path, text)
+    (src / "Contoso Quarterly.pptx").write_bytes(build_potx(tmp_path / "t.potx").read_bytes())
+    tries: list[str] = []
+
+    def refuses(self: PptxConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
+        tries.append(name)
+        (path / "x").open("rb")  # a real NotADirectoryError, which names the staged path with repr
+
+    monkeypatch.setattr(PptxConverter, "convert", refuses)
+    with monkeypatch.context() as mp:
+        _round29_build(mp)
+        for _ in range(5):
+            assert run(config).exit_code == 0
+    # the first, the retries, and the one-shot re-read when the stored reason kept "/staging/" (a short tmp)
+    assert len(tries) >= 1 + cycle_mod._CONVERT_RETRIES, tries
+    escaped = "Contoso\\tState"
+    page = "mirror/src/contoso-quarterly.pptx.md"
+    assert escaped in (_row(config, "Contoso Quarterly.pptx").state_reason or "")
+    assert escaped in git(config.docs_repo, "show", "HEAD:_sync/QUARANTINE.tsv")
+    tries.clear()
+    assert run(config).exit_code == 0
+    assert tries == [], "folded in place: no conversion"
+    reason = _row(config, "Contoso Quarterly.pptx").state_reason or ""
+    assert reason == "conversion failed: [Errno 20] Not a directory: 'Contoso Quarterly.pptx/x'", reason
+    for rel in (page, "_sync/QUARANTINE.tsv", "_manifest/src.jsonl"):
+        shown = git(config.docs_repo, "show", f"HEAD:{rel}")
+        assert escaped not in shown and "/staging/" not in shown, rel
+    assert page_fm(config, page)["reason"].endswith("Not a directory: 'Contoso Quarterly.pptx/x'")
+    before = (config.docs_repo / page).read_bytes()
+    assert run(config).exit_code == 0
+    assert tries == [] and (config.docs_repo / page).read_bytes() == before, "once per manifest"
+
+
+def test_names_a_path_reads_a_reason_cut_inside_the_escaped_staging_folder() -> None:
+    """B13 round 31 C547: the cut-inside-staging branch compared only the plain spelling, but a stored reason
+    holds the escaped one an ``OSError`` prints (a tab as ``\\t``), whose real tab ``_one_line`` would have
+    flattened anyway."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    fake = SimpleNamespace(staging=Path("/Volumes/Contoso\tState/agentsync/staging"))
+    fake._staging_roots = lambda: cycle_mod._Cycle._staging_roots(fake)  # type: ignore[attr-defined]
+    names = lambda reason: cycle_mod._Cycle._names_a_path(fake, reason)  # type: ignore[arg-type]  # noqa: E731
+    head = "conversion failed: [Errno 20] Not a directory: '/Volumes/Contoso"
+    assert names(head + "\\tState/agentsync/sta…")
+    assert names(head + " State/agentsync/sta…"), "a real tab flattened to a space"
+    assert names(head + "\tState/agentsync/sta…")
+    assert not names("conversion failed: [Errno 20] Not a directory: 'Contoso Quarterly.pptx/x'")
+
+
+def test_a_fold_whose_page_could_not_be_written_is_tried_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 31 C564, C576: the converter-unavailable fold wrote its once-per-manifest key even when a
+    page rewrite failed, so the stored reason was folded and the page kept the home folder for good. The key
+    now waits for a run whose rewrites all land."""
+    home_dir = tmp_path / "Contoso Home"
+    home_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home_dir))
+    config, src = make_env(tmp_path, extra='\n[convert]\npandoc_path = "~/bin/pandoc"\n')
+    (src / "contoso-notes.rtf").write_text(r"{\rtf1\ansi Contoso notes\par}", encoding="utf-8")
+    from agentsync.convert import _common  # noqa: PLC0415
+    from agentsync.publish import Publisher  # noqa: PLC0415
+
+    with monkeypatch.context() as mp:  # the build before C182, and before the fold
+        mp.setattr(convert_pkg, "_homeless", lambda text: text)
+        mp.setattr(_common, "_homeless", lambda text: text)
+        mp.setattr(cycle_mod._Cycle, "_fold_unavailable_reasons", lambda _self: None)
+        run(config)
+    page = "mirror/src/contoso-notes.rtf.md"
+    assert "Contoso Home" in page_fm(config, page)["reason"]
+    real = Publisher.write_pages
+    calls: list[int] = []
+
+    def full_disk(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        raise OSError(28, "No space left on device")
+
+    with monkeypatch.context() as mp:
+        mp.setattr(Publisher, "write_pages", full_disk)
+        run(config)
+    assert calls, "the fold tried the page"
+    assert "Contoso Home" not in (_row(config, "contoso-notes.rtf").state_reason or "")
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._UNAVAILABLE_FOLD_META) is None, (
+            "a failed rewrite keeps the key unwritten"
+        )
+    monkeypatch.setattr(Publisher, "write_pages", real)
+    run(config)
+    assert "Contoso Home" not in git(config.docs_repo, "show", f"HEAD:{page}")
+    assert _leaks(config) == []
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._UNAVAILABLE_FOLD_META) == "1"
+    before = (config.docs_repo / page).read_bytes()
+    run(config)
+    assert (config.docs_repo / page).read_bytes() == before
+
+
+def test_pathless_cuts_every_quote_spelling_and_the_folder_named_alone(tmp_path: Path) -> None:
+    """B13 round 31 C578: an error naming a file with a double quote prints its folder in single quotes, each
+    apostrophe as ``\\'``, which no spelling matched; and an error naming the staged folder alone kept it,
+    since only ``<folder>/`` was cut. The folder alone is cut at a path's end only, to fixed words."""
+    from agentsync.convert._common import _FOLDER_WORD, _pathless  # noqa: PLC0415
+
+    staged = tmp_path / "Contoso's state" / "staging" / "abc0123456789def"
+    staged.mkdir(parents=True)
+    src = staged / "deck.pdf"
+    src.write_bytes(b"")
+    for name in ('a"b.png', 'imgs/x"y.png'):
+        exc = FileNotFoundError(2, "No such file or directory", str(staged / name))
+        assert _pathless(str(exc), src, src.name) == f"[Errno 2] No such file or directory: '{name}'"
+    for exc in (
+        FileNotFoundError(2, "No such file or directory", str(staged)),
+        IsADirectoryError(21, "Is a directory", str(staged)),
+    ):
+        said = _pathless(str(exc), src, src.name)
+        assert said.endswith(f'"{_FOLDER_WORD}"') and "Contoso" not in said, said
+    plain = tmp_path / "Contoso state" / "staging" / "abc0123456789def"
+    plain.mkdir(parents=True)
+    exc = FileNotFoundError(2, "No such file or directory", str(plain))
+    assert _pathless(str(exc), plain / "deck.pdf", "deck.pdf") == (
+        f"[Errno 2] No such file or directory: '{_FOLDER_WORD}'"
+    )
+    assert _pathless(f"cannot list {plain}", plain / "deck.pdf", "deck.pdf") == f"cannot list {_FOLDER_WORD}"
+    sibling = f"cannot open '{plain}2/x.png'"
+    assert _pathless(sibling, plain / "deck.pdf", "deck.pdf") == sibling, "a sibling folder stays whole"
+
+
+def test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C578's home half: ``_homeless`` and ``_stub_with_a_path`` take the forced single-quote spelling too."""
+    from agentsync.convert._common import _homeless, _stub_with_a_path  # noqa: PLC0415
+
+    home = tmp_path / "Contoso's home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    exc = FileNotFoundError(2, "No such file or directory", str(home / 'a"b.txt'))
+    assert "\\'" in str(exc)
+    assert _homeless(str(exc)) == "[Errno 2] No such file or directory: '~/a\"b.txt'"
+    assert _stub_with_a_path(str(exc))
+
+
+def test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash(tmp_path: Path) -> None:
+    """B13 round 31 C551: the plain spelling of a path ending in a backslash is a prefix of its escaped one,
+    so only the longest-first order keeps either replace from spoiling the other."""
+    from agentsync.convert._common import _pathless, _spellings  # noqa: PLC0415
+
+    assert "no substring" not in (_spellings.__doc__ or ""), "the docstring says only: longest first"
+    staged = tmp_path / "Contoso\\"
+    found = _spellings(staged)
+    assert [len(s) for s in found] == sorted({len(s) for s in found}, reverse=True), "no two of one length"
+    src = staged / "notes.docx"
+    assert _pathless(f"[Errno 2] No such file: {str(src)!r}", src, "notes.docx") == (
+        "[Errno 2] No such file: 'notes.docx'"
+    )
+
+
+def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -> None:
+    """C546 (review): a Graph source stages a file as ``<staging>/<16 hex><suffix>`` (drive, mail, teams),
+    not the local ``<16 hex>/<name>``, so the fold left its escaped path whole; and a text not cut lost a tail
+    that only looked like the start of the staging folder."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    fake = SimpleNamespace(staging=Path("/Volumes/Contoso\tState/agentsync/staging"))
+    fake._staging_roots = lambda: cycle_mod._Cycle._staging_roots(fake)  # type: ignore[attr-defined]
+    fake._cut_in_staging = lambda text, **kw: cycle_mod._Cycle._cut_in_staging(fake, text, **kw)  # type: ignore[attr-defined]
+    fold = lambda text, name: cycle_mod._Cycle._fold_staging(fake, text, name)  # type: ignore[arg-type]  # noqa: E731
+    root = "/Volumes/Contoso\\tState/agentsync/staging/0123456789abcdef"
+    assert (
+        fold(f"[Errno 2] No such file: '{root}.docx'", "Plan.docx") == "[Errno 2] No such file: 'Plan.docx'"
+    )
+    assert fold(f"Not a directory: '{root}.eml/x'", "Plan.eml") == "Not a directory: 'Plan.eml/x'"
+    assert fold(f"Not a directory: '{root}/Plan.docx/x'", "Plan.docx") == "Not a directory: 'Plan.docx/x'"
+    assert fold(f"cannot list '{root}/'", "Plan.docx") == "cannot list 'its folder'"
+    assert fold("bad header in /Volumes/Contoso", "Plan.eml") == "bad header in /Volumes/Contoso", "not cut"
+    assert fold("bad header in '/Volumes/Contoso\\tState/agentsync/sta…", "Plan.eml") == "bad header in '…"
+
+
+def test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash(tmp_path: Path) -> None:
+    """C578 (review): an error naming the staged folder with a slash after it lost the folder and the slash
+    and read ``''``."""
+    from agentsync.convert._common import _FOLDER_WORD, _pathless  # noqa: PLC0415
+
+    staged = tmp_path / "Contoso state" / "staging" / "abc0123456789def"
+    said = _pathless(f"[Errno 21] Is a directory: '{staged}/'", staged / "deck.pdf", "deck.pdf")
+    assert said == f"[Errno 21] Is a directory: '{_FOLDER_WORD}'", said

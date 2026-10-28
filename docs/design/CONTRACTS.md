@@ -34239,11 +34239,16 @@ their path with `repr`, so a staging folder with a tab (`\t`) or a backslash (do
 failed conversion's reason (`[Errno 2] No such file or directory: '<staging>/media/x.png'`), and the re-read of
 §16.201 C181 wrote it again. `_common._spellings` gives every form of a path both its spellings, the escaped one
 (`repr(str(p))[1:-1]`) and the plain one, longest first, and the file loop, the folder loop and the home fold each
-take them in that order: the escaped spelling is never shorter than its plain one and the plain one is no substring
-of it, so neither replace spoils the other, and an ordinary path's two spellings are one. `_stub_with_a_path` reads
+take them in that order: spellings are replaced longest first, so neither replace spoils the other, and an ordinary
+path's two spellings are one. `_stub_with_a_path` reads
 the home folder in both. Two spaces in a row were already clean (`repr` keeps a space). Test:
 `test_convert_family.py::test_a_reason_loses_the_paths_before_its_whitespace_is_collapsed` (two spaces, a tab and
 a backslash; a `!r` message and two real `OSError`s, neither `staging` nor `Contoso` kept).
+Amended 2026-10-28, §16.211 C546, C578, C564, C551: a reason a round 29 build stored in the escaped spelling is folded
+in place once per manifest, and `_names_a_path` reads every spelling (C546); each form has a third spelling, `repr`'s
+forced into single quotes, and the staged file's folder named alone is cut at a path's end to `its folder` (C578,
+C564's half); this paragraph said the plain spelling is no substring of the escaped one, false for a path ending in
+a backslash, and says only that spellings are replaced longest first (C551).
 
 **An older build's converter-unavailable reason is folded in place, once (C361, ruling 45; `agentsync.cycle`;
 amends §16.201 C182).** C182 folded the home folder out of every new reason, but a stub an older build wrote while
@@ -34263,6 +34268,9 @@ sync with no home fold, a home folder long enough that the stored reason is cut 
 the row, the HEAD page, QUARANTINE.tsv or the source's manifest file, the reason ending `~/bin/pandoc`, and a third
 sync that leaves the page as it is) and
 `test_convert_family.py::test_a_paused_sources_converter_unavailable_reason_is_folded_too`.
+Amended 2026-10-28, §16.211 C564, C576: the key is written only when every page the fold had to rewrite was written;
+a failed rewrite leaves it unwritten, so the next full run rewrites the page, and a stored reason is counted only
+when it changed.
 
 **A test reaches `_stub_with_a_path` (C365, ruling 45; tests only).** §16.201 C181's two end-to-end tests reach the
 re-read through `_names_a_path`'s own branch (a reason naming this config's staging folder, or cut inside it), so
@@ -34454,7 +34462,59 @@ Reserved for round 31 lane B of B13.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
-Reserved for round 31 lane E of B13.
+Round 31's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 31"; specs `round31/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 48, 53 and 54 settle it). A dated line this round writes reads
+`Amended 2026-10-28, §16.211 C<n>`.
+
+**A stored reason an older build wrote in an escaped spelling is folded in place, and every spelling is read
+(C546 with C547, ruling 48; `agentsync.cycle`; amends §16.206 C364).** A round 29 build folded only the plain
+spelling of the staging folder, but an `OSError` prints its path with `repr` (a tab as `\t`), so with `state_dir`
+under a folder holding a tab, a backslash or U+00A0 the staging path stayed in a failed conversion's page,
+`_sync/QUARANTINE.tsv` and the manifest; that build's one-shot re-read (§16.201 C181) was used and its retries were
+gone, so no conversion wrote the reason again. Once per manifest (`convert-escaped-fold:done`, written only on a run
+that covers every live source and only when every page it had to rewrite was written),
+`Cycle._fold_escaped_reasons` folds, in place as C361's fold does, the stored reason of each failed conversion's
+stub (a paused source's too) that holds an escaped spelling of the staging folder or the home folder, or is cut
+inside an escaped staging folder: from its page's full `reason:` when the page is one intact failed stub, the staged
+file's path becomes its name (a local source's `<staging>/<16 hex>/<name>` and a Graph source's `<staging>/<16
+hex><suffix>` alike), any other path in its folder loses the folder, the folder named alone becomes `its folder`, a
+text that ends cut (`…`) loses the cut path, and the home folder becomes `~`; stored cut to 200 characters,
+the page rewritten only where its plan differs. Not a stub `_queue_path_stubs` queued in this run, whose conversion
+writes its reason anew. No verdict or count moves. `_names_a_path`'s cut-inside-staging branch reads every
+`_spellings` form of the staging folder (`Cycle._staging_roots`), each also with its whitespace flattened as
+`_one_line` stores it, so a reason cut inside the escaped folder is a path stub too. Tests:
+`test_convert_family.py::test_a_stub_a_round_29_build_wrote_an_escaped_staging_path_into_is_folded_in_place` (a
+round 29 build's five syncs under `Contoso<TAB>State`, four conversions; one sync of this build converts nothing
+and leaves no escaped path or `/staging/` in the row, the HEAD page, QUARANTINE.tsv or the source's manifest
+file; the next leaves the page byte for byte) and
+`test_convert_family.py::test_names_a_path_reads_a_reason_cut_inside_the_escaped_staging_folder` and
+`test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text`.
+
+**A fold whose page could not be written is tried again (C564 with C576, ruling 48; `agentsync.cycle`; amends
+§16.206 C361).** `_fold_unavailable_reasons` wrote its once-per-manifest key after a page rewrite failed
+(`PublishError` or `OSError`), so the stored reason was folded and the page kept the home folder for good. Both folds
+now leave their key unwritten while any page they had to rewrite failed; the next full run, whose stored reason is
+folded already, rewrites only the page, and counts a stored reason only when it changed. Test:
+`test_convert_family.py::test_a_fold_whose_page_could_not_be_written_is_tried_again` (a full disk on the fold's
+write; the key stays unwritten; the next sync clears the HEAD page and writes the key; the one after leaves the page
+byte for byte).
+
+**Every quote spelling, and the folder named alone (C578, C564's half, ruling 48; `agentsync.convert`; amends
+§16.206 C364).** `_common._spellings` gives each form three spellings: plain, `repr`'s (double quotes for a path
+with an apostrophe) and `repr`'s forced into single quotes (`repr(p + '"')[1:-2]`), which an error naming a file
+with a double quote gives its folder, each apostrophe as `\'`; `_homeless` and `_stub_with_a_path` take the same
+set. `_pathless` still drops `<folder>/` before any other file in it, after cutting the staged file's folder named
+alone, a trailing slash or none, only at a path's end (the end, a space, a quote or `:,;)]` after it), to the fixed words `its folder`
+(`_common._FOLDER_WORD`), never `""`, so a sibling whose name extends it stays whole. Tests:
+`test_convert_family.py::test_pathless_cuts_every_quote_spelling_and_the_folder_named_alone`,
+`test_convert_family.py::test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash` and
+`test_convert_family.py::test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling`.
+
+**The spellings' order, said as it is (C551, ruling 48; words only).** `_spellings`' docstring and §16.206 C364 said
+the plain spelling is no substring of the escaped one, false for a path ending in a backslash; both now say only
+that spellings are replaced longest first (two different spellings never have one length). Test:
+`test_convert_family.py::test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash`.
+
 
 ### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)
 

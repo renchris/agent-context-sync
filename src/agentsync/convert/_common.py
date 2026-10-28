@@ -139,13 +139,27 @@ def _pathless(text: str, src: Path, name: str) -> str:
     Each path's longest form goes first, so a resolved ``/private/tmp/…`` leaves no ``/private`` behind
     (B13 round 29 C183), and each in both its spellings, the escaped one first: an ``OSError`` or a
     ``PosixPath`` prints its path with ``repr``, so a tab is ``\\t`` there and a backslash doubled (B13 round
-    30 C364)."""
+    30 C364), and in the forced single-quote spelling too, which an error naming a file with a double quote
+    gives its folder's apostrophes (B13 round 31 C578). The folder named alone, with nothing of a file after
+    it, is cut only at a path's end, to a fixed word, so a sibling whose name extends it stays whole and a
+    quoted path never reads ``''`` (C578)."""
     for spelling in _spellings(src):
         text = text.replace(spelling, name)
-    for spelling in _spellings(src.parent):
-        if len(spelling) > 1:
-            text = text.replace(spelling + "/", "")
+    folder = [spelling for spelling in _spellings(src.parent) if len(spelling) > 1]
+    for spelling in folder:  # the folder alone, a trailing slash or none, before any path in it
+        text = re.sub(re.escape(spelling) + "/?" + _PATH_END, _FOLDER_WORD, text)
+    for spelling in folder:
+        text = text.replace(spelling + "/", "")
     return _homeless(text)
+
+
+_FOLDER_WORD = "its folder"
+"""What a staged file's folder named alone in a reason becomes (``_pathless``, B13 round 31 C578): fixed
+words, never a path and never empty."""
+_PATH_END = r"(?=$|[\s'\":,;)\]])"
+"""Where a path named alone ends in an error's text: the end, a space, a quote, or punctuation after it."""
+_PATH_GOES_ON = r"(?=/|$|[\s'\":,;)\]])"
+"""Where a staged file's path ends in an error's text, or goes on into a part below it (``<file>/x``)."""
 
 
 def _homeless(text: str) -> str:
@@ -163,15 +177,14 @@ def _homeless(text: str) -> str:
 
 
 def _spellings(path: Path) -> list[str]:
-    """Each form of ``path`` (``_forms``) as written and as ``repr`` prints it (a tab as ``\\t``, a backslash
-    doubled, U+00A0 as ``\\xa0``), the longest first: a form that is a substring of the other (``/tmp`` in
-    ``/private/tmp``, or a link to a suffix of itself) is replaced only after the longer one (B13 round 29
-    C183), and the escaped spelling of a form, never shorter than its plain one, goes first, the plain one
-    being no substring of it (B13 round 30 C364)."""
+    """Each form of ``path`` (``_forms``) as written, as ``repr`` prints it (a tab as ``\\t``, a backslash
+    doubled, U+00A0 as ``\\xa0``; B13 round 30 C364) and as ``repr`` prints it inside single quotes, each
+    apostrophe as ``\\'``, which it does for a path that also holds a double quote (B13 round 31 C578).
+    Spellings are replaced longest first (B13 round 29 C183, round 31 C551)."""
     found: list[str] = []
     for form in _forms(path):
         plain = str(form)
-        for spelling in (repr(plain)[1:-1], plain):
+        for spelling in (repr(plain)[1:-1], repr(plain + '"')[1:-2], plain):
             if spelling not in found:
                 found.append(spelling)
     return sorted(found, key=len, reverse=True)
@@ -198,7 +211,8 @@ def _stub_with_a_path(reason: str) -> bool:
         home = str(Path.home())
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
         return False
-    return len(home) > 1 and any(spelling in reason for spelling in (home, repr(home)[1:-1]))
+    # every spelling, the forced single-quote one too (B13 round 31 C578)
+    return len(home) > 1 and any(spelling in reason for spelling in _spellings(Path(home)))
 
 
 def _check_odf_container(src: Path) -> None:

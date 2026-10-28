@@ -285,6 +285,10 @@ _UNAVAILABLE_FOLD_META = "convert-unavailable-fold:done"
 folder into, had it folded to ``~`` in place, row and page (``_Cycle._fold_unavailable_reasons``, B13 round 30
 C361): such a stub is never converted while its converter cannot start, and its waiting line never rewrites
 it."""
+_ESCAPED_FOLD_META = "convert-escaped-fold:done"
+"""Set once the failed conversions' stubs whose stored reason a round 29 build wrote an escaped spelling of
+the staging folder or home folder into had it folded in place, row and page (``_Cycle._fold_escaped_reasons``,
+B13 round 31 C546): its one-shot re-read was used, so no conversion wrote the reason again."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -2133,6 +2137,7 @@ class _Cycle:
                 # and the sync's note, and the run record's count the report reads (B13 round 19 W18)
                 self._tally["legacy_retried"] = moved
             self._queue_path_stubs()
+            self._fold_escaped_reasons()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
@@ -2676,12 +2681,13 @@ class _Cycle:
         page, ``_sync/QUARANTINE.tsv`` and the manifest kept the home folder. Folded in place, never swapped
         for this cycle's reason: the stub keeps its first cause (B13 round 19 W51), and a waiting sync leaves
         its page as it is. No verdict or count moves. The meta key is written only on a run that covers every
-        live source."""
+        live source, and only when every page it had to rewrite was written: one that could not be keeps the
+        key unwritten, so the next full run rewrites it (B13 round 31 C564, C576)."""
         if self.manifest.get_meta(_UNAVAILABLE_FOLD_META) is not None:
             return
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
             return  # a run of some sources only: the next full one folds them all
-        folded = 0
+        folded, pending = 0, False
         # a paused source's stub too: QUARANTINE.tsv lists it, and once the key is written nothing folds it
         for src in [s for s in self.config.sources if s.state is not SourceState.RETIRED]:
             for row in list(self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))):
@@ -2695,33 +2701,132 @@ class _Cycle:
                 # from the page's full text when it has it, cut as a stub's reason is stored: the cut an older
                 # build made inside the home folder lost what came after it
                 full = page if page.startswith(CONVERTER_UNAVAILABLE) else reason
-                self.manifest.set_state(
-                    src.id,
-                    row.stable_id,
-                    RowState.QUARANTINED,
-                    _one_line(convert_common._homeless(full), 200),
-                )
-                folded += 1
-                now = self.manifest.get_item(src.id, row.stable_id)
-                if result is None or now is None:
-                    continue
-                outs = self.manifest.outputs_for(src.id, row.stable_id)
-                have = [
-                    (o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE
-                ]
-                result = dataclasses.replace(result, reason=convert_common._homeless(page))
-                try:  # one row that cannot be planned or written keeps its page; no sync stops on it
-                    pages = self.publisher.plan_pages(src, now, result)
-                    if [(p.output_path, p.page_sha256) for p in pages] == have:
-                        continue
-                    self.changes += self.publisher.write_pages(now, pages, self.run_id)
-                except (PublishError, OSError) as exc:
-                    log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
-                    continue
-                self.stub_pages.update(p.output_path for p in pages)
-        self.manifest.set_meta(_UNAVAILABLE_FOLD_META, "1")
+                folded += self._store_folded(src, row, _one_line(convert_common._homeless(full), 200))
+                if result is not None:
+                    pending |= not self._write_folded(src, row, result, convert_common._homeless(page))
+        if not pending:
+            self.manifest.set_meta(_UNAVAILABLE_FOLD_META, "1")
         if folded:  # a count, never a name
             log.info("%d stored reason(s) of a converter that could not start folded the home folder", folded)
+
+    def _fold_escaped_reasons(self) -> None:
+        """Once per manifest (meta ``_ESCAPED_FOLD_META``): fold, in place as ``_fold_unavailable_reasons``
+        does, the stored reason of each failed conversion's stub that holds an escaped spelling of this Mac's
+        staging folder or home folder (``_common._spellings``), which a round 29 build wrote before C364 and
+        whose one-shot re-read (``_queue_path_stubs``) it had already used, so no conversion ever wrote it
+        again (B13 round 31 C546): the staged file's path becomes its name, any other path in its folder
+        loses the folder, the folder named alone becomes ``_common._FOLDER_WORD``, a reason cut inside the
+        staging folder loses the cut path, and the home folder becomes ``~``. Not a stub this run queued for
+        its re-read, whose conversion writes its reason anew. The page is written only where its plan
+        differs; ``_sync/QUARANTINE.tsv`` follows from the row. No verdict or count moves. The key is written
+        only on a run that covers every live source and only when every page it had to rewrite was
+        written (C564)."""
+        if self.manifest.get_meta(_ESCAPED_FOLD_META) is not None:
+            return
+        if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
+            return  # a run of some sources only: the next full one folds them all
+        escaped = self._escaped_spellings()
+        folded, pending = 0, False
+        for src in [s for s in self.config.sources if s.state is not SourceState.RETIRED]:
+            for row in list(self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))):
+                reason = row.state_reason or ""
+                if (
+                    row.is_dir
+                    or not reason.startswith(CONVERSION_FAILED)
+                    or (src.id, row.stable_id) in self._path_queued
+                ):
+                    continue
+                result = self._failed_stub_again(row)
+                page = (result.reason or "") if result is not None else ""
+                if not any(e in text for e in escaped for text in (reason, page)) and not any(
+                    self._cut_in_staging(text, only_escaped=True) for text in (reason, page)
+                ):
+                    continue
+                full = page if page.startswith(CONVERSION_FAILED) else reason
+                folded += self._store_folded(src, row, _one_line(self._fold_staging(full, row.name), 200))
+                if result is not None and not self._write_folded(
+                    src, row, result, self._fold_staging(page, row.name)
+                ):
+                    pending = True
+        if not pending:
+            self.manifest.set_meta(_ESCAPED_FOLD_META, "1")
+        if folded:  # a count, never a name
+            log.info("%d stored reason(s) of a failed conversion folded an escaped folder path", folded)
+
+    def _escaped_spellings(self) -> list[str]:
+        """The spellings of this Mac's staging folder and home folder (``_common._spellings``) that differ
+        from the plain one: what a round 29 build left in a reason (B13 round 31 C546)."""
+        paths = [self.staging]
+        with contextlib.suppress(RuntimeError, KeyError, OSError):  # no HOME and no password entry
+            paths.append(Path.home())
+        plain = {str(form) for path in paths for form in convert_common._forms(path)}
+        spelt = [sp for path in paths for sp in convert_common._spellings(path) if len(sp) > 1]
+        # and each flattened as a stored reason flattens it (``_one_line``): a U+00A0 becomes a space
+        return [sp for sp in dict.fromkeys(spelt + [" ".join(sp.split()) for sp in spelt]) if sp not in plain]
+
+    def _cut_in_staging(self, text: str, *, only_escaped: bool = False) -> int:
+        """The length of the cut tail of this Mac's staging folder ``text`` ends with (a reason the manifest
+        cut inside it, ``_names_a_path``), 0 for none; with ``only_escaped``, a tail of an escaped spelling
+        that the plain one does not share (B13 round 31 C546)."""
+        text = text.removesuffix("…")
+        plain = {str(form) + "/" for form in convert_common._forms(self.staging)}
+        for root in self._staging_roots():
+            for n in range(len(root) - 1, 11, -1):
+                tail = root[:n]
+                if text.endswith(tail) and not (only_escaped and any(p.startswith(tail) for p in plain)):
+                    return n
+        return 0
+
+    def _fold_staging(self, text: str, name: str) -> str:
+        """``text`` with this Mac's staging folder folded, each spelling longest first, as ``_pathless``
+        folds a new reason, and the home folder as ``~`` (B13 round 31 C546). The staged file is
+        ``<staging>/<16 hex>/<name>`` for a local source (``arm_local._staging_dest``) and
+        ``<staging>/<16 hex><suffix>`` for a Graph one (drive, mail, teams): either becomes the row's name.
+        Only a text that ends cut (``…``) loses a cut staging path at its end."""
+        end, goes_on = convert_common._PATH_END, convert_common._PATH_GOES_ON
+        names = [n for n in convert_common._spellings(Path(name)) if "/" not in n] or [name]
+        for root in self._staging_roots():
+            if len(root) <= 2:
+                continue
+            folder = re.escape(root) + r"[0-9a-f]{16}"
+            for spelt in sorted(names, key=len, reverse=True):
+                text = re.sub(folder + "/" + re.escape(spelt) + goes_on, lambda _m: name, text)
+            text = re.sub(folder + r"\.[^\s'\":,;)\]/]+" + goes_on, lambda _m: name, text)
+            text = re.sub(folder + "/?" + end, convert_common._FOLDER_WORD, text)
+            text = re.sub(folder + "/", "", text)
+        if text.endswith("…") and (cut := self._cut_in_staging(text)):
+            text = text.removesuffix("…")[:-cut].rstrip() + "…"
+        return convert_common._homeless(text)
+
+    def _store_folded(self, src: SourceConfig, row: ItemRow, new: str) -> int:
+        """Store ``new`` as ``row``'s quarantine reason when it differs from the stored one; 1 when it did,
+        so a run that retries a page it could not write counts no row twice (B13 round 31 C564)."""
+        if new == (row.state_reason or ""):
+            return 0
+        self.manifest.set_state(src.id, row.stable_id, RowState.QUARANTINED, new)
+        return 1
+
+    def _write_folded(self, src: SourceConfig, row: ItemRow, result: ConversionResult, page: str) -> bool:
+        """Write ``row``'s stub page again with ``page`` as its reason, only where the plan differs; False
+        when it could not be planned or written, so the fold's key stays unwritten and the next full run tries
+        again (B13 round 31 C564, C576). One row that cannot be planned or written keeps its page; no sync
+        stops on it."""
+        now = self.manifest.get_item(src.id, row.stable_id)
+        if now is None:
+            return True
+        outs = self.manifest.outputs_for(src.id, row.stable_id)
+        have = [(o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        result = dataclasses.replace(result, reason=page)
+        try:
+            pages = self.publisher.plan_pages(src, now, result)
+            if [(p.output_path, p.page_sha256) for p in pages] == have:
+                return True
+            self.changes += self.publisher.write_pages(now, pages, self.run_id)
+        except (PublishError, OSError) as exc:
+            log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+            return False
+        self.stub_pages.update(p.output_path for p in pages)
+        return True
 
     def _failed_stub_again(self, row: ItemRow) -> ConversionResult | None:
         """The failed conversion's result ``row``'s stub was published from, rebuilt from its own intact page
@@ -6071,15 +6176,26 @@ class _Cycle:
 
     def _names_a_path(self, reason: str) -> bool:
         """``_stub_with_a_path``, or a reason the manifest cut inside this Mac's staging folder: a long
-        ``state_dir`` outside the home folder puts the cut before ``/staging/`` (B13 round 29 C181)."""
+        ``state_dir`` outside the home folder puts the cut before ``/staging/`` (B13 round 29 C181), in any of
+        its spellings (B13 round 31 C547)."""
         if convert_common._stub_with_a_path(reason):
             return True
         text = reason.removesuffix("…")
-        for form in convert_common._forms(self.staging):
-            root = str(form) + "/"
-            if root in text or any(text.endswith(root[:n]) for n in range(12, len(root))):
-                return True
-        return False
+        return any(
+            root in text or any(text.endswith(root[:n]) for n in range(12, len(root)))
+            for root in self._staging_roots()
+        )
+
+    def _staging_roots(self) -> list[str]:
+        """This Mac's staging folder, each ``_spellings`` form with a ``/`` after it, longest first, and
+        each again with its whitespace flattened as a stored reason flattens it (``_one_line``): a reason
+        holds the escaped spelling ``OSError`` prints, cut or whole (B13 round 31 C547)."""
+        roots: list[str] = []
+        for spelling in convert_common._spellings(self.staging):
+            for root in (spelling + "/", " ".join(spelling.split()) + "/"):
+                if root not in roots:
+                    roots.append(root)
+        return sorted(roots, key=len, reverse=True)
 
     def _converter_waits(self, row: ItemRow, acc: _SourceAcc) -> bool:
         """True when ``row`` is the stub of a conversion whose converter could not start and still cannot in
