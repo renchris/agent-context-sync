@@ -4337,6 +4337,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 	case "$4" in
 	misplaced) why="which was not where or what it should be" ;;
 	lost) why="which was missing after earlier syncs" ;;
+	lost-list) why="which lost a purge the audit trail records" ;; # lane B's kind=lost-list (B13 round 30 ruling 40; round 31 ruling 57)
 	*) why="which this account could not open" ;;
 	esac
 	[ "$3" != agent ] || whose="the agent's chmod"

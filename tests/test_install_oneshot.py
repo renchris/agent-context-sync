@@ -6784,6 +6784,40 @@ def test_the_shell_reports_lost_words_are_the_agentsync_reports() -> None:
     assert f'lost) why="{setup_report._SYNC_STOP_KINDS["lost"]}" ;;' in body
 
 
+def test_the_shell_reports_sync_stop_kinds_are_the_agentsync_reports(env: dict[str, str]) -> None:
+    """B13 round 31 ruling 57 (C531 with C552, C562, C575): lane B's `kind=lost-list` stop (a suppression list
+    or purge queue that lost a purge the audit trail records) fell to fallback_sync_stop_line's default,
+    `which this account could not open`, where the agentsync report says `which lost a purge the audit trail
+    records`, pointing the person at a mode on a file that opens. Every single-tab arm of the kind table is
+    setup_report._SYNC_STOP_KINDS, `refused` through the `*)` default, so a later kind cannot fall into it
+    unseen; and a rendered `kind=lost-list` stop reads so in the forced fallback."""
+    body = INSTALL_SH.read_text().split("fallback_sync_stop_line() {", 1)[1].split("\n}\n", 1)[0]
+    arms = dict(re.findall(r'^\t([a-z-]+|\*)\) why="([^"]*)" ;;', body, re.MULTILINE))
+    expected = {("*" if k == "refused" else k): v for k, v in setup_report._SYNC_STOP_KINDS.items()}
+    assert arms == expected, arms
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n"
+        "2026-10-14T10:06:00Z | end | finished\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:01:00Z run=20261014T100100Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n"
+        "2026-10-14T10:01:09Z run=20261014T100100Z-1 end rc=0\n"
+    )
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:05:00Z sync-stop file=governance rc=1 owner=person kind=lost-list\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    lines = [ln for ln in text.splitlines() if ln.startswith("- agentsync sync · step 3 · exited 1 on ")]
+    assert len(lines) == 1, text
+    assert "on a governance file in the state folder, which lost a purge the audit trail records;" in lines[0]
+    assert "could not open" not in lines[0], lines[0]
+
+
 _LATE_HEAD = (
     "Step-3 sync stops agentsync logged in sync-stops.log beside install.log after this attempt's end line "
     "(they do not change the outcome):"

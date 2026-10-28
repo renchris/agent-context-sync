@@ -34612,6 +34612,18 @@ same-stored collapse, so a note whose two forms redact alike shows both. Tests:
 `test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is`, forced to the shell fallback with the
 note in the friction log in two spellings of the home, and `test_the_path_legend_says_only_a_relative_argument_is_one`.
 
+**The shell report's sync-stop kinds are the agentsync report's, every one** (C531 with C552, C562, C575; ruling 57;
+`scripts/install.sh`). Lane B's round 30 C345 records a sync stopped on a suppression list or purge queue that lost a
+purge the audit trail records as `sync-stop file=governance rc=1 owner=person kind=lost-list` (`cli.LOST_LIST_KIND`),
+and setup_report._SYNC_STOP_KINDS words it `which lost a purge the audit trail records`; fallback_sync_stop_line's
+kind table had only `misplaced` and `lost`, so the stop fell to its default, `which this account could not open`,
+pointing the person at a mode on a file that opens. The table gains `lost-list) why="which lost a purge the audit
+trail records" ;;` before the default. The shell cannot read the lists, so the file stays `a governance file in the
+state folder`, as the agentsync report says it with no config; an older `kind=misplaced` record over a list that is
+lost now (Python's `stop.lost_list`) is not read by the shell. Four findings, one defect, built once. Test:
+`test_the_shell_reports_sync_stop_kinds_are_the_agentsync_reports`, which reads every single-tab arm and asserts the
+table equals _SYNC_STOP_KINDS, `refused` as the `*)` default, and renders a `kind=lost-list` stop.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.
