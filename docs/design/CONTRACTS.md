@@ -34529,6 +34529,19 @@ text and adds `also a hold's scope that no source names, as status's HOLD: line 
 before its tail (lane RB, §16.209; sent as these words). Test: `test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386`,
 which now reads the legend item in the report it builds.
 
+**A heartbeat warn beside a governance stop is that stop's, whether the loop names it or not** (C519; ruling 60;
+`src/agentsync/setup_report.py`). Beside a hold list that is not a file or cannot be read, the Summary still read
+`yours 1: heartbeat.<folder-1> (see WAITING ON YOU)`: an empty cloud folder's wait names `heartbeat.<id>` in the loop's
+checks, and round 26 E26's gate (a wait the loop explains is not judged) ran before C321's bucket, so the warn landed
+in `yours`, sending the person to an exclude-empty that cannot help while every sync is refused. The sort splits the
+predicate: `incomplete` (a `heartbeat.<id>` warn whose detail is the incomplete listing's) tries C321's governance
+buckets first, keyed as before on the report's own read; E26's gate stays on the state, side, shut and lost buckets.
+A governance folder that is not a folder, whose note (`doctor.LISTING_STATE_GOVDIR_NOTE`, copied as
+`_LISTING_GOVDIR_NOTE` and kept equal by the test) had no bucket, goes with the folder's FAIL: `heartbeat.<id> warn
+(not judged: agentsync's governance folder is not a folder; no sync runs until it is fixed)`. The Loop line keeps its
+WAITING ON YOU line. Test: `test_a_listing_warn_the_loop_names_beside_a_governance_stop_is_that_stops_c519` (the hold
+list not a file, damaged, and the governance folder a file, each with and without the loop naming the heartbeat).
+
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
 Reserved for round 31 lane RB of B13.

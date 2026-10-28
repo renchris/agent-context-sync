@@ -312,9 +312,10 @@ def test_the_held_heads_are_held_words_own_for_a_scope_and_a_config_hold_c357() 
         assert any(h in said for h in setup_report._HELD_HEADS), said
 
 
-def _beside_a_listing_warn(cfg: Path) -> setup_report._DoctorSort:
+def _beside_a_listing_warn(cfg: Path, loop_checks: tuple[str, ...] = ()) -> setup_report._DoctorSort:
     """Doctor's sort of the state's real status checks and a heartbeat listing warn, its note attached by the
-    CLI's own ``_listings_unread`` (lane B's C321, C322)."""
+    CLI's own ``_listings_unread`` (lane B's C321, C322); ``loop_checks``: the loop's NextStep.checks, which
+    name the heartbeat for an empty cloud folder's wait (B13 round 31 C519)."""
     config = load_config(cfg)
     listing = doctor.CheckResult(
         "heartbeat.project-x",
@@ -327,6 +328,7 @@ def _beside_a_listing_warn(cfg: Path) -> setup_report._DoctorSort:
         [*cli._status_checks(config), listing], None, expand(config.state_paths.root), config=config
     )
     r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.loop_checks = loop_checks
     r.facts.doctor_problems = [
         (tag, name.strip(), detail)
         for line in doctor.format_results([c for c in checks if not c.ok]).splitlines()
@@ -384,6 +386,45 @@ def test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c32
     sort = _beside_a_listing_warn(cfg)
     assert [w for w in sort.from_side if w.startswith("heartbeat.project-x warn (not judged: ")], sort
     assert sort.unexpected == [], sort
+
+
+def test_a_listing_warn_the_loop_names_beside_a_governance_stop_is_that_stops_c519(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 31 C519 (ruling 60): an empty cloud folder's wait names ``heartbeat.<id>`` in the loop's
+    checks, so E26's gate kept the incomplete-listing warn out of C321's bucket and the Summary counted it
+    ``yours 1 (see WAITING ON YOU)`` beside a governance file the sync stops on, where every sync is refused.
+    The stop's bucket comes first, whether the loop names the heartbeat or not; a governance folder that is
+    not a folder has its own, keyed on the report's own read and doctor's note."""
+    assert setup_report._LISTING_GOVDIR_NOTE == doctor.LISTING_STATE_GOVDIR_NOTE
+    _governance_checks_only(monkeypatch)
+    cfg, root = _held_and_queued(fake_mac, monkeypatch)
+    holds = governance._holds_file(root)
+    kept = holds.read_bytes()
+    named = ("heartbeat.project-x",)
+    holds.unlink()
+    holds.mkdir()  # the hold list not a file
+    for checks in ((), named):
+        sort = _beside_a_listing_warn(cfg, checks)
+        said = "the hold list is not a file; no sync runs until it is fixed"
+        assert f"heartbeat.project-x warn (not judged: {said})" in sort.from_misplaced, (checks, sort)
+        assert sort.yours == [] and sort.unexpected == [], (checks, sort)
+    holds.rmdir()
+    holds.write_text("{not json", encoding="utf-8")  # the hold list damaged
+    for checks in ((), named):
+        sort = _beside_a_listing_warn(cfg, checks)
+        said = "the hold list cannot be read; no sync runs until it is fixed"
+        assert f"heartbeat.project-x warn (not judged: {said})" in sort.from_damaged, (checks, sort)
+        assert sort.yours == [] and sort.unexpected == [], (checks, sort)
+    holds.write_bytes(kept)
+    folder = root / "governance"
+    folder.rename(root / "governance.aside")
+    folder.write_text("not a folder\n", encoding="utf-8")  # the governance folder not a folder
+    for checks in ((), named):
+        sort = _beside_a_listing_warn(cfg, checks)
+        said = "agentsync's governance folder is not a folder; no sync runs until it is fixed"
+        assert f"heartbeat.project-x warn (not judged: {said})" in sort.from_govdir, (checks, sort)
+        assert not [w for w in (*sort.yours, *sort.unexpected) if w.startswith("heartbeat.")], (checks, sort)
 
 
 def test_a_listing_warn_beside_a_lost_purge_queue_is_the_persons_c321(

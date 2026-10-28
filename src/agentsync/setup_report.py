@@ -12710,6 +12710,12 @@ _LISTING_GOVERNANCE_RE = re.compile(
 )
 """``doctor.listing_state_governance_note`` in the brackets that end the incomplete-listing warn: lane B's
 note beside a governance file the sync's own guard stops on, by its role (B13 round 30 C321)."""
+_LISTING_GOVDIR_NOTE = (
+    "as of its last walk: agentsync's governance folder is not a folder, so no sync lists it again until the "
+    "person fixes it; the governance.hold [FAIL] line says what to do first"
+)
+"""``doctor.LISTING_STATE_GOVDIR_NOTE``, the brackets that end the incomplete-listing warn beside a governance
+folder that is not a folder (a test keeps it equal to doctor's; B13 round 31 C519)."""
 _LISTING_SIDE_TAILS = (
     "the state_dir.files [FAIL] line says what to do first)",
     "the state_dir.files [FAIL] lines say what to do first)",
@@ -14095,13 +14101,20 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_loose.append(f"{name} FAIL{_AGENTS}")
             fails.append((name, _STATE_LOOSE_WORDS))
             continue
-        listing = (
-            tag == "warn"
-            and name.startswith("heartbeat.")
-            and detail.startswith(_LISTING_INCOMPLETE)
-            and name not in r.facts.loop_checks  # B13 round 26 E26: a purge wait is no reason to judge it
+        incomplete = (
+            tag == "warn" and name.startswith("heartbeat.") and detail.startswith(_LISTING_INCOMPLETE)
         )
-        governed = _LISTING_GOVERNANCE_RE.search(detail) if listing else None
+        # B13 round 26 E26: a purge wait is no reason to judge it
+        listing = incomplete and name not in r.facts.loop_checks
+        # B13 round 31 C519 (ruling 60): beside a governance stop the loop's empty-folder wait names the
+        # heartbeat too, yet no sync runs until the stop is fixed: the stop's buckets come before E26's gate
+        governed = _LISTING_GOVERNANCE_RE.search(detail) if incomplete else None
+        if incomplete and govdir and detail.endswith(f"({_LISTING_GOVDIR_NOTE})"):
+            from_govdir.append(
+                f"{name} warn (not judged: agentsync's governance folder is not a folder; no sync runs until "
+                "it is fixed)"
+            )
+            continue
         if governed is not None:
             # B13 round 30 C321: beside a governance file the sync stops on, with that file's FAIL, when the
             # report's own read finds it so: no sync runs until the person fixes it
