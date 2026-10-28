@@ -10,11 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentsync import cli, loop
+from agentsync import cli, governance, loop
 from agentsync.config import inbox_source_table, load_config, local_source_table, set_source_exclude
 from agentsync.cycle import run_cycle
 from agentsync.errors import ConfigError
 from agentsync.manifest import Manifest
+from agentsync.paths import expand
 
 CLOUD = Path("Library") / "CloudStorage" / "OneDrive-Contoso"
 
@@ -93,6 +94,29 @@ def test_two_emptied_folders_are_them_and_those_pages_whatever_each_held(
     assert rc == cli.EXIT_OK, out
     assert "(excluding them retires those pages at once, with no deletion check)" in out, out
     assert "such a folder" not in out and "its pages" not in out, out
+
+
+def test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C520 (ruling 60): with holds.json a folder, which the sync's guard stops on,
+    exclude-empty's pointer at the alarm said a plain sync prints it again, while every sync stopped before
+    it; it names the check whose [FAIL] stops it, as status's wait does."""
+    root = _root()
+    (root / "Empty").mkdir()
+    (root / "Gone").mkdir()
+    (root / "Gone" / "Kickoff.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    (root / "Gone" / "Kickoff.txt").unlink()
+    run_cycle(load_config(cfg), mode=None)
+    governance._holds_file(expand(load_config(cfg).state_paths.root)).mkdir(parents=True)
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK, out
+    assert (
+        "once the governance.hold [FAIL] line is fixed, a plain `~/.local/bin/agentsync sync` prints it "
+        "again with the 1 folder left"
+    ) in out, out
 
 
 def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(

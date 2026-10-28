@@ -1396,11 +1396,17 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
                 + " would also match a folder whose files are mirrored: rename or remove the empty "
                 f"{'folder' if one else 'folders'} in the cloud drive"
             )
+        # a sync its own guard stops prints no alarm until that FAIL is fixed (B13 round 31 C520; ruling 60)
+        stopped = loop._sync_stopped_on(config) if gone else None
         held = (
             "; "
             + "; ".join(parts)
             + "; "
-            + (loop._named_since(config, src.id, gone) if since else loop._named(config, [src.id], left))
+            + (
+                loop._named_since(config, src.id, gone, stopped=stopped)
+                if since
+                else loop._named(config, [src.id], left, stopped=stopped)
+            )
             if gone
             else ""
         )

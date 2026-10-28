@@ -16554,6 +16554,9 @@ unchanged (the first sync's alarm lines would put folder names below a source ro
 `test_loop.py::test_one_empty_folder_is_never_sent_to_a_full_sync`,
 `test_loop.py::test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders`,
 `test_loop.py::test_two_sources_that_cannot_be_listed_get_a_plural_wait`.
+Amended 2026-10-28, §16.210 C520: beside a [FAIL] the sync's own guard stops on, the parenthesis reads `(once the
+<check> [FAIL] line is fixed, a plain \`~/.local/bin/agentsync sync\` prints it too; until then no sync runs)`; a
+hold the hold list lost, whose sync runs, and STATE.md's own forms keep `(a plain ... prints it too)`.
 
 **H48: STATE.md keeps an alarm whole (`agentsync.publish`).** `write_state` wrote alarms at `_REASON_MAX` (300):
 of five nested folder paths of about 65 characters it kept three and lost the `(+N more` tail. Alarm lines now
@@ -22494,6 +22497,8 @@ test_exclude_empty_says_the_alarm_names_five_only_past_five` (seven left; one le
 `test_exclude_empty.py::test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count`. S45: the `_named`
 docstring and one test's said every wait carries the five clause, `true for any count`; they state the past-five
 rule.
+Amended 2026-10-28, §16.210 C520: beside a [FAIL] the sync's own guard stops on, the pointer ends `once the <check>
+[FAIL] line is fixed, a plain \`<bin> sync\` prints it again with the N folders left`; STATE.md's form is unchanged.
 
 **S44: the in-all clause follows the missed files under the gone folders (`agentsync.loop`, `agentsync.manifest`;
 amends §16.113 Q81).** The could-not-list line's `in all, ... did not list N files ..., the one under the empty
@@ -34881,6 +34886,24 @@ msip_labels header that does not parse and one .msg under `exclude_label_names`:
 only in `, 3 refused`, `_SPLIT_RE` R=3 and K=1) and
 `test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k`; `test_setup_report.py`
 `test_a_label_it_cannot_read_is_its_own_quarantine_class_c326` builds the new clause.
+
+C520 (2026-10-28): **beside a [FAIL] the sync's guard stops on, status's empty-folder wait says the sync waits on it**
+(ruling 60). With holds.json a folder, status's WAITING ON YOU line said `(a plain \`~/.local/bin/agentsync sync\`
+prints it too)` while every sync stopped on the governance.hold [FAIL] before printing any alarm. `loop.next_step`
+now asks the sync's own guard (`loop._sync_stopped_on`: `doctor.state_not_a_file(config, manifest=False,
+damaged=True, lost=True)`, the call `cli`'s sync makes, never a second list) for the check whose [FAIL] stops it,
+and `loop._named` reads `(once the <check> [FAIL] line is fixed, a plain \`~/.local/bin/agentsync sync\` prints it
+too; until then no sync runs)` (`prints them too` for two or more), `loop._named_since` `once the <check> [FAIL]
+line is fixed, a plain \`~/.local/bin/agentsync sync\` prints it again with the N folders left`. `<check>` is the
+guard's own FAIL name: governance.hold for the hold list, the hold record and governance/ itself, else
+`doctor.governance_check(path)` (the lock's and heartbeat.json's checks for those). The wait, its held-deletions
+sentence and its exclude-empty offer stay. A hold the hold list lost, which the guard never stops on, keeps today's
+words, and so do STATE.md's `in_state` forms (only a sync that runs writes them). exclude-empty's own pointer at the
+alarm, after the folders it left, takes the same stop (`cli._cmd_exclude_empty`). Tests: `test_loop.py`
+`test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_it_c520` (an empty cloud folder and
+holds.json a folder: the sync stops, the wait names governance.hold and keeps `exclude-empty work`; `_named_since`'s
+form; a lost hold and no FAIL keep the plain words), `test_exclude_empty.py`
+`test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

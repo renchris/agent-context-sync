@@ -206,7 +206,9 @@ def _alarm_names(what: str, stored: int) -> str:
     return what if stored <= 5 else f"{what}, {_UP_TO_FIVE}"
 
 
-def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = False) -> str:
+def _named(
+    config: Config, ids: Sequence[str], what: str, *, in_state: bool = False, stopped: str | None = None
+) -> str:
     """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
     ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there
     (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
@@ -225,32 +227,37 @@ def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = Fa
     or more ids have one alarm line each, joined with "and" (round 7 H50). The wait itself keeps a count and
     never a path (B13 round 5 F43). ``in_state``: the wait is written into STATE.md itself, which names no
     file it is already in: the
-    alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33)."""
+    alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33). ``stopped``: the check
+    whose [FAIL] the sync's own guard stops on (:func:`_sync_stopped_on`), so no plain sync prints the alarm
+    until it is fixed (B13 round 31 C520); the ``in_state`` forms never get it, since only a sync that runs
+    writes STATE.md."""
     if in_state:
         if len(ids) == 1:
             return f"the alarm line under ## {ids[0]} below names {what} (a plain `{BIN} sync` prints it too)"
         sections = f"{', '.join(f'## {i}' for i in ids[:-1])} and ## {ids[-1]}"
         return f"the alarm lines under {sections} below name {what} (a plain `{BIN} sync` prints them too)"
     state = _shown(expand(config.docs_repo) / _STATE_MD)
+    it = "it" if len(ids) == 1 else "them"
+    prints = f"a plain `{BIN} sync` prints {it} too"
+    if stopped is not None:
+        prints = f"once the {stopped} [FAIL] line is fixed, {prints}; until then no sync runs"
     if len(ids) == 1:
-        return (
-            f"{state} keeps the alarm line for {ids[0]}, which names {what} (a plain `{BIN} sync` prints it "
-            "too)"
-        )
+        return f"{state} keeps the alarm line for {ids[0]}, which names {what} ({prints})"
     listed = f"{', '.join(ids[:-1])} and {ids[-1]}"
-    return (
-        f"{state} keeps the alarm lines for {listed}, which name {what} (a plain `{BIN} sync` prints them "
-        "too)"
-    )
+    return f"{state} keeps the alarm lines for {listed}, which name {what} ({prints})"
 
 
-def _named_since(config: Config, sid: str, left: int, *, in_state: bool = False) -> str:
+def _named_since(
+    config: Config, sid: str, left: int, *, in_state: bool = False, stopped: str | None = None
+) -> str:
     """Where a wait's empty cloud folders are named when some the alarm lists were excluded after the walk it
     is from (B13 round 15 S32): that alarm still names them, up to five, and past five may hide the
     ``left`` ones behind its "+N more", so the pointer says it predates the exclude and that a plain sync
     prints it again with those left. It replaces :func:`_named`'s whole pointer, its "(a plain sync prints it
-    too)" as well, so sync is said once. ``in_state``: written into STATE.md, as :func:`_named`."""
+    too)" as well, so sync is said once. ``in_state`` and ``stopped``: as :func:`_named`."""
     again = f"a plain `{BIN} sync` prints it again with the {plural(left, 'folder')} left"
+    if stopped is not None and not in_state:
+        again = f"once the {stopped} [FAIL] line is fixed, {again}"
     if in_state:
         return (
             f"the alarm line under ## {sid} below is from that source's last sync, before the exclude, so it "
@@ -261,6 +268,17 @@ def _named_since(config: Config, sid: str, left: int, *, in_state: bool = False)
         f"{state} keeps the alarm line for {sid} from its last sync, before the exclude, so it may name "
         f"folders now excluded; {again}"
     )
+
+
+def _sync_stopped_on(config: Config) -> str | None:
+    """The status check whose [FAIL] the sync's own guard stops on before it runs, by that guard itself
+    (``doctor.state_not_a_file`` with the sync's flags, as ``cli`` calls it: a governance file or governance/
+    not a file, damaged, or a list that lost a purge, the lock, heartbeat.json), or None: never a hold the
+    hold list lost, whose sync runs (B13 round 31 C520; ruling 60)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
+
+    found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
+    return None if found is None else found[1].name
 
 
 def _baseline(docs: Path) -> str:
@@ -853,11 +871,15 @@ def next_step(
     def done(step: str, rule: int) -> NextStep:
         return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks), dict(about))
 
+    # a sync its own guard stops prints no alarm, so the waits' "a plain sync prints it" waits on that FAIL;
+    # STATE.md's forms never say it, since only a sync that runs writes them (B13 round 31 C520)
+    stopped = None if in_state else _sync_stopped_on(config)
+
     def named(ids: Sequence[str], what: str) -> str:
-        return _named(config, ids, what, in_state=in_state)
+        return _named(config, ids, what, in_state=in_state, stopped=stopped)
 
     def named_since(sid: str, left: int) -> str:
-        return _named_since(config, sid, left, in_state=in_state)
+        return _named_since(config, sid, left, in_state=in_state, stopped=stopped)
 
     def names_source(*sources: str) -> None:
         """The wait just appended names each of these sources."""

@@ -40,6 +40,7 @@ from agentsync.manifest import Manifest
 from agentsync.model import SYNC_OUTPUT_END, ConversionStatus, CycleMode, PassKind, RowState, Verdict
 from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
+from agentsync.paths import expand
 from test_cli import _assert_fix_parses
 
 BIN = "~/.local/bin/agentsync"
@@ -450,6 +451,49 @@ def test_one_empty_folder_is_never_sent_to_a_full_sync(
         f"keeps the alarm line for work, which names the folder (a plain `{BIN} sync` prints it too)"
     )
     assert "up to five" not in wait, wait
+
+
+def test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_it_c520(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C520 (ruling 60): with holds.json a folder, which the sync's guard stops on, the
+    empty-folder wait said "(a plain sync prints it too)" while every sync stopped before its alarm. It now
+    names the check whose [FAIL] stops it, keeps the exclude-empty offer, and a hold the hold list lost
+    (whose sync runs) and no FAIL keep the plain words."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    plain = f"which names the folder (a plain `{BIN} sync` prints it too)"
+
+    def wait() -> str:
+        (line,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        return line
+
+    assert wait().endswith(plain), wait()
+    state = expand(config.state_paths.root)
+    holds = governance._holds_file(state)
+    holds.mkdir(parents=True)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) != cli.EXIT_OK, "the sync's guard stops on it"
+    stopped = (
+        f"which names the folder (once the governance.hold [FAIL] line is fixed, a plain `{BIN} sync` prints "
+        "it too; until then no sync runs)"
+    )
+    assert wait().endswith(stopped) and f"`{BIN} exclude-empty work`" in wait(), wait()
+    since = loop._named_since(config, "work", 2, stopped="governance.hold")
+    assert since.endswith(
+        f"once the governance.hold [FAIL] line is fixed, a plain `{BIN} sync` prints it again "
+        "with the 2 folders left"
+    ), since
+    holds.rmdir()
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    holds.write_text('{"holds": []}\n', encoding="utf-8")
+    assert governance.hold_list_state(state) == "lost"
+    assert wait().endswith(plain), wait()
 
 
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
