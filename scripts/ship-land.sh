@@ -9,8 +9,10 @@
 # Bash(scripts/ship-land.sh:*) is what lets it run without a prompt, and the push it makes is a subprocess the
 # Bash(git push:*) ask rule never sees. It never forces: a rejected push is fetched, rebased and gated again.
 # Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red,
-# 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, or no run appeared): before
-# the push nothing is pushed, after it the line says LANDED and the runs are read back by hand.
+# 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, no run appeared, or a run lost its hosted runner): before
+# the push nothing is pushed, after it the line says LANDED and the runs are read back by hand. A run that lost its
+# runner is rerun (gh run rerun <id> --failed) and waited for, never landed past, with or without --allow-red-trunk
+# (B13 round 31 C569).
 set -euo pipefail
 
 usage() {
@@ -54,6 +56,23 @@ fi
 # completed is watched again. Every wait is bounded: SHIP_LAND_RUN_POLLS polls (24) and re-reads, each
 # SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests.
 polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5}
+
+# Whether run $1, which ended failure, lost its hosted runner rather than failed a step (B13 round 31 C569: run
+# 40523387625's first attempt ended failure at 46:01 with no step failed, pytest's still in progress, and the
+# annotation "The hosted runner lost communication with the server"; both readers called it red, exit 6). Lost
+# only when every failed job has no failed step and a step left uncompleted, so a timeout or a cancelled step
+# stays red; a gh error or any other answer is red too (fail closed). Both readers below use it.
+run_lost() {
+  local verdict
+  # shellcheck disable=SC2016 # a jq program: $f is jq's, not the shell's
+  verdict=$(gh run view "$1" --json jobs --jq '[.jobs[]|select(.conclusion=="failure")] as $f | if ($f|length)>0 and all($f[]; ([.steps[]|select(.conclusion=="failure")]|length)==0 and any(.steps[]; .status!="completed")) then "lost" else "red" end' 2>/dev/null) || return 1
+  [ "$verdict" = lost ]
+}
+# The words for a run that lost its runner: not read, never red, and rerun rather than landed past.
+lost_words() {
+  echo "run $1 lost its hosted runner (rerun it: gh run rerun $1 --failed)"
+}
+
 watch_runs() {
   local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest
   while [ -z "$ids" ] && [ "$tries" -lt "$polls" ]; do
@@ -94,6 +113,10 @@ watch_runs() {
       case $state in
         "completed success" | "completed skipped" | "completed neutral") break ;;
         "completed failure" | "completed timed_out" | "completed startup_failure")
+          if [ "$state" = "completed failure" ] && run_lost "$id"; then
+            lost_words "$id"
+            return 2
+          fi
           echo "$id"
           return 1
           ;;
@@ -133,8 +156,9 @@ watch_runs() {
 }
 
 # One read of a sha's runs, with no wait, before the gate (B13 round 27 P140): 1, the run's id printed, only when a
-# run has already ended failure, timed_out or startup_failure; 0 in every other case (gh failed, no run yet, queued,
-# in progress, cancelled), which the check after the gate decides as before. A gate on a trunk already known red
+# run has already ended failure, timed_out or startup_failure; 2, its words printed, when that failure lost its
+# hosted runner (run_lost; B13 round 31 C569); 0 in every other case (gh failed, no run yet, queued, in progress,
+# cancelled), which the check after the gate decides as before. A gate on a trunk already known red
 # would end in exit 6 anyway, about 35 minutes later and holding the land lock.
 trunk_known_red() {
   local sha=$1 req all id state
@@ -145,6 +169,10 @@ trunk_known_red() {
     state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null) || continue
     case $state in
       "completed failure" | "completed timed_out" | "completed startup_failure")
+        if [ "$state" = "completed failure" ] && run_lost "$id"; then
+          lost_words "$id"
+          return 2
+        fi
         echo "$id"
         return 1
         ;;
@@ -188,8 +216,15 @@ while :; do
     echo "== HEAD is on origin/main already; nothing to land"
     exit 0
   fi
-  # Every attempt reads the head just fetched, so a re-gate after origin/main moved checks the new head too.
-  if [ "$ci" = 1 ] && [ "$allow_red" = 0 ] && ! out=$(trunk_known_red "$(git rev-parse origin/main)"); then
+  # Every attempt reads the head just fetched, so a re-gate after origin/main moved checks the new head too. A run
+  # that lost its runner stops the land under --allow-red-trunk too: it is rerun, not landed past (C569).
+  rc=0
+  [ "$ci" = 0 ] || out=$(trunk_known_red "$(git rev-parse origin/main)") || rc=$?
+  if [ "$rc" = 2 ]; then
+    echo "ship-land: trunk CI not read: $out; land again once the rerun is green; nothing pushed (before the gate)." >&2
+    exit 9
+  fi
+  if [ "$rc" = 1 ] && [ "$allow_red" = 0 ]; then
     echo "ship-land: trunk is red: run $out (gh run view $out --log-failed); nothing pushed (before the gate)." >&2
     echo "  Land on top only when this diff does not touch those tests: rerun with --allow-red-trunk" >&2
     exit 6
@@ -213,8 +248,14 @@ while :; do
     fi
     echo "== trunk is red (run $out); landing on top as --allow-red-trunk asks"
   elif [ "$rc" != 0 ]; then
-    # Not read is not red: --allow-red-trunk does not cover it, and --no-ci lands without any CI read.
-    echo "ship-land: could not read trunk CI ($out); nothing pushed; retry, or pass --no-ci to land without it" >&2
+    # Not read is not red: --allow-red-trunk does not cover it, and --no-ci lands without any CI read, except a
+    # run that lost its runner, which is rerun and waited for (C569)
+    case $out in
+      *" lost its hosted runner ("*)
+        echo "ship-land: trunk CI not read: $out; land again once the rerun is green; nothing pushed" >&2
+        ;;
+      *) echo "ship-land: could not read trunk CI ($out); nothing pushed; retry, or pass --no-ci to land without it" >&2 ;;
+    esac
     exit 9
   fi
   git fetch -q origin main

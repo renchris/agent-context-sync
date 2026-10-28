@@ -31583,6 +31583,8 @@ fetch already ended in exit 6 after the gate. `--no-ci` and `--allow-red-trunk` 
 section and `docs/lanes/COMMON.md` say so. One stub of the old suite answered `run view` with `completed failure`
 for trunk's run while its watch passed; it answers per run now. Tests: `test_a_trunk_already_red_stops_before_the_gate`
 (no gate.log, no `run watch` call; `--allow-red-trunk` gates and lands), `test_a_cancelled_or_running_trunk_run_still_gates`.
+**Amended 2026-10-28, §16.212 C569:** `--allow-red-trunk` no longer skips the read: a `completed failure` run that
+lost its hosted runner (`run_lost`) stops the land there with exit 9 under it too, and only a red run is landed past.
 
 **The guides give the speech helper's Swift floor** (P55; dated line at §16.186 E48). Package.swift is
 `swift-tools-version: 6.0`, as is FluidAudio `04e363c`'s, and the guides asked only for the Command Line Tools, so a
@@ -34633,3 +34635,24 @@ words (`loss of <n> purges, as that time names <n> records`, from `_cmd_purge`),
 instead when not every one is meant. Its next sentence is lane B's (C537 makes it plural) and lands after this. The
 code needs no change. Test: `test_the_records_page_says_accept_lost_clears_every_record_its_time_names`, which reads
 the count words from `_cmd_purge`'s source and the match from `accept_lost_suppression`'s.
+
+**A trunk run that lost its hosted runner is rerun, never landed past** (C569; `scripts/ship-land.sh`, CLAUDE.md,
+`docs/lanes/COMMON.md`; dated line at §16.192 P140). Run 40523387625's first attempt ended `failure` at 46:01 with no step failed, pytest's
+step still `in_progress` and the annotation "The hosted runner lost communication with the server"; both of
+ship-land's trunk reads (`trunk_known_red` before the gate, `watch_runs` after it) took `completed failure` for red,
+so lanes got exit 6, and one landed past it with `--allow-red-trunk` while no rule said when that is right. One
+classifier, `run_lost`, reads `gh run view <id> --json jobs` and answers `lost` only when every failed job has no
+failed step and a step left uncompleted, so a timeout or a cancelled step stays red; a gh error or any other answer
+is red (fail closed, so the tests' stub that answers `completed failure` to every view still reads red). Both
+readers take it on `completed failure`: before the gate, exit 9 with `trunk CI not read: run <id> lost its hosted
+runner (rerun it: gh run rerun <id> --failed); land again once the rerun is green; nothing pushed (before the
+gate).`, `--allow-red-trunk` included, with no gate run; after the gate, exit 9 with no `--no-ci` offered; after the
+push, `LANDED <sha>, CI NOT READ: run <id> lost its hosted runner ...`. Once the rerun is queued, `gh run view`
+reports the new attempt, so nothing else changes. Measured with the classifier's jq: the lost attempt reads `lost`,
+its green rerun and the five newest `failure` runs on main (39809607845 to 38637279533) read `red`. CLAUDE.md's
+Landing and COMMON.md's Trunk paragraph say, in the same commit, that `--allow-red-trunk` is only for a run that
+ended red on tests the diff does not touch and the lane does not own, with the run id recorded and the owner
+messaged, and never for exit 9. Tests: `test_ship_land.py::test_a_trunk_run_that_lost_its_runner_is_not_read_and_never_landed_past`,
+`test_ship_land.py::test_a_run_that_loses_its_runner_during_the_gate_is_rerun_not_landed_past`,
+`test_ship_land.py::test_the_lost_runner_classifier_calls_lost_only_a_failed_job_left_unfinished` and
+`test_ship_land.py::test_claude_md_and_the_lane_brief_say_when_allow_red_trunk_is_right`.

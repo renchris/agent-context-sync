@@ -52,8 +52,14 @@ every worktree, fetches, reads trunk's CI once without waiting and stops there (
 `scripts/gate.sh`, waits out and checks trunk's CI, pushes `HEAD:main` (never forced; a refused push is rebased and
 gated again), then reads the push's CI back as below. The user-level allow rule `Bash(scripts/ship-land.sh:*)` runs
 it with no prompt; a bare `git push` still stops at the operator's `Bash(git push:*)` ask. Exit codes are in its
-header. Exit 9 is CI it could not read (gh failed, or no run appeared): before the push it says `nothing pushed`;
-after it the line says `LANDED`, and the runs are read back by hand with the loop below.
+header. Exit 9 is CI it could not read (gh failed, no run appeared, or a run lost its hosted runner): before the
+push it says `nothing pushed`; after it the line says `LANDED`, and the runs are read back by hand with the loop
+below. A run that lost its hosted runner (a failed job with no failed step and a step left unfinished, which both
+of ship-land's trunk reads tell from a red run) is rerun, `gh run rerun <id> --failed`, and the land run again once
+the rerun is green: it is never landed past, so neither `--allow-red-trunk` nor `--no-ci` is for it.
+`--allow-red-trunk` is only for a trunk run that ended red on tests (`gh run view <id> --log-failed`) the diff does
+not touch and the lane does not own: record the run id in the commit body or the lane's note, and message the
+tests' owner.
 
 ### CI is part of the gate
 

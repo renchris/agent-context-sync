@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -323,3 +325,138 @@ def test_no_ci_skips_every_ci_read_as_the_header_says(
     cp = _land(clone, _with_gh(tmp_path, env, STUB_GH), "--no-ci")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert not (tmp_path / "gh.log").exists(), "no CI read under --no-ci"
+
+
+# A trunk run that ended failure because its hosted runner was lost: `run view --json jobs` answers the
+# classifier's `lost`, every other view `completed failure` (B13 round 31 C569; a made-up run id).
+STUB_GH_LOST = """case "$1 $2" in
+  "run list") echo 101 ;;
+  "run watch") exit 1 ;;
+  "run view") if [ "$5" = jobs ]; then echo lost; else echo completed failure; fi ;;
+esac
+"""
+
+
+def test_a_trunk_run_that_lost_its_runner_is_not_read_and_never_landed_past(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 31 C569: run 40523387625's first attempt ended failure with no step failed (the hosted runner
+    lost communication), both CI readers took it for a red trunk (exit 6), and a lane landed past it with
+    --allow-red-trunk. A lost runner is not read: exit 9 before the gate, nothing pushed, the rerun named,
+    with --allow-red-trunk too; a failure the classifier does not call lost, or cannot read, stays red."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    for args in ((), ("--allow-red-trunk",)):
+        cp = _land(clone, _with_gh(tmp_path, env, STUB_GH_LOST), *args)
+        assert cp.returncode == 9, cp.stdout + cp.stderr
+        assert "trunk CI not read: run 101 lost its hosted runner" in cp.stderr
+        assert "gh run rerun 101 --failed" in cp.stderr and "nothing pushed (before the gate)" in cp.stderr
+        assert "--no-ci" not in cp.stderr and "--allow-red-trunk" not in cp.stderr
+        assert not (tmp_path / "gate.log").exists()
+        assert _git(remote, "rev-parse", "main") == before
+    # the jobs read fails or answers anything else: red, as before (fail closed)
+    for jobs in ("exit 1", "echo red", "echo"):
+        body = (
+            'case "$1 $2" in\n  "run list") echo 101 ;;\n  "run watch") exit 1 ;;\n'
+            f'  "run view") if [ "$5" = jobs ]; then {jobs}; else echo completed failure; fi ;;\nesac\n'
+        )
+        cp = _land(clone, _with_gh(tmp_path, env, body))
+        assert cp.returncode == 6 and "trunk is red: run 101" in cp.stderr, jobs
+
+
+def test_a_run_that_loses_its_runner_during_the_gate_is_rerun_not_landed_past(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 31 C569: the read after the gate takes the same classifier. Trunk's run is in progress before
+    the gate and lost its runner after it: exit 9, nothing pushed, the rerun named and no --no-ci offered,
+    under --allow-red-trunk too. The pushed sha's own run that lost its runner is LANDED, CI not read."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    gate = tmp_path / "gate.log"
+    body = (
+        'case "$1 $2" in\n  "run list") echo 101 ;;\n  "run watch") exit 1 ;;\n'
+        f'  "run view") if [ "$5" = jobs ]; then echo lost; elif [ -f "{gate}" ];'
+        " then echo completed failure;"
+        " else echo in_progress; fi ;;\nesac\n"
+    )
+    for args in ((), ("--allow-red-trunk",)):
+        gate.unlink(missing_ok=True)
+        cp = _land(clone, _with_gh(tmp_path, env, body), *args)
+        assert cp.returncode == 9, cp.stdout + cp.stderr
+        assert (
+            "trunk CI not read: run 101 lost its hosted runner" in cp.stderr and "nothing pushed" in cp.stderr
+        )
+        assert "gh run rerun 101 --failed" in cp.stderr and "--no-ci" not in cp.stderr
+        assert gate.read_text() == "ran\n"
+        assert _git(remote, "rev-parse", "main") == before
+
+    trunk = _git(remote, "rev-parse", "main")
+    body = (
+        'case "$1 $2" in\n'
+        f'  "run list") if [ "$4" = {trunk} ]; then echo 101; else echo 303; fi ;;\n'
+        '  "run watch") [ "$3" != 303 ] ;;\n'
+        '  "run view") if [ "$5" = jobs ]; then echo lost; elif [ "$3" = 303 ]; then echo completed failure;'
+        " else echo completed success; fi ;;\n"
+        "esac\n"
+    )
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    sha = _git(clone, "rev-parse", "HEAD")
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert f"LANDED {sha[:8]}, CI NOT READ: run 303 lost its hosted runner" in cp.stdout
+    assert "CI RED" not in cp.stderr and _git(remote, "rev-parse", "main") == sha
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq to run ship-land's own classifier")
+def test_the_lost_runner_classifier_calls_lost_only_a_failed_job_left_unfinished() -> None:
+    """B13 round 31 C569: run_lost's jq, run over job lists shaped as `gh run view --json jobs` gives them:
+    lost only when every failed job has no failed step and a step left uncompleted (run 40523387625's first
+    attempt); a failed step, a job that timed out with its step cancelled, or no failed job is red."""
+    [program] = re.findall(r"--json jobs --jq '([^']*)'", SHIP_LAND.read_text(encoding="utf-8"))
+
+    def step(status: str, conclusion: str | None) -> dict[str, object]:
+        return {"name": "s", "status": status, "conclusion": conclusion}
+
+    def verdict(*jobs: tuple[str, list[dict[str, object]]]) -> str:
+        data = {"jobs": [{"conclusion": c, "steps": steps} for c, steps in jobs]}
+        cp = subprocess.run(
+            ["jq", "-r", program], input=json.dumps(data), capture_output=True, text=True, check=True
+        )
+        return cp.stdout.strip()
+
+    done = step("completed", "success")
+    assert verdict(("failure", [done, step("in_progress", None), step("pending", None)])) == "lost"
+    assert verdict(("failure", [done, step("completed", "failure")])) == "red"
+    assert verdict(("failure", [done, step("completed", "cancelled")])) == "red"
+    assert verdict(("success", [done]), ("failure", [step("completed", "failure")])) == "red"
+    assert verdict(("success", [done])) == "red"
+
+
+def test_claude_md_and_the_lane_brief_say_when_allow_red_trunk_is_right() -> None:
+    """B13 round 31 C569: CLAUDE.md and the lane brief gave no rule for --allow-red-trunk, and a lane landed
+    past a trunk run that had only lost its runner. Both say it is for a run red on tests the diff does not
+    touch and the lane does not own, with the run id recorded, never for exit 9, and that a lost runner is
+    rerun; the script's header says exit 9 covers it."""
+    guide = " ".join((REPO / "CLAUDE.md").read_text(encoding="utf-8").split())
+    lanes = " ".join((REPO / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8").split())
+    assert (
+        "Exit 9 is CI it could not read (gh failed, no run appeared, or a run lost its hosted runner)"
+        in guide
+    )
+    assert (
+        "is rerun, `gh run rerun <id> --failed`, and the land run again once the rerun is green: it is never"
+        " landed past, so neither `--allow-red-trunk` nor `--no-ci` is for it." in guide
+    )
+    assert (
+        "`--allow-red-trunk` is only for a trunk run that ended red on tests"
+        " (`gh run view <id> --log-failed`) the"
+        " diff does not touch and the lane does not own: record the run id" in guide
+    )
+    assert (
+        "Pass `--allow-red-trunk` only for a run that ended red on tests your diff does not touch and your"
+        " lane does not own, with the run id in your commit body or result note and the owner messaged; never"
+        " for exit 9: a run that lost its hosted runner is rerun (`gh run rerun <id> --failed`) and waited"
+        " for, never landed"
+        " past (round 31 C569)." in lanes
+    )
+    header = SHIP_LAND.read_text(encoding="utf-8").split("\nset -euo pipefail\n", 1)[0]
+    assert "9 CI not read (gh failed, no run appeared, or a run lost its hosted runner)" in header

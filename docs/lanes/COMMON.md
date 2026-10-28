@@ -611,7 +611,10 @@ CI it could not read: `nothing pushed` before the push (retry), `LANDED` after i
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6); since round 27 P140 it
 also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
-tests (`gh run view <id> --log-failed`), then wait for the owner's fix. The lane that landed a test that is red on CI
+tests (`gh run view <id> --log-failed`), then wait for the owner's fix. Pass `--allow-red-trunk` only for a run that
+ended red on tests your diff does not touch and your lane does not own, with the run id in your commit body or result
+note and the owner messaged; never for exit 9: a run that lost its hosted runner is rerun (`gh run rerun <id>
+--failed`) and waited for, never landed past (round 31 C569). The lane that landed a test that is red on CI
 owns its fix until main is green, even after other lanes land on top. CI takes 18 to 52 minutes a run (the slowest, 51:10, in round 29), and a run can wait up to about 48 minutes for a macOS runner first; its limit is 70 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98, round 25 D83, round 28 I99, round 29 C207, round 30 C372).
 
 Makes things worse: 9 round 31 items carry "a fix makes things worse? True" (C506, C510, C513, C516, C525, C530,
