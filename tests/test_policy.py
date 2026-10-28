@@ -345,15 +345,15 @@ def test_pdf_and_eml_labels(tmp_path: Path) -> None:
     assert policy.read_labels(txt, name="t.txt").capable is False
 
 
-def test_label_fingerprint_moves_with_the_label_only(fixture_files: dict[str, Path], tmp_path: Path) -> None:
+def test_h1_ignores_a_relabel(fixture_files: dict[str, Path], tmp_path: Path) -> None:
+    """H1 leaves labels out on purpose (F72): a purge still suppresses a relabelled copy, and the label screen
+    on touched bytes (``_Cycle._relabelled``) handles a relabel. B13 round 31 C550, C579: the dead helper that
+    folded labels into a fingerprint, with a docstring saying the opposite, is gone."""
     base = fixture_files["sample.docx"]
     a = labelled_docx(base, tmp_path / "a.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0")))
     b = labelled_docx(base, tmp_path / "b.docx", labelinfo=labelinfo_xml((OTHER_LABEL, SITE, "1", "0")))
-    c = labelled_docx(base, tmp_path / "c.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0")))
-    fp = policy.label_fingerprint
-    assert fp(a, name="a.docx") == fp(c, name="c.docx") != fp(b, name="b.docx")
-    # H1 ignores LabelInfo (canonical VOLATILE_PARTS): a relabel is invisible to H1 without this fingerprint
     assert canonical_hash(a, suffix=".docx").sha256 == canonical_hash(b, suffix=".docx").sha256
+    assert not hasattr(policy, "label_fingerprint")
 
 
 # ---------------------------------------------------------------------------------------------------------

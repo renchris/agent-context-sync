@@ -597,16 +597,6 @@ def read_labels(path: Path, *, name: str, kind: ContainerKind | None = None) -> 
     return LabelReadout(capable=False)
 
 
-def label_fingerprint(path: Path, *, name: str) -> str:
-    """``sha256:<hex>`` of the labels ``path`` carries (fold into H1: a relabel is a content change)."""
-    readout = read_labels(path, name=name)
-    blob = json.dumps(
-        [[lab.label_id, lab.site_id, lab.origin] for lab in readout.labels] + [[readout.error or ""]],
-        separators=(",", ":"),
-    )
-    return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()
-
-
 # ---------------------------------------------------------------------------------------------------------
 # the pre-conversion screen
 # ---------------------------------------------------------------------------------------------------------

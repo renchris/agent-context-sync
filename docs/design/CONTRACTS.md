@@ -4388,9 +4388,6 @@ def is_refusal_reason(reason: str | None) -> bool:
 def label_decision(readout: LabelReadout, policy: PolicyConfig) -> Screening | None:
     """Apply the policy to one file's labels: None = convert; else a REFUSED screening."""
 
-def label_fingerprint(path: Path, *, name: str) -> str:
-    """``sha256:<hex>`` of the labels ``path`` carries (fold into H1: a relabel is a content change)."""
-
 def labels_from_msip_properties(props: Mapping[str, str], *, origin: str) -> tuple[SensitivityLabel, ...]:
     """Group ``MSIP_Label_<guid>_<Attr>`` key/values into labels; keep those with ``Enabled`` = true."""
 
@@ -15699,6 +15696,8 @@ let a relabelled copy of purged content escape its purge. Pinned by
 `tests/test_review_fixes.py::test_a_save_that_only_adds_an_excluded_label_withholds_the_page` (`.potx`, `.vsdx`,
 `.pptx`, and lifting the exclusion restores the page) and
 `tests/test_review_fixes.py::test_a_purged_template_that_is_relabelled_stays_suppressed`.
+Amended 2026-10-28, §16.211 C550, C579: `policy.label_fingerprint` is removed: it had no caller, and its docstring
+("fold into H1: a relabel is a content change") said the opposite of this paragraph; H1 still leaves labels out.
 
 **Comments and docs say binary `.msg` (F76).** msg.py's module doc, `cycle._LABEL_CAPABLE`, publish's withheld
 comment, setup-feedback.md and a test docstring said `.msg` has no converter under a rule; they now say a binary
@@ -34565,6 +34564,10 @@ change that converts nothing, then the revision deleted: the fingerprint stays, 
 label-capable files`), `test_policy.py::test_the_readers_own_marker_counts_mail_only` and
 `test_policy.py::test_a_label_reader_re_screen_does_not_say_policy_changed` (its reader line now `2 mail files`).
 
+**The dead `label_fingerprint` goes (C550 with C579; `agentsync.policy`; amends §16.60 F72).** It had no caller,
+and its docstring said a relabel folds into H1, which F72 decided against (a relabelled copy of purged content
+would escape its purge). It is removed with its §15 stub; H1 still leaves the label parts out. Test:
+`test_policy.py::test_h1_ignores_a_relabel` (the H1 check alone, and no such function).
 
 ### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)
 
