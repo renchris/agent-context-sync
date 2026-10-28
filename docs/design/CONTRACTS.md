@@ -12313,6 +12313,8 @@ Amended 2026-10-14, §16.80 K5: the line is one sentence, `- re-read, per source
 source(s) with a record (<labels>); nothing is left to read again, none failed or was given up, and no read was cut
 off when a cycle died (measured against run <id>, the newest run that records what its re-read looked for; it had an
 engine).`, and the kinds of file a re-read looks at are said in the table's lead only.
+Amended 2026-10-28, §16.208 C512: the run clause reads `the newest run that says what its re-read looked for`, so a
+hold value "Records" cuts none of it (ruling 55).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
@@ -34483,6 +34485,23 @@ already makes. The shell report's bare-path pairs are lane RB's (§16.209). Test
 `test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_c529`, and
 `test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once` and `test_the_path_legend_item_names_every_use_of_path`
 with their new words.
+
+**Every hold word is agentsync's own where agentsync prints it** (C502 with C512, C533, C563; ruling 55;
+`src/agentsync/setup_report.py`, `scripts/install.sh`). Ruling 39 kept `audit` whole; a hold reason or owner that is
+record, records, legal, review or label still cut agentsync's own words (`waiting on a legal or <value> hold`, `issue
+link (<value> the report first)`, the `(<value>)` origin, `hold-<value>.json`, `no <value> rules`, `the newest run
+that <value> what its re-read looked for`) and made the report private only, with the value quoted nowhere. As C302
+did for `audit`, the scan of every string literal under src/agentsync is parametrized over the five words, builds
+each part into the line it prints (the `(record)` origin's three forms through `_cut_holds`, the hold and purge
+record's not-a-file, damaged and unread words, the sync-stop line's `file=hold-record`), and `_FIXED_VALUE_PHRASES`
+gains each printed clause whole, never a bare word and none with `|`; never-printed literals (regex sources, word
+lists, dict keys, the manifest's SQL, the OCR filter's Lua, the docs repo's README and skill text) are skipped by
+name. The re-read sentence reads `the newest run that says what its re-read looked for` (dated line at §16.80 K5).
+install.sh's FIXED_VALUE_PHRASES takes the same phrases in the same commit, as the parity test reads both; its shell
+probe is lane RB's. A quoted value is still cut and still makes the report private. Tests:
+`test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502` (per word) and
+`test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502` (a built report per reason, the rehearsal's
+reason Legal with owner Records among them, each failing on the round 30 list).
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 

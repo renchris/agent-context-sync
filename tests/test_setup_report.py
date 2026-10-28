@@ -2344,20 +2344,32 @@ def test_a_two_letter_hold_value_leaves_the_redaction_section_whole_and_says_so(
             assert "<value> draft" not in body, body
 
 
+@functools.cache
+def _agentsync_trees() -> tuple[ast.Module, ...]:
+    """Every module under src/agentsync, parsed once a process (the five-word scan reads them often)."""
+    return tuple(
+        ast.parse(module.read_text(encoding="utf-8"))
+        for module in sorted(Path(setup_report.__file__).parent.rglob("*.py"))
+    )
+
+
 def agentsync_literals(word: re.Pattern[str], skip: set[str]) -> set[str]:
     """Every string literal of every module under src/agentsync that ``word`` finds, but docstrings and the
     literals assigned to a name in ``skip`` (a phrase list itself, a regex source never printed): the lines
     Doctor, the install.out tail, Status and Recent errors embed are made of them (B13 round 29 C106, C162;
     round 30 C302)."""
     literals: set[str] = set()
-    for module in sorted(Path(setup_report.__file__).parent.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
+    for tree in _agentsync_trees():
         skipped = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}  # docstrings
         skipped |= {
             id(leaf)
             for node in ast.walk(tree)
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id in skip for t in node.targets)
+            if isinstance(node, ast.Assign | ast.AnnAssign)
+            and node.value is not None
+            and any(
+                isinstance(t, ast.Name) and t.id in skip
+                for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            )
             for leaf in ast.walk(node.value)
         }
         literals |= {
@@ -2524,6 +2536,182 @@ def test_an_audit_hold_cuts_no_fixed_line_of_a_built_report_c302(fake_mac: dict[
     text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     body = text.split("\n## Redaction\n", 1)[0]
     assert "<value> said hold" in body and "Audit said" not in body, body
+    assert red.private_only and setup_report.issue_link(text) is None
+
+
+_HOLD_WORD_SKIPS = {
+    *_AUDIT_REGEXES,
+    "_LOST_ORIGINS",
+    "_SPLIT_RE",
+    "_WITHHELD_UNREAD_RE",
+    "_LISTING_GOVERNANCE_RE",
+    "_LABEL_VALUE_RE",
+    "_MSIP_ANY_KEY_RE",
+    "_MSIP_KEY_RE",
+    "_JOINED_WORD_LIST",
+    "_UNNUMBERED",
+    "_PLIST_KEYS",
+    "_REVIEW_STATES",
+    "SCHEMA_SQL",
+    "_ITEM_COLUMNS",
+    "_LUA_FILTER",
+    "_README_TEMPLATE",
+    "BASELINE",
+    "MEETINGS",
+    "RUBRICS",
+    "_CUES",
+}
+"""Literals that hold record, records, legal, review or label and are never printed in a line either report
+embeds: regex sources, word lists, plist and dict keys, the manifest's SQL, the OCR filter's Lua, and the docs
+repo's own README and skill text (B13 round 31 C563; ruling 55)."""
+_HOLD_WORD_KEYS = {
+    "record",
+    "records",
+    "label",
+    "Label",
+    "}label",
+    "%label%",
+    "Review",
+    "recording_label",
+    "recording_label_box",
+    "HOLD_RECORD_UNREAD_WAIT",
+}
+"""Bare words and names used as keys, states or attribute names, never printed as they stand: a state
+``record`` prints as the hold's ``(record)`` origin, built below."""
+
+
+_HOLD_WORDS = ("record", "records", "legal", "review", "label")
+
+
+@functools.cache
+def _hold_word_texts(word: str, root: Path) -> list[str]:
+    """Every literal under src/agentsync that holds ``word``, as the line it is built into where it is a part
+    of one (B13 round 31 ruling 55)."""
+    rx = re.compile(rf"(?i)(?<![a-z]){word}(?![a-z])")
+    literals = agentsync_literals(rx, {"_FIXED_VALUE_PHRASES", *_HOLD_WORD_SKIPS}) - _HOLD_WORD_KEYS
+    when = "2026-10-22T05:32:56Z"
+    owner = "the records owner"
+    lost = [governance.Hold("all", governance.LOST_HOLD_REASON, owner, at, "record") for at in (when, "")]
+    holds = [
+        *(setup_report._cut_holds(h.describe()) for h in lost),
+        setup_report._cut_holds(
+            f"suspended by legal/records hold: {lost[0].describe()}; {lost[1].describe()}"
+        ),
+    ]
+    roles = {
+        governance.HOLD_RECORD_ROLE: governance.hold_record_file(root),
+        governance.PURGE_RECORD_ROLE: governance.purge_record_file(root),
+    }
+    built = {  # a part, as the line it is built into prints it
+        owner: holds,
+        "; once its records owner ": [
+            "1 queued purge waits on the hold on all; once its records owner releases it (",
+            "2 queued purges wait on the hold on all; once its records owner releases them (",
+        ],
+        **{
+            role: [
+                str(governance.GovernanceNotAFileError(path, "a folder", role)),
+                str(governance.GovernanceDamagedError(path, role, "it is not JSON")),
+                cli._unread_words(governance.GovernanceNotAFileError(path, "a folder", role)),
+                cli._unread_words(governance.GovernanceDamagedError(path, role, "it is not JSON")),
+            ]
+            for role, path in roles.items()
+        },
+        "hold-record": ["2026-10-22T05:32:56Z sync-stop file=hold-record rc=1 owner=person kind=refused"],
+        "purge-record": ["2026-10-22T05:32:56Z sync-stop file=purge-record rc=1 owner=person kind=refused"],
+        " records (": ["2 purges, as that time names 2 records (2026-10-22T05:32:56Z)"],
+        "its label cannot": ["1 of them withheld: its label cannot be read"],
+        "its label": ["1 of them withheld: its label cannot be read"],
+        "sensitivity label ": ["refused: sensitivity label Contoso Secret is excluded by [policy]"],
+        " with a record (": [
+            "all 2 local or inbox sources with a record (x)",
+            "its one local or inbox source with a record (x)",
+        ],
+        "no record": ["| <folder-3> | no record | 2 | 1 | 0 | 0 | 0 | no |"],
+    }
+    return [t for lit in sorted(literals) for t in built.get(lit, [lit])]
+
+
+@pytest.mark.parametrize("word", _HOLD_WORDS)
+def test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502(word: str) -> None:
+    """B13 round 31 C502, C512, C533, C563 (ruling 55): a hold reason or owner "Records", "Legal", "Review",
+    "Record" or "Label" cut agentsync's own words, ``waiting on a legal or <value> hold``, ``issue link
+    (<value> the report first)``, the ``(<value>)`` origin, ``hold-<value>.json``, ``no <value> rules``, and
+    made the report private only, with the value quoted nowhere. As C302 did for "audit": every literal under
+    src/agentsync that holds the word reads whole, as the line it is built into where it is a part of one;
+    every phrase holding it is in one of those lines; no phrase is a bare word; a quote of the value is still
+    cut and still makes the report private."""
+    texts = _hold_word_texts(word, Path("/x/state"))
+    assert texts, word
+    red = setup_report.Redactor()
+    red.add("value", word.capitalize(), ignore_case=True)
+    assert [t for t in texts if red.redact(t) != t] == [] and not red.private_only
+    rx = re.compile(rf"(?i)(?<![a-z]){word}(?![a-z])")
+    every = [t for w in _HOLD_WORDS for t in _hold_word_texts(w, Path("/x/state"))]
+    for phrase in (p for p in setup_report._FIXED_VALUE_PHRASES if rx.search(p)):  # agentsync's, never a word
+        found = setup_report._FIXED_VALUE_RES[setup_report._FIXED_VALUE_PHRASES.index(phrase)]
+        assert len(phrase.split()) > 1 or re.search(r"[._=-]", phrase), phrase
+        assert any(found.search(t) for t in every), f"{phrase!r} is no fixed text of agentsync's"
+    quote = f"note: {word.capitalize()} said the hold stays"
+    assert red.redact(quote) == "note: <value> said the hold stays" and red.private_only
+
+
+@pytest.mark.usefixtures("roomy_budget")
+@pytest.mark.parametrize(
+    ("reason", "owner"),
+    [
+        ("Records", "Avery Quill"),
+        ("Record", "Avery Quill"),
+        ("Legal", "Records"),
+        ("Review", "Avery Quill"),
+        ("Label", "Avery Quill"),
+    ],
+)
+def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
+    fake_mac: dict[str, Path], reason: str, owner: str
+) -> None:
+    """B13 round 31 C502, C512 (ruling 55): a report built for a hold reason Records, Record, Legal, Review or
+    Label (and the rehearsal's reason Legal with owner Records), with one queued purge and agentsync's own
+    lines holding each word in install.out, has no <value> in its body, stays public and keeps its issue link;
+    a friction line quoting the value is cut and makes it private."""
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text(f'[governance]\nhold = true\nhold_reason = "{reason}"\nhold_owner = "{owner}"\n\n' + plain)
+    config = load_config(cfg)
+    governance.enqueue_purge(
+        config.state_paths.root,
+        governance.PurgeSelector(source_id=config.sources[0].id, stable_id="ledger-2031"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        now=datetime(2026, 10, 26, 9, 30, tzinfo=UTC),
+    )
+    said = (  # agentsync's own lines with each of the five words, as install.out keeps them
+        "[ok  ] policy — no label rules (encrypted Office/PDF files are still stubbed, never converted)",
+        "agentsync: error: hold: --owner (the records/legal owner) is required",
+        "  cited by (review by hand): notes.md",
+        "  1 queued purge is waiting on a legal or records hold",
+        "  not run while the hold record cannot be read",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        + "\n".join(said)
+        + "\n",
+        encoding="utf-8",
+    )
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    for line in said:
+        assert line.strip() in body, line
+    assert "<value>" not in body, [ln for ln in body.splitlines() if "<value>" in ln]
+    assert "Private only: a hold's" not in text
+    assert not red.private_only and setup_report.issue_link(text) is not None
+    write_friction(
+        fake_mac, V6_HAPPY + f"2026-09-29T10:01:20Z | step 3 | deviation | {reason} said hold | -\n"
+    )
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    body = text.split("\n## Redaction\n", 1)[0]
+    assert "<value> said hold" in body and f"{reason} said" not in body, body
     assert red.private_only and setup_report.issue_link(text) is None
 
 
@@ -19355,7 +19543,7 @@ def test_an_all_zero_re_read_table_is_one_line(
     line = (
         f"- re-read, per source: finished in all {len(ids)} local or inbox sources with a record "
         f"({', '.join(names)}); nothing is left to read again, none failed or was given up, and no read was "
-        "cut off when a cycle died (measured against run 6, the newest run that records what its re-read "
+        "cut off when a cycle died (measured against run 6, the newest run that says what its re-read "
         "looked for; it had an engine).\n"
     )
     assert line in finished, finished
@@ -19368,7 +19556,7 @@ def test_an_all_zero_re_read_table_is_one_line(
     seed.close()
     noengine = status_parts(fake_mac)[1]["OCR"]
     assert (
-        "when a cycle died (measured against run 7, the newest run that records what its re-read looked for; "
+        "when a cycle died (measured against run 7, the newest run that says what its re-read looked for; "
         "it had no engine, so a finished scan says nothing of OCR).\n" in noengine
     ), noengine
     assert "it had an engine" not in noengine
