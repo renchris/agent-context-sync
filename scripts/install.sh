@@ -1180,6 +1180,10 @@ misplaced_reader() { # PYTHON [SRC]
 # after a comma, a purge queue or suppression list that lost a purge the audit trail records, by the build's own
 # governance.governance_lost as status calls it (B13 round 30 ruling 40, C311): "lost-queue" or
 # "lost-suppressed"; nothing more when the build lacks it or it raises, so an older build's verdict is unchanged.
+# A lost hold whose FAIL puts the whole governance folder back (governance/ gone, the audit trail with it: the
+# build's own lost_hold_words, B13 round 30 C313) is "lost-hold-govgone" (B13 round 31 ruling 60: C507: step 1
+# said to put the hold list back alone, which status retired); an older build without that branch, or one whose
+# lost_hold_words raises, keeps "lost-hold".
 LOST_HOLD_PY='
 import os, sys
 from pathlib import Path
@@ -1205,6 +1209,13 @@ try:
 except BaseException:
     sys.exit(0)
 said = "lost-hold" if lost else "none"
+if lost:
+    try:
+        fix = governance.lost_hold_words(expand(root), lost[0])[1]
+        if fix.startswith("the person puts agentsync\x27s governance folder ("):
+            said = "lost-hold-govgone"
+    except BaseException:
+        pass
 try:
     odd = governance.governance_lost(expand(root))
     said += {"purge-queue.json": ",lost-queue", "suppressed.json": ",lost-suppressed"}.get(odd.path.name, "") if odd else ""
@@ -8330,9 +8341,10 @@ list_folders() {
 		ctail="$ctail$stail"
 		clog=" config_err=$cerr"
 	elif [ -n "$chold" ] && [ "$chold" != none ]; then
-		# A purge queue or suppression list that lost a purge the audit trail records fails step 2's status on
-		# its governance.purge_queue or governance.suppressed line, first, as status's NEXT leads with
-		# governance_lost (B13 round 30 ruling 40, C311); then a hold the hold list lost (holds.json moved aside
+		# A suppression list or purge queue that lost a purge the audit trail records fails step 2's status
+		# first, on its governance.suppressed or governance.purge_queue line (the suppression list's when both
+		# lost one: governance_lost, which status's NEXT leads with, reads it before the queue; B13 round 30
+		# ruling 40, C311; round 31 C532's order); then a hold the hold list lost (holds.json moved aside
 		# or rewritten as no holds, or a hold only a record names) on its governance.hold line (B13 round 29
 		# ruling 27: C122, C197, C206). Each fix is the person's, and step 1 said "(none is needed)" over that
 		# stop. Only when nothing else is predicted: a config-step stop comes first, and a list that cannot be
@@ -8348,7 +8360,15 @@ list_folders() {
 			clog=",state-suppressed-lost"
 			;;
 		esac
-		case ",$chold," in *,lost-hold,*)
+		# governance/ itself gone, the audit trail with it, under a hold its records keep: the folder is put back
+		# whole, as status's governance.hold FAIL says from the build's lost_hold_words, never the hold list
+		# alone (B13 round 31 ruling 60: C507; round 30 C313). Its own word; `lost-hold` matches only itself
+		case ",$chold," in
+		*,lost-hold-govgone,*)
+			ctail="$ctail; step 2 stops at its status step on agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it, while its records keep a hold as set and not released (not damage, not a mode): fixing that is the person's (they put agentsync's governance folder back whole from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+			clog="$clog,state-governance-lost"
+			;;
+		*,lost-hold,*)
 			ctail="$ctail; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
 			clog="$clog,state-hold-lost"
 			;;

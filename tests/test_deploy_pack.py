@@ -8083,25 +8083,29 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     each tail and word as install.sh writes them, read here, and every `state-` word install.sh can log after
     `config_err=` is in the guide. B13 round 31 C532: it said the purge queue's tail comes first when both
     lists lost a purge, but step 1 reads `governance_lost`, which returns the suppression list's first, as
-    status's NEXT leads with it; the guide gives the suppression list first and says so."""
+    status's NEXT leads with it; the guide gives the suppression list first and says so.
+    B13 round 31 ruling 60 (C507): with governance/ itself gone under a hold, the governance folder's tail,
+    logged `state-governance-lost`, is quoted too."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     section = " ".join(_feedback_page().split())
     tails = {
         noun: tail
         for tail, noun in re.findall(
             r'ctail="(?:\$ctail)?(; step 2 stops at its status step on agentsync\'s'
-            r' (purge queue|suppression list|hold list)[^"]*)"',
+            r' (purge queue|suppression list|hold list|governance folder)[^"]*)"',
             script,
         )
     }
-    assert sorted(tails) == ["hold list", "purge queue", "suppression list"]
+    assert sorted(tails) == ["governance folder", "hold list", "purge queue", "suppression list"]
     words = {
         "purge queue": "state-queue-lost",
         "suppression list": "state-suppressed-lost",
         "hold list": "state-hold-lost",
+        "governance folder": "state-governance-lost",
     }
     for noun, word in words.items():
-        assert f'clog="{"$clog" if noun == "hold list" else ""},{word}"' in script, word
+        own = noun in ("hold list", "governance folder")  # after a lost list's word, when both
+        assert f'clog="{"$clog" if own else ""},{word}"' in script, word
         assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
     assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
     assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section

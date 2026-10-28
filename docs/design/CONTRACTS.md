@@ -34651,6 +34651,25 @@ from looping; it never says nothing was printed, since a sync can warn before it
 cause was outside the sync's own work. install.log's step line is unchanged (no new note for the report to read).
 Test: `test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr` (SIGKILL, SIGTERM).
 
+**Step 1 under a hold with governance/ gone gives the folder's tail** (C507; ruling 60; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`). With the whole governance folder moved aside under a hold (hold-record.json left in
+the state folder), LOST_HOLD_PY printed `lost-hold`, since `governance_dir_error` is None when nothing is there, so
+step 1 said `on agentsync's hold list ... (they put the hold list back from the copy kept, ...)`, logged
+`state-hold-lost`, the fix C313 retired because it leaves the audit trail missing, while status and the report put
+the folder back whole. The probe now asks the build's own `lost_hold_words` for the first lost hold and prints
+`lost-hold-govgone` when its fix puts agentsync's governance folder back; an older build without that branch, or
+without `lost_hold_words`, or one that raises, keeps `lost-hold`, never re-implemented. Its tail, before the hold
+list's, which matches only its own word: `; step 2 stops at its status step on agentsync's governance folder, which
+is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it, while its
+records keep a hold as set and not released (not damage, not a mode): fixing that is the person's (they put
+agentsync's governance folder back whole from the copy kept, or the records owner sets the hold again or releases
+it), and ~/.local/bin/agentsync status prints it on its governance.hold line`, logged `state-governance-lost`; the
+guide quotes it beside the hold list's. The comment above the lost-list tails names the suppression list first, as
+governance_lost reads it (for lane D's C532). Tests:
+`test_the_lost_hold_probe_tells_a_governance_folder_gone_by_the_builds_own_words` (the checkout, the folder there,
+two older builds), `test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole` (the real
+agentsync) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, whose word map takes the new word.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

@@ -964,8 +964,14 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
   person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),
   and ~/.local/bin/agentsync status prints it on its governance.hold line`, logged `state-hold-lost` (B13 round 29
-  ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`). Each fix is the person's; the
-  scope, owner, reason, selector and time are never printed (B13 round 30 C315).
+  ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`). With agentsync's governance
+  folder itself gone, the audit trail with it, a hold its records keep gives `; step 2 stops at its status step on
+  agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
+  the suppression list in it, while its records keep a hold as set and not released (not damage, not a mode): fixing
+  that is the person's (they put agentsync's governance folder back whole from the copy kept, or the records owner
+  sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line`,
+  logged `state-governance-lost`, in place of the hold list's (B13 round 31 ruling 60, C507). Each fix is the
+  person's; the scope, owner, reason, selector and time are never printed (B13 round 30 C315).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

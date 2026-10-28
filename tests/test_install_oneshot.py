@@ -12437,6 +12437,89 @@ def test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_w
     assert _lost_hold_probe(cfg, tmp_path / "no-checkout") == ""
 
 
+GOVERNANCE_GONE_TAIL = (
+    "; step 2 stops at its status step on agentsync's governance folder, which is missing, with the hold "
+    "list, agentsync's audit trail, the purge queue and the suppression list in it, while its records keep a "
+    "hold as set and not released (not damage, not a mode): fixing that is the person's (they put "
+    "agentsync's governance folder back whole from the copy kept, or the records owner sets the hold again "
+    "or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+)
+"""Step 1's tail for a hold its records keep with governance/ itself gone (B13 round 31 ruling 60: C507), in
+fixed words that name no scope, owner or reason."""
+
+
+def test_the_lost_hold_probe_tells_a_governance_folder_gone_by_the_builds_own_words(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 31 ruling 60 (C507): with governance/ gone and the hold record naming a hold, the probe said
+    `lost-hold`, so step 1 said to put the hold list back alone, while status's FAIL (lost_hold_words' C313
+    branch) puts the whole folder back. It says `lost-hold-govgone` when the build's own lost_hold_words gives
+    the folder's fix; a build without that branch, or without lost_hold_words, keeps `lost-hold`."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    (state / governance.HOLD_RECORD_NAME).write_text('{"holds": ["all"]}', encoding="utf-8")
+    assert not (state / "governance").exists()
+    assert _lost_hold_probe(cfg, src) == "lost-hold-govgone"
+    (state / "governance").mkdir()  # the folder there, the hold list gone from it: the hold list's own word
+    assert _lost_hold_probe(cfg, src) == "lost-hold"
+    (state / "governance").rmdir()
+    for name, old, new in (
+        ("no-branch", 'if not os.path.lexists(gov) and "audit.jsonl" not in hold.kept_by:', "if False:"),
+        ("no-words", "def lost_hold_words(", "def _no_lost_hold_words("),
+    ):
+        older = tmp_path / name  # an installed build from before C313, or with no lost_hold_words
+        shutil.copytree(src / "agentsync", older / "agentsync")
+        gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
+        assert gtext.count(old) == 1, name
+        (older / "agentsync" / "governance.py").write_text(gtext.replace(old, new), encoding="utf-8")
+        assert _lost_hold_probe(cfg, older) == "lost-hold", name
+
+
+def test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 31 ruling 60 (C507; rehearsal probes GOVGONE, GOVGONE2), with the real agentsync: a hold on
+    `all`, then governance/ moved aside, which leaves hold-record.json. Step 1 said `on agentsync's hold list
+    ... (they put the hold list back from the copy kept, ...)`, logged `state-hold-lost`, while status and
+    the report put the governance folder back whole. Step 1 now gives the folder's tail, logged
+    `state-governance-lost`, as status says it; putting the folder back, as the words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    owner = "Quinn Avery"
+    held = subprocess.run(
+        [agentsync, "hold", "all", "--reason", "matter 8", "--owner", owner],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert held.returncode == 0, held.stdout + held.stderr
+    gov = _state_db(env).parent / "governance"
+    kept = gov.with_name("governance.kept")
+    gov.rename(kept)
+    status = subprocess.run([agentsync, "status"], capture_output=True, text=True, check=False, env=env)
+    assert "back whole from the copy kept" in status.stdout + status.stderr, status.stdout + status.stderr
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(GOVERNANCE_GONE_TAIL), last_line(listed)
+    assert LOST_HOLD_TAIL not in last_line(listed), last_line(listed)
+    assert owner not in listed.stdout + listed.stderr and "matter 8" not in listed.stdout + listed.stderr
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-governance-lost" in log and "state-hold-lost" not in log, log
+    kept.rename(gov)  # the person puts the governance folder back whole from the copy kept
+    assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
+
+
 LOST_LIST_TAILS = {
     "queue": (
         "; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge the "
