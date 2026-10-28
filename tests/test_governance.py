@@ -2424,6 +2424,116 @@ def test_a_lost_queued_ids_rebuild_fingerprints_each_manifest_id_once_per_source
     assert gv._rebuilt_ids(db, lost) == {9: "fabrikam-0001"}
 
 
+def _h(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("case", "done"),
+    [
+        ("erased", True),
+        ("alias-erased", True),
+        ("in-items", False),
+        ("in-tombstones", False),
+        ("alias-in-manifest", False),
+        ("narrowed", False),
+        ("other-source-line", False),
+        ("unverified", False),
+        ("older-summary", False),
+        ("purged-before", False),
+        ("older-line", False),
+        ("no-manifest", False),
+        ("not-a-manifest", False),
+        ("no-tombstones", False),
+    ],
+)
+def test_a_lost_queued_id_is_done_only_when_a_later_purge_erased_it_and_the_manifest_lost_it(
+    tmp_path: Path, case: str, done: bool
+) -> None:
+    """B13 round 31 C561 (ruling 46): a lost stable-id record is done only when a later verified purge,
+    narrowed to its source or none, has a line of its source carrying its id's or an alias's hash, and the
+    manifest, read whole, names no id of its source hashing to either: an item back in the manifest, a purge
+    of another source, an unverified run, a purge before it, a line or summary an older build wrote, and a
+    manifest lost or unreadable each keep it open, the older line with today's words. The trail keeps the
+    hashes only, never an id."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    if case != "no-manifest":
+        db = state / "manifest.sqlite"
+        if case == "not-a-manifest":
+            db.write_bytes(b"not a database, " * 64)
+        else:
+            conn = sqlite3.connect(db)
+            conn.execute("CREATE TABLE items (source_id TEXT, stable_id TEXT)")
+            if case != "no-tombstones":
+                conn.execute("CREATE TABLE tombstones (source_id TEXT, stable_id TEXT)")
+            conn.execute("CREATE TABLE item_aliases (source_id TEXT, alias_id TEXT, stable_id TEXT)")
+            conn.execute("INSERT INTO items VALUES ('fabrikam', 'contoso-0001'), ('contoso', 'contoso-0002')")
+            row = {
+                "in-items": "INSERT INTO items VALUES ('contoso', 'contoso-0001')",
+                "in-tombstones": "INSERT INTO tombstones VALUES ('contoso', 'contoso-0001')",
+                "alias-in-manifest": "INSERT INTO item_aliases VALUES ('contoso', 'contoso-old', 'x')",
+            }.get(case)
+            if row:
+                conn.execute(row)
+            conn.commit()
+            conn.close()
+    at = "2026-10-28T00:00:01.000000Z"
+    erased = [
+        {
+            "action": "purge",
+            "at": at,
+            "path_sha256": None,
+            "reason": "upstream-deleted",
+            "source_id": "fabrikam" if case == "other-source-line" else "contoso",
+            "stable_id_sha256": _h("contoso-old" if case == "alias-erased" else "contoso-0001"),
+        },
+        {
+            "action": "purge-summary",
+            "at": at,
+            "reason": "upstream-deleted",
+            "selector_kind": "path-glob",
+            "selector_sha256": _h("a path glob"),
+            "source_id": "fabrikam" if case == "narrowed" else "contoso",
+            "verified": case != "unverified",
+        },
+    ]
+    if case == "older-summary":
+        del erased[1]["source_id"]
+    sel = gv.PurgeSelector(stable_id="contoso-0001", source_id="contoso")
+    if case == "purged-before":
+        for line in erased:
+            gv.append_audit(state, line)
+    if case == "older-line":
+        older = {
+            "action": "purge-enqueued",
+            "at": "2026-10-28T00:00:00Z",
+            "reason": "dlp-remediation",
+            "selector_kind": "stable-id",
+            "selector_sha256": sel.fingerprint(),
+            "source_id": "contoso",
+            "dequeue_audited": True,
+        }
+        gv.append_audit(state, older)
+        gv._write_queue(state, [])
+    else:
+        assert gv.enqueue_purge(state, sel, gv.PurgeReason.DLP_REMEDIATION, aliases=("contoso-old",))
+        (line,) = [r for r in gv.read_audit(state) if r["action"] == "purge-enqueued"]
+        assert line["stable_id_sha256"] == _h("contoso-0001") and line["alias_sha256s"] == [_h("contoso-old")]
+    if case != "purged-before":
+        for line in erased:
+            gv.append_audit(state, line)
+    gv._queue_file(state).rename(state / "queue.away")
+    lost = gv.lost_queued(state)
+    assert [r["reason"] for r in lost] == ([] if done else ["dlp-remediation"])
+    err = gv.queue_lost(state)
+    assert (err is None) is done
+    if case == "older-line":
+        assert err is not None and "no manifest row names its id, which is the `stable_id:` line" in err.fix
+    trail = gv.audit_path(state).read_text(encoding="utf-8")
+    assert "contoso-0" not in trail and "contoso-old" not in trail
+
+
 def test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks(
     tmp_path: Path,
 ) -> None:

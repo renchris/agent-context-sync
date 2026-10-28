@@ -1732,7 +1732,9 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     return out
 
 
-def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> list[dict[str, Any]]:
+def lost_queued(
+    state_dir: Path, queue: Sequence[QueuedPurge] | None = None, *, erased: bool = True
+) -> list[dict[str, Any]]:
     """The audit trail's ``purge-enqueued`` records of purges queued and never done (no verified
     ``purge-summary`` of the selector, no ``purge-covered`` or ``purge-forgotten`` of it) that the purge queue
     (``queue``, read here when None) no longer holds: dropped unrun by a queue moved aside or rewritten (B13
@@ -1740,16 +1742,29 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
     build took an entry a hand purge covered off the queue with no audit line. It replays the purge record's
     and the trail's lines, or the trail's alone when the record cannot be read (:func:`_queue_events`), so
     no reader (status, the report's count, a dry run's preview, a hand purge's ``purge-covered`` line) misses
-    a lost purge behind the record's error (B13 round 31 C539 and its review; ruling 46)."""
+    a lost purge behind the record's error (B13 round 31 C539 and its review; ruling 46). A lost stable-id
+    record whose line keeps its id's hash is done, as the queue's own 0-item run would have dropped it, when
+    a later verified purge erased that item and the manifest, read without a write, neither names nor
+    rebuilds its id (:func:`_erased_since`, :func:`_erased_and_gone`; B13 round 31 C561; ruling 46): judged
+    on each read, never written, so the item coming back opens it again with its id rebuilt. ``erased``
+    False leaves it lost, for :func:`_lost_covered`, whose line closes it for good."""
     pend = pending_purges(state_dir) if queue is None else queue
     have = {(q.selector.fingerprint(), q.reason.value) for q in pend}
     gone_file = not os.path.lexists(_queue_file(state_dir))
     open_: dict[tuple[object, object], dict[str, Any]] = {}
+    gone: set[tuple[object, object]] = set()  # open records whose item a later verified purge erased
+    group: list[dict[str, Any]] = []
     for rec in _queue_events(state_dir):
         action, fp = rec.get("action"), rec.get("selector_sha256")
-        if action == "purge-enqueued":
+        if action == "purge":
+            group.append(rec)
+        elif action == "purge-enqueued":
             open_[(fp, rec.get("reason"))] = rec
-        elif action == "purge-summary" and rec.get("verified") is True:
+            gone.discard((fp, rec.get("reason")))
+        elif action == "purge-summary":
+            mine, group = [r for r in group if r.get("at") == rec.get("at")], []
+            if rec.get("verified") is not True:
+                continue
             # only the reasons the purge did, as _covers judges it: an upstream-deleted run of a selector
             # leaves its erasure, label or DLP entry queued, and so open here (C172's review)
             upstream = rec.get("reason") == PurgeReason.UPSTREAM_DELETED.value
@@ -1758,13 +1773,63 @@ def lost_queued(state_dir: Path, queue: Sequence[QueuedPurge] | None = None) -> 
                 for k, v in open_.items()
                 if k[0] != fp or (upstream and k[1] != PurgeReason.UPSTREAM_DELETED.value)
             }
+            gone |= {k for k, v in open_.items() if _erased_since(v, rec, mine)}
         elif action in ("purge-covered", "purge-forgotten"):
             open_.pop((fp, rec.get("reason")), None)
-    return [
-        rec
+    lost = {
+        key: rec
         for key, rec in open_.items()
         if key not in have and (gone_file or rec.get("dequeue_audited") is True)
-    ]
+    }
+    done = _erased_and_gone(state_dir, [rec for key, rec in lost.items() if key in gone]) if erased else set()
+    return [rec for rec in lost.values() if id(rec) not in done]
+
+
+def _id_sha256s(rec: Mapping[str, Any]) -> set[str]:
+    """The sha256 of a stable-id ``purge-enqueued`` record's id and of each alias it stored
+    (:func:`_id_hashes`); empty for a line an older build wrote, or one of no source, which no erasure
+    closes."""
+    sid, h, aliases = rec.get("source_id"), rec.get("stable_id_sha256"), rec.get("alias_sha256s")
+    if not (isinstance(sid, str) and sid and isinstance(h, str)):
+        return set()
+    return {h, *(a for a in aliases if isinstance(a, str))} if isinstance(aliases, list) else {h}
+
+
+def _erased_since(
+    rec: Mapping[str, Any], summary: Mapping[str, Any], purged: Sequence[Mapping[str, Any]]
+) -> bool:
+    """Whether the verified purge of ``summary`` (its ``purge`` lines ``purged``) erased the item an open
+    stable-id record names: one of its lines has the record's source and the hash of its id or of an alias,
+    and the purge was narrowed to that source or none, as :func:`_covers` judges a queued entry. Any reason:
+    the queue's own run of the entry then finds nothing and drops it (B13 round 31 C561; ruling 46). A
+    summary an older build wrote names no source, so it erases nothing here."""
+    hashes = _id_sha256s(rec)
+    sid = rec.get("source_id")
+    if not hashes or "source_id" not in summary or summary.get("source_id") not in (None, sid):
+        return False
+    return any(r.get("source_id") == sid and r.get("stable_id_sha256") in hashes for r in purged)
+
+
+def _erased_and_gone(state_dir: Path, recs: Sequence[Mapping[str, Any]]) -> set[int]:
+    """The ``id()`` of each record of ``recs`` (lost, its item erased by a later verified purge:
+    :func:`_erased_since`) that did not come back: the state folder's manifest, read by
+    :func:`manifest.open_read_only`, which writes nothing, has no item, tombstone or alias of its source
+    whose id hashes to its id's or an alias's hash, and rebuilds no id of it (:func:`_rebuilt_ids`). Such a
+    record is what the queue's own run would have done and dropped, and nothing holds its id to redo it by
+    (B13 round 31 C561; ruling 46). A manifest lost, not there or that cannot be read closes none."""
+    if not recs:
+        return set()
+    db = expand(state_dir) / "manifest.sqlite"
+    ids = _read_manifest_ids(db, whole=True)
+    if ids is None:
+        return set()
+    held = {(s, _sha(i)) for s, i in ids}
+    rebuilt = _rebuilt_ids(db, recs, ids)
+    return {
+        id(r)
+        for n, r in enumerate(recs)
+        if n not in rebuilt and not any((r.get("source_id"), h) in held for h in _id_sha256s(r))
+    }
 
 
 def _queue_events(state_dir: Path) -> list[dict[str, Any]]:
@@ -1790,33 +1855,46 @@ def _manifest_ids(db: Path) -> set[tuple[str, str]]:
     each ``item_aliases`` row, read by :func:`manifest.open_read_only`, which creates no -wal or -shm beside
     a manifest this account cannot write (B13 round 20 X78); empty when it is not there, is lost or cannot be
     read so, which rebuilds no id, never a wrong one."""
-    out: set[tuple[str, str]] = set()
+    return _read_manifest_ids(db, whole=False) or set()
+
+
+def _read_manifest_ids(db: Path, *, whole: bool) -> set[tuple[str, str]] | None:
+    """:func:`_manifest_ids`, or None when the manifest is not there, is lost or cannot be read so; with
+    ``whole``, None too when its items or tombstones table cannot be read, since what says an id is gone must
+    have been read (:func:`_erased_and_gone`; B13 round 31 C561)."""
     with contextlib.suppress(sqlite3.Error, OSError):
         conn = open_read_only(db, 0.5)
         if conn is None:
-            return out
+            return None
         try:
+            out: set[tuple[str, str]] = set()
             for sql in (
                 "SELECT source_id, stable_id FROM items",
                 "SELECT source_id, stable_id FROM tombstones",
                 "SELECT source_id, alias_id FROM item_aliases",
                 "SELECT source_id, stable_id FROM item_aliases",
             ):
-                with contextlib.suppress(sqlite3.Error):  # a manifest older than item_aliases
+                try:
                     out |= {(str(a), str(b)) for a, b in conn.execute(sql).fetchall() if a and b}
+                except sqlite3.Error:  # a manifest older than item_aliases
+                    if whole and "item_aliases" not in sql:
+                        return None
+            return out
         finally:
             conn.close()
-    return out
+    return None
 
 
-def _rebuilt_ids(db: Path, recs: Sequence[Mapping[str, Any]]) -> dict[int, str]:
+def _rebuilt_ids(
+    db: Path, recs: Sequence[Mapping[str, Any]], read: Iterable[tuple[str, str]] | None = None
+) -> dict[int, str]:
     """For each lost stable-id ``purge-enqueued`` record of ``recs`` (by index), the stable id whose
     selector fingerprint is the one it keeps, found among the manifest's ids of its source (aliases and
     tombstones too): the selector rebuilt by fingerprint, so its text never enters the audit trail (B13
     round 30 C370, C312; ruling 35). Each id is fingerprinted once per record source (None: every source),
     the first in sorted order kept for each fingerprint, so 300 lost records over 20,000 ids is no 300 scans
     of them (B13 round 31 C538). Nothing outlives the call: after a purge, the next one reads the manifest
-    again."""
+    again. ``read`` is the manifest's ids when the caller already read them (:func:`_erased_and_gone`)."""
     want = {
         n: (r.get("source_id"), r.get("selector_sha256"))
         for n, r in enumerate(recs)
@@ -1824,7 +1902,7 @@ def _rebuilt_ids(db: Path, recs: Sequence[Mapping[str, Any]]) -> dict[int, str]:
     }
     if not want:
         return {}
-    ids = sorted(_manifest_ids(db))
+    ids = sorted(_manifest_ids(db) if read is None else read)
     tables: dict[str | None, dict[str, str]] = {}
 
     def table(source: str | None) -> dict[str, str]:
@@ -1976,11 +2054,21 @@ def _lost_covered(
             "reason": r.get("reason"),
             "selector_sha256": r.get("selector_sha256"),
         }
-        for r in lost_queued(state_dir, queue)
+        for r in lost_queued(state_dir, queue, erased=False)
         if r.get("selector_sha256") != own
         and r.get("selector_sha256") in erased
         and _summary_closes(report.reason.value, r.get("reason"))
     ]
+
+
+def _id_hashes(selector: PurgeSelector, aliases: Iterable[str]) -> dict[str, object]:
+    """What a stable-id ``purge-enqueued`` line keeps of its item beside the selector's fingerprint: the
+    sha256 of its id and of each stored alias, the hashes a ``purge`` line keeps, never the ids, so the
+    replay finds a later purge that erased the item (:func:`_erased_since`; B13 round 31 C561; ruling 46).
+    Nothing for a glob."""
+    if not selector.stable_id:
+        return {}
+    return {"stable_id_sha256": _sha(selector.stable_id), "alias_sha256s": sorted({_sha(a) for a in aliases})}
 
 
 def _reopen_lines(
@@ -2002,6 +2090,7 @@ def _reopen_lines(
             "source_id": e.selector.source_id,
             "dequeue_audited": True,
             "reopened_by": "purge-summary",
+            **_id_hashes(e.selector, e.aliases),
         }
         for e in stay
         if e.selector.fingerprint() == own and _summary_closes(report.reason.value, e.reason.value)
@@ -2218,6 +2307,7 @@ def enqueue_purge(
                 "source_id": selector.source_id,
                 # every way off the queue leaves an audit line from this build on (B13 round 29 C172)
                 "dequeue_audited": True,
+                **_id_hashes(selector, retired),
             }
         )
     record_purges(state_dir)  # the queued purge outside governance/ too (B13 round 30 C381)
@@ -4122,6 +4212,9 @@ def _audit_purge(
             "reason": reason.value,
             "selector_kind": selector.kind(),
             "selector_sha256": selector.fingerprint(),
+            # the source it was narrowed to (None: every source), so the replay never reads a docs glob
+            # narrowed to another source as erasing an item of this one (B13 round 31 C561; ruling 46)
+            "source_id": selector.source_id,
             "verified": report.verified,
         },
     )

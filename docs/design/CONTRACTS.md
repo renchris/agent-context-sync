@@ -33960,6 +33960,9 @@ records. Tests: `test_cli.py`
 `test_a_queue_run_reopens_a_same_selector_entry_it_leaves_queued`,
 `test_a_refused_purge_covered_line_is_one_error_before_the_queue_is_rewritten`; `test_governance.py`
 `test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+Amended 2026-10-28, §16.210 C561: the known residual holds only for a record an older build wrote; one whose
+`purge-enqueued` line keeps its id's hash is done once a later verified purge, narrowed to its source or none,
+erased that id and the manifest, read without a write, names and rebuilds no id of it.
 
 C394 (ruling 36): writing the setup report never writes the manifest. `governance.partition_queue` is now an opener
 (`Manifest(db)` and `_connect`, which may migrate, for the CLI, status, the loop and the cycle) over one judge,
@@ -34752,6 +34755,32 @@ build their own lines from `_lost_entry` and `_redo_all`, which stay. The C394 a
 names as history. The exact pin of each lost record's redo (stable id, alias, no manifest row, glob), in order, now
 reads `queue_lost(state).fix`'s `for <reason> at <iso>: <how>` parts, joined with "; ". Test: `test_governance.py`
 `test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+
+C561 (2026-10-28): **a lost queued stable-id purge whose page a later purge erased is done, as the queue's own run
+would have dropped it, so it no longer stops every sync (ruling 46).** A DLP entry queued (its id never shown to
+the person), a hand `purge path=<page>` or `id=<id>` `--reason upstream-deleted` of its page (VERIFIED, 1 item; the
+entry stays queued by `_covers`' reason rule), then purge-queue.json lost with no copy: no manifest row, page or
+store held the id, the FAIL asked for `purge id=<that id>`, and every `sync` exited 1; with the queue kept,
+`purge --queue` ran it as VERIFIED · 0 items and dropped it. Each `purge-enqueued` line of a stable-id selector
+(`enqueue_purge`, `_reopen_lines`) now also keeps `stable_id_sha256` and `alias_sha256s`, the sha256 of the id and
+of each stored alias, as a `purge` line keeps them (`_id_hashes`), never the ids, and each `purge-summary` its
+selector's `source_id` (null: every source). `lost_queued`'s replay reads a lost record with the hash done only when
+all three hold: a later verified purge, its summary naming the record's source or none, has a `purge` line of the
+record's source carrying one of those hashes (`_erased_since`; any reason, upstream-deleted too); the state folder's
+manifest, read whole by `manifest.open_read_only` (items and tombstones, aliases when there), names no id of that
+source hashing to them; and `_rebuilt_ids` rebuilds none (`_erased_and_gone`). A manifest lost, not there or
+unreadable closes none. It is judged on each read and never written, so status, doctor, the loop and the setup
+report write no audit line and no manifest; an item published again opens the record again, its id rebuilt into the
+exact `purge id=<id>` redo. A hand purge that erases a lost record's id still writes its `purge-covered` line
+(`_lost_covered` reads `lost_queued(..., erased=False)`). A line an older build wrote, without the hash, or a summary
+without `source_id`, keeps §16.205's residual and today's words. Not built: the finder's close on the purge line
+alone, which reads a page published again before the queue's loss as done (the verifier's back-then-lost). No new
+printed words. Tests: `test_cli.py`
+`test_a_lost_queued_dlp_entry_whose_page_a_hand_purge_erased_no_longer_stops_the_sync` (by path and by id),
+`test_a_lost_queued_dlp_entry_whose_page_came_back_after_the_purge_stays_open_with_its_id`,
+`test_reading_a_lost_queue_an_erasure_closed_writes_neither_the_audit_trail_nor_the_manifest`,
+`test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open` (now with the page published again
+first); `test_governance.py` `test_a_lost_queued_id_is_done_only_when_a_later_purge_erased_it_and_the_manifest_lost_it`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

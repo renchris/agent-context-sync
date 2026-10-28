@@ -6623,7 +6623,9 @@ def test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open(
 ) -> None:
     """C172's review: a verified upstream-deleted purge of a selector closed every queued entry of it in the
     audit replay, though an erasure request of the same item stays queued (it is not suppressed by that run);
-    a queue rewritten as empty then read as losing nothing, and the sync was not refused."""
+    a queue rewritten as empty then read as losing nothing, and the sync was not refused. A sync publishes
+    the page again first: with the page gone, its erasure is done as the queue's own run would have done it
+    (B13 round 31 C561)."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
     sid = _stable_id(initialised, "projects/sample.txt")
@@ -6632,6 +6634,7 @@ def test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open(
     hand = ["purge", f"id={sid}", "--source", "source", "--reason", "upstream-deleted", "--config", cfg]
     assert cli.main(hand) == cli.EXIT_OK
     assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.ERASURE_REQUEST]
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     governance._queue_file(root).write_text('{"queue": []}\n', encoding="utf-8")
     assert [r["reason"] for r in governance.lost_queued(root)] == ["erasure-request"]
     capsys.readouterr()
@@ -6788,6 +6791,86 @@ def test_a_docs_purge_narrowed_to_another_source_clears_no_lost_queued_id(
     capsys.readouterr()
     assert governance.lost_queued(root) == [rec]
     assert _lost_queue_line(cfg, capsys) is not None
+
+
+@pytest.mark.parametrize("hand", ["path=projects/sample.txt", "id"])
+def test_a_lost_queued_dlp_entry_whose_page_a_hand_purge_erased_no_longer_stops_the_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str], hand: str
+) -> None:
+    """B13 round 31 C561 (ruling 46): a DLP entry queued, a hand `purge --reason upstream-deleted` of its page
+    (VERIFIED, 1 item) then the queue lost with no copy: no manifest row, page or store held the id, and the
+    redo asked for `purge id=<that id>`, so every sync stopped for good. The purge's line carries the hash of
+    the id the entry's line keeps, the manifest no longer names it, so it is done, as the queue's own 0-item
+    run would have dropped it; neither the audit trail nor the purge record holds the id or a selector."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
+    by = f"id={sid}" if hand == "id" else hand
+    purge = ["purge", by, "--source", "source", "--reason", "upstream-deleted", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    assert "VERIFIED · 1 item" in capsys.readouterr().out
+    assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.DLP_REMEDIATION]
+    governance._queue_file(root).rename(root / "queue.away")
+    assert governance.lost_queued(root) == []
+    assert _lost_queue_line(cfg, capsys) is None
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    for kept in (governance.audit_path(root), governance.purge_record_file(root)):
+        text = kept.read_text(encoding="utf-8")
+        assert sid not in text and "sample.txt" not in text, kept
+
+
+def test_a_lost_queued_dlp_entry_whose_page_came_back_after_the_purge_stays_open_with_its_id(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C561's verifier: the hand upstream-deleted purge erased the page, then a sync before the
+    queue's loss published it again, the DLP entry still owed. The record stays open: its redo names the
+    rebuilt id and the sync refuses."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
+    purge = ["purge", "path=projects/sample.txt", "--source", "source", "--reason", "upstream-deleted"]
+    assert cli.main([*purge, "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert _stable_id(initialised, "projects/sample.txt") == sid
+    governance._queue_file(root).rename(root / "queue.away")
+    assert [r["reason"] for r in governance.lost_queued(root)] == ["dlp-remediation"]
+    failed = _lost_queue_line(cfg, capsys)
+    redo = (
+        f"`~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} --source source --reason dlp-remediation`"
+    )
+    assert failed is not None and redo in failed, failed
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+
+
+def test_reading_a_lost_queue_an_erasure_closed_writes_neither_the_audit_trail_nor_the_manifest(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C561 (ruling 46): the replay that reads a lost record done reads the manifest without a
+    write and writes no line, so status and the setup report's count leave the audit trail, the purge record
+    and the manifest as they were, byte for byte."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    db = expand(initialised.state_paths.db)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    hand = ["purge", f"id={sid}", "--source", "source", "--reason", "upstream-deleted", "--config", cfg]
+    assert cli.main(hand) == cli.EXIT_OK
+    governance._queue_file(root).rename(root / "queue.away")
+    kept = (governance.audit_path(root), governance.purge_record_file(root), db)
+    before = [p.read_bytes() for p in kept]
+    side = sorted(p.name for p in db.parent.iterdir())
+    capsys.readouterr()
+    assert _lost_queue_line(cfg, capsys) is None
+    assert setup_report._lost_queue_line(initialised) == ""
+    assert governance.queue_lost(root) is None
+    assert [p.read_bytes() for p in kept] == before
+    assert sorted(p.name for p in db.parent.iterdir()) == side
 
 
 def test_a_zero_item_hand_purge_of_a_queued_id_reopens_it_so_a_later_queue_loss_is_refused(
