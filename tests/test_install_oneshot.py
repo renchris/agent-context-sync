@@ -9778,7 +9778,7 @@ own judge for the role (B13 round 28 I20, I35: the error above said "is a fifo, 
 folder or something else"); the generic words when that build cannot say."""
 
 
-def misplaced_fix(role: str, kind: str) -> str:
+def misplaced_fix(role: str, kind: str, kept: str = "") -> str:
     """The person's fix for it, in lane B's round 28 words (I87, I89, I90): the hold list is put back after
     its move (since round 29's ruling 28, only if it listed any hold), a damaged file restored, governance/
     put back, and only where none was ever kept what is there now moved aside (round 29 C114, C143: "they
@@ -9810,6 +9810,13 @@ def misplaced_fix(role: str, kind: str) -> str:
             )
         return "they restore it from a copy they trust, or move it aside, keeping a copy"
     if role == "governance":
+        # B13 round 31 ruling 50 (C521): a record that names a hold says a folder was kept, as doctor does
+        if kept:
+            return (
+                "they put the real governance folder (the one holding holds.json and audit.jsonl) back, from "
+                f"wherever it was moved or from a copy (a governance folder was kept: {kept} names a hold); "
+                "only if no copy is left, they move what is there now aside, keeping a copy"
+            )
         return (
             "they put the real governance folder (the one holding holds.json and audit.jsonl) back, from "
             "wherever it was moved or from a copy; only where none was ever kept, they move what is there "
@@ -9826,14 +9833,14 @@ def misplaced_fix(role: str, kind: str) -> str:
     return f"keeping a copy, they move it aside{SHUT_OPEN}"
 
 
-def misplaced_tail(role: str, kind: str = "folder") -> str:
+def misplaced_tail(role: str, kind: str = "folder", kept: str = "") -> str:
     """Step 1's tail for a lock, heartbeat or governance file that is not a regular file where one belongs,
     which init stops on and add-source opens past (B13 round 27 ruling 16: P113, P125, P142), naming what is
     there (B13 round 28 I20, I35)."""
     return (
         f"; step 2 stops {STOPS_BOTH} on {FILE_NOUNS[role]}, which {MISPLACED_IS[kind]} "
         f"({'not a mode' if kind == 'damaged' else 'not damage, not a mode'}): fixing that is the person's "
-        f"({misplaced_fix(role, kind)}), and ~/.local/bin/agentsync status prints it on its "
+        f"({misplaced_fix(role, kind, kept)}), and ~/.local/bin/agentsync status prints it on its "
         f"{MISPLACED_CHECKS[role]} line"
     )
 
@@ -12028,7 +12035,7 @@ def test_the_installers_governance_nouns_are_doctors_roles() -> None:
     assert "agentsync's governance file " not in text
 
 
-def misplaced_next(role: str, rerun: str, kind: str = "folder") -> str:
+def misplaced_next(role: str, rerun: str, kind: str = "folder", kept: str = "") -> str:
     """Step 2's NEXT for a lock, heartbeat or governance file that is not a regular file where one belongs,
     which init stops on (B13 round 27 ruling 16: P22, P124, P57, P110: it was fail's generic "fix the error
     above, then re-run"), naming what is there (B13 round 28 I20, I35)."""
@@ -12036,7 +12043,7 @@ def misplaced_next(role: str, rerun: str, kind: str = "folder") -> str:
     return (
         f"NEXT: {FILE_NOUNS[role]} {MISPLACED_IS[kind]} (the error above names "
         f"it; ~/.local/bin/agentsync status prints it and its fix on its {check} line): fixing it is the "
-        f"person's ({misplaced_fix(role, kind)}), not a step for the agent, so show them "
+        f"person's ({misplaced_fix(role, kind, kept)}), not a step for the agent, so show them "
         f"the error and go on to the report; once it is fixed, the next run is: {rerun}"
     )
 
@@ -12172,6 +12179,61 @@ def test_step_2_gives_lane_bs_fix_for_a_damaged_hold_list_or_a_governance_folder
         kept.rename(gov)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+@pytest.mark.parametrize("case", ["scope", "all", "round28", "released"])
+def test_the_governance_folders_fix_says_a_folder_was_kept_when_the_hold_record_names_a_hold(
+    real_env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 31 ruling 50 (C521, C324's install.sh half; rehearsal probe holdlost), with the real
+    agentsync: governance/ a file while hold-record.json names a hold. Doctor said `(a governance folder was
+    kept: hold-record.json names a hold); only if no copy is left, moves ... aside`, while step 1's tail and
+    step 2's NEXT said `only where none was ever kept, they move what is there now aside`, so the person
+    moved the folder aside instead of asking for the kept one, and its holds went. install.sh now reads the
+    record as doctor does: a scope, `all` (which hold_scopes drops), and round 28's list in heartbeat.json,
+    named as doctor names it; a record that names no hold (the hold released) keeps today's words."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    scope = "all" if case == "all" else "contoso-matter"
+
+    def cli(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([agentsync, *args], capture_output=True, text=True, check=False, env=env)
+
+    held = cli("hold", scope, "--reason", "matter 8", "--owner", "Quinn Avery")
+    assert held.returncode == 0, held.stdout + held.stderr
+    if case == "released":
+        released = cli("hold", scope, "--release", "--owner", "Quinn Avery")
+        assert released.returncode == 0, released.stdout + released.stderr
+    root = _state_db(env).parent
+    record = root / "hold-record.json"
+    kept = "" if case == "released" else "hold-record.json"
+    if case == "round28":  # round 28's record, before a sync, hold, release or purge moves it
+        heartbeat = root / "heartbeat.json"
+        beat = json.loads(heartbeat.read_text(encoding="utf-8"))
+        beat["holds"] = [scope]
+        heartbeat.write_text(json.dumps(beat), encoding="utf-8")
+        record.unlink()
+        kept = "heartbeat.json"
+    gov = root / "governance"
+    gov.rename(root / "governance.kept")
+    gov.write_text("", encoding="utf-8")
+    words = f"(a governance folder was kept: {kept} names a hold); only if no copy is left"
+    status = cli("status")
+    said = status.stdout + status.stderr
+    assert "[FAIL] governance.hold " in said, said
+    assert (words in said) == bool(kept), said  # install.sh says what status says
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(misplaced_tail("governance", "dir-file", kept)), last_line(listed)
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    nxt = misplaced_next("governance", f"{INSTALL_SH} {wheel}", "dir-file", kept)
+    assert last_line(cp).startswith(nxt), last_line(cp)
+    assert ("only where none was ever kept" in last_line(cp)) != bool(kept), last_line(cp)
 
 
 LOST_HOLD_TAIL = (

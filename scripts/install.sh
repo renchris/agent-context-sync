@@ -961,6 +961,50 @@ round28_pending() {
 	[ -f "$state/heartbeat.json" ] && [ -r "$state/heartbeat.json" ] || return 1
 	LC_ALL=C tr -d ' \t\r\n' <"$state/heartbeat.json" 2>/dev/null | LC_ALL=C grep -q '"holds":\["'
 }
+# Whether the hold record can be read and names a scope, as governance._record_names_a_hold reads it for the
+# governance folder's fix (B13 round 30 C324; round 31 ruling 50: C521): hold-record.json when it is there
+# (lexists, a link to nothing included), else heartbeat.json's round 28 top-level "holds" list (a "holds" object is
+# a source of that name, C200), read only when test(1) finds a regular file this account can read. Prints the
+# file doctor names (governance._hold_record_shown) and returns 0 when its "holds" is a JSON list holding a string,
+# `all` included, and for hold-record.json only strings (anything else there is a damaged record, which never says
+# whether a hold was kept); 1 for a record that is missing, empty, unreadable or names no scope. Never
+# hold_scopes, which drops `all` and reads the hold list and the audit trail too. plutil reads the JSON as
+# lost_kind_now does, each null made 0 first; the awk reads the top list's elements by their first byte.
+# Where the two still differ, on files agentsync never writes: plutil takes a UTF-8 BOM, which Python refuses,
+# and refuses a NaN, or a scope holding `\null` (made `\0`), which Python reads; both keep today's words.
+hold_record_names() {
+	local k v state="" rec name j
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r k v; do
+			[ "$k" != state_dir ] || state="$v"
+		done < <(agentsync_dir_values)
+	fi
+	state="${state:-$HOME/Library/Application Support/agentsync}"
+	case "$state" in \~) state="$HOME" ;; \~/*) state="$HOME/${state#\~/}" ;; esac
+	rec="$state/hold-record.json" name=hold-record.json
+	if [ ! -e "$rec" ] && [ ! -L "$rec" ]; then
+		rec="$state/heartbeat.json" name=heartbeat.json
+	fi
+	[ -f "$rec" ] && [ -r "$rec" ] || return 1
+	j="$(LC_ALL=C sed 's/null/0/g' <"$rec" 2>/dev/null | LC_ALL=C /usr/bin/plutil -extract holds json -o - -- - 2>/dev/null)" || return 1
+	printf '%s' "$j" | LC_ALL=C awk -v all="$([ "$name" = heartbeat.json ] || printf 1)" '
+		{ t = t $0 }
+		END {
+			if (substr(t, 1, 1) != "[") exit 1
+			n = length(t); d = 0; q = 0; e = 0; s = 0; o = 0
+			for (i = 1; i <= n; i++) {
+				c = substr(t, i, 1)
+				if (q) { if (c == "\\") i++; else if (c == "\"") q = 0; continue }
+				if (e) { e = 0; if (c == "\"") s = 1; else if (c != "]") o = 1 }
+				if (c == "\"") q = 1
+				else if (c == "[" || c == "{") { d++; if (d == 1) e = 1 }
+				else if (c == "]" || c == "}") d--
+				else if (c == "," && d == 1) e = 1
+			}
+			exit !(s && !(all && o))
+		}' || return 1
+	printf '%s' "$name"
+}
 misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLACED_IS, MISPLACED_WHY, MISPLACED_FIX
 	# what is there, from the fixed token the probes read with the installed build's own judge for that role,
 	# as the error line above names it (B13 round 28 I20, I35); the generic words when that build cannot say.
@@ -1011,6 +1055,13 @@ misplaced_words() { # ROLE [KIND]: sets MISPLACED_NOUN, MISPLACED_CHECK, MISPLAC
 	*/damaged) MISPLACED_WHY="not a mode" MISPLACED_FIX="they restore it from a copy they trust, or move it aside, keeping a copy" ;;
 	governance/*) MISPLACED_FIX="they put the real governance folder (the one holding holds.json and audit.jsonl) back, from wherever it was moved or from a copy; only where none was ever kept, they move what is there now aside, keeping a copy" ;;
 	esac
+	# a hold record that reads and names a hold answers "was one ever kept": it was, so the folder is asked back
+	# first, by no scope, in doctor's words, naming the file doctor names (B13 round 31 ruling 50: C521, C324's
+	# install.sh half: the person moved the folder aside instead of asking for the kept one, and its holds went)
+	local rec
+	case "$1" in governance) if rec="$(hold_record_names)"; then
+		MISPLACED_FIX="they put the real governance folder (the one holding holds.json and audit.jsonl) back, from wherever it was moved or from a copy (a governance folder was kept: $rec names a hold); only if no copy is left, they move what is there now aside, keeping a copy"
+	fi ;; esac
 	case "$1" in
 	lock) MISPLACED_NOUN="agentsync's lock file" MISPLACED_CHECK=lock ;;
 	heartbeat) MISPLACED_NOUN="agentsync's heartbeat file" MISPLACED_CHECK=heartbeat ;;

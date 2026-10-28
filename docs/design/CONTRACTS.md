@@ -34584,7 +34584,20 @@ a one-run, one-file case.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
-Reserved for round 31 lane RB of B13.
+**The installer's governance-folder fix says a folder was kept when the hold record names a hold** (C521, C324's
+install.sh half; ruling 50; `scripts/install.sh`). Doctor's fix for governance/ that is not a folder says `(a
+governance folder was kept: <file> names a hold); only if no copy is left, moves ... aside` when the hold record can
+be read and names a scope (`governance._record_names_a_hold`), but step 1's tail and step 2's two NEXT lines kept one
+string, `only where none was ever kept, they move what is there now aside`, so the person moved the folder aside
+instead of asking for the kept one, and its holds went. misplaced_words' governance case now asks `hold_record_names`,
+which reads hold-record.json when it is there (lexists), else heartbeat.json's round 28 top-level `holds` list (an
+object there is a source of that name), each only as a regular file this account can read, through plutil as
+lost_kind_now reads JSON, and returns the file doctor names (`_hold_record_shown`) when `holds` is a JSON list holding
+a string, `all` included, and for hold-record.json only strings, as `_record_scopes` refuses anything else as damaged.
+hold_scopes is not reused: it drops `all`, the case C324 guards, and reads the hold list and the audit trail, which
+doctor does not count here. A record that is missing, empty, unreadable or names no scope (a released hold) keeps
+today's words. Test: `test_the_governance_folders_fix_says_a_folder_was_kept_when_the_hold_record_names_a_hold`, with
+the real agentsync for a scope, `all`, round 28's record and a released hold, checking status says the same.
 
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
