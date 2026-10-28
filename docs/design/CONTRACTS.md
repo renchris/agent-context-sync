@@ -34536,6 +34536,11 @@ them apart: the same rename in `governance.unresolved_purges`, `setup_report._NO
 queue row. Test: `test_the_records_page_says_what_the_queue_does_after_a_new_start`, which pins both ids and the
 pointer, refuses `id=<its id>` in the bullet, and reads the filled-in forget from `unresolved_note` with and without
 `dry_run`.
+Amended 2026-10-28, §16.210 C557: the rename is built. `governance.unresolved_purges` gives the by-hand purge
+`id=<the page's id> ... --reason <its reason>` (the id in the page's front matter) and the forget `id=<the queued
+id>`, `unresolved_note`'s by-hand purge takes `id=<the page's id>`, and `setup_report._NO_TRACE_RUN` and the guide's
+Purge queue row (its found-nothing clause) name the forget `id=<the queued id>`; the test reads `unresolved_note`
+with no `dry_run`, which C565 took out.
 
 ### 16.208 Round 31: setup report: a typed folder and every hold word cut, the source legend, a signal stop's words and a lost hold's report fix (2026-10-28, wave B13 round 31 lane RA)
 
@@ -35061,6 +35066,25 @@ on its source, on all, a lost hold and a hold list that cannot be read: forget's
 `test_forget_dry_run_looks_an_entry_up_and_writes_nothing` (every state file the same bytes and times),
 `test_a_preview_that_finds_nothing_records_nothing_and_its_forget_takes_the_entry_off`,
 `test_forget_refuses_a_kind_it_never_takes_by_that_reason`.
+
+C557 (2026-10-28): **status's kept line and the guide's Purge queue row name the page's id and the queued id apart**
+(C557; `agentsync.governance`, `agentsync.setup_report`, `docs/deploy/setup-feedback.md`; amends §16.207 C378).
+After C378 the records page gave the by-hand purge `id=<the page's id>` and the forget `id=<the queued id>`, while
+`unresolved_purges`, `_NO_TRACE_RUN` and the row still gave both `id=<its id>`; for an entry kept until its id is found
+the two always differ, so the queued id given to the by-hand purge matches nothing and the page's id given to
+`--forget` writes nothing. `unresolved_purges` now reads `... purge id=<the page's id> --source <its source> --reason
+<its reason>` (the id in the page's front matter) erases a page by hand (each entry's reason is on its line when a
+queue run keeps it), and once no page is left `... purge --queue --forget id=<the queued id> --source <its source>`
+takes an entry off, with an audit line (the entry's own line from a queue run gives it with the queued id filled
+in)`; the pointer names the entry's own line, never the audit line (which carries no id), and not `purge --queue
+--dry-run`, since status never invites a run for a kept entry
+(`test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_never_verified`). `unresolved_note`'s
+by-hand purge takes `id=<the page's id>` too, `_NO_TRACE_RUN` names the forget `id=<the queued id>` (still `kept until
+its id is found`, status's words), and the row's found-nothing clause names both apart; its `not judged yet` clause,
+with no forget beside it, keeps `id=<its id>`, as `_split_lines` prints it. `_PURGE_ID_RE` and `_cut_purge_ids` are
+unchanged: `(?!<)` leaves a placeholder alone. Tests: `test_the_page_id_and_the_queued_id_are_named_apart`,
+`test_the_guides_purge_queue_row_names_the_sections_parts` (refuses `--forget id=<its id>` in the row and in
+`_NO_TRACE_RUN`), `test_the_records_page_says_what_the_queue_does_after_a_new_start`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

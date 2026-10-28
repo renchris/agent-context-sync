@@ -4391,8 +4391,8 @@ def unresolved_note(q: QueuedPurge) -> str:
         "file's page, or an older copy was put back), so `purge --queue` keeps it until it finds its id in "
         "the docs history; if none is found it stays queued. To erase the page by hand, find it with "
         f"`git log --all --name-only -- {where}` in the docs repo and run "
-        f"`{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason {why}` with the id in the page's "
-        f"front matter, which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge "
+        f"`{AGENTSYNC_BIN} purge id=<the page's id> --source <its source> --reason {why}` with the id in the "
+        f"page's front matter, which keeps another file's live page at that path; `{AGENTSYNC_BIN} purge "
         f"docs=<page path> --reason {why}` is the last resort, for a page that id run targets nothing of. A "
         f"run takes off the queue only what history names: once no page is left, {forget} "
         "takes this entry off, with an audit line"
@@ -4401,15 +4401,18 @@ def unresolved_note(q: QueuedPurge) -> str:
 
 def unresolved_purges(n: int) -> str:
     """``n`` :func:`unresolved_note` entries, counted with agreement (P112, P118; B13 round 28 I93), a
-    preview's as a run's (C565)."""
+    preview's as a run's (C565). The by-hand purge takes the page's id and the forget the queued id, named
+    apart: for an entry kept until its id is found the two always differ (B13 round 31 C557, after C378)."""
     is_, its, it, stays = ("is", "its", "it", "stays") if n == 1 else ("are", "their", "they", "stay")
     return (
         f"{plural(n, 'queued purge')} {is_} kept until `{AGENTSYNC_BIN} purge --queue` finds {its} id in the "
         f"docs history; if none is found {it} {stays} queued (nothing in the manifest names {it} after a new "
-        f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<its id> --source <its source> --reason <its "
-        "reason>` erases a page by hand (each entry's reason is on its line when a queue run keeps it), "
-        f"and once no page is left `{AGENTSYNC_BIN} purge --queue --forget id=<its id> --source <its "
-        "source>` takes an entry off, with an audit line"
+        f"start or a restored copy); `{AGENTSYNC_BIN} purge id=<the page's id> --source <its source> "
+        "--reason <its reason>` (the id in the page's front matter) erases a page by hand (each entry's "
+        "reason is on its line when a queue run keeps it), and once no page is left "
+        f"`{AGENTSYNC_BIN} purge --queue --forget id=<the queued id> --source <its source>` takes an entry "
+        "off, with an audit line (the entry's own line from a queue run gives it with the queued id filled "
+        "in)"
     )
 
 

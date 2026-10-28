@@ -6845,8 +6845,11 @@ def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:
         assert f"`{head}`" in row, head
     assert set(setup_report._SPLIT_KINDS) >= {"not judged yet", "not looked up yet", "found nothing"}
     # the audited forget, only for the two kept reasons
-    forget = "purge --queue --forget id=<its id> --source <its source>"
+    forget = "purge --queue --forget id=<the queued id> --source <its source>"
     assert forget in setup_report._NO_TRACE_RUN and f"`agentsync {forget}`" in row
+    # the page's id and the queued id named apart where both are given (B13 round 31 C557)
+    assert "--forget id=<its id>" not in row and "--forget id=<its id>" not in setup_report._NO_TRACE_RUN
+    assert "`agentsync purge id=<the page's id> --source <its source> --reason <its reason>` erases" in row
     kept = {governance.PurgeReason.UPSTREAM_DELETED, governance.PurgeReason.LABEL_ESCALATION}
     assert set(governance.KEPT_REASONS) == kept
     assert "takes an `upstream-deleted` or `label-escalation` entry off, with an audit line" in row
@@ -7601,7 +7604,7 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
     head = governance.UNRESOLVED_HEAD.removesuffix(": ")
     assert f"an entry whose id reaches nothing stays queued, `{head}`" in bullet
     assert "a run takes off the queue only what history names" in bullet
-    by_hand = "purge id=<its id> --source <its source>"
+    by_hand = "purge id=<the page's id> --source <its source>"
     for reason in governance.KEPT_REASONS:  # each entry's own reason, never one fixed one (B13 round 29 C193)
         queued = governance.QueuedPurge(
             selector=governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),

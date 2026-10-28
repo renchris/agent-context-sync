@@ -10872,7 +10872,7 @@ def test_a_purge_queued_under_a_replaced_manifest_that_names_nothing_is_kept_nev
     assert not runnable and [w for _q, w in kept] == [governance.unresolved_note(q)], kept
     assert "purge docs=<page path>" in kept[0][1] and "mirror/source/" in kept[0][1]
     assert (
-        "`~/.local/bin/agentsync purge id=<its id> --source <its source> --reason upstream-deleted`"
+        "`~/.local/bin/agentsync purge id=<the page's id> --source <its source> --reason upstream-deleted`"
         in kept[0][1]
     )
     step = loop.next_step(initialised)
@@ -11587,6 +11587,31 @@ def test_forget_dry_run_looks_an_entry_up_and_writes_nothing(
         rc == cli.EXIT_OK and "would take off the queue purge id=contoso-volume:retired-0042" in said.out
     ), said
     assert state() == before and governance.pending_purges(root) == [q]
+
+
+def test_the_page_id_and_the_queued_id_are_named_apart() -> None:
+    """B13 round 31 C557: status's kept line gave the by-hand purge and the forget one `id=<its id>`, while
+    the two ids always differ for an entry kept until its id is found (C378): the by-hand purge takes the
+    page's id, from its front matter, and the forget the queued id, which each entry's note fills in."""
+    words = governance.unresolved_purges(2)
+    by_hand = (
+        "purge id=<the page's id> --source <its source> --reason <its reason>` (the id in the page's front"
+    )
+    assert by_hand in words, words
+    assert "`~/.local/bin/agentsync purge --queue --forget id=<the queued id> --source <its source>`" in words
+    assert "id=<its id>" not in words, words
+    assert "(each entry's reason is on its line when a queue run keeps it)" in words
+    # the pointer is the entry's own line, never the audit line, which carries no id (C557)
+    tail = "with an audit line (the entry's own line from a queue run gives it with the queued id filled in)"
+    assert words.endswith(tail), words
+    q = governance.QueuedPurge(
+        governance.PurgeSelector(source_id="contoso", stable_id="contoso-volume:0042"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        "2026-10-25",
+    )
+    note = governance.unresolved_note(q)
+    assert "purge id=<the page's id> --source <its source> --reason upstream-deleted`" in note, note
+    assert "id=<its id>" not in note and "--forget id=contoso-volume:0042 --source contoso`" in note, note
 
 
 def test_a_by_hand_purge_the_cli_prints_carries_the_entrys_own_reason() -> None:

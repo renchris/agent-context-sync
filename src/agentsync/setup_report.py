@@ -9955,8 +9955,8 @@ def _purge_audit(path: Path, since: str) -> str:
 _NO_TRACE_RUN = (
     "A run of the queue erases what history still names for them and takes those off the queue; one whose id "
     "history names nothing, and that no suppressing purge erased, stays queued, kept until its id is found, "
-    "until `~/.local/bin/agentsync purge --queue --forget id=<its id> --source <its source>` takes it off, "
-    "with an audit line"
+    "until `~/.local/bin/agentsync purge --queue --forget id=<the queued id> --source <its source>` takes it "
+    "off, with an audit line"
 )
 """What a run of the queue does with a queued id the manifest holds no trace of, in lane B's words (ruling 26,
 C189): it takes off only what history names; one it finds nothing for leaves the queue only by an audited
