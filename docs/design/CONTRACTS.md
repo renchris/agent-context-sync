@@ -34016,6 +34016,8 @@ reader of the state folder lists it (each opens its files by name). The report's
 Amended 2026-10-28, §16.210 C560: under `manifest.read_only_reads` `partition_queue` is `partition_queue_ro`'s
 split and `held_purges` reads with `read_only=True`, so status's queue lines, the loop's queue wait and doctor's
 governance.purge_queue line run the same judge read-only when the setup report's hooks call them.
+Amended 2026-10-28, §16.210 C541: a copy over an hour old is removed through `manifest.remove_ro_copy`, so one holding
+a side folder this account cannot list goes too.
 
 C328 (ruling 37): a page the secret scan stubbed is announced once, by its alarm. `_quarantine_secrets` no longer adds
 the first scan's SECRET findings wholesale: it maps each hit to its page (`sidecar_page`, so a sidecar's hit is its
@@ -34845,6 +34847,21 @@ WAL manifest alone; both sides held by a sync, and frames with no -shm, make not
 `test_the_immutable_probe_reads_a_change_under_it_as_busy_and_damage_as_damage_c526`; `test_cli.py`
 `test_the_report_hooks_leave_a_clean_wal_manifest_without_a_wal_or_shm_c526` (the setup report's Doctor, Status and
 Loop hooks under `manifest.read_only_reads`, and a status run).
+
+C541 (2026-10-28): **a copy folder holding a side folder this account cannot list is removed**. The setup report's
+private copy makes a side that is a folder again with that folder's mode, and `shutil.rmtree(..., ignore_errors=True)`
+cannot list a 0000 folder, so neither the copy's finalizer nor `manifest._sweep_ro_copies` removed the copy: a
+two-hour-old `.ro-copy-` folder stayed, one more each report run over a folder at the -shm.
+`manifest.remove_ro_copy(path)` removes a `RO_COPY_PREFIX` folder whole: each direct child that is a folder, judged by
+its own lstat and never through a link, is made 0700 first, by a chmod that follows no link either (one put there
+after the lstat) (a copy's side folders are empty and one level down), then
+the folder is removed; a `path` that is not a folder itself (a link) is left, and it never raises. The sweep removes
+each copy over an hour old through it; the report's finalizer calls it, with a plain remove as the fallback for an
+installed manifest without it (`setup_report`, lane RA). Tests: `test_manifest.py`
+`test_remove_ro_copy_removes_a_copy_holding_a_side_folder_it_cannot_list_c541` (a link in the copy, and one at its
+name, keep their target's mode) and `test_the_sweep_removes_a_two_hour_old_copy_holding_a_side_folder_it_cannot_list_c541`
+(a fresh copy stays), and `test_remove_ro_copy_never_follows_a_link_put_at_a_side_after_its_lstat_c541` (a side
+judged a folder and a link by its chmod: the folder outside keeps its mode).
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

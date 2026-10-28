@@ -6362,11 +6362,12 @@ _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),
     ("16.125", "Doctor's `state_dir.manifest` check opens the manifest read-only", "§16.210 C526"),
     ("16.149", "**X78: a manifest this account cannot write is not probed", "§16.210 C526"),
+    ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C541"),
 )
-"""Round 31 lane B's C560 lines at the two C394 paragraphs its claim names with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: the report's hooks read through ``manifest.read_only_reads`` at §16.203's,
-and the queue split and held read under it at §16.205's; C526's immutable probe at §16.125's state_dir.manifest
-paragraph and §16.149's X78 paragraph."""
+"""Round 31 lane B's lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`:
+C560's at the two C394 paragraphs (the report's hooks read through ``manifest.read_only_reads`` at §16.203's,
+the queue split and held read under it at §16.205's), C526's immutable probe at §16.125's state_dir.manifest
+paragraph and §16.149's X78 paragraph, and C541's sweep through ``remove_ro_copy`` at §16.205's."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

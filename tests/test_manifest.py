@@ -7,6 +7,7 @@ import logging
 import os
 import sqlite3
 import stat
+import time
 import unicodedata
 from collections.abc import Iterator
 from dataclasses import replace
@@ -1694,6 +1695,18 @@ def test_a_link_to_a_short_file_and_a_heartbeat_link_to_nothing_are_lost(tmp_pat
     assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY_UNREAD
 
 
+def _copy_with_a_shut_side(state: Path, name: str) -> Path:
+    """A :data:`manifest.RO_COPY_PREFIX` folder in ``state`` as the setup report's private copy leaves it
+    beside a folder at the -shm: the manifest copied, and the side made again as a folder at mode 0000."""
+    copy = state / (manifest_mod.RO_COPY_PREFIX + name)
+    copy.mkdir()
+    (copy / "manifest.sqlite").write_bytes(b"contoso")
+    side = copy / "manifest.sqlite-shm"
+    side.mkdir()
+    side.chmod(0)
+    return copy
+
+
 @pytest.mark.parametrize(
     "side", ["a folder at the -wal", "a -wal at 0000", "a folder at the -journal", "a state folder at 0500"]
 )
@@ -1762,3 +1775,79 @@ def test_a_side_file_gone_between_its_checks_is_no_refusal_under_read_only_reads
 
     monkeypatch.setattr(manifest_mod.os, "access", gone)
     assert manifest_mod._side_refusal(db) is None
+
+
+def test_remove_ro_copy_removes_a_copy_holding_a_side_folder_it_cannot_list_c541(tmp_path: Path) -> None:
+    """B13 round 31 C541: a copy holding a 0000 side folder could not be removed (rmtree cannot list the
+    folder, and ignore_errors hid it), so each report run over a folder at the -shm left one more beside the
+    manifest. ``remove_ro_copy`` makes each direct child folder 0700 first; a link in the copy is never
+    followed, so a folder it points at outside the copy keeps its mode."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o500)
+    copy = _copy_with_a_shut_side(tmp_path, "contoso")
+    (copy / "manifest.sqlite-wal").symlink_to(outside)
+    try:
+        manifest_mod.remove_ro_copy(copy)
+        assert not os.path.lexists(copy), sorted(p.name for p in tmp_path.iterdir())
+        assert stat.S_IMODE(outside.stat().st_mode) == 0o500
+        link = tmp_path / (manifest_mod.RO_COPY_PREFIX + "link")
+        link.symlink_to(outside)
+        manifest_mod.remove_ro_copy(link)  # a link at the copy's name: left, never followed
+        assert link.is_symlink() and stat.S_IMODE(outside.stat().st_mode) == 0o500
+    finally:
+        outside.chmod(0o700)
+
+
+def test_remove_ro_copy_never_follows_a_link_put_at_a_side_after_its_lstat_c541(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C541's review: a side judged a folder by its lstat and swapped for a link before its chmod had the
+    chmod follow the link and open a folder outside the copy to 0700; the chmod never follows one."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o500)
+    copy = tmp_path / (manifest_mod.RO_COPY_PREFIX + "raced")
+    copy.mkdir()
+    (copy / "manifest.sqlite-shm").symlink_to(outside)
+
+    class Raced:
+        """The entry as its lstat saw it, a folder; its path is a link by the chmod."""
+
+        path = str(copy / "manifest.sqlite-shm")
+
+        def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+            return True
+
+    class Entries(list[Raced]):
+        def __enter__(self) -> list[Raced]:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    real = os.scandir
+    # the copy's own listing only: the remove after it lists the copy for real
+    monkeypatch.setattr(manifest_mod.os, "scandir", lambda at: Entries([Raced()]) if at == copy else real(at))
+    try:
+        manifest_mod.remove_ro_copy(copy)
+        assert stat.S_IMODE(outside.stat().st_mode) == 0o500
+    finally:
+        outside.chmod(0o700)
+
+
+def test_the_sweep_removes_a_two_hour_old_copy_holding_a_side_folder_it_cannot_list_c541(
+    tmp_path: Path,
+) -> None:
+    """C541: ``_sweep_ro_copies`` left a two-hour-old copy holding a 0000 side folder; it removes it now, and
+    still leaves a fresh one, which a running read may be using."""
+    old = _copy_with_a_shut_side(tmp_path, "killed")
+    then = time.time() - 7200
+    os.utime(old, (then, then))
+    fresh = _copy_with_a_shut_side(tmp_path, "running")
+    try:
+        manifest_mod._sweep_ro_copies(tmp_path)
+        assert not os.path.lexists(old), sorted(p.name for p in tmp_path.iterdir())
+        assert fresh.is_dir()
+    finally:
+        (fresh / "manifest.sqlite-shm").chmod(0o700)

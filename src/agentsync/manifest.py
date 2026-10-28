@@ -1102,15 +1102,35 @@ def _copy_read(db_path: Path, timeout: float, wal: bool, journal: bool) -> sqlit
             src.close()
 
 
+def remove_ro_copy(path: Path) -> None:
+    """Remove ``path``, a :data:`RO_COPY_PREFIX` folder, whole. The setup report's private copy makes a side
+    that is a folder again with that folder's mode, and one with no read for this account (0000) cannot be
+    listed, so a plain remove left it and the copy beside the manifest, one more each run (B13 round 31
+    C541). Each direct child that is a folder, judged by its own lstat and never through a link, is made
+    0700 first (a copy's side folders are empty and one level down). Nothing when ``path`` is not a folder
+    itself (a link is never followed); never raises."""
+    with contextlib.suppress(OSError):
+        if not stat.S_ISDIR(path.lstat().st_mode):
+            return
+        with os.scandir(path) as entries:
+            for entry in entries:
+                with contextlib.suppress(OSError):
+                    if entry.is_dir(follow_symlinks=False):
+                        # never through a link, even one put there after the lstat above
+                        os.chmod(entry.path, 0o700, follow_symlinks=False)  # noqa: PTH101 - the entry's own path
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def _sweep_ro_copies(folder: Path) -> None:
-    """Remove each :data:`RO_COPY_PREFIX` folder in ``folder`` older than an hour: one a killed read left."""
+    """Remove each :data:`RO_COPY_PREFIX` folder in ``folder`` older than an hour: one a killed read left
+    (:func:`remove_ro_copy`, so one holding a 0000 side folder goes too: C541)."""
     cutoff = time.time() - _RO_COPY_STALE
     with contextlib.suppress(OSError):
         for path in folder.glob(RO_COPY_PREFIX + "*"):
             with contextlib.suppress(OSError):
                 st = path.lstat()
                 if stat.S_ISDIR(st.st_mode) and st.st_mtime < cutoff:
-                    shutil.rmtree(path, ignore_errors=True)
+                    remove_ro_copy(path)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
