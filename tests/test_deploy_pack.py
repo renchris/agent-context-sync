@@ -7355,6 +7355,34 @@ def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
     assert "a failure an older build stored a folder path in is tried once more after an upgrade" in row
 
 
+def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
+    """B13 round 31 ruling 59 (C525 with C522, lane B; C567 with C583, lane RA): the sync line's share of the
+    refused count a label rule refused because the label data did not parse reads apart from K's withheld
+    share, and the report's Summary re-renders it after K's clause. The guide's Summary row gives it after
+    K, with its plural, in the sync line's words, read here."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(cli)
+    assert 'whose = "its label data" if label_unreadable == 1 else "their label data"' in source
+    split = 'split += f", {label_unreadable} of them under a label rule because {whose} did not parse"'
+    assert split in source
+    report = inspect.getsource(setup_report)
+    assert '"under a label rule because their label data did not parse"' in report
+    assert 'refused += f", {unparsed[1]} of them {why}"' in report
+    summary = "| Summary: `first sync:` or `sync:` |"
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith(summary)]
+    k = (
+        "`, K of them withheld: its label cannot be read` (`their labels` for more than one) when it gave"
+        " that count"
+    )
+    clause = (
+        "`, L of them under a label rule because its label data did not parse` (`their label data` for"
+        " more than one) after it"
+    )
+    assert k in row and clause in row and row.index(k) < row.index(clause)
+    assert "counted in R and not in K (B13 round 31 ruling 59)" in row
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

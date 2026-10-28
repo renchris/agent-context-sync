@@ -35422,3 +35422,11 @@ only a download would read, while the clause it means, on a failure an older bui
 names that clause by its place after `once it starts` and by its words, and the rest of it stays. Test:
 `test_the_repeat_conversions_row_names_the_clause_its_note_follows`, which checks the old words are gone and the named
 clause comes after `once it starts`.
+
+**The guide's Summary row gives the label data clause after K's** (ruling 59; `docs/deploy/setup-feedback.md`). Since
+lane B's C525 with C522 (f6d14a3ff) the sync line reads the share of the refused count a label rule refused because
+the label data did not parse apart from K's withheld share, as `, L of them under a label rule because its label data
+did not parse` (`their label data` for more than one), and since lane RA's C567 with C583 (ef12f28fb) the report's
+Summary re-renders it after K's clause; the row gave K's clause only. It now gives L's after K's, with its plural,
+counted in R and not in K. Test: `test_the_summary_row_gives_the_label_data_clause_after_k`, which reads the clause
+from `cli` and its re-render from `setup_report`.
