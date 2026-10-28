@@ -1320,7 +1320,6 @@ _FIXED_VALUE_PHRASES = (
     "the audit trail or the hold record keeps",
     "the holds the audit trail records stay in force",
     "from the hold list and the audit trail",
-    "by their id and path, from the audit trail",
     "the audit trail records suppressed (",
     "the audit trail records as queued and not done (",
     "recorded in the audit trail",

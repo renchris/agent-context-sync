@@ -399,7 +399,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="AT",
         help=(
             "accept what the suppression list lost of the purge status names by this time, with an audit "
-            "line: a copy of its content under another name is no longer kept out; its items stay out"
+            "line: its items, and a copy of content agentsync's audit trail fingerprints, stay out, but a "
+            "new file at an item's older name or in other letter case does not; an older build's purge, "
+            "which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard"
         ),
     )
     p.add_argument(
@@ -3610,17 +3612,26 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         what = f"the purge {governance._when(lost)}"
         if len(lost) > 1:  # purges an older build timed to the second can share one
             what = f"{len(lost)} purges, as that time names {len(lost)} records ({governance._when(lost)})"
-        given_up = "a copy of its content under another name is no longer kept out by the list"
+        # what stays out and what is given up, per record, as the FAIL says it (B13 round 31 C537, C577)
+        said = f"its items stay out by their id and by {governance.ACCEPT_PATH_KEPT}"
+        if any(governance._fingerprinted(r) for r in lost):  # the audit trail's hashes keep a copy out
+            said += (
+                ", and a copy of its content under another name by the content fingerprints in agentsync's "
+                "audit trail"
+            )
+        said += f"; {governance.ACCEPT_PATH_LOST}"  # the list's older names and letter case (C537's review)
+        if not all(governance._fingerprinted(r) for r in lost):
+            said += (
+                "; an older build's purge fingerprints no content, so a copy of its content under another "
+                "name is no longer kept out"
+            )
         held = governance._glob_fingerprints(governance.load_suppressions(config.state_paths.root))
         if any(governance._glob_lost(r, held) for r in lost):  # as the FAIL judges: a held glob still guards
-            given_up += ", nor a new file under its source-path glob"
+            said += "; a new file under its source-path glob is no longer kept out"
         if args.dry_run:
-            _out(f"dry run: would accept the suppression list's loss of {what} ({given_up}); nothing written")
+            _out(f"dry run: would accept the suppression list's loss of {what} ({said}); nothing written")
         else:
-            _out(
-                f"accepted the suppression list's loss of {what} (audited): {given_up}; its items stay out "
-                "by their id and path"
-            )
+            _out(f"accepted the suppression list's loss of {what} (audited): {said}")
         return EXIT_OK
     if args.forget is not None:
         if not args.queue:

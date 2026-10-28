@@ -524,23 +524,53 @@ def _damaged_words(path: Path, role: str, what: str) -> tuple[str, str]:
     return detail, fix
 
 
-def accept_lost_words(*, glob: bool = False) -> str:
+ACCEPT_PATH_KEPT = (
+    "the one source path agentsync's audit trail keeps for each item still listed when it was purged"
+)
+"""The path guard accepting a lost suppression keeps: the trail's exact path of each purged item the manifest
+listed when it was purged (C537's review); an item it no longer listed gets a ``purge`` line with no
+``path_sha256`` (:func:`_audit_purge`), so the trail keeps it out by its id alone."""
+ACCEPT_PATH_LOST = (
+    "a new file at another path the list held (an item's older name, or its name in other letter case, or "
+    "the name of an item no longer listed when it was purged) is no longer kept out"
+)
+"""The path guard accepting a lost suppression gives up, said always: the list's older names and letter case
+beyond the trail's one exact path, and the path of an item the trail keeps no path for (C537's review)."""
+
+
+def accept_lost_words(*, glob: bool = False, unhashed: bool = False) -> str:
     """The suppression list's way out with no copy, in both its FAILs, beside the copy (B13 round 30 C344,
-    C401; ruling 33): the person's, after "with no copy, ". ``glob``: a lost record is a purge by a
-    source-path glob, which the audit trail keeps only by its fingerprint, so accepting it also gives up the
-    glob's guard against a new file under it (C344's review)."""
-    also = (
-        ", and for a purge by a source-path glob its guard against a new file under that glob" if glob else ""
-    )
-    return (
+    C401; ruling 33): the person's, after "with no copy, ". Its items stay out by their id and by the one
+    source path the audit trail keeps for each item still listed when it was purged (each ``purge`` line's
+    ``path_sha256``, the exact path, None for an item no longer listed), and a
+    copy under another name of content the audit trail fingerprints (each ``purge-summary``'s
+    ``canonical_sha256s``, :func:`audited_suppressions`) stays out (B13 round 31 C537, C577). The list's path
+    guard (:meth:`Suppressions.matches`, by :func:`_path_key`) also holds an item's older names and keeps out
+    its name in other letter case, which the trail does not, so accepting gives that up, said always, as a
+    lost list cannot tell which purge it applies to (C537's review). ``unhashed``: a lost record's line holds
+    no content fingerprints (an older build's), so accepting it gives up its guard against a copy under
+    another name. ``glob``: a lost record is a purge by a source-path glob, which the audit trail keeps only
+    by its fingerprint, so accepting it also gives up the glob's guard against a new file under it (C344's
+    review)."""
+    text = (
         f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at>` (`--dry-run` first), <at> being "
-        "the time status names for it, which gives up that purge's guard against a copy of its content under "
-        f"another name{also}, while its items stay out by their id and path"
+        f"the time status names for it, while its items stay out by their id and by {ACCEPT_PATH_KEPT}, and "
+        "a copy under another name of content agentsync's audit trail fingerprints stays out, but "
+        f"{ACCEPT_PATH_LOST}"
     )
+    if unhashed:
+        text += (
+            ", and a purge whose summary line holds no content fingerprints (an older build's) loses its "
+            "guard against a copy of its content under another name"
+        )
+    if glob:
+        text += ", and a purge by a source-path glob loses its guard against a new file under that glob"
+    return text
 
 
-ACCEPT_LOST_WORDS = accept_lost_words()
-""":func:`accept_lost_words` with no glob: the damaged list's move-aside tail, which knows no record."""
+ACCEPT_LOST_WORDS = accept_lost_words(glob=True, unhashed=True)
+""":func:`accept_lost_words` for the damaged list's move-aside tail, which knows no record, so names both the
+copy guard an older build's purge loses and the glob guard a source-path glob purge loses (C537)."""
 
 
 def _what_the_move_leaves(role: str) -> str:
@@ -550,7 +580,7 @@ def _what_the_move_leaves(role: str) -> str:
     (B13 round 30 C344)."""
     if role == "the suppression list":
         return (
-            ": the items it suppressed stay out by their id and path, from the audit trail, but the next "
+            f": the items it suppressed stay out by their id and by {ACCEPT_PATH_KEPT}, but the next "
             "sync refuses until each purge it recorded is put back: with no copy, the person "
             f"{ACCEPT_LOST_WORDS} (a purge run again by hand clears its record only when it finds the "
             "content again)"
@@ -1677,6 +1707,13 @@ def _glob_fingerprints(sup: Suppressions) -> set[str]:
     return out
 
 
+def _fingerprinted(rec: Mapping[str, Any]) -> bool:
+    """Whether ``rec``'s ``purge-summary`` line holds its content fingerprints (``canonical_sha256s``), as
+    every purge this build runs writes and :func:`audited_suppressions` keeps out; an older build's has none
+    (B13 round 31 C537, C577)."""
+    return isinstance(rec.get("canonical_sha256s"), list)
+
+
 def _glob_lost(rec: Mapping[str, Any], held: set[str]) -> bool:
     """Whether ``rec`` is a path-glob purge whose own glob the list's ``held`` fingerprints lack."""
     fp = rec.get("selector_sha256")
@@ -1688,13 +1725,14 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     list (``listed``, read here when None) no longer holds: one of its items, its own source-path glob (by
     fingerprint, :func:`_glob_fingerprints`), or one of the content hashes its line records
     (``canonical_sha256s``; a line an older build wrote has none, and skips that test). The erased items'
-    ids and paths are kept out from the audit trail (:func:`audited_suppressions`), but the list's glob and
-    content guards are not, so the sync refuses until the list is put back (B13 round 29 C172; B13 round 30
-    C383, C403, C402). A later purge of the same selector clears a record only when it is verified and found
-    content again (a record an older build wrote, with no ``canonical_sha256s``, only when it found that
-    record's own items again); an empty or unverified run rebuilt nothing. A ``suppression-lost-accepted``
-    line clears the record it names, by its time and selector (:func:`accept_lost_suppression`; C401, C344;
-    ruling 33)."""
+    ids and paths are kept out from the audit trail (:func:`audited_suppressions`), but the list's glob
+    guard, the content guard of a line with no ``canonical_sha256s``, and its path guard beyond each item's
+    one recorded path (an older name, another letter case) are not, so the sync refuses until the list is
+    put back (B13 round 29 C172; B13 round 30 C383, C403, C402; B13 round 31 C537's review). A later purge
+    of the same selector clears a record only when it is verified and found content again (a record an older
+    build wrote, with no ``canonical_sha256s``, only when it found that record's own items again); an empty
+    or unverified run rebuilt nothing. A ``suppression-lost-accepted`` line clears the record it names, by
+    its time and selector (:func:`accept_lost_suppression`; C401, C344; ruling 33)."""
     sup = load_suppressions(state_dir) if listed is None else listed
     have = {(sid, _sha(i)) for sid, i in sup.items}
     held_globs = _glob_fingerprints(sup)
@@ -2134,16 +2172,19 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
             what = "the purged content's hashes"
             held = _glob_fingerprints(sup)
             globbed = any(_glob_lost(r, held) for r in lost)  # a glob the list still holds keeps its guard
+            unhashed = any(not _fingerprinted(r) for r in lost)  # the trail keeps a hashed one's copy out
             if globbed:
                 what += " and a source-path glob"
             detail = (
                 f"{path} no longer lists what {plural(len(lost), 'purge')} "
                 f"the audit trail records suppressed ({_when(lost)}): "
-                f"the sync keeps the erased items out by their id and path, but cannot rebuild {what}"
+                f"the sync keeps the erased items out by their id and by {ACCEPT_PATH_KEPT}, but cannot "
+                f"rebuild {what}"
             )
             fix = (
                 f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
-                f"{accept_lost_words(glob=globbed)}; a purge run again by hand clears its record only when "
+                f"{accept_lost_words(glob=globbed, unhashed=unhashed)}; a purge run again by hand clears its "
+                "record only when "
                 "it finds the content again, and the next sync refuses until then"
             )
             return GovernanceLostError(path, "the suppression list", detail, fix)
@@ -5154,10 +5195,14 @@ def accept_lost_suppression(
     """Accept what the suppression list lost of the purge run at ``at`` (the time status names it by,
     :func:`lost_suppressions`) with a ``suppression-lost-accepted`` audit line, under the writer lock, after
     which that record no longer stops the sync; a refused audit trail clears nothing (A79). ``dry_run``
-    returns the record and writes nothing. It gives up that purge's guard against a copy of its content under
-    another name, while its items stay out by their id and path from the audit trail: the one way out for a
-    record no copy of the list and no run of its purge can put back, as an older build's, whose content
-    hashes nothing records (B13 round 30 C344, C401; ruling 33). A purge's time is to the microsecond
+    returns the record and writes nothing. Its items stay out by their id and by :data:`ACCEPT_PATH_KEPT`,
+    and a copy under another name of content the trail fingerprints stays out (:func:`audited_suppressions`
+    never reads this line). Every accepted record gives up the list's guard on the other paths it held
+    (:data:`ACCEPT_PATH_LOST`); a record whose line holds no content fingerprints, an older build's, also
+    loses its guard against such a copy, and a source-path glob purge whose glob the list no longer holds its
+    guard against a new file under it (B13 round 31 C537, C577). It is the one way out for a record no copy of
+    the list and no run of its purge can put back, as an older build's, whose content hashes nothing records
+    (B13 round 30 C344, C401; ruling 33). A purge's time is to the microsecond
     (:func:`_iso_fine`), but lines an older build wrote, or purges given one ``now``, can share one: the act
     then accepts each record that time names, and the CLI says how many."""
     sp = config.state_paths

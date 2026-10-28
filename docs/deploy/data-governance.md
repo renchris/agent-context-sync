@@ -115,18 +115,24 @@ is a copy that no purge reaches, so exclude it too.
   C312, C350, C389).
 - **Over a lost suppression list:** while `agentsync status` FAILs `governance.suppressed` because suppressed.json
   `no longer lists what` a purge the audit trail records suppressed (an item, its source-path glob or a content
-  hash), the sync refuses. The erased items stay out by their id and path from the audit trail. Put suppressed.json
-  back from a copy you trust. With no copy, preview `agentsync purge --accept-lost <at> --dry-run`, `<at>` being the
-  time status names beside the purge's reason, then run it without `--dry-run`: it writes one
-  `suppression-lost-accepted` audit line for each lost purge record that time names and clears those records only.
-  A purge this build runs is timed to the microsecond, so its time names one record; an older build timed purges to
-  the second, so one time can name several: the dry run then says `loss of <n> purges, as that time names <n>
-  records`, and the act accepts every one of them, so put suppressed.json back instead if you do not mean to accept
-  them all (B13 round 31 C582, C553). It gives up that purge's guard
-  against a copy of its content under another name and, for a purge by a source-path glob the list no longer
-  holds, its guard against a new file under that glob, while its items stay out by their id and path. A purge run
-  again by hand clears its record only when it is verified and finds the content again; one that finds nothing,
-  because the first purge erased it, clears nothing (B13 round 29 C172; B13 round 30 C383, C402, C401, C344).
+  hash), the sync refuses. The erased items stay out by their id and by the one source path agentsync's audit trail
+  keeps for each item still listed when it was purged. Put suppressed.json back from a copy you trust. With no copy,
+  preview `agentsync purge --accept-lost <at> --dry-run`, `<at>` being the time status names beside the purge's
+  reason, then run it without `--dry-run`: it writes one `suppression-lost-accepted` audit line for each lost purge
+  record that time names and clears those records only. A purge this build runs is timed to the microsecond, so its
+  time names one record; an older build timed purges to the second, so one time can name several: the dry run then
+  says `loss of <n> purges, as that time names <n> records`, and the act accepts every one of them, so put
+  suppressed.json back instead if you do not mean to accept them all (B13 round 31 C582, C553). The accepted purges'
+  items stay out by their id and by the one source path the audit trail keeps for each item still listed when it was
+  purged, and a copy under another name of content the audit trail fingerprints stays out, as every purge this build
+  runs fingerprints what it erased. A new file at another path the list held, an item's older name, its name in other
+  letter case or the name of an item no longer listed when it was purged, is no longer kept out, for every accepted
+  purge. Only purges an older build ran, whose audit lines hold no content fingerprints, lose their guard against a
+  copy of their content under another name, and purges by a source-path glob the list no longer holds their guard
+  against a new file under that glob; the act's output says which applies. The sync still refuses until each lost
+  purge is put back or accepted (B13 round 31 C537, C577). A purge run again by hand clears its record only when it
+  is verified and finds the content again; one that finds nothing, because the first purge erased it, clears nothing
+  (B13 round 29 C172; B13 round 30 C383, C402, C401, C344).
 
 ## Legal and records hold
 

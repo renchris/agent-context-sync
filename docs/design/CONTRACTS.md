@@ -33855,6 +33855,17 @@ glob" for one; a list put back from a copy that still holds the glob keeps that 
 up. The damaged list's move-aside tail says the next sync refuses until
 each purge it recorded is put back, with the no-glob words, where it said only glob and copied-content purges were
 run again.
+Amended 2026-10-28, §16.210 C537: the words no longer say accepting gives up a purge's copy guard: after "names for it"
+they read ", while its items stay out by their id and by the one source path agentsync's audit trail keeps for each item
+still listed when it was purged, and a copy under another name of content agentsync's audit trail fingerprints stays
+out, but a new file at another path the list held (an item's older name, or its name in other letter case, or the name
+of an item no longer listed when it was purged) is no longer kept out", then ", and a purge whose
+summary line holds no content fingerprints (an older build's) loses its guard against a copy of its content under
+another name" only for such a record and ", and a purge by a source-path glob loses its guard against a new file under
+that glob" for a lost glob; the dry run and the act say "a new file under its source-path glob is no longer kept out",
+and the move-aside tail carries both clauses. The FAIL's detail and the move-aside tail say the items stay out "by their
+id and by the one source path agentsync's audit trail keeps for each item still listed when it was purged", where they
+said "by their id and path".
 
 C381 (ruling 34): what governance/ keeps survives the folder's loss, as ruling 24 made holds survive. Following the
 folder's own fix (moved aside, then its second branch) republished a page an erasure purge removed, since the
@@ -34934,6 +34945,53 @@ round 28 record the fix keeps "the person removes the link first: rm <db>". Read
 lane RB's. Test: `test_cli.py` `test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status` (sync,
 hold, release, purge: "; then removes the link: rm " and no "link first"); the plain case stays pinned by
 `test_ops_doctor.py` and `test_cli.py`'s link-to-nothing tests.
+
+C537 with C577 (2026-10-28): **accepting a lost suppression says the audit trail still keeps a copy of fingerprinted
+content out** (ruling 47; words only, the sync stop stays). `audited_suppressions` keeps every `purge-summary`'s
+`canonical_sha256s` and never reads a `suppression-lost-accepted` line, and the cycle checks
+`AuditedSuppressions.matches_content`, so for any purge this build ran a copy of its content under another name stays
+out after the accept; yet `accept_lost_words`, both suppressed-list FAILs' fixes, the act's output, its help,
+`accept_lost_suppression`'s docstring and data-governance.md said that guard was given up.
+`accept_lost_words(*, glob, unhashed)` now says "while its items stay out by their id and by the one source path
+agentsync's audit trail keeps for each item still listed when it was purged, and a copy under another name of content
+agentsync's audit trail fingerprints stays out, but a new file at another path the list held (an item's older name, or
+its name in other letter case, or the name of an item no longer listed when it was purged) is no longer kept out",
+adding ", and a purge whose summary line holds no content fingerprints (an older build's) loses its guard against a copy
+of its content under another name" when `unhashed` (the lost FAIL passes it when a lost record has no
+`canonical_sha256s`, `governance._fingerprinted`) and ", and a purge by a source-path glob loses its guard against a new
+file under that glob" when `glob`; the move-aside tail, which knows no record, is
+`ACCEPT_LOST_WORDS = accept_lost_words(glob=True, unhashed=True)`. The path clause is said always: the list's path guard
+(`Suppressions.matches`, by `_path_key`, NFC and casefold) holds an item's older names and its other letter case, while
+the trail keeps one exact `path_sha256` per item, its path when purged (`AuditedSuppressions.matches`), and a lost list
+cannot say which purge held more (the review's probe: a renamed item's older name, and a letter-case variant, with other
+bytes, published after the accept and not with the list kept). An item the manifest no longer listed when it was purged
+gets a `purge` line with no `path_sha256` (`_audit_purge`), while the list kept its history path, so the trail keeps its
+path for "each item still listed when it was purged" and the lost clause names "the name of an item no longer listed
+when it was purged". The suppressed FAIL's detail ("the sync keeps the erased items out by their id and by <that path
+clause>, but cannot rebuild ..."), the move-aside tail ("the items it suppressed stay out by their id and by <that path
+clause>"), `accept_lost_suppression`'s docstring (no longer "only" an older build's record loses a guard) and
+data-governance.md say the same, where they said "by their id and path"; the fixed phrase "by their id and path, from
+the audit trail" leaves both phrase lists, as the new words hold "agentsync's audit trail", already one. The act's dry
+run and output say per record: "its items stay out by their id and by the one source path agentsync's audit trail keeps
+for each item still listed when it was purged" (`ACCEPT_PATH_KEPT`), ", and a copy of its content under another name by
+the content fingerprints in agentsync's audit trail" when a record is fingerprinted, then always "; a new file at
+another path the list held (an item's older name, or its name in other letter case, or the name of an item no longer
+listed when it was purged) is no longer kept out" (`ACCEPT_PATH_LOST`), "; an older build's purge fingerprints no
+content, so a copy of its content under another name is no longer kept out" when one is not, and "; a new file under its
+source-path glob is no longer kept out" for a lost glob. The help reads "its items, and a copy of content agentsync's
+audit trail fingerprints, stay out, but a new file at an item's older name or in other letter case does not; an older
+build's purge, which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard". The new
+words keep to fixed phrases the setup report's hold-value redaction knows ("agentsync's audit trail", "with an audit
+line"), so `test_setup_report.py::test_an_audit_hold_value_leaves_every_audit_line_whole_c302` holds them whole.
+`audited_suppressions`, the cycle's check and the sync stop are unchanged. Tests: `test_cli.py`
+`test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync` (the copy made after the accept stays
+out; the act names no lost copy guard), `test_accepting_an_older_builds_purge_names_the_copy_guard_it_gives_up`,
+`test_accepting_a_lost_glob_purge_keeps_a_copy_out_and_publishes_a_new_file_under_the_glob`,
+`test_accepting_a_lost_purge_says_a_new_file_at_an_items_older_name_is_no_longer_kept_out` (rename, purge, the list
+moved aside, the accept: the FAIL and both act lines name it, and a new file at the older name is published),
+`test_accept_lost_names_how_many_records_a_shared_time_names_and_what_a_glob_record_gives_up`,
+`test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guard` and
+`test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy_out` (through `purge --help`).
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
