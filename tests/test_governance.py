@@ -2358,20 +2358,22 @@ def test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_f
     err = gv.queue_lost(state)
     assert err is not None
     assert err.detail.endswith(
-        f"as queued and not done (erasure-request at {at[0]}, a stable-id selector of source contoso; "
-        f"dlp-remediation at {at[1]}, a stable-id selector of source contoso; upstream-deleted at {at[2]}, "
-        f"a stable-id selector of source contoso; label-escalation at {at[3]}, a path-glob selector of "
-        "source contoso)"
+        f"as queued and not done (the erasure-request purge at {at[0]}, a stable-id selector of source "
+        f"contoso; the dlp-remediation purge at {at[1]}, a stable-id selector of source contoso; the "
+        f"upstream-deleted purge at {at[2]}, a stable-id selector of source contoso; the label-escalation "
+        f"purge at {at[3]}, a path-glob selector of source contoso)"
     ), err.detail
     # each record's redo, in order, in the fix's own form (C542: lost_queue_lines, only tests read, is gone)
     ways = [
-        f"for erasure-request at {at[0]}: `{bin_} id=contoso-0001 --source contoso --reason erasure-request`",
-        f"for dlp-remediation at {at[1]}: `{bin_} id=contoso-old --source contoso --reason dlp-remediation`",
-        f"for upstream-deleted at {at[2]}: no manifest row names its id, "
+        f"for the erasure-request purge at {at[0]}: "
+        f"`{bin_} id=contoso-0001 --source contoso --reason erasure-request`",
+        f"for the dlp-remediation purge at {at[1]}: "
+        f"`{bin_} id=contoso-old --source contoso --reason dlp-remediation`",
+        f"for the upstream-deleted purge at {at[2]}: no manifest row names its id, "
         "which is the `stable_id:` line of the page's front matter in the docs repo's history under "
         f"mirror/contoso/ while no purge has erased the page; `{bin_} id=<that id> --source contoso --reason "
         "upstream-deleted`: a `path=` or `docs=` purge clears it only when it erases that id",
-        f"for label-escalation at {at[3]}: agentsync keeps only its "
+        f"for the label-escalation purge at {at[3]}: agentsync keeps only its "
         f"selector's hash, so the glob comes from the person's own records: `{bin_} path=<glob> --source "
         "contoso --reason label-escalation`, as only a purge of the same kind and source clears it",
     ]

@@ -18265,8 +18265,8 @@ def test_a_sync_stop_on_a_lost_list_names_the_list_c335(
     )
     said = (
         "error: state: /x/governance/purge-queue.json no longer holds 1 purge the audit trail records as "
-        "queued and not done (erasure-request at 2026-10-26T23:06:36Z, a stable-id selector of source "
-        "contoso)"
+        "queued and not done (the erasure-request purge at 2026-10-26T23:06:36Z, a stable-id selector of "
+        "source contoso)"
     )
     gone = setup_report._GOVERNANCE_LOST_RE.search(said)
     assert gone is not None and gone.group("verb") == "holds"

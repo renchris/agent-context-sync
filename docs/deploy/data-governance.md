@@ -101,8 +101,8 @@ is a copy that no purge reaches, so exclude it too.
   C173, C189, C201; B13 round 30 C371, C378).
 - **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
   `no longer holds` a purge the audit trail records `as queued and not done`, each named
-  `<reason> at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back from a
-  copy you trust. With no copy, run each purge by hand with what the FAIL names for it: for a purge by id the
+  `the <reason> purge at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back
+  from a copy you trust. With no copy, run each purge by hand with what the FAIL names for it: for a purge by id the
   manifest still names, the exact `agentsync purge id=<id> --source <source> --reason <reason>`, its id rebuilt
   from the manifest (the audit trail keeps only the selector's hash, never its text); for one it cannot rebuild,
   the id is the `stable_id:` line of the page's front matter in the docs repo's history

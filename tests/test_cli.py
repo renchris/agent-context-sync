@@ -6253,7 +6253,7 @@ def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_
     # the trail keeps a path only for an item the manifest still listed when it was purged (C537's review)
     kept = f"the sync keeps the erased items out by their id and by {ACCEPT_PATH_KEPT}, but cannot "
     assert kept in failed, failed
-    assert "erasure-request at " in failed and "(fix: the person puts " in failed, failed
+    assert "(the erasure-request purge at " in failed and "(fix: the person puts " in failed, failed
     stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
     stops.parent.mkdir(parents=True, exist_ok=True)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
@@ -6287,7 +6287,7 @@ def test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_
     assert cli.main([*accept, "--dry-run"]) == cli.EXIT_OK
     said = capsys.readouterr().out
     assert (
-        f"dry run: would accept the suppression list's loss of the purge erasure-request at {first['at']}"
+        f"dry run: would accept the suppression list's loss of the erasure-request purge at {first['at']}"
         in said
     )
     # C537, C577: the purge this build ran fingerprints its content, so no copy guard is said to be lost
@@ -6373,7 +6373,7 @@ def test_accept_lost_names_how_many_records_a_shared_time_names_and_what_a_glob_
     capsys.readouterr()
     assert cli.main(["purge", "--accept-lost", at, "--dry-run", "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr().out
-    assert "loss of 2 purges, as that time names 2 records (dlp-remediation at " in said, said
+    assert "loss of 2 purges, as that time names 2 records (the dlp-remediation purge at " in said, said
     assert f"; {ACCEPT_GLOB_LOST}" in said, said
     assert cli.main(["purge", "--accept-lost", at, "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr().out
@@ -6406,7 +6406,7 @@ def test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guar
     for extra in (["--dry-run"], []):
         assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_OK
         said = capsys.readouterr().out
-        assert "loss of the purge dlp-remediation at " in said and "source-path glob" not in said, said
+        assert "loss of the dlp-remediation purge at " in said and "source-path glob" not in said, said
     assert governance.lost_suppressions(root) == []
 
 
@@ -6845,12 +6845,12 @@ def test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_th
     (rec,) = governance.lost_queued(root)
     failed = _lost_queue_line(cfg, capsys)
     assert failed is not None
-    entry = f"upstream-deleted at {rec['at']}, a stable-id selector of source source"
+    entry = f"the upstream-deleted purge at {rec['at']}, a stable-id selector of source source"
     command = (
         f"~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} --source source --reason upstream-deleted"
     )
     assert f"as queued and not done ({entry})" in failed, failed
-    assert f"(for upstream-deleted at {rec['at']}: `{command}`)" in failed, failed
+    assert f"(for the upstream-deleted purge at {rec['at']}: `{command}`)" in failed, failed
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr().out
@@ -6876,6 +6876,46 @@ def test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_th
         assert sid not in kept.read_text(encoding="utf-8"), kept
 
 
+def test_an_operator_purge_is_named_the_operator_purge_never_the_purge_operator_c511(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C511 (ruling 47): a purge was named by its bare reason word before its time, so an
+    operator purge read as a person: `loss of the purge operator at <at>` in both accept-lost lines,
+    `(operator at <at>)` in the governance.suppressed FAIL and `for operator at <at>:` in the
+    governance.purge_queue FAIL's redo. Each now reads `the operator purge at <at>`, the `<at>` whole."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    assert cli.main(["purge", f"docs={page}", "--reason", "operator", "--config", cfg]) == cli.EXIT_OK
+    governance._suppress_file(root).rename(root / "suppressed.kept")
+    (lost,) = governance.lost_suppressions(root)
+    named = f"the operator purge at {lost['at']}"
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert f"the audit trail records suppressed ({named}): " in failed and "operator at" not in failed, failed
+    accept = ["purge", "--accept-lost", lost["at"], "--config", cfg]
+    for run, head in (([*accept, "--dry-run"], "dry run: would accept"), (accept, "accepted")):
+        assert cli.main(run) == cli.EXIT_OK
+        said = capsys.readouterr().out
+        assert f"{head} the suppression list's loss of {named} (" in said and "purge operator" not in said, (
+            said
+        )
+    # the queue FAIL's redo names its purge the same way
+    sid = _stable_id(initialised, "projects/sample.md")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.OPERATOR)
+    governance._queue_file(root).rename(root / "queue.away")
+    (rec,) = governance.lost_queued(root)
+    failed = _lost_queue_line(cfg, capsys)
+    assert failed is not None
+    command = f"~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} --source source --reason operator"
+    assert f"(for the operator purge at {rec['at']}: `{command}`)" in failed, failed
+    # its detail names the lost purge the same way, never `(operator at <at>, ...` (C511's review)
+    named = f"the operator purge at {rec['at']}, a stable-id selector of source source"
+    assert f"as queued and not done ({named})" in failed, failed
+    assert "for operator at" not in failed and "(operator at" not in failed, failed
+
+
 def test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -6894,7 +6934,7 @@ def test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it(
     assert cli.main([*by_path, "--dry-run", "--config", cfg]) == cli.EXIT_OK
     said = capsys.readouterr().out
     at = {r["reason"]: r["at"] for r in governance.lost_queued(root)}
-    head = "  lost from the queue: {} at {}, a stable-id selector of source source: this purge "
+    head = "  lost from the queue: the {} purge at {}, a stable-id selector of source source: this purge "
     assert head.format("upstream-deleted", at["upstream-deleted"]) + "clears it\n" in said, said
     # an upstream-deleted run suppresses nothing, so it never does an erasure
     assert head.format("erasure-request", at["erasure-request"]) + "does not clear it; `" in said, said
@@ -6954,7 +6994,7 @@ def test_a_docs_purge_narrowed_to_another_source_clears_no_lost_queued_id(
     assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
     governance._queue_file(root).rename(root / "queue.away")
     (rec,) = governance.lost_queued(root)
-    entry = f"dlp-remediation at {rec['at']}, a stable-id selector of source source"
+    entry = f"the dlp-remediation purge at {rec['at']}, a stable-id selector of source source"
     narrowed = [
         "purge",
         "docs=mirror/source/projects/sample.txt.md",

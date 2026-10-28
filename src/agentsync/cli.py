@@ -3609,7 +3609,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     if args.accept_lost is not None:
         # the one audited way past a lost suppression nothing can put back (B13 round 30 C344, C401)
         lost = governance.accept_lost_suppression(config, args.accept_lost, dry_run=bool(args.dry_run))
-        what = f"the purge {governance._when(lost)}"
+        what = governance._when(lost)  # the <reason> purge at <at> (B13 round 31 C511)
         if len(lost) > 1:  # purges an older build timed to the second can share one
             what = f"{len(lost)} purges, as that time names {len(lost)} records ({governance._when(lost)})"
         # what stays out and what is given up, per record, as the FAIL says it (B13 round 31 C537, C577)

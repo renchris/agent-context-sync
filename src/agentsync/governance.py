@@ -1886,11 +1886,12 @@ def _queue_events(state_dir: Path) -> list[dict[str, Any]]:
 
 def _lost_entry(rec: Mapping[str, Any]) -> str:
     """A lost queued purge as its ``purge-enqueued`` line names it, its selector by kind and source only (the
-    line keeps the selector's hash, never its text): ``erasure-request at <iso>, a stable-id selector of
-    source contoso`` (B13 round 30 C312; ruling 35)."""
+    line keeps the selector's hash, never its text): ``the erasure-request purge at <iso>, a stable-id
+    selector of source contoso`` (B13 round 30 C312; ruling 35), never the bare reason before the time, which
+    read an operator purge as a person (B13 round 31 C511)."""
     sid = rec.get("source_id")
     of = f"source {sid}" if isinstance(sid, str) and sid else "every source"
-    return f"{rec.get('reason')} at {rec.get('at')}, a {rec.get('selector_kind')} selector of {of}"
+    return f"the {rec.get('reason')} purge at {rec.get('at')}, a {rec.get('selector_kind')} selector of {of}"
 
 
 def _manifest_ids(db: Path) -> set[tuple[str, str]]:
@@ -1976,10 +1977,10 @@ def _redo_command(rec: Mapping[str, Any], selector: str) -> str:
 
 
 def _redo_words(rec: Mapping[str, Any], stable_id: str | None) -> str:
-    """How a lost queued record is redone, after "for <reason> at <iso>: " (B13 round 30 C370, C312; ruling
-    35): the exact command when its id was rebuilt from the manifest; else where the id is, and that a purge
-    by path or docs glob clears it only when it erases that id; for a glob, that only the same kind and
-    source clears it, from the person's own records."""
+    """How a lost queued record is redone, after "for the <reason> purge at <iso>: " (B13 round 30 C370, C312;
+    ruling 35; B13 round 31 C511): the exact command when its id was rebuilt from the manifest; else where
+    the id is, and that a purge by path or docs glob clears it only when it erases that id; for a glob, that
+    only the same kind and source clears it, from the person's own records."""
     kind = rec.get("selector_kind")
     if stable_id is not None:
         return f"`{_redo_command(rec, shlex.quote(f'id={stable_id}'))}`"
@@ -2141,9 +2142,10 @@ def _reopen_lines(
 
 
 def _when(recs: Sequence[Mapping[str, Any]]) -> str:
-    """Each record's reason and time, as the person finds it in their own records: ``erasure-request at
-    <iso>; ...``."""
-    return "; ".join(f"{r.get('reason')} at {r.get('at')}" for r in recs)
+    """Each record's purge by its reason and time, as the person finds it in their own records: ``the
+    erasure-request purge at <iso>; ...``, the reason an adjective of the purge, so ``operator`` never reads
+    as a person (B13 round 31 C511; ruling 47)."""
+    return "; ".join(f"the {r.get('reason')} purge at {r.get('at')}" for r in recs)
 
 
 def governance_lost(state_dir: Path) -> GovernanceLostError | None:
@@ -2209,7 +2211,7 @@ def queue_lost(state_dir: Path) -> GovernanceLostError | None:
             )
             # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
             redo = zip(gone, _redo_all(state_dir, gone), strict=True)
-            ways = "; ".join(f"for {r.get('reason')} at {r.get('at')}: {w}" for r, w in redo)
+            ways = "; ".join(f"for the {r.get('reason')} purge at {r.get('at')}: {w}" for r, w in redo)
             fix = (
                 f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
                 f"runs each purge by hand before the next sync, which refuses until then ({ways})"

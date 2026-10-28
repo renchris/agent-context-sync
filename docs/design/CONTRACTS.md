@@ -33993,6 +33993,9 @@ records. Tests: `test_cli.py`
 Amended 2026-10-28, §16.210 C561: the known residual holds only for a record an older build wrote; one whose
 `purge-enqueued` line keeps its id's hash is done once a later verified purge, narrowed to its source or none,
 erased that id and the manifest, read without a write, names and rebuilds no id of it.
+Amended 2026-10-28, §16.210 C511: each part of that fix now reads "for the <reason> purge at <iso>: <how>", the
+reason an adjective of the purge, and `_lost_entry` names each record "the <reason> purge at <iso>, a <kind> selector
+of source <src>", in the detail and in both dry runs' <entry>.
 
 C394 (ruling 36): writing the setup report never writes the manifest. `governance.partition_queue` is now an opener
 (`Manifest(db)` and `_connect`, which may migrate, for the CLI, status, the loop and the cycle) over one judge,
@@ -34992,6 +34995,28 @@ moved aside, the accept: the FAIL and both act lines name it, and a new file at 
 `test_accept_lost_names_how_many_records_a_shared_time_names_and_what_a_glob_record_gives_up`,
 `test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guard` and
 `test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy_out` (through `purge --help`).
+
+C511 (2026-10-28): **a purge is named "the <reason> purge at <time>", never "the purge <reason> at" (ruling 47).**
+`governance._when` put the bare reason word before the time, so an operator purge read as a person: `purge
+--accept-lost <at>` printed "loss of the purge operator at <at>" in its dry run and its act, and the
+governance.suppressed FAIL "records suppressed (operator at <at>)"; `queue_lost`'s fix said "for operator at <at>:
+<how>". `_when` now gives "the <reason> purge at <at>" (joined with "; "), which the FAIL quotes in its brackets and
+`_cmd_purge` prints as the whole name ("loss of the operator purge at <at>"; the several-records form keeps "loss of
+<n> purges, as that time names <n> records (the <reason> purge at <at>; ...)"), and each part of `queue_lost`'s fix
+reads "for the <reason> purge at <at>: <how>", the C542 pin above with it. The reason token is printed as typed and
+`<at>` whole, so the person still matches both to their own records and copies the time unchanged. `_lost_entry`
+now gives "the <reason> purge at <iso>, a <kind> selector of source <src>" too, where it put the bare reason first (the
+queue FAIL's detail read "(operator at <iso>, ..."), for the queue FAIL's detail, the "  lost from the queue: " line of
+`purge <selector> --dry-run` and `lost_queue_count_line`; nothing parses that form (the setup report's
+`_GOVERNANCE_LOST_RE` and its fixed phrase stop at "as queued and not done ("). Tests: `test_cli.py`
+`test_an_operator_purge_is_named_the_operator_purge_never_the_purge_operator_c511` (`--reason operator`: the status
+FAIL, both accept-lost lines, and the queue FAIL's redo and its detail, with no "(operator at"), with the existing pins
+moved in `test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stops_the_sync`,
+`test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it`,
+`test_accept_lost_names_how_many_records_a_shared_time_names_and_what_a_glob_record_gives_up`,
+`test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guard`,
+`test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_that_item_clears_it` and `test_governance.py`
+`test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

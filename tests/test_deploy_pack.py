@@ -6353,10 +6353,11 @@ paragraph and C322's two-side tail at §16.190's status-and-doctor paragraph."""
 _ROUND_31_B_PARAGRAPH_AMENDS = (
     ("16.205", "C345 and the lost list's stop kind (ruling 40): status prints", "§16.210 C539"),
     ("16.205", "Known residual: an upstream-deleted purge that erased a page", "§16.210 C561"),
+    ("16.205", "C370 with C312, C350, C389 (ruling 35): a queued purge the queue lost", "§16.210 C511"),
 )
 """Round 31 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C539's unread purge record at §16.205's C345 paragraph, and C561's erased
-lost record at its C370 paragraph's known residual."""
+lost record at its C370 paragraph's known residual, and C511's purge name at that paragraph's redo words."""
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),
