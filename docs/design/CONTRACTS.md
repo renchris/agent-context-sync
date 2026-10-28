@@ -12313,7 +12313,7 @@ Amended 2026-10-14, §16.80 K5: the line is one sentence, `- re-read, per source
 source(s) with a record (<labels>); nothing is left to read again, none failed or was given up, and no read was cut
 off when a cycle died (measured against run <id>, the newest run that records what its re-read looked for; it had an
 engine).`, and the kinds of file a re-read looks at are said in the table's lead only.
-Amended 2026-10-28, §16.208 C512: the run clause reads `the newest run that says what its re-read looked for`, so a
+Amended 2026-10-28, §16.208 C502, C512: the run clause reads `the newest run that says what its re-read looked for`, so a
 hold value "Records" cuts none of it (ruling 55).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
@@ -34495,7 +34495,7 @@ already makes. The shell report's bare-path pairs are lane RB's (§16.209). Test
 with their new words.
 
 **Every hold word is agentsync's own where agentsync prints it** (C502 with C512, C533, C563; ruling 55;
-`src/agentsync/setup_report.py`, `scripts/install.sh`). Ruling 39 kept `audit` whole; a hold reason or owner that is
+`src/agentsync/setup_report.py`, `scripts/install.sh`; dated line at §16.40 N37). Ruling 39 kept `audit` whole; a hold reason or owner that is
 record, records, legal, review or label still cut agentsync's own words (`waiting on a legal or <value> hold`, `issue
 link (<value> the report first)`, the `(<value>)` origin, `hold-<value>.json`, `no <value> rules`, `the newest run
 that <value> what its re-read looked for`) and made the report private only, with the value quoted nowhere. As C302
@@ -34504,7 +34504,7 @@ each part into the line it prints (the `(record)` origin's three forms through `
 record's not-a-file, damaged and unread words, the sync-stop line's `file=hold-record`), and `_FIXED_VALUE_PHRASES`
 gains each printed clause whole, never a bare word and none with `|`; never-printed literals (regex sources, word
 lists, dict keys, the manifest's SQL, the OCR filter's Lua, the docs repo's README and skill text) are skipped by
-name. The re-read sentence reads `the newest run that says what its re-read looked for` (dated line at §16.80 K5), and
+name. The re-read sentence reads `the newest run that says what its re-read looked for` (the §16.40 N37 dated line), and
 the per-source re-read table's cell for a source with no re-read record reads `not recorded`, not `no record`: a
 bare two-word cell could only be kept by a fragment phrase, which would leave a person's own `no record` whole.
 A phrase is three words or more, or holds a mark no prose has (`.`, `_`, `=`, `/`, `(`, `:`, `'`, `-`).
@@ -34575,7 +34575,7 @@ or `not searched yet`), `test_the_guides_purge_queue_row_names_the_sections_part
 `test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start`.
 
 **The Repeat conversions note on a waiting converter takes no pronoun from a sum** (C527;
-`src/agentsync/setup_report.py`; dated line at the round 19 W52/W68 entry). One run of one file read `run 14, 1 file.
+`src/agentsync/setup_report.py`; dated line at §16.140 W52). One run of one file read `run 14, 1 file.
 Nothing read them, so they are in no column above`. Choosing `it` from the runs' total would be wrong too: a file
 whose converter cannot start is counted again in each run it still waits in, so two runs of `1 file` are most likely
 one file. The sentence reads `No run reads a file waiting for its converter, so none is in a column above`, true for
