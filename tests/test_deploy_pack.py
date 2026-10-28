@@ -6367,13 +6367,15 @@ _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.205", "C326 (the lead's ruling: K and its words unchanged): under a label rule", "§16.210 C525"),
     ("16.68", "**H12, H35, H50: the waits name STATE.md first", "§16.210 C520"),
     ("16.119", "**S32, S42, S66: after an exclude since the walk", "§16.210 C520"),
+    ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.210 C530"),
 )
 """Round 31 lane B's lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`:
 C560's at the two C394 paragraphs (the report's hooks read through ``manifest.read_only_reads`` at §16.203's,
 the queue split and held read under it at §16.205's), C526's immutable probe at §16.125's state_dir.manifest
 paragraph and §16.149's X78 paragraph, C541's sweep through ``remove_ro_copy`` at §16.205's, and C525's label
 clause at the two C326 paragraphs (§16.203's report half, §16.205's clause and its test's line), and C520's
-stopped sync at §16.68's H12 paragraph (``_named``) and §16.119's S32 paragraph (``_named_since``)."""
+stopped sync at §16.68's H12 paragraph (``_named``) and §16.119's S32 paragraph (``_named_since``), and C530's
+conditional purge clause at §16.205's C381 paragraph."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

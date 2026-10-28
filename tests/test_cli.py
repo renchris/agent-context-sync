@@ -5791,6 +5791,44 @@ def test_a_folder_at_the_hold_list_on_a_mac_that_never_kept_one_puts_back_only_i
     assert want in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("purged", [False, True])
+def test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530(
+    initialised: Config, capsys: pytest.CaptureFixture[str], purged: bool
+) -> None:
+    """B13 round 31 C530 (ruling 60): with no purge record, governance/'s fix said "an erasure, DLP or label
+    purge run earlier is lost with the folder too: the person runs each again by hand" on a Mac that never
+    purged. An absent record never proves no purge ran, so the loss is said only of a purge that was ever run
+    here, with the records owner to ask; a record that names a purge keeps its words."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    if purged:
+        erase = ["purge", "path=projects/sample.txt", "--source", "source", "--reason", "erasure-request"]
+        assert cli.main([*erase, "--config", cfg]) == cli.EXIT_OK
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+        assert governance.recorded_purges(root)
+    else:
+        governance.hold_record_file(root).write_text('{"holds": []}\n', encoding="utf-8")
+        assert not governance.purge_record_file(root).exists()
+    gov = governance.governance_dir(root)
+    if gov.exists():
+        gov.rename(root / "governance.away")
+    gov.write_text("not a folder\n", encoding="utf-8")  # the person's, where governance/ belongs
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err
+    conditional = "so if an erasure, DLP or label purge was ever run here it is lost with the folder too"
+    owner = "the person checks with the records owner, and runs each such purge again by hand before the next"
+    for said in (failed, err):
+        assert "run earlier is lost" not in said and "none is lost" not in said, said
+        if purged:
+            assert "the purges run earlier stay recorded in purge-record.json" in said, said
+            assert conditional not in said, said
+        else:
+            assert conditional in said and owner in said, said
+
+
 def test_both_side_files_not_files_are_named_both_in_statuss_cannot_read_line(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

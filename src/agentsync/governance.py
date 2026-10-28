@@ -692,7 +692,8 @@ def _record_keeps(state_dir: Path) -> str:
     name, since its write is best effort (C324's review); else the holds set earlier go with the folder, and
     the person asks the records owner before any purge (B13 round 29 C199: the clause was said with no record
     left, and the page under a hold on all was erased). Then the purges: kept out from the purge record when
-    it names one, else lost with the folder and run again by hand (B13 round 30 C381; ruling 34)."""
+    it names one, else lost with the folder if one was ever run here, the records owner asked, and run again
+    by hand (B13 round 30 C381; ruling 34; round 31 C530)."""
     if _record_names_a_hold(state_dir):
         # best effort (record_holds), so it can miss one: the records owner's clause stays, by no scope (C324)
         holds = (
@@ -714,9 +715,12 @@ def _record_keeps(state_dir: Path) -> str:
             f"{holds}; the purges run earlier stay recorded in {PURGE_RECORD_NAME}, so the next sync keeps "
             "their items out and refuses until each is put back or accepted)"
         )
+    # an absent or empty record never answers whether a purge ran (its write is best effort, an older build
+    # wrote none, the person can remove it), so the loss is said only of one that was run (B13 round 31 C530)
     return (
-        f"{holds}; no purge record names a purge, so an erasure, DLP or label purge run earlier is lost with "
-        "the folder too: the person runs each again by hand before the next sync)"
+        f"{holds}; no purge record names a purge, so if an erasure, DLP or label purge was ever run here it "
+        "is lost with the folder too: the person checks with the records owner, and runs each such purge "
+        "again by hand before the next sync)"
     )
 
 

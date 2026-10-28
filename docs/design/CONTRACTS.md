@@ -33889,6 +33889,9 @@ read though nothing under the folder is). Tests: `test_cli.py`
 `test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges` (damaged JSON, a folder, mode 0000;
 status and doctor), `test_the_purge_record_never_shrinks_and_an_older_install_gets_it_at_a_passs_end`;
 `test_governance.py` `test_the_purge_record_keeps_a_queued_purge_past_the_folders_loss_and_never_shrinks`.
+Amended 2026-10-28, §16.210 C530: with no record naming a purge the folder's fix now ends "; no purge record names a
+purge, so if an erasure, DLP or label purge was ever run here it is lost with the folder too: the person checks
+with the records owner, and runs each such purge again by hand before the next sync)".
 
 C382 (ruling 34): after governance/'s fix the hold record can be the only record of a hold on all; damaged, its
 fix said restore it or move it aside, `hold` itself refused over it, and after the move `purge docs=` erased the
@@ -34904,6 +34907,20 @@ alarm, after the folders it left, takes the same stop (`cli._cmd_exclude_empty`)
 holds.json a folder: the sync stops, the wait names governance.hold and keeps `exclude-empty work`; `_named_since`'s
 form; a lost hold and no FAIL keep the plain words), `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
+
+C530 (2026-10-28): **governance/'s fix says a purge is lost only if one was ever run here, and sends the person to the
+records owner** (ruling 60; data integrity). With no purge record naming a purge, the governance folder's fix
+(`governance._record_keeps`, in status's governance.hold FAIL and every command's `error: state:` line) said "an
+erasure, DLP or label purge run earlier is lost with the folder too: the person runs each again by hand" on a Mac
+that never purged, naming nobody who could say which purges ran. It now ends "; no purge record names a purge, so if
+an erasure, DLP or label purge was ever run here it is lost with the folder too: the person checks with the records
+owner, and runs each such purge again by hand before the next sync)". It does not split on whether the record is
+there: an absent or empty record never proves no purge ran (its write is best effort, a purge on an older build is
+recorded only at a later pass, the person can remove it), and "none is lost" there would let an erased item come
+back. A record that names a purge keeps its words; `_purges_rewritten`'s tail is unchanged. Test: `test_cli.py`
+`test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530` (an empty hold record, no
+purge record and governance/ a file: status's FAIL and the sync's error say the conditional clause and the records
+owner, never "run earlier is lost" or "none is lost"; after an erasure purge and a sync, the record's words).
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
