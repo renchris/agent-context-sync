@@ -14867,6 +14867,174 @@ def test_a_built_report_leaves_the_manifest_its_wal_and_its_shm_byte_for_byte_c3
     unchanged(db)
 
 
+def test_every_hook_thread_of_a_report_reads_inside_read_only_reads_c560(fake_mac: dict[str, Path]) -> None:
+    """B13 round 31 C560 (ruling 52): build_report runs inside the manifest's ``read_only_reads()``, and a
+    hook runs on a thread of its own, which starts with an empty context: wrapping the report alone left
+    every hook outside it (lane B's reviewer measured ``reads_only()`` False there). :meth:`_Run.call` runs
+    the hook in a copy of the caller's context, so the loop's hook, status's and doctor's read inside it."""
+    seen: list[bool] = []
+
+    def loop_next(_config: Config) -> list[str]:
+        seen.append(manifest_mod.reads_only())
+        return ["NEXT: session done"]
+
+    def status(_config: Config) -> list[str]:
+        seen.append(manifest_mod.reads_only())
+        return ["last runs: none"]
+
+    setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(loop_next=loop_next, status=status)
+    )
+    assert seen == [True, True], seen
+    assert not manifest_mod.reads_only(), "the context ends with the report"
+    with manifest_mod.read_only_reads():
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+        assert r.call(manifest_mod.reads_only, timeout=5.0) is True
+    # a status line that says the manifest was not read is no sync measured either way (unknown)
+    r = setup_report._Run(
+        fake_mac["config"],
+        setup_report.ReportHooks(
+            status=lambda _c: ["loop: installed", f"last runs: {manifest_mod.BUSY_READ_NOTE}"]
+        ),
+        12.0,
+    )
+    setup_report._status_section(r)
+    assert r.facts.loop is not None and r.facts.loop[2] is None, r.facts.loop
+
+
+@pytest.mark.usefixtures("roomy_budget")
+def test_a_report_with_the_real_hooks_leaves_the_manifest_byte_for_byte_c560(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 31 C560 (ruling 52): ruling 36's unchanged-bytes test built the report with no hooks, so the
+    hooks' own reads (doctor's manifest checks, status's ``last runs``, the loop's NEXT, the held queue) still
+    migrated, chmodded or switched to WAL a manifest an older build left. With ``cli._report_hooks()`` over
+    the seven states, the manifest, its -wal and its -shm are byte for byte as before, and no ``.pre-v`` copy
+    or ``.ro-copy-`` folder is left beside it; a manifest at a newer schema is still an error, never the
+    read-only reads' "not read yet" note."""
+    cfg = fake_mac["config"]
+    up = governance.PurgeReason.UPSTREAM_DELETED
+    day = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
+    hooks = cli._report_hooks()
+
+    def seeded(*, ran: bool = True) -> Path:
+        seed = Seed(cfg)
+        _one, inbox, _two = seed.ids()
+        seed.item(inbox, "merger.eml")
+        if ran:
+            seed.run(1, {}, day="2026-10-01")
+        seed.close()
+        governance.enqueue_purge(
+            seed.config.state_paths.root,
+            governance.PurgeSelector(source_id=inbox, stable_id="id-000001"),
+            up,
+            now=day,
+        )
+        return expand(seed.config.state_paths.db)
+
+    def fresh() -> None:
+        db = expand(load_config(cfg).state_paths.db)
+        for leftover in db.parent.glob(db.name + "*"):
+            if leftover.is_dir():
+                leftover.rmdir()
+            else:
+                leftover.unlink()
+        governance._queue_file(load_config(cfg).state_paths.root).unlink(missing_ok=True)
+
+    def unchanged(db: Path, *, shm_bytes: bool = True) -> str:
+        before = _manifest_bytes(db)
+        text, _red = setup_report.build_report(cfg, hooks=hooks)
+        after = _manifest_bytes(db)
+        if not shm_bytes:  # the -shm's mode and mtime only: see state 4
+            shm = db.name + "-shm"
+            before[shm], after[shm] = before[shm][1:], after[shm][1:]
+        changed = {
+            k: (before.get(k), after.get(k)) for k in {*before, *after} if before.get(k) != after.get(k)
+        }
+        assert not changed, changed
+        left = [
+            p.name
+            for p in db.parent.iterdir()
+            if p.name.startswith((manifest_mod.RO_COPY_PREFIX, db.name + ".pre-v"))
+        ]
+        assert left == [], left
+        return text
+
+    def older(db: Path, key: str, value: str = "0") -> None:
+        conn = sqlite3.connect(db)
+        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("UPDATE meta SET value = ? WHERE key = ?", (value, key))
+        conn.commit()
+        conn.close()
+        db.chmod(0o644)
+
+    for key in ("key_schema_version", "manifest_schema_version"):  # 1, 2: an older build's manifest
+        db = seeded()
+        older(db, key)
+        unchanged(db)
+        fresh()
+    db = seeded()  # 3: WAL, no -wal
+    unchanged(db)
+    sync = sqlite3.connect(db)  # 4: a -wal with frames no checkpoint has taken
+    try:
+        sync.execute("PRAGMA wal_autocheckpoint=0")
+        sync.execute(
+            "INSERT INTO runs (run_id, mode, started_at, status, host, pid) VALUES (2, 'poll', "
+            "'2026-10-03T10:00:00Z', 'ok', 'h', 1)"
+        )
+        sync.commit()
+        # doctor's damage probe reads a manifest with a live -wal through sqlite's own mode=ro, and a WAL
+        # reader writes its read marks into the -shm, as the sync's own process does (lane B's file; measured
+        # and sent to lane B): the -shm is compared by mode and mtime here
+        unchanged(db, shm_bytes=False)
+    finally:
+        sync.close()
+    fresh()
+    db = seeded()  # 5: a held queue
+    root = expand(load_config(cfg).state_paths.root)
+    inbox = load_config(cfg).sources[1].id
+    governance.set_hold(root, inbox, reason="Fabrikam review", owner="Avery Quill")
+    unchanged(db)
+    governance.release_hold(root, inbox, owner="Avery Quill")
+    fresh()
+    db = seeded()  # 6: a folder at the -shm
+    db.with_name(db.name + "-shm").mkdir()
+    unchanged(db)
+    fresh()
+    db = seeded(ran=False)  # 7: no run
+    unchanged(db)
+    fresh()
+    db = seeded()  # a newer schema still FAILs, read-only or not
+    older(db, "manifest_schema_version", "99")
+    text = unchanged(db)
+    assert "it was written by a newer agentsync" in text and manifest_mod.SCHEMA_READ_NOTE not in text, text
+
+
+def test_a_private_copy_with_a_folder_this_account_cannot_list_is_removed_c541(tmp_path: Path) -> None:
+    """B13 round 31 C541 (ruling 52): the report's private copy makes a side that is a folder again with its
+    mode, and a 0000 folder at the -shm made the copy's folder impossible to remove, one more beside the
+    manifest each report. The finalizer and the failed open's path remove it through the manifest's own
+    helper, which opens such a folder first."""
+    db = tmp_path / "manifest.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE t (x)")
+    conn.commit()
+    conn.close()
+    side = db.with_name(db.name + "-shm")
+    side.mkdir()
+    side.chmod(0)
+    try:
+        with contextlib.suppress(sqlite3.Error):
+            copy = setup_report._open_private_copy(db, 1.0)
+            copy.execute("SELECT 1").fetchall()
+            copy.close()
+            copy.done()  # type: ignore[attr-defined]
+        left = [p.name for p in tmp_path.iterdir() if p.name.startswith(manifest_mod.RO_COPY_PREFIX)]
+        assert left == [], left
+    finally:
+        side.chmod(0o700)
+
+
 def test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

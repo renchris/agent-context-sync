@@ -33590,6 +33590,10 @@ refuses sqlite's side files too, so the plain open stands there. Test:
 `test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36`, and the manifest without an alias
 table in `test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place` now reads lane B's
 schema words.
+Amended 2026-10-28, §16.208 C560, C541: every hook the report runs (doctor, status, the loop's NEXT) reads inside
+`manifest.read_only_reads()`, not only the queue split, and the copy's folder is removed through
+`manifest.remove_ro_copy`, which opens a side folder this account cannot list first: a plain remove left a 0000
+side folder and its copy beside the manifest.
 
 C304, ruling 43 (2026-10-26): **the not-searched line names the run that keeps the id** (lane B's C318 clause).
 The Purge queue part's `- no row, docs history not searched yet: ...` line ended `and a run keeps one queued
@@ -34647,6 +34651,24 @@ whose converter cannot start is counted again in each run it still waits in, so 
 one file. The sentence reads `No run reads a file waiting for its converter, so none is in a column above`, true for
 any count. Test: `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`, now with
 a one-run, one-file case.
+
+**Every manifest read a report's hooks make is read-only, and the private copy always goes** (C560 with C541;
+ruling 52, the report's half of lane B's `manifest.read_only_reads` and `manifest.remove_ro_copy`;
+`src/agentsync/setup_report.py`; dated line at §16.203 C394). `build_report` runs `_build_report` inside
+`read_only_reads()` (a build without it reads as before), and `_Run.call` runs each hook and probe in
+`contextvars.copy_context()`: a hook runs on a thread of its own, which starts with an empty context, so wrapping
+the report alone left doctor, status and the loop's NEXT outside it (lane B's reviewer measured `reads_only()` False
+in a hook thread). A `last runs:` line that says the manifest was not read (`not read yet` or `not read this
+time`) reads as unknown, never as a sync. `_open_private_copy`'s finalizer and its failed-open path call
+`_remove_copy`, `manifest.remove_ro_copy` through a lazy import with a plain remove as its fallback, so a 0000
+folder at the -shm no longer leaves its copy beside the manifest. Measured, not built: in the one state where a
+live sync holds a -wal with frames, doctor's damage probe (lane B's) reads the manifest through sqlite's own
+`mode=ro`, and a WAL reader writes its read marks into the -shm, as the sync's own connection does; no page, row
+or frame changes, and a private snapshot there would copy the manifest and -wal on every report's doctor run, the
+cost C526's verifier ruled out (lane B's ruling), so the test compares that -shm by mode and mtime. Tests:
+`test_every_hook_thread_of_a_report_reads_inside_read_only_reads_c560`,
+`test_a_report_with_the_real_hooks_leaves_the_manifest_byte_for_byte_c560` (`cli._report_hooks()` over the seven
+states; a newer schema is still an error) and `test_a_private_copy_with_a_folder_this_account_cannot_list_is_removed_c541`.
 
 **A re-screen the mail label reader queued has its own note, and a legacy retry's folder is said** (ruling 53, the
 report's half of lane E's C505 with C517, C518, C524, C544; C506, ruling 54, its report half;

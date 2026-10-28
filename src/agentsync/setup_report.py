@@ -106,6 +106,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import contextvars
 import dataclasses
 import errno
 import functools
@@ -4304,8 +4305,11 @@ class _Run:
         self.last_call_limit = limit
         if limit <= 0.2:
             raise TimeoutError("the report's time budget is used up")
+        # the thread runs in the caller's context, so the manifest's read_only_reads() reaches every hook and
+        # probe (a bare thread starts with an empty one; B13 round 31 C560, ruling 52)
+        context = contextvars.copy_context()
         try:
-            return call_with_timeout(fn, limit, name="setup-report")
+            return call_with_timeout(lambda: context.run(fn), limit, name="setup-report")
         except CallTimedOutError as exc:  # the report names it TimeoutError, as it always has
             raise TimeoutError(str(exc)) from None
 
@@ -4873,10 +4877,22 @@ def _open_private_copy(db: Path, timeout: float) -> sqlite3.Connection:
             f"file:{quote(str(copy))}?mode=ro", uri=True, timeout=timeout, factory=_PrivateCopy
         )
     except BaseException:
-        shutil.rmtree(folder, ignore_errors=True)
+        _remove_copy(folder)
         raise
-    conn.done = weakref.finalize(conn, shutil.rmtree, folder, True)
+    conn.done = weakref.finalize(conn, _remove_copy, folder)
     return conn
+
+
+def _remove_copy(folder: str | Path) -> None:
+    """The private copy's folder removed whole by the manifest's own helper, which first opens a side folder
+    this account cannot list (a 0000 folder at the -shm, made again with its mode), so no copy is left beside
+    the manifest each run (B13 round 31 C541, ruling 52); a plain remove where the build lacks it."""
+    try:
+        from agentsync.manifest import remove_ro_copy  # noqa: PLC0415 - lazy: the report must import
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)
+        return
+    remove_ro_copy(Path(folder))
 
 
 def _private_copy_folder(db: Path) -> str:
@@ -7662,8 +7678,12 @@ def _status(r: _Run) -> list[str]:
         # prints its unread line beside it)
         ran = ["last runs: none" if ln.startswith("manifest: none yet") else ln for ln in lines]
         ran = [ln for ln in ran if ln.startswith("last runs:")]
-        # no "last runs:" line because status could not read the state: unknown, not "no sync" (U7)
-        synced: bool | None = any(ln != "last runs: none" for ln in ran) if ran or unread is None else None
+        # no "last runs:" line because status could not read the state: unknown, not "no sync" (U7); nor
+        # one that says it was not read (lane B's read note under read_only_reads, B13 round 31 C560)
+        noted = any(ln.startswith("last runs: not read") for ln in ran)
+        synced: bool | None = (
+            any(ln != "last runs: none" for ln in ran) if (ran or unread is None) and not noted else None
+        )
         r.facts.loop = (
             baseline.group(1) if baseline else None,
             int(topics.group(1)) if topics else None,
@@ -17155,6 +17175,31 @@ def _late_listing(r: _Run) -> bool:
 
 
 def build_report(
+    config_path: Path | None = None,
+    *,
+    hooks: ReportHooks | None = None,
+    friction_path: Path | None = None,
+    now: datetime | None = None,
+    budget_s: float | None = None,
+) -> tuple[str, Redactor]:
+    """:func:`_build_report` inside the manifest's ``read_only_reads()``: every manifest read the report and
+    its hooks make (doctor, status, the loop's NEXT, the queue split) writes nothing beside the manifest, no
+    migration, chmod, WAL switch, cleared cache or ``.pre-v`` copy (B13 round 30 ruling 36, round 31 ruling
+    52, C560). :meth:`_Run.call` carries the context into each hook's thread. A build without it reads as
+    before."""
+    try:
+        from agentsync.manifest import read_only_reads  # noqa: PLC0415 - lazy: the report must import
+    except Exception:
+        reads: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+    else:
+        reads = read_only_reads()
+    with reads:
+        return _build_report(
+            config_path, hooks=hooks, friction_path=friction_path, now=now, budget_s=budget_s
+        )
+
+
+def _build_report(
     config_path: Path | None = None,
     *,
     hooks: ReportHooks | None = None,
