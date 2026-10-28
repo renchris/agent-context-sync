@@ -7316,6 +7316,30 @@ def test_the_records_page_binds_the_new_start_queue_rules_to_the_kept_reasons() 
     assert "entry stays queued: --forget takes only an " in forget
 
 
+def test_the_purge_queue_row_gives_the_lost_queue_line_and_the_not_judged_line() -> None:
+    """B13 round 31 C535: the Purge queue part prints the queue file's lost purges (round 30 C309), in
+    place of `no purge is queued` over an empty queue and under the table otherwise, and a `no row, not
+    judged:` line per kept-entries line the read-only read could not judge (round 30 ruling 36); the
+    guide's row named neither. It does, in the report's own words, read here."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| Purge queue |")]
+    lost = inspect.getsource(setup_report._lost_queue_line)
+    assert "recorded in the audit trail {verb} not in the queue file " in lost
+    assert "(see Doctor's governance.purge_queue line)" in lost
+    assert (
+        "`- N purges recorded in the audit trail are not in the queue file (see Doctor's"
+        " governance.purge_queue line)`" in row
+    )
+    assert "replaces `no purge is queued` when the queue is empty and otherwise sits under the table" in row
+    assert 'f"- no row, not judged: {line}" for line in waits' in inspect.getsource(setup_report)
+    not_judged = (
+        "`no row, not judged: <line>` is an id with no row that the report's read-only read could not judge"
+    )
+    assert not_judged in row
+    assert "the entry stays queued and is judged after the next sync, or once that FAIL is fixed" in row
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

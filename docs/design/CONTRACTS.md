@@ -35402,3 +35402,15 @@ before the first sync too, leaves the queue once its purge verifies, and `--forg
 01595791a). The bullet now splits the queue by reason before the pinned sentence that opens `After a new start, run`,
 whose words stay. Test: `test_the_records_page_binds_the_new_start_queue_rules_to_the_kept_reasons`, which reads
 `KEPT_REASONS`, `PurgeReason` and `forget_queued`'s refusal from `governance`.
+
+**The guide's Purge queue row gives the lost-queue line and the not-judged line** (C535;
+`docs/deploy/setup-feedback.md`). The setup report's Purge queue part prints `- N purges recorded in the audit trail
+are not in the queue file (see Doctor's governance.purge_queue line)` when the queue file lost purges the audit trail
+records as queued and not done (round 30 C309, §16.203), in place of `no purge is queued` over an empty queue and
+under the table otherwise, and a `- no row, not judged: <line>` line for each kept-entries line its read-only read
+could not judge (round 30 ruling 36, §16.203); the row named neither. Built after lane B's C557 (e9f2676fe), which
+reworded the same row: the row now gives both lines before the sentence that opens `Every other`, and says the
+lost-queue line names no selector, source, reason or time, that a not-judged id stays queued and is judged after the
+next sync or once the FAIL its line names is fixed. Test:
+`test_the_purge_queue_row_gives_the_lost_queue_line_and_the_not_judged_line`, which reads both lines from
+`setup_report`.
