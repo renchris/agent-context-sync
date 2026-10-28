@@ -34503,6 +34503,20 @@ probe is lane RB's. A quoted value is still cut and still makes the report priva
 `test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502` (a built report per reason, the rehearsal's
 reason Legal with owner Records among them, each failing on the round 30 list).
 
+**A step a signal stopped is named by its signal, with no nested bracket** (C516 with C514; ruling 58;
+`src/agentsync/setup_report.py`). A first sync killed by SIGKILL read `failed in 1s, rc 137 (install.log)` in the
+Summary, `failed, rc 137` in its step row and `first-sync (failed, rc 137)` in the Every run table, while install.out's
+error line said `exited 137 (stopped by SIGKILL (signal 9))`; and once the run's report step was logged, its Every run
+row read `report (done) | exit 1 after 17s` and no line named the failed step. One helper beside `_closing_stopped`,
+`_rc_words`, gives a shell's signal exit (128 + N) as `stopped by SIGKILL, rc 137` (`stopped by SIGTERM, rc 143`),
+any other rc as `rc N`, and feeds `_sync_step_words`, `_step_table`, `_reached` and `_run_end`; the end cell adds `,
+first-sync failed, stopped by SIGKILL, rc 137` when the failed step is not the last logged (the sign-in list's failed
+list-folders, the last step it logs, keeps reading `stopped`). Never R81's `(signal 9)` after an rc, which would nest
+in the Summary's `(install.log)` and `_reached`'s bracket (the finder's fix, which the verifier measured worse), and
+the number stays, as install.log keeps it. Standing alone, the closing status keeps `stopped by SIGKILL (signal 9)`.
+Test: `test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516` (137, 143 and 1, before and
+after the report step is logged).
+
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
 Reserved for round 31 lane RB of B13.

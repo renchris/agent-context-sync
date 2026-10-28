@@ -7436,6 +7436,49 @@ def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_su
         assert f"the last exit 0 after 57s, its closing status {words}" in line, line
 
 
+def test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516(tmp_path: Path) -> None:
+    """B13 round 31 C516, C514 (ruling 58): a first sync a signal killed read only `rc 137` in the Summary,
+    its step row and the Every run table, while install.out's error line named SIGKILL; and once the run's
+    report step was logged, its Every run row showed `report (done)` and nothing named the failed step. After
+    an rc or inside a bracket the signal reads `stopped by SIGKILL, rc 137` (`stopped by SIGTERM, rc 143`),
+    never a nested bracket, and the end cell names a failed step that is not the last logged; a plain rc reads
+    as before."""
+    assert setup_report._rc_words("137") == "stopped by SIGKILL, rc 137"
+    assert setup_report._rc_words("143") == "stopped by SIGTERM, rc 143"
+    assert [setup_report._rc_words(rc) for rc in ("1", "2", "128", "200")] == [
+        "rc 1",
+        "rc 2",
+        "rc 128",
+        "rc 200",
+    ]
+    said = (("137", "stopped by SIGKILL, rc 137"), ("143", "stopped by SIGTERM, rc 143"), ("1", "rc 1"))
+    for rc, words in said:
+        step = {"result": "failed", "seconds": "1", "rc": rc}
+        assert setup_report._sync_step_words(step)[0] == f"failed in 1s, {words}"
+        [row] = setup_report._step_table([("first-sync", step)])[2:]
+        assert re.fullmatch(rf"\| first-sync \| +1 \| failed, {words} +\|", row), row
+    run = "2026-10-27T22:15:3{s}Z run=20261027T221534Z-41 "
+    for rc, words in said:
+        lines = [
+            run.format(s=4) + "start install.sh compat=6 commit=0123456789ab kind=checkout source=- "
+            "launchd=simulated args=--source-local x",
+            run.format(s=6) + "step=preflight seconds=2 rc=0 result=done",
+            run.format(s=7) + f"step=first-sync seconds=1 rc={rc} result=failed",
+            run.format(s=8) + "end rc=1 seconds=15",
+        ]
+        report_step = run.format(s=9) + "step=report seconds=1 rc=0 result=done note=agentsync"
+        for logged, reached, end in (
+            (lines, f"first-sync (failed, {words})", "exit 1 after 15s"),
+            ([*lines, report_step], "report (done)", f"exit 1 after 15s, first-sync failed, {words}"),
+        ):
+            log = tmp_path / "install.log"
+            log.write_text("\n".join(logged) + "\n", encoding="utf-8")
+            [one] = setup_report.read_install_runs(log)
+            assert setup_report._reached(one) == reached
+            assert setup_report._run_end(one, [one]) == end
+            assert "(signal" not in reached + end
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)

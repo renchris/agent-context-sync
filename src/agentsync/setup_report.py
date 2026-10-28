@@ -122,6 +122,7 @@ import queue
 import re
 import shlex
 import shutil
+import signal
 import socket
 import sqlite3
 import stat
@@ -6280,6 +6281,20 @@ def _closing_stopped(v: dict[str, str] | None) -> str | None:
     return _exited(128 - int(raw)).removeprefix("was ")
 
 
+def _rc_words(rc: str) -> str:
+    """A logged step's rc after a comma or inside a bracket: ``rc 1``, or for a shell's signal exit (128 + N)
+    ``stopped by SIGKILL, rc 137`` (``stopped by SIGTERM, rc 143``), the signal named as install.sh's error
+    line names it but with no bracket of its own, so a caller's bracket never nests one and install.log's
+    number stays (B13 round 31 C516, C514; ruling 58). Standing alone a signal reads as R81's ``stopped by
+    SIGKILL (signal 9)`` (:func:`_closing_stopped`)."""
+    if rc.isdigit() and 128 < int(rc) < 128 + 65:
+        try:
+            return f"stopped by {signal.Signals(int(rc) - 128).name}, rc {rc}"
+        except ValueError:  # no such signal on this Mac: the number alone
+            pass
+    return f"rc {rc}"
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
     """A run's steps as the Installer table's rows. With ``sign_in`` the run is the list whose sign-in step 1
     asked for, and the attempt went on (:func:`_sign_in_run`): its failed list-folders row reads ``stopped``,
@@ -6292,7 +6307,7 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             result = "stopped"
         rc = v.get("rc", "0")
         if rc not in ("0", ""):
-            result += f", rc {rc}"
+            result += f", {_rc_words(rc)}"
         kept, added = _count(v, "kept"), _count(v, "added")
         # the config step's folder counts, which "(add-source)" alone hid: a run that added no folder read as
         # one that did (B13 round 7 H10); install.sh's note stays, the first-sync label reads it
@@ -6860,7 +6875,7 @@ def _reached(run: InstallRun, *, stopped: bool = False) -> str:
     if stopped and name == "list-folders" and result == "failed":
         result = "stopped"
     return f"{_step_word(name)} ({_step_word(result)}" + (
-        f", rc {rc})" if rc.isdigit() and rc != "0" else ")"
+        f", {_rc_words(rc)})" if rc.isdigit() and rc != "0" else ")"
     )
 
 
@@ -6891,10 +6906,19 @@ def _exit_text(run: InstallRun, runs: Sequence[InstallRun]) -> str:
 def _run_end(run: InstallRun, runs: Sequence[InstallRun]) -> str:
     """The Every run table's end cell: :func:`_exit_text`, and the Summary's words when a signal stopped the
     run's closing status (:func:`_closing_stopped`), so the table never shows such a run as a plain exit 0
-    while its report step's row says it was stopped (B13 round 29 C135)."""
+    while its report step's row says it was stopped (B13 round 29 C135). A failed step that is not the last
+    one logged is said there too, ``, first-sync failed, stopped by SIGKILL, rc 137``: once the report step
+    is logged, :func:`_reached` shows that one, and a run past the last :data:`INSTALL_RUNS_SHOWN` had no
+    other line naming its failed step (B13 round 31 C514, C516; ruling 58)."""
     if run.rc is None:
         return "no end line"
     end = _exit_text(run, runs)
+    failing = run.failed_step()
+    if failing is not None and run.steps and run.steps[-1][0] != failing[0]:
+        rc = failing[1].get("rc", "")
+        end += f", {_step_word(failing[0])} failed" + (
+            f", {_rc_words(rc)}" if rc.isdigit() and rc != "0" else ""
+        )
     closing = _closing_stopped(run.step("report"))
     return f"{end}, its closing status {closing}" if closing is not None else end
 
@@ -14748,7 +14772,7 @@ def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | Non
     counts: tuple[int, int, int] | None = None
     text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
     if v.get("rc", "0") not in ("0", ""):
-        text += f", rc {v['rc']}"
+        text += f", {_rc_words(v['rc'])}"
     note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
     if note is not None:
         if note["c"] is not None:
