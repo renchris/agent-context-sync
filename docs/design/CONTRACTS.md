@@ -34670,6 +34670,17 @@ governance_lost reads it (for lane D's C532). Tests:
 two older builds), `test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole` (the real
 agentsync) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, whose word map takes the new word.
 
+**The shell's late block dedupes on one snapshot of sync-stops.log** (C536; `scripts/install.sh`).
+`fallback_sync_stops late` took the end-second stops the attempt claimed as line numbers from one `tail -n 200` of
+sync-stops.log (its `claimed` pass, in a subshell) and skipped them by number in a second read. Once the log has 200
+lines or more, a sync's O_APPEND between the two reads shifts every number by one: the claimed stop printed in both
+blocks, took the late error's pairing, and the late stop beside it was dropped (display only: the late block never
+feeds the outcome). The late pass now reads the tail once and hands that snapshot to its claimed pass in the
+environment (`FSS_SNAP`, never awk's `-v`, which BSD awk refuses a newline in), so the numbers count in the window
+it reads; setup_report keys the same dedupe on the stop itself and had no race. Test:
+`test_the_late_block_leaves_out_the_claimed_stop_from_the_window_it_reads`, with a 212-line log and a PATH `tail`
+that appends an older line before each read of it.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

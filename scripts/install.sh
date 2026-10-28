@@ -4118,7 +4118,7 @@ attempt_ran_no_install() {
 # display only, never the outcome's count, and nothing when the attempt has no end line. Never the friction log's
 # last write.
 fallback_sync_stops() { # [late|claimed]
-	local f s w v mt late="${1:-}" skip=" "
+	local f s w v mt late="${1:-}" skip=" " snap
 	f="$(friction_file)"
 	s="${SETUP_LOG%/*}/sync-stops.log"
 	[ -f "$f" ] && [ -f "$s" ] || return 0
@@ -4136,7 +4136,18 @@ fallback_sync_stops() { # [late|claimed]
 	# fractional mtime + 1 s
 	mt="$(/usr/bin/stat -f %Fm "$f" 2>/dev/null | LC_ALL=C awk '/^[0-9]+(\.[0-9]*)?$/ { s = int($1); if ($1 + 0 > s) s++; print s }' || true)"
 	[ -z "$mt" ] || mt="$(utc_stamp "$(date -u -r "$mt" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)")"
-	[ "$late" != late ] || mt="" skip=" $(fallback_sync_stops claimed | LC_ALL=C tr '\n' ' ')"
+	# One read of the log's last 200 lines, which the late pass hands to its claimed pass through the environment
+	# (FSS_SNAP, never awk -v, which BSD awk refuses a newline in): the claimed stops' line numbers then count in
+	# the window the late pass reads. A sync appending between two reads of a log of 200 lines or more shifted
+	# every number by one, so a claimed stop printed in both blocks and its neighbour was dropped (B13 round 31
+	# C536; setup_report keys the same dedupe on the stop itself). The trailing x keeps the last newline.
+	if [ -n "${FSS_SNAP+x}" ]; then
+		snap="$FSS_SNAP"
+	else
+		snap="$(tail -n 200 "$s" 2>/dev/null; printf x)"
+		snap="${snap%x}"
+	fi
+	[ "$late" != late ] || mt="" skip=" $(FSS_SNAP="$snap" fallback_sync_stops claimed | LC_ALL=C tr '\n' ' ')"
 	LC_ALL=C awk -v w="$w" -v mt="$mt" -v fr="$f" -v late="$late" -v skip="$skip" "$FRICTION_AWK"'
 		BEGIN {
 			split(w, a, " "); lo = a[1]; last = a[3] != "-" && a[3] > lo ? a[3] : lo
@@ -4255,7 +4266,7 @@ fallback_sync_stops() { # [late|claimed]
 				if (late == "claimed") { if (same[k]) print sln[k]; continue }
 				print srow[k] (k in sdet ? "/" sdet[k] : ""), (k in fl ? fl[k] : "-")
 			}
-		}' "$f" - < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
+		}' "$f" - < <(printf '%s' "$snap") 2>/dev/null || true
 }
 # The words of one of those stops, as setup_report._sync_stop_line gives a stop it could not pair: the file by
 # its role (_SYNC_STOP_FILES; an unknown one is a state file), what met it by its kind, then that whether a

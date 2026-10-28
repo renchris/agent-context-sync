@@ -6780,6 +6780,60 @@ def test_a_stop_in_the_end_lines_second_is_the_attempts_when_it_claims_an_error(
         assert lines[0] in text.split(f"\n{_LATE_HEAD}\n\n", 1)[1], text
 
 
+@pytest.mark.parametrize("grows", [False, True])
+def test_the_late_block_leaves_out_the_claimed_stop_from_the_window_it_reads(
+    env: dict[str, str], tmp_path: Path, grows: bool
+) -> None:
+    """B13 round 31 C536: `fallback_sync_stops late` took the claimed end-second stops as line numbers from
+    one `tail -n 200` of sync-stops.log and skipped by them in a second read. Past 200 lines, a sync's append
+    between the reads shifted every number by one: the claimed stop printed in both blocks, stole the late
+    error's pairing, and the late stop beside it was dropped. One read now serves both passes. A `tail` that
+    appends an older line to the log before each read it makes of it forces the race."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    (state / "heartbeat.json").write_text('{"project-alpha": {"run_id": 3}}', encoding="utf-8")
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        _PAIR_HEAD
+        + "2026-10-14T10:05:00Z | step 3 | error | agentsync sync exited 1 | -\n"
+        + "2026-10-14T10:05:00Z | end | finished\n"
+        + "2026-10-14T10:05:40Z | step 3 | error | agentsync sync exited 1 | -\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:00:10Z run=20261014T100010Z-1 start install.sh compat=33 commit=- kind=- source=- "
+        "args=\n2026-10-14T10:00:50Z run=20261014T100010Z-1 end rc=0\n"
+    )
+    filler = "2026-10-01T00:00:00Z sync-stop file=lock rc=1 owner=agent\n"
+    stops = setup / "sync-stops.log"
+    stops.write_text(
+        filler * 210
+        + "2026-10-14T10:05:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+        + "2026-10-14T10:05:10Z sync-stop file=heartbeat rc=1 owner=person kind=lost\n"
+    )
+    run_env = dict(env)
+    if grows:  # a sync appending while the report reads the log
+        stub = tmp_path / "stub-bin"
+        stub.mkdir()
+        (stub / "tail").write_text(
+            '#!/bin/bash\nfor a in "$@"; do last="$a"; done\n'
+            f"case \"$last\" in */sync-stops.log) printf '%s' '{filler}' >>\"$last\" ;; esac\n"
+            'exec /usr/bin/tail "$@"\n'
+        )
+        (stub / "tail").chmod(0o755)
+        run_env["PATH"] = f"{stub}:{env['PATH']}"
+    assert install_sh(run_env, "--report-only").returncode == 0
+    if grows:
+        assert stops.read_text().count(filler) > 211, "the stub tail ran on the log"
+    text = report_path(env).read_text()
+    inside = "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
+    attempt = text.split(f"\n{inside}\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    late = text.split(f"\n{_LATE_HEAD}\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert len(attempt) == 1 and "on agentsync's state file" in attempt[0] and "(F4, " in attempt[0], attempt
+    assert len(late) == 1 and "on agentsync's heartbeat file" in late[0], late
+    assert "(F6, " in late[0], late
+
+
 def test_the_shell_stop_files_are_the_agentsync_reports() -> None:
     """B13 round 30 ruling 41 (C334, C347, C367): lane B's sync records a stop on hold-record.json as
     `file=hold-record`, which fallback_sync_stop_line read as "a state file". Its table names it "agentsync's
