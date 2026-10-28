@@ -92,13 +92,14 @@ is a copy that no purge reaches, so exclude it too.
   in the page's front matter and the entry's own reason, the one `agentsync purge --queue --dry-run` shows for it
   (`upstream-deleted` leaves the file free to sync again if it comes back, `label-escalation` keeps it out), then
   run it without `--dry-run`; `agentsync purge docs=<page path> --reason <its reason>`, which erases every page
-  ever at that path, a live one too, is the last resort. The entry stays queued after either: once a run of
-  `agentsync purge --queue` (not `--dry-run`, which records nothing) has kept it and no page is left,
-  `agentsync purge --queue --forget id=<the queued id> --source <its source>` takes it off, with an audit line,
-  and nothing else does. The queued id is not the page's id: copy this command from the entry's `note:` line in
-  `agentsync purge --queue --dry-run`, which prints it with the queued id filled in. `agentsync hold` and its
+  ever at that path, a live one too, is the last resort. The entry stays queued after either: once no page is
+  left, `agentsync purge --queue --forget id=<the queued id> --source <its source>` takes it off, with an audit
+  line, and nothing else does. Unless a run of the queue already found nothing for the entry, it looks the entry
+  up in the docs history itself, as a run of the queue does, so no run is needed first, and it refuses while the
+  id still reaches a page or a hold covers the source. The queued id is not the page's id: copy this command from
+  the entry's `note:` line in `agentsync purge --queue --dry-run`, which prints it with the queued id filled in. `agentsync hold` and its
   release still work (B13 round 26 E25, ruling 14; B13 round 27 P111; B13 round 28 I92, I93; B13 round 29 C193,
-  C173, C189, C201; B13 round 30 C371, C378).
+  C173, C189, C201; B13 round 30 C371, C378; B13 round 31 C565).
 - **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
   `no longer holds` a purge the audit trail records `as queued and not done`, each named
   `the <reason> purge at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back

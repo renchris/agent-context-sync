@@ -4704,6 +4704,9 @@ _RETIRED_TEST_NAMES = {
     "test_the_reports_purge_queue_says_a_purge_after_a_new_start_is_not_resolvable": (
         "§16.193 I2's §16.198 C123 dated line"
     ),
+    "test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up": (
+        "§16.205 C371's §16.210 C565 dated line"
+    ),
 }
 """Test names CONTRACTS.md cites as history: a dated line beside each says the test is gone or replaced."""
 
@@ -6847,6 +6850,10 @@ def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:
     kept = {governance.PurgeReason.UPSTREAM_DELETED, governance.PurgeReason.LABEL_ESCALATION}
     assert set(governance.KEPT_REASONS) == kept
     assert "takes an `upstream-deleted` or `label-escalation` entry off, with an audit line" in row
+    # a marked entry is forgotten with no look-up of its own; only an unmarked one is looked up (C565)
+    assert "after looking it up as a run of the queue does" not in row
+    assert "with no look-up of its own, since a run of the queue already found nothing for it" in row
+    assert "an entry no run has marked it looks up as a run of the queue does" in row
     assert "--reason <its reason>` erases a page by hand" in row
     # no trace: the new start's cause; no alias table only on its own line
     from collections import Counter  # noqa: PLC0415
@@ -7601,11 +7608,12 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
             reason=reason,
             enqueued_at="2026-10-25T00:00:00Z",
         )
-        for dry_run in (False, True):  # the dry run's note too, which the page points to (B13 round 30 C378)
-            note = governance.unresolved_note(queued, dry_run=dry_run)
-            assert f"{by_hand} --reason {reason.value}`" in note, note
-            assert "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
-            assert "purge --queue --forget id=contoso-volume:0042 --source contoso`" in note, note
+        note = governance.unresolved_note(
+            queued
+        )  # the dry run's note too, the page points to it (C378, C565)
+        assert f"{by_hand} --reason {reason.value}`" in note, note
+        assert "git log --all --name-only -- mirror/contoso/" in note and "last resort" in note
+        assert "purge --queue --forget id=contoso-volume:0042 --source contoso`" in note, note
     assert "`git log --all --name-only -- mirror/<source>/`" in bullet
     # the page's id and the queued id are named apart: they differ for an entry kept until it is found (C378)
     page_id = "`agentsync purge id=<the page's id> --source <its source> --reason <its reason> --dry-run`"
@@ -7615,6 +7623,12 @@ def test_the_records_page_says_what_the_queue_does_after_a_new_start() -> None:
     assert (
         "The queued id is not the page's id: copy this command from the entry's `note:` line in"
         " `agentsync purge --queue --dry-run`, which prints it with the queued id filled in." in bullet
+    )
+    # a marked entry is forgotten with no look-up: the look-up and its refusals are an unmarked one's (C565)
+    assert "line, and nothing else does. It looks the entry up" not in bullet
+    assert (
+        "Unless a run of the queue already found nothing for the entry, it looks the entry up in the docs"
+        " history itself" in bullet
     )
     assert "id=<its id>" not in bullet
     assert (

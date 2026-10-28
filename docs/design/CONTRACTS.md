@@ -34162,6 +34162,9 @@ entry beside an unmarked upstream deletion of the same id never says the id can 
 case), and refuses a kind outside `KEPT_REASONS` with `not forgotten: a <reason> entry stays queued: --forget takes
 only an upstream-deleted or label-escalation entry a queue run found nothing for; ... purge --queue runs it` (`an`
 before a reason that opens with a vowel). Test: `test_forget_refuses_a_kind_it_never_takes_by_that_reason`.
+Amended 2026-10-28, §16.210 C565: the refusal's tail reads `--forget takes only an upstream-deleted or
+label-escalation entry whose id reaches nothing in the docs history; ... purge --queue runs it`, as forget now looks an
+entry up itself; the test's same-id case is a listed file's upstream deletion beside a DLP entry.
 
 C371 (ruling 43): the dry run stays read-only, and its note and forget's refusal say that only `purge --queue`
 itself looks an entry up. A preview that found nothing for an entry's id printed `unresolved_note`, ending in a
@@ -34179,6 +34182,11 @@ saving `found_nothing` from a dry run is refused, as a preview would become an a
 `test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up` (manifest, queue and audit
 trail the same bytes after the preview; the refusal, then the run, then the forget),
 `test_a_queued_purge_whose_id_reaches_nothing_in_history_is_kept_never_verified` (each run's own note).
+Amended 2026-10-28, §16.210 C565: the verifier's optional `--forget` that runs its own probe is built, and the
+`dry_run` variants of `unresolved_note` and `unresolved_purges` are gone: a preview prints the run's words, and
+forget's refusal of an unmarked entry is the look-up's own. The dry run still records nothing. The test is
+`test_a_preview_that_finds_nothing_records_nothing_and_its_forget_takes_the_entry_off`, which replaced
+`test_a_preview_that_finds_nothing_records_nothing_and_says_only_the_run_looks_it_up`.
 
 C346 (ruling 43): `purge --queue` says `while its file is listed` only of listed entries, with its own words for a
 source no sync will list. After a new start, an entry whose source no sync had listed read `not judged yet: no sync
@@ -35017,6 +35025,42 @@ moved in `test_a_suppression_list_that_lost_an_erased_item_keeps_it_out_and_stop
 `test_a_lost_glob_purge_whose_glob_the_list_still_holds_gives_up_no_glob_guard`,
 `test_a_lost_queued_id_purge_names_its_rebuilt_command_and_only_a_purge_of_that_item_clears_it` and `test_governance.py`
 `test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+
+C565 (2026-10-28): **`purge --queue --forget` looks an unmarked entry up itself, as the queue's run does, and
+forgets it only when that dry look-up finds nothing** (C565, ruling 62; `agentsync.governance`; amends §16.205 C358
+and C371). Forget refused an `upstream-deleted` or `label-escalation`
+entry no real `purge --queue` had marked `found_nothing`, and that run has no per-entry mode, so taking one entry off
+ran every other runnable queued erasure first (round 31's verifier reproduced it: an operator purge beside it ran).
+Round 30 left C371's half (4) unbuilt on a scope ruling that measured no harm. `forget_queued` now calls
+`_forget_probe` for an unmarked kept entry, under its own writer lock (none for `--dry-run`, as the queue's preview):
+`_kept_queued` and `_probed` as `run_purge_queue` judge it (a kept note refuses with its words); then
+`purge(dry_run=True, lock=False, ids=<stored aliases>)`, which reads the holds first, whose `HoldActiveError` refuses
+with the hold's words (`not forgotten: stays queued: purge suspended by legal/records hold: ...`) and any other
+`GovernanceError` with `_HELD_WHY`, its text to the log as the run does. C178's short-circuit (a live item the manifest
+names outside the stored aliases) is not copied: it saves the run a second history walk, and in forget, before any
+hold was read, it refused with `its id reaches a page; ~/.local/bin/agentsync purge --queue runs it` under a hold that
+keeps the entry (rulings 19, 32; round 31's review measured it on a refused row under a hold on its source, where
+`purge --queue --dry-run` gave the hold's words); the dry purge targets that live item, so with no hold it is refused
+as reaching a page all the same. A dry purge that targets anything refuses with `not forgotten: stays queued: its id
+reaches a page; ~/.local/bin/agentsync purge --queue runs it`, and one whose item an earlier purge erased
+(`_erased_before`) with `not forgotten: stays queued: an earlier purge erased its page; ~/.local/bin/agentsync purge
+--queue runs it and takes it off the queue`. Only then is the entry forgotten: the queue and one `purge-forgotten` line,
+nothing else. A marked entry is forgotten as before; a DLP, erasure or operator entry is still refused by its kind
+(C358). The guide's Purge queue row and data-governance.md say forget looks an entry up itself unless a run of the
+queue already found nothing for it (`Unless a run of the queue already found nothing for the entry, it looks the entry
+up in the docs history itself`; the row's found-nothing clause: `with no look-up of its own, since a run of the queue
+already found nothing for it`), as `test_the_records_page_says_what_the_queue_does_after_a_new_start` and
+`test_the_guides_purge_queue_row_names_the_sections_parts` pin. Tests:
+`test_forget_looks_an_entry_up_itself_and_runs_no_other_queued_purge` (after a preview, the found-nothing entry goes,
+the operator purge stays queued, its page and the docs repo's HEAD unchanged, the trail one `purge-forgotten` line
+longer), `test_forget_refuses_an_entry_whose_id_reaches_a_page` (a refused row, and no row with the page in history;
+queue, HEAD and trail unchanged, `--dry-run` too; one dry purge each),
+`test_forget_of_an_entry_whose_id_reaches_a_page_under_a_hold_says_the_queue_runs_words` (a refused row under a hold
+on its source, on all, a lost hold and a hold list that cannot be read: forget's words are the preview's, and no
+`purge --queue`), `test_forget_under_a_hold_on_its_source_refuses_with_the_hold`,
+`test_forget_dry_run_looks_an_entry_up_and_writes_nothing` (every state file the same bytes and times),
+`test_a_preview_that_finds_nothing_records_nothing_and_its_forget_takes_the_entry_off`,
+`test_forget_refuses_a_kind_it_never_takes_by_that_reason`.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 
