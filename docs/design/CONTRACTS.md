@@ -34697,6 +34697,20 @@ and the lost-hold FAIL print it;` before `a number can be missing`, rewrapped to
 and §16.204). Tests: `test_the_shell_legend_names_a_holds_scope_that_no_source_names`, forced to the shell fallback
 with a hold on a matter name, and `test_the_folder_legend_names_a_project_folder_only_where_one_is_shown`.
 
+**The shell probe for every hold word** (C502 with C512, C533, C563, the shell half of lane RA's phrases; ruling 55;
+`tests/test_install_oneshot.py`). Lane RA's 9352cc83e, cb6351eeb and 392cdecb1 put every printed agentsync clause
+holding record, records, legal, label or review into both `_FIXED_VALUE_PHRASES` and install.sh's copy. The shell's
+rows of `_FIXED_PHRASE_LINES` gain one owner for each word, with agentsync's own clauses (the `(record)` origin,
+`waiting on a legal or records hold`, `suspended by legal/records hold: `, `the person (the records or legal owner)`,
+`## Legal / records holds`, `withheld by label rule`, `- [policy] label rule: `, `issue link (review the report
+first)`, `cited by (review by hand): `) and one line that quotes the value, which is still cut; redact_stream keeps
+each clause whole, as the agentsync report does, in the C locale and under en_US.UTF-8. The probe holds `all` with
+each word as its reason and runs the forced fallback over status's lines: no `<value>`, and the report stays public
+with its issue link. Without lane RA's lists all fifteen new cases fail. The C507 tail's `while its records keep a
+hold as set and not released` is install.sh's own and reaches no report line, so it joins no list. Tests:
+`test_a_hold_value_inside_a_fixed_phrase_stays_in_both_readers` (Record, Records, Legal, Label, Review) and
+`test_a_hold_word_keeps_the_shell_report_public_over_agentsyncs_own_clauses`.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

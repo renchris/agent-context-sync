@@ -3216,11 +3216,39 @@ _FIXED_PHRASE_LINES = {
         "the hold list lost a hold that the audit trail or the hold record keeps",
         "Audit said the hold stays on",
     ],
+    # B13 round 31 ruling 55 (C502 with C512, C533, C563): the five hold words, each in agentsync's own
+    # clauses as lane RA's FIXED_VALUE_PHRASES hold them whole, and one line that quotes the value
+    "Record": [
+        "HOLD: hold all (record): lost from the hold list, owner not shown",
+        "[FAIL] governance.hold_record — the hold record cannot be read (fix: restore it from a copy)",
+        "- re-read: no source has a record, and no file on this Mac",
+        "Record said the hold stays on",
+    ],
+    "Records": [
+        "WAITING ON YOU: 1 queued purge waiting on a legal or records hold",
+        "purge refused: suspended by legal/records hold: all",
+        "Records said the hold stays on",
+    ],
+    "Legal": [
+        "the person (the records or legal owner) first sets each hold it named again",
+        "## Legal / records holds",
+        "Legal said the hold stays on",
+    ],
+    "Label": [
+        "notes.pdf: withheld by label rule",
+        "- [policy] label rule: 2 ids",
+        "Label said the hold stays on",
+    ],
+    "Review": [
+        "issue link (review the report first): https://example.invalid/new",
+        "cited by (review by hand): 2 pages",
+        "Review said the hold stays on",
+    ],
 }
 
 
 @pytest.mark.parametrize("lang", [None, "en_US.UTF-8"])
-@pytest.mark.parametrize("owner", ["IT", "Page", "Audit"])
+@pytest.mark.parametrize("owner", ["IT", "Page", "Audit", "Record", "Records", "Legal", "Label", "Review"])
 def test_a_hold_value_inside_a_fixed_phrase_stays_in_both_readers(
     tmp_path: Path, owner: str, lang: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3262,6 +3290,28 @@ def test_an_it_hold_keeps_the_shell_report_public_over_agentsyncs_own_phrase(
         assert private in text and setup_report.ISSUE_URL not in text, text
     else:
         assert private not in text and setup_report.ISSUE_URL in text, text
+
+
+@pytest.mark.parametrize("word", ["Record", "Records", "Legal", "Label", "Review"])
+def test_a_hold_word_keeps_the_shell_report_public_over_agentsyncs_own_clauses(
+    env: dict[str, str], folder: Path, wheel: Path, word: str
+) -> None:
+    """B13 round 31 ruling 55 (C502 with C512, C533, C563; lane RA's phrases, the shell probe): a hold whose
+    reason is one of the five hold words cut agentsync's own clauses holding it, the shell's own `issue link
+    (review the report first)` among them, to <value>, and made the report private with no issue link.
+    Forced to the shell fallback with a hold on `all` and status's own lines, no <value> is written and the
+    report stays public."""
+    state = Path(env["HOME"]) / "Library" / "Application Support" / "agentsync" / "governance"
+    state.mkdir(parents=True)
+    hold = {"owner": "Quinn Avery", "reason": word, "scope": "all", "set_at": "2026-10-21T09:00:00Z"}
+    (state / "holds.json").write_text(json.dumps({"holds": [hold]}), encoding="utf-8")
+    said = "\n".join(_FIXED_PHRASE_LINES[word][:-1])
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    assert "<value>" not in text, text
+    assert "\nPrivate only: " not in text and setup_report.ISSUE_URL in text, text
 
 
 def test_two_hold_words_the_shell_report_shows_make_its_private_line_plural(
