@@ -10001,10 +10001,12 @@ def _split_lines(
             if n == 1
             else "leaves queued any whose id is found nowhere"
         )
+        # B13 round 31 C510: the real run, which the dry run is not, is the one that has not searched yet; a
+        # dry run searches but records nothing, so the head never says the history is unsearched after one
         out.append(
-            f"- no row, docs history not searched yet: {_plural(n, 'queued purge')} from before the new "
-            f"start; `{bin_} purge --queue --dry-run` looks {ids} up in the docs history first, and "
-            f"`{bin_} purge --queue` {kept}"
+            f"- no row, no real queue run has searched the docs history yet: {_plural(n, 'queued purge')} "
+            f"from before the new start; `{bin_} purge --queue --dry-run` looks {ids} up and records "
+            f"nothing, and `{bin_} purge --queue` {kept}"
         )
     n = split["found nothing"]
     if n:

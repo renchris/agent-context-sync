@@ -10647,7 +10647,10 @@ def test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start(
     _new_start(initialised, tmp_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     part = _purge_section(initialised)
-    assert "- no row, docs history not searched yet: 1 queued purge from before the new start; " in part, part
+    assert (
+        "- no row, no real queue run has searched the docs history yet: 1 queued purge from before the new "
+        "start; " in part
+    ), part
     assert "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere" in part, part
     assert "- no trace: 1 queued id has no row and is no alias." in part, part
     assert "a purge that already ran, an erasure, or a new start (an entry queued before" in part, part
@@ -10661,7 +10664,7 @@ def test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start(
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
     part = _purge_section(initialised)
     assert f"- no row, found nothing in the docs history: {governance.unresolved_purges(1)}" in part, part
-    assert "- no row, docs history not searched yet" not in part and "not resolvable" not in part, part
+    assert "- no row, no real queue run has searched" not in part and "not resolvable" not in part, part
 
 
 @pytest.mark.parametrize("between", ["init", "add-source", "dry-run"])

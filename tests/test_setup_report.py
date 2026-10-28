@@ -14573,16 +14573,22 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
     assert [ln for ln in lines if "not looked up yet" in ln] == [], lines
     [head] = [ln for ln in lines if ln.startswith("- no row, ")]
     assert head == (
-        "- no row, docs history not searched yet: 1 queued purge from before the new start; "
-        "`~/.local/bin/agentsync purge --queue --dry-run` looks its id up in the docs history first, and "
+        "- no row, no real queue run has searched the docs history yet: 1 queued purge from before the new "
+        "start; `~/.local/bin/agentsync purge --queue --dry-run` looks its id up and records nothing, and "
         "`~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere"
-    ), head  # lane B's C318 ending (round 30 ruling 43), singular and plural
+    ), head  # lane B's C318 ending (round 30 ruling 43), singular and plural; B13 round 31 C510's head
+    # B13 round 31 C510: a dry run searches the history and records nothing, so the head names the real run
+    # as the one that has not searched yet, and never the `not looked up` column's words (C304)
+    assert "not looked up" not in head and "not searched yet" not in head, head
     [two] = setup_report._split_lines(
         Counter({"not looked up yet": 2}), "agentsync", lambda n: "", lambda n: ""
     )
     assert two.endswith(
-        "looks their ids up in the docs history first, and `agentsync purge --queue` leaves queued any whose "
-        "id is found nowhere"
+        "looks their ids up and records nothing, and `agentsync purge --queue` leaves queued any whose id is "
+        "found nowhere"
+    ), two
+    assert two.startswith(
+        "- no row, no real queue run has searched the docs history yet: 2 queued purges "
     ), two
     assert [ln for ln in lines if ln.startswith("- no trace: 1 queued id has no row")], lines
     assert len(lines) == 2, lines

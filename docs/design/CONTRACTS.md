@@ -33241,6 +33241,9 @@ are what the manifest holds now and the split is governance's judgment, and `_pu
 as `no row` less the split. `_SPLIT_KINDS` and governance's `NOT_LOOKED_UP` keep their names, since status and the
 dry run read them. The guide's Purge queue row and its test give the new heads (§16.198, §16.202 amended). Test:
 `test_the_purge_queues_split_heads_name_their_no_row_column_c304`.
+Amended 2026-10-28, §16.208 C510: the middle head reads `- no row, no real queue run has searched the docs history
+yet: ...`, since a dry run searches the history and records nothing, and its tail says the dry run `looks its id up
+and records nothing`; no head holds `not looked up`.
 
 C336 (2026-10-26): **the no-trace line names `--forget` only for the entries a run looks up** (C336; ruling 43;
 amends §16.198 C188). The line
@@ -34551,6 +34554,20 @@ its governance.hold [FAIL] line gives the person's fix`, which status itself nev
 naming `agentsync status` in the report; the NEXT keeps `is the person's, not a step for the agent`, which the report
 counts a person's stop by, and sync, curate and STATE.md keep their form. Test:
 `test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508`.
+
+**The Purge queue's no-row head names the real run as the one that has not searched** (C510, built as its verifier
+corrected it; `src/agentsync/setup_report.py`; dated line at §16.203 C304). Right after `purge --queue --dry-run` had
+found the queued page in the docs history, the next report still read `- no row, docs history not searched yet: 1
+queued purge from before the new start`: the head is chosen from governance's state, which a dry run never writes.
+The finder's `not looked up by a queue run yet` would bring back the phrase C304 removed (one phrase with two meanings
+beside the `not looked up` column), so the head reads `- no row, no real queue run has searched the docs history yet:
+N queued purge(s) from before the new start; `~/.local/bin/agentsync purge --queue --dry-run` looks its id up and
+records nothing, and `~/.local/bin/agentsync purge --queue` leaves it queued if that id is found nowhere`; the dry run
+stays read-only and `_SPLIT_KINDS` and `NOT_LOOKED_UP` keep their names. The guide's Purge queue row
+(`docs/deploy/setup-feedback.md`), `tests/test_deploy_pack.py`'s head tuple and test_cli's pins move with it. Tests:
+`test_the_purge_queues_split_heads_name_their_no_row_column_c304` (which now asserts no head holds `not looked up`
+or `not searched yet`), `test_the_guides_purge_queue_row_names_the_sections_parts` and
+`test_the_reports_purge_queue_takes_the_queues_split_after_a_new_start`.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
