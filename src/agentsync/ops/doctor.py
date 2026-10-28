@@ -57,8 +57,11 @@ from agentsync.manifest import (
     LOST_MANIFEST_SHORT,
     LOST_MANIFEST_UNREAD,
     Manifest,
+    ManifestBusyError,
+    ManifestNotCurrentError,
     lost_words,
     manifest_lost,
+    read_note,
 )
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
@@ -3543,6 +3546,8 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
             return []
         with Manifest(db) as manifest:
             pairs = manifest.shared_canonical_counts(ids)
+    except (ManifestNotCurrentError, ManifestBusyError) as exc:  # under manifest.read_only_reads (C560)
+        return [_ok("sources.shared_content", read_note(exc))]
     except (OSError, sqlite3.Error, AgentSyncError):
         return []
     if not pairs:
@@ -3574,6 +3579,8 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
         with Manifest(db) as manifest:
             vanished = vanished_sources(config, manifest)
             back = _vanished_add_backs(config, manifest, vanished)
+    except (ManifestNotCurrentError, ManifestBusyError) as exc:  # under manifest.read_only_reads (C560)
+        return [_ok("config.vanished_sources", read_note(exc))]
     except (OSError, sqlite3.Error, AgentSyncError):
         return []
     if not vanished:
@@ -3738,8 +3745,9 @@ def _held(src: SourceConfig) -> str:
 def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
     """:func:`agentsync.loop.empty_cloud_folders_held` from the manifest's stored state (no folder is listed);
     False when there is no manifest or it cannot be read. The manifest is opened as status's ``next_step``
-    opens it, so an older schema is migrated here as there; only an inbox incomplete for
-    ``_INCOMPLETE_RUNS`` passes opens it."""
+    opens it, so an older schema is migrated here as there (under ``manifest.read_only_reads``, the setup
+    report's, it is not read: False; C560); only an inbox incomplete for ``_INCOMPLETE_RUNS`` passes opens
+    it."""
     db = config.state_paths.db
     if not db.exists():
         return False

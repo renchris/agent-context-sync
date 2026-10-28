@@ -86,7 +86,7 @@ from agentsync.cycle import (
     _reread_records,
 )
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.manifest import Manifest
+from agentsync.manifest import Manifest, ManifestBusyError, ManifestNotCurrentError
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
 from agentsync.paths import expand
@@ -982,8 +982,16 @@ def next_step(
     unread: list[str] = []  # ... and the source's newest pass was skipped or failed: no sync got to them
     reread_runs: list[dict[str, int]] = []
     pending: str | None = None
+    unread_state: ManifestNotCurrentError | ManifestBusyError | None = None
+    opened: Manifest | None = None
     if db.exists():
-        with Manifest(db) as manifest:
+        try:
+            opened = Manifest(db)
+        except (ManifestNotCurrentError, ManifestBusyError) as exc:
+            # only under manifest.read_only_reads (the setup report), which never migrates (B13 round 31 C560)
+            unread_state = exc
+    if opened is not None:
+        with opened as manifest:
             reread_runs = manifest.last_reread_counts()
             for src in live:
                 newest = next(iter(_reread_records(manifest.get_meta(_REREAD_META + src.id))), None)
@@ -1101,7 +1109,7 @@ def next_step(
                     signin.append(src.id)
             files = _unpublished(manifest, live)
             pending = manifest.get_meta(_CHECKPOINT_PENDING_META) or None
-    else:
+    elif unread_state is None:
         incomplete = [s.id for s in live]
     if files.over:
         one = sum(files.over.values()) == 1
@@ -1424,6 +1432,18 @@ def next_step(
         )
 
     # Rule 3: the sync has not caught up with what is on this Mac.
+    if isinstance(unread_state, ManifestBusyError):
+        return done(
+            "agentsync's state file changed while it was read (a sync is writing it): once that sync ends, "
+            f"run `{BIN} status` to read the next step",
+            3,
+        )
+    if unread_state is not None:
+        return done(
+            "agentsync's state file is not yet at the schema this build reads (an upgrade the next sync "
+            f"finishes): run `{BIN} sync`",
+            3,
+        )
     if incomplete or files.local:
         behind = sorted(set(incomplete) | set(files.local))
         return done(

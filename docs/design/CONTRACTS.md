@@ -33505,6 +33505,9 @@ to nothing), the folder removed when the connection closes; over the manifest it
 and an older converter key schema, one at an older manifest schema, a WAL manifest with no -wal, one whose -wal
 holds frames a sync has not checkpointed, a held queue that every entry waits on, a folder at the -shm with no
 -wal, and a manifest no sync has run over; bytes, mode and mtime alike).
+Amended 2026-10-28, §16.210 C560: "never writes the manifest" held for the Purge queue part only; the report's
+status, loop and doctor hooks opened a read-write `Manifest` until `manifest.read_only_reads`, which the report runs
+its hooks inside.
 
 C308, C309, C335, C369 (2026-10-26): **a governance list that lost what the audit trail records is the
 person's, named by its role** (ruling 40's report half, over lane B's C172; one build). A purge queue or a
@@ -34006,6 +34009,9 @@ reader of the state folder lists it (each opens its files by name). The report's
 `test_read_only_snapshot_rolls_back_an_older_builds_hot_journal`,
 `test_read_only_snapshot_copies_into_the_state_folder_and_leaves_no_copy`,
 `test_held_purges_read_only_opens_the_manifest_once`.
+Amended 2026-10-28, §16.210 C560: under `manifest.read_only_reads` `partition_queue` is `partition_queue_ro`'s
+split and `held_purges` reads with `read_only=True`, so status's queue lines, the loop's queue wait and doctor's
+governance.purge_queue line run the same judge read-only when the setup report's hooks call them.
 
 C328 (ruling 37): a page the secret scan stubbed is announced once, by its alarm. `_quarantine_secrets` no longer adds
 the first scan's SECRET findings wholesale: it maps each hit to its page (`sidecar_page`, so a sidecar's hit is its
@@ -34781,6 +34787,43 @@ printed words. Tests: `test_cli.py`
 `test_reading_a_lost_queue_an_erasure_closed_writes_neither_the_audit_trail_nor_the_manifest`,
 `test_an_upstream_deletion_run_of_a_selector_leaves_its_queued_erasure_open` (now with the page published again
 first); `test_governance.py` `test_a_lost_queued_id_is_done_only_when_a_later_purge_erased_it_and_the_manifest_lost_it`.
+
+C560 (2026-10-28): **every manifest read the setup report makes is read-only, not only the queue split** (ruling 52;
+data integrity). Its status hook (`cli._status_lines`, with its queue split and held read), the loop's step
+(`loop.next_step`) and doctor's manifest checks opened a read-write `Manifest`: over a manifest an older build left
+one report run migrated it, chmodded it 0600, switched it to WAL and left a `.pre-v1` copy. `manifest.read_only_reads()`
+is a context manager over a context variable: inside it `Manifest(db)` and `_connect` open a
+`manifest.read_only_snapshot` (in memory; a write never reaches the file) and never chmod, set WAL, migrate, clear the
+cache index or copy to `.pre-v`. Where that open would migrate or create (an older `manifest_schema_version`, a table
+it adds missing, no tables or no file) they raise `manifest.ManifestNotCurrentError`; a manifest changed under every
+read raises `ManifestBusyError`, and only a read that took nothing while the files changed under it is busy; a newer
+schema, a lost manifest and a file this account cannot open raise what the read-write open raises, and so does a side
+file it refuses (`manifest._side_refusal`, measured): `sqlite3.OperationalError` `unable to open database file`
+(SQLITE_CANTOPEN) for a -wal that is not a regular file or that this account cannot read, a -shm it cannot read and a
+-journal with bytes it cannot read, `disk I/O error` (SQLITE_IOERR_READ) for a folder at the -journal, the OSError its
+cause; a folder at the -shm and an empty -journal pass, as they do there, and a side gone between its checks is no
+refusal. A read that failed on files that did not change (a state folder this account cannot write, with -wal
+frames) is `unable to open database file` too, the copy's own OSError its cause. Status's `cannot read the state` line
+and NEXT read the same inside the context as outside it. An older converter key schema is read as it is (its open only clears the cache index).
+`Manifest.migrate` refuses inside it. The callers say the note in place of the read, `manifest.SCHEMA_READ_NOTE`
+("not read yet: agentsync's state file is not yet at the schema this build reads (an upgrade the next sync finishes);
+it is read after the next sync") or `BUSY_READ_NOTE` ("not read this time: agentsync's state file changed while it was
+read (a sync is writing it); it is read the next time"): status as `last runs: <note>`, with no source lines; the loop
+as its rule 3 step, `agentsync's state file is not yet at the schema this build reads (an upgrade the next sync
+finishes): run \`~/.local/bin/agentsync sync\`` or `agentsync's state file changed while it was read (a sync is writing it):
+once that sync ends, run \`~/.local/bin/agentsync status\` to read the next step`; doctor's `config.vanished_sources` and
+`sources.shared_content` as an ok line with the note; the skill check's last-run read as no run. Under the context
+`governance.partition_queue` is `partition_queue_ro`'s split and `held_purges` always `read_only`. Outside it nothing
+changes; `manifest.reads_only()` says whether a context is inside it, and `read_note(exc)` gives an error's note. The
+report's hooks and threads run inside it in `setup_report` (lane RA). Tests: `test_cli.py`
+`test_status_the_loop_and_doctor_under_read_only_reads_write_nothing_beside_the_manifest_c560` (every manifest file's
+hash, mode and mtime, no `.pre-v*` and no `.ro-copy-*` over an older manifest schema, an older key schema, a WAL
+manifest with no -wal and one with no run; a `Manifest` opened after the block migrates as before) and
+`test_a_manifest_busy_under_read_only_reads_reads_as_busy_and_a_newer_one_still_fails_c560`; `test_manifest.py`
+`test_a_side_file_the_read_write_open_refuses_is_refused_under_read_only_reads_never_busy_c560` (a folder at the
+-wal, a -wal at 0000, a folder at the -journal, a state folder at 0500: the same error and code inside and outside)
+and `test_a_side_file_gone_between_its_checks_is_no_refusal_under_read_only_reads_c560`; `test_cli.py`
+`test_status_says_the_same_state_and_next_under_read_only_reads_over_a_side_it_cannot_use_c560` (the four states).
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

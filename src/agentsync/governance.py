@@ -71,6 +71,7 @@ from agentsync.manifest import (
     migration_backups,
     open_read_only,
     read_only_snapshot,
+    reads_only,
 )
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
@@ -4717,7 +4718,11 @@ def partition_queue(
     by lookup, so the cost is rows + entries, not their product.  A manifest that is lost, not a file or
     unreadable keeps those entries with :data:`UNJUDGED_NOTE`, never runnable (B13 round 26 E25: run blind,
     one erased a current page and its history); and with the manifest lost ``purge`` refuses outright, so
-    every other entry is kept with that note too and nothing invites the run (ruling 14)."""
+    every other entry is kept with that note too and nothing invites the run (ruling 14). Under
+    ``manifest.read_only_reads`` (the setup report's hooks) it is :func:`partition_queue_ro`'s split (B13
+    round 31 ruling 52, C560)."""
+    if reads_only():
+        return partition_queue_ro(state_paths, queue, config=config)
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
     db = expand(state_paths.db)
     early = _queue_unopened(entries, db)
@@ -4939,7 +4944,9 @@ def held_purges(
     that cannot be read keeps it runnable, as before, and a held source's id found only in history stays a
     known gap (B13 round 28 I91). ``read_only`` (the setup report) resolves through one
     :func:`manifest.open_read_only` read per call and never migrates (B13 round 30 ruling 36, C394). Raises
-    what :func:`active_holds` raises; the caller's hold-list-unread branch comes first."""
+    what :func:`active_holds` raises; the caller's hold-list-unread branch comes first. Under
+    ``manifest.read_only_reads`` it is always ``read_only`` (C560)."""
+    read_only = read_only or reads_only()
     holds = active_holds(state_dir, gov)
     one_source = any(h.scope != HOLD_ALL for h in holds)
     db = expand(state_dir) / "manifest.sqlite"

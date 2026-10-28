@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import stat
 import unicodedata
@@ -1691,3 +1692,73 @@ def test_a_link_to_a_short_file_and_a_heartbeat_link_to_nothing_are_lost(tmp_pat
     assert manifest_mod.lost_error(db, manifest_mod.LOST_MANIFEST_UNREAD).errno == 2  # ENOENT
     db.write_bytes(body)
     assert manifest_mod.lost_words(db) == manifest_mod.LOST_MANIFEST_EMPTY_UNREAD
+
+
+@pytest.mark.parametrize(
+    "side", ["a folder at the -wal", "a -wal at 0000", "a folder at the -journal", "a state folder at 0500"]
+)
+def test_a_side_file_the_read_write_open_refuses_is_refused_under_read_only_reads_never_busy_c560(
+    tmp_path: Path, side: str
+) -> None:
+    """B13 round 31 C560's review: ``read_only_snapshot`` returns None on any OSError, and every None read as
+    :class:`~agentsync.manifest.ManifestBusyError`, so a folder at the -wal or the -journal, a -wal this
+    account cannot read, or -wal frames in a state folder it cannot write said "a sync is writing it" under
+    ``read_only_reads`` while the read-write open refuses each. Inside the context each is the read-write
+    open's own error, the same ``sqlite3.OperationalError`` with the same code, never busy and never an
+    OSError of its own (status and the loop word those apart)."""
+    state = tmp_path / "state"
+    state.mkdir()
+    db = state / "manifest.sqlite"
+    Manifest(db).close()
+    where = db.with_name(db.name + ("-journal" if "journal" in side else "-wal"))
+    if "0000" in side or "0500" in side:
+        writer = sqlite3.connect(db)
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO meta VALUES ('contoso', '1')")
+        writer.commit()
+        frames = where.read_bytes()
+        writer.close()  # its checkpoint removes the -wal: put the frames back
+        where.write_bytes(frames)
+        if "0000" in side:
+            where.chmod(0)
+        else:
+            state.chmod(0o500)
+    else:
+        where.unlink(missing_ok=True)
+        where.mkdir()
+    try:
+        with pytest.raises(sqlite3.OperationalError) as outside, Manifest(db) as rw:
+            rw.last_runs(1)
+        with (
+            manifest_mod.read_only_reads(),
+            pytest.raises(sqlite3.OperationalError) as inside,
+            Manifest(db) as ro,
+        ):
+            ro.last_runs(1)
+        assert str(inside.value) == str(outside.value), (inside.value, outside.value)
+        assert inside.value.sqlite_errorname == outside.value.sqlite_errorname, inside.value.sqlite_errorname
+    finally:
+        state.chmod(0o700)
+        if where.is_file():
+            where.chmod(0o600)
+
+
+def test_a_side_file_gone_between_its_checks_is_no_refusal_under_read_only_reads_c560(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C560's review: a -wal removed between its stat and the access check (a checkpoint) read as "Permission
+    denied"; a side gone by then is no refusal, and the read goes on."""
+    db = tmp_path / "manifest.sqlite"
+    Manifest(db).close()
+    wal = db.with_name(db.name + "-wal")
+    wal.write_bytes(b"")
+    real = os.access
+
+    def gone(path: object, mode: int) -> bool:
+        if Path(str(path)) == wal:
+            wal.unlink(missing_ok=True)  # the checkpoint, between the stat and this check
+            return False
+        return real(path, mode)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(manifest_mod.os, "access", gone)
+    assert manifest_mod._side_refusal(db) is None

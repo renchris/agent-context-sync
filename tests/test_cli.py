@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import errno
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -55,6 +56,7 @@ from agentsync.errors import (
     ManifestLostError,
     ManifestOpenError,
     ManifestPathError,
+    ManifestSchemaError,
 )
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
@@ -12282,3 +12284,194 @@ def test_the_unjudged_words_over_a_side_that_is_not_a_file_name_the_files_line(i
     wal.unlink(missing_ok=True)
     wal.mkdir()
     assert governance._unjudged_check(db) == "state_dir.files"
+
+
+def _manifest_files(db: Path) -> dict[str, tuple[str, int, int]]:
+    """Each file at and beside the manifest ``db`` (its -wal, its -shm, a ``.pre-v`` copy) by name: its sha256
+    (``folder`` for a folder), mode and mtime_ns."""
+    return {
+        p.name: (
+            "folder" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest(),
+            stat.S_IMODE(p.lstat().st_mode),
+            p.lstat().st_mtime_ns,
+        )
+        for p in sorted(db.parent.glob(db.name + "*"))
+    }
+
+
+def _older_build(db: Path, key: str) -> None:
+    """``db`` as an older build leaves it: a rollback journal, ``key`` at 0, mode 0644."""
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("UPDATE meta SET value = '0' WHERE key = ?", (key,))
+    conn.commit()
+    conn.close()
+    db.chmod(0o644)
+
+
+def _read_only_reads(config: Config) -> tuple[list[str], list[str], list[tuple[str, bool, str]]]:
+    """Status's lines (the setup report's), the loop's step and doctor's manifest checks, all inside
+    ``manifest.read_only_reads``, as the setup report's hooks run them."""
+    with manifest_mod.read_only_reads():
+        status = cli._status_lines(config, checks_beside=False)
+        step = loop.next_step(config, count_queue=False).lines()
+        checks = [
+            *doctor._check_shared_content(config),
+            *doctor._check_vanished_sources(config),
+            *cli._skill_check(config),
+        ]
+    return status, step, [(r.name, r.ok, r.detail) for r in checks]
+
+
+def test_status_the_loop_and_doctor_under_read_only_reads_write_nothing_beside_the_manifest_c560(
+    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 31 C560 (ruling 52): ruling 36 held only for the report's own queue split: its status hook
+    (``_status_lines``, its queue split and held read), the loop's step and doctor's manifest checks opened a
+    read-write ``Manifest``, so one report run migrated an older build's manifest, chmodded it 0600, switched
+    it to WAL, cleared its cache index and left a ``.pre-v1`` copy. Under ``manifest.read_only_reads`` each
+    leaves every manifest file byte for byte, mode and mtime, and leaves no copy folder: over an older
+    manifest schema it says the schema note where it read nothing (the runs, the loop's step, the checks, the
+    queued purge), over an older converter key schema, a WAL manifest with no -wal and one no run is recorded
+    in, it reads as before."""
+    other = tmp_path / "contoso-share"
+    shutil.copytree(local_source_dir, other)
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(other), "--config", cfg]) == cli.EXIT_OK
+    _synced(initialised)
+    config = load_config(initialised.config_path)
+    db = expand(config.state_paths.db)
+    root = expand(config.state_paths.root)
+    sid = config.sources[0].id
+    selector = governance.PurgeSelector(source_id=sid, stable_id="contoso-gone-1")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.UPSTREAM_DELETED)
+    capsys.readouterr()
+
+    def unchanged() -> tuple[list[str], list[str], list[tuple[str, bool, str]]]:
+        before = _manifest_files(db)
+        said = _read_only_reads(config)
+        assert _manifest_files(db) == before, said
+        assert not list(root.glob(manifest_mod.RO_COPY_PREFIX + "*"))
+        return said
+
+    status, step, checks = unchanged()  # a WAL manifest with no -wal, closed clean
+    assert sorted(_manifest_files(db)) == ["manifest.sqlite"]
+    assert any(ln.startswith("last runs: 1 ") for ln in status), status
+    _older_build(db, "key_schema_version")  # its open only clears the cache index: read as it is
+    status, step, checks = unchanged()
+    assert any(ln.startswith("last runs: 1 ") for ln in status), status
+    _older_build(db, "manifest_schema_version")
+    status, step, checks = unchanged()
+    assert f"last runs: {manifest_mod.SCHEMA_READ_NOTE}" in status, status
+    assert any(governance.schema_purges(1) in ln for ln in status), status
+    assert step[0] == (
+        "NEXT: agentsync's state file is not yet at the schema this build reads (an upgrade the next sync "
+        f"finishes): run `{loop.BIN} sync`"
+    ), step
+    assert ("config.vanished_sources", True, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
+    assert ("sources.shared_content", True, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
+    assert not list(db.parent.glob(db.name + ".pre-v*"))
+    # outside the context nothing changed: the next open migrates it, as before (the variable does not leak)
+    Manifest(db).close()
+    assert [p.name for p in db.parent.glob(db.name + ".pre-v*")] == [
+        f"{db.name}.pre-v{MANIFEST_SCHEMA_VERSION}"
+    ]
+    assert stat.S_IMODE(db.stat().st_mode) == 0o600
+    # a manifest no run is recorded in (a new start: heartbeat.json aside too)
+    for leftover in db.parent.glob(db.name + "*"):
+        leftover.unlink()
+    expand(config.state_paths.heartbeat).unlink()
+    Manifest(db).close()
+    status, step, checks = unchanged()
+    assert "last runs: none" in status, status
+
+
+def test_a_manifest_busy_under_read_only_reads_reads_as_busy_and_a_newer_one_still_fails_c560(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C560: a manifest that changed under every read (a sync writing it) says the busy note in place of the
+    runs and the loop's step; a manifest a newer build wrote is still refused under
+    ``manifest.read_only_reads``: the setup report's Doctor hook prints what it prints outside it, and the
+    loop read's error (the report's ``state_error``) is the same ManifestSchemaError, never a note."""
+    _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    capsys.readouterr()
+
+    def busy(path: Path, timeout: float, **_: object) -> sqlite3.Connection:
+        raise manifest_mod.ManifestBusyError(f"{path} changed under every read")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(manifest_mod, "read_only_snapshot", busy)
+        status, step, _checks = _read_only_reads(initialised)
+    assert f"last runs: {manifest_mod.BUSY_READ_NOTE}" in status, status
+    assert step[0].startswith("NEXT: agentsync's state file changed while it was read"), step
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE meta SET value = ? WHERE key = 'manifest_schema_version'", (MANIFEST_SCHEMA_VERSION + 1,)
+    )
+    conn.commit()
+    conn.close()
+    hooks = cli._report_hooks()
+    assert hooks.doctor is not None
+    outside = hooks.doctor(initialised)
+    assert isinstance(hooks.state_error(), ManifestSchemaError)
+    with manifest_mod.read_only_reads():
+        inside = hooks.doctor(initialised)
+    # the loop read's error, which the report files under the state file, is the same refusal, never a note
+    assert isinstance(hooks.state_error(), ManifestSchemaError), hooks.state_error()
+
+    def aged(lines: list[str]) -> list[str]:  # the heartbeat's age can tick a second between the two runs
+        return [re.sub(r"\(\d+s ago", "(Ns ago", ln) for ln in lines]
+
+    assert aged(inside) == aged(outside)
+    assert not any(manifest_mod.SCHEMA_READ_NOTE in ln for ln in inside), inside
+
+
+@pytest.mark.parametrize(
+    "state", ["a folder at the -wal", "a folder at the -journal", "a -wal at 0000", "a state folder at 0500"]
+)
+def test_status_says_the_same_state_and_next_under_read_only_reads_over_a_side_it_cannot_use_c560(
+    initialised: Config, capsys: pytest.CaptureFixture[str], state: str
+) -> None:
+    """C560's review: under ``manifest.read_only_reads`` (the setup report's status hook) a side the
+    read-write open refuses raised an OSError of its own, so status lost the state_dir.files pointer (a folder
+    at the -wal), printed no NEXT at all (a folder at the -journal) or other words (a -wal at 0000, a state
+    folder it cannot write with -wal frames, "Input/output error"). Its "cannot read the state" line and its
+    NEXT read the same inside the context as outside it."""
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    wal, journal = (db.with_name(db.name + s) for s in ("-wal", "-journal"))
+    if state.endswith("-wal"):
+        wal.unlink(missing_ok=True)
+        wal.mkdir()
+    elif state.endswith("-journal"):
+        journal.mkdir()
+    else:
+        writer = sqlite3.connect(db)
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO meta VALUES ('contoso', '1')")
+        writer.commit()
+        frames = wal.read_bytes()
+        writer.close()  # its checkpoint removes the -wal: put the frames back
+        wal.write_bytes(frames)
+        if "0000" in state:
+            wal.chmod(0)
+        else:
+            db.parent.chmod(0o500)
+    capsys.readouterr()
+
+    def said() -> list[str]:
+        _rc, out = _status(cfg, capsys)
+        return [ln for ln in out if ln.startswith(("NEXT: ", "status: cannot read the state"))]
+
+    try:
+        outside = said()
+        with manifest_mod.read_only_reads():
+            inside = said()
+    finally:
+        db.parent.chmod(0o700)
+        if wal.is_file():
+            wal.chmod(0o600)
+    assert [ln for ln in outside if ln.startswith("NEXT: ")], outside
+    assert [ln for ln in outside if ln.startswith("status: cannot read the state")], outside
+    assert inside == outside

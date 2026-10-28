@@ -13,6 +13,7 @@ Secrets: cursor values (delta links) are never logged; ``cursor_fingerprint`` is
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import errno
 import functools
 import hashlib
@@ -915,6 +916,59 @@ class ManifestBusyError(Exception):
     no read of one state was taken (B13 round 30 C394)."""
 
 
+class ManifestNotCurrentError(Exception):
+    """A manifest opened under :func:`read_only_reads` that only a sync's read-write open would bring to this
+    build's schema: an older ``manifest_schema_version``, a table a ``Manifest`` adds on open missing, or no
+    manifest tables (or file) yet. The reader says :data:`SCHEMA_READ_NOTE` in place of the migration (B13
+    round 31 C560). A newer schema is still :class:`~agentsync.errors.ManifestSchemaError`."""
+
+
+SCHEMA_READ_NOTE = (
+    "not read yet: agentsync's state file is not yet at the schema this build reads (an upgrade the next "
+    "sync finishes); it is read after the next sync"
+)
+"""What a read under :func:`read_only_reads` says in place of what :class:`ManifestNotCurrentError` kept it
+from reading (C560)."""
+
+BUSY_READ_NOTE = (
+    "not read this time: agentsync's state file changed while it was read (a sync is writing it); it is read "
+    "the next time"
+)
+"""... and in place of what :class:`ManifestBusyError` kept it from reading (C560)."""
+
+
+def read_note(exc: ManifestNotCurrentError | ManifestBusyError) -> str:
+    """:data:`BUSY_READ_NOTE` for a :class:`ManifestBusyError`, else :data:`SCHEMA_READ_NOTE`."""
+    return BUSY_READ_NOTE if isinstance(exc, ManifestBusyError) else SCHEMA_READ_NOTE
+
+
+_READ_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "agentsync_manifest_read_only", default=False
+)
+
+
+@contextlib.contextmanager
+def read_only_reads() -> Iterator[None]:
+    """Inside it, every ``Manifest(db)`` and :func:`_connect` in this context writes nothing beside the
+    manifest: no chmod, no WAL switch, no migration, no cleared cache index and no ``.pre-v`` copy (B13 round
+    30 ruling 36 for every read a report makes, round 31 ruling 52, C560). Each opens a
+    :func:`read_only_snapshot` instead and raises :class:`ManifestNotCurrentError` for a manifest only a
+    sync's open would migrate or create, :class:`ManifestBusyError` for one that changed under every read;
+    a newer schema, a lost manifest and a file that cannot be opened raise what the read-write open raises.
+    A context variable: a thread the reader starts runs inside it only through
+    ``contextvars.copy_context``."""
+    token = _READ_ONLY.set(True)
+    try:
+        yield
+    finally:
+        _READ_ONLY.reset(token)
+
+
+def reads_only() -> bool:
+    """Whether this context is inside :func:`read_only_reads`."""
+    return _READ_ONLY.get()
+
+
 RO_COPY_PREFIX = ".ro-copy-"
 """The name a :func:`read_only_snapshot` private copy's folder starts with, in the manifest's own folder:
 never the system's temporary folder, where a killed run would leave a whole manifest behind (C394). No reader
@@ -934,7 +988,9 @@ def open_read_only(db_path: Path, timeout: float) -> sqlite3.Connection | None:
         return None
 
 
-def read_only_snapshot(db_path: Path, timeout: float) -> sqlite3.Connection | None:
+def read_only_snapshot(
+    db_path: Path, timeout: float, *, failed: list[OSError] | None = None
+) -> sqlite3.Connection | None:
     """An in-memory copy of the manifest at ``db_path``, taken without creating or changing any file beside
     it, or None when it is not there to read. With no -journal and no -wal, or an empty one, the file is the
     whole database, read ``immutable=1``, which creates nothing: a ``mode=ro`` open of a WAL database creates
@@ -948,14 +1004,16 @@ def read_only_snapshot(db_path: Path, timeout: float) -> sqlite3.Connection | No
     copy, reads again; :class:`ManifestBusyError` after three tries (C394). A lost manifest
     (:func:`lost_words`) or one this account cannot read is not opened. Raises what sqlite raises for a file
     that is no database, unchanged under the read. ``setup_report._open_manifest_ro`` keeps the older rule for
-    the report's own fallbacks."""
+    the report's own fallbacks. ``failed``, when given, gets the OSError a None stands for (C560's review)."""
     if not db_path.is_file() or lost_words(db_path) is not None or not os.access(db_path, os.R_OK):
         return None
     _sweep_ro_copies(db_path.parent)
     for _try in range(_RO_TRIES):
         try:
             before = _stamps(db_path)
-        except OSError:
+        except OSError as exc:
+            if failed is not None:
+                failed.append(exc)
             return None
         _db, wal, journal = before
         try:
@@ -969,7 +1027,9 @@ def read_only_snapshot(db_path: Path, timeout: float) -> sqlite3.Connection | No
             if _stamps_or_none(db_path) == before:
                 raise
             continue  # a torn read: the file changed under it
-        except OSError:
+        except OSError as exc:
+            if failed is not None:
+                failed.append(exc)
             return None
         if _stamps_or_none(db_path) == before:
             return mem
@@ -1063,6 +1123,8 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     lost = lost_words(db_path)
     if lost is not None:
         raise lost_error(db_path, lost)
+    if _READ_ONLY.get():
+        return _connect_read_only(db_path)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)
@@ -1086,6 +1148,96 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA cache_size=-65536")
     conn.create_function(_FOLD_SQL_FUNCTION, 1, _fold, deterministic=True)
     return conn
+
+
+def _connect_read_only(db_path: Path) -> sqlite3.Connection:
+    """:func:`_connect` under :func:`read_only_reads`: a :func:`read_only_snapshot` of the manifest, in
+    autocommit mode with the same row factory and fold function, so a write lands in memory only. The refusals
+    the read-write open raises for a file this account cannot open or a path that is no file are raised the
+    same way, before any read, a side file's (-wal, -journal, -shm) too (:func:`_side_refusal`), so status
+    and the loop word them as they do outside it; no file yet is :class:`ManifestNotCurrentError` (the next
+    sync creates it). :class:`ManifestBusyError` only when the files changed under a read that took nothing;
+    a read that failed on files that did not change is the read-write open's ``unable to open database
+    file``, its cause the read's own error (B13 round 31 C560's review: a folder at the -wal or the -journal,
+    a -wal this account cannot read, and a state folder it cannot write read as a sync writing it)."""
+    try:
+        st = db_path.stat()
+        if stat.S_ISDIR(st.st_mode):
+            raise OSError(errno.EISDIR, os.strerror(errno.EISDIR))
+        if not os.access(db_path, os.R_OK | os.W_OK):  # the read-write open's O_RDWR refusal
+            raise OSError(errno.EACCES, os.strerror(errno.EACCES))
+    except FileNotFoundError:
+        raise ManifestNotCurrentError(f"{db_path}: no manifest yet; the next sync creates it") from None
+    except OSError as exc:
+        said = f"{db_path} cannot be opened: {exc.strerror or exc}"
+        error = ManifestOpenError if exc.errno in ACCESS_ERRNOS else ManifestPathError
+        raise error(said, exc.errno, reason=exc.strerror) from exc
+    refusal = _side_refusal(db_path)
+    if refusal is not None:
+        raise refusal
+    before = _stamps_or_none(db_path)
+    failed: list[OSError] = []
+    conn = read_only_snapshot(db_path, 0.5, failed=failed)
+    if conn is None:
+        refusal = _side_refusal(db_path)  # a side changed kind between the check and the read
+        if refusal is not None:
+            raise refusal
+        if _stamps_or_none(db_path) != before:  # gone or changed between the stat and the read
+            raise ManifestBusyError(f"{db_path} changed under the read")
+        raise _sqlite_refusal(_CANTOPEN, failed[-1] if failed else None)
+    conn.isolation_level = None
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.create_function(_FOLD_SQL_FUNCTION, 1, _fold, deterministic=True)
+    return conn
+
+
+_CANTOPEN = ("unable to open database file", sqlite3.SQLITE_CANTOPEN, "SQLITE_CANTOPEN")
+_IOERR_READ = ("disk I/O error", sqlite3.SQLITE_IOERR_READ, "SQLITE_IOERR_READ")
+"""The read-write open's errors for a side file it cannot use (measured on macOS's sqlite, C560's review):
+a -wal that is not a regular file or this account cannot read, a -shm it cannot read and a -journal with
+bytes it cannot read are ``unable to open database file``; a folder at the -journal is ``disk I/O error``."""
+
+
+def _sqlite_refusal(kind: tuple[str, int, str], cause: OSError | None) -> sqlite3.OperationalError:
+    """``sqlite3.OperationalError`` as the read-write open raises it, its code and name set, ``cause`` its
+    ``__cause__``."""
+    words, code, name = kind
+    error = sqlite3.OperationalError(words)
+    error.sqlite_errorcode = code
+    error.sqlite_errorname = name
+    error.__cause__ = cause
+    return error
+
+
+def _side_refusal(db_path: Path) -> sqlite3.OperationalError | None:
+    """The read-write open's refusal of a side file beside ``db_path``, or None: a -wal that is not a regular
+    file or that this account cannot read, a -shm it cannot read, a folder at the -journal, or a -journal with
+    bytes it cannot read (:data:`_CANTOPEN`, :data:`_IOERR_READ`). A folder at the -shm and an empty -journal
+    the read-write open passes, so this does too; a side gone between its checks is no refusal."""
+    for suffix in ("-wal", "-journal", "-shm"):
+        where = db_path.with_name(db_path.name + suffix)
+        try:
+            side = where.stat()
+            if suffix == "-journal" and stat.S_ISDIR(side.st_mode):
+                raise _sqlite_refusal(
+                    _IOERR_READ, OSError(errno.EISDIR, os.strerror(errno.EISDIR), str(where))
+                )
+            if suffix == "-wal" and not stat.S_ISREG(side.st_mode):
+                kind = errno.EISDIR if stat.S_ISDIR(side.st_mode) else errno.EINVAL
+                raise _sqlite_refusal(_CANTOPEN, OSError(kind, os.strerror(kind), str(where)))
+            if not stat.S_ISREG(side.st_mode) or (suffix == "-journal" and side.st_size == 0):
+                continue
+            if not os.access(where, os.R_OK):
+                where.stat()  # gone since the stat: no refusal, never a false "Permission denied"
+                raise _sqlite_refusal(_CANTOPEN, OSError(errno.EACCES, os.strerror(errno.EACCES), str(where)))
+        except FileNotFoundError:
+            continue
+        except sqlite3.OperationalError as refused:
+            return refused
+        except OSError:  # the side cannot even be stat'ed: the snapshot's read says what it says
+            continue
+    return None
 
 
 def _user_tables(conn: sqlite3.Connection) -> set[str]:
@@ -1234,9 +1386,13 @@ class Manifest:
         # scan per miss (every new page misses).  Built lazily, updated by replace_outputs, dropped on any
         # rollback; hits are re-read from the table, so a superset is harmless.
         self._fold_paths: dict[str, set[str]] | None = None
+        read_only = _READ_ONLY.get()
         self._conn: sqlite3.Connection | None = _connect(db_path)
         try:
-            self._initialise_or_check()
+            if read_only:
+                self._check_current()
+            else:
+                self._initialise_or_check()
         except BaseException:
             self._conn.close()
             self._conn = None
@@ -1281,6 +1437,25 @@ class Manifest:
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
                 (stored, "baseline (ledger backfilled)", _utc_now_iso()),
+            )
+
+    def _check_current(self) -> None:
+        """:meth:`_initialise_or_check` under :func:`read_only_reads`, which neither creates nor migrates:
+        :class:`ManifestNotCurrentError` where that open would, ManifestSchemaError where it refuses. An older
+        converter ``key_schema_version`` is read as it is: its open only clears the cache index (C560)."""
+        tables = _user_tables(self._db)
+        if not tables:
+            raise ManifestNotCurrentError(f"{self._path}: no manifest tables yet; the next sync creates them")
+        if "meta" not in tables:
+            raise ManifestSchemaError(
+                f"{self._path}: has tables but no meta table; not an agentsync manifest"
+            )
+        stored, _key_stored = self._check_not_newer()
+        added = {"item_aliases", "redacted_items", "run_changes"}  # the tables that open adds
+        if stored < MANIFEST_SCHEMA_VERSION or not added <= tables:
+            raise ManifestNotCurrentError(
+                f"{self._path}: manifest schema version {stored}, this build reads "
+                f"{MANIFEST_SCHEMA_VERSION}; the next sync migrates it"
             )
 
     def _check_not_newer(self) -> tuple[int, int]:
@@ -1357,6 +1532,8 @@ class Manifest:
         cleared: every old action key is unreachable under the new composition).  Raises ManifestSchemaError
         for a manifest newer than this build.  A missing/empty db is created at the current version.
         """
+        if _READ_ONLY.get():
+            raise RuntimeError("Manifest.migrate writes the manifest: never under read_only_reads()")
         conn = _connect(db_path)
         try:
             tables = _user_tables(conn)

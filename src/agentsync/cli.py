@@ -115,8 +115,11 @@ from agentsync.manifest import (
     LOST_MANIFEST_UNREAD,
     LOST_MANIFEST_WORDS,
     Manifest,
+    ManifestBusyError,
+    ManifestNotCurrentError,
     lost_error,
     lost_words,
+    read_note,
 )
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
@@ -1653,7 +1656,14 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
         else:
             out.append("manifest: none yet (no sync has run)")
         return out
-    with Manifest(db) as manifest:
+    try:
+        opened = Manifest(db)
+    except (ManifestNotCurrentError, ManifestBusyError) as exc:
+        # only under manifest.read_only_reads (the setup report), which never migrates: why, in place of the
+        # runs and the sources (B13 round 31 C560)
+        out.append(f"last runs: {read_note(exc)}")
+        return out
+    with opened as manifest:
         runs = manifest.last_runs(5)
         out.append(
             "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
@@ -2973,7 +2983,11 @@ def _skill_check(config: Config) -> list[doctor.CheckResult]:
     blocked = [(p, s) for p, s in off if not writable(p)]
     started: str | None = None
     if blocked and config.state_paths.db.exists():
-        with Manifest(config.state_paths.db) as manifest:
+        # under manifest.read_only_reads (the setup report) an older manifest is not read: no run to judge
+        with (
+            contextlib.suppress(ManifestNotCurrentError, ManifestBusyError),
+            Manifest(config.state_paths.db) as manifest,
+        ):
             started = manifest.last_run_started()
     ran_at = _parse_log_time(started) if started is not None else None
     built_at = _build_installed_at()
