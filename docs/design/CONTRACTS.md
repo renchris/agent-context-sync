@@ -34287,6 +34287,9 @@ Amended 2026-10-28, §16.210 C525: the clause after K now reads `, N of them und
 did not parse` (`their label data` for more); K's words, `_SPLIT_RE` and install.sh's readers are unchanged.
 Amended 2026-10-28, §16.210 C525: the test's line now reads `3 refused, 1 of them withheld: its label cannot be read,
 2 of them under a label rule because their label data did not parse`, `_SPLIT_RE` still R=3, K=1.
+Amended 2026-10-28, §16.208 C567: the setup report re-renders the clause now, in lane B's round 31 words (`, L of them
+under a label rule because its label data did not parse`), read by its own regex beside `_SPLIT_RE`, whose four groups
+stay; until then the Summary dropped it.
 
 ### 16.206 Round 30: an older label reader's mail screened again, and every stored reason pathless in every spelling (2026-10-26, wave B13 round 30 lane E)
 
@@ -34686,6 +34689,17 @@ reads both counts as 0. The guide's Repeat conversions row says both, and `The l
 older label reader let through` joins ruling 55's phrases. Tests: `test_repeat_conversions_part_reads_the_run_records_and_the_cache`
 (a reader-only and a mixed run), `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (one and
 two files with `legacy_pathed`) and `test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` in test_deploy_pack (lane E's 46a029853 and 77672c89a).
+
+**The Summary re-renders the label-unreadable share of the refused count** (C567 with C583; ruling 59;
+`src/agentsync/setup_report.py`; dated line at §16.205 C326). §16.205 said the re-render of C326's clause was lane
+RA's, but `_SPLIT_RE` stops at K and the Summary rebuilt the split only up to K, so the label-unreadable share the sync
+line prints was dropped (R stayed right; only the breakdown was lost). Built on lane B's round 31 words (C525): a
+separate `_LABEL_UNPARSED_RE` reads `, L of them under a label rule because its label data did not parse` (`their
+label data`) from the same tail, into `first_sync_label_unparsed` (N, L), and the Summary adds the clause after K's
+when the converted counts match, K or no K; `_SPLIT_RE` keeps its four groups (never a fifth, which would break the
+unpack and C326's test), the source tag stays `the unreadable/failed/refused split`, and install.sh's readers, which
+read R and K only, are unchanged. The guide's Summary row is lane D's. Test:
+`test_first_sync_clause_carries_the_read_again_count` (L of 2 after K, and L of 1 alone).
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 

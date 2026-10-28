@@ -1145,6 +1145,12 @@ _SPLIT_RE = re.compile(  # K, of the refused, withheld: the CLI prints it after 
     r"(?:, (\d+) refused\b(?:, (\d+) of them withheld(?: by the label rule\b|: (?:its label|their labels) "
     r"cannot be read\b))?)?"
 )
+# and since B13 round 31 ruling 59 (lane B's C525) ", L of them under a label rule because its label data did
+# not parse" (their label data, for more) after K's clause, read apart so _SPLIT_RE keeps its four groups
+# (C567, C583)
+_LABEL_UNPARSED_RE = re.compile(
+    r"\b(\d+) of them under a label rule because (?:its|their) label data did not parse\b"
+)
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
 # J39); "without a read" is required, so the split's "R refused)" never matches
 _UNREAD_RE = re.compile(r"\b(\d+) refused without a read\b")
@@ -4106,6 +4112,9 @@ class _Facts:
     # that line's "(of the converted: U unreadable, F failed, R refused, K of them withheld by the label
     # rule)" as (N, U, F, R, K), R and K 0 when an older line has none; None: the line has no split
     first_sync_unreadable: tuple[int, int, int, int, int] | None = None
+    # its ", L of them under a label rule because its label data did not parse" as (N, L); None: none
+    # (B13 round 31 ruling 59, C567, C583)
+    first_sync_label_unparsed: tuple[int, int] | None = None
     # its first-read count F (either wording, B13 round 9 K34) as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
     # its "Q refused without a read" as (N, Q); None: the line has none
@@ -6794,6 +6803,9 @@ def _installer_output(r: _Run) -> list[str]:
         if split is not None:
             u, f, refused, of_refused = (int(g or 0) for g in split.groups())
             r.facts.first_sync_unreadable = (converted, u, f, refused, of_refused)
+            unparsed = _LABEL_UNPARSED_RE.search(last.group("tail")) if refused else None
+            if unparsed is not None:
+                r.facts.first_sync_label_unparsed = (converted, int(unparsed.group(1)))
         unread = _UNREAD_RE.search(last.group("tail"))
         if unread is not None:
             r.facts.first_sync_refused_unread = (converted, int(unread.group(1)))
@@ -14777,6 +14789,15 @@ def _sync_line_end(
                     "its label cannot" if split[4] == 1 else "their labels cannot"
                 )  # the CLI's words (D25)
                 refused += f", {split[4]} of them withheld: {whose} be read"
+            unparsed = r.facts.first_sync_label_unparsed
+            if split[3] and unparsed is not None and unparsed[0] == converted and unparsed[1]:
+                # the label-unreadable share, after K's as on the CLI's line, in its words (ruling 59, C567)
+                why = (
+                    "under a label rule because its label data did not parse"
+                    if unparsed[1] == 1
+                    else "under a label rule because their label data did not parse"
+                )
+                refused += f", {unparsed[1]} of them {why}"
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             # the tag names refused only when its count was printed (B13 round 7 H46)
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")
