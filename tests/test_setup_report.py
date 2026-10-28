@@ -2053,6 +2053,11 @@ def test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386(
 
     listed = built()
     assert re.search(r"hold <source-\d+> \(state\) since \S+: reason and owner not shown", listed), listed
+    # B13 round 31 C501, C534, C566 (ruling 56): the legend names what C386 registers as a <source-N>
+    assert (
+        "<source-N> source id (a configured one, one the manifest still holds, or a hold's scope that names "
+        "no source; a number can be missing)"
+    ) in section(listed, "Redaction"), section(listed, "Redaction")
     # lost: holds.json moved aside, so only the audit trail and hold-record.json keep the scope
     (root / "governance" / "holds.json").rename(root / "holds.json.aside")
     lost = built()

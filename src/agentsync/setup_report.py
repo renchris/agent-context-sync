@@ -993,7 +993,8 @@ _LEGEND = {
         "state, docs, cache or log folder where sources.toml moves it; a number can be missing)"
     ),
     "source": (
-        "<source-N> source id (a configured one, or one the manifest still holds; a number can be missing)"
+        "<source-N> source id (a configured one, one the manifest still holds, or a hold's scope that names "
+        "no source; a number can be missing)"
     ),
     "email": "<email-N> email address",
     "guid": "<guid-N> GUID",

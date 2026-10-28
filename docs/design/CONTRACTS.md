@@ -33198,6 +33198,9 @@ unconfigured id is (U62), so agentsync's own words stay and nothing goes private
 its scope: a refusal would block a hold set ahead of its source, or kept on a removed one whose data remains. The
 shell report's `hold_scopes` reader takes the same files, fallback and rule (lane RB, §16.204). Test:
 `test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386`.
+Amended 2026-10-28, §16.208 C501: both legends name what this registers: the report's `<source-N>` item reads `a
+configured one, one the manifest still holds, or a hold's scope that names no source`, and the shell's adds `also a hold's
+scope that no source names, as status's HOLD: line and the lost-hold FAIL print it` (lane RB, §16.209).
 
 C302 (2026-10-26): **a hold reason "Audit" cuts none of agentsync's own words** (ruling 39). "audit" is a word the
 report prints, so a one-word hold reason "Audit" is cut wherever it stands, and the Purge queue part's trail line
@@ -34516,6 +34519,15 @@ in the Summary's `(install.log)` and `_reached`'s bracket (the finder's fix, whi
 the number stays, as install.log keeps it. Standing alone, the closing status keeps `stopped by SIGKILL (signal 9)`.
 Test: `test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516` (137, 143 and 1, before and
 after the report step is logged).
+
+**The `<source-N>` legend names a hold's scope** (C501 with C534, C566; ruling 56; `src/agentsync/setup_report.py`;
+dated line at §16.203 C386). Since C386 a hold scope that no configured or manifest source has prints as `<source-N>`,
+but the legend still said a `<source-N>` was a configured id or one the manifest holds, so a reader of status's
+`HOLD:` line was told it was a source. `_LEGEND["source"]` reads `<source-N> source id (a configured one, one the
+manifest still holds, or a hold's scope that names no source; a number can be missing)`. The shell legend keeps its
+text and adds `also a hold's scope that no source names, as status's HOLD: line and the lost-hold FAIL print it;`
+before its tail (lane RB, §16.209; sent as these words). Test: `test_a_hold_scope_no_source_registers_is_in_no_part_of_the_report_c386`,
+which now reads the legend item in the report it builds.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
