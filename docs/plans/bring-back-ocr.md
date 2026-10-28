@@ -2057,7 +2057,8 @@ the corrected not-built reason for C145 (3) in "B13 round 29 landed" above.
 All five lanes landed; the prompt is still v33. Notes `lanes/r30-<lane>.md`, lead notes `round29/lead-notes.md`. All
 100 confirmed items are built: 99 in the lanes (RA 31, B 37, RB 10, E 8, D 13) and C391 by the lead. Three optional
 halves are not built, each with a measured reason: C371's (4), `--forget` running its own probe (the lead's ruling:
-`--forget` is the audited exit that erases nothing, and `purge --queue` already looks each entry up); C377's flip of
+`--forget` is the audited exit that erases nothing, and `purge --queue` already looks each entry up; round 31's
+ruling 62 reversed it, and lane B built it as C565, `01595791`); C377's flip of
 the Python reader (ruling 44: C396 measured that it reopens ruling 21's mismatch; its cross-reader test is built);
 and the report's hold bucket taking status's own lost-hold wait line (lane RA: no report reader ever meets that
 line). Lane B's first land gate went red on lane RA's C302 test (four new audit-trail clauses were not fixed
@@ -2133,6 +2134,49 @@ back-channel pane 3 or its successor): RA 16 (ruling 49's typed folder first, th
 commit with install.sh's list), B 17 (ruling 46 first: data integrity; then 47, 52, 59, 60 and C565), RB 9 (ruling
 50's kept folder first, then 57 and 58), E 19 (ruling 48 first: data integrity; then 53 and 54), D 16 (rulings 51 and
 47's pages first; CI's limit; the guides after the lanes).
+
+### B13 round 31 landed (2026-10-28)
+
+All five lanes landed; the prompt is still v33. Notes `lanes/r31-<lane>.md`, lead notes `round29/lead-notes.md`. All
+77 confirmed items are built: 77 in the lanes' 57 commits (`7f132615..d218ea1b`, every landed tip CI green), the
+repo halves of C503, C504, C528 and C573 by lane D (`41ae477c`), and their kit halves by the lead in round 32's
+script (`round32/tools/edit.py`: the folder check maps find's leading `.` to `tree` and diffs against the full path
+of `fixtures/v1/dirs.txt`; a probe that needs an upstream deletion deletes only a file it made). Optional halves not
+built, each with a measured reason: C526's state 4, a live sync holding frames in the `-wal` (doctor's `mode=ro`
+probe rewrites the `-shm` read marks as every reader of a live WAL does, and no page, row or frame changes; a
+snapshot would copy the db and `-wal` on every doctor run, the cost C526's verifier ruled out; lane RA's test
+compares that `-shm` by mode and mtime); C521's three shapes agentsync never writes (a UTF-8 BOM, a NaN, a scope
+holding `\null`) keep today's cautious words (lane RB); C523's settled split (ruling 54 chose C545's reword); C508's
+optional NEXT rewrite (the ruling names only the wait); C515's step note in install.log (the report's first-sync
+step words carry it, ruling 58).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `fd5ebd8c..77672c89`, 4 commits |
+| RB | `f1ec913d..31275d65` and `76dc4e8f`, 10 commits |
+| D | `037c9044`, `b5fad712`, `cb1fe978..2cabdfba`, `d510a3da` and `3efa51e9..d218ea1b`, 13 commits |
+| RA | `f3b0cd14..392cdecb` and `4d2d2847..ef12f28f`, 14 commits |
+| B | `3f4f940a..92ca6075`, 16 commits |
+
+Learnings: from the fire (02:50) to the last land (16:40) took 14 hours, 3 fewer than round 30. Lane B was again
+the critical path (rulings 46, 52 and 59 change governance.py and manifest.py's readers): lane RA's second batch and
+lane D's last four items each waited for its land at 13:47. Land gates took about 50 minutes to 2 hours (6,069 to
+6,197 tests). One CI job waited 63 minutes for a macOS runner before its 80-minute limit began (`ef12f28f`); no run
+went red, and none lost its runner. The classifier refused lane RA's kill of its own `gate.sh --affected` process
+group; the lane let it run out, as the rule says. A lane's pre-land drafts left on scratch branches (`b13/r31-b`,
+`b13/r31-ra-trial`) differ from trunk only where a later commit rewrote the same lines: the removal script takes
+them `:superseded` after a line-by-line check, not on the lane's word alone.
+
+Residuals the lanes named for round 32's harvest (in their notes): install.sh's step 1 logs a new config_err word,
+`state-governance-lost`, that nothing reads (RB); new audit keys (`stable_id_sha256`, `alias_sha256s`,
+`source_id`) and names (`manifest.read_only_reads`, `governance.ACCEPT_PATH_KEPT`, `ACCEPT_PATH_LOST`) for the
+readers (B); ship-land's exit 9 now also covers a trunk run that lost its hosted runner, rerun and never landed past
+with `--allow-red-trunk` (D, C569).
+
+Round 32: the round 31 workflow (`round31/round31-workflow.js` through `round32/tools/edit.py`, with the kit halves
+above) with the harvest list in `round32/tools/harvest-lead.txt`, on this section's landed tip, BASE `7f132615`, ids
+C601 and up, outputs `round32/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since
+no lane changed the prompt.
 
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
