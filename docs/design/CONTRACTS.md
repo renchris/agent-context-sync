@@ -25727,7 +25727,8 @@ job took 33:53. **Amended 2026-10-23, §16.182 D83:** the bound is now well unde
 `timeout-minutes` in ci.yml, raised from 45 after round 24's slowest job took 36:24. **Amended 2026-10-25,
 §16.197 I99:** the bound is now well under the ci job's 60 minutes, `timeout-minutes` in ci.yml, raised from 50
 after a job took 49:59. **Amended 2026-10-26, §16.207 C372:** the bound is now well under the ci job's 70 minutes,
-`timeout-minutes` in ci.yml, raised from 60 after a job took 51:10.
+`timeout-minutes` in ci.yml, raised from 60 after a job took 51:10. **Amended 2026-10-28, §16.212 C571:** the bound
+is now well under the ci job's 80 minutes, `timeout-minutes` in ci.yml, raised from 70 after a job took 59:43.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -34656,3 +34657,14 @@ messaged, and never for exit 9. Tests: `test_ship_land.py::test_a_trunk_run_that
 `test_ship_land.py::test_a_run_that_loses_its_runner_during_the_gate_is_rerun_not_landed_past`,
 `test_ship_land.py::test_the_lost_runner_classifier_calls_lost_only_a_failed_job_left_unfinished` and
 `test_ship_land.py::test_claude_md_and_the_lane_brief_say_when_allow_red_trunk_is_right`.
+
+**CI's time is the time of round 30's jobs, and its limit is 80** (C571, ruling 62; CLAUDE.md, `docs/lanes/COMMON.md`,
+ci.yml; dated line at §16.144 W70). The sixteen ci jobs from ccf696b7 to c8a4298b (read with `gh run view --json
+jobs`, all green on their last attempt) took 37:56 to 59:43, four past 50; the slowest, 2919a7b9, ran pytest's step
+for 59:08 at 6468 tests, 10:17 under the limit of 70 and 8:33 above round 29's slowest, and e4945ad5's first attempt
+lost its runner at 46:01 (C569), its rerun taking 50:19. CLAUDE.md gives `about 18 to 60 minutes` with the sixteen
+named, COMMON.md says the same with round 31's id, and, as the lead ruled on the trend (round 29 raised 60 to 70 at
+the same margin), `timeout-minutes` is 80, about 20 minutes above 59:43; C372's sentence keeps the 70 it set, and
+`tests/test_convert_recording.py`'s docstring names 80, as does a dated line on §16.144's W70 paragraph, sent to lane
+E first. The verifier's "keep 70" (it meets the 10-minute rule) is the ruling's to overrule, and it did. Tests:
+`test_claude_md_gives_cis_time_and_its_limit` and `test_the_recording_tests_limit_names_cis_own_limit`.

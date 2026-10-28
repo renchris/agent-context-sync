@@ -229,7 +229,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     C387 (one defect): round 29's nine later jobs (673a72a0 to fa32c452) took 35:36 to 51:10, six past 45,
     the slowest, b2b88e5d, 8:50 under the limit of 60 (docs and a doc test, pytest's step 50:28 at 6345
     tests): the range is 18 to 52, and the limit is 70, about 19 minutes above it; I99's and C207's
-    sentences keep the 60 they measured against, and test_convert_recording's docstring names the limit."""
+    sentences keep the 60 they measured against, and test_convert_recording's docstring names the limit.
+    B13 round 31 C571 (ruling 62): round 30's sixteen jobs (ccf696b7 to c8a4298b) took 37:56 to 59:43, four
+    past 50, the slowest, 2919a7b9, 10:17 under the limit of 70 and 8:33 above round 29's: the range is 18 to
+    60, and the limit is 80, about 20 minutes above it; C372's sentence keeps the 70 it set."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -239,9 +242,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 29 minutes" not in guide and "about 18 to 32 minutes" not in guide
     assert "about 18 to 33 minutes" not in guide and "about 18 to 37 minutes" not in guide
     assert "about 18 to 40 minutes" not in guide and "about 18 to 45 minutes" not in guide
+    assert "about 18 to 52 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 52 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
+        "`ci` takes about 18 to 60 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
         " the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs from eaed1034 to"
         " fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to 31:21; the thirteen"
         " from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to 3ec66a92 took 30:06 to"
@@ -249,16 +253,18 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " 26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests and pytest's step 49:26;"
         " the seven after it, from 71388552 to b2724d9c, took 30:19 to 44:27, the slowest on 3f1dee54, 6191"
         " tests and pytest's step 43:58; the nine after those, from 673a72a0 to fa32c452, took 35:36"
-        " to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step 50:28; one run took"
-        " 34 on a runner loaded 5 to 8 per core),"
+        " to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step 50:28; the sixteen"
+        " after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the slowest on 2919a7b9,"
+        " 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was green; one"
+        " run took 34 on a runner loaded 5 to 8 per core),"
         " plus any wait for a macOS runner, counted from the run appearing to its job starting (one waited 48"
         f" minutes, another 46); the job's limit is {limit} minutes (`timeout-minutes` in ci.yml), and a wait"
         " does not count against it."
     ) in guide
-    assert int(limit) - 52 >= 10 and int(limit) == 70  # 10 minutes above the slowest job seen, 51:10
+    assert int(limit) - 60 >= 10 and int(limit) == 80  # 10 minutes above the slowest job seen, 59:43
     lanes = _page("docs/lanes/COMMON.md")
     assert (
-        "CI takes 18 to 52 minutes a run (the slowest, 51:10, in round 29), and a run can wait up to"
+        "CI takes 18 to 60 minutes a run (the slowest, 59:43, in round 30), and a run can wait up to"
         " about 48 minutes for a macOS runner first; its limit is"
         f" {limit} "
     ) in lanes
@@ -270,7 +276,8 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         and "18 to 37 minutes" not in lanes
         and "18 to 40 minutes" not in lanes
         and "18 to 45 minutes" not in lanes
-        and "round 29 C207, round 30 C372)" in lanes
+        and "18 to 52 minutes" not in lanes
+        and "round 30 C372, round 31 C571)" in lanes
         and f"its limit is {limit} " in lanes
     )
     # the workflow's own note gives the job's times, and pytest's step only as such
@@ -297,8 +304,16 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     later = "Round 29's nine later jobs (673a72a0 to fa32c452) took 35:36 to 51:10, all green on attempt 1"
     assert later in note
     assert (
-        f"which left 60 only 8:50 above it, so it is {limit}: about {int(limit) - 51} minutes above it"
-        " (B13 round 30 C372, C387)"
+        "which left 60 only 8:50 above it, so it is 70: about 19 minutes above it (B13 round 30 C372, C387)"
+    ) in note
+    assert (
+        "Round 30's sixteen jobs (ccf696b7 to c8a4298b) took 37:56 to 59:43, all green on their last" in note
+    )
+    assert (
+        "(e4945ad5's first attempt lost its runner at 46:01, its rerun 50:19), four past 50 (the slowest"
+        " 2919a7b9, pytest's step 59:08 at 6468 tests), which left 70 only 10:17 above it, and the slowest"
+        f" rose 8:33 in one round, so it is {limit}: about {int(limit) - 60} minutes above it"
+        " (B13 round 31 C571)"
     ) in note
     recording = " ".join((ROOT / "tests" / "test_convert_recording.py").read_text(encoding="utf-8").split())
     assert f"well under the ci job's {limit} minutes (``timeout-minutes`` in ci.yml)" in recording
