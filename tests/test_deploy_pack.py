@@ -7340,6 +7340,21 @@ def test_the_purge_queue_row_gives_the_lost_queue_line_and_the_not_judged_line()
     assert "the entry stays queued and is judged after the next sync, or once that FAIL is fixed" in row
 
 
+def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
+    """B13 round 31 C554: the row said "That last clause shows only when a shown run counted such a re-read"
+    right after the clause about images only a download would read, while the clause it means, on a failure an
+    older build stored a folder path in, sits after `once it starts` many sentences earlier. It names that
+    clause by its place and words."""
+    [row] = [line for line in _feedback_page().splitlines() if line.startswith("| Repeat conversions |")]
+    assert "That last clause shows only when" not in row
+    said = (
+        "The clause after `once it starts`, on a failure an older build stored a folder path in, shows only"
+        " when a shown run counted such a re-read"
+    )
+    assert said in row and row.index("once it starts") < row.index(said)
+    assert "a failure an older build stored a folder path in is tried once more after an upgrade" in row
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

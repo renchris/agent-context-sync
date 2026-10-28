@@ -35414,3 +35414,11 @@ lost-queue line names no selector, source, reason or time, that a not-judged id 
 next sync or once the FAIL its line names is fixed. Test:
 `test_the_purge_queue_row_gives_the_lost_queue_line_and_the_not_judged_line`, which reads both lines from
 `setup_report`.
+
+**The guide's Repeat conversions row names the clause its note follows** (C554; `docs/deploy/setup-feedback.md`). The
+row said `That last clause shows only when a shown run counted such a re-read` right after its clause about images
+only a download would read, while the clause it means, on a failure an older build stored a folder path in, sits after
+`once it starts` many sentences earlier. Built after lane RA's ruling 53 row change (4d2d2847f): the sentence now
+names that clause by its place after `once it starts` and by its words, and the rest of it stays. Test:
+`test_the_repeat_conversions_row_names_the_clause_its_note_follows`, which checks the old words are gone and the named
+clause comes after `once it starts`.
