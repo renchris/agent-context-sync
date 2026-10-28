@@ -2289,7 +2289,8 @@ def round28_first(state_dir: Path, fix: str) -> str:
     sync while heartbeat.json still keeps round 28's hold record (``governance.round28_pending``): the sync
     moves it to hold-record.json before it stops on the manifest, where the move aside alone took the record
     with it (B13 round 30 C351, C352; ruling 34). As the link's first step, so readers keyed on the ending
-    still know the fix."""
+    still know the fix; the link's own "removes the link first" then drops its "first", which this step now
+    is (B13 round 31 C543)."""
     from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
 
     try:
@@ -2301,7 +2302,7 @@ def round28_first(state_dir: Path, fix: str) -> str:
     return (
         f"the person runs `{AGENTSYNC_BIN} sync` once first, which moves round 28's hold record from "
         "heartbeat.json to hold-record.json before it stops on the manifest; then "
-        + fix.removeprefix("the person ")
+        + fix.removeprefix("the person ").replace("removes the link first: ", "removes the link: ", 1)
     )
 
 

@@ -33927,6 +33927,8 @@ hold-record.json before it stops on the manifest; then " (the manifest link to n
 fix included) while `governance.round28_pending` (no hold-record.json,
 heartbeat.json's list naming a scope), so readers keyed on the fix's ending still know it. Test: `test_cli.py`
 `test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status` (sync, hold, release, purge).
+Amended 2026-10-28, §16.210 C543: under that lead the link's fix reads "; then removes the link: rm <db>; then
+decides: ...", one "first", the sync's; with no round 28 record it keeps "the person removes the link first: rm <db>".
 
 C370 with C312, C350, C389 (ruling 35): a queued purge the queue lost can be redone from what agentsync prints, and
 only a purge of that item closes it. With purge-queue.json gone and no copy, the FAIL named only "upstream-deleted
@@ -34921,6 +34923,17 @@ back. A record that names a purge keeps its words; `_purges_rewritten`'s tail is
 `test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530` (an empty hold record, no
 purge record and governance/ a file: status's FAIL and the sync's error say the conditional clause and the records
 owner, never "run earlier is lost" or "none is lost"; after an erasure purge and a sync, the record's words).
+
+C543 (2026-10-28): **under round 28's lead the lost-manifest link fix says "first" once** (ruling 60). With
+heartbeat.json keeping round 28's hold record and the manifest a link to nothing, the state_dir.manifest fix read
+"the person runs \`~/.local/bin/agentsync sync\` once first, which moves round 28's hold record ...; then removes the
+link first: rm <db>; then decides: ...", two "first"s, the second against the step order. `doctor.round28_first`
+now drops the link's "first" when it leads the fix ("; then removes the link: rm <db>; then decides: ..."); with no
+round 28 record the fix keeps "the person removes the link first: rm <db>". Readers keyed on the ending
+(LOST_MANIFEST_WORDS, LOST_MANIFEST_FIX) or on DANGLING_UNUSABLE are unchanged. Doctor only: install.sh's twin is
+lane RB's. Test: `test_cli.py` `test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status` (sync,
+hold, release, purge: "; then removes the link: rm " and no "link first"); the plain case stays pinned by
+`test_ops_doctor.py` and `test_cli.py`'s link-to-nothing tests.
 
 ### 16.211 Round 31: every stored reason pathless as written, the label reader's re-screen named as its own and the re-read on every upgrade path (2026-10-28, wave B13 round 31 lane E)
 

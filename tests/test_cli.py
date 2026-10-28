@@ -7328,7 +7328,9 @@ def test_round_28s_hold_record_moves_at_a_writing_command_and_never_at_status(
     _rc, out = _status(cfg, capsys)
     (lost,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
     assert "(fix: the person runs `~/.local/bin/agentsync sync` once first, which moves" in lost, lost
-    assert "; then removes the link first: rm " in lost and not os.path.lexists(record), lost
+    assert "; then removes the link first: rm " not in lost and not os.path.lexists(record), lost
+    # one "first", the sync's, which leads the link's step (B13 round 31 C543)
+    assert "; then removes the link: rm " in lost and "link first" not in lost, lost
     db.unlink()
     for reader in ("status", "doctor"):
         assert cli.main([reader, "--config", cfg]) == cli.EXIT_FAILED
