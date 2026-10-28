@@ -3580,9 +3580,10 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
     assert item.startswith(
         "a relative --source-local argument in install.log (which records no working directory) whose first "
         "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
-        "configured folder, cut at its first part that is not a fixed macOS folder or one every home or "
-        "drive has; and every word bash wrote in its dollar-quote form ($'...'),"
-    ), item
+        "configured folder, there or as an added source's typed folder, cut at its first part that is not a "
+        "fixed macOS folder or one every home or drive has; and every word bash wrote in its dollar-quote "
+        "form ($'...'),"
+    ), item  # B13 round 31 ruling 49 (C529): an added source's typed folder named
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
@@ -3678,6 +3679,50 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
     assert len(quoted) >= 3, py
     for run, arg in quoted.items():
         assert re.sub(r"<folder-\d+>", "<folder-N>", arg) == re.sub(r"<folder-\d+>", "<folder-N>", shown[run])
+
+
+def test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is(env: dict[str, str]) -> None:
+    """B13 round 31 ruling 49 (C529, the shell half of lane RA's cut): add-source's note prints the folder as
+    typed, unquoted, before the stored form, `added source '<id>' to <file> (<typed>, stored as <stored>):`,
+    and a typed path through a link named for a project kept that name in clear (`~/<org-1> Plans Link/...`)
+    while the same report cut it on the --source-local argument. Forced to the shell fallback, the note's
+    typed form now reads as the argument's cut form, in each spelling of the home, and the stored form keeps
+    its own placeholders; a bare word of the path is not replaced anywhere else."""
+    home = Path(env["HOME"])
+    stored = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    stored.mkdir(parents=True)
+    (home / "Contoso Plans Link").symlink_to(stored.parent)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "project-alpha"\nkind = "local"\npath = "{stored}"\n')
+    real = Path(os.path.realpath(home))
+    typed = [f"{home}/Contoso Plans Link/Project Alpha", f"{real}/Contoso Plans Link/Project Alpha"]
+    # typed with tab completion's slash: add-source prints it as pathlib does, without it (the review)
+    words = subprocess.run(  # as install.sh's log_start writes them
+        [BASH32, "-c", 'printf "%q\\n" "$@"', "_", typed[0] + "//"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = "start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+    (setup / "install.log").write_text(f"2026-10-10T01:00:00Z run=20261010T010000Z-1 {head}{words[0]}\n")
+    notes = [f"added source 'project-alpha' to {cfg} ({t}, stored as {stored}): Plans kept" for t in typed]
+    friction_path(env).write_text(
+        "Prompt: v33\n" + "".join(f"F{i} | step 2 | clean | 0 | {n} | -\n" for i, n in enumerate(notes, 1))
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    shown = re.findall(r"\(([^()]*), stored as ([^()]*)\): Plans kept", text)
+    assert len(shown) == 2, text
+    for typed_shown, stored_shown in shown:
+        assert typed_shown == "~/<path>", shown  # lane RA's form: `(~/<path>, stored as ...)`
+        assert re.fullmatch(r"~/Library/CloudStorage/OneDrive-<org-\d>/<folder-\d>", stored_shown), shown
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        assert "Plans Link" not in path.read_text(), path
+    assert "Plans kept" in text, "anchored to the note: the path's words stay words elsewhere"
 
 
 @pytest.mark.parametrize("same_run", [True, False])

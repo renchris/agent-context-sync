@@ -34599,6 +34599,19 @@ doctor does not count here. A record that is missing, empty, unreadable or names
 today's words. Test: `test_the_governance_folders_fix_says_a_folder_was_kept_when_the_hold_record_names_a_hold`, with
 the real agentsync for a scope, `all`, round 28's record and a released hold, checking status says the same.
 
+**The shell report cuts an added source's typed folder as it cuts the argument** (C529, the shell half of lane RA's
+cut; ruling 49; `scripts/install.sh`). add-source's note prints the folder as typed, unquoted, before the stored form
+(`added source '<id>' to <file> (<typed>, stored as <stored>):`, cli.py), and a typed path through a link named for a
+project kept that name in clear (`~/<org-1> Plans Link/<folder-1>`) while the same report cut the --source-local
+argument to `~/<path>`. redaction_pairs now pairs each rooted --source-local path's unquoted spellings (as logged,
+the home as `$HOME`, as `pwd -P` gives it, and as `~`) anchored to the note, `(<path>, stored as`, with its cut form,
+`(<cut>, stored as`, an argument pair (`a`), so the bare path is replaced nowhere else and the stored form keeps its
+own placeholders; the cut is not counted (C331). The Redaction legend's `<path>` item names it: `that names no
+configured folder, there or as an added source's typed folder, cut at its first part ...`. The shell has no
+same-stored collapse, so a note whose two forms redact alike shows both. Tests:
+`test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is`, forced to the shell fallback with the
+note in the friction log in two spellings of the home, and `test_the_path_legend_says_only_a_relative_argument_is_one`.
+
 ### 16.210 Round 31: a lost queued purge always shown, accept-lost's words, the read-only side files, the label-unreadable share and a governance stop's own fix (2026-10-28, wave B13 round 31 lane B)
 
 Reserved for round 31 lane B of B13.

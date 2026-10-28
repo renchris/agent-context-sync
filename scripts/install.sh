@@ -2392,7 +2392,7 @@ hold_scopes() {
 		}' "${files[@]}" 2>/dev/null | LC_ALL=C awk '$0 != "all" && length($0) <= 63' | LC_ALL=C sort -u || true
 }
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk sl dsl dot
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
@@ -3000,6 +3000,23 @@ redaction_pairs() {
 			[ "$m" = "$k" ] || printf '%s\t%s\ta\n' "--source-local $m" "--source-local $u"
 			m="$(shown_arg "$x")" # as a NEXT's re-run shows it, in its quotes, as the Python report keeps them
 			case "$m" in \"*) printf '%s\t%s\ta\n' "--source-local $m" "--source-local \"$u\"" ;; esac
+			# as add-source's note prints the folder typed, unquoted, before the stored form: `added source
+			# '<id>' to <file> (<typed>, stored as <stored>)` (a link resolved), anchored to the note so the
+			# bare path is replaced nowhere else, the stored form left to the pairs after it, as
+			# setup_report cuts the typed form (B13 round 31 ruling 49: C529, lane RA's rule). As pathlib prints
+			# it: no `//`, no `/./`, no trailing `/` or `/.` (a tab-completed argument ends in `/`); the slashes
+			# by variable, since bash 3.2 keeps a backslash-escaped one in a ${//} replacement
+			m="$x" sl=/ dsl=// dot=/./
+			while :; do
+				case "$m" in
+				*//*) m="${m//$dsl/$sl}" ;;
+				*/./*) m="${m//$dot/$sl}" ;;
+				?*/.) m="${m%/.}" ;;
+				?*/) m="${m%/}" ;;
+				*) break ;;
+				esac
+			done
+			printf '%s\t%s\ta\n' "($m, stored as" "($u, stored as"
 		done
 	done
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
@@ -5245,11 +5262,13 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <path> "*)
 		# a configured ~/ or absolute argument is matched by its configured folders, as the body shows it (B13 round
 		# 21 Y8); any other is cut to <path>, as the Python report cuts it (round 22 Z2, Z13, Z29, Z42, Z77)
+		# and an added source's typed folder, cut as the argument is (B13 round 31 ruling 49: C529, lane RA's words)
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
-		say "  cut at its first part that is not a fixed macOS folder or one every home or drive has; and every word bash"
-		say "  wrote in its dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control"
-		say "  character, a curly apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
+		say "  there or as an added source's typed folder, cut at its first part that is not a fixed macOS folder or one"
+		say "  every home or drive has; and every word bash wrote in its dollar-quote form (\$'...'), which install.log uses"
+		say "  for a name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the C"
+		say "  locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
