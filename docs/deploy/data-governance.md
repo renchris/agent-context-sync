@@ -68,8 +68,13 @@ is a copy that no purge reaches, so exclude it too.
   `is empty or too short to be a manifest, but heartbeat.json records earlier passes` and
   `is empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out`),
   `agentsync purge` (a selector, `--queue`, and the `--dry-run` of either) and
-  `agentsync compact-history` stop on that same line, exit 1 and write nothing, because no manifest read can tell a
-  current page from a gone one. Queued purges stay queued. Follow status's fix: restore manifest.sqlite from a copy
+  `agentsync compact-history` stop on that same line, exit 1 and write nothing (a real `agentsync purge`, not a
+  `--dry-run`, first moves round 28's hold record from heartbeat.json to hold-record.json if it is still there),
+  because no manifest read can tell a current page from a gone one. Queued purges stay queued. While heartbeat.json
+  still keeps round 28's hold record and no hold-record.json is there, status's fix starts with `agentsync sync`
+  once, which moves round 28's hold record from heartbeat.json to hold-record.json before it stops on the manifest;
+  run it before moving heartbeat.json aside, or the move takes the record with it (B13 round 31 C580). Follow
+  status's fix: restore manifest.sqlite from a copy
   you trust, or else move heartbeat.json aside (keeping a copy) so the next sync starts a new manifest; a manifest
   too short to be one is moved aside with heartbeat.json, keeping a copy. When heartbeat.json is this account's own
   file at a mode that refuses it, status's NEXT gives its `chmod 600` first, and the manifest's fix comes only if

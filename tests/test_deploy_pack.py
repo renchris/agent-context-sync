@@ -7005,6 +7005,38 @@ def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
     assert "_lost_state_stop" not in inspect.getsource(cli._cmd_hold)
 
 
+def test_the_records_page_runs_the_sync_first_while_heartbeat_keeps_round_28s_hold_record(
+    tmp_path: Path,
+) -> None:
+    """B13 round 31 C580 (ruling 51): the lost-manifest bullet paraphrased status's fix as a move of
+    heartbeat.json aside, which takes round 28's hold record with it while no hold-record.json is there;
+    status's fix leads with one sync (doctor.round28_first). The bullet says so, before `Follow status's
+    fix:`, in round28_first's own words, and that a real purge moves the record too, both pinned phrases
+    word for word."""
+    from agentsync import governance  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    (tmp_path / "heartbeat.json").write_text(
+        json.dumps({governance.HOLD_RECORD_KEY: ["all"]}), encoding="utf-8"
+    )
+    assert governance.round28_pending(tmp_path)
+    led = doctor.round28_first(tmp_path, doctor.LOST_MANIFEST_FIX)
+    lead = re.match(r"the person runs `([^`]*)` once first, which (.*?); then ", led)
+    assert lead is not None and lead[1] == f"{doctor.AGENTSYNC_BIN} sync"
+    moves = lead[2]
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost manifest:\*\* (.*?)(?= - \*\*| ## )", page)
+    step = f"status's fix starts with `agentsync sync` once, which {moves};"
+    assert step in bullet
+    assert bullet.index(step) < bullet.index("Follow status's fix:")
+    assert "run it before moving heartbeat.json aside, or the move takes the record with it" in bullet
+    assert (
+        "exit 1 and write nothing (a real `agentsync purge`, not a `--dry-run`, first moves round 28's hold "
+        "record" in bullet
+    )
+    assert "restore manifest.sqlite from a copy you trust, or else move heartbeat.json aside" in bullet
+
+
 def test_records_round_26_changed_point_to_the_change() -> None:
     """B13 round 27 P59, P144 (one gap, built once): round 26 changed what four older records state (§16.179's
     D-L1d clause by E16, its pairing paragraph by E76, D33's test by E31 and E56, §16.180's D6 detail by E18)

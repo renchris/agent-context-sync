@@ -34458,4 +34458,15 @@ Reserved for round 31 lane E of B13.
 
 ### 16.212 Round 31: CI's limit of 80, the records page's lost-manifest steps and accept-lost count, and the kit's fixture checks (2026-10-28, wave B13 round 31 lane D)
 
-Reserved for round 31 lane D of B13.
+**The records page runs the sync first while heartbeat.json keeps round 28's hold record** (C580, ruling 51;
+`docs/deploy/data-governance.md`). The lost-manifest bullet paraphrased status's fix as a restore of manifest.sqlite
+or a move of heartbeat.json aside, but while heartbeat.json still keeps round 28's hold record, naming a scope, and no
+hold-record.json is there (`governance.round28_pending`), `doctor.round28_first` leads that fix with one
+`agentsync sync`, which moves the record to hold-record.json before it stops on the manifest: a reader who followed
+the page's paraphrase moved the only copy of the hold record aside with heartbeat.json (§16.205 C351's loss). The
+bullet says so before `Follow status's fix:`, in round28_first's own words, and that the move aside comes after it.
+Its "exit 1 and write nothing" was false for a real purge: `_cmd_purge` runs `governance.carry_round28_record`
+before its lost-manifest stop unless `--dry-run`, so the bullet says a real purge moves the record first. Both
+phrases test_the_records_page_says_purge_stops_over_a_lost_manifest pins stay word for word. Test:
+`test_the_records_page_runs_the_sync_first_while_heartbeat_keeps_round_28s_hold_record`, which reads the step from
+`round28_first` over a heartbeat.json holding a hold on `all` and checks it comes before `Follow status's fix:`.
