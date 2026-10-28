@@ -2668,6 +2668,14 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
         " records (": ["2 purges, as that time names 2 records (2026-10-22T05:32:56Z)"],
         "its label cannot": ["1 of them withheld: its label cannot be read"],
         "its label": ["1 of them withheld: its label cannot be read"],
+        " of them under a label rule because ": [
+            "3 refused, 1 of them under a label rule because its label data did not parse",
+            "3 refused, 2 of them under a label rule because their label data did not parse",
+        ],
+        "its label data": ["3 refused, 1 of them under a label rule because its label data did not parse"],
+        "their label data": [
+            "3 refused, 2 of them under a label rule because their label data did not parse",
+        ],
         "sensitivity label ": ["refused: sensitivity label Contoso Secret is excluded by [policy]"],
         "launchd label ": ["launchd label 'com.contoso.x y' is invalid: use letters, digits, '.', '-', '_'"],
         " with a record (": [

@@ -2107,7 +2107,7 @@ FIXED_VALUE_PHRASES+="|by whichever build wrote the record.|is a record another 
 FIXED_VALUE_PHRASES+="|and the record keeps its count|inbox source with a record (|inbox sources with a record ("
 FIXED_VALUE_PHRASES+="|every sync records the checkpoint itself|a sync records one once a session's topic pages"
 FIXED_VALUE_PHRASES+="|a run from this shell records where gitleaks is|heartbeat.json records earlier passes"
-FIXED_VALUE_PHRASES+="|its --dry-run records nothing|purges, as that time names # records ("
+FIXED_VALUE_PHRASES+="|purges, as that time names # records ("
 FIXED_VALUE_PHRASES+="|from the person's own records|the person (the records or legal owner)"
 FIXED_VALUE_PHRASES+="|the name of the records or legal owner setting it"
 FIXED_VALUE_PHRASES+="|--owner (the records/legal owner) is required"
@@ -2134,13 +2134,15 @@ FIXED_VALUE_PHRASES+="|IRM/RMS, label or password encryption|label-escalation|la
 FIXED_VALUE_PHRASES+="|label-capable|label_reader_revision|label-reader:|label escalation of |label escalation:"
 FIXED_VALUE_PHRASES+="|upstream deletion or a label escalation|while the label policy lets its file publish again"
 FIXED_VALUE_PHRASES+="|while the label policy lets their file publish again"
-FIXED_VALUE_PHRASES+="|each erasure, DLP and label purge again by hand|an erasure, DLP or label purge run earlier"
+FIXED_VALUE_PHRASES+="|each erasure, DLP and label purge again by hand|if an erasure, DLP or label purge was ever run here"
 FIXED_VALUE_PHRASES+="|the mail label reader changed|the previous label reader|sensitivity_label|launchd_label_prefix"
 FIXED_VALUE_PHRASES+="|launchd label '|lock label must be 1-64 non-whitespace characters"
 FIXED_VALUE_PHRASES+="|or a label that blocks download|its lit samples show another label|of the label's lit speech"
 FIXED_VALUE_PHRASES+="|a lit label follows sound|the text of a name label or a camera picture"
 FIXED_VALUE_PHRASES+="|the one label the meeting app lit|MSIP_Label_|msip_label_|label_policy"
 FIXED_VALUE_PHRASES+="|for a new mail label reader|the mail label reader"
+FIXED_VALUE_PHRASES+="|under a label rule because its label data did not parse"
+FIXED_VALUE_PHRASES+="|under a label rule because their label data did not parse"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

@@ -1378,7 +1378,6 @@ _FIXED_VALUE_PHRASES = (
     "a sync records one once a session's topic pages",
     "a run from this shell records where gitleaks is",
     "heartbeat.json records earlier passes",
-    "its --dry-run records nothing",
     "purges, as that time names # records (",
     "from the person's own records",
     "the person (the records or legal owner)",
@@ -1441,7 +1440,7 @@ _FIXED_VALUE_PHRASES = (
     "while the label policy lets its file publish again",
     "while the label policy lets their file publish again",
     "each erasure, DLP and label purge again by hand",
-    "an erasure, DLP or label purge run earlier",
+    "if an erasure, DLP or label purge was ever run here",  # lane B's C530 words (B13 round 31)
     "the mail label reader changed",
     "the previous label reader",
     "sensitivity_label",
@@ -1461,6 +1460,10 @@ _FIXED_VALUE_PHRASES = (
     # reader`, and the reader's `the mail label reader changed` warning
     "for a new mail label reader",
     "the mail label reader",
+    # lane B's sync line (B13 round 31 ruling 59, C525): `, L of them under a label rule because its label
+    # data did not parse`, which the report re-renders (C567)
+    "under a label rule because its label data did not parse",
+    "under a label rule because their label data did not parse",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
