@@ -15112,6 +15112,21 @@ def _fail_step_in_doctor(r: _Run, found: str) -> str:
     return found
 
 
+def _ran_no_install(r: _Run) -> bool:
+    """Whether the latest attempt ran no install.sh: the test behind the Summary's ``install.sh: no run during
+    this attempt`` (an attempt with a start line and none of the install log's runs). The Loop line's NEXT is
+    then status's reading of state earlier attempts left, which the line says (B13 round 32 C620)."""
+    att = r.friction.latest if r.friction is not None else None
+    return att is not None and att.begin is not None and not _latest_runs(r)
+
+
+def _one_bracket(text: str, words: str) -> str:
+    """``text`` with ``words`` in a bracket after it, inside the bracket ``text`` already ends in when it does
+    (``...; session done)`` reads ``...; session done; <words>)``): two brackets in a row read as a typo
+    (B13 round 18 V11, V54; B13 round 32 C620, ruling 67)."""
+    return f"{text[:-1]}; {words})" if text.endswith(")") else f"{text} ({words})"
+
+
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
@@ -15160,8 +15175,16 @@ def _loop_line(r: _Run) -> str:
         if found
         else "NEXT: none (the loop state cannot be read)"
     )
+    # B13 round 32 C620: with no install.sh run in the attempt, whose reading the NEXT is, in the one bracket
+    # the damage clause has (two in a row read as a typo, B13 round 18 V11, V54)
+    fresh = found is not None and _ran_no_install(r)
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
-        text += f" (the loop's own read; {_DAMAGE_SEEN})"
+        own = "the loop's own read"
+        if fresh:
+            own += " when this report was written; this attempt ran no install.sh"
+        text = _one_bracket(text, f"{own}; {_DAMAGE_SEEN}")
+    elif fresh:
+        text = _one_bracket(text, "status when this report was written; this attempt ran no install.sh")
     in_doctor = _doctor_fail_shown(r, "governance.hold")  # B13 round 32 C636
     waits = [
         ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR) if in_doctor else ln

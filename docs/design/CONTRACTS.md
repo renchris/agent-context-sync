@@ -5404,6 +5404,8 @@ report's reader cannot run `agentsync status`. A missing hook, a failed or timed
 is said on the line ("NEXT: not read (...)"); the Status section still prints no NEXT. `compute_outcome` and the
 issue form's Outcome options are unchanged: the outcome judges the install, the Loop line the loop. The issue
 link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
+Amended 2026-10-28, §16.213 C620: when the attempt ran no install.sh, the NEXT carries `(status when this report was
+written; this attempt ran no install.sh)`, merged with the damage clause into one bracket.
 **Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install (`INSTALL_STEP`), 3 sync loop and report
 (`REPORT_STEP`); the folder question and the one announced Allow click (step 1, `V7_ALLOW_CLICK_STEPS`: since
 K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v6;
@@ -35542,6 +35544,22 @@ same test the NEXT's pointer takes; else the wait keeps the sync's own words, `r
 governance.hold [FAIL] line gives the person's fix`, true of status, which prints that line under its own wait. Tests:
 `test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636` (a doctor hook that raises, one that
 reports governance.hold ok, and none) and the C508 test, whose doctor hook now prints governance.hold's [FAIL] line.
+
+**The Loop line says whose reading its NEXT is when the attempt ran no install.sh** (C620, ruling 67;
+`src/agentsync/setup_report.py`). Under `outcome: failed at step 1` with no install.sh run, the Loop line quoted
+status's `stop: the operator confirms the baseline questions ...; session done` with no word of its source, while the
+Summary's install.sh and sync lines named theirs (`no run during this attempt`, `before this attempt; this attempt ran
+none`), so `session done` read as this attempt's end. When `_ran_no_install` holds (the latest attempt has a start
+line and `_latest_runs` is empty: the test behind `install.sh: no run during this attempt`) and the loop gave a NEXT,
+the NEXT carries one bracket, `(status when this report was written; this attempt ran no install.sh)`. With the damage
+clause it is merged into that clause's bracket, `(the loop's own read when this report was written; this attempt ran
+no install.sh; <damage>)`, so the line never has two brackets in a row (V11, V54). A NEXT that already ends in its
+own bracket (rule 9's under `count_queue=False`, which ends `; session done)`) takes these words
+inside it after `; ` (`_one_bracket`: `...; session done; status when this report was written; this attempt ran no
+install.sh)`), the damage clause too. The `not read (...)` returns show
+no NEXT and are unchanged. Test: `test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620` (no
+attempt: no bracket; the stopped v8 attempt; and the same with the damage flag set, one bracket; rule 9's NEXT, with
+and without the damage flag, one bracket).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

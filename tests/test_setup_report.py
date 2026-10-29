@@ -10249,6 +10249,55 @@ def test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636(
         assert line.endswith(tail) and "Doctor's governance.hold" not in line, line
 
 
+def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 32 C620 (ruling 67): under ``failed at step 1`` with no install.sh run in the attempt, the
+    Loop line quoted status's ``...; session done`` with no word of its source, while the Summary's
+    install.sh and sync lines named theirs. The NEXT then carries one bracket, ``(status when this report was
+    written; this attempt ran no install.sh)``, merged with the damage clause so the line never has two in a
+    row."""
+    step = "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+    step += "session done"
+    wait = "WAITING ON YOU: answer the baseline questions"
+    said = "(status when this report was written; this attempt ran no install.sh)"
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert said not in _line(section(text, "Summary"), "- Loop: "), "no attempt: no bracket"
+    write_friction(fake_mac, STOPPED_V8)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    summary = section(text, "Summary")
+    assert "- install.sh: no run during this attempt" in summary, summary
+    line = _line(summary, "- Loop: ")
+    assert f"; session done {said}; WAITING ON YOU: " in line, line
+    r = setup_report._Run(fake_mac["config"], hooks, 5.0)
+    r.friction = setup_report.read_friction(r.friction_path)
+    r.facts.evidence_damage_failed = True
+    line = setup_report._loop_line(r)
+    assert (
+        "; session done (the loop's own read when this report was written; this attempt ran no install.sh; "
+        f"{setup_report._DAMAGE_SEEN}); WAITING ON YOU: " in line
+    ), line
+    after = line.split("; session done", 1)[1].split("; WAITING ON YOU: ", 1)[0]
+    assert after.count("(") == 1 and said not in line, "one bracket after the NEXT"
+    # rule 9's NEXT under count_queue=False ends in its own bracket: the words go inside it, never a second
+    queue = "NEXT: run `~/.local/bin/agentsync curate` and follow its NEXT line (it counts the curation "
+    queue += "queue; curate up to 20 rows, then run `~/.local/bin/agentsync sync`; session done)"
+    r.hooks = setup_report.ReportHooks(loop_next=lambda _config: [queue, wait])
+    line = setup_report._loop_line(r)
+    assert (
+        "; session done; the loop's own read when this report was written; this attempt ran no install.sh; "
+        f"{setup_report._DAMAGE_SEEN}); WAITING ON YOU: " in line
+    ), line
+    r.facts.evidence_damage_failed = False
+    line = setup_report._loop_line(r)
+    assert (
+        "; session done; status when this report was written; this attempt ran no install.sh); "
+        "WAITING ON YOU: " in line
+    ), line
+    assert ") (" not in line, "one bracket after the NEXT"
+
+
 def test_the_loop_lines_fail_step_names_doctors_fail_line_c603(fake_mac: dict[str, Path]) -> None:
     """B13 round 32 C603, C656 (ruling 67): rule 1's NEXT on the Loop line said "the [FAIL] line below",
     true of status, which prints its [FAIL] lines under its NEXT, but the Summary below the Loop line holds
