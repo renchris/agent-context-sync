@@ -5760,6 +5760,40 @@ def test_a_lost_hold_is_said_as_lost_and_the_sync_waits_on_it(
         assert out.index(wait) < failed, out
 
 
+def test_a_lost_holds_wait_names_the_governance_folder_when_it_is_missing_c613(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C613 (ruling 64): with the whole governance folder moved aside under a hold, the lost-hold
+    WAITING ON YOU line still said "the hold list lost a hold that the audit trail or the hold record keeps",
+    with no hold list or audit trail on disk, beside a FAIL that names the folder. The wait takes the folder's
+    form, status its own (no "run status"), the tail byte for byte; with the folder there, the hold list's."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    holds = governance._holds_file(root)
+    holds.write_text('{"holds": []}\n', encoding="utf-8")  # the folder there: the hold list's form
+    assert governance.lost_hold_wait(root) == governance.LOST_HOLD_WAIT
+    capsys.readouterr()
+    governance.governance_dir(root).rename(root / "governance.kept")
+    assert governance.lost_hold_wait(root) == governance.LOST_HOLD_WAIT_GOVGONE
+    tail, status_tail = (
+        w.split(": ", 1)[1] for w in (governance.LOST_HOLD_WAIT, governance.LOST_HOLD_WAIT_STATUS)
+    )
+    assert governance.LOST_HOLD_WAIT_GOVGONE.endswith(tail), "the report's Loop line swaps this tail (C508)"
+    assert governance.LOST_HOLD_WAIT_GOVGONE_STATUS.endswith(status_tail)
+    assert governance.LOST_HOLD_WAIT_GOVGONE in loop.next_step(initialised).waits
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert f"WAITING ON YOU: {governance.LOST_HOLD_WAIT_GOVGONE}" in said and "the hold list lost" not in said
+    _rc, out = _status(cfg, capsys)
+    waits = [ln for ln in out if ln.startswith("WAITING ON YOU: ")]
+    assert not [w for w in waits if "agentsync status" in w or "the hold list lost" in w], waits
+    (wait,) = [w for w in waits if w == f"WAITING ON YOU: {governance.LOST_HOLD_WAIT_GOVGONE_STATUS}"]
+    failed = next(i for i, ln in enumerate(out) if ln.startswith("[FAIL] governance.hold "))
+    assert out.index(wait) < failed, out
+
+
 def test_a_lost_holds_fail_names_the_record_that_keeps_it(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

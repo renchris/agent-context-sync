@@ -1400,6 +1400,39 @@ LOST_HOLD_WAIT_STATUS = (
 """:data:`LOST_HOLD_WAIT` as status prints it, above that FAIL line: never "run status" inside status's own
 output; sync, curate and STATE.md, which print no FAIL line, keep "run status" (B13 round 30 C305, C314,
 C355)."""
+LOST_HOLD_WAIT_GOVGONE = (
+    "agentsync's governance folder is missing while its hold record keeps a hold, so purge and compaction "
+    f"stay suspended: run `{AGENTSYNC_BIN} status`; its governance.hold [FAIL] line gives the person's fix"
+)
+""":data:`LOST_HOLD_WAIT` while governance/ is missing and the hold record alone keeps each lost hold, as
+:func:`lost_hold_words` then names the folder: never "the hold list lost a hold that the audit trail ...",
+with no hold list or audit trail on disk (B13 round 32 C613; ruling 64). Its tail is :data:`LOST_HOLD_WAIT`'s,
+byte for byte, which the setup report's Loop line swaps (C508)."""
+LOST_HOLD_WAIT_GOVGONE_STATUS = (
+    "agentsync's governance folder is missing while its hold record keeps a hold, so purge and compaction "
+    "stay suspended: the governance.hold [FAIL] line below gives the person's fix"
+)
+""":data:`LOST_HOLD_WAIT_GOVGONE` as status prints it (:data:`LOST_HOLD_WAIT_STATUS`'s tail)."""
+LOST_HOLD_WAITS_STATUS = {
+    LOST_HOLD_WAIT: LOST_HOLD_WAIT_STATUS,
+    LOST_HOLD_WAIT_GOVGONE: LOST_HOLD_WAIT_GOVGONE_STATUS,
+}
+"""Each sync form of the lost-hold wait and the form status prints in its place (C613)."""
+
+
+def lost_hold_wait(state_dir: Path) -> str:
+    """The sync's WAITING ON YOU line for a lost hold: :data:`LOST_HOLD_WAIT_GOVGONE` when governance/ is
+    missing and no lost hold is kept by the audit trail (the case :func:`lost_hold_words` names the folder
+    in), else :data:`LOST_HOLD_WAIT`; a read that raises keeps the hold list's form (C613)."""
+    if not governance_gone(state_dir):
+        return LOST_HOLD_WAIT
+    try:
+        lost = lost_holds(state_dir)
+    except (AgentSyncError, OSError):
+        return LOST_HOLD_WAIT
+    if lost and all("audit.jsonl" not in h.kept_by for h in lost):
+        return LOST_HOLD_WAIT_GOVGONE
+    return LOST_HOLD_WAIT
 
 
 def hold_list_state(state_dir: Path) -> str | None:

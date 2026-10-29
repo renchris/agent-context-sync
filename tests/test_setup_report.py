@@ -10211,6 +10211,7 @@ def test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508(fake_mac
     person's fix``, which status itself never prints. The report holds Doctor's governance.hold line, so the
     Loop line says that; the NEXT keeps the words the report counts a person's stop by."""
     assert governance.LOST_HOLD_WAIT.endswith(setup_report._LOST_HOLD_RUN_STATUS)
+    assert governance.LOST_HOLD_WAIT_GOVGONE.endswith(setup_report._LOST_HOLD_RUN_STATUS)  # C613
     step = (
         "NEXT: the governance.hold check failed: its fix on the [FAIL] line below is the person's, not a "
         "step for the agent: show it to them"

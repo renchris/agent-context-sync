@@ -2155,6 +2155,7 @@ FIXED_VALUE_PHRASES+="|(which records no working directory)"
 FIXED_VALUE_PHRASES+="|(hold record read; the hold list is missing with the governance folder)"
 FIXED_VALUE_PHRASES+="|records in the new audit trail and in purge-record.json that the old audit trail was lost"
 FIXED_VALUE_PHRASES+="|purge-record.json records: agentsync's governance folder is missing"
+FIXED_VALUE_PHRASES+="|governance folder is missing while its hold record keeps a hold"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

@@ -2310,10 +2310,10 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
             if next_lines and next_lines[0].startswith("NEXT: cannot read the state"):
                 next_lines += _docs_waits(config)  # no FAIL to name: the wait still follows (D11)
     # the loop's lost-hold wait says "run status"; status prints its FAIL line below (B13 round 30 C305, C314)
-    lost = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT
-    next_lines = [
-        loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT_STATUS if ln == lost else ln for ln in next_lines
-    ]
+    # the governance folder's form too, mapped to its own status form (B13 round 32 C613)
+    pairs = governance.LOST_HOLD_WAITS_STATUS.items()
+    lost = {loop.WAIT_PREFIX + w: loop.WAIT_PREFIX + st for w, st in pairs}
+    next_lines = [lost.get(ln, ln) for ln in next_lines]
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)

@@ -931,7 +931,7 @@ def next_step(
     if hold_state == "lost":
         # a hold the hold list lost is in force: the person's, named by status's FAIL, with no owner (the
         # report quotes this line) and no purge invited (B13 round 29 C107; ruling 27)
-        waits.append(governance.LOST_HOLD_WAIT)
+        waits.append(governance.lost_hold_wait(config.state_paths.root))  # the folder's form too (C613)
         checks.append("governance.hold")
     on_hold: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
     if queued:

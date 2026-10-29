@@ -35575,6 +35575,20 @@ earlier rules keeps its own delete and count in `_published_credential`, so its 
 `test_credential_rescreen.py` `test_a_first_conversion_stubbed_for_a_credential_leaves_no_cached_text_c625` (a
 `.url` holding a made-up `user:password@`, a `.txt` holding a made-up AWS key; two syncs).
 
+C613 (2026-10-28): **the lost-hold wait names the governance folder when it is missing (ruling 64).** With
+governance/ moved aside under a hold, the WAITING ON YOU line said `the hold list lost a hold that the audit trail
+or the hold record keeps` beside a FAIL naming the folder. `governance.lost_hold_wait(state)` gives
+`LOST_HOLD_WAIT_GOVGONE`, `agentsync's governance folder is missing while its hold record keeps a hold, so purge
+and compaction stay suspended: run `~/.local/bin/agentsync status`; its governance.hold [FAIL] line gives the
+person's fix`, when the folder is missing and no lost hold is kept by the audit trail (the case `lost_hold_words`
+names the folder in), else `LOST_HOLD_WAIT`; `loop.next_step` appends it, so sync, curate and STATE.md take it, and
+status maps each sync form to its own (`LOST_HOLD_WAITS_STATUS`; `LOST_HOLD_WAIT_GOVGONE_STATUS` ends `the
+governance.hold [FAIL] line below gives the person's fix`). Both tails are `LOST_HOLD_WAIT`'s byte for byte, so the
+report's Loop line swap (`setup_report._LOST_HOLD_RUN_STATUS`, C508) holds for either. `governance folder is
+missing while its hold record keeps a hold` joins both phrase lists (ruling 68). Tests: `test_cli.py`
+`test_a_lost_holds_wait_names_the_governance_folder_when_it_is_missing_c613`; `test_setup_report.py`
+`test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508` (both constants end in the swapped tail).
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the
