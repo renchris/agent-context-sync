@@ -16983,13 +16983,15 @@ _SAME_STORED_RE = re.compile(r"\((.+?), stored as \1\)")
 and ``/private/tmp/...`` are both ``~``): it reads as a contradiction, so it is shown as ``(<typed>)`` (B13
 round 6 G41). A note whose forms still differ (``~/OneDrive/...`` stored as ``~/Library/CloudStorage/...``)
 stays."""
-_ADDED_TYPED_RE = re.compile(
-    r"(?P<lead>\badded source '[^']*' to .+? |\badded inbox source '[^']*' )"
-    r"\((?P<typed>.+?), stored as (?P<stored>.+?)\)(?=:)"
-)
+_ADDED_LEAD = r"(?P<lead>\badded source '[^']*' to .+? |\badded inbox source '[^']*' )"
+_ADDED_TYPED_RE = re.compile(_ADDED_LEAD + r"\((?P<typed>.+?), stored as (?P<stored>.+?)\)(?=:)")
 """add-source's and init's ``(<typed>, stored as <stored>)`` note, after :data:`_SAME_STORED_RE` collapsed one
 whose forms redact alike: the typed form is the folder as the person gave it, a link's own name included,
 so it is cut as a ``--source-local`` argument is, and not counted (B13 round 31 C529, ruling 49; C331)."""
+_ADDED_SAME_RE = re.compile(_ADDED_LEAD + r"\((?P<typed>.+?), stored as (?P=typed)\)(?=:)")
+"""The same note whose two forms redacted alike (:data:`_SAME_STORED_RE`), compared whole: shown as its one
+form cut by :func:`_cut_path`, so ``(~/Tailspin Merger)`` reads ``(~/<path>)`` as its ``--source-local``
+argument does. Collapse first, then cut the one form; never cut and then compare (B13 round 32 C658)."""
 _SOURCE_LOCAL_RE = re.compile(
     r"""(--source-local[ =]|\badd-source )"""
     r"""(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
@@ -17148,6 +17150,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
     def plain(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
         if ", stored as " in line:
+            line = _ADDED_SAME_RE.sub(lambda m: f"{m.group('lead')}({_cut_path(m.group('typed'))})", line)
             line = _ADDED_TYPED_RE.sub(_typed_cut, _SAME_STORED_RE.sub(r"(\1)", line))
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)

@@ -16057,6 +16057,8 @@ of its own, and those are not replacements." The kind list is still built from `
 both to `~`, so after redaction `(A, stored as A)` becomes `(A)` (`_SAME_STORED_RE`, in `_redact_lines`, so every
 redacted copy gets it). A note whose forms still differ after redaction stays. cli.py is unchanged: on the terminal
 the difference is the information. Test: `test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once`.
+Amended 2026-10-28, §16.213 C658: an add-source or inbox note's one form is then cut as its `--source-local` argument is
+(`(~/agent-context/inbox)` reads `(~/<path>)`).
 
 **G51: an Attempt: line alone is not a header.** parse_friction's F23 rule (§16.58) reads a stated step 1 error as
 another session's after a header (a Prompt:, Agent:, Outcome: or Run: line), whatever the gap; an `Attempt:` line
@@ -34599,6 +34601,7 @@ already makes. The shell report's bare-path pairs are lane RB's (§16.209). Test
 `test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_c529`, and
 `test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once` and `test_the_path_legend_item_names_every_use_of_path`
 with their new words.
+Amended 2026-10-28, §16.213 C658: a collapsed note's one form is cut too (`_ADDED_SAME_RE`, compared whole before the cut).
 
 **Every hold word is agentsync's own where agentsync prints it** (C502 with C512, C533, C563; ruling 55;
 `src/agentsync/setup_report.py`, `scripts/install.sh`; dated line at §16.40 N37). Ruling 39 kept `audit` whole; a hold reason or owner that is
@@ -35649,6 +35652,19 @@ re-renders the new words whichever install.out held. The two new phrases join `_
 `FIXED_VALUE_PHRASES`, one line after the last, beside round 31's, which stay. Test:
 `test_first_sync_clause_carries_the_read_again_count` (round 31's words, one and two, re-rendered in the new; the new
 words, `2 refused, 1 of them because a label rule could not read its label data`, and two after K's).
+
+**A collapsed stored-as note's one form is cut as its argument is** (C658's (c); `src/agentsync/setup_report.py`).
+`_SAME_STORED_RE` collapsed an add-source or inbox note whose two forms redact alike to `(<typed>)` before
+`_ADDED_TYPED_RE` read it, and the collapsed note no longer matched that regex, so its folder was never cut: an
+unconfigured folder through a linked home printed `(~/Tailspin Merger)` on the report whose install.log line cut the
+same argument to `~/<path>`. `_ADDED_SAME_RE` (the note's lead, then `(<form>, stored as <the same form>)`) now runs
+first, comparing the two forms whole, and prints the one form through `_cut_path`; never cut and then compared, which
+would collapse a note whose forms differ only past the cut. A note whose forms still differ keeps C529's typed cut;
+the cut is not counted (C331). The inbox note's `(~/agent-context/inbox)` reads `(~/<path>)` as its argument would.
+The lines lane RB's shell test pins equality to: `added source 'tailspin' to ~/agent-context/sources.toml
+(~/<path>):` and `added source 'gone' to ~/agent-context/sources.toml (<tmp>/<path>):`. Tests:
+`test_a_collapsed_stored_as_notes_one_form_is_cut_as_its_argument_is_c658` (a linked home, and a TMPDIR folder),
+with G41's and C529's tests in the new words.
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

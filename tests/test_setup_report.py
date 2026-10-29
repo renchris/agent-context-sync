@@ -20740,10 +20740,11 @@ def test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once() -> None:
         f"{stored}/Library/CloudStorage/OneDrive-Contoso/Plans):",
     ]
     out = setup_report._redact_lines(red, lines).splitlines()
-    assert out[0] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    # the one form cut as a --source-local argument is (B13 round 32 C658)
+    assert out[0] == "added inbox source 'inbox' (~/<path>): drop files you save by hand here"
     assert out[1] == (
         "added source 'plans' to ~/agent-context/sources.toml "
-        "(~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
+        "(~/Library/CloudStorage/OneDrive-<org-1>/<path>):"
     )
     assert out[2] == (
         "added source 'plans' to ~/agent-context/sources.toml (~/<path>, stored as "
@@ -20781,11 +20782,39 @@ def test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_
         "(~/<path>, stored as ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>):"
     ), out[1]
     assert "Plans Link" not in "\n".join(out)
-    assert out[2] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    assert out[2] == "added inbox source 'inbox' (~/<path>): drop files you save by hand here"  # C658
     assert out[3] == (
         "added source 'plans' to ~/agent-context/sources.toml (~/Documents/<path>, stored as "
         "~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
     ), "a generic home folder stays, as in a --source-local argument"
+    assert red.counts.get("path", 0) == before.get("path", 0), "the cut is not counted (C331)"
+
+
+def test_a_collapsed_stored_as_notes_one_form_is_cut_as_its_argument_is_c658() -> None:
+    """B13 round 32 C658 (c): a note whose two forms redact alike is shown once (G41), and that one form was
+    never cut, since the collapsed note no longer matched the cut's regex: an unconfigured folder through a
+    linked home printed `(~/Tailspin Merger)` beside `args=--source-local '~/<path>'`. The forms are compared
+    whole first, then the one form is cut by the argument's rule (never cut and then compared)."""
+    red = setup_report.Redactor()
+    home, stored = "/tmp/contoso-rehearsal/home5", "/private/tmp/contoso-rehearsal/home5"
+    red.add("home", home)
+    red.add("home", stored)
+    tmp, tmp_stored = "/var/folders/zz/contoso-t/T", "/private/var/folders/zz/contoso-t/T"
+    red.add("tmp", tmp)
+    red.add("tmp", tmp_stored)
+    lines = [
+        f"args=--source-local '{home}/Tailspin Merger'",
+        f"added source 'tailspin' to {stored}/agent-context/sources.toml ({home}/Tailspin Merger, stored as "
+        f"{stored}/Tailspin Merger):",
+        f"added source 'gone' to {stored}/agent-context/sources.toml ({tmp}/Zephyr, stored as "
+        f"{tmp_stored}/Zephyr):",
+    ]
+    before = dict(red.counts)
+    out = setup_report._redact_lines(red, lines).splitlines()
+    assert out[0] == "args=--source-local '~/<path>'"
+    assert out[1] == "added source 'tailspin' to ~/agent-context/sources.toml (~/<path>):", out[1]
+    assert out[2] == "added source 'gone' to ~/agent-context/sources.toml (<tmp>/<path>):", out[2]
+    assert "Tailspin" not in "\n".join(out) and "Zephyr" not in "\n".join(out)
     assert red.counts.get("path", 0) == before.get("path", 0), "the cut is not counted (C331)"
 
 
