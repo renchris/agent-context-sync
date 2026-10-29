@@ -13101,6 +13101,31 @@ class Seed:
         self.m.close()
 
 
+def test_every_test_that_reaches_status_parts_takes_roomy_calls_or_is_timing_c659() -> None:
+    """B13 round 32 C659: status_parts builds the report under the real per-part bounds, so under load a part
+    a test reads printed ``not measured (time limit)`` and a land gate went red on a test of words. Every test
+    that calls it, itself or through a helper of this module, takes ``roomy_calls`` (whose setattr runs before
+    the test body, so a test that sets a bound itself still wins), or is marked ``timing`` and keeps the real
+    bounds; status_parts never sets a bound itself."""
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+    def called(fn: ast.FunctionDef) -> set[str]:
+        return {c.func.id for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+
+    reach = {"status_parts"}
+    while grown := {n for n, f in funcs.items() if not n.startswith("test_") and called(f) & reach} - reach:
+        reach |= grown
+    bare = []
+    for name, fn in funcs.items():
+        if not name.startswith("test_") or not called(fn) & reach:
+            continue
+        marks = " ".join(ast.unparse(d) for d in fn.decorator_list) + " ".join(a.arg for a in fn.args.args)
+        if "roomy_calls" not in marks and "pytest.mark.timing" not in marks:
+            bare.append(name)
+    assert len(reach) > 1 and bare == []
+
+
 def status_parts(fake_mac: dict[str, Path], **kwargs: Any) -> tuple[str, dict[str, str]]:
     """The report (no hooks) and each evidence part's text by its ``### `` title."""
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), **kwargs)
@@ -13113,6 +13138,7 @@ def status_parts(fake_mac: dict[str, Path], **kwargs: Any) -> tuple[str, dict[st
     return text, parts
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13201,6 +13227,7 @@ def seed_ocr(fake_mac: dict[str, Path]) -> tuple[str, str]:
     return one, two
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_mac: dict[str, Path]) -> None:
     """B13 round 10 L5: the OCR part printed a row of zeros for each document kind this Mac has no page of
     (.potx, .odt) and "scanned PDFs with a stub: 0 ..., 0 ..., 0 ...". A kind with no page is folded into one
@@ -13234,6 +13261,7 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
     assert [ln for ln in ocr if ln.startswith("- images that are not on this Mac: 0 files")], ocr
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325(fake_mac: dict[str, Path]) -> None:
     """B13 round 30 C325 (C340, C398, C405): the folded line's verb summed every kind's stubs, so a stub on a
     deck template with a converted page of its own (said on that kind's line) made one folded deck stub read
@@ -13255,6 +13283,7 @@ def test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325(fake_mac:
     ], ocr
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     text, parts = status_parts(fake_mac)
@@ -13358,6 +13387,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         assert raw not in text, raw
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_early_ocr_builds_gloss_never_sits_beside_an_online_only_bracket(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13378,6 +13408,7 @@ def test_the_early_ocr_builds_gloss_never_sits_beside_an_online_only_bracket(
     assert ") (" not in ocr_part and ocr_part.count("never released") == 1, ocr_part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_is_now(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13463,6 +13494,7 @@ def reread_rows(part: str) -> dict[str, list[str]]:
     return {cells[0]: cells[1:] for cells in rows}
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_re_read_table_goes_by_what_the_newest_run_looked_for(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -13537,6 +13569,7 @@ def test_the_re_read_table_goes_by_what_the_newest_run_looked_for(
     assert "A label rule is on, so no image is read and none is counted." in lead
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]) -> None:
     """A Graph item's ``dataless`` column is 0, and no image is ever downloaded for OCR: its ``no
     converter`` stub was counted as one "on this Mac", among the files a re-read would look at."""
@@ -13591,6 +13624,7 @@ def test_a_backlog_read_over_many_runs_is_reported_as_files_waiting_not_as_a_sum
     assert [row.split(" | ")[8] for row in rows] == ["0", "10", "40", "70", "100"], "left waiting, per run"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -13614,6 +13648,7 @@ def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
     assert "- [policy] label rule: on (no image is read under one)\n" in status_parts(fake_mac)[1]["OCR"]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -13652,6 +13687,7 @@ def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     )
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -13731,6 +13767,7 @@ def quarantine_rows(fake_mac: dict[str, Path]) -> tuple[list[list[str]], str]:
 
 
 @pytest.mark.parametrize("ready", [True, False], ids=["ocr ready", "ocr not ready"])
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_image_stub_page_from_before_its_reason_said_withheld_is_read_as_withheld(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, ready: bool
 ) -> None:
@@ -13773,6 +13810,7 @@ def test_an_image_stub_page_from_before_its_reason_said_withheld_is_read_as_with
     assert "could not be read" not in part, part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_ready(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -13809,6 +13847,7 @@ def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_read
     ), part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_image_stubs_whose_pages_are_all_unread_still_get_the_legend(fake_mac: dict[str, Path]) -> None:
     """B13 round 9 K58: with every image page unread and OCR not ready, no row is `withheld by label rule`,
     and the legend, shown only beside such a row, left the unread count out entirely."""
@@ -13824,6 +13863,7 @@ def test_image_stubs_whose_pages_are_all_unread_still_get_the_legend(fake_mac: d
     ), part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_failed_image_stub_query_is_said_not_passed_over(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -13852,6 +13892,7 @@ def test_a_failed_image_stub_query_is_said_not_passed_over(
     ), part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[str, Path]) -> None:
     one, two = seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
@@ -13924,6 +13965,7 @@ def table_counts(part: str) -> dict[str, int]:
     return out
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[str, Path]) -> None:
     """Field report 2026-10-07: 22 files refused "no converter" in three sources, none of them an image
     OCR reads, and nothing to say what they were. The class kept the reason and dropped the suffix it
@@ -13964,6 +14006,7 @@ def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[
     assert residue_free(text), "no word beside the source's placeholder reads as a name the Redactor missed"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14024,6 +14067,7 @@ def residue_free(text: str) -> bool:
     return not any(title == "Status" for title, _words in setup_report.residue_by_section(text))
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_source_with_many_refused_types_shows_the_most_and_counts_the_rest(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14254,6 +14298,7 @@ def test_every_unreadable_reason_is_a_class_the_repeat_conversions_note_names() 
     assert set(setup_report._UNREADABLE_CLASSES) <= set(setup_report.QUARANTINE_CLASSES)
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14282,6 +14327,7 @@ def test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is
     assert "3 recorded these counts (a run of an earlier build did not) and 3 had an engine" in parts["OCR"]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_running_or_crash_closed_run_is_no_earlier_builds(fake_mac: dict[str, Path]) -> None:
     """B13 round 10 L42: a run still running has the column's ``{}`` and crash recovery closes a run with
     ``{}``, so a report taken during a cycle said "(a run of an earlier build did not)" and "(a count that
@@ -14329,6 +14375,7 @@ def test_an_install_out_of_one_line_is_the_last_line_never_the_last_1_line(
     assert "the last 1 line" not in text
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14435,6 +14482,7 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         assert waits in part and "settled with no try left." not in part, part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_path_re_read_is_counted_and_its_history_said_c362_c319(fake_mac: dict[str, Path]) -> None:
     """B13 round 30 C362, C319 (ruling 45): a failure whose stored reason an older build wrote a folder path
     into is converted once more after an upgrade, a try past the 2 the retry sentence names, and the report
@@ -14495,6 +14543,7 @@ def test_the_path_re_read_is_counted_and_its_history_said_c362_c319(fake_mac: di
 
 
 @pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])
+@pytest.mark.usefixtures("roomy_calls")
 def test_one_repeat_conversion_is_it_never_them(fake_mac: dict[str, Path], last_used: int, said: str) -> None:
     """B13 round 16 T49, T63: the converter-cache line agreed its verb with a count of 1, then said "made
     them" and "1 of them last by the newest run". One conversion is "it", and the line says which run used
@@ -14518,6 +14567,7 @@ def test_one_repeat_conversion_is_it_never_them(fake_mac: dict[str, Path], last_
     assert "made them" not in line and "1 of them" not in line, line
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
@@ -14627,6 +14677,7 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         assert said in part and never not in part, part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14672,6 +14723,7 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     assert "Nothing read them" not in part, part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_waiting_files_note_says_whether_a_stub_waits_now_from_the_manifest(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -14725,6 +14777,7 @@ def test_a_queued_id_the_split_judged_is_counted_once_and_never_as_no_alias_tabl
     assert len(plain) == 1 and plain[0].startswith("- no row:") and "no alias table" in plain[0], plain
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: dict[str, Path]) -> None:
     """B13 round 30 C304 with C317's half (a) (ruling 43): after a new start an entry the table counts under
     `no row` was said on a line headed "not looked up yet", while the `not looked up` column read 0 and the
@@ -14783,6 +14836,7 @@ def test_the_purge_queues_split_heads_name_their_no_row_column_c304(fake_mac: di
     )
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_no_trace_line_says_forget_only_of_the_entries_a_run_looks_up_c336(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -14865,6 +14919,7 @@ def _manifest_bytes(db: Path) -> dict[str, tuple[str, int, int]]:
     }
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_built_report_leaves_the_manifest_its_wal_and_its_shm_byte_for_byte_c394(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -15135,6 +15190,7 @@ def test_a_private_copy_with_a_folder_this_account_cannot_list_is_removed_c541(t
         side.chmod(0o700)
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -15209,6 +15265,7 @@ def test_a_queue_the_read_only_split_cannot_judge_reads_as_not_judged_ruling_36(
     assert set(tmp.glob("agentsync-report-*")) <= copies
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -15329,6 +15386,7 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         assert raw not in text, raw
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: dict[str, Path]) -> None:
     """One source's folder inside another's: the pair as placeholders, how deep, whether the outer source's
     exclude list prunes the inner folder, and each one's files by state."""
@@ -15365,6 +15423,7 @@ def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: 
     assert "exclude list prunes the inner folder: no;" in status_parts(fake_mac)[1]["Overlapping sources"]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_overlapping_sources_part_finds_a_folder_stored_through_a_link(fake_mac: dict[str, Path]) -> None:
     """B13 round 6 G39: two sources on one folder, one stored through a provider entry in CloudStorage that
     links to the other's provider folder, were compared as text and the part said none. The entry is read
@@ -15383,6 +15442,7 @@ def test_overlapping_sources_part_finds_a_folder_stored_through_a_link(fake_mac:
     assert "tailspin-deal" not in part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
     """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
     dataless count is the measured answer to the open question) and "1 of 1 checked", drops the kinds with
@@ -15429,6 +15489,7 @@ def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Pa
     assert "of the checked folder" not in line, line
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -15583,6 +15644,7 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_exclude_rule_that_times_out_is_not_measured_and_the_rest_is(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -15614,6 +15676,7 @@ def test_an_exclude_rule_that_times_out_is_not_measured_and_the_rest_is(
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -15698,6 +15761,7 @@ def test_the_evidence_line_says_why_a_report_written_again_when_idle_measures_th
     assert line.count("(") == idle.count("("), line
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -16115,6 +16179,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     assert "- images: 8 files: 2 with a page" in parts["OCR"]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_helper_that_does_not_answer_says_so_and_the_manifest_parts_are_measured(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -16141,6 +16206,7 @@ def test_a_helper_that_does_not_answer_says_so_and_the_manifest_parts_are_measur
     assert "- evidence: the 6 parts at the end of Status were measured\n" in section(text, "Summary")
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_ocr_part_has_a_speech_line_of_its_own(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -19586,6 +19652,7 @@ def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: d
     assert setup_report._Labels(config, half).of(config.sources[0].id) == "(source 1)"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_id_that_starts_as_a_folder_name_does_is_one_placeholder(fake_mac: dict[str, Path]) -> None:
     """A folder written with wide separators and a hand-set id that runs them together and adds a word: the
     Redactor's folder value matched the id's front, and every part named the source ``<folder-N>-hr``."""
@@ -19962,6 +20029,7 @@ def test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install
     assert "began, at least 6 reads again by 1 other run (the newest is run 1740;" in _n32_line(fake_mac)
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_all_zero_re_read_table_is_one_line(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -20021,6 +20089,7 @@ def test_an_all_zero_re_read_table_is_one_line(
     assert "Every count is 0, so the table is left out" not in part
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -22464,6 +22533,7 @@ def test_the_environment_names_the_terminal_app_as_the_shell_report_does(
     assert not {"warp", "ghostty", "iterm"} & setup_report.report_words()
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:
     """B13 round 11 M12: a stub read for the first time is counted in a run's ``reread`` and ``converted``
     (cycle.py), and its record says so in ``reread_first``. The Summary called it "first read" and the OCR
@@ -23368,6 +23438,7 @@ def test_a_label_hold_value_leaves_the_quarantine_label_classes_whole_c326() -> 
     assert red.redact("Label said hold") == "<value> said hold"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_copy_a_killed_report_left_is_swept_by_the_next_reports_copy_ruling_36(
     fake_mac: dict[str, Path],
 ) -> None:

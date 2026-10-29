@@ -35452,6 +35452,15 @@ its phrase is in both lists. Tests: `test_a_hold_word_value_leaves_every_line_of
 `test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502` (install.sh's five lines, and owner Records with
 reason `matter 8`).
 
+**A test of a report part's words takes the roomy bounds** (C659; `tests/test_setup_report.py`). `status_parts`
+builds the report under the real per-part bounds (the 3 s `EVIDENCE_BUDGET_S` among them), and 46 of the 50 tests that
+reach it, directly or through `quarantine_rows`, took neither `roomy_calls` nor the `timing` mark, so under load a
+part printed `not measured (time limit)` and a land gate went red on a test of words. Each now takes `roomy_calls`,
+whose setattr runs before the test body, so a test that sets a bound itself (`EVIDENCE_BUDGET_S = 0.0`, `_PROBE_S =
+0.3`) still wins; the two `timing` tests keep the real bounds. `status_parts` never sets a bound itself: measured, that
+overwrote the bounds two tests set and leaked 60 s bounds into later tests. Test:
+`test_every_test_that_reaches_status_parts_takes_roomy_calls_or_is_timing_c659`, an AST pass over the file.
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.
