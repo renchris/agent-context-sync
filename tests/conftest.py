@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import exec_stub
+from _gate_slot import pytest_cmdline_main, pytest_unconfigure  # noqa: F401 - bare -n runs take gate slots
 from agentsync import arm_local
 from agentsync.config import Config, parse_config
 from agentsync.gitops import ensure_repo
