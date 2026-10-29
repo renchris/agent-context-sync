@@ -14278,6 +14278,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
                 role = governed.group("role")
                 bucket.append(f"{name} warn (not judged: {role} {said}; no sync runs until it is fixed)")
                 continue
+        if incomplete and "lock" in misplaced_named:
+            # B13 round 32 C637 (ruling 65): the lock is the other stop the sync's guard names (loop.py's
+            # _sync_stopped_on), with no listing note of doctor's: by the report's own read, named or not
+            from_misplaced.append(
+                f"{name} warn (not judged: {_MISPLACED_ROLES['lock']} is not a file; no sync runs until it "
+                "is fixed)"
+            )
+            continue
         # B13 round 30 C322: doctor's side-file note, beside a side the report's own read finds not a file,
         # though the read it leaves whole (a folder at the -shm alone)
         side_note = bool(sidecars) and detail.endswith(_LISTING_SIDE_TAILS)

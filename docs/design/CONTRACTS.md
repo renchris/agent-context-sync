@@ -34655,6 +34655,8 @@ A governance folder that is not a folder, whose note (`doctor.LISTING_STATE_GOVD
 (not judged: agentsync's governance folder is not a folder; no sync runs until it is fixed)`. The Loop line keeps its
 WAITING ON YOU line. Test: `test_a_listing_warn_the_loop_names_beside_a_governance_stop_is_that_stops_c519` (the hold
 list not a file, damaged, and the governance folder a file, each with and without the loop naming the heartbeat).
+Amended 2026-10-28, §16.213 C637: the same holds beside a stop the sync's guard names (governance, governance/, the
+lock): beside a lock that is not a file the warn reads `(not judged: agentsync's lock file is not a file; ...)`.
 
 **The Loop line's lost-hold wait points at Doctor's line** (C508; ruling 60; `src/agentsync/setup_report.py`). Over a
 lost hold the report's `loop_next` hook takes `loop.next_step`'s lines, so the Loop line paired status's NEXT (`its fix
@@ -35622,6 +35624,17 @@ to that plus its `seconds` and one more (bash truncates them). A body outside ev
 failed with rc 1, and doctor's `held by ...; silent for Ns` warn stay unexpected. Test:
 `test_a_stale_lock_a_signal_stopped_first_sync_left_is_expected_c616` (KILL then TERM, both window ends, an earlier
 run's step, and the three negatives).
+
+**A listing warn beside a lock that is not a file is not judged** (C637, ruling 65; `src/agentsync/setup_report.py`).
+The lock is a stop the sync's guard names too (`loop._sync_stopped_on`, ruling 60's loop half), yet with
+agentsync.lock a folder the heartbeat's incomplete-listing warn, which carries no listing note of doctor's, read
+`yours 1 (see WAITING ON YOU)` when the loop's checks named it and `unexpected` when not, while every sync is refused.
+Right after C321's governance buckets and before E26's gate, `_sort_doctor` files it with the lock's FAIL when the
+report's own read names the lock (`misplaced_named`: the report's lstat and doctor's FAIL together, never doctor's
+words alone): `heartbeat.<id> warn (not judged: agentsync's lock file is not a file; no sync runs until it is fixed)`,
+named by the loop or not. No heartbeat.json branch: with heartbeat.json not a file doctor prints only the `heartbeat`
+FAIL and no `heartbeat.<id>` warn. Test: `test_a_listing_warn_beside_a_lock_that_is_not_a_file_is_not_judged_c637`
+(the lock a folder, with and without the loop naming the heartbeat; the lock a file again keeps E26's sort).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

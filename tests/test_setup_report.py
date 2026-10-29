@@ -427,6 +427,36 @@ def test_a_listing_warn_the_loop_names_beside_a_governance_stop_is_that_stops_c5
         assert not [w for w in (*sort.yours, *sort.unexpected) if w.startswith("heartbeat.")], (checks, sort)
 
 
+def test_a_listing_warn_beside_a_lock_that_is_not_a_file_is_not_judged_c637(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 32 C637 (ruling 65): the lock is a stop the sync's guard names too (loop's
+    ``_sync_stopped_on``), yet with agentsync.lock a folder the heartbeat's listing warn, which carries no
+    note of doctor's, read `yours 1 (see WAITING ON YOU)` when the loop named it and `unexpected` when not,
+    while no sync runs. By the report's own read of the lock it is not judged, beside the lock's FAIL, either
+    way."""
+    real = cli._status_checks
+    cfg, _root = _held_and_queued(fake_mac, monkeypatch)
+
+    def these(config: Config, **kwargs: Any) -> list[doctor.CheckResult]:
+        return [
+            c for c in real(config, **kwargs) if c.ok or c.name == "lock" or c.name.startswith("heartbeat")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    lock = expand(load_config(cfg).state_paths.lock)
+    lock.unlink(missing_ok=True)
+    lock.mkdir()  # the lock not a file
+    for checks in ((), ("heartbeat.project-x",)):
+        sort = _beside_a_listing_warn(cfg, checks)
+        said = "agentsync's lock file is not a file; no sync runs until it is fixed"
+        assert f"heartbeat.project-x warn (not judged: {said})" in sort.from_misplaced, (checks, sort)
+        assert not [w for w in (*sort.yours, *sort.unexpected) if w.startswith("heartbeat.")], (checks, sort)
+    lock.rmdir()  # a lock that is a file: the warn keeps E26's sort
+    sort = _beside_a_listing_warn(cfg, ("heartbeat.project-x",))
+    assert sort.yours == ["heartbeat.project-x"] and not sort.from_misplaced, sort
+
+
 def test_a_listing_warn_beside_a_lost_purge_queue_is_the_persons_c321(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
