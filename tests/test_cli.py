@@ -2447,6 +2447,34 @@ def test_a_queued_purge_beside_an_unread_purge_record_is_counted_and_never_invit
         assert "purge --queue" not in said, said
 
 
+def test_an_upstream_deleted_hand_purge_previews_a_lost_dlp_purge_as_cleared_while_gone_c649(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C649 (ruling 70): an upstream-deleted hand purge that erases the item a lost DLP purge by
+    id named closes it on each read while the item stays gone (C561), but its dry run said "this purge does
+    not clear it". The preview says it clears it only while the item stays gone, with the lost purge's own
+    redo; the clearing code is unchanged."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
+    governance._queue_file(root).rename(root / "queue.away")
+    (rec,) = governance.lost_queued(root)
+    entry = f"the dlp-remediation purge at {rec['at']}, a stable-id selector of source source"
+    command = (
+        f"~/.local/bin/agentsync purge {shlex.quote(f'id={sid}')} --source source --reason dlp-remediation"
+    )
+    hand = ["purge", "path=projects/sample.txt", "--source", "source", "--reason", "upstream-deleted"]
+    capsys.readouterr()
+    assert cli.main([*hand, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert f"  lost from the queue: {entry}: {governance.LOST_CLEARED_WHILE_GONE}: `{command}`" in said, said
+    assert "this purge does not clear it" not in said, said
+    assert cli.main([*hand, "--config", cfg]) == cli.EXIT_OK
+    assert governance.lost_queued(root) == []  # cleared, as the preview said, while the item stays gone
+
+
 def test_one_status_replays_the_lost_queue_once_and_no_cache_outlives_it_c644(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

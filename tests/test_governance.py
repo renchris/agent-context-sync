@@ -1038,6 +1038,24 @@ def _newer_schema(db: Path) -> None:
     conn.close()
 
 
+def _meta_set(key: str, value: str | None) -> Any:
+    """A damage that sets meta ``key`` to ``value``, or deletes its row for None (B13 round 32 C668)."""
+
+    def damage(db: Path) -> None:
+        conn = sqlite3.connect(db)
+        if value is None:
+            conn.execute("DELETE FROM meta WHERE key = ?", (key,))
+        else:
+            conn.execute("UPDATE meta SET value = ? WHERE key = ?", (value, key))
+        conn.commit()
+        conn.close()
+
+    return damage
+
+
+_NEWER_KEY = _meta_set("key_schema_version", "999999")
+
+
 def _lost_table(db: Path) -> None:
     conn = sqlite3.connect(db)
     conn.execute("DROP TABLE run_changes")
@@ -1069,8 +1087,24 @@ def _no_file(db: Path) -> None:
         (_sqlite_error, gv.UNJUDGED_NOTE),
         (_unreadable, gv.unjudged_note("state_dir.files")),
         (_no_file, gv.NEW_START_NOTE),
+        # B13 round 32 C668 (ruling 70): what Manifest's own check refuses, never judged as current
+        (_NEWER_KEY, gv.UNJUDGED_NOTE),
+        (_meta_set("key_schema_version", "x1"), gv.UNJUDGED_NOTE),
+        (_meta_set("key_schema_version", None), gv.UNJUDGED_NOTE),
+        (_meta_set("manifest_schema_version", None), gv.UNJUDGED_NOTE),
     ],
-    ids=["older-schema", "missing-table", "newer-schema", "sqlite-error", "no-connection", "no-file"],
+    ids=[
+        "older-schema",
+        "missing-table",
+        "newer-schema",
+        "sqlite-error",
+        "no-connection",
+        "no-file",
+        "newer-key-schema",
+        "key-schema-not-an-integer",
+        "key-schema-missing",
+        "manifest-schema-missing",
+    ],
 )
 def test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged(world: World, damage: Any, note: str) -> None:
     """Ruling 36 (C394): a manifest the read-only split cannot judge as a migrated one would (another schema
@@ -1095,6 +1129,9 @@ def test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged(world: World, da
     assert sorted(p.name for p in sp.db.parent.iterdir()) == before
     if raw:
         assert sp.db.read_bytes() == raw
+    if damage is _NEWER_KEY:  # the writing split, whose Manifest refuses it, keeps the same entries (C668)
+        wrote = gv.partition_queue(sp, [erase, *judged], config=world.config)
+        assert (wrote.runnable, [q for q, _ in wrote.kept]) == (split.runnable, [q for q, _ in split.kept])
 
 
 def test_partition_queue_ro_leaves_an_older_builds_manifest_as_it_was(world: World) -> None:

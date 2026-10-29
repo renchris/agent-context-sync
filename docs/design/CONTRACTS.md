@@ -34017,6 +34017,9 @@ erased that id and the manifest, read without a write, names and rebuilds no id 
 Amended 2026-10-28, §16.210 C511: each part of that fix now reads "for the <reason> purge at <iso>: <how>", the
 reason an adjective of the purge, and `_lost_entry` names each record "the <reason> purge at <iso>, a <kind> selector
 of source <src>", in the detail and in both dry runs' <entry>.
+Amended 2026-10-28, §16.215 C649: a third form, ": this purge clears it only while the item stays gone, as an
+upstream-deleted purge keeps nothing out: ...; to keep the page out, run its own reason: <how>", for an
+`upstream-deleted` purge erasing the item of a lost purge by id of another reason.
 
 C394 (ruling 36): writing the setup report never writes the manifest. `governance.partition_queue` is now an opener
 (`Manifest(db)` and `_connect`, which may migrate, for the CLI, status, the loop and the cycle) over one judge,
@@ -35680,6 +35683,27 @@ before. It is opened only around `cli._build_status` and the setup report's doct
 sync writes state between its guard and its NEXT and a test runs many commands in one process. Test: `test_cli.py`
 `test_one_status_replays_the_lost_queue_once_and_no_cache_outlives_it_c644` (5 replays before, 1 now; the hand
 purge, the next status and the sync in the same process read the disk again).
+
+C668 (2026-10-28): **the read-only queue judge leaves unjudged what `Manifest` refuses (ruling 70).** `_schema_note`
+read only `manifest_schema_version`, so a newer, missing or non-integer converter key schema, which `Manifest`
+refuses, was judged as current, and a missing manifest version read as an older one. `manifest.check_not_newer(conn,
+path)`, module-level, is the one schema check (`Manifest._check_not_newer` calls it); `_schema_note(conn, db)`
+returns `SCHEMA_NOTE` for no table yet, `UNJUDGED_NOTE` for tables with no meta or any `ManifestSchemaError` that
+check raises, then `SCHEMA_NOTE` for an older manifest schema or a judged table missing, else "". An older key
+schema is still judged as it is (C560). Tests: `test_governance.py`
+`test_partition_queue_ro_keeps_what_it_cannot_judge_unjudged` (four more rows: a newer key schema, one not an
+integer, each meta row deleted; the newer key's split equal to the writing split's).
+
+C649's preview half (2026-10-28): **the dry run's words agree with the replay (ruling 70: words only).** An
+`upstream-deleted` hand purge that erases the item a lost purge by id (this build's, with its id's hash) of another
+reason named closes it on each read while the manifest names nothing of it (`_erased_since`, `_erased_and_gone`,
+C561), but `purge <selector> --dry-run` said "this purge does not clear it". `lost_queue_preview` now says
+`LOST_CLEARED_WHILE_GONE`, "this purge clears it only while the item stays gone, as an upstream-deleted purge keeps
+nothing out: a sync that lists the file again publishes the page and the lost purge comes back; to keep the page
+out, run its own reason: <how>", for exactly that case; `lost_cleared_by`, `_erased_since`, `_erased_and_gone` and
+`lost_queued` are unchanged. data-governance.md's preview sentence names the third form (the page's clearing
+sentence is lane D's, §16.217). Dated line at §16.205 C370. Test: `test_cli.py`
+`test_an_upstream_deleted_hand_purge_previews_a_lost_dlp_purge_as_cleared_while_gone_c649`.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 

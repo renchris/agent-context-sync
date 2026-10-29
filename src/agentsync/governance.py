@@ -63,11 +63,12 @@ from agentsync import gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
-from agentsync.errors import AgentSyncError, ConfigError
+from agentsync.errors import AgentSyncError, ConfigError, ManifestSchemaError
 from agentsync.manifest import (
     MANIFEST_SCHEMA_VERSION,
     Manifest,
     ManifestBusyError,
+    check_not_newer,
     manifest_lost,
     migration_backups,
     open_read_only,
@@ -2236,10 +2237,32 @@ def lost_queue_preview(state_dir: Path, selector: PurgeSelector, report: PurgeRe
     except (AgentSyncError, OSError):
         return []
     clears = lost_cleared_by(selector, report, lost)
+    erased = _erased_fingerprints(selector, report)
+
+    def said(rec: Mapping[str, Any], cleared: bool, how: str) -> str:
+        if cleared:
+            return "this purge clears it"
+        if _id_sha256s(rec) and rec.get("selector_sha256") in erased:
+            # an upstream-deleted purge erasing the item of a lost purge of another reason: the replay
+            # closes it while the item stays gone (_erased_since), never for good (B13 round 32 C649)
+            return f"{LOST_CLEARED_WHILE_GONE}: {how}"
+        return f"this purge does not clear it; {how}"
+
     return [
-        f"{_lost_entry(r)}: " + ("this purge clears it" if c else f"this purge does not clear it; {w}")
+        f"{_lost_entry(r)}: {said(r, c, w)}"
         for r, c, w in zip(lost, clears, _redo_all(state_dir, lost), strict=True)
     ]
+
+
+LOST_CLEARED_WHILE_GONE = (
+    "this purge clears it only while the item stays gone, as an upstream-deleted purge keeps nothing out: a "
+    "sync that lists the file again publishes the page and the lost purge comes back; to keep the page out, "
+    "run its own reason"
+)
+""":func:`lost_queue_preview`'s words for a lost purge by id, this build's, whose item a hand purge of reason
+``upstream-deleted`` erases while its own reason is another: the replay closes it on each read while the
+manifest names nothing of it (:func:`_erased_and_gone`), and records nothing, so the preview said "does not
+clear it" of a purge that does (B13 round 32 C649; ruling 70: the words, never the clearing code)."""
 
 
 def lost_queue_count_line(state_dir: Path) -> str | None:
@@ -5039,7 +5062,7 @@ def partition_queue_ro(
         if conn is not None:
             try:
                 conn.row_factory = sqlite3.Row
-                note = _schema_note(conn)
+                note = _schema_note(conn, db)
                 if not note:
                     return _judge_queue(conn, entries, config)
             finally:
@@ -5070,24 +5093,23 @@ _JUDGED_TABLES = frozenset(
 ``Manifest`` adds on open (``_ensure_aliases``): without one, the read-only split does not judge."""
 
 
-def _schema_note(conn: sqlite3.Connection) -> str:
+def _schema_note(conn: sqlite3.Connection, db: Path | None = None) -> str:
     """ "" when ``conn``'s manifest is at this build's schema version with every table the judge reads, so a
-    read-only split judges it as a migrated one would; else why not: :data:`SCHEMA_NOTE` for an older version
-    or none stored (the next sync's open migrates it) or a table missing (that open creates it), and
-    :func:`unjudged_note` for a newer or unreadable version (``Manifest`` refuses it; status FAILs it). The
-    converter key schema is not checked: an older one only clears the cache index, which the judge never
-    reads."""
+    read-only split judges it as a migrated one would; else why not: :data:`SCHEMA_NOTE` for no table yet or
+    an older version (the next sync's open creates or migrates it) or a table missing (that open creates
+    it), and :data:`UNJUDGED_NOTE` for what ``Manifest`` refuses, by its own check
+    (``manifest.check_not_newer``: a manifest or converter key schema version that is newer, missing or not
+    an integer) or no meta table beside other tables, where the judge accepted a newer key schema (B13 round
+    32 C668; ruling 70). An older key schema is judged as it is: it only clears the cache index, which the
+    judge never reads (C560)."""
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    row = (
-        conn.execute("SELECT value FROM meta WHERE key = 'manifest_schema_version'").fetchone()
-        if "meta" in tables
-        else None
-    )
-    try:
-        version = 0 if row is None else int(str(row[0]))
-    except ValueError:
+    if not tables:
+        return SCHEMA_NOTE
+    if "meta" not in tables:
         return UNJUDGED_NOTE
-    if version > MANIFEST_SCHEMA_VERSION:
+    try:
+        version, _key = check_not_newer(conn, Path("manifest.sqlite") if db is None else db)
+    except ManifestSchemaError:
         return UNJUDGED_NOTE
     if version < MANIFEST_SCHEMA_VERSION or not tables >= _JUDGED_TABLES:
         return SCHEMA_NOTE

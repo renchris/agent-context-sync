@@ -115,8 +115,10 @@ is a copy that no purge reaches, so exclude it too.
   (`git log --all -p -- mirror/<source>/`) while no purge has erased the page, and a `path=` or `docs=` purge
   clears it only when it erases that id; for a glob, the glob comes from your own records, and only a purge of
   the same kind and source clears it. Preview first: `agentsync purge <selector> --dry-run` says of each lost
-  purge `this purge clears it` or `this purge does not clear it`, and `agentsync purge --queue --dry-run` names
-  each one after its summary. A verified hand purge of any reason that erases the item a lost purge by id named
+  purge `this purge clears it`, `this purge clears it only while the item stays gone` (an `upstream-deleted`
+  purge of the item a lost purge of another reason named) or `this purge does not clear it`, and
+  `agentsync purge --queue --dry-run` names each one after its summary.
+  A verified hand purge of any reason that erases the item a lost purge by id named
   clears a lost purge this build queued while the item stays gone: that is judged on each read of the manifest
   and never recorded, a manifest that cannot be read clears nothing, and if the source still lists the file, the
   next sync publishes the page again, the lost purge comes back in the FAIL with its `purge id=<id>` command, and

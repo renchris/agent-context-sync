@@ -1289,6 +1289,27 @@ def _stored_version(conn: sqlite3.Connection, key: str, db_path: Path) -> int:
         raise ManifestSchemaError(f"{db_path}: meta.{key} is not an integer: {raw!r}") from None
 
 
+def check_not_newer(conn: sqlite3.Connection, db_path: Path) -> tuple[int, int]:
+    """Stored (schema, key schema) versions of the manifest open on ``conn``; ManifestSchemaError when either
+    is missing, not an integer or newer than this build. The one schema check: :class:`Manifest` refuses by
+    it, and the read-only queue judge (``governance._schema_note``) leaves unjudged what it refuses, where
+    it judged a newer, missing or damaged key schema as current (B13 round 32 C668; ruling 70)."""
+    stored = _stored_version(conn, "manifest_schema_version", db_path)
+    if stored > MANIFEST_SCHEMA_VERSION:
+        raise ManifestSchemaError(
+            f"{db_path}: manifest schema version {stored}, this build needs "
+            f"{MANIFEST_SCHEMA_VERSION}; it was written by a newer agentsync; upgrade this install"
+        )
+    key_stored = _stored_version(conn, "key_schema_version", db_path)
+    key_build = _key_schema_version()
+    if key_stored > key_build:
+        raise ManifestSchemaError(
+            f"{db_path}: converter key schema version {key_stored}, this build uses {key_build}; "
+            "it was written by a newer agentsync; upgrade this install"
+        )
+    return stored, key_stored
+
+
 def _apply_migrations(
     conn: sqlite3.Connection, migrations: Sequence[_Migration], from_version: int, to_version: int
 ) -> list[int]:
@@ -1479,22 +1500,8 @@ class Manifest:
             )
 
     def _check_not_newer(self) -> tuple[int, int]:
-        """Stored (schema, key schema) versions; ManifestSchemaError when either is newer than this build."""
-        conn = self._db
-        stored = _stored_version(conn, "manifest_schema_version", self._path)
-        if stored > MANIFEST_SCHEMA_VERSION:
-            raise ManifestSchemaError(
-                f"{self._path}: manifest schema version {stored}, this build needs "
-                f"{MANIFEST_SCHEMA_VERSION}; it was written by a newer agentsync; upgrade this install"
-            )
-        key_stored = _stored_version(conn, "key_schema_version", self._path)
-        key_build = _key_schema_version()
-        if key_stored > key_build:
-            raise ManifestSchemaError(
-                f"{self._path}: converter key schema version {key_stored}, this build uses {key_build}; "
-                "it was written by a newer agentsync; upgrade this install"
-            )
-        return stored, key_stored
+        """:func:`check_not_newer` of this manifest."""
+        return check_not_newer(self._db, self._path)
 
     def _auto_migrate(self) -> None:
         """Copy the db to ``<db>.pre-v<N>``, then migrate it forward in ONE BEGIN IMMEDIATE transaction.
