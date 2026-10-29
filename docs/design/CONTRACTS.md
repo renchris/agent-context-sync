@@ -34657,6 +34657,8 @@ its governance.hold [FAIL] line gives the person's fix`, which status itself nev
 naming `agentsync status` in the report; the NEXT keeps `is the person's, not a step for the agent`, which the report
 counts a person's stop by, and sync, curate and STATE.md keep their form. Test:
 `test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508`.
+Amended 2026-10-28, §16.213 C603, C656: the Loop line's NEXT names the same line, `its fix on Doctor's governance.hold
+[FAIL] line is the person's`, when Doctor's section prints that [FAIL] line; status keeps `below`.
 
 **The Purge queue's no-row head names the real run as the one that has not searched** (C510, built as its verifier
 corrected it; `src/agentsync/setup_report.py`; dated line at §16.203 C304). Right after `purge --queue --dry-run` had
@@ -35513,6 +35515,21 @@ whose setattr runs before the test body, so a test that sets a bound itself (`EV
 0.3`) still wins; the two `timing` tests keep the real bounds. `status_parts` never sets a bound itself: measured, that
 overwrote the bounds two tests set and leaked 60 s bounds into later tests. Test:
 `test_every_test_that_reaches_status_parts_takes_roomy_calls_or_is_timing_c659`, an AST pass over the file.
+
+**The Loop line's rule 1 NEXT names Doctor's [FAIL] line** (C603 with C656, ruling 67; `src/agentsync/setup_report.py`).
+Rule 1's NEXT, from `cli._fail_step`, says `its fix on the [FAIL] line below is the person's`, `do what the fix on its
+[FAIL] line below says` or `its [FAIL] line below says why`: true of status, which prints its [FAIL] lines right under
+its NEXT, but the Summary below the Loop line holds none of them, they are in Doctor's section, and over a lost hold
+one Loop line named the same line two ways. When the found NEXT opens `NEXT: the <name> check failed: ` and Doctor's
+section prints that check's [FAIL] line (`_doctor_fail_shown`, read from Doctor's parsed lines), `_loop_line` rewrites
+the three forms to `its fix on Doctor's <name> [FAIL] line is the person's`, `do what the fix on Doctor's <name>
+[FAIL] line says` and `Doctor's <name> [FAIL] line says why`, from the report-side copy `_FAIL_BELOW`, which a test
+keeps equal to `cli._fail_step`'s output; `<name>` is the NEXT's own, never a fixed check. With no such line (no doctor
+hook, a doctor that failed or timed out, a check that passed or did not run) `below` stays, still true of status's
+output. `not a step for the agent` stays word for word: the report counts a person's stop by it. cli.py and status's
+words are unchanged. Tests: `test_the_loop_lines_fail_step_names_doctors_fail_line_c603` (each form for
+`state_dir.manifest`, with Doctor's FAIL, with no doctor hook and with the check ok), and the C508, U7 and rule 1
+wiring tests' moved pins.
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

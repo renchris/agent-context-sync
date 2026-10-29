@@ -15074,6 +15074,40 @@ _LOST_HOLD_RUN_STATUS = (
 _LOST_HOLD_IN_DOCTOR = "Doctor's governance.hold [FAIL] line gives the person's fix"
 """That tail as the Loop line says it: the report holds Doctor's governance.hold line, and status, whose NEXT
 the line pairs with it, never says "run status" (B13 round 31 C508; ruling 60)."""
+_FAIL_STEP_RE = re.compile(r"^NEXT: the (\S+) check failed: ")
+"""How rule 1's NEXT opens (``cli._fail_step``): the check's name follows "the"."""
+_FAIL_BELOW = (
+    ("its fix on the [FAIL] line below is the person's", "its fix on {} is the person's"),
+    ("do what the fix on its [FAIL] line below says", "do what the fix on {} says"),
+    ("its [FAIL] line below says why", "{} says why"),
+)
+"""``cli._fail_step``'s three ``below`` forms (a test keeps them equal to its output), each with the words
+the Loop line says instead, ``{}`` the pointer ``Doctor's <name> [FAIL] line``: status prints its [FAIL] lines
+right below its NEXT, the report prints them in Doctor's section, and the rest of the Summary below the Loop
+line holds none (B13 round 32 C603, C656; ruling 67). "not a step for the agent" stays: the report counts a
+person's stop by it."""
+
+
+def _doctor_fail_shown(r: _Run, name: str) -> bool:
+    """Whether the report's Doctor section prints check ``name``'s [FAIL] line: not when the doctor hook is
+    missing, failed or timed out, skipped the check, or found it passing (B13 round 32 C603)."""
+    return any(t == "FAIL" and n == name for t, n, _ in r.facts.doctor_problems)
+
+
+def _fail_step_in_doctor(r: _Run, found: str) -> str:
+    """Rule 1's NEXT ``found`` with its ``below`` form pointing at ``Doctor's <name> [FAIL] line``
+    (:data:`_FAIL_BELOW`), only when it opens ``NEXT: the <name> check failed: `` and Doctor's section prints
+    that line; any other NEXT, or one whose line the report does not print, as it was (B13 round 32 C603,
+    C656; ruling 67)."""
+    m = _FAIL_STEP_RE.match(found)
+    if m is None or not _doctor_fail_shown(r, m.group(1)):
+        return found
+    pointer = f"Doctor's {m.group(1)} [FAIL] line"
+    head, rest = found[: m.end()], found[m.end() :]
+    for below, said in _FAIL_BELOW:
+        if rest.startswith(below):
+            return head + said.format(pointer) + rest[len(below) :]
+    return found
 
 
 def _loop_line(r: _Run) -> str:
@@ -15119,7 +15153,11 @@ def _loop_line(r: _Run) -> str:
             said += ": a sync held the state file"
         return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
-    text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
+    text = (
+        loop_next_text(_fail_step_in_doctor(r, found))
+        if found
+        else "NEXT: none (the loop state cannot be read)"
+    )
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
         text += f" (the loop's own read; {_DAMAGE_SEEN})"
     waits = [

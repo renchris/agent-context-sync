@@ -9679,8 +9679,9 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     loop = _line(section(text, "Summary"), "- Loop: ")
     assert loop.startswith("- Loop: not read: status says the state file cannot be read: "), loop
     assert (
-        "NEXT: the state_dir.manifest check failed: its fix on the [FAIL] line below is the person's" in loop
-    )
+        "NEXT: the state_dir.manifest check failed: its fix on Doctor's state_dir.manifest [FAIL] line is "
+        "the person's" in loop
+    ), loop  # B13 round 32 C603: the report's Doctor section holds that line
     assert "loop_stage=" not in text and "Loop: installed" not in text
     stage_words = loop.removeprefix("- Loop: ").split("; NEXT: ", 1)[0]
     depth = max(itertools.accumulate({"(": 1, ")": -1}.get(ch, 0) for ch in stage_words), default=0)
@@ -10217,12 +10218,55 @@ def test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508(fake_mac
         "step for the agent: show it to them"
     )
     wait = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT
-    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait])
+    fail = "[FAIL] governance.hold — the hold list lost a hold (fix: ask the records owner)"
+    hooks = setup_report.ReportHooks(doctor=lambda _config: [fail], loop_next=lambda _config: [step, wait])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert "WAITING ON YOU: the hold list lost a hold" in line, line
     assert line.endswith("suspended: Doctor's governance.hold [FAIL] line gives the person's fix"), line
     assert "agentsync status`" not in line and "is the person's, not a step for the agent" in line, line
+    # B13 round 32 C603, C656: the NEXT names the same line, not "the [FAIL] line below"
+    assert "its fix on Doctor's governance.hold [FAIL] line is the person's" in line and "below" not in line
+
+
+def test_the_loop_lines_fail_step_names_doctors_fail_line_c603(fake_mac: dict[str, Path]) -> None:
+    """B13 round 32 C603, C656 (ruling 67): rule 1's NEXT on the Loop line said "the [FAIL] line below",
+    true of status, which prints its [FAIL] lines under its NEXT, but the Summary below the Loop line holds
+    none: they are in Doctor's section. When the NEXT opens ``the <name> check failed: `` and Doctor's
+    section prints that check's [FAIL] line, each of ``cli._fail_step``'s three forms names ``Doctor's <name>
+    [FAIL] line`` (the report's copy of them is kept equal to its output); with no such line, "below"
+    stays."""
+    persons = (
+        'fix path in [[source]] id = "contoso", or put the folder back under that name in OneDrive, or sync '
+        "that folder in OneDrive"
+    )
+    name = "state_dir.manifest"
+    results = [
+        doctor.CheckResult(name, False, "broken", doctor.Severity.ERROR, fix) for fix in (persons, "x", "")
+    ]
+    for result, (below, said) in zip(results, setup_report._FAIL_BELOW, strict=True):
+        step = cli._fail_step(result)
+        assert step.startswith(f"the {name} check failed: {below}"), step
+        shown = said.format(f"Doctor's {name} [FAIL] line")
+
+        def next_fn(_config: object, step: str = step) -> list[str]:
+            return [f"NEXT: {step}"]
+
+        fail = f"[FAIL] {name} — broken (fix: do it)"
+        for doctor_fn, pointed in (
+            (lambda _config, fail=fail: [fail], True),
+            (None, False),  # no Doctor section: status's "below" stays
+            (lambda _config: [f"[ok  ] {name} — fine"], False),
+        ):
+            hooks = setup_report.ReportHooks(doctor=doctor_fn, loop_next=next_fn)
+            text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+            line = _line(section(text, "Summary"), "- Loop: ")
+            if pointed:
+                assert f"; NEXT: the {name} check failed: {shown}" in line and "line below" not in line, line
+                # the words the report counts a person's stop by stay, after the pointer
+                assert ("is the person's, not a step for the agent" in line) == (result is results[0]), line
+            else:
+                assert f"; NEXT: {step}" in line and "Doctor's" not in line, line
 
 
 def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac: dict[str, Path]) -> None:
@@ -10495,12 +10539,14 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
 @pytest.mark.parametrize(
     ("fix", "step"),
     [
-        ("rm {home}/state.db", "do what the fix on its [FAIL] line below says"),
+        # B13 round 32 C603: the report's Doctor section prints the [FAIL] line status prints below its NEXT
+        ("rm {home}/state.db", "do what the fix on Doctor's manifest.integrity [FAIL] line says"),
         # B13 round 14 Q1, Q33: a person's fix reads as theirs, as install.sh's NEXT at the finish says
         (
             'fix path in [[source]] id = "contoso", or put the folder back under that name in OneDrive, or '
             "sync that folder in OneDrive",
-            "its fix on the [FAIL] line below is the person's, not a step for the agent: show it to them",
+            "its fix on Doctor's manifest.integrity [FAIL] line is the person's, not a step for the agent: "
+            "show it to them",
         ),
     ],
 )
