@@ -7165,6 +7165,55 @@ def test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_wh
     assert governance._summary_closes("dlp-remediation", "dlp-remediation")
 
 
+def test_round_32s_stale_quotes_carry_one_dated_line_each() -> None:
+    """B13 round 32 C652, C653, C654, C673 (ruling 74): four CONTRACTS quotes a later change made stale. Each
+    gets one dated line beside the code it quotes, never a rewrite of another round's text and never a second
+    copy: the first sync's signal branch at Q22 and C515 (129 to 159 on macOS, 160 to 192 the generic one,
+    row 170), N37's round 31 line extended with `not recorded` and none in K5, C364's third spelling (by
+    C578) and C542's redo format (by C511)."""
+    from agentsync import governance, setup_report  # noqa: PLC0415
+    from agentsync.convert import _common  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    flat = " ".join(text.split())
+    branch = (
+        "the branch takes only an exit `rc_signal_words` names, 129 to 159 on macOS, whose /bin/bash names "
+        "no signal past 31; 160 to 192 keep the generic branch"
+    )
+    q22 = " ".join(_contracts_section("Amended 2026-10-28, §16.209 C515: a signal's exit", "\n\n").split())
+    assert f"Amended 2026-10-28, §16.217 C652: that {branch[4:]} (test row 170)." in q22
+    c515 = " ".join(
+        _contracts_section("**A first sync a signal stopped is safe to re-run once**", "\n\n").split()
+    )
+    assert f"Amended 2026-10-28, §16.217 C652: {branch}, as row 170 of" in c515
+    assert flat.count("§16.217 C652:") == 2
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "160 to 192 are no signal on macOS" in install
+    oneshot = (ROOT / "tests" / "test_install_oneshot.py").read_text(encoding="utf-8")
+    assert '"170": "exit 170",' in oneshot
+    # N37's same-day line is extended; K5 sends its dated lines to N37 and gets none
+    assert (
+        'hold value "Records" cuts none of it, and a row with no re-read record reads `not recorded`, not '
+        "`no record` (ruling 55; the row value's clause, §16.217 C653)." in flat
+    )
+    assert flat.count("§16.217 C653") == 1
+    assert 'finished = "not recorded"' in inspect.getsource(setup_report)
+    assert (
+        "Amended 2026-10-28, §16.217 C654 (by §16.211 C578): with that third spelling, `both its spellings` "
+        "above reads each of its three, an ordinary path's spellings are all one" in flat
+    )
+    assert "repr(plain + '\"')[1:-2]" in inspect.getsource(_common._spellings)
+    assert (
+        "Amended 2026-10-28, §16.217 C673 (by §16.210 C511): each part now reads `for the <reason> purge at "
+        "<iso>: <how>`." in flat
+    )
+    assert "f\"for the {r.get('reason')} purge at {r.get('at')}: {w}\"" in inspect.getsource(governance)
+    for item in ("C652", "C654", "C673"):
+        assert len(re.findall(rf"Amended 2026-10-28, §16\.217 {item}\b", text)) == (
+            2 if item == "C652" else 1
+        )
+
+
 def test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live() -> None:
     """B13 round 31 C558: since round 30 ruling 34 the state folder keeps purge-record.json, a copy of every
     purge line of the audit trail that never shrinks, and hold-record.json, the hold scopes, both outside

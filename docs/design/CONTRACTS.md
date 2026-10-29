@@ -12314,7 +12314,8 @@ source(s) with a record (<labels>); nothing is left to read again, none failed o
 off when a cycle died (measured against run <id>, the newest run that records what its re-read looked for; it had an
 engine).`, and the kinds of file a re-read looks at are said in the table's lead only.
 Amended 2026-10-28, §16.208 C502, C512: the run clause reads `the newest run that says what its re-read looked for`, so a
-hold value "Records" cuts none of it (ruling 55).
+hold value "Records" cuts none of it, and a row with no re-read record reads `not recorded`, not `no record` (ruling
+55; the row value's clause, §16.217 C653).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
@@ -21529,6 +21530,8 @@ above`. Test: `test_first_sync_failure_fails_the_run_before_the_agent` (78, 1).
 Amended 2026-10-28, §16.209 C515: a signal's exit (129 to 192) has its own branch, `the first sync was stopped by
 SIG<NAME> (signal N) before it finished, ...; it is safe to re-run once: ...`, then the report; another exit code
 still keeps `fix what the first sync printed above`.
+Amended 2026-10-28, §16.217 C652: that branch takes only an exit `rc_signal_words` names, 129 to 159 on macOS, whose
+/bin/bash names no signal past 31; 160 to 192 keep the generic branch (test row 170).
 
 **A known count takes its noun from the count** (Q39, Q44: Q44 is Q39's install.sh half, built once; amends §16.39
 N36). Step 1's list says `already synced on this Mac: 1 folder (marked ...)` or `N folders`, and its keep NEXTs
@@ -34338,6 +34341,8 @@ in place once per manifest, and `_names_a_path` reads every spelling (C546); eac
 forced into single quotes, and the staged file's folder named alone is cut at a path's end to `its folder` (C578,
 C564's half); this paragraph said the plain spelling is no substring of the escaped one, false for a path ending in
 a backslash, and says only that spellings are replaced longest first (C551).
+Amended 2026-10-28, §16.217 C654 (by §16.211 C578): with that third spelling, `both its spellings` above reads each
+of its three, an ordinary path's spellings are all one, and `_stub_with_a_path` reads the home folder in each.
 
 **An older build's converter-unavailable reason is folded in place, once (C361, ruling 45; `agentsync.cycle`;
 amends §16.201 C182).** C182 folded the home folder out of every new reason, but a stub an older build wrote while
@@ -34764,6 +34769,9 @@ sync (agentsync sync --once) was <rc_signal_words> before it finished`. The boun
 from looping; it never says nothing was printed, since a sync can warn before it is killed, and never that the
 cause was outside the sync's own work. install.log's step line is unchanged (no new note for the report to read).
 Test: `test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr` (SIGKILL, SIGTERM).
+Amended 2026-10-28, §16.217 C652: the branch takes only an exit `rc_signal_words` names, 129 to 159 on macOS, whose
+/bin/bash names no signal past 31; 160 to 192 keep the generic branch, as row 170 of
+`test_first_sync_failure_fails_the_run_before_the_agent` pins.
 
 **Step 1 under a hold with governance/ gone gives the folder's tail** (C507; ruling 60; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). With the whole governance folder moved aside under a hold (hold-record.json left in
@@ -34863,6 +34871,7 @@ build their own lines from `_lost_entry` and `_redo_all`, which stay. The C394 a
 names as history. The exact pin of each lost record's redo (stable id, alias, no manifest row, glob), in order, now
 reads `queue_lost(state).fix`'s `for <reason> at <iso>: <how>` parts, joined with "; ". Test: `test_governance.py`
 `test_a_lost_queued_purge_is_named_by_kind_and_source_and_its_id_rebuilt_by_fingerprint`.
+Amended 2026-10-28, §16.217 C673 (by §16.210 C511): each part now reads `for the <reason> purge at <iso>: <how>`.
 
 C561 (2026-10-28): **a lost queued stable-id purge whose page a later purge erased is done, as the queue's own run
 would have dropped it, so it no longer stops every sync (ruling 46).** A DLP entry queued (its id never shown to
@@ -35493,3 +35502,20 @@ reason guard in `_erased_since`, would bring back the stop with no redo that C56
 preview words this round, lane B's preview half (§16.215) moving any that follow it. Test:
 `test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_while_the_item_stays_gone`, which reads
 the bullet and ties it to `_erased_since`'s and `lost_queued`'s docstrings and `_summary_closes`.
+
+**A first sync's signal branch takes 129 to 159 on macOS** (C652, ruling 74; amends §16.111 Q22 and §16.209 C515;
+docs only). Both lines gave the branch as a signal's exit 129 to 192, but `scripts/install.sh` takes it only when
+`rc_signal_words` names the signal, and this Mac's /bin/bash 3.2 names none past 31 (`kill -l 32` prints nothing),
+so 160 to 192 keep the generic `fix what the first sync printed above`, as install.sh's own comment and row 170 of
+`test_first_sync_failure_fails_the_run_before_the_agent` say. Each gets one dated line; their text stays.
+
+**Stale quotes of round 31's changes get one dated line each, never a rewrite** (C653, C654, C673; ruling 74; docs
+only). N37 (§16.40) lists a row value `no record`, which the report prints as `not recorded` since §16.208's ruling
+55 build: round 31's same-day N37 line already records C512's run clause, so it is extended with the row value,
+not given a second line, and K5, whose header sends its dated lines to N37, gets none (C653). §16.206 C364 still
+counted `both its spellings` and `two spellings are one`, though §16.211 C578 gave each form a third (C654; amends
+§16.206 C364). §16.210 C542 still quoted the pin as `for <reason> at <iso>: <how>`, which §16.210 C511 made `for
+the <reason> purge at <iso>: <how>` in `governance.queue_lost`'s fix and its test (C673; amends §16.210 C542). Test:
+`test_round_32s_stale_quotes_carry_one_dated_line_each`, which reads each line beside the code it quotes
+(`_spellings`' three, `queue_lost`'s format, the report's `not recorded`, install.sh's 160 to 192 comment and row
+170) and that no paragraph holds a second copy.
