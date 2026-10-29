@@ -6785,6 +6785,13 @@ class _Cycle:
                 self._count_credential(sid, stable)
                 if prior or rewritten:  # published under the earlier rules: its text is in the repo's history
                     published[(sid, stable)] = ok if rewritten else prior
+                # the converted text, credential and all, leaves the converter cache at the stub, a first
+                # conversion's too: the stub's output keeps no action key, so it lay there until a
+                # reconcile's gc (B13 round 32 C625); a published page's alarm deletes and counts its own
+                later = {o.action_key for o in published.get((sid, stable), ()) if o.action_key}
+                removed = self.cache.delete({o.action_key for o in ok if o.action_key} - later)
+                if removed:
+                    log.info("%s/%s: %s deleted", sid, stable, plural(removed, "cached conversion"))
         purged = set(published)
         for sid, stable in sorted(self._history_hits - purged):
             # the committed text matches and the page this run wrote does not: an edit removed the key, the

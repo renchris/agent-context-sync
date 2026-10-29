@@ -35565,6 +35565,16 @@ caller's writer lock on a real forget and a `--dry-run` forget holds none (C640)
 `test_purge_help_says_forget_looks_the_entry_up_and_accept_lost_takes_every_record_c610`,
 `test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy_out`.
 
+C625 (2026-10-28): **a credential stub's converted text leaves the converter cache at the stub.** A file whose
+first conversion held a credential became a stub, but its converted text, the credential included, stayed in the
+converter cache (0600, excluded from Time Machine) until the next reconcile's gc, since the stub's output keeps no
+action key (the verifier measured the window: hourly by default, an interactive sync included, not forever as
+first reported). `_Cycle._quarantine_secrets` now deletes each OK output's action key as `_stub_credential`
+succeeds, a first conversion's too, logging `<n> cached conversion(s) deleted` at INFO; a page published under the
+earlier rules keeps its own delete and count in `_published_credential`, so its alarm's count stays true. Tests:
+`test_credential_rescreen.py` `test_a_first_conversion_stubbed_for_a_credential_leaves_no_cached_text_c625` (a
+`.url` holding a made-up `user:password@`, a `.txt` holding a made-up AWS key; two syncs).
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

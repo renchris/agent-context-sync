@@ -18,6 +18,7 @@ from openpyxl import Workbook
 
 from agentsync import arm_local, cli, cycle, governance, lints
 from agentsync import materialise as mat
+from agentsync.config import Config
 from agentsync.convert import pdf as pdf_mod
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, LintFinding, RowState
@@ -495,6 +496,37 @@ def test_a_url_shortcut_with_a_password_is_a_credential_stub(
     assert not [
         p for p in config.docs_repo.rglob("*") if p.is_file() and b"NotARealPassw0rd" in p.read_bytes()
     ]
+
+
+def _cached_with(config: Config, secret: bytes) -> list[Path]:
+    """Every file under the converter cache whose bytes hold ``secret``."""
+    root = config.cache_dir
+    return [p for p in root.rglob("*") if p.is_file() and secret in p.read_bytes()] if root.exists() else []
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "secret"),
+    [
+        ("credential.url", SHORTCUT, b"NotARealPassw0rd"),
+        ("keys.txt", f"Contoso staging\naws_access_key_id = {AWS_KEY}\n", AWS_KEY.encode()),
+    ],
+)
+def test_a_first_conversion_stubbed_for_a_credential_leaves_no_cached_text_c625(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str, secret: bytes
+) -> None:
+    """B13 round 32 C625: a file whose first conversion held a credential became a stub, but its converted
+    text, the made-up password or key included, stayed in the converter cache (0600) until a reconcile's
+    gc, since the stub's output keeps no action key. The stub deletes it at once, as the held-once path
+    and a published page's alarm do; a second sync leaves the stub and the cache clean."""
+    config, src = make_env(tmp_path)
+    _blind_gitleaks(monkeypatch, tmp_path)
+    (src / name).write_text(text, encoding="utf-8")
+    assert run(config).exit_code == 0
+    assert _state(config, name) == (RowState.QUARANTINED, "contains a credential")
+    assert _cached_with(config, secret) == []
+    assert run(config).exit_code == 0
+    assert _state(config, name) == (RowState.QUARANTINED, "contains a credential")
+    assert _cached_with(config, secret) == []
 
 
 def test_a_url_shortcut_published_before_the_url_credential_rule_becomes_a_stub(
