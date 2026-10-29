@@ -35670,6 +35670,17 @@ detail still starting `last success`, so status, doctor and the report take it a
 Test: `test_ops_doctor.py` `test_heartbeat_states` (holds.json a folder: the FAIL named, no `a warn after`; the
 folder gone, `a warn after 3` back).
 
+C644 (2026-10-28): **one status replays the lost queue once (ruling 65).** C520's guard (`loop._sync_stopped_on`
+through `doctor.state_not_a_file` and `governance_lost`) made the fifth replay of the purge record and the audit
+trail in every status. `governance.read_only_build()` sets a `contextvars.ContextVar` holding a dict for one build
+and resets it at the end; inside it `lost_queued` (with the queue on disk, `erased` True) and `queue_lost` are
+built once per state folder (`_built_once`), and outside it, the default None, every call reads the disk as
+before. It is opened only around `cli._build_status` and the setup report's doctor and NEXT hooks
+(`_report_hooks`' `checks` and `loop_next`), never module-level and never around a sync, purge or hold, since a
+sync writes state between its guard and its NEXT and a test runs many commands in one process. Test: `test_cli.py`
+`test_one_status_replays_the_lost_queue_once_and_no_cache_outlives_it_c644` (5 replays before, 1 now; the hand
+purge, the next status and the sync in the same process read the disk again).
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

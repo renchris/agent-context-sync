@@ -2274,6 +2274,13 @@ def _loop_read(config: Config) -> tuple[loop.NextStep | None, Exception | None]:
 
 
 def _build_status(config: Config, *, brief: bool = False) -> _Status:
+    """:func:`_build_status_once` in one ``governance.read_only_build``, so the lost-queue replay is read once
+    for the whole status, never five times (B13 round 32 C644)."""
+    with governance.read_only_build():
+        return _build_status_once(config, brief=brief)
+
+
+def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
     """``status``'s output. ``brief`` (the ``doctor`` alias, or AGENTSYNC_NO_NEXT_HINT=1, both install.sh's):
     no detail and no policy lines, so install.sh's output (and setup-report's tail of it) holds what the old
     doctor printed and no label names.
@@ -3101,6 +3108,10 @@ def _report_hooks() -> setup_report.ReportHooks:
     seen: list[str] = []  # the check groups doctor started, the last the one a cut-off doctor was in (Y22)
 
     def checks(config: Config) -> list[str]:
+        with governance.read_only_build():  # one read-only build: the lost queue replayed once (C644)
+            return checks_once(config)
+
+    def checks_once(config: Config) -> list[str]:
         step, state_exc = _loop_read(config)
         read[:] = [(step, state_exc)]
         with doctor.groups_seen(seen.append):
@@ -3122,6 +3133,11 @@ def _report_hooks() -> setup_report.ReportHooks:
         return doctor.format_results(results).splitlines()
 
     def loop_next(config: Config) -> loop.NextStep | list[str]:
+        """:func:`loop_next_once` in one read-only build (C644)."""
+        with governance.read_only_build():
+            return loop_next_once(config)
+
+    def loop_next_once(config: Config) -> loop.NextStep | list[str]:
         """The loop's NextStep (its ``checks`` group doctor's warns); when the state cannot be read (a
         damaged manifest raises sqlite3.DatabaseError too), the NEXT ``agentsync status`` prints then:
         rule 1's from the first FAIL's fix, or [] (B13 round 17 U7). With no FAIL, the Doctor hook's own

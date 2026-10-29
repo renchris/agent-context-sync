@@ -2447,6 +2447,40 @@ def test_a_queued_purge_beside_an_unread_purge_record_is_counted_and_never_invit
         assert "purge --queue" not in said, said
 
 
+def test_one_status_replays_the_lost_queue_once_and_no_cache_outlives_it_c644(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 32 C644 (ruling 65): C520's guard added a fifth replay of the lost queue to every status.
+    One status replays it once, through ``governance.read_only_build``; in the same process the hand purge,
+    the next status and the sync each read the disk again, so a cache that outlived its build would keep the
+    FAIL and stop the sync."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    governance._queue_file(root).rename(root / "queue.kept")
+    calls: list[Path] = []
+    real = governance._lost_queued
+
+    def counted(state_dir: Path, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        calls.append(state_dir)
+        return real(state_dir, *args, **kwargs)
+
+    monkeypatch.setattr(governance, "_lost_queued", counted)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert len(calls) == 1, calls
+    redo = ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(redo) == cli.EXIT_OK
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")], out
+    assert not [ln for ln in out if "once the governance.purge_queue [FAIL] line is fixed" in ln], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
 def test_state_md_still_invites_a_purge_no_hold_keeps(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

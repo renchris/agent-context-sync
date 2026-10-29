@@ -30,6 +30,7 @@ source id, sha256 hashes of the stable id and paths, the time and the reason, ne
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import dataclasses
 import enum
 import errno
@@ -56,7 +57,7 @@ from datetime import UTC as _UTC
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO as _IO
-from typing import Any
+from typing import Any, cast
 
 from agentsync import gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
@@ -1915,6 +1916,38 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     return out
 
 
+_READ_ONLY_BUILD: contextvars.ContextVar[dict[tuple[str, str], Any] | None] = contextvars.ContextVar(
+    "agentsync_read_only_build", default=None
+)
+"""The lost-queue replay's results within one :func:`read_only_build`, by (what, state folder); None outside
+one, where every call reads the disk."""
+
+
+@contextlib.contextmanager
+def read_only_build() -> Iterator[None]:
+    """One read-only build (status, a report's doctor or NEXT read) in which :func:`lost_queued` and
+    :func:`queue_lost` replay the purge record and the audit trail once per state folder, where status
+    replayed them five times (B13 round 32 C644; ruling 65). Opened only around a build that writes nothing,
+    never module-level: a sync writes state between its guard and its NEXT, and a test runs many commands
+    in one process, so the cache is dropped when the build ends."""
+    token = _READ_ONLY_BUILD.set({})
+    try:
+        yield
+    finally:
+        _READ_ONLY_BUILD.reset(token)
+
+
+def _built_once(what: str, state_dir: Path, build: Callable[[], Any]) -> Any:
+    """``build()``, or its result already got in this :func:`read_only_build` for ``state_dir``."""
+    cache = _READ_ONLY_BUILD.get()
+    if cache is None:
+        return build()
+    key = (what, str(expand(state_dir)))
+    if key not in cache:
+        cache[key] = build()
+    return cache[key]
+
+
 def lost_queued(
     state_dir: Path, queue: Sequence[QueuedPurge] | None = None, *, erased: bool = True
 ) -> list[dict[str, Any]]:
@@ -1930,7 +1963,17 @@ def lost_queued(
     a later verified purge erased that item and the manifest, read without a write, neither names nor
     rebuilds its id (:func:`_erased_since`, :func:`_erased_and_gone`; B13 round 31 C561; ruling 46): judged
     on each read, never written, so the item coming back opens it again with its id rebuilt. ``erased``
-    False leaves it lost, for :func:`_lost_covered`, whose line closes it for good."""
+    False leaves it lost, for :func:`_lost_covered`, whose line closes it for good. Read once per
+    :func:`read_only_build` with the queue on disk (C644)."""
+    if queue is None and erased:
+        return list(_built_once("lost_queued", state_dir, lambda: _lost_queued(state_dir, None, erased=True)))
+    return _lost_queued(state_dir, queue, erased=erased)
+
+
+def _lost_queued(
+    state_dir: Path, queue: Sequence[QueuedPurge] | None, *, erased: bool
+) -> list[dict[str, Any]]:
+    """:func:`lost_queued`, read from the disk."""
     pend = pending_purges(state_dir) if queue is None else queue
     have = {(q.selector.fingerprint(), q.reason.value) for q in pend}
     gone_file = not os.path.lexists(_queue_file(state_dir))
@@ -2364,6 +2407,12 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
 
 
 def queue_lost(state_dir: Path) -> GovernanceLostError | None:
+    """:func:`_queue_lost`, once per :func:`read_only_build` (C644)."""
+    found = _built_once("queue_lost", state_dir, lambda: _queue_lost(state_dir))
+    return cast("GovernanceLostError | None", found)
+
+
+def _queue_lost(state_dir: Path) -> GovernanceLostError | None:
     """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None. A purge record that
     cannot be read (its own governance.suppressed FAIL says why) is judged past, from the audit trail alone
     (:func:`lost_queued`), so a queued purge the queue lost is never hidden behind the record's error (B13
