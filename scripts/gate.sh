@@ -25,6 +25,10 @@ finish() {
   printf '%s mode=%s tree=%s salt=%s rc=%s skipped_timing=%s resumed=%s\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$tree" "$salt" "$rc" "$skipped_timing" "$resumed" \
     >>"$common/gate-verdicts.log"
+  # A still-queued acquire leaves the queue; a slot is released only when this gate owns it, never a parent's
+  [ -z "${gate_slot_pid:-}" ] || kill -TERM "$gate_slot_pid" 2>/dev/null || true
+  [ "${gate_slot_owned:-0}" != 1 ] || [ -z "${gate_slot_token:-}" ] ||
+    "${gate_slot_bin:-false}" release --token "$gate_slot_token" >/dev/null 2>&1 || true
   [ -z "${holder:-}" ] || [ "$(cat "$holder" 2>/dev/null)" != "$$" ] || rm -f "$holder"
   rm -rf "$tmp"
 }
@@ -160,12 +164,58 @@ run_part() {
   return "$rc"
 }
 
+# A part's fixed width, cut to the machine slot's grant when the grant is smaller.
+gate_n() { if [ -n "${gate_slot_grant:-}" ] && [ "$gate_slot_grant" -lt "$1" ]; then echo "$gate_slot_grant"; else echo "$1"; fi; }
+
 full_set() {
   union_check
-  run_part scan -n 2 "${SCAN[@]}"
-  run_part deploy_pack -n 4 tests/test_deploy_pack.py
+  run_part scan -n "$(gate_n 2)" "${SCAN[@]}"
+  run_part deploy_pack -n "$(gate_n 4)" tests/test_deploy_pack.py
   run_part rest -n auto --ignore=tests/test_deploy_pack.py "${SCAN_IGNORE[@]}"
 }
+
+# The machine-wide test-gate cap: one slot from cc-gate-slot sizes every pytest part's width, the `-n auto` ones
+# through PYTEST_XDIST_AUTO_NUM_WORKERS. Taken after every static step, so a queued gate has done the cheap checks.
+# A background job and `wait`, not `$( )`, which would hold a TERM until the grant; finish() then TERMs the queued
+# acquire. A missing or faulty helper leaves the gate uncapped, as before: it must never refuse every gate.
+gate_slot_bin=${CC_GATE_SLOT_BIN:-}
+[ -n "$gate_slot_bin" ] || gate_slot_bin=$(command -v cc-gate-slot || true)
+[ -n "$gate_slot_bin" ] || [ ! -x "$HOME/.claude/bin/cc-gate-slot" ] || gate_slot_bin=$HOME/.claude/bin/cc-gate-slot
+gate_slot_grant=''
+if [ -z "$gate_slot_bin" ]; then
+  echo "== gate slot: helper absent, uncapped"
+else
+  "$gate_slot_bin" acquire --holder-pid $$ --want "${CC_GATE_SLOT_WANT:-4}" --min 2 \
+    --class "$(if [ "$mode" = land ]; then echo land; else echo normal; fi)" \
+    --label "acs gate $mode $(basename "$PWD")" >"$tmp/gate-slot" &
+  gate_slot_pid=$!
+  gate_slot_rc=0
+  wait "$gate_slot_pid" || gate_slot_rc=$?
+  gate_slot_pid=
+  case $gate_slot_rc in
+    0)
+      gate_slot_out=$(sed -n 1p "$tmp/gate-slot")
+      # token= is last and holds spaces (the holder's start time), so it is everything after " token="
+      gate_slot_token=$(printf '%s\n' "$gate_slot_out" | sed -n 's/^.* token=//p')
+      gate_slot_verdict=$(printf ' %s\n' "$gate_slot_out" | sed -n -e 's/ token=.*//' -e 's/^.* verdict=\([^ ]*\).*/\1/p')
+      gate_slot_grant=$(printf ' %s\n' "$gate_slot_out" | sed -n -e 's/ token=.*//' -e 's/^.* grant=\([^ ]*\).*/\1/p')
+      gate_slot_owned=$(printf ' %s\n' "$gate_slot_out" | sed -n -e 's/ token=.*//' -e 's/^.* owned=\([^ ]*\).*/\1/p')
+      # Only a granted or nested width is acted on; off, fail-open, in-test or a malformed grant run as before
+      case $gate_slot_verdict:$gate_slot_grant in
+        granted:* | nested:*) ;;
+        *) gate_slot_grant='' ;;
+      esac
+      case $gate_slot_grant in
+        '' | 0* | *[!0-9]*) gate_slot_grant='' ;;
+        *) export PYTEST_XDIST_AUTO_NUM_WORKERS="$gate_slot_grant" ;;
+      esac
+      [ "$gate_slot_owned" != 1 ] || export CC_GATE_SLOT_TOKEN="$gate_slot_token"
+      echo "== gate slot: $gate_slot_out"
+      ;;
+    129 | 130 | 137 | 143) exit "$gate_slot_rc" ;; # killed while queued: nothing has run
+    *) echo "== gate slot: helper error rc=$gate_slot_rc, uncapped" ;;
+  esac
+fi
 
 if [ "$mode" = affected ]; then
   base=$(git merge-base origin/main HEAD)

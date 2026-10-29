@@ -36,10 +36,12 @@ importers, the readers of a touched doc, and the whole-tree scanners); a change 
 The two lane modes journal each test to `<git-common-dir>/gate-journal/`, and a run killed part way resumes on the
 same tree without the tests that passed. Every run appends its verdict to `<git-common-dir>/gate-verdicts.log`.
 
-pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on a busy 10-core machine against 11
-serial. Every
-test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a new
-test that writes outside `tmp_path` breaks it. To debug one test, drop `-n auto`.
+pytest runs in parallel (`-n auto`, pytest-xdist): about 2 minutes on a busy 10-core machine against 11 serial.
+`-n auto` is the width the machine-wide test-gate cap grants, not one worker per core: a gate, or a bare
+`pytest -n N` with N ≥ 2, may print `QUEUED` and wait for a slot, and nothing has run yet while it does. Run it with
+`run_in_background`, or drop `-n`, since a serial run is exempt. `cc-gate-slot status` shows who holds the slots.
+Every test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a
+new test that writes outside `tmp_path` breaks it. To debug one test, drop `-n auto`.
 
 Run tools through `uv run --locked`, not from PATH. shellcheck is pinned in `uv.lock` (the `lint` group)
 because the versions disagree: 0.9.0 reports SC2015 where 0.11.0 does not.
