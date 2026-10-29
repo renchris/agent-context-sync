@@ -2857,8 +2857,9 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     if not queued and not kept and gone is None:  # one governance.purge_queue line in every state (C155)
         # never "no purge queued" beside the FAIL of a queue that lost one (B13 round 30 C345; ruling 40)
         if record_read:  # with the folder gone, never "no purge queued" (B13 round 32 C624; ruling 64)
-            gone_case = governance.folder_lost_case(expand(config.state_paths.root))
-            queue_said = governance.QUEUE_GONE_OK if gone_case else "no purge queued"
+            sroot = expand(config.state_paths.root)
+            gone_case = governance.folder_lost_case(sroot)
+            queue_said = governance.queue_gone_words(sroot) if gone_case else "no purge queued"
             out.append(_check("governance.purge_queue", True, queue_said, doctor.Severity.INFO))
         else:  # an [info] line, never a second FAIL of the record, nor "no longer holds" (C539)
             out.append(_check("governance.purge_queue", False, _TRAIL_ALONE, doctor.Severity.INFO))

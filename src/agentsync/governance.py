@@ -723,7 +723,17 @@ def _purges_rewritten(state_dir: Path) -> str:
     trail records a purge; else the purges it kept go with it, and each is run again by hand (C381): only the
     loss conditional, as no trail line says whether the record kept one, with the records owner asked whether
     one ran (B13 round 32 C632; ruling 64)."""
-    if any(r.get("action") in _PURGE_ACTIONS for r in _audit_events(state_dir)):
+    trail = _audit_events(state_dir)
+    lost_at = next((r.get("at") for r in trail if r.get("action") == AUDIT_TRAIL_LOST), None)
+    if (
+        lost_at is not None
+    ):  # the trail before it is gone: it cannot write the record again whole (C606's review)
+        return (
+            f"; the audit trail was lost before {lost_at}, so if the record kept a purge it is lost with it: "
+            "the person checks with the records owner whether one ran, and runs each such erasure, DLP and "
+            "label purge again by hand before the next sync"
+        )
+    if any(r.get("action") in _PURGE_ACTIONS for r in trail):
         return "; the next purge or sync writes it again from what is recorded in the audit trail"
     return (
         "; no purge is recorded in the audit trail, so if the record kept a purge it is lost with it: the "
@@ -1273,9 +1283,40 @@ def folder_lost_case(state_dir: Path) -> bool:
     return _record_names_a_hold(state_dir)
 
 
+def audit_trail_lost(state_dir: Path) -> bool:
+    """Whether agentsync's audit trail lost lines it once held, with no ``audit-trail-lost`` line saying so:
+    governance/ missing in ruling 63's case (:func:`folder_lost_case`), or a trail that lacks a purge line
+    purge-record.json keeps, which every purge line reaches only after the trail (:func:`record_purges`).
+    Judged by content, never by the folder alone: a hold, a purge or an acceptance re-creates governance/ with
+    a fresh audit.jsonl, after which the folder is there and its new trail read as the whole history (C606's
+    review). A record or trail that cannot be read says nothing here; its own FAIL does."""
+    if folder_lost_case(state_dir):
+        return True
+    trail = _audit_events(state_dir)
+    if any(r.get("action") == AUDIT_TRAIL_LOST for r in trail):
+        return False
+    try:
+        kept = recorded_purges(state_dir)
+    except (AgentSyncError, OSError):
+        return False
+    have = Counter(_line_key(r) for r in trail if r.get("action") in _PURGE_ACTIONS)
+    for rec in kept:
+        key = _line_key(rec)
+        if not have[key]:
+            return True
+        have[key] -= 1
+    return False
+
+
+def audit_trail_loss_said(state_dir: Path) -> bool:
+    """Whether the audit trail holds an ``audit-trail-lost`` line (``--folder-lost`` was run)."""
+    return any(r.get("action") == AUDIT_TRAIL_LOST for r in _audit_events(state_dir))
+
+
 HOLD_LIST_READ = "no hold set (hold list read)"
 HOLD_LIST_NONE = "no hold set (no hold list on disk)"
 HOLD_LIST_GONE = "no hold set (hold record read; the hold list is missing with the governance folder)"
+HOLD_LIST_GONE_UNRECORDED = "no hold set (the hold list is missing with the governance folder)"
 """governance.hold's ok line, by what is on disk: a hold list read, none there, or none there because the
 governance folder is missing while a record outside it names what it kept (B13 round 32 C624, C618; ruling
 64): never "hold list read" over no file."""
@@ -1284,14 +1325,25 @@ QUEUE_GONE_OK = (
     "the purge queue is missing with the governance folder; purge-record.json keeps no purge as queued and "
     "not done"
 )
-"""governance.purge_queue's ok line in ruling 63's case, never "no purge queued" (B13 round 32 C624)."""
+QUEUE_GONE_UNRECORDED = "the purge queue is missing with the governance folder"
+"""governance.purge_queue's ok line in ruling 63's case, never "no purge queued" (B13 round 32 C624);
+:data:`QUEUE_GONE_UNRECORDED` when no purge-record.json is there to have read (C606's review)."""
+
+
+def queue_gone_words(state_dir: Path) -> str:
+    """governance.purge_queue's ok line in ruling 63's case, naming purge-record.json only when it is
+    there."""
+    return QUEUE_GONE_OK if os.path.lexists(purge_record_file(state_dir)) else QUEUE_GONE_UNRECORDED
 
 
 def no_hold_words(state_dir: Path) -> str:
     """governance.hold's ok line when no hold is set (:data:`HOLD_LIST_READ` and its two siblings)."""
     if os.path.lexists(_holds_file(state_dir)):
         return HOLD_LIST_READ
-    return HOLD_LIST_GONE if folder_lost_case(state_dir) else HOLD_LIST_NONE
+    if not folder_lost_case(state_dir):
+        return HOLD_LIST_NONE
+    # "hold record read" only over a hold record that is there (C606's review)
+    return HOLD_LIST_GONE if os.path.lexists(hold_record_file(state_dir)) else HOLD_LIST_GONE_UNRECORDED
 
 
 LOST_HOLD_REASON = "lost from the hold list"
@@ -1828,6 +1880,9 @@ purge-record.json: the audit trail before it was lost with the governance folder
 round 32 C606; ruling 63), so a new one-line trail never reads as the whole history."""
 
 FOLDER_LOST_SAID = "records in the new audit trail and in purge-record.json that the old audit trail was lost"
+TRAIL_LOST_HEAD = "agentsync's audit trail no longer holds purge lines purge-record.json keeps"
+"""What :func:`audit_trail_lost` finds while governance/ is there (re-created by a later write): the lead of
+the suppression list's and the queue's FAILs then, and of ``--accept-lost``'s refusal (C606's review)."""
 """:data:`AUDIT_TRAIL_LOST`'s act, in the fix that names ``--folder-lost`` and in the act's output (C606)."""
 
 SUPPRESSION_LOST_ACCEPTED = "suppression-lost-accepted"
@@ -2403,9 +2458,13 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
                 what += ", the content hashes of a purge whose summary line holds none (an older build's)"
             if globbed:
                 what += ", and a source-path glob"
-            folder = governance_gone(state_dir)
+            folder = audit_trail_lost(state_dir)  # by content, the folder there again too (C606's review)
             if folder:  # the audit trail went with the folder: purge-record.json keeps it (C606; ruling 63)
-                lead, put_back = _folder_gone_words(state_dir)
+                if governance_gone(state_dir):
+                    lead, put_back = _folder_gone_words(state_dir)
+                else:
+                    lead = TRAIL_LOST_HEAD
+                    put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
                 detail = (
                     f"{lead}: {path} no longer lists what {plural(len(lost), 'purge')} suppressed, kept by "
                     f"purge-record.json ({_when(lost)}): the sync keeps the erased items out by their id and "
@@ -2448,8 +2507,12 @@ def _queue_lost(state_dir: Path) -> GovernanceLostError | None:
         if gone:
             path = _queue_file(state_dir)
             entries = "; ".join(_lost_entry(r) for r in gone)
-            if governance_gone(state_dir):  # the audit trail went with the folder (C601, C618; ruling 63)
-                lead, put_back = _folder_gone_words(state_dir)
+            if audit_trail_lost(state_dir):  # the audit trail went with the folder (C601, C618; ruling 63)
+                if governance_gone(state_dir):
+                    lead, put_back = _folder_gone_words(state_dir)
+                else:  # a later write re-created the folder: by content (C606's review)
+                    lead = TRAIL_LOST_HEAD
+                    put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
                 detail = (
                     f"{lead}: purge-record.json keeps {plural(len(gone), 'purge')} as queued and not done "
                     f"({entries})"
@@ -5455,18 +5518,24 @@ def accept_lost_suppression(
     refused."""
     sp = config.state_paths
     with _maybe_lock(sp, lock and not dry_run):
-        gone = governance_gone(sp.root)
-        if gone and not folder_lost:
-            lead, put_back = _folder_gone_words(sp.root)
+        trail_lost = audit_trail_lost(sp.root)  # by content: a re-created folder's new trail too (review)
+        said = audit_trail_loss_said(sp.root)
+        if trail_lost and not folder_lost:
+            if governance_gone(sp.root):
+                lead, put_back = _folder_gone_words(sp.root)
+            else:
+                lead = TRAIL_LOST_HEAD
+                put_back = "the person puts agentsync's audit trail back from a copy they trust"
             raise GovernanceError(
                 f"{lead}, so nothing is accepted: {put_back}; only with no copy left, "
                 f"`{AGENTSYNC_BIN} purge --accept-lost {at} --folder-lost` accepts it, and first "
                 f"{FOLDER_LOST_SAID}"
             )
-        if folder_lost and not gone:
+        if folder_lost and not (trail_lost or said):
             raise GovernanceError(
-                f"--folder-lost goes only while agentsync's governance folder ({governance_dir(sp.root)}) is "
-                f"missing, and it is there; `{AGENTSYNC_BIN} purge --accept-lost {at}` alone accepts the loss"
+                f"--folder-lost goes only while agentsync's audit trail ({audit_path(sp.root)}) has lost "
+                f"what purge-record.json keeps, and it has not; `{AGENTSYNC_BIN} purge --accept-lost {at}` "
+                "alone accepts the loss"
             )
         lost = [r for r in lost_suppressions(sp.root) if r.get("at") == at]
         if not lost:
@@ -5478,7 +5547,7 @@ def accept_lost_suppression(
             return lost
         with _audit_appender(sp.root) as audit:
             when = _iso(_now(now))
-            if folder_lost:  # first, so the trail never reads as complete (C606)
+            if folder_lost and trail_lost:  # first, once, so the trail never reads as complete (C606)
                 audit({"action": AUDIT_TRAIL_LOST, "at": when})
             for rec in lost:
                 audit(

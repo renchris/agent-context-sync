@@ -291,6 +291,11 @@ def _sync_stopped_on(config: Config) -> str | None:
         except governance.GovernanceError as exc:
             cause = exc.__cause__
             if type(exc) is governance.GovernanceError and isinstance(cause, PermissionError):
+                # governance/ itself refused a look inside: its FAIL is governance.hold's, which carries the
+                # folder's chmod, never a suppressed line status prints none of (C639's review)
+                gov = governance.governance_dir(expand(root))
+                if read is governance.load_suppressions and not os.access(gov, os.X_OK):
+                    return "governance.hold"
                 return "governance.suppressed"
         except Exception:  # every other error is its own line's, as before
             continue

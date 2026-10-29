@@ -2706,6 +2706,46 @@ def _ok_line(out: Sequence[str], name: str) -> str:
     return line.split(" — ", 1)[1]
 
 
+def test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C606's review: --folder-lost was gated on governance/ being absent, but any write re-creates it, the
+    first --folder-lost included. With two lost purges the second acceptance the FAIL named was refused; and
+    a `hold` after the folder's loss re-created it with a fresh audit trail, after which plain --accept-lost
+    wrote no ``audit-trail-lost`` line and the FAIL credited "the audit trail". The trail's loss is judged by
+    content (purge-record.json keeps purge lines the trail lacks, and no ``audit-trail-lost`` says so)."""
+    cfg, root, _page = _erased(initialised, capsys)
+    at = "2026-10-01T00:00:00Z"
+    item = {"action": "purge", "at": at, "reason": "dlp-remediation", "source_id": "source"}
+    governance.append_audit(root, {**item, "path_sha256": None, "stable_id_sha256": governance._sha("c1")})
+    line = {"action": "purge-summary", "at": at, "reason": "dlp-remediation", "verified": True}
+    line |= {"selector_kind": "stable-id", "selector_sha256": governance._sha("sel-c1")}
+    line["source_id"] = "source"
+    governance.append_audit(root, line)
+    governance.record_purges(root)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    hold = ["hold", "contoso-matter", "--reason", "matter 8", "--owner", "Ada", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK and gov.is_dir()  # the folder is there again, a fresh trail in it
+    assert governance.audit_trail_lost(root)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and f" — {governance.TRAIL_LOST_HEAD}: " in failed, failed
+    assert "the audit trail records" not in failed and "--folder-lost" in failed, failed
+    lost = sorted(r["at"] for r in governance.lost_suppressions(root))
+    assert len(lost) == 2, lost
+    assert cli.main(["purge", "--accept-lost", lost[0], "--config", cfg]) == cli.EXIT_FAILED
+    assert governance.TRAIL_LOST_HEAD + ", so nothing is accepted" in capsys.readouterr().err
+    for when in lost:  # each as the FAIL names it; the loss line written once
+        assert cli.main(["purge", "--accept-lost", when, "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    trail = governance.read_audit(root)
+    assert [r["action"] for r in trail].count("audit-trail-lost") == 1, trail
+    assert governance._purges_rewritten(root).startswith("; the audit trail was lost before ")
+    rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
+    assert cli.main(["purge", "--accept-lost", lost[0], "--folder-lost", "--config", cfg]) == cli.EXIT_FAILED
+
+
 @pytest.mark.parametrize("held", [True, False])
 def test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618(
     initialised: Config, capsys: pytest.CaptureFixture[str], held: bool
@@ -7215,8 +7255,10 @@ def test_a_hand_path_purge_that_erased_a_lost_queued_items_id_covers_it(
     at = {r["reason"]: r["at"] for r in governance.lost_queued(root)}
     head = "  lost from the queue: the {} purge at {}, a stable-id selector of source source: this purge "
     assert head.format("upstream-deleted", at["upstream-deleted"]) + "clears it\n" in said, said
-    # an upstream-deleted run suppresses nothing, so it never does an erasure
-    assert head.format("erasure-request", at["erasure-request"]) + "does not clear it; `" in said, said
+    # an upstream-deleted run suppresses nothing, so it never covers an erasure: it clears it only while the
+    # item stays gone (C561), which the preview says (B13 round 32 C649)
+    erasure = head.format("erasure-request", at["erasure-request"])
+    assert erasure + "clears it only while the item stays gone, " in said, said
     by_path[-1] = "erasure-request"
     assert cli.main([*by_path, "--config", cfg]) == cli.EXIT_OK
     assert "VERIFIED · 1 item" in capsys.readouterr().out

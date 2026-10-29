@@ -2659,7 +2659,11 @@ def test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_
         assert owner in err.fix, err.fix
     else:
         assert "from a copy; only where none was ever kept, moves " in err.fix, err.fix
-        assert "the person checks with the records owner, and sets each hold again" in err.fix, err.fix
+        # only the loss conditional, the records owner asked whether one was (B13 round 32 C632)
+        assert (
+            "the person checks with the records owner whether one was, and sets each such hold again"
+            in err.fix
+        )
 
 
 def _alias_manifest(state: Path, *, aliases: bool = True) -> Path:

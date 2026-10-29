@@ -12639,7 +12639,8 @@ def test_the_lost_hold_probe_tells_a_governance_folder_gone_by_the_builds_own_wo
     assert _lost_hold_probe(cfg, src) == "lost-hold"
     (state / "governance").rmdir()
     for name, old, new in (
-        ("no-branch", 'if not os.path.lexists(gov) and "audit.jsonl" not in hold.kept_by:', "if False:"),
+        # lane B's C606 named the test governance_gone (B13 round 32)
+        ("no-branch", 'if governance_gone(state_dir) and "audit.jsonl" not in hold.kept_by:', "if False:"),
         ("no-words", "def lost_hold_words(", "def _no_lost_hold_words("),
     ):
         older = tmp_path / name  # an installed build from before C313, or with no lost_hold_words

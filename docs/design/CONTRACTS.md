@@ -35715,6 +35715,28 @@ fix, as the state-folder sibling does and as C539's review rules for a record no
 are unchanged. Dated line at §16.210 C560. Tests: `test_cli.py` the two C560 tests (the schema note's tuples and the
 busy note's, each `(name, False, <note>)`).
 
+C606's, C639's and C624's review (2026-10-28): **the audit trail's loss is judged by content.** A fresh review found
+`--folder-lost` gated on governance/ being absent, while any write re-creates the folder with a fresh audit.jsonl
+(the first `--folder-lost` itself, the lost hold's `hold` fix, a hand purge): a second lost record's
+`--folder-lost`, as the FAIL named it, was refused, and after a `hold` plain `--accept-lost` wrote no
+`audit-trail-lost` line while the FAIL credited "the audit trail". `governance.audit_trail_lost(state)` is true in
+ruling 63's case or when purge-record.json keeps a purge line the trail lacks (every purge line reaches the trail
+first) and the trail holds no `audit-trail-lost` line; `suppressions_lost` and `queue_lost` credit purge-record.json
+and name `--folder-lost` whenever it holds, leading with `TRAIL_LOST_HEAD` (`agentsync's audit trail no longer holds
+purge lines purge-record.json keeps`) and the one file's put-back when the folder is there again;
+`accept_lost_suppression` refuses without `--folder-lost` while it holds, accepts `--folder-lost` while it holds or
+after the line was written, and writes the line once. `_purges_rewritten` after that line says `; the audit trail
+was lost before <at>, so if the record kept a purge it is lost with it: ...`, never that the next sync writes the
+record again from the trail. `loop._sync_stopped_on` names governance.hold, never governance.suppressed, when
+governance/ itself refuses a look inside (its chmod is on governance.hold's line, the only one status prints). The
+ok lines name a record only when it is there: `no hold set (the hold list is missing with the governance folder)`
+with no hold-record.json, `the purge queue is missing with the governance folder` with no purge-record.json
+(`governance.queue_gone_words`; names `HOLD_LIST_GONE_UNRECORDED`, `QUEUE_GONE_UNRECORDED`, and
+`audit_trail_loss_said` for the line's presence). `audit-trail-lost`, `the old audit trail's loss is written first, to the new
+audit trail` and `the audit trail was lost before` join both phrase lists. Tests: `test_cli.py`
+`test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606`; `test_loop.py`
+`test_a_governance_folder_this_account_cannot_search_names_the_line_status_prints_c639`.
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

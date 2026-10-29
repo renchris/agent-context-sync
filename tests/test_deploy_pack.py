@@ -8669,7 +8669,7 @@ def test_v73s_lines_say_which_read_fails_status() -> None:
     )
     assert "Damage under a table the loop's read does not touch (the cursors table, measured) has no" in u84
     assert "though status's detail read of the sources prints `status: cannot read the state: ...`." in u84
-    build = inspect.getsource(cli._build_status)
+    build = inspect.getsource(cli._build_status_once)  # inside one read-only build (B13 round 32 C644)
     assert "_loop_read(config)" in build and "_with_damaged_manifest(config, checks, state_exc)" in build
     assert "source_statuses(config, manifest" in inspect.getsource(cli._status_lines)
     assert "manifest.get_cursor(src.id)" in inspect.getsource(cycle.source_statuses)

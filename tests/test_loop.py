@@ -539,6 +539,30 @@ def test_a_governance_file_this_account_cannot_open_says_no_sync_runs_c639(
     assert wait().endswith(plain), wait()
 
 
+def test_a_governance_folder_this_account_cannot_search_names_the_line_status_prints_c639(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C639's review: with governance/ itself at 0000, the suppression list's refused read named
+    governance.suppressed, a line status does not print (its fix is the folder's chmod, said on
+    governance.hold's line). The wait names governance.hold, whose [FAIL] status prints."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    root.mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    gov = governance.governance_dir(expand(config.state_paths.root))
+    gov.mkdir(exist_ok=True)
+    gov.chmod(0o000)
+    try:
+        assert loop._sync_stopped_on(config) == "governance.hold"
+        capsys.readouterr()
+        cli.main(["status", "--config", str(config.config_path)])
+        out = capsys.readouterr().out.splitlines()
+        assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+    finally:
+        gov.chmod(0o700)
+
+
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
