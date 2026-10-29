@@ -3779,9 +3779,16 @@ def _check_heartbeat(
             # is still being written), but it says what the heartbeat holds: an incomplete pass sets
             # last_success_at too, and the loop may already print a WAITING ON YOU line about this source.
             if isinstance(incomplete, int) and incomplete > 0:
+                from agentsync import loop  # noqa: PLC0415 - loop imports this module
+
                 passes = plural(incomplete, "pass", "passes")
-                detail += f"; listing incomplete for the last {passes}, {_held(src)}, "
-                detail += f"a warn after {_INCOMPLETE_RUNS}"
+                detail += f"; listing incomplete for the last {passes}, {_held(src)}"
+                # beside a FAIL every sync stops on, no pass counts toward the warn (B13 round 32 C633)
+                stopped = loop._sync_stopped_on(config)
+                if stopped is not None:
+                    detail += f"; no sync lists it again until the person fixes the {stopped} [FAIL] line"
+                else:
+                    detail += f", a warn after {_INCOMPLETE_RUNS}"
             out.append(_ok(name, detail))
     return out
 

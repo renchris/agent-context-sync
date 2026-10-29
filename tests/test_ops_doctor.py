@@ -28,7 +28,7 @@ from typing import NoReturn
 
 import pytest
 
-from agentsync import cli, gitops, lints, setup_report
+from agentsync import cli, gitops, governance, lints, setup_report
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.convert import pandoc as pandoc_mod
@@ -2830,6 +2830,19 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
         assert r.detail.endswith(
             f"; listing incomplete for the last {passes}, deletions held, a warn after 3"
         )
+    # B13 round 32 C633 (ruling 65): beside a FAIL every sync stops on (holds.json a folder), no pass counts
+    # toward the warn: the ok line names the FAIL, never "a warn after 3"; the hold list back, it returns
+    holds = governance._holds_file(expand(sample_config.state_paths.root))
+    holds.mkdir(parents=True)
+    r = by_name(run_checks(sample_config))[name]
+    assert r.ok and r.severity is Severity.INFO and r.fix is None and r.detail.startswith("last success ")
+    assert r.detail.endswith(
+        "; listing incomplete for the last 2 passes, deletions held; no sync lists it again until the person "
+        "fixes the governance.hold [FAIL] line"
+    ), r.detail
+    assert "a warn after" not in r.detail, r.detail
+    holds.rmdir()
+    assert by_name(run_checks(sample_config))[name].detail.endswith(", a warn after 3")
     _beat(sample_config)
     r = by_name(run_checks(sample_config))[name]
     assert r.ok and "incomplete" not in r.detail

@@ -6385,11 +6385,12 @@ _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.210", "C530 (2026-10-28): **governance/'s fix says a purge is lost only if one", "§16.215 C632"),
     ("16.119", "**S32, S42, S66: after an exclude since the walk", "§16.215 C631"),
     ("16.210", "C520 (2026-10-28): **beside a [FAIL] the sync's guard stops on", "§16.215 C631"),
+    ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.215 C633"),
 )
 """Round 32 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C624's ok words at §16.200's status-and-doctor paragraph (C155), and
 C632's conditional losses at §16.205's C381 paragraph and §16.210's C530 paragraph, and C631's no-sync clause
-at §16.119's S32 paragraph and §16.210's C520 paragraph."""
+at §16.119's S32 paragraph and §16.210's C520 paragraph, and C633's stopped heartbeat at §16.51's Q14/Q35."""
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),

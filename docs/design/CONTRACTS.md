@@ -14430,6 +14430,9 @@ for a File Provider domain as for a plain folder; it said `File Provider root UU
 printed a WAITING ON YOU line about the source. The line stays `[ok]` and adds `; listing incomplete for the last N
 pass(es), deletions held, a warn after 3`; the detail still starts `last success`, so
 `setup_report._yours_warn` is unaffected. The threshold and the warn are unchanged. Test: `test_heartbeat_states`.
+Amended 2026-10-28, §16.215 C633: beside a [FAIL] every sync stops on (`loop._sync_stopped_on`), the clause ends
+`, deletions held; no sync lists it again until the person fixes the <check> [FAIL] line` instead of `, a warn after
+3`.
 
 **Q48: the held-lock line loses a dead branch (`agentsync.ops.doctor`).** The early return on a body
 `LockInfo.parse` rejects (an empty one, or a corrupt leftover under install.sh's `lockf`) stays as §16.45 R37
@@ -35657,6 +35660,15 @@ line is fixed, the next sync lists <id> without that folder|those folders; until
 `test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_it_c520`, `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520` (the clause once in the line)
 and `test_beside_a_fail_the_syncs_guard_stops_on_the_head_says_no_sync_runs_c631`.
+
+C633 (2026-10-28): **beside a FAIL that stops every sync, the [ok] heartbeat line names it (ruling 65).** Below
+the threshold the heartbeat line said `listing incomplete for the last N pass(es), deletions held, a warn after 3`
+while no sync could run to count a pass. `doctor._check_heartbeat` reads `loop._sync_stopped_on(config)` (never
+raises; a lost hold, whose sync runs, is never named) only when a pass was incomplete, and then ends `; no sync
+lists it again until the person fixes the <check> [FAIL] line`; the line stays `[ok]`, INFO, with no fix, its
+detail still starting `last success`, so status, doctor and the report take it alike. Dated line at §16.51 Q14/Q35.
+Test: `test_ops_doctor.py` `test_heartbeat_states` (holds.json a folder: the FAIL named, no `a warn after`; the
+folder gone, `a warn after 3` back).
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
