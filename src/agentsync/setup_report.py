@@ -10552,9 +10552,11 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         each = "; ".join(ruled(x) for x in rescreened)
         out += [
             "",
+            # B13 round 32 C622, C627 (ruling 73): where the secret rule's re-screen is counted, the column
+            # just named (cycle._tally_converted: same bytes and action key), not this note's own tally
             f"- re-screened for a rule change: {each}. A label rule is one of the converter's options, so a "
             "file re-screened for a label-rule change is a new conversion and is not in the 'same bytes' "
-            "column; one re-screened for a secret rule is counted",
+            "column; one re-screened for a secret rule is counted in that column",
         ]
     if reader:
         each = "; ".join(

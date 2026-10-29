@@ -14952,8 +14952,9 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     assert (
         "- re-screened for a rule change: run 5, 11 files (10 came out the same). A label rule is one of "
         "the converter's options, so a file re-screened for a label-rule change is a new conversion and is "
-        "not in the 'same bytes' column; one re-screened for a secret rule is counted\n" in part + "\n"
-    ), part
+        "not in the 'same bytes' column; one re-screened for a secret rule is counted in that column\n"
+        in f"{part}\n"
+    ), part  # B13 round 32 C622, C627 (ruling 73): it names where the secret rule's re-screen is counted
     # B13 round 31 ruling 53 (lane E's rescreened_reader): a run whose re-screens were all the new mail label
     # reader's has its own bullet, never "for a rule change"; a mixed run names the reader's share
     for counts, said, never in (

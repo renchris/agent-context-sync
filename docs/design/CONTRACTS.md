@@ -34732,6 +34732,8 @@ reads both counts as 0. The guide's Repeat conversions row says both, and `The l
 older label reader let through` joins ruling 55's phrases. Tests: `test_repeat_conversions_part_reads_the_run_records_and_the_cache`
 (a reader-only and a mixed run), `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (one and
 two files with `legacy_pathed`) and `test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` in test_deploy_pack (lane E's 46a029853 and 77672c89a).
+Amended 2026-10-28, §16.213 C622, C627: the rule's note ends `is counted in that column`, naming the 'same bytes'
+column (ruling 73).
 
 **The Summary re-renders the label-unreadable share of the refused count** (C567 with C583; ruling 59;
 `src/agentsync/setup_report.py`; dated line at §16.205 C326). §16.205 said the re-render of C326's clause was lane
@@ -35665,6 +35667,14 @@ The lines lane RB's shell test pins equality to: `added source 'tailspin' to ~/a
 (~/<path>):` and `added source 'gone' to ~/agent-context/sources.toml (<tmp>/<path>):`. Tests:
 `test_a_collapsed_stored_as_notes_one_form_is_cut_as_its_argument_is_c658` (a linked home, and a TMPDIR folder),
 with G41's and C529's tests in the new words.
+
+**Repeat conversions' rule-change note says where a secret rule's re-screen is counted** (C622 with C627, ruling 73;
+`src/agentsync/setup_report.py`). The note ended `one re-screened for a secret rule is counted`, beside a count of
+re-screened files that holds every re-screen, so `counted` could read as that tally, which makes the contrast with the
+label rule's re-screen empty. A secret rule is no converter option, so its re-screen of unchanged bytes keeps its action
+key and is counted in the 'same bytes' column (`cycle._tally_converted`). The note ends `one re-screened for a secret
+rule is counted in that column`. The guide's Repeat conversions row is lane D's. Test:
+`test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned note).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
