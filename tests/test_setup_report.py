@@ -7546,12 +7546,16 @@ def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_su
     """B13 round 28 I27 (P14's report half): install.log's report step records closing_status=137 when a
     signal stopped install.sh's closing status, but no report read it, so a later report showed the run as a
     plain exit 0 and its report step as plain done. The report step's row and the Summary's install.sh line
-    say it in the converters' words; no field, or one that is no signal exit, reads as before."""
+    say it in the converters' words; no field, or one that is no signal exit, reads as before. B13 round 32
+    C617 (ruling 66): the Summary's closing clause follows the step bracket, which belongs to the exit, so
+    R81's `(signal N)` never sits beside it as `) (`."""
     write_friction(fake_mac, V6_HAPPY)
     log = v6_install_log(fake_mac)
     plain = log.read_text(encoding="utf-8")
     report_step = "step=report seconds=2 rc=0 result=done note=agentsync"
     assert report_step in plain
+    plain_line = _line(summary_of(fake_mac)[1], "- install.sh: ")
+    assert re.search(r"; the last exit 0 after 57s \([^()]+\)$", plain_line), plain_line
     for field, words in (
         ("137", "stopped by SIGKILL (signal 9)"),
         ("143", "stopped by SIGTERM (signal 15)"),
@@ -7575,7 +7579,8 @@ def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_su
         assert f"the closing status was {words} before it finished, so its NEXT line may be missing" in row, (
             row
         )
-        assert f"the last exit 0 after 57s, its closing status {words}" in line, line
+        assert line == f"{plain_line}, its closing status {words}", line
+        assert ") (" not in line, line
 
 
 def test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516(tmp_path: Path) -> None:

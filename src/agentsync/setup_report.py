@@ -15304,8 +15304,6 @@ def _install_line(
         _exit_text(last, r.install_runs) if last.rc is not None else f"has no end line ({_open_state(last)})"
     )
     closing = _closing_stopped(last.step("report"))
-    if closing is not None:  # B13 round 28 I27: the exit is kept, so the stop is said beside it
-        status += f", its closing status {closing}"
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
     # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33)
@@ -15315,7 +15313,12 @@ def _install_line(
         for k, v in last.steps
         if k != "report"
     )
-    return f"- install.sh: {where}; the last {status}" + (f" ({steps})" if steps else "")
+    status += f" ({steps})" if steps else ""
+    # B13 round 28 I27: the exit is kept, so the stop is said beside it; B13 round 32 C617 (ruling 66): after
+    # the step bracket, which belongs to the exit, so R81's "(signal N)" never sits beside it
+    if closing is not None:
+        status += f", its closing status {closing}"
+    return f"- install.sh: {where}; the last {status}"
 
 
 _NAMED_FOLDER_RE = re.compile(r"(?<!\\ )(?<!\S)--source-local(?!\S)")

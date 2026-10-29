@@ -31790,6 +31790,8 @@ clause, so the counts add up. Test: the I54 rows of `test_the_sync_line_counts_t
 
 **The report reads install.log's closing status** (I27; amends §16.189 P14). Test:
 `test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`.
+Amended 2026-10-28, §16.213 C617: the Summary's `, its closing status stopped by SIG<NAME> (signal N)` now follows
+the step bracket, `the last exit 0 after 57s (<steps>), its closing status ...`, never `(signal N) (<steps>)`.
 
 **The speech cause has no dead copy** (I74; amends §16.188 P32). Test: the I74 row of
 `test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_update_never_the_re_run`.
@@ -35598,6 +35600,15 @@ stopped (install.sh logs `rc=143 result=done note=fail-lines`, as status runs `|
 stopped by SIGTERM, rc 143)`, never two brackets in a row (C617, ruling 66). Test:
 `test_a_retried_runs_first_sync_a_signal_stopped_is_named_by_its_signal_c612` (143, 137, 1 and 170; and a status step
 at 143 with and without its run's [FAIL] lines in install.out).
+
+**The Summary's closing-status clause follows the step bracket** (C617, ruling 66; `src/agentsync/setup_report.py`).
+`_install_line` appended `, its closing status stopped by SIGTERM (signal 15)` to the exit and then the step list's
+bracket, so the line read `(signal 15) (uv 0s · ...)`, two brackets side by side. The step bracket now follows the exit
+it belongs to (after `_exit_text`'s `, before its report step`), and the closing clause follows it: `the last exit 0
+after 57s (uv 0s · agentsync 41s · ...), its closing status stopped by SIGTERM (signal 15)`. R81's words stay word for
+word those of the report step's row and the Every run cell (C135). The no-end-line form `has no end line (<state>)
+(<steps>)` is unchanged. Test: `test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`
+(the whole line, equal to the plain line plus the clause, and no `) (`).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
