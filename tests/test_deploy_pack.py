@@ -6346,6 +6346,10 @@ _ROUND_31_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_pathed` |", "§16.211 C506"
 """Round 31 lane E's dated line at a section its claim names with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C506's row in §16.28's run-record table."""
 
+_ROUND_32_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread_unreadable` |", "§16.216 C626"),)
+"""Round 32 lane E's dated lines at a section its claim names with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C626's two rows in §16.28's run-record table, the re-read note's split."""
+
 _ROUND_30_B_PARAGRAPH_AMENDS = (
     (
         "16.200",
@@ -6529,6 +6533,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_30_E_PARAGRAPH_AMENDS,
         *_ROUND_30_B_PARAGRAPH_AMENDS,
         *_ROUND_31_E_PARAGRAPH_AMENDS,
+        *_ROUND_32_E_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
     )

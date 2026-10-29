@@ -361,17 +361,85 @@ def test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_re
     out = capsys.readouterr().out
     assert _notes(out) == [
         # B13 round 31 C545, C523: the .potx is an unreadable stub now, and the same line says 0 failed, so
-        # never "failed again"
-        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub; this sync's "
-        "counts say why (failed, unreadable or refused), and it is not tried again"
+        # never "failed again"; round 32 C626: the note says which it is, and where its reason is
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub (1 unreadable; "
+        "_sync/QUARANTINE.tsv in the docs folder gives its reason), and it is not tried again"
     ], out
     record = _run_record(config)
-    assert (record["path_reread"], record["path_reread_failed"]) == (1, 1)
+    assert (record["path_reread"], record["path_reread_failed"], record["path_reread_unreadable"]) == (
+        1,
+        1,
+        1,
+    )
+    assert "path_reread_refused" not in record
     assert "path_reread_waiting" not in record and "path_reread_current" not in record
     for note in _notes(out):
         assert not re.search(r"\bconverted\b|\bdeferred\b|\bread again\b", note), note
     cli.main(["sync", "--config", cfg])
     assert _notes(capsys.readouterr().out) == []
+
+
+_LABEL = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"
+
+
+def test_the_still_a_stub_note_splits_its_own_count_beside_a_refused_mail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C626: the note sent the person to "this sync's counts", which cannot say which bucket the
+    one file is in when the same sync refused a mail: `1 unreadable, 0 failed, 1 refused` fits either. The
+    note now splits its own count and names where each file's reason is; the refused mail is not credited to
+    it."""
+    from agentsync import cli  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{_LABEL}"]\n')
+    word_package(src / "Contoso renamed doc.potx")
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    (src / "Contoso board.eml").write_bytes(
+        b"From: a@contoso.com\r\nSubject: s\r\nmsip_labels: MSIP_Label_"
+        + _LABEL.encode()
+        + b"_Enabled=True; MSIP_Label_"
+        + _LABEL.encode()
+        + b"_Name=Highly Confidential;\r\n\r\nbody\r\n"
+    )
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    out = capsys.readouterr().out
+    assert re.search(r"of the converted: 1 unreadable, 0 failed, 1 refused", out), out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub (1 unreadable; "
+        "_sync/QUARANTINE.tsv in the docs folder gives its reason), and it is not tried again"
+    ], out
+    assert _row(config, "Contoso board.eml").state is RowState.REFUSED
+    record = _run_record(config)
+    assert (record["path_reread_failed"], record["path_reread_unreadable"]) == (1, 1)
+    assert "path_reread_refused" not in record
+
+
+def test_the_still_a_stub_note_names_each_bucket_it_holds(capsys: pytest.CaptureFixture[str]) -> None:
+    """C626: several files read again and still a stub are split in the note's own order, failed,
+    unreadable, refused, a bucket holding none left out, plural words for several."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import CycleMode, CycleReport  # noqa: PLC0415
+
+    report = CycleReport(
+        run_id=3,
+        mode=CycleMode.POLL,
+        sources=(),
+        changes=(),
+        commit_sha=None,
+        path_reread=3,
+        path_reread_failed=3,
+        path_reread_refused=2,
+    )
+    cli._out_path_reread_notes(report)
+    assert _notes(capsys.readouterr().out) == [
+        f"  note: 3 conversions {_SAID} were tried once more in this sync and are still a stub (1 failed, 2 "
+        "refused; _sync/QUARANTINE.tsv in the docs folder gives their reasons), and they are not tried again"
+    ]
 
 
 def test_a_queued_path_stub_with_new_bytes_is_no_waiting_re_read(

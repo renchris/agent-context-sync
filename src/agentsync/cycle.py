@@ -3547,7 +3547,7 @@ class _Cycle:
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
         cleared, settled, waiting = self._legacy_outcomes()
-        path_current, path_failed, path_waiting = self._path_outcomes()
+        path_current, path_failed, path_unreadable, path_refused, path_waiting = self._path_outcomes()
         return CycleReport(
             run_id=self.run_id,
             mode=self.mode,
@@ -3574,27 +3574,33 @@ class _Cycle:
             legacy_cleared=cleared,
             legacy_settled=settled,
             legacy_waiting=waiting,
-            path_reread=path_current + path_failed,
+            path_reread=path_current + path_failed + path_unreadable + path_refused,
             path_reread_current=path_current,
-            path_reread_failed=path_failed,
+            path_reread_failed=path_failed + path_unreadable + path_refused,
+            path_reread_unreadable=path_unreadable,
+            path_reread_refused=path_refused,
             path_reread_waiting=path_waiting,
         )
 
-    def _path_outcomes(self) -> tuple[int, int, int]:
-        """Of the stubs whose reason an older build wrote a path into, ``(current, failed, waiting)`` after
-        this run: current is one read again in this run and live (or dataless) now; failed is one read again
-        that is still a stub (failed again, or settled as unreadable or refused), which is not read again;
-        waiting is one this run queued for the re-read but did not read (--source, paused, out of time), which
-        the next sync of its source reads; a row read again and gone since counts in neither. (0, 0, 0) when
-        the manifest cannot say (B13 round 30 C362)."""
+    def _path_outcomes(self) -> tuple[int, int, int, int, int]:
+        """Of the stubs whose reason an older build wrote a path into, ``(current, failed, unreadable,
+        refused, waiting)`` after this run: current is one read again in this run and live (or dataless) now;
+        failed, unreadable and refused are one read again that is still a stub, which is not read again, by
+        its row: a failed conversion's stub, any other quarantined one (encrypted, not the type its name
+        says, no text) and a refused one, so the sync's note says which (B13 round 32 C626); waiting is one
+        this run queued for the re-read but did not read (--source, paused, out of time), which the next sync
+        of its source reads; a row read again and gone since counts in none. All 0 when the manifest cannot
+        say (B13 round 30 C362)."""
         try:
             rows = [self._path_row(sid, stable) for sid, stable in sorted(self._path_reread)]
             read = {(r.source_id, r.stable_id) for r in rows if r is not None} | self._path_reread
             queued = [self._path_row(sid, stable) for sid, stable in sorted(self._path_queued)]
         except Exception:  # the report never fails over a count
-            return 0, 0, 0
+            return 0, 0, 0, 0, 0
         current = sum(1 for r in rows if r is not None and r.state in (RowState.LIVE, RowState.DATALESS))
-        failed = sum(1 for r in rows if r is not None and r.state in (RowState.QUARANTINED, RowState.REFUSED))
+        stubs = [r for r in rows if r is not None and r.state is RowState.QUARANTINED]
+        failed = sum(1 for r in stubs if (r.state_reason or "").startswith(CONVERSION_FAILED))
+        refused = sum(1 for r in rows if r is not None and r.state is RowState.REFUSED)
         # still the stub, still queued: not one this run converted some other way (new bytes), removed or
         # re-keyed into a re-read (B13 round 23 A62's alias rule)
         waiting = sum(
@@ -3606,7 +3612,7 @@ class _Cycle:
             and (r.state_reason or "").startswith(CONVERSION_FAILED)
             and r.last_verdict is Verdict.ERROR
         )
-        return current, failed, waiting
+        return current, failed, len(stubs) - failed, refused, waiting
 
     def _path_row(self, source_id: str, stable: str) -> ItemRow | None:
         """The row ``stable`` names, read under its new id when a safe-save re-keyed it in this run."""
@@ -3758,6 +3764,8 @@ class _Cycle:
         self._tally["path_reread"] = report.path_reread
         self._tally["path_reread_current"] = report.path_reread_current
         self._tally["path_reread_failed"] = report.path_reread_failed
+        self._tally["path_reread_unreadable"] = report.path_reread_unreadable  # of the failed (C626)
+        self._tally["path_reread_refused"] = report.path_reread_refused
         self._tally["path_reread_waiting"] = report.path_reread_waiting
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
@@ -3835,8 +3843,10 @@ class _Cycle:
         counts (B13 round 31 C506); ``path_reread``: stubs whose reason an older build
         wrote a path into that this run converted once more past their retries (``_retries``' one-shot, B13
         round 29 C181), ``path_reread_current`` and ``path_reread_failed`` the ones of them live now and still
-        a stub, and ``path_reread_waiting`` the ones this run queued for it and did not read, which a later
-        sync of their source reads (``_path_outcomes``, B13 round 30 C362);
+        a stub, ``path_reread_unreadable`` and ``path_reread_refused`` the ones of the still a stub that
+        are an unreadable or a refused stub (B13 round 32 C626), and ``path_reread_waiting`` the ones this run
+        queued for it and did not read, which a later sync of their source reads (``_path_outcomes``, B13
+        round 30 C362);
         ``converted_unreadable``: of those, conversions whose
         result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:

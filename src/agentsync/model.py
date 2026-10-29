@@ -536,10 +536,14 @@ class CycleReport:
     # retries in this run (``Cycle._retries``' one-shot, B13 round 29 C181): of them, the ones live now and
     # the ones still a stub, never read again; and the ones this run queued for it but did not read (another
     # source's sync, paused, out of time), which the next sync of their source reads. The sync's notes and
-    # the run record say each, as the legacy counts do (B13 round 30 C362, C327)
+    # the run record say each, as the legacy counts do (B13 round 30 C362, C327). Of the still a stub
+    # (``path_reread_failed``, the total), the unreadable and the refused ones, so the note says which each
+    # is, the rest failed conversions (B13 round 32 C626)
     path_reread: int = 0
     path_reread_current: int = 0
     path_reread_failed: int = 0
+    path_reread_unreadable: int = 0
+    path_reread_refused: int = 0
     path_reread_waiting: int = 0
     # the heartbeat this account could not open (its PermissionError, with the path): the cycle stops trying
     # after the first source and logs nothing above DEBUG; the CLI says it once, an interactive sync as an

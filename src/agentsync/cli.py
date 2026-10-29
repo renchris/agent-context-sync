@@ -494,13 +494,17 @@ def _out_path_reread_notes(report: CycleReport) -> None:
             f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
             f"sync and {'is' if n == 1 else 'are'} now current"
         )
-    if (
-        n := report.path_reread_failed
-    ):  # failed, unreadable or refused: never "failed again" (B13 round 31 C545)
+    if n := report.path_reread_failed:  # never "failed again" (B13 round 31 C545)
+        # its own split, failed, unreadable and refused, as the sync line's counts cannot say which this one
+        # is, and where each file's reason is (B13 round 32 C626)
+        unreadable, refused = report.path_reread_unreadable, report.path_reread_refused
+        split = [(n - unreadable - refused, "failed"), (unreadable, "unreadable"), (refused, "refused")]
+        said_split = ", ".join(f"{k} {word}" for k, word in split if k > 0)
+        where = f"_sync/QUARANTINE.tsv in the docs folder gives {'its reason' if n == 1 else 'their reasons'}"
         _out(
             f"  note: {plural(n, 'conversion')} {said} {'was' if n == 1 else 'were'} tried once more in this "
-            f"sync and {'is' if n == 1 else 'are'} still a stub; this sync's counts say why (failed, "
-            f"unreadable or refused), and {'it is' if n == 1 else 'they are'} not tried again"
+            f"sync and {'is' if n == 1 else 'are'} still a stub ({said_split}; {where}), and "
+            f"{'it is' if n == 1 else 'they are'} not tried again"
         )
     if n := report.path_reread_waiting:
         _out(

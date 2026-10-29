@@ -1061,6 +1061,8 @@ class CycleReport:
     path_reread: int = 0  # 2026-10-26 (§16.206 C362): stubs with an older build's path converted once more past their retries
     path_reread_current: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones live now (the note's)
     path_reread_failed: int = 0  # 2026-10-26 (§16.206 C362): of those, the ones still a stub, not tried again (the note's)
+    path_reread_unreadable: int = 0  # 2026-10-28 (§16.216 C626): of the still a stub, the unreadable ones (the note's split)
+    path_reread_refused: int = 0  # 2026-10-28 (§16.216 C626): of the still a stub, the refused ones (the note's split)
     path_reread_waiting: int = 0  # 2026-10-26 (§16.206 C362): queued for it in this run and not read (the note's)
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
@@ -8141,6 +8143,8 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `path_reread` | **Amended 2026-10-26, §16.206 C362:** stubs whose reason an older build wrote a staging or home path into that this run converted once more past their retries (§16.201 C181's one-shot re-read, `Cycle._retries`); the sync's notes say each outcome |
 | `path_reread_current` | **Amended 2026-10-26, §16.206 C362:** of those, the ones live (or dataless) after this run |
 | `path_reread_failed` | **Amended 2026-10-26, §16.206 C362:** of those, the ones still a stub (failed again, or settled as unreadable or refused), which no later run converts until the bytes change; with `path_reread_current` always `path_reread` |
+| `path_reread_unreadable` | **Amended 2026-10-28, §16.216 C626:** of the `path_reread_failed`, the ones an unreadable stub after this run (quarantined for a reason other than a failed conversion: encrypted, not the type its name says, no text), so the note can say which each is |
+| `path_reread_refused` | **Amended 2026-10-28, §16.216 C626:** of the `path_reread_failed`, the ones a refused stub after this run; the rest of `path_reread_failed` are failed conversions' stubs |
 | `path_reread_waiting` | **Amended 2026-10-26, §16.206 C362:** stubs this run queued for the re-read (`_queue_path_stubs`, once per manifest) and did not read (another source's run, paused, out of time), never in `path_reread`; the next sync of their source reads them |
 | `converted_unreadable` | (**Amended 2026-10-11, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
@@ -34406,6 +34410,9 @@ Amended 2026-10-28, §16.211 C545, C523, C506, C549: the second note said `faile
 or refused stub; it says the file is still a stub and this sync's counts say why (C545, C523). A legacy retry that
 takes a stub whose stored reason named a folder counts it in `legacy_pathed`, and its legacy note says so, with
 `path_reread` untouched (C506). The staging re-read test sizes its root to about 160 characters (C549).
+Amended 2026-10-28, §16.216 C626: the second note splits its own count, `is still a stub (<k> failed, <k> unreadable,
+<k> refused; _sync/QUARANTINE.tsv in the docs folder gives its reason)`, a bucket holding none left out, never
+`this sync's counts say why`.
 
 ### 16.207 Round 30: CI's times, the records page's label rule and ids, step 1's lost-list notes and the kit's /tmp note (2026-10-26, wave B13 round 30 lane D)
 
@@ -35269,6 +35276,9 @@ why (failed, unreadable or refused), and it is not tried again`, keeping `an old
 `converted`, `deferred` or `read again`; no new count, as the report's `left as a stub` already reads true
 (C523's split into a settled count was not built: the reword makes the note true for all three with no new field).
 Test: `test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it`.
+Amended 2026-10-28, §16.216 C626: the sync's own counts cannot say which bucket the one file is in when the same
+sync refused another, so the note splits its own count into failed, unreadable and refused and says
+`_sync/QUARANTINE.tsv` gives each file's reason; `path_reread_unreadable` and `path_reread_refused` carry the split.
 
 **A legacy retry that took a path stub says so (C506, ruling 54; `agentsync.cycle`, `agentsync.cli`,
 `agentsync.model`; amends §16.28 and §16.206 C362).** On the upgrade path from a build before the retry, §16.144
@@ -35555,6 +35565,23 @@ SIGKILL (signal 9))`, a bracket inside a bracket, beside the git line's `<git> -
 (signal 9)`. It now takes the git line's colon form, `<pandoc> --version failed: stopped by SIGKILL (signal 9)`; a
 plain exit keeps `--version failed (exit N): <stderr>`. Test:
 `test_ops_doctor.py::test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it`.
+
+**The re-read's still-a-stub note splits its own count (C626, ruling 54 as round 32 amends it; `agentsync.cycle`,
+`agentsync.cli`, `agentsync.model`; amends §16.28, §16.206 C362 and §16.211 C545).** After an upgrade the note said a
+file read once more is still a stub and that `this sync's counts say why (failed, unreadable or refused)`, but with
+`1 unreadable, 0 failed, 4 refused` on the same sync line the counts cannot say which bucket it is in. `_path_outcomes`
+now counts each still-a-stub row by its own state: a failed conversion's stub (quarantined, `conversion failed`), any
+other quarantined one (unreadable) and a refused one. `path_reread_failed` stays the total, so the run record and the
+report's `left as a stub` read as before, and `path_reread_unreadable` and `path_reread_refused` (CycleReport and the
+run record, left out when 0) carry the split. The note reads `... was tried once more in this sync and is still a stub
+(1 unreadable; _sync/QUARANTINE.tsv in the docs folder gives its reason), and it is not tried again`, the buckets in
+the order failed, unreadable, refused, one holding none left out (`(1 failed, 2 refused; ... gives their reasons)` for
+several). It keeps `an older build gave up on ` for install.sh's grep and holds no bare `converted`, `deferred` or
+`read again`; the lanes' COMMON.md text of ruling 54 stays as written. Tests:
+`test_convert_family.py::test_the_still_a_stub_note_splits_its_own_count_beside_a_refused_mail` (the older build's
+renamed `.potx` and a mail a label rule refused in the same sync: the line says `1 unreadable, 0 failed, 1 refused`,
+the note `1 unreadable` only), `test_convert_family.py::test_the_still_a_stub_note_names_each_bucket_it_holds` and
+`test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it`.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
