@@ -1617,6 +1617,9 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
             f"queued purges: {len(queued)} ({governance.hold_list_wait(config.state_paths.root)}: see "
             "governance.hold)"
         )
+    elif queued and governance.purge_record_unread(config.state_paths.root):
+        # every purge refuses over the record: the count stays, no run invited (B13 round 32 C643)
+        out.append(f"queued purges: {len(queued)} (waits on the purge record: see governance.suppressed)")
     elif queued:
         runnable, on_hold = _held_split(config, gov, queued)
         if on_hold:  # the records owner's move, never a run that refuses (B13 round 28 I91)
@@ -2871,6 +2874,11 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             # a lost hold is no list that cannot be read: each in its own words (C107, C174; ruling 27)
             wait = governance.hold_list_wait(config.state_paths.root)
             detail += f"; {wait}: the governance.hold line says why"
+            out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
+        elif not record_read:
+            # every purge and `purge --queue` refuse over the purge record: the count and the warn stay, no
+            # run invited (B13 round 32 C643; ruling 65)
+            detail += "; it waits on the purge record: the governance.suppressed line says why"
             out.append(_check("governance.purge_queue", False, detail, doctor.Severity.WARN))
         elif held and not runnable:
             # suspended by a hold: no fix, no run invited; the release is its records owner's (I91)

@@ -35629,6 +35629,19 @@ check that FAILs either; never holds.json, hold-record.json or audit.jsonl, whic
 the sync stops and the wait says `until then no sync runs`, the plain words back at 0600; the hold record at 0000:
 the sync runs and the plain words stay).
 
+C643 (2026-10-28): **a queued purge beside a purge record that cannot be read is counted, never invited (ruling
+65).** C539 fixed the empty and kept branches, but with purge-record.json damaged or refused and a purge queued,
+status's governance.purge_queue warn gave the `purge --queue --dry-run` fix, its summary line and the loop's wait
+invited the run, and every purge refuses over the record. `governance.purge_record_unread` (read after
+`hold_list_unread`, so a lost hold keeps its words) gates each: the warn keeps the count and reasons and adds `; it
+waits on the purge record: the governance.suppressed line says why` with no fix; the summary says `queued purges:
+N (waits on the purge record: see governance.suppressed)`; the loop keeps its wait as `N queued purge(s) wait(s)
+on the purge record: status's governance.suppressed line says why` (`PURGE_RECORD_WAIT`) and the
+governance.purge_queue check, so an erasure request stays in WAITING ON YOU. STATE.md is not changed: the cycle
+stops on the record's own error before it writes STATE.md (measured), so no STATE.md is written in this state.
+`on the purge record:` joins both phrase lists (ruling 68). Test: `test_cli.py`
+`test_a_queued_purge_beside_an_unread_purge_record_is_counted_and_never_invited_c643`.
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

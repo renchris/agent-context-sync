@@ -2415,6 +2415,38 @@ def test_state_md_invites_no_queued_purge_a_hold_keeps(
         assert "- the hold list cannot be read; purge and compaction stay suspended" in text, text
 
 
+def test_a_queued_purge_beside_an_unread_purge_record_is_counted_and_never_invited_c643(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C643 (ruling 65): with purge-record.json damaged and a purge queued, status's warn, its
+    summary and the loop's wait invited `purge --queue`, which refuses on the record. Each keeps the queued
+    count and points at the governance.suppressed line instead. STATE.md is not rewritten in this state: the
+    cycle stops on the record's own error before it writes it (measured here)."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    record = governance.purge_record_file(root)
+    record.write_text("{", encoding="utf-8")
+    assert governance.purge_record_unread(root)
+    with pytest.raises(governance.GovernanceDamagedError):
+        run_cycle(initialised, mode=CycleMode.RECONCILE)  # so STATE.md keeps its last pass's words
+    step = loop.next_step(initialised)
+    assert f"1 queued purge waits {governance.PURGE_RECORD_WAIT}" in step.waits, step.waits
+    assert "governance.purge_queue" in step.checks, step
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (warn,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    assert (
+        "1 purge request queued (" in warn
+        and "it waits on the purge record: the governance.suppressed" in warn
+    )
+    assert "queued purges: 1 (waits on the purge record: see governance.suppressed)" in out, out
+    for said in ("\n".join(step.waits), "\n".join(out)):
+        assert "purge --queue" not in said, said
+
+
 def test_state_md_still_invites_a_purge_no_hold_keeps(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

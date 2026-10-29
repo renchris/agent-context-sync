@@ -1470,6 +1470,24 @@ def hold_list_wait(state_dir: Path) -> str:
     return {"lost": HOLD_LOST_WAIT, "record": HOLD_RECORD_UNREAD_WAIT}.get(state or "", HOLD_UNREAD_WAIT)
 
 
+def purge_record_unread(state_dir: Path) -> bool:
+    """Whether purge-record.json is there and cannot be read (damaged, not a file, or refused): every purge
+    and ``purge --queue`` refuse over it, so status and the loop keep the queued count and the wait and
+    point at its governance.suppressed line, never invite the run (B13 round 32 C643; ruling 65); STATE.md is
+    not rewritten then, as the cycle stops on the record's error first. Read after :func:`hold_list_unread`,
+    so a lost hold keeps its own words."""
+    try:
+        recorded_purges(state_dir)
+    except (AgentSyncError, OSError):
+        return True
+    return False
+
+
+PURGE_RECORD_WAIT = "on the purge record: status's governance.suppressed line says why"
+"""What a queued purge waits on while :func:`purge_record_unread` (C643): the loop's wait ends with it;
+status's check says ``it waits on the purge record`` beside its own line."""
+
+
 def hold_list_unread(state_dir: Path) -> bool:
     """Whether the state's hold list cannot be read (not a file, a link to nothing, refused, damaged, or
     governance/ not a folder) or has lost a hold the audit trail keeps (:func:`lost_holds`): status and the

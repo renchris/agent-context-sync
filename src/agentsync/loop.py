@@ -943,6 +943,12 @@ def next_step(
     hold_state = governance.hold_list_state(config.state_paths.root)
     if queued and hold_state is not None:
         queued = []  # an unread hold list is no empty one: its FAIL comes first (B13 round 27 P131)
+    elif queued and governance.purge_record_unread(config.state_paths.root):
+        # every purge refuses over the record: the wait stays, pointed at its line, no run invited (C643)
+        verb = "waits" if len(queued) == 1 else "wait"
+        waits.append(f"{plural(len(queued), 'queued purge')} {verb} {governance.PURGE_RECORD_WAIT}")
+        checks.append("governance.purge_queue")
+        queued = []
     if hold_state == "lost":
         # a hold the hold list lost is in force: the person's, named by status's FAIL, with no owner (the
         # report quotes this line) and no purge invited (B13 round 29 C107; ruling 27)

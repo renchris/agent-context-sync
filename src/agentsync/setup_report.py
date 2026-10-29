@@ -1489,6 +1489,7 @@ _FIXED_VALUE_PHRASES = (
     "records in the new audit trail and in purge-record.json that the old audit trail was lost",
     "purge-record.json records: agentsync's governance folder is missing",  # C618's listing note
     "governance folder is missing while its hold record keeps a hold",  # C613's wait (ruling 64)
+    "on the purge record:",  # C643's waits (ruling 65)
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
