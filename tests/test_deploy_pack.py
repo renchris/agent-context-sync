@@ -6350,6 +6350,28 @@ _ROUND_32_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread_unreadable` |", "§16.
 """Round 32 lane E's dated lines at a section its claim names with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C626's two rows in §16.28's run-record table, the re-read note's split."""
 
+_ROUND_32_RA_PARAGRAPH_AMENDS = (
+    ("16.14", "KISS K16b revision (2026-10-05; supersedes the paragraphs above", "§16.213 C620"),
+    ("16.40", "**A run with no end line says whether its process is gone**", "§16.213 C614"),
+    ("16.64", "**G41: a stored-as note that redacts to one form is shown once.**", "§16.213 C658"),
+    ("16.86", "**The Repeat conversions bullet says what it counts** (L71;", "§16.213 C623"),
+    ("16.134", "**A refused [governance] hides only what needs it, and the Loop line", "§16.213 C638"),
+    ("16.140", "**The report reads the files waiting for a converter that could not", "§16.213 C628"),
+    ("16.193", "**The report reads install.log's closing status** (I27;", "§16.213 C617"),
+    ("16.208", "**An added source's typed folder is cut as its `--source-local`", "§16.213 C658"),
+    ("16.208", "**A heartbeat warn beside a governance stop is that stop's", "§16.213 C637"),
+    ("16.208", "**The Loop line's lost-hold wait points at Doctor's line** (C508;", "§16.213 C603, C656"),
+    ("16.208", "**The Loop line's lost-hold wait points at Doctor's line** (C508;", "§16.213 C636"),
+    ("16.208", "**The Repeat conversions note on a waiting converter takes no pronoun", "§16.213 C628"),
+    ("16.208", "**A re-screen the mail label reader queued has its own note", "§16.213 C622, C627"),
+    ("16.208", "**The Summary re-renders the label-unreadable share", "§16.213 C609"),
+)
+"""Round 32 lane RA's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: the Loop line's C620, C638, C603 with C656 and C636 lines at K16b, §16.134
+and round 31's C508 paragraph, the signal stop's C614 and C617 at §16.40 and I27, C658's collapsed note at G41
+and C529, C637 at C519's paragraph, ruling 73's C622 with C627, C623 and C628 at L71, W52 and round 31's
+Repeat conversions paragraphs, and C609's re-render at C567's."""
+
 _ROUND_30_B_PARAGRAPH_AMENDS = (
     (
         "16.200",
@@ -6549,6 +6571,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_30_B_PARAGRAPH_AMENDS,
         *_ROUND_31_E_PARAGRAPH_AMENDS,
         *_ROUND_32_E_PARAGRAPH_AMENDS,
+        *_ROUND_32_RA_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
