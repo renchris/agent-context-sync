@@ -13047,8 +13047,9 @@ def test_status_the_loop_and_doctor_under_read_only_reads_write_nothing_beside_t
         "NEXT: agentsync's state file is not yet at the schema this build reads (an upgrade the next sync "
         f"finishes): run `{loop.BIN} sync`"
     ), step
-    assert ("config.vanished_sources", True, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
-    assert ("sources.shared_content", True, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
+    # an [info] line, never [ok] over a manifest it did not read (B13 round 32 C642)
+    assert ("config.vanished_sources", False, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
+    assert ("sources.shared_content", False, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
     assert not list(db.parent.glob(db.name + ".pre-v*"))
     # outside the context nothing changed: the next open migrates it, as before (the variable does not leak)
     Manifest(db).close()
@@ -13081,8 +13082,9 @@ def test_a_manifest_busy_under_read_only_reads_reads_as_busy_and_a_newer_one_sti
 
     with monkeypatch.context() as patch:
         patch.setattr(manifest_mod, "read_only_snapshot", busy)
-        status, step, _checks = _read_only_reads(initialised)
+        status, step, checks = _read_only_reads(initialised)
     assert f"last runs: {manifest_mod.BUSY_READ_NOTE}" in status, status
+    assert ("config.vanished_sources", False, manifest_mod.BUSY_READ_NOTE) in checks, checks  # C642
     assert step[0].startswith("NEXT: agentsync's state file changed while it was read"), step
     conn = sqlite3.connect(db)
     conn.execute(

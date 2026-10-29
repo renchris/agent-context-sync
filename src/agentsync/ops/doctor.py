@@ -3583,10 +3583,12 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     (the canonical hash), counted per pair. Neither copy is refused (only an inbox drop of a live Graph file
     is), since between two such sources no side is the real one; whether one source copies the other is the
     person's to settle. Nothing when no pair shares a file, before the first sync, or when the manifest
-    cannot be read (the manifest checks report that). Over a state folder this account cannot search it says
-    :data:`STATE_FOLDER_UNCHECKED`, as its siblings do, and only where it has two sources to compare; the
-    look for the manifest is inside the ``try``, since on Python 3.11 ``Path.exists`` raises EACCES (B13 round
-    21 Y11, Y26: a second, generic "could not read ... report it" FAIL beside state_dir's)."""
+    cannot be read (the manifest checks report that); under ``manifest.read_only_reads`` an older-schema or
+    busy manifest gives an [info] line with the read note, never [ok] (B13 round 32 C642). Over a state
+    folder this account cannot search it says :data:`STATE_FOLDER_UNCHECKED`, as its siblings do, and only
+    where it has two sources to compare; the look for the manifest is inside the ``try``, since on Python 3.11
+    ``Path.exists`` raises EACCES (B13 round 21 Y11, Y26: a second, generic "could not read ... report it"
+    FAIL beside state_dir's)."""
     db = config.state_paths.db
     ids = [s.id for s in config.live_sources() if s.kind is not SourceKind.INBOX]
     if len(ids) < 2:
@@ -3600,7 +3602,8 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
         with Manifest(db) as manifest:
             pairs = manifest.shared_canonical_counts(ids)
     except (ManifestNotCurrentError, ManifestBusyError) as exc:  # under manifest.read_only_reads (C560)
-        return [_ok("sources.shared_content", read_note(exc))]
+        # judged nothing: an [info] line with the note, never [ok] (B13 round 32 C642, as C539's review)
+        return [_bad("sources.shared_content", read_note(exc), Severity.INFO)]
     except (OSError, sqlite3.Error, AgentSyncError):
         return []
     if not pairs:
@@ -3624,7 +3627,8 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
     install.sh's step 2 ran into it (B13 round 15 S7). One [FAIL] in the sync's own words and fix
     (``cycle.vanished_sources``, by ``config.sources``: a block just set to retired is still there, and its
     retiring sync must run). Nothing before the first sync, or when the manifest cannot be read (the manifest
-    checks report that)."""
+    checks report that); under ``manifest.read_only_reads`` an older-schema or busy manifest gives an [info]
+    line with the read note, never [ok] (B13 round 32 C642)."""
     db = config.state_paths.db
     if not db.exists():
         return []
@@ -3633,7 +3637,7 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
             vanished = vanished_sources(config, manifest)
             back = _vanished_add_backs(config, manifest, vanished)
     except (ManifestNotCurrentError, ManifestBusyError) as exc:  # under manifest.read_only_reads (C560)
-        return [_ok("config.vanished_sources", read_note(exc))]
+        return [_bad("config.vanished_sources", read_note(exc), Severity.INFO)]  # judged nothing (C642)
     except (OSError, sqlite3.Error, AgentSyncError):
         return []
     if not vanished:

@@ -34955,6 +34955,8 @@ manifest with no -wal and one with no run; a `Manifest` opened after the block m
 -wal, a -wal at 0000, a folder at the -journal, a state folder at 0500: the same error and code inside and outside)
 and `test_a_side_file_gone_between_its_checks_is_no_refusal_under_read_only_reads_c560`; `test_cli.py`
 `test_status_says_the_same_state_and_next_under_read_only_reads_over_a_side_it_cannot_use_c560` (the four states).
+Amended 2026-10-28, §16.215 C642: doctor's `config.vanished_sources` and `sources.shared_content` give an
+[info] line (ok False, INFO) with the note, never [ok] over a manifest they did not read, as C539's review rules.
 
 C526 (2026-10-28): **doctor's damage probe makes no -wal or -shm** (residue of ruling 36). After a sync the state
 folder held manifest.sqlite alone; one setup report left an empty 0600 -wal and a 32 KB -shm beside it, made by
@@ -35704,6 +35706,14 @@ out, run its own reason: <how>", for exactly that case; `lost_cleared_by`, `_era
 `lost_queued` are unchanged. data-governance.md's preview sentence names the third form (the page's clearing
 sentence is lane D's, §16.217). Dated line at §16.205 C370. Test: `test_cli.py`
 `test_an_upstream_deleted_hand_purge_previews_a_lost_dlp_purge_as_cleared_while_gone_c649`.
+
+C642 (2026-10-28): **under read-only reads, doctor never prints [ok] for a check that judged nothing.** Inside
+`manifest.read_only_reads`, an older-schema or busy manifest made `config.vanished_sources` and
+`sources.shared_content` print `[ok  ]` with the read note (`SCHEMA_READ_NOTE`, `BUSY_READ_NOTE`) though they
+judged nothing. Each now gives `_bad(<name>, read_note(exc), Severity.INFO)`, an `[info]` line with the note and no
+fix, as the state-folder sibling does and as C539's review rules for a record not read; outside the context both
+are unchanged. Dated line at §16.210 C560. Tests: `test_cli.py` the two C560 tests (the schema note's tuples and the
+busy note's, each `(name, False, <note>)`).
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
