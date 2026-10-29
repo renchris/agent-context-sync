@@ -10229,6 +10229,26 @@ def test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508(fake_mac
     assert "its fix on Doctor's governance.hold [FAIL] line is the person's" in line and "below" not in line
 
 
+def test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 32 C636 (ruling 67): C508 swapped the lost hold's wait to ``Doctor's governance.hold [FAIL]
+    line`` even when Doctor's section held no such line (its hook raised, or the check did not FAIL there),
+    pointing at a line the report does not print. The swap is made only when Doctor prints that [FAIL] line;
+    else the sync's own words, naming status, which prints it, stay."""
+
+    def crash(_config: object) -> list[str]:
+        raise RuntimeError("doctor stub failed")
+
+    wait = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT
+    for doctor_fn in (crash, lambda _config: ["[ok  ] governance.hold — fine"], None):
+        hooks = setup_report.ReportHooks(doctor=doctor_fn, loop_next=lambda _config: ["NEXT: run it", wait])
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        line = _line(section(text, "Summary"), "- Loop: ")
+        tail = "agentsync status`; its governance.hold [FAIL] line gives the person's fix"
+        assert line.endswith(tail) and "Doctor's governance.hold" not in line, line
+
+
 def test_the_loop_lines_fail_step_names_doctors_fail_line_c603(fake_mac: dict[str, Path]) -> None:
     """B13 round 32 C603, C656 (ruling 67): rule 1's NEXT on the Loop line said "the [FAIL] line below",
     true of status, which prints its [FAIL] lines under its NEXT, but the Summary below the Loop line holds

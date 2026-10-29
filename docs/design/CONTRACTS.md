@@ -34659,6 +34659,9 @@ counts a person's stop by, and sync, curate and STATE.md keep their form. Test:
 `test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508`.
 Amended 2026-10-28, §16.213 C603, C656: the Loop line's NEXT names the same line, `its fix on Doctor's governance.hold
 [FAIL] line is the person's`, when Doctor's section prints that [FAIL] line; status keeps `below`.
+Amended 2026-10-28, §16.213 C636: the wait is swapped to Doctor's line only when Doctor's section prints the
+governance.hold [FAIL] line; else it keeps the sync's own words, `run `~/.local/bin/agentsync status`; its
+governance.hold [FAIL] line gives the person's fix`, true of status, which prints that line.
 
 **The Purge queue's no-row head names the real run as the one that has not searched** (C510, built as its verifier
 corrected it; `src/agentsync/setup_report.py`; dated line at §16.203 C304). Right after `purge --queue --dry-run` had
@@ -35530,6 +35533,15 @@ output. `not a step for the agent` stays word for word: the report counts a pers
 words are unchanged. Tests: `test_the_loop_lines_fail_step_names_doctors_fail_line_c603` (each form for
 `state_dir.manifest`, with Doctor's FAIL, with no doctor hook and with the check ok), and the C508, U7 and rule 1
 wiring tests' moved pins.
+
+**The lost-hold wait names Doctor's line only when Doctor prints it** (C636, ruling 67; `src/agentsync/setup_report.py`).
+C508 swapped the wait's tail to `Doctor's governance.hold [FAIL] line gives the person's fix` every time, so when the
+doctor hook raised, timed out or was missing, or governance.hold did not FAIL in Doctor's run, the Loop line pointed at
+a line the report does not print. `_loop_line` makes the swap only when `_doctor_fail_shown(r, "governance.hold")`, the
+same test the NEXT's pointer takes; else the wait keeps the sync's own words, `run `~/.local/bin/agentsync status`; its
+governance.hold [FAIL] line gives the person's fix`, true of status, which prints that line under its own wait. Tests:
+`test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636` (a doctor hook that raises, one that
+reports governance.hold ok, and none) and the C508 test, whose doctor hook now prints governance.hold's [FAIL] line.
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

@@ -15073,7 +15073,9 @@ _LOST_HOLD_RUN_STATUS = (
 """The tail of ``governance.LOST_HOLD_WAIT``, the sync's form of a lost hold's wait (a test keeps it so)."""
 _LOST_HOLD_IN_DOCTOR = "Doctor's governance.hold [FAIL] line gives the person's fix"
 """That tail as the Loop line says it: the report holds Doctor's governance.hold line, and status, whose NEXT
-the line pairs with it, never says "run status" (B13 round 31 C508; ruling 60)."""
+the line pairs with it, never says "run status" (B13 round 31 C508; ruling 60). Only when Doctor's section
+prints that [FAIL] line (:func:`_doctor_fail_shown`): else the sync's own words stay, true of status, which
+prints it (B13 round 32 C636; ruling 67)."""
 _FAIL_STEP_RE = re.compile(r"^NEXT: the (\S+) check failed: ")
 """How rule 1's NEXT opens (``cli._fail_step``): the check's name follows "the"."""
 _FAIL_BELOW = (
@@ -15090,7 +15092,7 @@ person's stop by it."""
 
 def _doctor_fail_shown(r: _Run, name: str) -> bool:
     """Whether the report's Doctor section prints check ``name``'s [FAIL] line: not when the doctor hook is
-    missing, failed or timed out, skipped the check, or found it passing (B13 round 32 C603)."""
+    missing, failed or timed out, skipped the check, or found it passing (B13 round 32 C603, C636)."""
     return any(t == "FAIL" and n == name for t, n, _ in r.facts.doctor_problems)
 
 
@@ -15160,8 +15162,9 @@ def _loop_line(r: _Run) -> str:
     )
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
         text += f" (the loop's own read; {_DAMAGE_SEEN})"
+    in_doctor = _doctor_fail_shown(r, "governance.hold")  # B13 round 32 C636
     waits = [
-        ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR)
+        ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR) if in_doctor else ln
         for ln in lines
         if ln.startswith("WAITING ON YOU: ")
     ]
