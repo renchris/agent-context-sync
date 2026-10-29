@@ -405,6 +405,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--folder-lost",
+        action="store_true",
+        help=(
+            "with --accept-lost, only while agentsync's governance folder is missing and no copy of it is "
+            f"left: first {governance.FOLDER_LOST_SAID}"
+        ),
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="report what would be purged; change nothing (an older manifest is still migrated first)",
@@ -2042,7 +2050,24 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
     fail = next(
         (r for r in checks if not r.ok and r.name == result.name and r.detail == result.detail), result
     )
+    lead = _folder_gone_lead(config)
+    if lead is not None and fail.detail.startswith(lead):
+        # governance/ gone: its lost hold's FAIL first, the folder's put-back it gives as every lost file's
+        # does, never the queue's or the list's (B13 round 32 C601; ruling 63)
+        fail = next(
+            (r for r in checks if not r.ok and r.name == "governance.hold" and r.detail.startswith(lead)),
+            fail,
+        )
     return _fail_step(fail)
+
+
+def _folder_gone_lead(config: Config) -> str | None:
+    """What every lost-file FAIL opens with while governance/ is missing (``governance.GOVERNANCE_GONE_HEAD``
+    after the folder's path), or None while it is there."""
+    root = expand(config.state_paths.root)
+    if not governance.governance_gone(root):
+        return None
+    return f"{governance.governance_dir(root)}/ {governance.GOVERNANCE_GONE_HEAD}"
 
 
 def _manifest_first_lines(config: Config, step: loop.NextStep | None, first: str) -> list[str]:
@@ -2770,10 +2795,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                 # the holds only the audit trail keeps are read without the record (C349's review)
                 record_read, lost = False, governance.audit_lost_holds(root, holds)
             if record_read and not holds and not lost and not governance.config_holds(gov):
-                # one governance.hold line in every state, an ok one when it read and holds none (C155)
-                out.append(
-                    _check("governance.hold", True, "no hold set (hold list read)", doctor.Severity.INFO)
-                )
+                # one governance.hold line in every state, an ok one when it read and holds none (C155),
+                # saying what it read: never "hold list read" with no hold list on disk (B13 round 32 C624)
+                none_said = governance.no_hold_words(root)
+                out.append(_check("governance.hold", True, none_said, doctor.Severity.INFO))
             for h in lost:  # the audit trail keeps it; holds.json lost it: the person's (B13 round 28 I87)
                 lost_detail, lost_fix = governance.lost_hold_words(root, h)
                 out.append(_check("governance.hold", False, lost_detail, doctor.Severity.ERROR, fix=lost_fix))
@@ -2816,8 +2841,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
     if not queued and not kept and gone is None:  # one governance.purge_queue line in every state (C155)
         # never "no purge queued" beside the FAIL of a queue that lost one (B13 round 30 C345; ruling 40)
-        if record_read:
-            out.append(_check("governance.purge_queue", True, "no purge queued", doctor.Severity.INFO))
+        if record_read:  # with the folder gone, never "no purge queued" (B13 round 32 C624; ruling 64)
+            gone_case = governance.folder_lost_case(expand(config.state_paths.root))
+            queue_said = governance.QUEUE_GONE_OK if gone_case else "no purge queued"
+            out.append(_check("governance.purge_queue", True, queue_said, doctor.Severity.INFO))
         else:  # an [info] line, never a second FAIL of the record, nor "no longer holds" (C539)
             out.append(_check("governance.purge_queue", False, _TRAIL_ALONE, doctor.Severity.INFO))
     if gone is not None:
@@ -3595,6 +3622,12 @@ def _print_purge(rep: governance.PurgeReport) -> None:
         _out(f"  note: {n}")
 
 
+FOLDER_LOST_DONE = (
+    "the old audit trail's loss is written first, to the new audit trail and to purge-record.json"
+)
+"""``purge --accept-lost <at> --folder-lost``'s own clause, before what stays out (B13 round 32 C606)."""
+
+
 def _cmd_purge(args: argparse.Namespace) -> int:
     config = _config(args)
     if args.queue and args.selector:
@@ -3602,7 +3635,10 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     others = (args.queue, args.selector, args.forget is not None, args.source, args.reason, args.push)
     if args.accept_lost is not None and any(others):
-        _err("purge: --accept-lost <at> goes alone (with --dry-run)")
+        _err("purge: --accept-lost <at> goes alone (with --dry-run or --folder-lost)")
+        return EXIT_USAGE
+    if args.folder_lost and args.accept_lost is None:
+        _err("purge: --folder-lost goes with --accept-lost <at>")
         return EXIT_USAGE
     if not args.dry_run:  # a preview writes nothing; a purge carries round 28's hold record first (C351)
         governance.carry_round28_record(config.state_paths.root)
@@ -3612,7 +3648,9 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         _open_state_or_raise(config)  # sync's own line and exit, whatever the queue holds (P24)
     if args.accept_lost is not None:
         # the one audited way past a lost suppression nothing can put back (B13 round 30 C344, C401)
-        lost = governance.accept_lost_suppression(config, args.accept_lost, dry_run=bool(args.dry_run))
+        lost = governance.accept_lost_suppression(
+            config, args.accept_lost, dry_run=bool(args.dry_run), folder_lost=bool(args.folder_lost)
+        )
         what = governance._when(lost)  # the <reason> purge at <at> (B13 round 31 C511)
         if len(lost) > 1:  # purges an older build timed to the second can share one
             what = f"{len(lost)} purges, as that time names {len(lost)} records ({governance._when(lost)})"
@@ -3632,6 +3670,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         held = governance._glob_fingerprints(governance.load_suppressions(config.state_paths.root))
         if any(governance._glob_lost(r, held) for r in lost):  # as the FAIL judges: a held glob still guards
             said += "; a new file under its source-path glob is no longer kept out"
+        if args.folder_lost:  # the old audit trail's loss, said first, as the act writes it first (C606)
+            said = f"{FOLDER_LOST_DONE}; {said}"
         if args.dry_run:
             _out(f"dry run: would accept the suppression list's loss of {what} ({said}); nothing written")
         else:

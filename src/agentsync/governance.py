@@ -530,6 +530,11 @@ ACCEPT_PATH_KEPT = (
 """The path guard accepting a lost suppression keeps: the trail's exact path of each purged item the manifest
 listed when it was purged (C537's review); an item it no longer listed gets a ``purge`` line with no
 ``path_sha256`` (:func:`_audit_purge`), so the trail keeps it out by its id alone."""
+ACCEPT_PATH_KEPT_RECORD = (
+    "the one source path purge-record.json keeps for each item still listed when it was purged"
+)
+""":data:`ACCEPT_PATH_KEPT` while governance/ is missing, the audit trail with it: the purge record keeps
+the same lines (B13 round 32 C606; ruling 63)."""
 ACCEPT_PATH_LOST = (
     "a new file at another path the list held (an item's older name, or its name in other letter case, or "
     "the name of an item no longer listed when it was purged) is no longer kept out"
@@ -538,7 +543,7 @@ ACCEPT_PATH_LOST = (
 beyond the trail's one exact path, and the path of an item the trail keeps no path for (C537's review)."""
 
 
-def accept_lost_words(*, glob: bool = False, unhashed: bool = False) -> str:
+def accept_lost_words(*, glob: bool = False, unhashed: bool = False, folder: bool = False) -> str:
     """The suppression list's way out with no copy, in both its FAILs, beside the copy (B13 round 30 C344,
     C401; ruling 33): the person's, after "with no copy, ". Its items stay out by their id and by the one
     source path the audit trail keeps for each item still listed when it was purged (each ``purge`` line's
@@ -551,13 +556,23 @@ def accept_lost_words(*, glob: bool = False, unhashed: bool = False) -> str:
     no content fingerprints (an older build's), so accepting it gives up its guard against a copy under
     another name. ``glob``: a lost record is a purge by a source-path glob, which the audit trail keeps only
     by its fingerprint, so accepting it also gives up the glob's guard against a new file under it (C344's
-    review)."""
-    text = (
-        f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at>` (`--dry-run` first), <at> being "
-        f"the time status names for it, while its items stay out by their id and by {ACCEPT_PATH_KEPT}, and "
-        "a copy under another name of content agentsync's audit trail fingerprints stays out, but "
-        f"{ACCEPT_PATH_LOST}"
-    )
+    review). ``folder``: governance/ is missing, the audit trail with it, so the act takes ``--folder-lost``,
+    which first writes ``audit-trail-lost``, and what keeps the items out is purge-record.json (B13 round 32
+    C606; ruling 63)."""
+    if folder:
+        text = (
+            f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at> --folder-lost` (`--dry-run` "
+            f"first), which first {FOLDER_LOST_SAID}, <at> being the time status names for it, while its "
+            f"items stay out by their id and by {ACCEPT_PATH_KEPT_RECORD}, and a copy under another name of "
+            f"content purge-record.json fingerprints stays out, but {ACCEPT_PATH_LOST}"
+        )
+    else:
+        text = (
+            f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at>` (`--dry-run` first), <at> "
+            f"being the time status names for it, while its items stay out by their id and by "
+            f"{ACCEPT_PATH_KEPT}, and a copy under another name of content agentsync's audit trail "
+            f"fingerprints stays out, but {ACCEPT_PATH_LOST}"
+        )
     if unhashed:
         text += (
             ", and a purge whose summary line holds no content fingerprints (an older build's) loses its "
@@ -1205,6 +1220,67 @@ def audit_lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> l
     ]
 
 
+GOVERNANCE_GONE_HEAD = (
+    "is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it"
+)
+"""What follows ``<gov>/`` when the governance folder is gone and a record outside it still names what it
+kept: the lead of every lost-file FAIL then (B13 round 30 C313; B13 round 32 C601, C606, C618; ruling 63)."""
+
+
+def governance_gone(state_dir: Path) -> bool:
+    """Whether governance/ itself is missing (nothing at its path, not even a link)."""
+    return not os.path.lexists(governance_dir(state_dir))
+
+
+def _folder_gone_words(state_dir: Path) -> tuple[str, str]:
+    """The missing governance folder's lead and its whole-folder put-back, the person's: what every lost-file
+    FAIL opens and leads its fix with while governance/ is missing, never one file's put-back, which left the
+    audit trail and the other lists missing (B13 round 30 C313; B13 round 32 C601, C618; ruling 63)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    gov = governance_dir(state_dir)
+    shown = doctor._shell_path(gov)
+    return (
+        f"{gov}/ {GOVERNANCE_GONE_HEAD}",
+        f"the person puts agentsync's governance folder ({shown}) back whole from the copy kept",
+    )
+
+
+def folder_lost_case(state_dir: Path) -> bool:
+    """Whether governance/ is missing while a record outside it still names what it kept: purge-record.json
+    records a purge, or hold-record.json names a scope (ruling 63's case; B13 round 32 C618, C624). A purge
+    record that cannot be read names nothing here; its own FAIL says why."""
+    if not governance_gone(state_dir):
+        return False
+    try:
+        if recorded_purges(state_dir):
+            return True
+    except (AgentSyncError, OSError):
+        pass
+    return _record_names_a_hold(state_dir)
+
+
+HOLD_LIST_READ = "no hold set (hold list read)"
+HOLD_LIST_NONE = "no hold set (no hold list on disk)"
+HOLD_LIST_GONE = "no hold set (hold record read; the hold list is missing with the governance folder)"
+"""governance.hold's ok line, by what is on disk: a hold list read, none there, or none there because the
+governance folder is missing while a record outside it names what it kept (B13 round 32 C624, C618; ruling
+64): never "hold list read" over no file."""
+
+QUEUE_GONE_OK = (
+    "the purge queue is missing with the governance folder; purge-record.json keeps no purge as queued and "
+    "not done"
+)
+"""governance.purge_queue's ok line in ruling 63's case, never "no purge queued" (B13 round 32 C624)."""
+
+
+def no_hold_words(state_dir: Path) -> str:
+    """governance.hold's ok line when no hold is set (:data:`HOLD_LIST_READ` and its two siblings)."""
+    if os.path.lexists(_holds_file(state_dir)):
+        return HOLD_LIST_READ
+    return HOLD_LIST_GONE if folder_lost_case(state_dir) else HOLD_LIST_NONE
+
+
 LOST_HOLD_REASON = "lost from the hold list"
 """The reason of a hold :func:`lost_holds` keeps in force (B13 round 28 I87)."""
 
@@ -1212,8 +1288,6 @@ LOST_HOLD_REASON = "lost from the hold list"
 def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
     """governance.hold's FAIL of a lost hold (:func:`lost_holds`): the detail and the person's fix, which
     puts the hold list back, sets the hold again or releases it, never a purge first."""
-    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
-
     path = _holds_file(state_dir)
     by = f" set by {hold.owner}" + (f" at {hold.set_at}" if hold.set_at else "")
     # the record that keeps it, never one that is not there: with governance/ moved aside no audit.jsonl
@@ -1223,16 +1297,11 @@ def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
         f"{path} no longer lists the hold on {hold.scope}{by} (kept by {kept}), and no release is recorded"
     )
     put_back = "the person puts the hold list back from the copy kept"
-    gov = governance_dir(state_dir)
-    if not os.path.lexists(gov) and "audit.jsonl" not in hold.kept_by:
+    if governance_gone(state_dir) and "audit.jsonl" not in hold.kept_by:
         # the whole folder gone, the audit trail with it: named, and put back whole, never the hold list
         # alone, which left the audit trail missing (B13 round 30 C313; ruling 42)
-        lists = (
-            f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the "
-            f"suppression list in it: {lists}"
-        )
-        shown = doctor._shell_path(gov)
-        put_back = f"the person puts agentsync's governance folder ({shown}) back whole from the copy kept"
+        lead, put_back = _folder_gone_words(state_dir)
+        lists = f"{lead}: {lists}"
     detail = f"{lists}; purge and compaction stay suspended"
     fix = (
         f"{put_back}, or the records owner runs `{AGENTSYNC_BIN} hold {hold.scope} --reason <why> --owner "
@@ -1544,6 +1613,7 @@ _PURGE_ACTIONS = frozenset(
         "purge-covered",
         "purge-forgotten",
         "suppression-lost-accepted",
+        "audit-trail-lost",
     }
 )
 """The audit lines the purge record keeps: every one :func:`audited_suppressions`, :func:`lost_suppressions`
@@ -1687,6 +1757,14 @@ def audited_suppressions(state_dir: Path) -> AuditedSuppressions:
             paths.add((sid, rec["path_sha256"]))
     return AuditedSuppressions(frozenset(items), frozenset(paths), frozenset(canonical))
 
+
+AUDIT_TRAIL_LOST = "audit-trail-lost"
+"""The audit line ``purge --accept-lost <at> --folder-lost`` writes first, to the new audit.jsonl and to
+purge-record.json: the audit trail before it was lost with the governance folder, and no copy was left (B13
+round 32 C606; ruling 63), so a new one-line trail never reads as the whole history."""
+
+FOLDER_LOST_SAID = "records in the new audit trail and in purge-record.json that the old audit trail was lost"
+""":data:`AUDIT_TRAIL_LOST`'s act, in the fix that names ``--folder-lost`` and in the act's output (C606)."""
 
 SUPPRESSION_LOST_ACCEPTED = "suppression-lost-accepted"
 """The audit line of ``purge --accept-lost <at>``: the one act that clears a lost suppression no copy and no
@@ -2177,17 +2255,27 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
             unhashed = any(not _fingerprinted(r) for r in lost)  # the trail keeps a hashed one's copy out
             if globbed:
                 what += " and a source-path glob"
-            detail = (
-                f"{path} no longer lists what {plural(len(lost), 'purge')} "
-                f"the audit trail records suppressed ({_when(lost)}): "
-                f"the sync keeps the erased items out by their id and by {ACCEPT_PATH_KEPT}, but cannot "
-                f"rebuild {what}"
-            )
+            folder = governance_gone(state_dir)
+            if folder:  # the audit trail went with the folder: purge-record.json keeps it (C606; ruling 63)
+                lead, put_back = _folder_gone_words(state_dir)
+                detail = (
+                    f"{lead}: {path} no longer lists what {plural(len(lost), 'purge')} suppressed, kept by "
+                    f"purge-record.json ({_when(lost)}): the sync keeps the erased items out by their id and "
+                    f"by {ACCEPT_PATH_KEPT_RECORD}, but cannot rebuild {what}"
+                )
+            else:
+                put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
+                detail = (
+                    f"{path} no longer lists what {plural(len(lost), 'purge')} "
+                    f"the audit trail records suppressed ({_when(lost)}): "
+                    f"the sync keeps the erased items out by their id and by {ACCEPT_PATH_KEPT}, but cannot "
+                    f"rebuild {what}"
+                )
             fix = (
-                f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
-                f"{accept_lost_words(glob=globbed, unhashed=unhashed)}; a purge run again by hand clears its "
-                "record only when "
-                "it finds the content again, and the next sync refuses until then"
+                f"{put_back}; or, with no copy, "
+                f"{accept_lost_words(glob=globbed, unhashed=unhashed, folder=folder)}; a purge run again by "
+                "hand clears its record only when it finds the content again, and the next sync refuses "
+                "until then"
             )
             return GovernanceLostError(path, "the suppression list", detail, fix)
     return None
@@ -2205,16 +2293,25 @@ def queue_lost(state_dir: Path) -> GovernanceLostError | None:
         gone = lost_queued(state_dir)
         if gone:
             path = _queue_file(state_dir)
-            detail = (
-                f"{path} no longer holds {plural(len(gone), 'purge')} the audit trail records as queued and "
-                f"not done ({'; '.join(_lost_entry(r) for r in gone)})"
-            )
+            entries = "; ".join(_lost_entry(r) for r in gone)
+            if governance_gone(state_dir):  # the audit trail went with the folder (C601, C618; ruling 63)
+                lead, put_back = _folder_gone_words(state_dir)
+                detail = (
+                    f"{lead}: purge-record.json keeps {plural(len(gone), 'purge')} as queued and not done "
+                    f"({entries})"
+                )
+            else:
+                put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
+                detail = (
+                    f"{path} no longer holds {plural(len(gone), 'purge')} the audit trail records as queued "
+                    f"and not done ({entries})"
+                )
             # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
             redo = zip(gone, _redo_all(state_dir, gone), strict=True)
             ways = "; ".join(f"for the {r.get('reason')} purge at {r.get('at')}: {w}" for r, w in redo)
             fix = (
-                f"the person puts {doctor._shell_path(path)} back from a copy they trust; or, with no copy, "
-                f"runs each purge by hand before the next sync, which refuses until then ({ways})"
+                f"{put_back}; or, with no copy, runs each purge by hand before the next sync, which refuses "
+                f"until then ({ways})"
             )
             return GovernanceLostError(path, "the purge queue", detail, fix)
     return None
@@ -5180,6 +5277,7 @@ def accept_lost_suppression(
     at: str,
     *,
     dry_run: bool = False,
+    folder_lost: bool = False,
     lock: bool = True,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
@@ -5195,9 +5293,28 @@ def accept_lost_suppression(
     the list and no run of its purge can put back, as an older build's, whose content hashes nothing records
     (B13 round 30 C344, C401; ruling 33). A purge's time is to the microsecond
     (:func:`_iso_fine`), but lines an older build wrote, or purges given one ``now``, can share one: the act
-    then accepts each record that time names, and the CLI says how many."""
+    then accepts each record that time names, and the CLI says how many.
+
+    With governance/ missing, the audit trail with it, a new one-line trail read as the whole history and the
+    old one was lost unsaid (B13 round 32 C606; ruling 63): the act refuses, leading with the folder's
+    put-back, unless ``folder_lost``, the person's word that no copy is left, which first writes
+    :data:`AUDIT_TRAIL_LOST` to the new trail and to purge-record.json; with the folder there it is
+    refused."""
     sp = config.state_paths
     with _maybe_lock(sp, lock and not dry_run):
+        gone = governance_gone(sp.root)
+        if gone and not folder_lost:
+            lead, put_back = _folder_gone_words(sp.root)
+            raise GovernanceError(
+                f"{lead}, so nothing is accepted: {put_back}; only with no copy left, "
+                f"`{AGENTSYNC_BIN} purge --accept-lost {at} --folder-lost` accepts it, and first "
+                f"{FOLDER_LOST_SAID}"
+            )
+        if folder_lost and not gone:
+            raise GovernanceError(
+                f"--folder-lost goes only while agentsync's governance folder ({governance_dir(sp.root)}) is "
+                f"missing, and it is there; `{AGENTSYNC_BIN} purge --accept-lost {at}` alone accepts the loss"
+            )
         lost = [r for r in lost_suppressions(sp.root) if r.get("at") == at]
         if not lost:
             raise GovernanceError(
@@ -5208,6 +5325,8 @@ def accept_lost_suppression(
             return lost
         with _audit_appender(sp.root) as audit:
             when = _iso(_now(now))
+            if folder_lost:  # first, so the trail never reads as complete (C606)
+                audit({"action": AUDIT_TRAIL_LOST, "at": when})
             for rec in lost:
                 audit(
                     {

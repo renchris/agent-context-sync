@@ -67,6 +67,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
             "--queue",
             "--forget",
             "--accept-lost",
+            "--folder-lost",
             "--dry-run",
             "--push",
         ],

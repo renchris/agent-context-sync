@@ -1484,6 +1484,10 @@ _FIXED_VALUE_PHRASES = (
     "again, then review ",
     "either way, review ",
     "(which records no working directory)",  # the shell report's <path> legend, which the same scan reads
+    # lane B's governance folder words (B13 round 32 ruling 63, C606, C624; ruling 68)
+    "(hold record read; the hold list is missing with the governance folder)",
+    "records in the new audit trail and in purge-record.json that the old audit trail was lost",
+    "purge-record.json records: agentsync's governance folder is missing",  # C618's listing note
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -12791,7 +12795,8 @@ older than 3 x cadence, which no wait explains and which a background sync that 
 one can be the person's."""
 _LISTING_GOVERNANCE_RE = re.compile(
     r"\(as of its last walk: (?P<role>[a-z' -]+?) (?P<said>is not a file|cannot be read|has lost a purge the "
-    r"audit trail records); no sync lists it again until the person fixes it; the "
+    r"audit trail records|has lost a purge purge-record\.json records: agentsync's governance folder is "
+    r"missing); no sync lists it again until the person fixes it; the "  # the folder's (lane B, C618)
     r"(?P<check>governance\.[a-z_]+) \[FAIL\] line says what to do first\)$"
 )
 """``doctor.listing_state_governance_note`` in the brackets that end the incomplete-listing warn: lane B's

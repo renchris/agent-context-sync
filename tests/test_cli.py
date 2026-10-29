@@ -2525,9 +2525,126 @@ def test_a_clean_state_lists_the_hold_list_and_the_queue_as_checked(initialised:
         if c.name in ("governance.hold", "governance.purge_queue")
     ]
     assert [(c.name, c.ok, c.detail) for c in checks] == [
-        ("governance.hold", True, "no hold set (hold list read)"),
+        ("governance.hold", True, "no hold set (no hold list on disk)"),
         ("governance.purge_queue", True, "no purge queued"),
     ], checks
+
+
+def test_the_hold_lines_ok_words_say_whether_a_hold_list_was_read_c624(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C624 (ruling 64): with no holds.json on disk the ok line said "(hold list read)". It
+    says "(no hold list on disk)" then, and "(hold list read)" once a hold set and released leaves an empty
+    list."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    assert not os.path.lexists(governance._holds_file(root))
+    for args in (["--reason", "matter 8", "--owner", "Ada"], ["--release", "--owner", "Ada"]):
+        assert cli.main(["hold", "all", *args, "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert governance._holds_file(root).is_file()
+    (hold,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.hold"]
+    assert (hold.ok, hold.detail) == (True, "no hold set (hold list read)"), hold
+
+
+def test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_every_lost_file_c606(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C606 (ruling 63): governance/ moved aside after an erasure, no hold: the suppression FAIL
+    credited "the audit trail" no longer on disk and sent the person to suppressed.json alone, the ok lines
+    said a hold list was read and no purge was queued, and `purge --accept-lost <at>` wrote a new one-line
+    audit trail over the lost one, after which every line read ok. The FAIL names the folder, credits
+    purge-record.json and leads its fix with the whole-folder put-back, keeping each <at>; --accept-lost
+    refuses without --folder-lost; the folder put back clears it; with no copy, --folder-lost first writes
+    ``audit-trail-lost`` to the new audit trail and to purge-record.json."""
+    cfg, root, page = _erased(initialised, capsys)
+    gov = governance.governance_dir(root)
+    kept = root / "governance.kept"
+    gov.rename(kept)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.")]
+    lead = f" — {gov}/ {governance.GOVERNANCE_GONE_HEAD}: "
+    assert rc == cli.EXIT_FAILED and failed.startswith("[FAIL] governance.suppressed ") and lead in failed
+    assert "suppressed, kept by purge-record.json (the erasure-request purge at " in failed, failed
+    assert "the audit trail records" not in failed, failed
+    whole = f"(fix: the person puts agentsync's governance folder ({doctor._shell_path(gov)}) back whole"
+    assert whole in failed and "purge --accept-lost <at> --folder-lost" in failed, failed
+    assert _ok_line(out, "governance.hold") == governance.HOLD_LIST_GONE, out
+    assert _ok_line(out, "governance.purge_queue") == governance.QUEUE_GONE_OK, out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert f"{gov}/ {governance.GOVERNANCE_GONE_HEAD}" in capsys.readouterr().err
+    (lost,) = governance.lost_suppressions(root)
+    accept = ["purge", "--accept-lost", lost["at"], "--config", cfg]
+    for extra in ([], ["--dry-run"]):
+        assert cli.main([*accept, *extra]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        assert "so nothing is accepted: the person puts agentsync's governance folder (" in err, err
+        assert not os.path.lexists(gov)
+    assert cli.main(["purge", "--folder-lost", "--config", cfg]) == cli.EXIT_USAGE
+    # the folder put back whole clears it, and --folder-lost is then refused
+    kept.rename(gov)
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK and not [ln for ln in out if ln.startswith("[FAIL] ")], out
+    assert cli.main([*accept, "--folder-lost"]) == cli.EXIT_FAILED
+    assert "--folder-lost goes only while" in capsys.readouterr().err
+    # with no copy left: --folder-lost writes the old trail's loss first, then the acceptance
+    gov.rename(kept)
+    assert cli.main([*accept, "--folder-lost", "--dry-run"]) == cli.EXIT_OK
+    assert cli.FOLDER_LOST_DONE in capsys.readouterr().out and not os.path.lexists(gov)
+    assert cli.main([*accept, "--folder-lost"]) == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith(
+        f"accepted the suppression list's loss of the erasure-request purge at {lost['at']} (audited): "
+        f"{cli.FOLDER_LOST_DONE}; "
+    )
+    trail = [json.loads(ln) for ln in governance.audit_path(root).read_text(encoding="utf-8").splitlines()]
+    assert [r["action"] for r in trail] == ["audit-trail-lost", "suppression-lost-accepted"], trail
+    recorded = [r["action"] for r in governance.recorded_purges(root)]
+    assert recorded[-2:] == ["audit-trail-lost", "suppression-lost-accepted"], recorded
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK and not [ln for ln in out if ln.startswith("[FAIL] ")], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert not (initialised.docs_repo / page).exists()
+
+
+def _ok_line(out: Sequence[str], name: str) -> str:
+    """The detail of status's one [ok] line for check ``name``."""
+    (line,) = [ln for ln in out if ln.startswith(f"[ok  ] {name} ")]
+    return line.split(" — ", 1)[1]
+
+
+@pytest.mark.parametrize("held", [True, False])
+def test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618(
+    initialised: Config, capsys: pytest.CaptureFixture[str], held: bool
+) -> None:
+    """B13 round 32 C601, C618 (ruling 63): governance/ moved aside with a DLP purge queued: the queue's FAIL
+    credited the audit trail no longer on disk and sent the person to put back purge-queue.json alone, and
+    under a hold status's NEXT named that one-file fix before the folder's. The queue's FAIL stays (dropping
+    it let the sync run over the queued purge with no hold), names the folder, credits purge-record.json,
+    keeps the redo and leads with the whole-folder put-back; under a hold the NEXT names governance.hold."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    if not held:
+        assert cli.main(["hold", "all", "--release", "--owner", "Ada", "--config", cfg]) == cli.EXIT_OK
+        capsys.readouterr()
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    rc, out = _status(cfg, capsys)
+    (queue,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    lead = f" — {gov}/ {governance.GOVERNANCE_GONE_HEAD}: "
+    assert rc == cli.EXIT_FAILED and lead in queue, queue
+    assert "purge-record.json keeps 1 purge as queued and not done (the dlp-remediation purge at " in queue
+    assert "the audit trail records" not in queue and "purge-queue.json back" not in queue, queue
+    whole = f"(fix: the person puts agentsync's governance folder ({doctor._shell_path(gov)}) back whole"
+    assert whole in queue and "runs each purge by hand before the next sync" in queue, queue
+    assert "for the dlp-remediation purge at " in queue, queue
+    holds = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+    assert bool(holds) is held, out
+    if held:
+        assert out[0].startswith("NEXT: the governance.hold check failed"), out[:3]
+    else:
+        assert out[0].startswith("NEXT: the governance.purge_queue check failed"), out[:3]
+        assert _ok_line(out, "governance.hold") == governance.HOLD_LIST_GONE, out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
 
 
 def test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on(
@@ -7359,7 +7476,10 @@ def test_a_glob_purge_stays_out_from_the_purge_record_when_the_governance_folder
     gov.unlink()  # the fix's second branch, followed
     rc, out = _status(cfg, capsys)
     (lost,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
-    assert rc == cli.EXIT_FAILED and "no longer lists what 1 purge the audit trail records" in lost, out
+    # the folder gone, the audit trail with it: purge-record.json keeps it (B13 round 32 C606; ruling 63)
+    assert (
+        rc == cli.EXIT_FAILED and "no longer lists what 1 purge suppressed, kept by purge-record.json" in lost
+    )
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     assert not page.exists()
     assert not _page_kept(initialised, "mirror/source/projects/sample.txt.md")

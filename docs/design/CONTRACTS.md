@@ -32961,6 +32961,8 @@ C210). Tests: `test_the_kept_purges_line_counts_once_for_one_kind_and_totals_sev
 `test_a_page_the_secret_scan_stubs_is_counted_unreadable_once_and_named_by_its_page`.
 Amended 2026-10-26, §16.205 C353: the clause reads `S of the unreadable held back: its page contained a credential`
 for one page and `... their pages contained a credential` for more.
+Amended 2026-10-28, §16.215 C624: governance.hold's ok line reads `no hold set (no hold list on disk)` with no
+holds.json and `no hold set (hold list read)` only over a file.
 
 ### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
 
@@ -35499,7 +35501,47 @@ Reserved for round 32 lane RB of B13.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
-Reserved for round 32 lane B of B13.
+Round 32's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the
+verifier's corrected fix built, as corrected by measurement where noted). A dated line this round writes reads
+`Amended 2026-10-28, §16.215 C<n>`.
+
+C606 with C601, C618 (2026-10-28): **with governance/ gone, every lost-file reader names the folder (ruling
+63).** With the governance folder moved aside and purge-record.json recording a purge, `suppressions_lost` and
+`queue_lost` said `the audit trail records` with no audit trail on disk and sent the person to put back
+suppressed.json or purge-queue.json alone; `purge --accept-lost <at>` then wrote a new one-line audit.jsonl and
+every line read ok, the old trail lost unsaid. Both readers still raise (C601's verifier measured that dropping
+either lets the sync run and, with no hold, leaves status at exit 0 over a queued purge), one FAIL per lost
+file, but while `governance.governance_gone` holds each detail opens `<gov>/ is missing, with the hold list,
+agentsync's audit trail, the purge queue and the suppression list in it:` (`GOVERNANCE_GONE_HEAD`, the lost hold's
+own lead since C313), credits purge-record.json (`... suppressed, kept by purge-record.json (<the reason purge at
+<at>; ...>)`, `purge-record.json keeps N purge(s) as queued and not done (...)`), and each fix leads with `the
+person puts agentsync's governance folder (<shell path>) back whole from the copy kept`, every `<at>` and redo kept;
+the sync's stop prints the same words, and its listing note says `<role> has lost a purge purge-record.json
+records: agentsync's governance folder is missing` (the report's `_LISTING_GOVERNANCE_RE` reads it). Status's NEXT, which led with the sync's guard (the queue or the list), names governance.hold first when
+its lost hold's FAIL opens with the folder (`cli._state_stop_first`). `--accept-lost` refuses while governance/ is
+missing (`<gov>/ is missing, ..., so nothing is accepted: <the put-back>; only with no copy left, ...`) unless
+given `--folder-lost`, the person's word that no copy is left, which first writes `{"action": "audit-trail-lost",
+"at": <iso>}` to the new audit.jsonl and, as one of `_PURGE_ACTIONS`, to purge-record.json; the act's output opens
+`the old audit trail's loss is written first, to the new audit trail and to purge-record.json; `, and
+`--folder-lost` with the folder there, or without `--accept-lost`, is refused. The lost list's fix names the flag
+(`accept_lost_words(folder=True)`: `purge --accept-lost <at> --folder-lost`, `the one source path
+purge-record.json keeps ...`, `content purge-record.json fingerprints`). The two new phrases holding `record` or
+`records` join both phrase lists (ruling 68). Names: `governance.AUDIT_TRAIL_LOST`, `FOLDER_LOST_SAID` (the
+fix's `records in the new audit trail and in purge-record.json that the old audit trail was lost`),
+`ACCEPT_PATH_KEPT_RECORD`, `cli.FOLDER_LOST_DONE`; the `--folder-lost` option joins `purge`'s pinned surface,
+the one new option the ruling names (ruling 76). Tests: `test_cli.py`
+`test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_every_lost_file_c606`,
+`test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold).
+
+C624 with C618's item 6 (2026-10-28): **the ok lines say what is on disk (ruling 64).** governance.hold's ok line
+said `no hold set (hold list read)` with no holds.json. `governance.no_hold_words` says `no hold set (no hold list
+on disk)` then, `no hold set (hold record read; the hold list is missing with the governance folder)` in ruling
+63's case (`governance.folder_lost_case`: governance/ missing while purge-record.json records a purge or
+hold-record.json names a scope), and `(hold list read)` only over a file; governance.purge_queue's ok line in that
+case is `the purge queue is missing with the governance folder; purge-record.json keeps no purge as queued and not
+done`, never `no purge queued` (`HOLD_LIST_READ`, `HOLD_LIST_NONE`, `HOLD_LIST_GONE`, `QUEUE_GONE_OK`). Tests:
+`test_a_clean_state_lists_the_hold_list_and_the_queue_as_checked`,
+`test_the_hold_lines_ok_words_say_whether_a_hold_list_was_read_c624`.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 

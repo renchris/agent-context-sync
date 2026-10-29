@@ -6379,6 +6379,11 @@ _ROUND_31_B_PARAGRAPH_AMENDS = (
 """Round 31 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C539's unread purge record at §16.205's C345 paragraph, and C561's erased
 lost record at its C370 paragraph's known residual, and C511's purge name at that paragraph's redo words."""
+_ROUND_32_B_PARAGRAPH_AMENDS = (
+    ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
+)
+"""Round 32 lane B's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C624's ok words at §16.200's status-and-doctor paragraph (C155)."""
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),
@@ -6536,6 +6541,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_32_E_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
+        *_ROUND_32_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
