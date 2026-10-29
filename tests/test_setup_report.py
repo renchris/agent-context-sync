@@ -7632,6 +7632,54 @@ def test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c51
             assert "(signal" not in why
 
 
+def test_a_stale_lock_a_signal_stopped_first_sync_left_is_expected_c616(fake_mac: dict[str, Path]) -> None:
+    """B13 round 32 C616 (ruling 66): a first sync a signal stopped leaves its lock body, and doctor's `free,
+    but ... ended without releasing it` warn read `unexpected 1: lock warn` while the outcome said the sync
+    was stopped. By the report's own read of the lock (not held, its body's start inside a failed first sync
+    with a signal's rc, in any install run of the attempt, from the step line's time to its seconds and one
+    more) it is expected; a body outside that window, a first sync that failed with rc 1, and a held but
+    silent holder's warn stay unexpected."""
+    cfg = fake_mac["config"]
+    lock = expand(load_config(cfg).state_paths.lock)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    stale = (
+        "free, but pid 153 (sync, started 2026-10-29T01:38:38Z) ended without releasing it; the next cycle"
+    )
+    silent = "held by pid 153; silent for 9999s (> 3600s)"
+
+    def sort(rcs: tuple[str, str], since: str, detail: str = stale) -> setup_report._DoctorSort:
+        lines = []
+        for n, (rc, at) in enumerate(zip(rcs, ("01:38:20", "01:38:37"), strict=True)):
+            run = f"2026-10-29T{at}Z run=20261029T01383{n}Z-4{n} "
+            lines += [
+                run + "start install.sh compat=6 commit=0123456789ab kind=checkout source=- args=x",
+                run + f"step=first-sync seconds=1 rc={rc} result=failed",
+                run + "end rc=1 seconds=15",
+            ]
+        log = fake_mac["setup"] / "install.log"
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        lock.write_text(f"153 1700000000 2026-10-29T{since}Z cli\n", encoding="ascii")
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor_problems = [("warn", "lock", detail)]
+        return setup_report._sort_doctor(r, setup_report.read_install_runs(log))
+
+    for since in ("01:38:37", "01:38:38"):  # KILL, then TERM: the TERM'd step's start and the truncated end
+        got = sort(("137", "143"), since)
+        assert got.expected == {setup_report._SIGNAL_LOCK_WORDS: ["lock"]} and got.unexpected == [], got
+    assert sort(("143", "1"), "01:38:21").expected == {setup_report._SIGNAL_LOCK_WORDS: ["lock"]}
+    for rcs, since, detail in (
+        (("137", "143"), "01:40:00", stale),
+        (("137", "143"), "01:38:36", stale),
+        (("1", "1"), "01:38:38", stale),
+        (("137", "143"), "01:38:38", silent),
+    ):
+        got = sort(rcs, since, detail)
+        assert got.expected == {} and got.unexpected == ["lock warn"], (rcs, since, got)
+    assert setup_report._SIGNAL_LOCK_WORDS == (
+        "left by the first sync a signal stopped; the next sync breaks it and runs full passes"
+    )
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)

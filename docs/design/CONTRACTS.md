@@ -35610,6 +35610,19 @@ word those of the report step's row and the Every run cell (C135). The no-end-li
 (<steps>)` is unchanged. Test: `test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`
 (the whole line, equal to the plain line plus the clause, and no `) (`).
 
+**The lock a signal-stopped first sync left is expected** (C616, ruling 66; `src/agentsync/setup_report.py`). A first
+sync stopped by SIGKILL or SIGTERM leaves its lock body, and doctor's `free, but <holder> ended without releasing it;
+the next cycle breaks it and runs FULL passes` warn read `unexpected 1: lock warn` beside an outcome that named the
+stop. `_sort_doctor` sorts that warn (tag warn, name `lock`, doctor's `ended without releasing it`) as `expected 1:
+lock (left by the first sync a signal stopped; the next sync breaks it and runs full passes)` only when
+`_signal_lock` holds, by the report's own read and never doctor's `since` text: no process holds the lock, its body
+parses as a `LockInfo`, and its `started_at` falls inside a first-sync step of any install run of the attempt that
+logged `result=failed` with a signal's rc (`_rc_words`), from the step line's time (install.sh logs the step's start)
+to that plus its `seconds` and one more (bash truncates them). A body outside every such step, a first sync that
+failed with rc 1, and doctor's `held by ...; silent for Ns` warn stay unexpected. Test:
+`test_a_stale_lock_a_signal_stopped_first_sync_left_is_expected_c616` (KILL then TERM, both window ends, an earlier
+run's step, and the three negatives).
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.

@@ -151,7 +151,7 @@ from agentsync.config import (
     load_config,
 )
 from agentsync.materialise import file_provider_marker
-from agentsync.ops.lock import Stage
+from agentsync.ops.lock import LockInfo, SingleWriterLock, Stage
 from agentsync.paths import (
     TEMPORARY_ROOTS,
     default_cache_dir,
@@ -13889,6 +13889,43 @@ def _queue_held(r: _Run) -> bool:
         return False
 
 
+_SIGNAL_LOCK_WORDS = "left by the first sync a signal stopped; the next sync breaks it and runs full passes"
+"""The expected bucket of doctor's stale ``lock`` warn that a signal-stopped first sync left
+(:func:`_signal_lock`)."""
+
+
+def _signal_lock(c: Config | None, runs: Sequence[InstallRun]) -> bool:
+    """Whether the lock's body, by the report's own read and with no process holding it, is the one a first
+    sync a signal stopped left: an install run of the attempt logged ``step=first-sync ... result=failed``
+    with a signal's rc (:func:`_rc_words`), and the body's ``started_at`` falls inside that step, from its
+    line's time (the step's start) to that plus its whole ``seconds`` and one more, as bash truncates them.
+    Never doctor's ``since`` text (B13 round 32 C616, ruling 66: the warn read ``unexpected``)."""
+    if c is None:
+        return False
+    path = expand(c.state_paths.lock)
+    try:
+        if SingleWriterLock.is_held(path):
+            return False
+        info = LockInfo.parse(SingleWriterLock.read_body(path))
+    except OSError:
+        return False
+    began = parse_time(info.started_at) if info is not None else None
+    if began is None:
+        return False
+    for run in install_runs_only(runs):
+        step = run.step("first-sync") or {}
+        at, secs = parse_time(step.get("at", "")), step.get("seconds", "")
+        if (
+            step.get("result") == "failed"
+            and _rc_words(step.get("rc", "")).startswith("stopped by ")
+            and at is not None
+            and secs.isdigit()
+            and at <= began <= at + timedelta(seconds=int(secs) + 1)
+        ):
+            return True
+    return False
+
+
 def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     """Doctor's problems in the Doctor line's buckets, once per report and attempt runs: the Summary's
     outcome (:func:`_doctor_fails`) and its doctor line (:func:`_doctor_line`) read the one sort."""
@@ -14302,6 +14339,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             if tag == "warn"
             else None
         )
+        if (
+            why is None
+            and tag == "warn"
+            and name == "lock"
+            and "ended without releasing it" in detail
+            and _signal_lock(r.config, runs)
+        ):  # B13 round 32 C616 (ruling 66): a held or silent holder's warn stays unexpected
+            why = _SIGNAL_LOCK_WORDS
         if why is not None:
             expected.setdefault(why, []).append(name)
         elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
