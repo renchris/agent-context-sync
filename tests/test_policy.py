@@ -348,10 +348,13 @@ def test_pdf_and_eml_labels(tmp_path: Path) -> None:
 def test_h1_ignores_a_relabel(fixture_files: dict[str, Path], tmp_path: Path) -> None:
     """H1 leaves labels out on purpose (F72): a purge still suppresses a relabelled copy, and the label screen
     on touched bytes (``_Cycle._relabelled``) handles a relabel. B13 round 31 C550, C579: the dead helper that
-    folded labels into a fingerprint, with a docstring saying the opposite, is gone."""
+    folded labels into a fingerprint, with a docstring saying the opposite, is gone. B13 round 32 C648: each
+    file's own label is asserted first, so the H1 check compares two files that do carry different labels."""
     base = fixture_files["sample.docx"]
     a = labelled_docx(base, tmp_path / "a.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0")))
     b = labelled_docx(base, tmp_path / "b.docx", labelinfo=labelinfo_xml((OTHER_LABEL, SITE, "1", "0")))
+    assert [lab.label_id for lab in policy.read_labels(a, name="a.docx").labels] == [LABEL]
+    assert [lab.label_id for lab in policy.read_labels(b, name="b.docx").labels] == [OTHER_LABEL]
     assert canonical_hash(a, suffix=".docx").sha256 == canonical_hash(b, suffix=".docx").sha256
     assert not hasattr(policy, "label_fingerprint")
 

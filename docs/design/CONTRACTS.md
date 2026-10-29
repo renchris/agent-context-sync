@@ -35267,6 +35267,8 @@ label-capable files`), `test_policy.py::test_the_readers_own_marker_counts_mail_
 and its docstring said a relabel folds into H1, which F72 decided against (a relabelled copy of purged content
 would escape its purge). It is removed with its §15 stub; H1 still leaves the label parts out. Test:
 `test_policy.py::test_h1_ignores_a_relabel` (the H1 check alone, and no such function).
+Amended 2026-10-28, §16.216 C648: the test asserts each file's own label before the H1 check, so it compares two
+files that do carry different labels.
 
 **The re-read's note says what each row came to (C545 with C523, ruling 54; `agentsync.cli`; amends §16.206
 C362).** The path re-read's second note said `failed again` of every row still a stub, but its count holds failed,
@@ -35582,6 +35584,12 @@ several). It keeps `an older build gave up on ` for install.sh's grep and holds 
 renamed `.potx` and a mail a label rule refused in the same sync: the line says `1 unreadable, 0 failed, 1 refused`,
 the note `1 unreadable` only), `test_convert_family.py::test_the_still_a_stub_note_names_each_bucket_it_holds` and
 `test_convert_family.py::test_the_path_re_read_is_said_in_the_sync_that_queues_it_and_the_one_that_reads_it`.
+
+**The relabel test shows its two labels (C648, round 32's converter cluster; a test; amends §16.211 C550).** When
+C550 removed `fp(a) == fp(c) != fp(b)`, nothing was left to show that `labelled_docx` gave the two files different
+labels: with it patched into a plain copy the test still passed, comparing the H1 of two identical files. It now
+asserts each file's exact label (`[LABEL]` and `[OTHER_LABEL]`, not a bare `!=`, which one labelled file would pass)
+before the H1 equality. Test: `test_policy.py::test_h1_ignores_a_relabel`.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
