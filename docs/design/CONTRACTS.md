@@ -35718,6 +35718,17 @@ shell fallback has no such count and is unchanged (its `STOPPED_FIX_LINE` is sti
 `test_installer_output_is_embedded_and_its_hints_counted` with the new clause; the `out_run` helper and the attempt
 scope test's block now carry their counted fix on a [FAIL] line.
 
+**The evidence line's clause for one line measures that line** (C621; `src/agentsync/setup_report.py`).
+Every cause clause of `_evidence_line` ended `measures them` whatever its own count, so one line read `1 line at the
+end of Status says "not measured" because agentsync's governance folder is not a folder: ... measures them`; so did a
+new start's `no manifest yet` clause and the lost manifest's clauses for one line. `_measures` makes the object agree
+with the clause's own count (the cause's `n`, the new start's `new`, the lost manifest's `lost`): `measures that line`
+for one, never a bare `it`, which each clause has just used for the cause (`after it is fixed`) and would read as the
+state file measured; more than one keeps `measures them`. The time-limit branch's `cut it off` is unchanged. Tests:
+`test_the_evidence_lines_clause_for_one_line_measures_that_line_c621` (the governance folder's one and two, a new
+start's one, a lost manifest's one) and `test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed`, whose
+refused configuration of one now reads `measures that line`.
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.

@@ -10979,6 +10979,13 @@ def _unread_evidence(r: _Run) -> str:
     return f"not measured, as the state file is {fact}: a report written after {then}"
 
 
+def _measures(words: str, n: int) -> str:
+    """An evidence clause's ``measures them`` agreeing with its own count ``n``: ``measures that line`` for
+    one, never a bare ``it``, which the clause has just used for the cause (``after it is fixed``) and would
+    read as the state file measured (B13 round 32 C621)."""
+    return words.replace("measures them", "measures that line") if n == 1 else words
+
+
 def _evidence_line(r: _Run) -> str:
     """The Summary's line about the evidence parts: whether every one was measured. The person sends one
     report, so a part that ran out of time is said where it is seen first. A line not measured for a cause
@@ -11006,7 +11013,7 @@ def _evidence_line(r: _Run) -> str:
         + ('"manifest: empty or too short": ' if r.facts.lost_short else '"manifest: missing": ')
         # B13 round 30 C351: round 28's hold record moved first while heartbeat.json has it; read only over a
         # lost manifest's lines, so no other evidence line reads the state folder
-        + (_round28_first(r, clause) if lost else clause)
+        + _measures(_round28_first(r, clause) if lost else clause, lost)  # C621
     )
     # B13 round 27 P26: a new start's lines were not measured either, and only the next sync measures them; a
     # lost manifest is caught before them, so the two never stand together
@@ -11014,7 +11021,9 @@ def _evidence_line(r: _Run) -> str:
     over = _plural(r.facts.evidence_new_pages, "existing mirror page")
     said_new = (
         f'{_plural(new, "line")} at the end of Status {"says" if new == 1 else "say"} "no manifest yet": the '
-        f"next sync starts a new manifest over {over}; a report written after it measures them"
+        + _measures(
+            f"next sync starts a new manifest over {over}; a report written after it measures them", new
+        )
     )
     opening = said_lost if lost else said_new if new else ""
     if count == 0:
@@ -11143,7 +11152,7 @@ def _evidence_line(r: _Run) -> str:
             "of another cause: see those lines",
         ),
     ]
-    said = [f"{n} because {words}" for n, words in clauses if n]
+    said = [f"{n} because {_measures(words, n)}" for n, words in clauses if n]  # B13 round 32 C621
     again = [
         f"{n} {words}"
         for n, words in ((cut, "ran out of time"), (busy, "found the state file held by a sync"))

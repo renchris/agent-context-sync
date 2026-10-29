@@ -16077,10 +16077,43 @@ def test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed(fake_m
     r.facts.evidence = 2
     assert setup_report._evidence_line(r) == (
         '- evidence: 2 lines at the end of Status say "not measured": 1 because the configuration is '
-        "refused: a report written after it loads measures them (see Configuration); 1 because of another "
-        "cause: see those lines"
-    )
+        "refused: a report written after it loads measures that line (see Configuration); 1 because of "
+        "another cause: see those lines"
+    )  # B13 round 32 C621: its own count of one
     assert "idle" not in setup_report._evidence_line(r)
+
+
+def test_the_evidence_lines_clause_for_one_line_measures_that_line_c621(fake_mac: dict[str, Path]) -> None:
+    """B13 round 32 C621: every cause clause ended ``measures them`` whatever its count, so one line read
+    ``1 line ... says "not measured" because agentsync's governance folder is not a folder: ... measures
+    them``. A clause of one says ``measures that line``, never a bare ``it``, which the clause has just used
+    for the cause; more than one keeps ``measures them``. So do a new start's and a lost manifest's."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    govdir = "agentsync's governance folder is not a folder: see Doctor's governance.hold line"
+    r.facts.evidence_why = Counter({govdir: 1})
+    r.facts.evidence = 1
+    assert setup_report._evidence_line(r) == (
+        '- evidence: 1 line at the end of Status says "not measured" because agentsync\'s governance folder '
+        "is not a folder: a report written after the person puts the real one back measures that line (see "
+        "Doctor's governance.hold line)"
+    )
+    r.facts.evidence_why = Counter({govdir: 2})
+    r.facts.evidence = 2
+    assert setup_report._evidence_line(r).endswith(
+        " puts the real one back measures them (see Doctor's governance.hold line)"
+    )
+    r.facts.evidence_why, r.facts.evidence = Counter(), 0
+    r.facts.evidence_new, r.facts.evidence_new_pages = 1, 3
+    assert setup_report._evidence_line(r) == (
+        '- evidence: 1 line at the end of Status says "no manifest yet": the next sync starts a new manifest '
+        "over 3 existing mirror pages; a report written after it measures that line"
+    )
+    r.facts.evidence_new = 0
+    r.facts.evidence_lost = 1
+    line = setup_report._evidence_line(r)
+    assert line.startswith('- evidence: 1 line at the end of Status says "manifest: missing": ') and (
+        line.endswith(" measures that line (see Doctor's state_dir.manifest line)")
+    ), line
 
 
 def test_the_evidence_line_says_why_a_report_written_again_when_idle_measures_them(
