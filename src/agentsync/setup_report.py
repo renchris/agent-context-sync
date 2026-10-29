@@ -1147,9 +1147,12 @@ _SPLIT_RE = re.compile(  # K, of the refused, withheld: the CLI prints it after 
 )
 # and since B13 round 31 ruling 59 (lane B's C525) ", L of them under a label rule because its label data did
 # not parse" (their label data, for more) after K's clause, read apart so _SPLIT_RE keeps its four groups
-# (C567, C583)
+# (C567, C583); since B13 round 32 C609 ", L of them because a label rule could not read its label data"
+# (their), which no longer reads as if R's other refusals were not under a label rule; both read, an older
+# agentsync's install.out keeps round 31's
 _LABEL_UNPARSED_RE = re.compile(
-    r"\b(\d+) of them under a label rule because (?:its|their) label data did not parse\b"
+    r"\b(\d+) of them (?:because a label rule could not read (?:its|their) label data"
+    r"|under a label rule because (?:its|their) label data did not parse)\b"
 )
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
 # J39); "without a read" is required, so the split's "R refused)" never matches
@@ -1494,6 +1497,9 @@ _FIXED_VALUE_PHRASES = (
     "audit-trail-lost",
     "the old audit trail's loss is written first, to the new audit trail",
     "the audit trail was lost before",
+    # lane B's sync line since B13 round 32 C609 (round 31's above stay: an older install.out keeps them)
+    "because a label rule could not read its label data",
+    "because a label rule could not read their label data",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -4141,7 +4147,8 @@ class _Facts:
     # that line's "(of the converted: U unreadable, F failed, R refused, K of them withheld by the label
     # rule)" as (N, U, F, R, K), R and K 0 when an older line has none; None: the line has no split
     first_sync_unreadable: tuple[int, int, int, int, int] | None = None
-    # its ", L of them under a label rule because its label data did not parse" as (N, L); None: none
+    # its ", L of them because a label rule could not read its label data" (or round 31's words) as (N, L);
+    # None: none
     # (B13 round 31 ruling 59, C567, C583)
     first_sync_label_unparsed: tuple[int, int] | None = None
     # its first-read count F (either wording, B13 round 9 K34) as (N, R, F); None: the line has none
@@ -14879,11 +14886,12 @@ def _sync_line_end(
                 refused += f", {split[4]} of them withheld: {whose} be read"
             unparsed = r.facts.first_sync_label_unparsed
             if split[3] and unparsed is not None and unparsed[0] == converted and unparsed[1]:
-                # the label-unreadable share, after K's as on the CLI's line, in its words (ruling 59, C567)
+                # the label-unreadable share, after K's as on the CLI's line, in its words (ruling 59, C567;
+                # B13 round 32 C609's, whichever words install.out holds)
                 why = (
-                    "under a label rule because its label data did not parse"
+                    "because a label rule could not read its label data"
                     if unparsed[1] == 1
-                    else "under a label rule because their label data did not parse"
+                    else "because a label rule could not read their label data"
                 )
                 refused += f", {unparsed[1]} of them {why}"
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"

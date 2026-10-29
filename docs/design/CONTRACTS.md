@@ -34740,6 +34740,8 @@ when the converted counts match, K or no K; `_SPLIT_RE` keeps its four groups (n
 unpack and C326's test), the source tag stays `the unreadable/failed/refused split`, and install.sh's readers, which
 read R and K only, are unchanged. The guide's Summary row is lane D's. Test:
 `test_first_sync_clause_carries_the_read_again_count` (L of 2 after K, and L of 1 alone).
+Amended 2026-10-28, §16.213 C609: `_LABEL_UNPARSED_RE` reads lane B's round 32 words, `, L of them because a label rule
+could not read its label data` (`their`), as well as these, and the Summary re-renders the new words.
 
 ### 16.209 Round 31: the installer's kept governance folder, every sync-stop kind, a signal stop named by its signal and the lost hold's tail (2026-10-28, wave B13 round 31 lane RB)
 
@@ -35635,6 +35637,18 @@ words alone): `heartbeat.<id> warn (not judged: agentsync's lock file is not a f
 named by the loop or not. No heartbeat.json branch: with heartbeat.json not a file doctor prints only the `heartbeat`
 FAIL and no `heartbeat.<id>` warn. Test: `test_a_listing_warn_beside_a_lock_that_is_not_a_file_is_not_judged_c637`
 (the lock a folder, with and without the loop naming the heartbeat; the lock a file again keeps E26's sort).
+
+**The Summary's label-unreadable share no longer reads as if R's other refusals were not under a label rule** (C609's
+report half; `src/agentsync/setup_report.py`, `scripts/install.sh`'s `FIXED_VALUE_PHRASES`). Round 31's clause, `2
+refused, 1 of them under a label rule because its label data did not parse`, set the one mail apart by `under a label
+rule`, though a mail refused by its label's name (`refused: sensitivity label ... is excluded by [policy]`) counts in R
+and was refused under a label rule too. Lane B's sync line now prints `, L of them because a label rule could not read
+its label data` (`their label data` for more than one). `_LABEL_UNPARSED_RE` reads both words, these and round 31's
+(an older agentsync's install.out keeps those; dropping them would drop the clause silently), and the Summary
+re-renders the new words whichever install.out held. The two new phrases join `_FIXED_VALUE_PHRASES` and install.sh's
+`FIXED_VALUE_PHRASES`, one line after the last, beside round 31's, which stay. Test:
+`test_first_sync_clause_carries_the_read_again_count` (round 31's words, one and two, re-rendered in the new; the new
+words, `2 refused, 1 of them because a label rule could not read its label data`, and two after K's).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

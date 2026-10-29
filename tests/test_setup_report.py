@@ -7861,22 +7861,41 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "them withheld: their labels cannot be read; 1 withheld unread by the label rule (install.log; "
             "the unreadable/failed/refused split and the withheld-unread count: install.out)",
         ),
-        (  # B13 round 31 ruling 59 (C567, C583): lane B's label-unreadable share, after K's, re-rendered
+        (  # B13 round 31 ruling 59 (C567, C583): lane B's label-unreadable share, after K's, re-rendered;
+            # a round 31 install.out's words still read, re-rendered in round 32's (C609)
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
             "refused, 1 of them withheld: its label cannot be read, 2 of them under a label rule because "
             "their label data did not parse)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused, 1 of "
-            "them withheld: its label cannot be read, 2 of them under a label rule because their label data "
-            "did not parse (install.log; the unreadable/failed/refused split: install.out)",
+            "them withheld: its label cannot be read, 2 of them because a label rule could not read their "
+            "label data (install.log; the unreadable/failed/refused split: install.out)",
         ),
         (  # ... and one, with no K before it
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 "
             "refused, 1 of them under a label rule because its label data did not parse)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 1 refused, 1 of "
-            "them under a label rule because its label data did not parse (install.log; the "
+            "them because a label rule could not read its label data (install.log; the "
             "unreadable/failed/refused split: install.out)",
+        ),
+        (  # B13 round 32 C609: lane B's words since, R=2 with one refused by its label's name and one whose
+            # label data did not parse; the clause no longer reads as if the other was not under a label rule
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 2 "
+            "refused, 1 of them because a label rule could not read its label data)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 2 refused, 1 of "
+            "them because a label rule could not read its label data (install.log; the "
+            "unreadable/failed/refused split: install.out)",
+        ),
+        (  # ... and their, for more than one, after K's
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
+            "refused, 1 of them withheld: its label cannot be read, 2 of them because a label rule could not "
+            "read their label data)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused, 1 of "
+            "them withheld: its label cannot be read, 2 of them because a label rule could not read their "
+            "label data (install.log; the unreadable/failed/refused split: install.out)",
         ),
         (  # B13 round 8 J39: the files refused without a read, after the split as on the CLI's line
             "note=converted-4-deferred-0",
