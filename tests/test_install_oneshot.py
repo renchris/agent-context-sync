@@ -1389,8 +1389,9 @@ def test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr(
     assert f"error: the first sync (agentsync sync --once) was {said} before it finished\n" in cp.stderr
     assert last_line(cp) == (
         f"NEXT: the first sync was {said} before it finished, by something outside install.sh, not by an "
-        f"error it reported; it is safe to re-run once: {INSTALL_SH} {wheel}; if the re-run is stopped the "
-        f"same way, show the person this line and go on to the report [setup report: {report_path(env)}]"
+        f"error it reported; it is safe to re-run once: {INSTALL_SH} {wheel}; if the re-run's first sync is "
+        "stopped by a signal again, of any kind, show the person this line and go on to the report "
+        f"[setup report: {report_path(env)}]"
     ), last_line(cp)
     assert "fix what the first sync printed above" not in cp.stdout + cp.stderr
     for text in (cp.stdout, cp.stderr, out):
@@ -1398,6 +1399,62 @@ def test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stderr(
     assert any(" step=first-sync " in ln and f" rc={rc} " in f"{ln} " for ln in install_log(env)), (
         install_log(env)
     )
+
+
+SIGNAL_AGAIN = (
+    "another re-run is the person's choice, not a step for the agent, so show them the error and go on to "
+    "the report"
+)
+
+
+@pytest.mark.parametrize("before", ["sync-alone", "whole-run", "older-attempt"])
+def test_a_second_signal_stopped_first_sync_offers_no_further_re_run(
+    env: dict[str, str], folder: Path, wheel: Path, before: str
+) -> None:
+    """B13 round 32 ruling 66 (C615): the signal branch's NEXT was word for word the same on the re-run, so
+    "re-run once" rested on the agent's memory, and "stopped the same way" was unclear after a SIGKILL
+    then a SIGTERM. When the install run just before this one ended on a first sync a signal stopped alone
+    (its step line rc 129 to 192, its end line `end rc=1`), install.log is the bound: the re-run's NEXT
+    offers no further re-run and says it is not a step for the agent. A run before it that a signal to the
+    whole run ended (`end rc=143`, the same step line through on_exit), or one from an earlier friction
+    attempt, keeps the one re-run."""
+    run = {**env, "STUB_SYNC_SIGNAL": "TERM" if before == "sync-alone" else "KILL"}
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    if before == "sync-alone":
+        first = install_sh({**env, "STUB_SYNC_SIGNAL": "KILL"}, str(wheel), "--source-local", str(folder))
+        assert first.returncode == 1 and "it is safe to re-run once: " in last_line(first), last_line(first)
+        assert "if the re-run's first sync is stopped by a signal again, of any kind, show the person" in (
+            last_line(first)
+        )
+        assert " end rc=1 " in f"{install_log(env)[-1]} ", install_log(env)
+    else:
+        setup.mkdir(parents=True)
+        end = "143" if before == "whole-run" else "1"
+        (setup / "install.log").write_text(
+            "2026-10-20T01:00:00Z run=20261020T010000Z-7 start install.sh compat=10 commit=- kind=- source=- "
+            "args=-\n"
+            "2026-10-20T01:05:00Z run=20261020T010000Z-7 step=first-sync seconds=300 rc=137 result=failed\n"
+            f"2026-10-20T01:05:01Z run=20261020T010000Z-7 end rc={end}\n"
+        )
+        if before == "older-attempt":  # an attempt that began after that run: its stop is another attempt's
+            friction_path(env).write_text(
+                "Attempt: 2026-10-21T01:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n"
+            )
+    cp = install_sh(run, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    said = "stopped by SIGTERM (signal 15)" if before == "sync-alone" else "stopped by SIGKILL (signal 9)"
+    assert f"error: the first sync (agentsync sync --once) was {said} before it finished\n" in cp.stderr
+    if before == "sync-alone":
+        assert last_line(cp) == (
+            f"NEXT: the first sync was {said} before it finished again, on the re-run (the run before this "
+            "one ended on a first sync a signal stopped too), by something outside install.sh: "
+            f"{SIGNAL_AGAIN}; once they want another try, the next run is: {INSTALL_SH} {wheel} "
+            f"[setup report: {report_path(env)}]"
+        ), last_line(cp)
+        assert "safe to re-run" not in cp.stdout + cp.stderr
+    else:
+        assert f"it is safe to re-run once: {INSTALL_SH} {wheel}; " in last_line(cp), last_line(cp)
+        assert SIGNAL_AGAIN not in last_line(cp)
 
 
 def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(

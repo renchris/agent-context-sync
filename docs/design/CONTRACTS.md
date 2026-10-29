@@ -34829,6 +34829,9 @@ Test: `test_a_first_sync_a_signal_stopped_leaves_no_job_line_and_keeps_its_stder
 Amended 2026-10-28, §16.217 C652: the branch takes only an exit `rc_signal_words` names, 129 to 159 on macOS, whose
 /bin/bash names no signal past 31; 160 to 192 keep the generic branch, as row 170 of
 `test_first_sync_failure_fails_the_run_before_the_agent` pins.
+Amended 2026-10-28, §16.214 C615: the tail reads `if the re-run's first sync is stopped by a signal again, of any
+kind, show the person this line and go on to the report`, and when install.log's run before this one ended on a first
+sync a signal stopped alone, the NEXT offers no further re-run.
 
 **Step 1 under a hold with governance/ gone gives the folder's tail** (C507; ruling 60; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). With the whole governance folder moved aside under a hold (hold-record.json left in
@@ -35805,6 +35808,24 @@ colon form in lane E's commit. Tests: `test_a_signal_exit_is_named_by_its_signal
 it) and `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`, which runs every caller line of
 install.sh under /bin/bash 3.2 at each code from 129 to 192 and finds no `(signal`, no bracket in a bracket, no
 empty bracket, no `, ;` and no code twice.
+
+**A re-run whose first sync a signal stopped again offers no further re-run** (C615; ruling 66; amends §16.209 C515; `scripts/install.sh`).
+C515's NEXT was word for word the same on the re-run (only the signal's words differed), so `safe to re-run once`
+rested on the agent's memory, and `if the re-run is stopped the same way` was unclear after a SIGKILL then a
+SIGTERM. prior_signal_first_sync reads the install run just before this one in install.log, by run id as
+last_install_run reads it, skipping this run and a --list-folders run: it counts only when that run's
+`step=first-sync` line has an rc of 129 to 192 that rc_signal_words names AND its end line is `end rc=1`, the signal
+branch's own exit (a signal to the whole run writes the same step line through on_exit but ends `end rc=<signal>`,
+and keeps its one re-run), and, when the friction log's latest attempt has a begin time, that run started at or
+after it; never more than that one run. Then the NEXT reads `the first sync was <rc_signal_words> before it finished
+again, on the re-run (the run before this one ended on a first sync a signal stopped too), by something outside
+install.sh: another re-run is the person's choice, not a step for the agent, so show them the error and go on to the
+report; once they want another try, the next run is: <install.sh and its options>`, which the prompt's step 2 rule
+(`its NEXT: line says it is not a step for you`) sends to the report with no new prompt words; otherwise C515's NEXT,
+its tail now `if the re-run's first sync is stopped by a signal again, of any kind, show the person this line and go
+on to the report`. Tests: `test_a_second_signal_stopped_first_sync_offers_no_further_re_run` (a sync-alone KILL then
+TERM; a whole-run stop before it, `end rc=143`; one from an earlier friction attempt) and the deploy-pack pin in
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 

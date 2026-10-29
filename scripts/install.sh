@@ -4008,6 +4008,35 @@ last_install_run() {
 			for (i = n; i > 0; i--) if (!(order[i] in lists)) { print at[order[i]] " " rc[order[i]]; exit }
 		}' "$SETUP_LOG" 2>/dev/null || true
 }
+# Whether the install run just before this one, in install.log by run id as last_install_run reads it (this run
+# and a --list-folders run skipped), ended on a first sync a signal stopped alone: its step=first-sync line has an
+# rc of 129 to 192 that rc_signal_words names, and its end line says `end rc=1`, the signal branch's exit (a signal
+# to the whole run writes the same step line through on_exit, but ends `end rc=<signal>`, and keeps its one
+# re-run). When the friction log's latest attempt has a begin time, that run started at or after it; never more
+# than that one run, so a stop from an older attempt never counts (B13 round 32 ruling 66: C615).
+prior_signal_first_sync() {
+	local rc
+	[ -f "$SETUP_LOG" ] || return 1
+	rc="$(RUN_SELF="$RUN_ID" ATTEMPT_BEGIN="$(utc_stamp "$(friction_attempt_begin)")" LC_ALL=C awk '
+		BEGIN { me = ENVIRON["RUN_SELF"]; lo = ENVIRON["ATTEMPT_BEGIN"] }
+		$2 !~ /^run=/ { next }
+		{ id = substr($2, 5) }
+		id == me { next }
+		!(id in at) { order[++n] = id; at[id] = $1 }
+		index($0 " ", " step=list-folders ") { lists[id] = 1 }
+		index($0, " step=first-sync ") && match($0, / rc=[0-9]+/) { fs[id] = substr($0, RSTART + 4, RLENGTH - 4) }
+		$3 == "end" && match($0, / rc=[0-9]+/) { rc[id] = substr($0, RSTART + 4, RLENGTH - 4) }
+		END {
+			for (i = n; i > 0; i--) if (!(order[i] in lists)) {
+				id = order[i]
+				if ((lo == "" || at[id] >= lo) && rc[id] == "1" && (id in fs)) print fs[id]
+				exit
+			}
+		}' "$SETUP_LOG" 2>/dev/null || true)"
+	if [ -z "$rc" ] || [ "$rc" -lt 129 ] || [ "$rc" -gt 192 ]; then return 1; fi
+	case "$(rc_signal_words "$rc")" in "stopped by "*) return 0 ;; esac
+	return 1
+}
 # The label of that run when another run of install.log started in its second, as strip_run_pids numbers
 # them (first-appearance order over the whole log, the first keeping the bare stamp); nothing when none did.
 # Its start time alone names two runs then (B13 round 13 O22), as setup_report._run_named says.
@@ -10250,7 +10279,14 @@ else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) was $(rc_signal_words "$SYNC_RC") before it finished"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
-		NEXT_MSG="the first sync was $(rc_signal_words "$SYNC_RC") before it finished, by something outside install.sh, not by an error it reported; it is safe to re-run once: $SELF$RERUN_ARGS; if the re-run is stopped the same way, show the person this line and go on to the report"
+		# The re-run's first sync stopped by a signal again, of any kind: the bound is install.log's, not the agent's
+		# memory, so no second re-run is offered; the prompt's "not a step for you" rule sends it to the report
+		# (B13 round 32 ruling 66: C615)
+		if prior_signal_first_sync; then
+			NEXT_MSG="the first sync was $(rc_signal_words "$SYNC_RC") before it finished again, on the re-run (the run before this one ended on a first sync a signal stopped too), by something outside install.sh: another re-run is the person's choice, not a step for the agent, so show them the error and go on to the report; once they want another try, the next run is: $SELF$RERUN_ARGS"
+		else
+			NEXT_MSG="the first sync was $(rc_signal_words "$SYNC_RC") before it finished, by something outside install.sh, not by an error it reported; it is safe to re-run once: $SELF$RERUN_ARGS; if the re-run's first sync is stopped by a signal again, of any kind, show the person this line and go on to the report"
+		fi
 		exit 1
 	else
 		step_end failed "$SYNC_RC"

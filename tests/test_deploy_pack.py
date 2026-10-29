@@ -3588,6 +3588,13 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     for ln in persons:
         shown = "not a step for the agent, so show them (?:those lines|the error) and go on to the report"
         assert re.search(shown, ln), ln
+    # B13 round 32 ruling 66 (C615): a re-run's first sync a signal stopped again offers no further re-run,
+    # in the words the prompt's step 2 rule keys on, so the bound is install.log's, not the agent's memory
+    again = [ln for ln in persons if "before it finished again, on the re-run" in ln]
+    assert len(again) == 1 and "another re-run is the person's choice, not a step for the agent" in again[0]
+    assert "if the re-run's first sync is stopped by a signal again, of any kind, show the person" in script
+    assert "if the re-run is stopped the same way" not in script
+    assert "its NEXT: line says it is not a step for you" in " ".join(step2.split())
     # B13 round 12 N32, N6: the sign-in wait has a rule for nobody to ask, and it is the report, so step 3's
     # no-report cases do not name it; N7: on a Mac that syncs no folder yet a sign-in is no click to wait for
     assert NEW_MAC_SIGN_IN in step1 and step1.index(NEW_MAC_SIGN_IN) < step1.index("Two exceptions.")
