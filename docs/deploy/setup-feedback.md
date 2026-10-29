@@ -970,7 +970,25 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the suppression list in it, while its records keep a hold as set and not released (not damage, not a mode): fixing
   that is the person's (they put agentsync's governance folder back whole from the copy kept, or the records owner
   sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line`,
-  logged `state-governance-lost`, in place of the hold list's (B13 round 31 ruling 60, C507). Each fix is the
+  logged `state-governance-lost`, in place of the hold list's (B13 round 31 ruling 60, C507). Since lane B's ruling
+  63 every lost file is the folder's while governance/ is missing and purge-record.json or the hold record keeps
+  what it held, and step 1 gives one folder tail that names the folder once: `; step 2 stops at its status step on
+  agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
+  the suppression list in it, while <what> (not damage, not a mode): fixing that is the person's (they put
+  agentsync's governance folder back whole from the copy kept<fixes>), and ~/.local/bin/agentsync status prints it on
+  its <check> line`, `<what>` joining with `, and ` `its records keep a hold as set and not released` (a lost hold,
+  whose fix adds `, or the records owner sets the hold again or releases it` and whose `<check>` is
+  `governance.hold`, which status's `NEXT:` leads with), `purge-record.json keeps a purge as queued and not done`
+  (`; with no copy, they run each such purge by hand before the next sync`, `governance.purge_queue`) or
+  `purge-record.json keeps what a purge suppressed` (`; with no copy, they accept each loss with --folder-lost, as
+  its status line says`, `governance.suppressed`); for a queued purge alone: `; step 2 stops at its status step on
+  agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
+  the suppression list in it, while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
+  fixing that is the person's (they put agentsync's governance folder back whole from the copy kept; with no copy,
+  they run each such purge by hand before the next sync), and ~/.local/bin/agentsync status prints it on its
+  governance.purge_queue line`. It is logged with the list's own word beside the folder's
+  (`config_err=state-queue-lost,state-governance-lost`), and a build whose fix does not lead with the folder's
+  put-back keeps the list's own tail (B13 round 32 ruling 63). Each fix is the
   person's; the scope, owner, reason, selector and time are never printed (B13 round 30 C315). Beside a config-step
   stop (any tail above), a suppression list or purge queue that also lost a purge is the stop that follows, named
   after the first: the suppression list adds `; once that is fixed, step 2 stops again at its status step on

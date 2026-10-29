@@ -8499,15 +8499,45 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
             script,
         )
     }
-    assert sorted(tails) == ["governance folder", "hold list", "purge queue", "suppression list"]
+    assert sorted(tails) == ["governance folder", "hold list", "purge queue", "suppression list"], sorted(
+        tails
+    )
     words = {
         "purge queue": "state-queue-lost",
         "suppression list": "state-suppressed-lost",
         "hold list": "state-hold-lost",
         "governance folder": "state-governance-lost",
     }
+    # B13 round 32 ruling 63: the governance folder's tail is one template, its parts from folder_gone_words
+    folder = tails.pop("governance folder")
+    assert folder == (
+        "; step 2 stops at its status step on agentsync's governance folder, which is missing, with the "
+        "hold list, agentsync's audit trail, the purge queue and the suppression list in it, "
+        "$GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and "
+        "~/.local/bin/agentsync status prints it on its $GONE_CHECK line"
+    )
+    held = folder.replace("$GONE_WHAT", "while its records keep a hold as set and not released").replace(
+        "$GONE_FIX",
+        "they put agentsync's governance folder back whole from the copy kept, or the records owner sets the "
+        "hold again or releases it",
+    )
+    assert (
+        f"gives `{held.replace('$GONE_CHECK', 'governance.hold')}`, logged `state-governance-lost`" in section
+    )
+    queued = folder.replace(
+        "$GONE_WHAT", "while purge-record.json keeps a purge as queued and not done"
+    ).replace(
+        "$GONE_FIX",
+        "they put agentsync's governance folder back whole from the copy kept; with no copy, they run each "
+        "such purge by hand before the next sync",
+    )
+    assert f"`{queued.replace('$GONE_CHECK', 'governance.purge_queue')}`" in section
+    assert "(`config_err=state-queue-lost,state-governance-lost`)" in section
+    assert 'GONE_LOG="$GONE_LOG,state-governance-lost"' in script and 'clog="$clog$GONE_LOG"' in script
     for noun, word in words.items():
-        own = noun in ("hold list", "governance folder")  # after a lost list's word, when both
+        if noun == "governance folder":
+            continue
+        own = noun == "hold list"  # after a lost list's word, when both
         assert f'clog="{"$clog" if own else ""},{word}"' in script, word
         assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
     assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
@@ -8537,7 +8567,7 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     assert "the purge queue's first when both lost one" not in section
     assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script
     # every state- word install.sh can log after config_err= is one the guide names
-    logged = set(re.findall(r'clog="(?:\$clog)?,(state-[a-z-]+)"', script))
+    logged = set(re.findall(r'(?:clog|GONE_LOG)="(?:\$clog|\$GONE_LOG)?,(state-[a-z-]+)"', script))
     assert logged == set(words.values())
     for word in logged:
         assert f"`{word}`" in section, word

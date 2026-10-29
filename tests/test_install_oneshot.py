@@ -12902,6 +12902,174 @@ def test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_
     assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
 
 
+GOVGONE_LEAD = (
+    "step 2 stops at its status step on agentsync's governance folder, which is missing, with the hold list, "
+    "agentsync's audit trail, the purge queue and the suppression list in it, while "
+)
+GOVGONE_TAILS = {
+    "queue": (
+        f"; {GOVGONE_LEAD}"
+        "purge-record.json keeps a purge as queued and not done (not damage, not a mode): fixing "
+        "that is the person's (they put agentsync's governance folder back whole from the copy kept; "
+        "with no copy, they run each such purge by hand before the next sync), and "
+        "~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+    ),
+    "suppressed": (
+        f"; {GOVGONE_LEAD}"
+        "purge-record.json keeps what a purge suppressed (not damage, not a mode): fixing that is "
+        "the person's (they put agentsync's governance folder back whole from the copy kept; with no "
+        "copy, they accept each loss with --folder-lost, as its status line says), and "
+        "~/.local/bin/agentsync status prints it on its governance.suppressed line"
+    ),
+    "hold-queue": (
+        f"; {GOVGONE_LEAD}"
+        "its records keep a hold as set and not released, and purge-record.json keeps a purge as "
+        "queued and not done (not damage, not a mode): fixing that is the person's (they put "
+        "agentsync's governance folder back whole from the copy kept, or the records owner sets the "
+        "hold again or releases it; with no copy, they run each such purge by hand before the next "
+        "sync), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+    ),
+}
+"""Step 1's one folder tail with governance/ gone while purge-record.json or the hold record keeps what it
+held (B13 round 32 ruling 63, lane B's words): the folder named once, the hold's clause only under a lost
+hold."""
+
+
+def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 32 ruling 63: with governance/ gone and purge-record.json keeping a queued purge, the
+    build's governance_lost names the folder and leads its fix with the whole-folder put-back; the probe
+    says `,lost-queue-govgone` then, and `,lost-queue` with the folder there and only the queue gone, or
+    on a build whose fix does not open so."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    state.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    gov = state / "governance"
+    gov.rename(state / "governance.kept")
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue-govgone"
+    older = tmp_path / "older"  # a build whose lost-file fix names the queue alone
+    shutil.copytree(src / "agentsync", older / "agentsync")
+    gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
+    assert gtext.count("def governance_gone(state_dir: Path) -> bool:\n") == 1
+    (older / "agentsync" / "governance.py").write_text(
+        gtext.replace(
+            "def governance_gone(state_dir: Path) -> bool:\n",
+            "def governance_gone(state_dir: Path) -> bool:\n    return False\n",
+        ),
+        encoding="utf-8",
+    )
+    assert _lost_hold_probe(cfg, older) == "none,lost-queue"
+    (state / "governance.kept").rename(gov)
+    (gov / "purge-queue.json").rename(state / "purge-queue.json.kept")
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue"
+
+
+@pytest.mark.parametrize("lost", ["queue", "suppressed", "hold-queue"])
+def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
+    real_env: dict[str, str], wheel: Path, lost: str
+) -> None:
+    """B13 round 32 ruling 63 (lane B's words), with the real agentsync: a queued purge, a run purge's
+    suppression list, or a hold and a queued purge, then governance/ moved aside. Status FAILs each lost
+    file in the folder's words, crediting purge-record.json, but step 1 named the purge queue or
+    suppression list alone (`the audit trail records`, put that list back), or the folder for the hold
+    only. Step 1 now gives one folder tail naming the folder once, the hold's clause only under a lost
+    hold, logged with the list's own word beside `state-governance-lost`; putting the folder back, as the
+    words say, ends it."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("made-up notes\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    if lost == "suppressed":
+        purged = subprocess.run(
+            [agentsync, "purge", "path=notes.txt", "--reason", "erasure-request"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert purged.returncode == 0, purged.stdout + purged.stderr
+    else:
+        sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+        assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    if lost == "hold-queue":
+        held = subprocess.run(
+            [agentsync, "hold", "all", "--reason", "matter 8", "--owner", "Quinn Avery"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert held.returncode == 0, held.stdout + held.stderr
+    gov = root / "governance"
+    kept = gov.with_name("governance.kept")
+    gov.rename(kept)
+    listed = install_sh(env, "--list-folders")
+    assert last_line(listed).endswith(GOVGONE_TAILS[lost]), last_line(listed)
+    assert last_line(listed).count("agentsync's governance folder, which is missing") == 1
+    assert "the audit trail records" not in last_line(listed), last_line(listed)
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    word = "state-suppressed-lost" if lost == "suppressed" else "state-queue-lost"
+    assert f"config_err={word},state-governance-lost" in log, log
+    kept.rename(gov)  # the person puts the governance folder back whole from the copy kept
+    assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
+
+
+def test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_after_it(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 32 ruling 63 with C607: beside a config-step stop (agentsync.lock a folder), a queued purge
+    with governance/ gone is the stop that follows, in the folder's words at step 1 and in step 2's NEXT."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    (root / "governance").rename(root / "governance.kept")
+    lock = root / "agentsync.lock"
+    if lock.exists():
+        lock.unlink()
+    lock.mkdir()
+    tail = last_line(install_sh(env, "--list-folders"))
+    after = (
+        "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, "
+        "which is missing, with the hold list, agentsync's audit trail, the purge queue and the "
+        "suppression list in it, while purge-record.json keeps a purge as queued and not done (not "
+        "damage, not a mode): fixing that is the person's (they put agentsync's governance folder back "
+        "whole from the copy kept; with no copy, they run each such purge by hand before the next sync), "
+        "and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+    )
+    assert "on agentsync's lock file, which is a folder, not a file" in tail and tail.endswith(after), tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-file-notfile,state-queue-lost,state-governance-lost" in log, log
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        "on its lock line and, on its governance.purge_queue line, a second stop that follows: "
+        "agentsync's governance folder is missing while purge-record.json keeps a purge as queued and "
+        "not done, also the person's to fix (they put agentsync's governance folder back whole from the "
+        "copy kept; with no copy, they run each such purge by hand before the next sync)): fixing it is "
+        "the person's ("
+    ) in last_line(cp), last_line(cp)
+    assert "; once both are fixed, the next run is: " in last_line(cp)
+
+
 LOST_LIST_TAILS = {
     "queue": (
         "; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge the "

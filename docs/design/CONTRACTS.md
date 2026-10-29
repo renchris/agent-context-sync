@@ -35864,6 +35864,34 @@ neither word and the words stay as before. Tests: `test_a_damaged_purge_record_b
 (the real agentsync; after the record is moved aside, step 1 gives the plain lost-queue tail) and the guide's quotes
 in `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
 
+**Step 1 names a missing governance folder once, for every list it kept** (ruling 63's install.sh half, lane B's
+words; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). Since lane B's ruling 63 every lost-file FAIL while
+governance/ is missing and purge-record.json or the hold record keeps what it held opens `<gov>/ is missing, with the
+hold list, ...` and leads its fix with `the person puts agentsync's governance folder (<path>) back whole from the copy
+kept`, crediting purge-record.json, never the audit trail; step 1 still named the purge queue or suppression list
+alone (`the audit trail records`, put that list back), and the folder only for a hold. LOST_HOLD_PY adds `-govgone`
+to `,lost-queue` or `,lost-suppressed` when the build's own `governance_lost` fix opens with that put-back (an older
+build's never does, and keeps its word). folder_gone_words builds one folder tail from the verdict: `; step 2 stops at
+its status step on agentsync's governance folder, which is missing, with ..., while <what> (not damage, not a mode):
+fixing that is the person's (they put agentsync's governance folder back whole from the copy kept<fixes>), and
+~/.local/bin/agentsync status prints it on its <check> line`, `<what>` joining the hold's (`its records keep a hold
+as set and not released`, whose fix adds `, or the records owner sets the hold again or releases it` and whose check,
+governance.hold, status's NEXT leads with) and the list's (`purge-record.json keeps a purge as queued and not done`,
+`; with no copy, they run each such purge by hand before the next sync`; or `purge-record.json keeps what a purge
+suppressed`, `; with no copy, they accept each loss with --folder-lost, as its status line says`). The hold-only tail
+is C507's, byte for byte. It is logged with the list's own word beside the folder's
+(`config_err=state-queue-lost,state-governance-lost`). Beside a config-step stop, C607's second stop and step 2's
+NEXT use the same words (`a second stop that follows: agentsync's governance folder is missing while <what>, also the
+person's to fix (<fixes>)`). Step 2's status-step NEXT keeps the person's-kinds list, which lane B left unchanged.
+The tail's parts are printed literals with hold words, so lane RA's C634 scan reads `GONE_WHAT` and `GONE_FIX` too
+(`tests/test_setup_report.py`, `_INSTALL_PRINTED`), and the hold's part keeps the listed phrase `while its records
+keep a hold as set and not released` whole (ruling 68).
+Tests: `test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix`,
+`test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept` (a queued purge, a run purge's suppression
+list, a hold and a queued purge; the real agentsync),
+`test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_after_it` and the guide's quotes in
+`test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
 Round 32's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

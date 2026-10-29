@@ -2718,10 +2718,11 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
 
 
 _INSTALL_PRINTED = re.compile(
-    r"(?<![\w$])(?:say |(NEXT_MSG|ctail|stail|lfact|lfix|MISPLACED_FIX|again)\+?=)\""
+    r"(?<![\w$])(?:say |(NEXT_MSG|ctail|stail|lfact|lfix|MISPLACED_FIX|again|GONE_WHAT|GONE_FIX)\+?=)\""
 )
 """Where install.sh starts a literal it prints, which install.out keeps: a ``say``, or one of the variables a
-``say`` prints (``NEXT_MSG`` behind its ``NEXT: `` prefix)."""
+``say`` prints (``NEXT_MSG`` behind its ``NEXT: `` prefix; ``GONE_WHAT`` and ``GONE_FIX``, the parts of step
+1's folder tail, B13 round 32 ruling 63)."""
 
 
 def _shell_quoted(line: str, at: int) -> str | None:
