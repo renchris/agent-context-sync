@@ -9829,16 +9829,23 @@ def _lost_queue_line(config: Config) -> str:
     """The Purge queue part's count of the purges the audit trail records as queued and not done that the
     queue file no longer holds (``governance.lost_queued``), in lane B's fixed words; "" when none is, or the
     read fails. Never a selector, a source, a reason or a time (B13 round 30 ruling 40, C309): never "no purge
-    is queued" over a lost queue."""
+    is queued" over a lost queue. With governance/ missing, purge-record.json's (B13 round 32 C618)."""
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        n = len(governance.lost_queued(expand(config.state_paths.root)))
+        root = expand(config.state_paths.root)
+        n = len(governance.lost_queued(root))
+        folder = bool(getattr(governance, "folder_lost_case", lambda _root: False)(root))
     except Exception:
         return ""
     if not n:
         return ""
     verb = "is" if n == 1 else "are"
+    if folder:  # B13 round 32 C618 (ruling 63): no audit trail to credit, and no queue file to be in
+        return (
+            f"- {_plural(n, 'purge')} purge-record.json keeps as queued and not done {verb} lost with "
+            "agentsync's governance folder, which is missing (see Doctor's governance.purge_queue line)"
+        )
     return (
         f"- {_plural(n, 'purge')} recorded in the audit trail {verb} not in the queue file "
         "(see Doctor's governance.purge_queue line)"
@@ -13718,9 +13725,17 @@ B's round 29 ruling 27), as :data:`_HOLD_UNREAD_WAIT` when it cannot be read; a 
 source."""
 
 
+_GOV_GONE_CHECKS = ("governance.hold", "governance.purge_queue", "governance.suppressed")
+"""The checks whose FAIL opens in the missing folder's words: the hold's (lane B's C313), and since ruling 63
+the purge queue's and the suppression list's, while purge-record.json keeps what they held (B13 round 32
+C618)."""
+
+
 def _governance_gone(r: _Run) -> bool:
-    """Whether governance/ is missing by the report's own lstat and doctor's governance.hold FAIL says so in
-    lane B's C313 words (:data:`_GOV_GONE`); False when either fails (B13 round 30, lane B's C313)."""
+    """Whether governance/ is missing by the report's own lstat and a doctor FAIL of
+    :data:`_GOV_GONE_CHECKS` says so in lane B's C313 words (:data:`_GOV_GONE`); False when either fails (B13
+    round 30, lane B's C313; round 32 C618: a lost queue or suppression list alone, with no hold, says it
+    too)."""
     if r.config is None:
         return False
     try:
@@ -13732,7 +13747,7 @@ def _governance_gone(r: _Run) -> bool:
     except Exception:
         return False
     return any(
-        t == "FAIL" and m == "governance.hold" and f"{gov}{_GOV_GONE}" in d
+        t == "FAIL" and m in _GOV_GONE_CHECKS and f"{gov}{_GOV_GONE}" in d
         for t, m, d in r.facts.doctor_problems
     )
 
@@ -14229,10 +14244,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             fails.append((name, damaged_words))
             hold_bucket = from_damaged if name == "governance.hold" else hold_bucket
             continue
-        if gone and tag == "FAIL" and name == "governance.hold" and _GOV_GONE in detail:
+        if gone and tag == "FAIL" and name in _GOV_GONE_CHECKS and _GOV_GONE in detail:
             from_govgone.append(f"{name} FAIL{_PERSONS}")  # lane B's C313: the folder's, never a lost hold
-            fails.append((name, _GOVGONE_WORDS))
-            hold_bucket = from_govgone
+            fails.append((name, _GOVGONE_WORDS))  # nor a lost queue or list (B13 round 32 C618, ruling 63)
+            hold_bucket = from_govgone if name == "governance.hold" else hold_bucket
             continue
         if tag == "FAIL" and name in lost_lists and all(w in detail for w in _LOST_LIST_PHRASES[name]):
             from_lost_list.append(f"{name} FAIL{_PERSONS}")  # B13 round 30 ruling 40 (C309, C335, C369)

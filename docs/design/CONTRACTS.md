@@ -35729,6 +35729,20 @@ state file measured; more than one keeps `measures them`. The time-limit branch'
 start's one, a lost manifest's one) and `test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed`, whose
 refused configuration of one now reads `measures that line`.
 
+**A queue lost with the governance folder reads as the folder's** (C618's report half, ruling 63;
+`src/agentsync/setup_report.py`). In probe gq's state (governance/ missing, purge-record.json keeping one purge as
+queued and not done, no hold), lane B's governance.purge_queue FAIL opens in the folder's words, but the report keyed
+the folder's bucket on governance.hold's FAIL alone: the Doctor line filed the FAIL `unexpected`, the outcome counted
+`1 unexpected doctor FAIL`, and the Purge queue part said `1 purge recorded in the audit trail is not in the queue
+file` with no audit trail on disk. `_governance_gone` now reads the folder's lead in a FAIL of any of
+`_GOV_GONE_CHECKS` (governance.hold, governance.purge_queue, governance.suppressed) beside the report's own lstat, so
+the Doctor bucket, the outcome (`with a known cause, from agentsync's governance folder that is missing`) and the
+first-sync F-line's cause name the folder once, a recorded hold and a queued purge together in one bucket; and the
+Purge queue line, by `governance.folder_lost_case` (an older governance without it reads as before), says `- N
+purge(s) purge-record.json keeps as queued and not done is lost with agentsync's governance folder, which is missing
+(see Doctor's governance.purge_queue line)`. Test: `test_a_queue_lost_with_the_governance_folder_reads_the_folders_kind_c618`
+(gq's state, and with a hold the hold record keeps).
+
 **The Loop line reads the lost-hold wait's folder form as it reads the list's** (C613's report half, ruling 64;
 `tests/test_setup_report.py`). With governance/ missing and the hold record alone keeping a hold, the sync's wait is
 lane B's `governance.LOST_HOLD_WAIT_GOVGONE` (`agentsync's governance folder is missing while its hold record keeps a

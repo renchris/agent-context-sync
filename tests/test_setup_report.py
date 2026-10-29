@@ -10409,6 +10409,48 @@ def test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636(
         assert line.endswith(tail) and "Doctor's governance.hold" not in line, line
 
 
+@pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.parametrize("held", [False, True])
+def test_a_queue_lost_with_the_governance_folder_reads_the_folders_kind_c618(
+    fake_mac: dict[str, Path], held: bool
+) -> None:
+    """B13 round 32 C618 (ruling 63, the report's half): probe gq's state, a queued purge kept by
+    purge-record.json alone with governance/ gone (and, combined, a hold the hold record keeps). The report
+    filed doctor's governance.purge_queue FAIL, worded in the folder's words, as ``unexpected`` and in the
+    outcome as an unexpected doctor FAIL, and its Purge queue part said ``recorded in the audit trail``, with
+    no audit trail on disk. Each now reads the folder's kind: the Doctor bucket and the outcome by the
+    report's own lstat with the FAIL's lead, the Purge queue line by ``governance.folder_lost_case``."""
+    config = load_config(fake_mac["config"])
+    root = expand(config.state_paths.root)
+    if held:
+        governance.set_hold(root, "all", reason="matter 8", owner="Avery Quill")
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id=config.sources[0].id, stable_id="ledger-2031"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        now=datetime(2026, 10, 26, 9, 30, tzinfo=UTC),
+    )
+    shutil.rmtree(governance.governance_dir(root))
+    assert governance.folder_lost_case(root)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    doctor = _line(summary, "- doctor: ")
+    assert (
+        "governance.purge_queue FAIL" in doctor
+        and "unexpected" not in doctor.split("governance.purge")[0][-40:]
+    )
+    assert setup_report._GOVGONE_WORDS in doctor and doctor.count(setup_report._GOVGONE_WORDS) == 1, doctor
+    queue = section(text, "Status").split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
+    assert "recorded in the audit trail" not in queue, queue
+    assert (
+        "- 1 purge purge-record.json keeps as queued and not done is lost with agentsync's governance "
+        "folder, which is missing (see Doctor's governance.purge_queue line)"
+    ) in queue, queue
+    assert "<value>" not in text
+
+
 def test_the_loop_lines_lost_hold_wait_in_the_folder_form_names_doctors_line_c613(
     fake_mac: dict[str, Path],
 ) -> None:
