@@ -13044,6 +13044,12 @@ def _read_only_reads(config: Config) -> tuple[list[str], list[str], list[tuple[s
     return status, step, [(r.name, r.ok, r.detail) for r in checks]
 
 
+def _loop_line_of(config: Config) -> str:
+    """The Summary's Loop line of a setup report built with the CLI's own hooks (B13 round 32 C638)."""
+    text, _red = setup_report.build_report(config.config_path, hooks=cli._report_hooks())
+    return next(ln for ln in text.splitlines() if ln.startswith("- Loop: "))
+
+
 def test_status_the_loop_and_doctor_under_read_only_reads_write_nothing_beside_the_manifest_c560(
     initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -13092,6 +13098,8 @@ def test_status_the_loop_and_doctor_under_read_only_reads_write_nothing_beside_t
     # an [info] line, never [ok] over a manifest it did not read (B13 round 32 C642)
     assert ("config.vanished_sources", False, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
     assert ("sources.shared_content", False, manifest_mod.SCHEMA_READ_NOTE) in checks, checks
+    # the report's Loop line quotes status's read note when status printed no unread words (B13 round 32 C638)
+    assert f"- Loop: not read: status says {manifest_mod.SCHEMA_READ_NOTE}; NEXT: " in _loop_line_of(config)
     assert not list(db.parent.glob(db.name + ".pre-v*"))
     # outside the context nothing changed: the next open migrates it, as before (the variable does not leak)
     Manifest(db).close()
@@ -13125,7 +13133,9 @@ def test_a_manifest_busy_under_read_only_reads_reads_as_busy_and_a_newer_one_sti
     with monkeypatch.context() as patch:
         patch.setattr(manifest_mod, "read_only_snapshot", busy)
         status, step, checks = _read_only_reads(initialised)
+        loop_line = _loop_line_of(initialised)
     assert f"last runs: {manifest_mod.BUSY_READ_NOTE}" in status, status
+    assert f"- Loop: not read: status says {manifest_mod.BUSY_READ_NOTE}; NEXT: " in loop_line  # C638
     assert ("config.vanished_sources", False, manifest_mod.BUSY_READ_NOTE) in checks, checks  # C642
     assert step[0].startswith("NEXT: agentsync's state file changed while it was read"), step
     conn = sqlite3.connect(db)
