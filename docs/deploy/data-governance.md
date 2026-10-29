@@ -116,9 +116,16 @@ is a copy that no purge reaches, so exclude it too.
   clears it only when it erases that id; for a glob, the glob comes from your own records, and only a purge of
   the same kind and source clears it. Preview first: `agentsync purge <selector> --dry-run` says of each lost
   purge `this purge clears it` or `this purge does not clear it`, and `agentsync purge --queue --dry-run` names
-  each one after its summary. A verified hand purge that erases the item a lost purge by id named clears it too,
-  unless its own reason is `upstream-deleted` and the lost purge's is not (B13 round 29 C172; B13 round 30 C370,
-  C312, C350, C389).
+  each one after its summary. A verified hand purge of any reason that erases the item a lost purge by id named
+  clears a lost purge this build queued while the item stays gone: that is judged on each read of the manifest
+  and never recorded, a manifest that cannot be read clears nothing, and if the source still lists the file, the
+  next sync publishes the page again, the lost purge comes back in the FAIL with its `purge id=<id>` command, and
+  the sync after that refuses. The hand purge records the lost purge as done for good only when its own reason is
+  not `upstream-deleted`, or the lost purge's is `upstream-deleted` too; else it clears it only while the item
+  stays gone, and on a lost purge an older build queued (its audit line keeps no hash of the id) it clears
+  nothing. To keep the page out, run the FAIL's own command, with the lost purge's own `--reason <its reason>`
+  (B13 round 29 C172;
+  B13 round 30 C370, C312, C350, C389; B13 round 31 C561; B13 round 32 C649, C671).
 - **Over a lost suppression list:** while `agentsync status` FAILs `governance.suppressed` because suppressed.json
   `no longer lists what` a purge the audit trail records suppressed (an item, its source-path glob or a content
   hash), the sync refuses. The erased items stay out by their id and by the one source path agentsync's audit trail

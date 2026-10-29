@@ -7126,6 +7126,45 @@ def test_the_records_page_says_accept_lost_clears_every_record_its_time_names() 
     assert "timed to the microsecond" in bullet and "an older build timed purges to the second" in bullet
 
 
+def test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_while_the_item_stays_gone() -> (
+    None
+):
+    """B13 round 32 C649 with C671 (ruling 70): the page said a verified hand purge clears a lost purge by id
+    `unless its own reason is upstream-deleted and the lost purge's is not`, but since round 31 C561 one of
+    any reason clears a lost purge this build queued while the item stays gone, judged on each read and never
+    recorded, so the next sync can publish the page again and only then refuse. The page says so, keeps the
+    exception for an older build's record, and sends the person to the lost purge's own `--reason`."""
+    from agentsync import governance  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a lost purge queue:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert (
+        "clears it too, unless its own reason is `upstream-deleted` and the lost purge's is not" not in bullet
+    )
+    for said in (
+        "A verified hand purge of any reason that erases the item a lost purge by id named clears a lost "
+        "purge this build queued while the item stays gone",
+        "judged on each read of the manifest and never recorded, a manifest that cannot be read clears "
+        "nothing",
+        "the next sync publishes the page again, the lost purge comes back in the FAIL",
+        "the sync after that refuses",
+        "else it clears it only while the item stays gone, and on a lost purge an older build queued (its "
+        "audit line keeps no hash of the id) it clears nothing",
+        "run the FAIL's own command, with the lost purge's own `--reason <its reason>`",
+        "B13 round 31 C561; B13 round 32 C649, C671",
+    ):
+        assert said in bullet, said
+    # the code the words follow: any reason erases (C561), judged on each read; the permanent close keeps the
+    # exception
+    assert "Any reason" in (governance._erased_since.__doc__ or "")
+    assert "judged on each read, never written" in " ".join((governance.lost_queued.__doc__ or "").split())
+    assert "an older build" in (governance._id_sha256s.__doc__ or "")
+    upstream = governance.PurgeReason.UPSTREAM_DELETED.value
+    assert not governance._summary_closes(upstream, "dlp-remediation")
+    assert governance._summary_closes(upstream, upstream)
+    assert governance._summary_closes("dlp-remediation", "dlp-remediation")
+
+
 def test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live() -> None:
     """B13 round 31 C558: since round 30 ruling 34 the state folder keeps purge-record.json, a copy of every
     purge line of the audit trail that never shrinks, and hold-record.json, the hold scopes, both outside

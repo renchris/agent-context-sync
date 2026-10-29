@@ -35475,4 +35475,21 @@ Reserved for round 32 lane E of B13.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
-Reserved for round 32 lane D of B13.
+**The records page says a hand purge of any reason clears a lost purge only while the item stays gone** (C649
+with C671, ruling 70; built once; `docs/deploy/data-governance.md`; data integrity). The lost purge queue bullet
+said a verified hand purge that erases the item a lost purge by id named clears it `unless its own reason is
+upstream-deleted and the lost purge's is not`, but since §16.210 C561 `governance._erased_since` takes any reason:
+an `upstream-deleted` hand purge of a lost DLP purge's item cleared the FAIL, the next sync exited 0 and published
+the page again, and only then did the lost purge come back and the sync after it refuse. The exception still holds
+for the permanent close (`_lost_covered` writes `purge-covered` under `_summary_closes`) and for a record an older
+build queued, whose `purge-enqueued` line keeps no hash of the id (`_id_sha256s` empty). The page says a verified
+hand purge of any reason clears a lost purge this build queued while the item stays gone, judged on each read of
+the manifest and never recorded, nothing when the manifest cannot be read, that the page can come back and the
+sync after it refuse, that only a purge of a reason other than `upstream-deleted` (or over an `upstream-deleted`
+lost purge) records it done for good, that an older build's record keeps the exception, and sends the person to
+the FAIL's own command with the lost purge's own `--reason`. Words only: the finder's code fix, putting back the
+reason guard in `_erased_since`, would bring back the stop with no redo that C561 removed and break ruling 46
+(makes worse True); `_erased_since`, `_erased_and_gone` and `lost_queued` are unchanged, and the page quotes no
+preview words this round, lane B's preview half (§16.215) moving any that follow it. Test:
+`test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_while_the_item_stays_gone`, which reads
+the bullet and ties it to `_erased_since`'s and `lost_queued`'s docstrings and `_summary_closes`.
