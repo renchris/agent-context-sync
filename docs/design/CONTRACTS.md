@@ -35433,7 +35433,24 @@ from `cli` and its re-render from `setup_report`.
 
 ### 16.213 Round 32: setup report: install.sh's hold words, a Loop line that points only at what the report prints, a signal-stopped first sync named by its signal and the Repeat conversions counts (2026-10-28, wave B13 round 32 lane RA)
 
-Reserved for round 32 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 32").
+**install.sh's own printed lines are agentsync's words too** (C634, ruling 68; `src/agentsync/setup_report.py`,
+`scripts/install.sh`). Ruling 55's scan read only literals under src/agentsync, so a hold reason or owner Records,
+Legal or Review still cut install.sh's own lines that install.out keeps: the lost-hold and governance-gone step 1
+tails (`which no longer lists a hold its <value> keep as set and not released`, `or the <value> owner sets the hold
+again`), the lost manifest's fact (`heartbeat.json beside it <value> earlier passes`), the misplaced hold record's
+fix (`the records or <value> owner first sets`) and the REPORT_ONLY and local-work NEXT lines (`NEXT: <value>
+~/agent-context/setup/bring-back.md`), and made the report private only. Both phrase lists gain, in one commit, `a
+hold its records keep as set and not released`, `while its records keep a hold as set and not released`, `or the
+records owner sets the hold again or releases it`, `heartbeat.json beside it records earlier passes`, `the records
+or legal owner first sets each hold it named again`, `NEXT: review `, `again, then review `, `either way, review `
+and the shell report's `<path>` legend clause `(which records no working directory)`, which the scan found too. Never
+`then review `: two words with no mark would keep a person's own `then review` whole, the value in clear. The C502
+scan now also reads install.sh's printed literals (each `say`, and the `NEXT_MSG` it prints behind `NEXT: `,
+`ctail`, `stail`, `lfact`, `lfix`, `MISPLACED_FIX` and `again`, every `$` expansion read as a count, never a comment
+or a phrase-list line), so a new install.sh clause holding record, records, legal, review or label fails it until
+its phrase is in both lists. Tests: `test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502` and
+`test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502` (install.sh's five lines, and owner Records with
+reason `matter 8`).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

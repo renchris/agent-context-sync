@@ -1472,6 +1472,18 @@ _FIXED_VALUE_PHRASES = (
     # data did not parse`, which the report re-renders (C567)
     "under a label rule because its label data did not parse",
     "under a label rule because their label data did not parse",
+    # install.sh's own printed clauses, which install.out keeps (B13 round 32 ruling 68, C634): the lost-hold
+    # and governance-gone step 1 tails, the lost manifest's fact, the misplaced hold record's fix and the
+    # REPORT_ONLY and local-work NEXT lines
+    "a hold its records keep as set and not released",
+    "while its records keep a hold as set and not released",
+    "or the records owner sets the hold again or releases it",
+    "heartbeat.json beside it records earlier passes",
+    "the records or legal owner first sets each hold it named again",
+    "NEXT: review ",
+    "again, then review ",
+    "either way, review ",
+    "(which records no working directory)",  # the shell report's <path> legend, which the same scan reads
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so

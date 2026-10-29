@@ -2058,7 +2058,8 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # agentsync's own fixed phrases that hold a word a one-word hold value can be, "|" between phrases:
 # setup_report._FIXED_CAPS_PHRASES ("IT" in capitals) and _FIXED_VALUE_PHRASES ("page", "audit", and record,
 # records, legal, review and label, "#" standing for a count), a test keeps each equal to its list (B13 round 30
-# ruling 39, C338, C397, C302; round 31 ruling 55, C502, C512, C533, C563).
+# ruling 39, C338, C397, C302; round 31 ruling 55, C502, C512, C533, C563; round 32 ruling 68, C634:
+# install.sh's own printed clauses, which install.out keeps).
 # redact_stream leaves a hold value's match inside one written out in full as it is and makes nothing private,
 # as setup_report._in_fixed_phrase does:
 # the Doctor section embeds agentsync status, whose graph.client_id line says "local sources work without IT".
@@ -2144,6 +2145,13 @@ FIXED_VALUE_PHRASES+="|for a new mail label reader|the mail label reader"
 FIXED_VALUE_PHRASES+="|The label rule did not change: a mail an older label reader let through"
 FIXED_VALUE_PHRASES+="|under a label rule because its label data did not parse"
 FIXED_VALUE_PHRASES+="|under a label rule because their label data did not parse"
+FIXED_VALUE_PHRASES+="|a hold its records keep as set and not released"
+FIXED_VALUE_PHRASES+="|while its records keep a hold as set and not released"
+FIXED_VALUE_PHRASES+="|or the records owner sets the hold again or releases it"
+FIXED_VALUE_PHRASES+="|heartbeat.json beside it records earlier passes"
+FIXED_VALUE_PHRASES+="|the records or legal owner first sets each hold it named again"
+FIXED_VALUE_PHRASES+="|NEXT: review |again, then review |either way, review "
+FIXED_VALUE_PHRASES+="|(which records no working directory)"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

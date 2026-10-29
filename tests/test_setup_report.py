@@ -2687,6 +2687,64 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
     return [t for lit in sorted(literals) for t in built.get(lit, [lit])]
 
 
+_INSTALL_PRINTED = re.compile(
+    r"(?<![\w$])(?:say |(NEXT_MSG|ctail|stail|lfact|lfix|MISPLACED_FIX|again)\+?=)\""
+)
+"""Where install.sh starts a literal it prints, which install.out keeps: a ``say``, or one of the variables a
+``say`` prints (``NEXT_MSG`` behind its ``NEXT: `` prefix)."""
+
+
+def _shell_quoted(line: str, at: int) -> str | None:
+    """The double-quoted literal of ``line`` that opens at ``at``, each ``$var``, ``${...}`` and ``$(...)``
+    read as a ``1``, as ``#`` stands for a count in a phrase; None when it does not close on the line."""
+    out: list[str] = []
+    i = at + 1
+    while i < len(line):
+        c = line[i]
+        if c == "\\":
+            out.append(line[i + 1 : i + 2])
+            i += 2
+        elif c == '"':
+            return "".join(out)
+        elif c == "$" and line[i + 1 : i + 2] in ("{", "("):
+            close, depth, i = {"{": "}", "(": ")"}[line[i + 1]], 0, i + 1
+            while i < len(line):
+                if line[i] in "{(":
+                    depth += 1
+                elif line[i] in "})":
+                    depth -= 1
+                    if depth == 0 and line[i] == close:
+                        break
+                i += 1
+            out.append("1")
+            i += 1
+        elif c == "$" and (m := re.match(r"\$(\w+|[?#@*!$-])", line[i:])):
+            out.append("1")
+            i += len(m.group(0))
+        else:
+            out.append(c)
+            i += 1
+    return None
+
+
+@functools.cache
+def _install_hold_word_texts(word: str) -> list[str]:
+    """Every literal install.sh prints that holds ``word`` (B13 round 32 ruling 68, C634): its ``say`` lines
+    and the NEXT_MSG, ctail, stail, lfact, lfix, MISPLACED_FIX and ``again`` it builds them from, never a
+    comment or the FIXED_VALUE_PHRASES lines."""
+    rx = re.compile(rf"(?i)(?<![a-z]){word}(?![a-z])")
+    texts = []
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    for line in shell.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        for m in _INSTALL_PRINTED.finditer(line):
+            text = _shell_quoted(line, m.end() - 1)
+            if text is not None and rx.search(text):
+                texts.append(("NEXT: " if m.group(1) == "NEXT_MSG" else "") + text)
+    return texts
+
+
 @pytest.mark.parametrize("word", _HOLD_WORDS)
 def test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502(word: str) -> None:
     """B13 round 31 C502, C512, C533, C563 (ruling 55): a hold reason or owner "Records", "Legal", "Review",
@@ -2701,8 +2759,12 @@ def test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502(word: str)
     red = setup_report.Redactor()
     red.add("value", word.capitalize(), ignore_case=True)
     assert [t for t in texts if red.redact(t) != t] == [] and not red.private_only
+    # install.sh's own printed literals too, which install.out keeps (B13 round 32 ruling 68, C634)
+    assert [t for t in _install_hold_word_texts(word) if red.redact(t) != t] == [] and not red.private_only
     rx = re.compile(rf"(?i)(?<![a-z]){word}(?![a-z])")
-    every = [t for w in _HOLD_WORDS for t in _hold_word_texts(w, Path("/x/state"))]
+    every = [
+        t for w in _HOLD_WORDS for t in (*_hold_word_texts(w, Path("/x/state")), *_install_hold_word_texts(w))
+    ]
     for phrase in (p for p in setup_report._FIXED_VALUE_PHRASES if rx.search(p)):  # agentsync's, never a word
         found = setup_report._FIXED_VALUE_RES[setup_report._FIXED_VALUE_PHRASES.index(phrase)]
         # never a fragment (round 30's two Quarantine class names are cells of their own, C326)
@@ -2725,6 +2787,7 @@ def test_a_hold_word_value_leaves_every_line_of_agentsyncs_whole_c502(word: str)
         ("Legal", "Records"),
         ("Review", "Avery Quill"),
         ("Label", "Avery Quill"),
+        ("matter 8", "Records"),
     ],
 )
 def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
@@ -2733,7 +2796,8 @@ def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
     """B13 round 31 C502, C512 (ruling 55): a report built for a hold reason Records, Record, Legal, Review or
     Label (and the rehearsal's reason Legal with owner Records), with one queued purge and agentsync's own
     lines holding each word in install.out, has no <value> in its body, stays public and keeps its issue link;
-    a friction line quoting the value is cut and makes it private."""
+    a friction line quoting the value is cut and makes it private. Round 32 ruling 68 (C634): install.sh's own
+    lines too, and owner Records with the reason "matter 8"."""
     cfg = fake_mac["config"]
     plain = cfg.read_text(encoding="utf-8")
     cfg.write_text(f'[governance]\nhold = true\nhold_reason = "{reason}"\nhold_owner = "{owner}"\n\n' + plain)
@@ -2750,6 +2814,25 @@ def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
         "  cited by (review by hand): notes.md",
         "  1 queued purge is waiting on a legal or records hold",
         "  not run while the hold record cannot be read",
+        # install.sh's own lines (B13 round 32 ruling 68, C634): the governance-gone and lost-hold tails, the
+        # lost manifest's fact, the misplaced hold record's fix and the REPORT_ONLY NEXT
+        "step 2 stops at its status step on agentsync's governance folder, which is missing, with "
+        "the hold list, agentsync's audit trail, the purge queue and the suppression list in it, "
+        "while its records keep a hold as set and not released (not damage, not a mode): fixing that "
+        "is the person's (they put agentsync's governance folder back whole from the copy kept, or "
+        "the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status "
+        "prints it on its governance.hold line",
+        "step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its "
+        "records keep as set and not released (not damage, not a mode): fixing that is the person's "
+        "(they put the hold list back from the copy kept, or the records owner sets the hold again "
+        "or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line",
+        "manifest.sqlite: missing though heartbeat.json beside it records earlier passes (not "
+        "damage, not a mode)",
+        "the records or legal owner first sets each hold it named again with ~/.local/bin/agentsync "
+        "hold <scope> --reason <why> --owner <name>; then they restore it from a copy they trust, or "
+        "move it aside, keeping a copy",
+        "NEXT: review ~/agent-context/setup/bring-back.md and copy that one file back privately "
+        "(nothing is sent for you)",
     )
     (fake_mac["setup"] / "install.out").write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
@@ -2766,12 +2849,11 @@ def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
     assert "<value>" not in body, [ln for ln in body.splitlines() if "<value>" in ln]
     assert "Private only: a hold's" not in text
     assert not red.private_only and setup_report.issue_link(text) is not None
-    write_friction(
-        fake_mac, V6_HAPPY + f"2026-09-29T10:01:20Z | step 3 | deviation | {reason} said hold | -\n"
-    )
+    word = owner if " " in reason else reason  # a one-word value a report word can be makes it private
+    write_friction(fake_mac, V6_HAPPY + f"2026-09-29T10:01:20Z | step 3 | deviation | {word} said hold | -\n")
     text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     body = text.split("\n## Redaction\n", 1)[0]
-    assert "<value> said hold" in body and f"{reason} said" not in body, body
+    assert "<value> said hold" in body and f"{word} said" not in body, body
     assert red.private_only and setup_report.issue_link(text) is None
 
 
