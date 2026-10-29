@@ -165,7 +165,9 @@ run_part() {
 }
 
 # A part's fixed width, cut to the machine slot's grant when the grant is smaller.
-gate_n() { if [ -n "${gate_slot_grant:-}" ] && [ "$gate_slot_grant" -lt "$1" ]; then echo "$gate_slot_grant"; else echo "$1"; fi; }
+gate_n() {
+  if [ -n "${gate_slot_grant:-}" ] && [ "$gate_slot_grant" -lt "$1" ]; then echo "$gate_slot_grant"; else echo "$1"; fi
+}
 
 full_set() {
   union_check

@@ -209,7 +209,7 @@ def test_the_scanners_run_first_and_every_test_runs_in_one_part(tmp_path: Path) 
         'pytest_q() { uv run --locked pytest -q -p no:cacheprovider "$@"; }\n'
         'run_part() { echo "PART $*"; }\n'
         "finish() { :; }\n"
-        f"{_gate_functions('union_check', 'full_set')}\n"
+        f"{_gate_functions('gate_n', 'union_check', 'full_set')}\n"
         "full_set\n"
     )
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
