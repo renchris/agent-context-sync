@@ -10227,7 +10227,19 @@ else
 	if [ -n "$l" ] && [ -f "$l" ] && [ -x "$LOCKF" ]; then
 		"$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || [ $? -ne 75 ] || SYNC_LOCK_BUSY=1
 	fi
-	[ "$SYNC_LOCK_BUSY" -eq 0 ] || say "$SYNC_LABEL: another sync is still running; waiting for it to end, at most 10 minutes"
+	# A lock body of blanks only names no holder: install.sh, a status or doctor check, or a cycle that has not
+	# written its body yet holds it as well as a sync, so the line says so in cycle.UNRECORDED_LOCK_WAIT_QUIET's
+	# words, the body read as the reinstall step reads it; a recorded body keeps the line the prompt quotes
+	# (B13 round 32 C629; round 18 V40)
+	if [ "$SYNC_LOCK_BUSY" -eq 1 ]; then
+		grc=0
+		LC_ALL=C grep -q '[^[:space:]]' "$l" 2>/dev/null || grc=$?
+		if [ "$grc" -eq 1 ]; then
+			say "$SYNC_LABEL: another sync is still running (or install.sh or a check holds the lock); waiting for it to end, at most 10 minutes"
+		else
+			say "$SYNC_LABEL: another sync is still running; waiting for it to end, at most 10 minutes"
+		fi
+	fi
 	with_progress "$SYNC_LABEL" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then

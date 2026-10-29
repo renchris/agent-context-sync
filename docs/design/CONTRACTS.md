@@ -16519,6 +16519,9 @@ deviations: do not log them." A skipped first sync is still recorded (`skipped 7
 only a reinstall's: "If another sync is running when its first sync starts (that same one, or one that started
 since, such as a background sync on a Mac that already syncs), it says "another sync is still running" and waits for
 it, up to 10 minutes, and skips that sync ("skipped, lock busy") if it is still running then."
+Amended 2026-10-28, §16.214 C629: when the lock's body is blanks only, the line reads `<label>: another sync is still
+running (or install.sh or a check holds the lock); waiting for it to end, at most 10 minutes`, in
+`cycle.UNRECORDED_LOCK_WAIT_QUIET`'s words; a recorded body keeps the line the prompt quotes.
 
 **Prompt words from another lane** (lane RB's G47 and G65, §16.65). A report that holds a `Private only:` line gets
 no `issue link (review the report first):` line, and its `NEXT:` names `bring-back.md` alone, so step 3's "its last
@@ -24771,6 +24774,9 @@ words for v27's step 3 (V24, V39). Tests:
 Amended 2026-10-20, §16.143 W14, W29: a recorded holder is worded from `LockHeldError.wait_words`, one bracket
 level and no stage (`another sync is running (a sync, pass poll, pid N, active Ns ago); ...`), and the CLI's skip
 after an empty-body wait names the holder as the wait line does.
+Amended 2026-10-28, §16.214 C629: install.sh's own announced line now says the same for an empty body, so the
+quiet wait staying silent no longer leaves the person `another sync is still running` over a holder that is not a
+sync.
 
 **V41: a missing bundled pandoc's error says what to do before the path (`agentsync.convert.pandoc`).** `bundled
 pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; looked at <~/path>`: the 200-character
@@ -35826,6 +35832,20 @@ its tail now `if the re-run's first sync is stopped by a signal again, of any ki
 on to the report`. Tests: `test_a_second_signal_stopped_first_sync_offers_no_further_re_run` (a sync-alone KILL then
 TERM; a whole-run stop before it, `end rc=143`; one from an earlier friction attempt) and the deploy-pack pin in
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+**The first sync's wait line names no sync over a lock body of blanks** (C629; amends §16.67 G37 and §16.137 V40;
+`scripts/install.sh`). The first sync's probe found the config's lock busy and printed `<label>: another sync is still
+running; waiting for it to end, at most 10 minutes` without reading the lock, and since U68 agentsync's quiet wait
+says nothing while install.sh announced it, so cycle's own words for an empty body never reached the person. A bare
+lockf, install.sh, a status or doctor check, or a cycle that has not written its body yet holds the lock with
+blanks only. After the probe, the body is read as uv_tool_install_pinned reads it (`LC_ALL=C grep -q
+'[^[:space:]]'`); when it holds blanks only the line reads `<label>: another sync is still running (or install.sh or
+a check holds the lock); waiting for it to end, at most 10 minutes`, `cycle.UNRECORDED_LOCK_WAIT_QUIET` plus the same
+tail, and a recorded body (or one written between the probe and the read) keeps the line the prompt quotes. The
+opening the prompt quotes is unchanged and the `waited-for-the-lock` note stays for both. Tests:
+`test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_be_a_sync`, the recorded body's line in
+`test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`, and the deploy-pack pin in
+`test_readme_step2_is_the_one_install_command`, which builds the line from `cycle.UNRECORDED_LOCK_WAIT_QUIET`.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 

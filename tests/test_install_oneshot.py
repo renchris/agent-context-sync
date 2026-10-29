@@ -63,7 +63,7 @@ from agentsync.config import (
 )
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.convert import speech
-from agentsync.cycle import VANISHED_ADVICE, VANISHED_FIX
+from agentsync.cycle import UNRECORDED_LOCK_WAIT_QUIET, VANISHED_ADVICE, VANISHED_FIX
 from agentsync.cycle import vanished_add_back_tail as cycle_vanished_add_back_tail
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
 from agentsync.manifest import Manifest, manifest_lost
@@ -21430,6 +21430,29 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     assert out.index(wait) > out.index(
         "agentsync: the other sync is still running after 1s; reinstalling without waiting longer"
     )
+
+
+def test_a_first_sync_behind_a_lock_with_an_empty_body_says_the_holder_need_not_be_a_sync(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 32 C629: the first sync's wait line said `another sync is still running` whatever held the
+    lock, though a body of blanks only names no holder (install.sh, a status or doctor check, a cycle not
+    yet written), and agentsync's quiet wait, announced, says nothing of its own. With an empty body the
+    line reads in cycle.UNRECORDED_LOCK_WAIT_QUIET's words; a recorded body keeps the line the prompt
+    quotes (the test above)."""
+    e, lock = _held_sync(env)
+    e = {**e, "AGENTSYNC_REINSTALL_WAIT_SECONDS": "1"}
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)  # held with no body, as a bare lockf holds it
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    finally:
+        os.close(fd)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert f"sync: {UNRECORDED_LOCK_WAIT_QUIET}; waiting for it to end, at most 10 minutes" in out, cp.stdout
+    assert "sync: another sync is still running; waiting for it to end, at most 10 minutes" not in out
+    assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(e)), "the note for both"
 
 
 def test_no_lock_file_means_no_wait_and_none_is_created(
