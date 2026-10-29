@@ -33917,6 +33917,9 @@ status and doctor), `test_the_purge_record_never_shrinks_and_an_older_install_ge
 Amended 2026-10-28, §16.210 C530: with no record naming a purge the folder's fix now ends "; no purge record names a
 purge, so if an erasure, DLP or label purge was ever run here it is lost with the folder too: the person checks
 with the records owner, and runs each such purge again by hand before the next sync)".
+Amended 2026-10-28, §16.215 C632: the purge record's no-trail tail reads "; no purge is recorded in the audit
+trail, so if the record kept a purge it is lost with it: the person checks with the records owner whether one ran,
+and runs each such erasure, DLP and label purge again by hand before the next sync".
 
 C382 (ruling 34): after governance/'s fix the hold record can be the only record of a hold on all; damaged, its
 fix said restore it or move it aside, `hold` itself refused over it, and after the move `purge docs=` erased the
@@ -35022,6 +35025,10 @@ back. A record that names a purge keeps its words; `_purges_rewritten`'s tail is
 `test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530` (an empty hold record, no
 purge record and governance/ a file: status's FAIL and the sync's error say the conditional clause and the records
 owner, never "run earlier is lost" or "none is lost"; after an erasure purge and a sync, the record's words).
+Amended 2026-10-28, §16.215 C632: `_purges_rewritten`'s tail now makes only its loss conditional, as this
+clause does, and the folder fix's hold half with no hold record reads "(no hold record names a hold, so if a hold
+was ever set here it is lost with the folder: the person checks with the records owner whether one was, and sets
+each such hold again, before any purge".
 
 C543 (2026-10-28): **under round 28's lead the lost-manifest link fix says "first" once** (ruling 60). With
 heartbeat.json keeping round 28's hold record and the manifest a link to nothing, the state_dir.manifest fix read
@@ -35588,6 +35595,18 @@ report's Loop line swap (`setup_report._LOST_HOLD_RUN_STATUS`, C508) holds for e
 missing while its hold record keeps a hold` joins both phrase lists (ruling 68). Tests: `test_cli.py`
 `test_a_lost_holds_wait_names_the_governance_folder_when_it_is_missing_c613`; `test_setup_report.py`
 `test_the_loop_lines_lost_hold_wait_points_at_doctors_fail_line_c508` (both constants end in the swapped tail).
+
+C632 (2026-10-28): **the governance folder fix's hold half makes only the loss conditional (ruling 64).** Beside
+C530's conditional purge clause, `_record_keeps` with no hold record naming a hold still said "a hold set earlier
+is lost with the folder". It reads "(no hold record names a hold, so if a hold was ever set here it is lost with
+the folder: the person checks with the records owner whether one was, and sets each such hold again, before any
+purge", the ask to the records owner kept unconditional (C199); `_purges_rewritten`'s no-trail tail takes the same
+shape ("; no purge is recorded in the audit trail, so if the record kept a purge it is lost with it: the person
+checks with the records owner whether one ran, and runs each such erasure, DLP and label purge again by hand before
+the next sync"). Dated lines at §16.205 C381 and §16.210 C530. Tests: `test_cli.py`
+`test_the_governance_folders_fix_promises_no_record_that_is_not_there`,
+`test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530`,
+`test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges`.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 

@@ -712,12 +712,15 @@ def _record_rewritten(state_dir: Path) -> str:
 
 def _purges_rewritten(state_dir: Path) -> str:
     """The purge record's fix tail: the next purge or sync writes it again from the audit trail only when the
-    trail records a purge; else the purges it kept go with it, and each is run again by hand (C381)."""
+    trail records a purge; else the purges it kept go with it, and each is run again by hand (C381): only the
+    loss conditional, as no trail line says whether the record kept one, with the records owner asked whether
+    one ran (B13 round 32 C632; ruling 64)."""
     if any(r.get("action") in _PURGE_ACTIONS for r in _audit_events(state_dir)):
         return "; the next purge or sync writes it again from what is recorded in the audit trail"
     return (
-        "; no purge is recorded in the audit trail, so the purges it kept are lost with it: the person asks "
-        "the records owner, and runs each erasure, DLP and label purge again by hand before the next sync"
+        "; no purge is recorded in the audit trail, so if the record kept a purge it is lost with it: the "
+        "person checks with the records owner whether one ran, and runs each such erasure, DLP and label "
+        "purge again by hand before the next sync"
     )
 
 
@@ -734,9 +737,10 @@ def _record_keeps(state_dir: Path) -> str:
     """The governance folder fix's last clause: a hold stays in force from the hold record only when that
     record is there and names a scope, by the file that keeps it (hold-record.json, or heartbeat.json's round
     28 list until a writing command moves it: C352), with the records owner asked of any hold it does not
-    name, since its write is best effort (C324's review); else the holds set earlier go with the folder, and
-    the person asks the records owner before any purge (B13 round 29 C199: the clause was said with no record
-    left, and the page under a hold on all was erased). Then the purges: kept out from the purge record when
+    name, since its write is best effort (C324's review); else a hold ever set here goes with the folder, and
+    the person asks the records owner whether one was before any purge (B13 round 29 C199: the clause was
+    said with no record left, and the page under a hold on all was erased), only the loss conditional (B13
+    round 32 C632; ruling 64). Then the purges: kept out from the purge record when
     it names one, else lost with the folder if one was ever run here, the records owner asked, and run again
     by hand (B13 round 30 C381; ruling 34; round 31 C530)."""
     if _record_names_a_hold(state_dir):
@@ -748,8 +752,9 @@ def _record_keeps(state_dir: Path) -> str:
         )
     else:
         holds = (
-            "(no hold record names a hold, so a hold set earlier is lost with the folder: the person checks "
-            "with the records owner, and sets each hold again, before any purge"
+            "(no hold record names a hold, so if a hold was ever set here it is lost with the folder: the "
+            "person checks with the records owner whether one was, and sets each such hold again, before any "
+            "purge"
         )
     try:
         purged = bool(recorded_purges(state_dir))

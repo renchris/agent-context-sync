@@ -6381,9 +6381,12 @@ _ROUND_31_B_PARAGRAPH_AMENDS = (
 lost record at its C370 paragraph's known residual, and C511's purge name at that paragraph's redo words."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
+    ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
+    ("16.210", "C530 (2026-10-28): **governance/'s fix says a purge is lost only if one", "§16.215 C632"),
 )
 """Round 32 lane B's dated lines at a section its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: C624's ok words at §16.200's status-and-doctor paragraph (C155)."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C624's ok words at §16.200's status-and-doctor paragraph (C155), and
+C632's conditional losses at §16.205's C381 paragraph and §16.210's C530 paragraph."""
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),

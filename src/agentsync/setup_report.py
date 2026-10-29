@@ -1397,7 +1397,7 @@ _FIXED_VALUE_PHRASES = (
     "waiting on a legal or records hold",
     "Legal / records holds",
     "legal holds are kept, in governance/holds.json",
-    "the person asks the records owner",
+    "so if the record kept a purge it is lost with it",  # lane B's C632 (B13 round 32)
     "the person checks with the records owner",
     "or the records owner runs ",
     "once its records owner releases it",
@@ -1446,7 +1446,7 @@ _FIXED_VALUE_PHRASES = (
     "upstream deletion or a label escalation",
     "while the label policy lets its file publish again",
     "while the label policy lets their file publish again",
-    "each erasure, DLP and label purge again by hand",
+    "each such erasure, DLP and label purge again by hand",
     "if an erasure, DLP or label purge was ever run here",  # lane B's C530 words (B13 round 31)
     "the mail label reader changed",
     "the previous label reader",

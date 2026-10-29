@@ -5978,6 +5978,9 @@ def test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was
             assert conditional not in said, said
         else:
             assert conditional in said and owner in said, said
+            # the hold half's loss conditional too, the records owner kept (B13 round 32 C632)
+            assert "so if a hold was ever set here it is lost with the folder" in said, said
+            assert "checks with the records owner whether one was" in said, said
 
 
 def test_both_side_files_not_files_are_named_both_in_statuss_cannot_read_line(
@@ -6170,7 +6173,8 @@ def test_the_governance_folders_fix_promises_no_record_that_is_not_there(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C199's control: with no hold record naming a scope, the governance folder's fix never says a hold
-    stays in force from it; it says a hold set earlier is lost with the folder, and to ask first."""
+    stays in force from it; it says a hold ever set here is lost with the folder, and to ask the records owner
+    whether one was first (B13 round 32 C632: only the loss conditional)."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
     gov = governance.governance_dir(root)
@@ -6180,7 +6184,9 @@ def test_the_governance_folders_fix_promises_no_record_that_is_not_there(
     _rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
     assert "stays in force" not in failed, failed
-    assert "a hold set earlier is lost with the folder" in failed, failed
+    held = "so if a hold was ever set here it is lost with the folder: the person checks with the records "
+    assert f"{held}owner whether one was, and sets each such hold again" in failed, failed
+    assert "a hold set earlier is lost" not in failed, failed
 
 
 @pytest.mark.parametrize("what", ["a folder", "damaged JSON"])
@@ -7575,7 +7581,8 @@ def test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges(
             else:
                 assert "(fix: the person " in failed and "the purge record" in failed, failed
                 assert (
-                    "no purge is recorded in the audit trail, so the purges it kept are lost with it"
+                    "no purge is recorded in the audit trail, so if the record kept a purge it is lost with "
+                    "it: the person checks with the records owner whether one ran, and runs each such erasure"
                     in failed
                 )
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
