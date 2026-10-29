@@ -35704,6 +35704,20 @@ file also leaves when its source goes, round 20 X2). The §16.140 W52 and §16.2
 `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record` (its pins in the new words,
 and run 14 waiting with run 15 converting one file).
 
+**A fix: on a [warn] line is counted as the person's, in a clause of its own** (C602; `src/agentsync/setup_report.py`).
+The prompt's step 2 gives every [warn] line the command prints to the person (show it, do not do what it says), yet
+`instruction_counts` kept a fix: on one as `fix:`, an "other instruction-like line" the Installer section calls a hint
+the agent may act on: the rehearsal's `[warn] speech ... (fix: run .../install.sh again without --report-only)`.
+Folding it into `PERSONS_FIX` would make things worse: that clause lists `doctor.PERSONS_KINDS`, the [FAIL] and state
+fixes' kinds, which a speech helper's rebuild is not. A fix: on a line that starts `[warn]` is now `_WARN_FIX`, checked
+before the `PERSONS_FIX` and `_NEXT_FIX` branches, left out of the other lines' total, and given its own clause: `N
+line(s) whose fix: is on a [warn] line, which the prompt gives the person (not a hint for the agent)` (`hints`, more
+than one). The Installer sentence adds `nor a fix: on a [warn] line, which the prompt's step 2 gives the person`. The
+shell fallback has no such count and is unchanged (its `STOPPED_FIX_LINE` is still the renderer's own words). Tests:
+`test_a_warn_lines_fix_is_the_persons_and_not_a_hint_for_the_agent_c602` (one and two), and
+`test_installer_output_is_embedded_and_its_hints_counted` with the new clause; the `out_run` helper and the attempt
+scope test's block now carry their counted fix on a [FAIL] line.
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.

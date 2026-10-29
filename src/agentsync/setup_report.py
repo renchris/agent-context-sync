@@ -6443,12 +6443,19 @@ T47). Also a person's fix (``doctor.is_persons_fix``) on any line of a run whose
 is the person's (:data:`_PERSONS_STEP`): the state file's or a config's error line is no [FAIL] line (round
 17 U6). And the state file's fix (``doctor.MANIFEST_FIX``) on any line of a run with no NEXT yet, the one
 writing the report or a killed one: every install.sh exit-65 NEXT gives that stop to the person (round 18
-V87)."""
+V87). Never a fix: on a [warn] line, which is :data:`_WARN_FIX`: :func:`_persons_kinds` names [FAIL] and state
+fixes only (B13 round 32 C602)."""
 
 _NEXT_FIX = "next-fix"
 """The :func:`instruction_counts` kind of a ``fix:`` whose command is the one its run's NEXT gives the agent
 (``the fix is the agent's: run <it> once,``: the state folder's or file's chmod, :data:`_AGENT_FIX_RE`): the
 step NEXT names, not a separate hint, and never the person's (B13 round 23 A35)."""
+
+_WARN_FIX = "warn-fix"
+"""The :func:`instruction_counts` kind of a ``fix:`` on a ``[warn]`` line: the prompt's step 2 gives every
+[warn] line the command prints to the person (show it, do not do what it says), whatever its fix says, so it
+is no hint for the agent. Its own kind, never :data:`PERSONS_FIX`, whose clause lists the [FAIL] fixes'
+kinds (``doctor.PERSONS_KINDS``), which a speech helper's rebuild is none of (B13 round 32 C602)."""
 
 _AGENT_FIX_RE = re.compile(r"the fix is the agent's(?: first)?: run (.+?) once,")
 """The command install.sh's state-mode ``FAIL_NEXT`` gives the agent (A35), or its status-step NEXT
@@ -6515,7 +6522,9 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     so does a run with no NEXT yet for the state file's own fix, ``doctor.MANIFEST_FIX`` (round 18 V87), and
     for the lost manifest's and every person's fix on the state's error line (:func:`_manifest_fix_line`, B13
     round 25 D74).
-    A fix whose command the run's NEXT gives the agent is :data:`_NEXT_FIX` (B13 round 23 A35). A mixed run's
+    A fix whose command the run's NEXT gives the agent is :data:`_NEXT_FIX` (B13 round 23 A35). A fix: on a
+    ``[warn]`` line is :data:`_WARN_FIX`, before either, as the prompt gives every [warn] to the person
+    (B13 round 32 C602). A mixed run's
     fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on any other
     line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
     counts: Counter[str] = Counter()
@@ -6532,7 +6541,9 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
         }
         for line in run:
             kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
-            if (
+            if kind == "fix:" and line.startswith("[warn]"):  # the prompt's step 2 gives it the person (C602)
+                kind = _WARN_FIX
+            elif (
                 kind == "fix:"
                 and not _TCC_PENDING_FAIL_RE.match(line)
                 and (
@@ -6677,6 +6688,11 @@ def _instruction_text(
     ]
     if persons:
         clauses.append(theirs)
+    if warned := counts[_WARN_FIX]:  # B13 round 32 C602: its own clause, never PERSONS_FIX's kinds
+        clauses.append(
+            f"{_plural(warned, 'line')} whose fix: is on a [warn] line, which the prompt gives the person "
+            f"(not {'a hint' if warned == 1 else 'hints'} for the agent)"
+        )
     if counts[_NEXT_FIX]:  # the chmod its run's NEXT gives the agent (B13 round 23 A35)
         clauses.append(
             f"{_plural(counts[_NEXT_FIX], 'line')} whose fix: is the step its run's NEXT: names "
@@ -6895,7 +6911,8 @@ def _installer_output(r: _Run) -> list[str]:
         "step; a fix: on a [FAIL] "
         "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
         "Nor is a person's fix: on any line of a run whose NEXT says fixing its error is the person's, as "
-        "the state file's error line, nor a fix: that its run's NEXT gives the agent as its step. "
+        "the state file's error line, nor a fix: that its run's NEXT gives the agent as its step, nor a fix: "
+        "on a [warn] line, which the prompt's step 2 gives the person. "
         "agentsync's own WARNING and ERROR log lines, and a sync's alarm and error lines, "
         f"{_OWN_PATH_PHRASES[0]}, as in Recent errors, and a log line's local time is shown in UTC.",
         "",

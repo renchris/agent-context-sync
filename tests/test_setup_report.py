@@ -5498,9 +5498,10 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     ]
     (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
-    counted = (
-        "1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 3 other "
-        "instruction-like lines (1 next:, 1 fix:, 1 run:) in the last 75 lines of install.out"
+    counted = (  # B13 round 32 C602: the [warn] line's fix: is the person's, in a clause of its own
+        "1 NEXT: line in 1 run (exactly one per install.sh run is expected), 2 other instruction-like lines "
+        "(1 next:, 1 run:), and 1 line whose fix: is on a [warn] line, which the prompt gives the person "
+        "(not a hint for the agent) in the last 75 lines of install.out"
     )
     inst = section(text, "Installer")
     assert f"Installer output: {counted}." in inst
@@ -5520,6 +5521,33 @@ def test_installer_output_is_embedded_and_its_hints_counted(
         "fix:": 1,
         "run:": 1,
     }
+
+
+def test_a_warn_lines_fix_is_the_persons_and_not_a_hint_for_the_agent_c602() -> None:
+    """B13 round 32 C602: the prompt's step 2 gives every [warn] line the command prints to the person (show
+    it, do not do what it says), yet a fix: on one counted as an "other instruction-like line", which the
+    Installer section calls a hint the agent may act on. It is a kind of its own, never PERSONS_FIX, whose
+    clause lists the [FAIL] fixes' kinds (doctor.PERSONS_KINDS), which a speech helper's rebuild is not."""
+    run = [
+        "# run=20261028T100000Z-4242 2026-10-28T10:00:00Z install.sh --source-local x",
+        "[warn] speech — speech: failed (the speech helper's build ran out of time) (fix: run "
+        "~/src/agent-context-sync/scripts/install.sh again without --report-only)",
+        "NEXT: review ~/agent-context/setup-report.md",
+    ]
+    counts = setup_report.instruction_counts(run)
+    assert counts == {"NEXT:": 1, setup_report._WARN_FIX: 1}, counts
+    text = setup_report._instruction_text(counts, len(run), 1)
+    assert "0 other instruction-like lines" in text, text
+    assert (
+        "1 line whose fix: is on a [warn] line, which the prompt gives the person (not a hint for the agent)"
+        in text
+    ), text
+    assert setup_report._persons_kinds() not in text and "whose fix: is the person's" not in text, text
+    two = setup_report._instruction_text(setup_report.instruction_counts([*run[:2], *run[1:]]), 4, 1)
+    assert (
+        "2 lines whose fix: is on a [warn] line, which the prompt gives the person (not hints for the agent)"
+        in (two)
+    ), two
 
 
 def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
@@ -5843,11 +5871,12 @@ def test_a_report_writes_no_s_after_a_count_it_knows(fake_mac: dict[str, Path], 
 
 def out_run(number: int, filler: int) -> list[str]:
     """One run in install.out as install.sh writes it: its header, what it printed, one doctor fix and its
-    one NEXT: line, last."""
+    one NEXT: line, last. The fix is on a [FAIL] line, a hint for the agent in a run whose NEXT gives no stop
+    to the person; a [warn] line's is the person's (B13 round 32 C602)."""
     return [
         f"# run=2026092{number}T100000Z-4242 2026-09-2{number}T10:00:00Z install.sh --source-local x",
         *(f"run {number} filler line {i:04d} of what the installer printed" for i in range(filler)),
-        "[warn] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)",
+        "[FAIL] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)",
         f"NEXT: run {number} is done",
     ]
 
@@ -6380,7 +6409,8 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
             f"# run={run} {run[:4]}-{run[4:6]}-{run[6:8]}T10:00:00Z install.sh --source-local x",
             "what the installer printed",
             "and more of it",
-            *["[warn] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)"]
+            # a [FAIL] line's fix: a [warn] line's is the person's (B13 round 32 C602)
+            *["[FAIL] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)"]
             * fixes,
             "NEXT: done",
         ]
