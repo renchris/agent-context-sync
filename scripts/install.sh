@@ -2426,7 +2426,7 @@ hold_scopes() {
 		}' "${files[@]}" 2>/dev/null | LC_ALL=C awk '$0 != "all" && length($0) <= 63' | LC_ALL=C sort -u || true
 }
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk sl dsl dot
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs fl
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
@@ -3034,23 +3034,8 @@ redaction_pairs() {
 			[ "$m" = "$k" ] || printf '%s\t%s\ta\n' "--source-local $m" "--source-local $u"
 			m="$(shown_arg "$x")" # as a NEXT's re-run shows it, in its quotes, as the Python report keeps them
 			case "$m" in \"*) printf '%s\t%s\ta\n' "--source-local $m" "--source-local \"$u\"" ;; esac
-			# as add-source's note prints the folder typed, unquoted, before the stored form: `added source
-			# '<id>' to <file> (<typed>, stored as <stored>)` (a link resolved), anchored to the note so the
-			# bare path is replaced nowhere else, the stored form left to the pairs after it, as
-			# setup_report cuts the typed form (B13 round 31 ruling 49: C529, lane RA's rule). As pathlib prints
-			# it: no `//`, no `/./`, no trailing `/` or `/.` (a tab-completed argument ends in `/`); the slashes
-			# by variable, since bash 3.2 keeps a backslash-escaped one in a ${//} replacement
-			m="$x" sl=/ dsl=// dot=/./
-			while :; do
-				case "$m" in
-				*//*) m="${m//$dsl/$sl}" ;;
-				*/./*) m="${m//$dot/$sl}" ;;
-				?*/.) m="${m%/.}" ;;
-				?*/) m="${m%/}" ;;
-				*) break ;;
-				esac
-			done
-			printf '%s\t%s\ta\n' "($m, stored as" "($u, stored as"
+			# add-source's note, `added source '<id>' to <file> (<typed>, stored as <stored>):`, is cut by its structure
+			# after every pair (typed_note_cut, B13 round 32 C666), so no pair names its typed form here
 		done
 	done
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
@@ -3885,7 +3870,80 @@ redact_stream() {
 		for (j = 1; j <= ns; j++) line = line seg[j]
 		print line
 	}
-	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once'
+	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once' |
+		typed_note_cut
+}
+# add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
+# `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair has run, as
+# setup_report._ADDED_TYPED_RE reads it after red.redact (each part lazy, the `)` followed by `:`): <typed> is
+# cut as _cut_path cuts it, kept up to its first part that is not "", ~, . or .., made only of placeholders, a
+# fixed macOS component, a generic drive folder, a generic home dir in any case or the part after CloudStorage,
+# then <path>; <stored> is left as the pairs left it. So a typed folder install.log has no argument for (a
+# relative --source-local, which install.sh made absolute before add-source printed it; a lost log; an
+# add-source the agent ran itself) is cut too (B13 round 32 ruling 72, C666). The word lists through ENVIRON
+# (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
+# byte-wise.
+typed_note_cut() {
+	TYPED_FIXED='Users|Library|Application|Support|CloudStorage|Volumes|Applications' \
+		TYPED_DRIVE='Apps|Attachments|Desktop|Documents|Downloads|Microsoft Copilot Chat Files|Microsoft Teams Chat Files|Music|My Drive|Notebooks|Personal Vault|Pictures|Recordings|Shared|Shared Documents|Shared drives|Videos' \
+		TYPED_HOME='applications|code|desktop|dev|development|documents|downloads|git|library|projects|repos|sites|source|src|work|workspace' LC_ALL=C awk '
+	BEGIN {
+		n = split(ENVIRON["TYPED_FIXED"], w, "|"); for (i = 1; i <= n; i++) fixed[w[i]] = 1
+		n = split(ENVIRON["TYPED_DRIVE"], w, "|"); for (i = 1; i <= n; i++) drive[w[i]] = 1
+		n = split(ENVIRON["TYPED_HOME"], w, "|"); for (i = 1; i <= n; i++) home[w[i]] = 1
+	}
+	function cut(t,    n, p, i, j, out) {
+		n = split(t, p, "/")
+		for (i = 1; i <= n; i++) {
+			if (p[i] == "" || p[i] == "~" || p[i] == "." || p[i] == ".." || p[i] ~ /^(<[a-z]+(-[0-9]+)?>)+$/) continue
+			if ((p[i] in fixed) || (p[i] in drive) || (tolower(p[i]) in home) || (i > 1 && p[i - 1] == "CloudStorage")) continue
+			out = ""
+			for (j = 1; j < i; j++) out = out p[j] "/"
+			return out "<path>"
+		}
+		return t
+	}
+	{
+		s = $0; done = ""
+		while ((a = index(s, "added ")) > 0) {
+			before = a > 1 ? substr(s, a - 1, 1) : ""
+			rest = substr(s, a)
+			ts = 0
+			# a byte outside ASCII before it is a boundary: the Python regex matches after a curly quote, a
+			# no-break space or a dash, and a byte-wise awk cannot tell those from a letter, so it cuts after
+			# both (the safe side: only a word that runs into it is cut where Python leaves it; C666 review)
+			if (before !~ /[A-Za-z0-9_]/) {
+				if (substr(rest, 1, 14) == "added source \047") {
+					q = index(substr(rest, 15), "\047") # the id runs to its closing quote
+					if (q && substr(rest, 15 + q, 4) == " to ") {
+						b = 15 + q + 4 # the file: at least one character, then " ("
+						k = index(substr(rest, b + 1), " (")
+						if (k) ts = b + k + 2
+					}
+				} else if (substr(rest, 1, 20) == "added inbox source \047") {
+					q = index(substr(rest, 21), "\047")
+					if (q && substr(rest, 21 + q, 2) == " (") ts = 21 + q + 2
+				}
+			}
+			if (ts) { # <typed>: at least one character, then ", stored as "; <stored>: one or more, then "):"
+				t = index(substr(rest, ts + 1), ", stored as ")
+				if (t) {
+					ss = ts + t + 12
+					e = index(substr(rest, ss + 1), "):")
+					if (e) {
+						typed = substr(rest, ts, t)
+						stored = substr(rest, ss, e)
+						done = done substr(s, 1, a - 1) substr(rest, 1, ts - 1) cut(typed) ", stored as " stored
+						s = substr(rest, ss + e)
+						continue
+					}
+				}
+			}
+			done = done substr(s, 1, a)
+			s = substr(s, a + 1)
+		}
+		print done s
+	}'
 }
 launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `launchctl print`
 	printf '%s\n' "$1" | sed -n "s/^	$2 = //p" | head -1

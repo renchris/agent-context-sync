@@ -3821,6 +3821,112 @@ def test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is(en
     assert "Plans kept" in text, "anchored to the note: the path's words stay words elsewhere"
 
 
+def _py_report(env: dict[str, str], cfg: Path) -> str:
+    """The agentsync report (build_report) on the test's home, as the shell fallback's peer."""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; from pathlib import Path; from agentsync import setup_report; "
+            "print(setup_report.build_report(Path(sys.argv[1]))[0])",
+            str(cfg),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**env, "PATH": "/usr/bin:/bin"},
+    ).stdout
+
+
+@pytest.mark.parametrize("log", ["relative", "none"])
+def test_an_added_sources_typed_folder_is_cut_with_no_logged_argument_for_it(
+    env: dict[str, str], log: str
+) -> None:
+    """B13 round 32 ruling 72 (C666): the shell cut the typed folder of add-source's note only by a pair built
+    from a ~/ or absolute --source-local argument in install.log. A relative one (install.sh makes it absolute
+    before add-source prints it) or no log at all built none, so the fallback printed `(~/<org-1> Plans
+    Link/...` where the agentsync report, which reads the note by its structure, cut it. Forced to the shell
+    fallback, the note's typed form is cut by its structure as _cut_path cuts it, the stored form kept, the
+    line as the agentsync report prints it on the same home, and the path's words stay words elsewhere."""
+    home = Path(env["HOME"])
+    stored = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    stored.mkdir(parents=True)
+    (home / "Contoso Plans Link").symlink_to(stored.parent)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "project-alpha"\nkind = "local"\npath = "{stored}"\n')
+    real = Path(os.path.realpath(home))
+    typed = [f"{home}/Contoso Plans Link/Project Alpha", f"{real}/Contoso Plans Link/Project Alpha"]
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    if log == "relative":
+        word = subprocess.run(  # as install.sh's log_start writes it, run from the home folder
+            [BASH32, "-c", 'printf "%q" "$1"', "_", "Contoso Plans Link/Project Alpha"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        (setup / "install.log").write_text(
+            "2026-10-10T01:00:00Z run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- "
+            f"args=--source-local {word}\n"
+        )
+    notes = [f"added source 'project-alpha' to {cfg} ({t}, stored as {stored}): Plans kept" for t in typed]
+    friction_path(env).write_text(
+        "Prompt: v33\n" + "".join(f"F{i} | step 2 | clean | 0 | {n} | -\n" for i, n in enumerate(notes, 1))
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    shown = re.findall(r"\(([^()]*), stored as ([^()]*)\): Plans kept", text)
+    assert len(shown) == 2, text
+    for typed_shown, stored_shown in shown:
+        assert typed_shown == "~/<path>", shown
+        assert re.fullmatch(r"~/Library/CloudStorage/OneDrive-<org-\d>/<folder-\d>", stored_shown), shown
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        assert "Plans Link" not in path.read_text(), path
+    assert "Plans kept" in text, "anchored to the note: the path's words stay words elsewhere"
+    py = re.findall(r"\(([^()]*), stored as ([^()]*)\): Plans kept", _py_report(env, cfg))
+
+    def numbered(pairs: list[tuple[str, str]]) -> list[tuple[str, ...]]:
+        return [tuple(re.sub(r"<(folder|org)-\d+>", r"<\1-N>", x) for x in p) for p in pairs]
+
+    assert numbered(py) == numbered(shown), (py, shown)
+
+
+@pytest.mark.parametrize("before", ["\u201c", "\u00a0", "\u2014", " ", ""])
+def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> None:
+    """The review of B13 round 32 C666: Python's \\b matches `added source` after a curly quote, a no-break
+    space or an em dash, and the awk pass read any byte outside ASCII there as a letter and left the typed
+    folder in clear. Run under LC_ALL=C on UTF-8 bytes, it cuts after each, as setup_report does."""
+    [fn] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n.*?^\}$", INSTALL_SH.read_text(encoding="utf-8"))
+    line = f"{before}added source 'a' to f (~/Contoso Secret/Alpha, stored as ~/<folder-1>): kept"
+    cp = subprocess.run(
+        [BASH32, "-c", fn + "\ntyped_note_cut"],
+        input=line.encode() + b"\n",
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    shown = cp.stdout.decode()
+    assert shown == f"{before}added source 'a' to f (~/<path>, stored as ~/<folder-1>): kept\n", shown
+    py = setup_report._ADDED_TYPED_RE.sub(setup_report._typed_cut, line)
+    assert py + "\n" == shown, (py, shown)
+
+
+def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
+    """B13 round 32 C666: typed_note_cut's awk reads the fixed components, generic folders and home dirs from
+    ENVIRON; each list is setup_report's set (generic_folder's and generic_home_dir's, which their own tests
+    keep equal to the same sets)."""
+    [script] = re.findall(r"(?ms)^typed_note_cut\(\) \{\n(.*?)^\}$", INSTALL_SH.read_text(encoding="utf-8"))
+    [drive] = re.findall(r"(?m)^\t\tTYPED_DRIVE='(.*)' \\$", script)
+    [homes] = re.findall(r"(?m)^\t\tTYPED_HOME='(.*)' LC_ALL=C awk", script)
+    assert set(drive.split("|")) == set(setup_report._GENERIC_FOLDERS) and len(drive.split("|")) == 17
+    assert set(homes.split("|")) == set(setup_report._GENERIC_HOME_DIRS)
+    [fixed] = re.findall(r"(?m)^\tTYPED_FIXED='(.*)' \\$", script)
+    assert set(fixed.split("|")) == set(setup_report._PATH_COMPONENTS)
+
+
 @pytest.mark.parametrize("same_run", [True, False])
 def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
     env: dict[str, str], same_run: bool
@@ -18570,7 +18676,7 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
 SHELL_REDACTION_FNS = re.compile(
-    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$"
+    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|typed_note_cut|hold_cut)\(\) \{\n.*?^\}$"
 )
 
 

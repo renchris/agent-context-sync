@@ -34786,6 +34786,8 @@ configured folder, there or as an added source's typed folder, cut at its first 
 same-stored collapse, so a note whose two forms redact alike shows both. Tests:
 `test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is`, forced to the shell fallback with the
 note in the friction log in two spellings of the home, and `test_the_path_legend_says_only_a_relative_argument_is_one`.
+Amended 2026-10-28, §16.214 C666: the `(<path>, stored as` pairs are gone; typed_note_cut reads the note by its
+structure after every pair, so a relative or unlogged --source-local is cut too.
 
 **The shell report's sync-stop kinds are the agentsync report's, every one** (C531 with C552, C562, C575; ruling 57;
 `scripts/install.sh`). Lane B's round 30 C345 records a sync stopped on a suppression list or purge queue that lost a
@@ -35755,7 +35757,22 @@ hooks: the schema note's and the busy note's Loop lines read `not read: status s
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
-Reserved for round 32 lane RB of B13.
+**The shell report cuts an added source's typed folder by the note, not by a logged argument** (C666; ruling 72; amends
+§16.209 C529; `scripts/install.sh`). C529's cut was a pair built from each ~/ or absolute --source-local argument in install.log,
+but install.sh makes a relative argument absolute (`$PWD/<arg>`) before add-source prints it, so a relative one
+built no pair, nor did a note with no install.log line (a lost log, an add-source the agent ran itself), and the
+fallback printed `(~/<org-1> Plans Link/<folder-1>, stored as ...)` where the agentsync report, which reads the note
+by its structure (`setup_report._ADDED_TYPED_RE`), cut it. redact_stream now ends in typed_note_cut, one awk pass
+after every pair (so the home is `~` and a registered folder `<folder-N>`, as Python cuts after `red.redact`),
+anchored to `added source '<id>' to <file> (<typed>, stored as <stored>):` and `added inbox source '<id>' (<typed>,
+stored as <stored>):`, each part lazy and the `)` followed by `:` as the regex has it. It cuts <typed> by
+`_cut_path`'s rule (kept up to its first part that is not "", `~`, `.` or `..`, made only of placeholders, a fixed
+macOS component, a generic drive folder, a generic home dir in any case or the part after CloudStorage, then
+`<path>`) and leaves <stored>. Its word lists come through ENVIRON (GENERIC_FOLDER_WORDS, GENERIC_HOME_WORDS), every
+stage under `LC_ALL=C`. The rooted `(<path>, stored as` pairs are dropped: the pass covers every spelling they did.
+Tests: `test_an_added_sources_typed_folder_is_cut_with_no_logged_argument_for_it`, forced to the shell fallback
+with a relative argument and with no install.log, each equal to build_report's line on the same home, and
+`test_the_typed_cuts_word_lists_are_the_shells_and_the_reports`.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
