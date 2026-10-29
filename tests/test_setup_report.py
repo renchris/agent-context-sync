@@ -513,7 +513,7 @@ def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
     for n, whose in ((1, "its label data"), (2, "their label data")):
         line = (
             "1 source synced (of the converted: 0 unreadable, 0 failed, 3 refused, 1 of them withheld: its "
-            f"label cannot be read, {n} of them under a label rule because {whose} did not parse)"
+            f"label cannot be read, {n} of them because a label rule could not read {whose})"
         )
         split = setup_report._SPLIT_RE.search(line)
         assert split is not None and split.groups() == ("0", "0", "3", "1"), split
@@ -2658,6 +2658,13 @@ _HOLD_WORD_KEYS = {
 
 
 _HOLD_WORDS = ("record", "records", "legal", "review", "label")
+_OLDER_PRINTED = (
+    "3 refused, 1 of them under a label rule because its label data did not parse",
+    "3 refused, 2 of them under a label rule because their label data did not parse",
+)
+"""Lines an older agentsync printed and no literal under src/agentsync holds any more, which an older
+install.out still keeps and the report quotes, so their phrases stay in both lists: round 31's label data
+clause (B13 round 32 C609)."""
 
 
 @functools.cache
@@ -2699,13 +2706,13 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
         " records (": ["2 purges, as that time names 2 records (2026-10-22T05:32:56Z)"],
         "its label cannot": ["1 of them withheld: its label cannot be read"],
         "its label": ["1 of them withheld: its label cannot be read"],
-        " of them under a label rule because ": [
-            "3 refused, 1 of them under a label rule because its label data did not parse",
-            "3 refused, 2 of them under a label rule because their label data did not parse",
+        " of them because a label rule could not read ": [
+            "3 refused, 1 of them because a label rule could not read its label data",
+            "3 refused, 2 of them because a label rule could not read their label data",
         ],
-        "its label data": ["3 refused, 1 of them under a label rule because its label data did not parse"],
+        "its label data": ["3 refused, 1 of them because a label rule could not read its label data"],
         "their label data": [
-            "3 refused, 2 of them under a label rule because their label data did not parse",
+            "3 refused, 2 of them because a label rule could not read their label data",
         ],
         "sensitivity label ": ["refused: sensitivity label Contoso Secret is excluded by [policy]"],
         "launchd label ": ["launchd label 'com.contoso.x y' is invalid: use letters, digits, '.', '-', '_'"],
@@ -2714,7 +2721,8 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
             "its one local or inbox source with a record (x)",
         ],
     }
-    return [t for lit in sorted(literals) for t in built.get(lit, [lit])]
+    older = [line for line in _OLDER_PRINTED if rx.search(line)]
+    return [t for lit in sorted(literals) for t in built.get(lit, [lit])] + older
 
 
 _INSTALL_PRINTED = re.compile(

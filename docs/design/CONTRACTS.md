@@ -35048,6 +35048,9 @@ msip_labels header that does not parse and one .msg under `exclude_label_names`:
 only in `, 3 refused`, `_SPLIT_RE` R=3 and K=1) and
 `test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart_from_k`; `test_setup_report.py`
 `test_a_label_it_cannot_read_is_its_own_quarantine_class_c326` builds the new clause.
+Amended 2026-10-28, §16.215 C609: L's clause now reads `, N of them because a label rule could not read its label
+data` (`their label data` for more), since a name rule's refusals in R are under a label rule too; still no "refused",
+`_SPLIT_RE` and install.sh's readers unchanged, and the report reads both forms (`_LABEL_UNPARSED_RE`, lane RA).
 
 C520 (2026-10-28): **beside a [FAIL] the sync's guard stops on, status's empty-folder wait says the sync waits on it**
 (ruling 60). With holds.json a folder, status's WAITING ON YOU line said `(a plain \`~/.local/bin/agentsync sync\`
@@ -36110,6 +36113,19 @@ with no hold-record.json, `the purge queue is missing with the governance folder
 audit trail` and `the audit trail was lost before` join both phrase lists. Tests: `test_cli.py`
 `test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606`; `test_loop.py`
 `test_a_governance_folder_this_account_cannot_search_names_the_line_status_prints_c639`.
+
+C609 (2026-10-28): **the label data clause no longer reads as if R's other refusals were not under a label rule.**
+Ruling 59's `2 refused, 1 of them under a label rule because its label data did not parse`, over one mail a name rule
+refused and one whose msip_labels header did not parse, set the one apart by "under a label rule" though both were.
+The sync line's clause is now `, L of them because a label rule could not read its label data` (`their label data`
+for more), with no "refused", "converted", "deferred", "read again", "withheld" or "of them a first", so `_SPLIT_RE`
+(R, K) and install.sh's awk readers are unchanged. The report's `_LABEL_UNPARSED_RE` reads it and round 31's words,
+its Summary re-renders the new ones, and both forms are in both phrase lists (lane RA, 8f4f5b63a); the guide's
+Summary row gives the new words. Dated line at §16.210 C525. Tests: `test_cycle.py`
+`test_a_label_rules_refusal_by_name_and_one_it_cannot_read_share_the_rule_c609` (one mail refused for its excluded
+label and one whose header does not parse: `2 refused, 1 of them because a label rule could not read its label
+data`, `_SPLIT_RE` R=2 and no K), with the C525 test's line; `test_deploy_pack.py`
+`test_the_summary_row_gives_the_label_data_clause_after_k`.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 

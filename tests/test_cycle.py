@@ -3030,8 +3030,8 @@ def test_the_sync_line_counts_the_files_refused_for_a_label_it_cannot_read_apart
     cli._print_report(report)
     line = capsys.readouterr().out.splitlines()[-1]
     want = (
-        "3 refused, 1 of them withheld: its label cannot be read, 2 of them under a label rule because their "
-        "label data did not parse"
+        "3 refused, 1 of them withheld: its label cannot be read, 2 of them because a label rule could not "
+        "read their label data"
     )
     assert want in line, line
     split = setup_report._SPLIT_RE.search(line)
@@ -3060,10 +3060,38 @@ def test_under_a_name_rule_the_label_clauses_name_their_causes_and_say_refused_o
     cli._print_report(report)
     line = capsys.readouterr().out.splitlines()[-1]
     assert "3 refused, 1 of them withheld: its label cannot be read, " in line, line
-    assert ", 2 of them under a label rule because their label data did not parse" in line, line
+    assert ", 2 of them because a label rule could not read their label data" in line, line
     assert line.count("refused") == 1 and ", 3 refused" in line, line
     split = setup_report._SPLIT_RE.search(line)
     assert split is not None and (split.group(3), split.group(4)) == ("3", "1"), line
+
+
+def test_a_label_rules_refusal_by_name_and_one_it_cannot_read_share_the_rule_c609(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C609: with one mail refused for its excluded label and one whose msip_labels header does
+    not parse, ruling 59's ", 1 of them under a label rule because its label data did not parse" set the
+    second apart by "under a label rule", though the first was refused under it too. The clause names what
+    the rule could not do; R and K read as before."""
+    guid = "00000000-0000-4000-8000-00000000c0de"
+    (local_source_dir / "projects" / "Contoso excluded.eml").write_bytes(
+        f"Subject: Contoso excluded\r\nmsip_labels: MSIP_Label_{guid}_Enabled=true; "
+        f"MSIP_Label_{guid}_Name=Contoso Secret;\r\nContent-Type: text/plain\r\n\r\nAgenda.\r\n".encode()
+    )
+    (local_source_dir / "projects" / "Contoso plan.eml").write_bytes(
+        b"Subject: Contoso plan\r\nmsip_labels: MSIP_Label_notaguid_Enabled=True;\r\n"
+        b"Content-Type: text/plain\r\n\r\nAgenda.\r\n"
+    )
+    report = run(config_with(tmp_path, local_source_dir, LABEL_RULE))
+    [rep] = report.sources
+    assert (rep.refused, rep.withheld_read, rep.label_unreadable) == (2, 0, 1), rep
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert "2 refused, 1 of them because a label rule could not read its label data" in line, line
+    assert "under a label rule" not in line and line.count("refused") == 1, line
+    split = setup_report._SPLIT_RE.search(line)
+    assert split is not None and (split.group(3), split.group(4)) == ("2", None), line
 
 
 def test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter(

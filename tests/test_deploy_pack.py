@@ -6423,12 +6423,14 @@ _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.215 C633"),
     ("16.205", "C370 with C312, C350, C389 (ruling 35): a queued purge the queue lost", "§16.215 C649"),
     ("16.210", "C560 (2026-10-28): **every manifest read the setup report makes", "§16.215 C642"),
+    ("16.210", "C525 (2026-10-28): **under a label rule the label clauses name their causes", "§16.215 C609"),
 )
 """Round 32 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C624's ok words at §16.200's status-and-doctor paragraph (C155), and
 C632's conditional losses at §16.205's C381 paragraph and §16.210's C530 paragraph, and C631's no-sync clause
 at §16.119's S32 paragraph and §16.210's C520 paragraph, and C633's stopped heartbeat at §16.51's Q14/Q35, and
-C649's third preview form at §16.205's C370 paragraph, and C642's [info] read note at §16.210's C560."""
+C649's third preview form at §16.205's C370 paragraph, and C642's [info] read note at §16.210's C560, and
+C609's label data clause at §16.210's C525."""
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),
@@ -7590,15 +7592,17 @@ def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
     """B13 round 31 ruling 59 (C525 with C522, lane B; C567 with C583, lane RA): the sync line's share of the
     refused count a label rule refused because the label data did not parse reads apart from K's withheld
     share, and the report's Summary re-renders it after K's clause. The guide's Summary row gives it after
-    K, with its plural, in the sync line's words, read here."""
+    K, with its plural, in the sync line's words, read here. Round 32 C609 (lane B; lane RA's regex and
+    re-render): the clause reads ", L of them because a label rule could not read its label data", since a
+    name rule's refusals in R are under a label rule too."""
     from agentsync import cli, setup_report  # noqa: PLC0415
 
     source = inspect.getsource(cli)
     assert 'whose = "its label data" if label_unreadable == 1 else "their label data"' in source
-    split = 'split += f", {label_unreadable} of them under a label rule because {whose} did not parse"'
+    split = 'split += f", {label_unreadable} of them because a label rule could not read {whose}"'
     assert split in source
     report = inspect.getsource(setup_report)
-    assert '"under a label rule because their label data did not parse"' in report
+    assert '"because a label rule could not read their label data"' in report
     assert 'refused += f", {unparsed[1]} of them {why}"' in report
     summary = "| Summary: `first sync:` or `sync:` |"
     [row] = [line for line in _feedback_page().splitlines() if line.startswith(summary)]
@@ -7607,7 +7611,7 @@ def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
         " that count"
     )
     clause = (
-        "`, L of them under a label rule because its label data did not parse` (`their label data` for"
+        "`, L of them because a label rule could not read its label data` (`their label data` for"
         " more than one) after it"
     )
     assert k in row and clause in row and row.index(k) < row.index(clause)
