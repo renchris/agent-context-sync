@@ -2629,12 +2629,13 @@ class PdfConverter:
 
 ### `agentsync.convert.text` — `src/agentsync/convert/text.py` — owner: **convert**
 
-Converter: plain text: decoded (utf-8, then utf-8-sig/utf-16 BOM, else latin-1) into a fenced block
-(owner: convert).
+Converter: plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)
+into a fenced block (owner: convert).
 
 ```python
 class PlainTextConverter:
-    """Plain text: decoded (utf-8, then utf-8-sig/utf-16 BOM, else latin-1) into a fenced block.
+    """Plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1) into a
+    fenced block.
 
     The body is a heading with the file name then the text inside a fenced block (``csv``/``tsv`` rendered as
     a GFM table up to max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).
@@ -35590,6 +35591,18 @@ C550 removed `fp(a) == fp(c) != fp(b)`, nothing was left to show that `labelled_
 labels: with it patched into a plain copy the test still passed, comparing the H1 of two identical files. It now
 asserts each file's exact label (`[LABEL]` and `[OTHER_LABEL]`, not a bare `!=`, which one labelled file would pass)
 before the H1 equality. Test: `test_policy.py::test_h1_ignores_a_relabel`.
+
+**Two converter docstrings say what the code does (C669, C670, round 32's converter cluster; words only).** The
+registry's module docstring put an excluded or missing label among the screens raised as `UnreadableSourceError` and
+cached as an UNREADABLE stub, but `convert_file` screens labels first, before the cache (`_label_refusal`), and
+returns them as REFUSED results never cached, since the action key cannot see a relabel; the docstring now tells the
+cached screens (`encrypted-office`, `encrypted-pdf`, `not-ooxml`) from the label refusal, which the guard raises only
+as a backstop (C669). Both of `convert.text`'s docstrings, and their copy in §15's `agentsync.convert.text` section,
+said utf-8 first, then a BOM, and left out cp1252; they now give `_common._decode_text`'s order, `UTF-8/UTF-16 BOM
+first, then strict UTF-8, then cp1252, else latin-1`, which `options()` already records as `decode`
+(`bom,utf-8,cp1252,latin-1`); no emitter version or option moves (C670). Tests:
+`test_convert_family.py::test_the_registry_docstring_tells_a_cached_unreadable_stub_from_an_uncached_refusal` and
+`test_convert_family.py::test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 

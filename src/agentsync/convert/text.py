@@ -1,5 +1,5 @@
-"""Converter: plain text: decoded (utf-8, then utf-8-sig/utf-16 BOM, else latin-1) into a fenced block
-(owner: convert)."""
+"""Converter: plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)
+into a fenced block (owner: convert)."""
 
 from __future__ import annotations
 
@@ -72,7 +72,8 @@ def _parse_delimited(text: str, delimiter: str) -> list[list[str]] | None:
 
 
 class PlainTextConverter:
-    """Plain text: decoded (utf-8, then utf-8-sig/utf-16 BOM, else latin-1) into a fenced block.
+    """Plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1) into a
+    fenced block.
 
     The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
     max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key

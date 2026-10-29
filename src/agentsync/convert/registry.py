@@ -2,10 +2,13 @@
 pre-conversion policy guard and the untrusted-content banner are owned by controls, see ``policy.py``).
 
 ``Registry.default`` wraps every converter in a guard that, before the converter runs, screens the staged
-bytes (encrypted Office container -> ``encrypted-office``, encrypted PDF -> ``encrypted-pdf``, excluded or
-missing sensitivity label -> ``refused: …``; all raised as UnreadableSourceError so the result is an
-UNREADABLE stub that is cached and settled, never retried), maps pdfminer's password/encryption errors to
-``encrypted-pdf``, turns output that is empty after stripping whitespace and form feeds into an UNREADABLE
+bytes: an encrypted Office container -> ``encrypted-office``, an encrypted PDF -> ``encrypted-pdf`` and an
+Office name that is not a ZIP -> ``not-ooxml`` are raised as UnreadableSourceError, so the result is an
+UNREADABLE stub that is cached and settled, never retried. An excluded or missing sensitivity label
+(``refused: …``) is raised the same way here only as a backstop: ``convert_file`` screens labels first, before
+the cache (``_label_refusal``), and returns them as REFUSED results that are never cached, because the action
+key (H1) cannot see a relabel (B13 round 32 C669). The guard also maps pdfminer's password/encryption errors
+to ``encrypted-pdf``, turns output that is empty after stripping whitespace and form feeds into an UNREADABLE
 stub (C15 §9 #26), and prefixes every unit body with ``policy.UNTRUSTED_BANNER`` so H2 covers the banner.
 
 The registry never looks for an OCR engine: the cycle resolves one and hands it in (``ocr=``).  Without one

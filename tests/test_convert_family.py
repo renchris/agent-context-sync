@@ -1131,3 +1131,34 @@ def test_a_legacy_retry_of_some_stubs_with_a_folder_says_how_many(capsys: pytest
         "named a folder on this Mac"
     ), notes
     assert not [n for n in notes if re.search(r"\bconverted\b|\bdeferred\b|\bread again\b", n)]
+
+
+def test_the_registry_docstring_tells_a_cached_unreadable_stub_from_an_uncached_refusal() -> None:
+    """B13 round 32 C669: the module docstring put the label refusal among the screens raised as
+    UnreadableSourceError and cached, but ``convert_file`` returns a label refusal as REFUSED before the cache
+    (``_label_refusal``), never cached; the guard's label screen is a backstop only."""
+    from agentsync.convert import registry  # noqa: PLC0415
+
+    doc = " ".join((registry.__doc__ or "").split())
+    assert "missing sensitivity label -> ``refused: …``; all raised as UnreadableSourceError" not in doc
+    assert "``not-ooxml`` are raised as UnreadableSourceError, so the result is an UNREADABLE stub" in doc
+    assert "returns them as REFUSED results that are never cached" in doc and "only as a backstop" in doc
+
+
+def test_the_text_converters_docstrings_give_the_decode_order_the_code_uses() -> None:
+    """B13 round 32 C670: both docstrings said utf-8 first, then a BOM, and left out cp1252, while
+    ``_common._decode_text`` takes a BOM first, then strict UTF-8, then cp1252, then latin-1, as the options'
+    ``decode`` records; the spec copy in CONTRACTS.md said the same. Words only: the emitter and options
+    stay."""
+    from agentsync.convert import text  # noqa: PLC0415
+
+    said = "decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
+    contracts = " ".join(
+        (Path(__file__).parent.parent / "docs" / "design" / "CONTRACTS.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    for doc in (text.__doc__, text.PlainTextConverter.__doc__):
+        assert said in " ".join((doc or "").split()), doc
+    assert contracts.count(said) == 2 and "decoded (utf-8, then utf-8-sig/utf-16 BOM" not in contracts
+    assert text.PlainTextConverter(ConvertConfig()).options()["decode"] == "bom,utf-8,cp1252,latin-1"
