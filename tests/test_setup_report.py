@@ -12452,6 +12452,61 @@ def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outc
     ]
 
 
+def test_a_retried_runs_first_sync_a_signal_stopped_is_named_by_its_signal_c612(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 32 C612 (ruling 66): a first sync stopped by a signal from outside install.sh, then the same
+    command ending 0, read only `exited 1 at its first-sync step` in Items, while the step row said `failed,
+    stopped by SIGTERM, rc 143`. The bracket names the signal in the row's words, and `from outside
+    install.sh` as install.sh's NEXT says it of the first sync; a plain rc, or a code no signal names, adds no
+    bracket."""
+    log = fake_mac["setup"] / "install.log"
+    write_friction(fake_mac, retry_friction())
+    head = "- install.sh · step 2 · run 20260929T100000Z exited 1 at its first-sync step"
+    tail = "; the same command was run again and ended 0"
+    for rc, bracket in (
+        ("143", " (stopped by SIGTERM, rc 143, from outside install.sh)"),
+        ("137", " (stopped by SIGKILL, rc 137, from outside install.sh)"),
+        ("1", ""),
+        ("170", ""),
+    ):
+        failed = install_run("2026-09-29T10:00:00Z", 1).replace(
+            "step=first-sync seconds=34 rc=0 result=done", f"step=first-sync seconds=34 rc={rc} result=failed"
+        )
+        log.write_text(LIST_RUN + failed + install_run("2026-09-29T10:20:00Z", 0), encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        got = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+        assert got == head + bracket + tail, (rc, got)
+        assert "(signal" not in got
+    # a status step a signal stopped (install.sh logs `rc=143 result=done note=fail-lines`): the signal goes
+    # inside the step's own [FAIL] bracket after "; ", never a second bracket beside it
+    failed = install_run("2026-09-29T10:00:00Z", 1, status_failed=True).replace(
+        "step=status seconds=6 rc=1 ", "step=status seconds=6 rc=143 "
+    )
+    log.write_text(LIST_RUN + failed + install_run("2026-09-29T10:20:00Z", 0), encoding="utf-8")
+    header = "# run={} 2026-09-29T10:{}:00Z install.sh --source-local x\n"
+    status = "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step "
+    for out, bracket in (
+        (
+            header.format("20260929T100000Z-77", "00")
+            + "[FAIL] pandoc — 2.5 is too old (fix: install 3)\n"
+            + header.format("20260929T102000Z-77", "20"),
+            "([FAIL] pandoc; stopped by SIGTERM, rc 143)",
+        ),
+        (
+            header.format("20260929T102000Z-77", "20"),
+            "(its [FAIL] lines are not in the install.out lines read; stopped by SIGTERM, rc 143)",
+        ),
+    ):
+        (fake_mac["setup"] / "install.out").write_text(out, encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        got = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+        assert got == status + bracket + tail, got
+        assert ") (" not in got, got
+
+
 @pytest.mark.parametrize(
     ("exits", "kind", "why"),
     [

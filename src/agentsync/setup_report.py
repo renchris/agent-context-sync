@@ -16230,7 +16230,7 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
     (:func:`_again_words`)."""
     failing = next(
         (
-            (name, f" at its {_step_word(name)} step")
+            (name, f" at its {_step_word(name)} step", fields.get("rc", ""))
             for name, fields in run.steps
             if name != "report"
             and (fields.get("result") == "failed" or fields.get("rc", "0") not in ("0", ""))
@@ -16241,6 +16241,13 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
     again = _again_words(run, ok)
     if failing is not None:
         at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
+        # B13 round 32 C612 (ruling 66): a step a signal stopped is named by its signal, in the step row's
+        # words; "from outside install.sh" only for the first sync, the one step install.sh's NEXT says it of
+        words = _rc_words(failing[2])
+        if words.startswith("stopped by "):
+            outside = ", from outside install.sh" if failing[0] == "first-sync" else ""
+            # inside a status step's [FAIL] bracket when it has one: never two in a row (C617, ruling 66)
+            at = _one_bracket(at, f"{words}{outside}")
         state = _state_open_words(r, run) if failing[0] == "config" else None
         if state is not None:  # Y5: the cause, and what the run that ended 0 came after
             at += state[0]

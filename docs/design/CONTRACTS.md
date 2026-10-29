@@ -35586,6 +35586,19 @@ run was stopped by SIGTERM, exit 143)`, the STOPPED_EXITS outcome's words, never
 bracket. Tests: `test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516` (137, 143 and 1) and
 `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` (143 and 130).
 
+**A retried run's step a signal stopped is named by its signal in Items** (C612, ruling 66;
+`src/agentsync/setup_report.py`). After a first sync stopped by a signal from outside install.sh and the same command
+ending 0, Items read `exited 1 at its first-sync step; the same command was run again and ended 0` while the step row
+said `failed, stopped by SIGTERM, rc 143`: `_retry_line` never read the failed step's rc. When `_rc_words` names a
+signal, a bracket follows the step: `at its first-sync step (stopped by SIGTERM, rc 143, from outside install.sh)`.
+`from outside install.sh` only for the first sync, the one step install.sh's NEXT says it of; any other step reads
+`(stopped by SIG<NAME>, rc <n>)`. A plain rc, or a code no signal names, adds no bracket. A status step a signal
+stopped (install.sh logs `rc=143 result=done note=fail-lines`, as status runs `|| DOCTOR_RC=$?`) already carries its
+[FAIL] bracket, so the signal's words go inside it after `; ` (`_one_bracket`): `at its status step ([FAIL] pandoc;
+stopped by SIGTERM, rc 143)`, never two brackets in a row (C617, ruling 66). Test:
+`test_a_retried_runs_first_sync_a_signal_stopped_is_named_by_its_signal_c612` (143, 137, 1 and 170; and a status step
+at 143 with and without its run's [FAIL] lines in install.out).
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.
