@@ -35608,6 +35608,17 @@ the next sync"). Dated lines at §16.205 C381 and §16.210 C530. Tests: `test_cl
 `test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530`,
 `test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges`.
 
+C641 (2026-10-28): **the suppressed FAIL's detail names what is really lost (ruling 64).** Its detail said the sync
+"cannot rebuild the purged content's hashes" for every lost record, while the same line's fix said the audit trail
+keeps a copy of fingerprinted content out. `suppressions_lost` builds the clause from the parts lost, the same flags
+as the fix: always `governance.SUPPRESSED_PATH_GUARD`, `the list's path guard beyond that one path (an item's older
+name, its name in other letter case, or the name of an item no longer listed when it was purged)`, then `, the
+content hashes of a purge whose summary line holds none (an older build's)` only when a lost record is unhashed and
+`, and a source-path glob` only when a glob is lost. §16.210 C537's quote of the detail elides the clause and still
+reads true. Tests: `test_cli.py` `test_a_lost_glob_stops_the_sync_though_the_list_holds_another` (the path guard
+and the glob, no hashes), `test_accepting_an_older_builds_purge_names_the_copy_guard_it_gives_up` (the path guard
+and the older build's hashes).
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

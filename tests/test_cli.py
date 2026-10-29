@@ -6585,6 +6585,9 @@ def test_accepting_an_older_builds_purge_names_the_copy_guard_it_gives_up(
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
     assert f"{ACCEPT_LOST_FIX}, and {OLDER_COPY_LOST}; a purge run again by hand" in failed, failed
     assert "source-path glob" not in failed, failed
+    # the detail names what is lost: the path guard and an older build's unhashed content (B13 round 32 C641)
+    hashes = "the content hashes of a purge whose summary line holds none (an older build's)"
+    assert f"cannot rebuild {governance.SUPPRESSED_PATH_GUARD}, {hashes} (fix: " in failed, failed
     capsys.readouterr()
     for extra in (["--dry-run"], []):
         assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_OK
@@ -6756,10 +6759,10 @@ def test_a_lost_glob_stops_the_sync_though_the_list_holds_another(
     capsys.readouterr()
     rc, out = _status(cfg, capsys)
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
-    assert (
-        rc == cli.EXIT_FAILED
-        and "cannot rebuild the purged content's hashes and a source-path glob" in failed
-    )
+    # the path guard and the glob, never the hashes of a purge this build fingerprints (B13 round 32 C641)
+    guard = f"cannot rebuild {governance.SUPPRESSED_PATH_GUARD}, and a source-path glob ("
+    assert rc == cli.EXIT_FAILED and guard in failed, failed
+    assert "content hashes" not in failed.split("(fix: ")[0], failed
     (local_source_dir / "legal").mkdir()
     (local_source_dir / "legal" / "new-brief.txt").write_text("A Contoso brief.\n")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED

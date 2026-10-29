@@ -535,6 +535,12 @@ ACCEPT_PATH_KEPT_RECORD = (
 )
 """:data:`ACCEPT_PATH_KEPT` while governance/ is missing, the audit trail with it: the purge record keeps
 the same lines (B13 round 32 C606; ruling 63)."""
+SUPPRESSED_PATH_GUARD = (
+    "the list's path guard beyond that one path (an item's older name, its name in other letter case, or the "
+    "name of an item no longer listed when it was purged)"
+)
+"""What a lost suppression list always takes with it, first in its FAIL's ``cannot rebuild`` (C641): its
+match on paths other than the one each item's purge line keeps, as :data:`ACCEPT_PATH_LOST` words it."""
 ACCEPT_PATH_LOST = (
     "a new file at another path the list held (an item's older name, or its name in other letter case, or "
     "the name of an item no longer listed when it was purged) is no longer kept out"
@@ -2302,12 +2308,17 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
         lost = lost_suppressions(state_dir, sup)
         if lost:
             path = _suppress_file(state_dir)
-            what = "the purged content's hashes"
             held = _glob_fingerprints(sup)
             globbed = any(_glob_lost(r, held) for r in lost)  # a glob the list still holds keeps its guard
             unhashed = any(not _fingerprinted(r) for r in lost)  # the trail keeps a hashed one's copy out
+            # what is really lost, as the fix says it: the path guard always, the hashes only of a purge whose
+            # line holds none and the glob only when lost, never "the purged content's hashes" of a purge the
+            # trail fingerprints, whose copy stays out (B13 round 32 C641; ruling 64)
+            what = SUPPRESSED_PATH_GUARD
+            if unhashed:
+                what += ", the content hashes of a purge whose summary line holds none (an older build's)"
             if globbed:
-                what += " and a source-path glob"
+                what += ", and a source-path glob"
             folder = governance_gone(state_dir)
             if folder:  # the audit trail went with the folder: purge-record.json keeps it (C606; ruling 63)
                 lead, put_back = _folder_gone_words(state_dir)
