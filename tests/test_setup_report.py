@@ -10409,6 +10409,26 @@ def test_the_loop_lines_lost_hold_wait_keeps_status_with_no_doctor_fail_c636(
         assert line.endswith(tail) and "Doctor's governance.hold" not in line, line
 
 
+def test_the_loop_lines_lost_hold_wait_in_the_folder_form_names_doctors_line_c613(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 32 C613 (ruling 64): with governance/ missing and the hold record alone keeping the hold, the
+    sync's wait is ``governance.LOST_HOLD_WAIT_GOVGONE``, its tail ``governance.LOST_HOLD_WAIT``'s byte
+    for byte. The Loop line keeps the folder form's head and, when Doctor's section prints the governance.hold
+    [FAIL] line, points at it; else the sync's own words, naming status, stay (C636)."""
+    assert governance.LOST_HOLD_WAIT_GOVGONE.endswith(setup_report._LOST_HOLD_RUN_STATUS)
+    head = "agentsync's governance folder is missing while its hold record keeps a hold, so purge"
+    wait = loop.WAIT_PREFIX + governance.LOST_HOLD_WAIT_GOVGONE
+    fail = "[FAIL] governance.hold — x/governance/ is missing (fix: the person puts it back whole)"
+    for doctor_fn, in_doctor in ((lambda _config: [fail], True), (None, False)):
+        hooks = setup_report.ReportHooks(doctor=doctor_fn, loop_next=lambda _config: ["NEXT: run it", wait])
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        line = _line(section(text, "Summary"), "- Loop: ")
+        assert head in line and "the hold list lost a hold" not in line, line
+        assert ("Doctor's governance.hold [FAIL] line" in line) is in_doctor, line
+        assert line.endswith("its governance.hold [FAIL] line gives the person's fix") is not in_doctor, line
+
+
 def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     fake_mac: dict[str, Path],
 ) -> None:

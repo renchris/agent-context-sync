@@ -35729,6 +35729,16 @@ state file measured; more than one keeps `measures them`. The time-limit branch'
 start's one, a lost manifest's one) and `test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed`, whose
 refused configuration of one now reads `measures that line`.
 
+**The Loop line reads the lost-hold wait's folder form as it reads the list's** (C613's report half, ruling 64;
+`tests/test_setup_report.py`). With governance/ missing and the hold record alone keeping a hold, the sync's wait is
+lane B's `governance.LOST_HOLD_WAIT_GOVGONE` (`agentsync's governance folder is missing while its hold record keeps a
+hold, ...`), its tail `governance.LOST_HOLD_WAIT`'s byte for byte, so the Loop line's substring swap of
+`_LOST_HOLD_RUN_STATUS` needs no new code: the folder form's head stays, and the pointer is `Doctor's governance.hold
+[FAIL] line` only when Doctor's section prints that line (C636), else the sync's own words naming status. Test:
+`test_the_loop_lines_lost_hold_wait_in_the_folder_form_names_doctors_line_c613`, which also holds the tail equal.
+C638's asserts in the two C560 tests of `tests/test_cli.py` (after lane B's C642) build the report with the CLI's own
+hooks: the schema note's and the busy note's Loop lines read `not read: status says <the note>; NEXT: `.
+
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
 Reserved for round 32 lane RB of B13.
