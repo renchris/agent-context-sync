@@ -35847,6 +35847,23 @@ opening the prompt quotes is unchanged and the `waited-for-the-lock` note stays 
 `test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`, and the deploy-pack pin in
 `test_readme_step2_is_the_one_install_command`, which builds the line from `cycle.UNRECORDED_LOCK_WAIT_QUIET`.
 
+**A damaged purge record beside a lost queued purge names both stops** (C607; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`). With purge-record.json damaged and purge-queue.json moved aside while a purge was
+queued (rehearsal probe LOSTQPR), status FAILs governance.suppressed and governance.purge_queue, but step 1's
+config-step branch dropped the lost-list reader's word (`chold`) and step 2's misplaced NEXT never read it, so both
+named only the purge record and the person who fixed it met a second stop. After a config-step tail, when the reader
+says `,lost-suppressed` or `,lost-queue` and the file that stops first is not that list itself, step 1 adds `; once
+that is fixed, step 2 stops again at its status step on agentsync's <list>, ...: fixing that is the person's (...)` in
+the list's own words (never `too`: the first fix can be the agent's chmod), the queue's fix running each purge
+by hand only `once the first is fixed` (a purge run by hand stops on a damaged record), and logs the list's word after the config step's
+(`config_err=state-file-notfile,state-queue-lost`). config_failed's misplaced branch asks the same reader (the
+checkout's build, else the installed one) and adds `and, on its governance.purge_queue line, a second stop that
+follows: the purge queue lost a purge the audit trail records, also the person's to fix` (the suppression list's on
+governance.suppressed) inside its bracket, ending `once both are fixed, the next run is: ...`. An older build prints
+neither word and the words stay as before. Tests: `test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops`
+(the real agentsync; after the record is moved aside, step 1 gives the plain lost-queue tail) and the guide's quotes
+in `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
 Round 32's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

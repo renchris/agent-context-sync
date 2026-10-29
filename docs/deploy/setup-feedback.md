@@ -971,7 +971,21 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   that is the person's (they put agentsync's governance folder back whole from the copy kept, or the records owner
   sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line`,
   logged `state-governance-lost`, in place of the hold list's (B13 round 31 ruling 60, C507). Each fix is the
-  person's; the scope, owner, reason, selector and time are never printed (B13 round 30 C315).
+  person's; the scope, owner, reason, selector and time are never printed (B13 round 30 C315). Beside a config-step
+  stop (any tail above), a suppression list or purge queue that also lost a purge is the stop that follows, named
+  after the first: the suppression list adds `; once that is fixed, step 2 stops again at its status step on
+  agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage,
+  not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow
+  the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line`, the
+  purge queue `; once that is fixed, step 2 stops again at its status step on agentsync's purge queue, which no
+  longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the
+  person's (they put the purge queue back from a copy they trust, or, once the first is fixed, run each such
+  purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line`, its word logged
+  after the config step's (`config_err=state-file-notfile,state-queue-lost`); step 2's config-step `NEXT:` for a
+  file that is not a file adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
+  lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
+  governance.suppressed line) and ends `once both are fixed, the next run is: ...`. Never when the file that stops
+  first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

@@ -8518,6 +8518,21 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         governance.governance_lost
     )
     assert section.index(tails["suppression list"]) < section.index(tails["purge queue"])
+    # B13 round 32 C607: beside a config-step stop, the list that also lost a purge is the stop that follows
+    follows = {
+        noun: tail
+        for tail, noun in re.findall(
+            r'ctail="\$ctail(; once that is fixed, step 2 stops again at its status step on agentsync\'s'
+            r' (purge queue|suppression list)[^"]*)"',
+            script,
+        )
+    }
+    assert sorted(follows) == ["purge queue", "suppression list"]
+    for noun, tail in follows.items():
+        assert f"`{tail}`" in section, noun
+    assert "(`config_err=state-file-notfile,state-queue-lost`)" in section
+    assert "a second stop that follows: the purge queue lost a purge the audit trail records, also" in script
+    assert "`and, on its governance.purge_queue line, a second stop that follows: the purge queue" in section
     assert "(the suppression list's when both lost one, as status's `NEXT:` leads with it" in section
     assert "the purge queue's first when both lost one" not in section
     assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script

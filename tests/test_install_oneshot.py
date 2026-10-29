@@ -12972,6 +12972,56 @@ def test_step_1_predicts_a_purge_list_that_lost_a_purge_and_step_2_names_its_kin
     assert fail not in again.stdout + again.stderr, again.stdout + again.stderr
 
 
+def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 32 C607 (rehearsal probe LOSTQPR), with the real agentsync: a queued purge, then
+    purge-record.json damaged and purge-queue.json moved aside. Status FAILs both, but step 1's tail and step
+    2's NEXT named only the purge record, so the person who fixed it met a second stop. Step 1 now names the
+    purge queue after the record, as the stop that follows, logged with both words, and step 2's NEXT names
+    it; once the record is fixed, step 1 gives the plain lost-queue tail. (A run purge's suppression list
+    moved aside beside a damaged record gives no second word: its check reads the record.)"""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    record = root / "purge-record.json"
+    assert record.is_file()
+    record.write_bytes(b"\xff\xfe not json")
+    queue = root / "governance" / "purge-queue.json"
+    queue.rename(queue.with_name("purge-queue.json.kept"))
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert "on agentsync's purge record, which is damaged, empty or of the wrong shape" in tail, tail
+    second = (
+        "; once that is fixed, step 2 stops again at its status step on agentsync's purge queue, which "
+        "no longer holds a purge the audit trail records as queued and not done (not damage, not a "
+        "mode): fixing that is the person's (they put the purge queue back from a copy they trust, or, "
+        "once the first is fixed, run each such purge by hand), and ~/.local/bin/agentsync status prints "
+        "it on its governance.purge_queue line"
+    )
+    assert tail.endswith(second) and tail.index("purge record") < tail.index(second), tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-file-notfile,state-queue-lost" in log, log
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert " step=config " in next(ln for ln in reversed(install_log(env)) if " result=failed" in ln)
+    assert last_line(cp).startswith(
+        "NEXT: agentsync's purge record is damaged, empty or of the wrong shape, so no command can read "
+        "it (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its "
+        "governance.suppressed line and, on its governance.purge_queue line, a second stop that follows: "
+        "the purge queue lost a purge the audit trail records, also the person's to fix): fixing it is "
+        "the person's ("
+    ), last_line(cp)
+    assert "; once both are fixed, the next run is: " in last_line(cp), last_line(cp)
+    record.rename(record.with_name("purge-record.json.kept"))  # the person's fix for the record
+    assert last_line(install_sh(env, "--list-folders")).endswith(LOST_LIST_TAILS["queue"])
+
+
 def test_the_lost_list_probe_rides_the_lost_hold_probe_and_is_silent_on_a_build_without_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

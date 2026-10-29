@@ -8482,6 +8482,22 @@ list_folders() {
 		fi
 		ctail="$ctail$stail"
 		clog=" config_err=$cerr"
+		# A purge queue or suppression list that also lost a purge the audit trail records stops step 2 again, at
+		# its status step, once that is fixed: named after it, with its words and its own word in the log, so the
+		# person meets no second stop unwarned; never when the file that stops first is that list itself. A purge
+		# run by hand stops on a damaged purge record, so that fix comes after the first (B13 round 32 C607;
+		# rehearsal probe LOSTQPR). An older build prints neither word: the tail is as before.
+		case ",$chold,:$crole" in
+		*,lost-suppressed,*:role-suppressed | *,lost-queue,*:role-queue) ;;
+		*,lost-suppressed,*)
+			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
+			clog="$clog,state-suppressed-lost"
+			;;
+		*,lost-queue,*)
+			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or, once the first is fixed, run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+			clog="$clog,state-queue-lost"
+			;;
+		esac
 	elif [ -n "$chold" ] && [ "$chold" != none ]; then
 		# A suppression list or purge queue that lost a purge the audit trail records fails step 2's status
 		# first, on its governance.suppressed or governance.purge_queue line (the suppression list's when both
@@ -9659,8 +9675,18 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED" "$STATE_MISPLACED_KIND"; then
 		# init's not-a-file guard runs before it opens anything, so ahead of the lost manifest and the owner's
-		# (B13 round 27 ruling 16)
-		FAIL_NEXT="$MISPLACED_NOUN $MISPLACED_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line): fixing it is the person's ($MISPLACED_FIX), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		# (B13 round 27 ruling 16). A purge queue or suppression list that also lost a purge is a second stop that
+		# follows, named as step 1's tail names it (B13 round 32 C607): the error above names only the first file
+		local lost="" second="" once="once it is fixed"
+		lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")"
+		[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")"
+		case ",$lost,:$STATE_MISPLACED" in
+		*,lost-suppressed,*:suppressed | *,lost-queue,*:queue) ;;
+		*,lost-suppressed,*) second=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
+		*,lost-queue,*) second=" and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge the audit trail records, also the person's to fix" ;;
+		esac
+		[ -z "$second" ] || once="once both are fixed"
+		FAIL_NEXT="$MISPLACED_NOUN $MISPLACED_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line$second): fixing it is the person's ($MISPLACED_FIX), not a step for the agent, so show them the error and go on to the report; $once, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_lost; then
 		# a symlink to nothing in a folder a sync can write: named as one, the same fix (round 26 E19); a symlink
 		# into a folder that is gone or refuses a write: the link goes first (round 25 D79: D-L1c); heartbeat.json
