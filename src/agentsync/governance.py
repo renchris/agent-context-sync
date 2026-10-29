@@ -1982,24 +1982,39 @@ def _manifest_ids(db: Path) -> set[tuple[str, str]]:
 
 def _read_manifest_ids(db: Path, *, whole: bool) -> set[tuple[str, str]] | None:
     """:func:`_manifest_ids`, or None when the manifest is not there, is lost or cannot be read so; with
-    ``whole``, None too when its items or tombstones table cannot be read, since what says an id is gone must
-    have been read (:func:`_erased_and_gone`; B13 round 31 C561)."""
+    ``whole``, None too when its items or tombstones table cannot be read, or an ``item_aliases`` table that
+    is there cannot be read, since what says an id is gone must have been read (:func:`_erased_and_gone`;
+    B13 round 31 C561): a failed alias read read as no aliases and closed a lost purge whose id only an
+    alias still names (B13 round 32 C667; ruling 70). A manifest older than item_aliases, with no such
+    table, reads as having no aliases; without ``whole`` every table is read as far as it goes, so the
+    rebuilt redo keeps the items' and tombstones' ids."""
     with contextlib.suppress(sqlite3.Error, OSError):
         conn = open_read_only(db, 0.5)
         if conn is None:
             return None
         try:
             out: set[tuple[str, str]] = set()
+            aliased = True
+            if whole:  # an absent table apart from one that fails to read (C667)
+                try:
+                    row = conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'item_aliases'"
+                    ).fetchone()
+                except sqlite3.Error:
+                    return None
+                aliased = row is not None
             for sql in (
                 "SELECT source_id, stable_id FROM items",
                 "SELECT source_id, stable_id FROM tombstones",
                 "SELECT source_id, alias_id FROM item_aliases",
                 "SELECT source_id, stable_id FROM item_aliases",
             ):
+                if not aliased and "item_aliases" in sql:
+                    continue  # a manifest older than item_aliases: no aliases
                 try:
                     out |= {(str(a), str(b)) for a, b in conn.execute(sql).fetchall() if a and b}
-                except sqlite3.Error:  # a manifest older than item_aliases
-                    if whole and "item_aliases" not in sql:
+                except sqlite3.Error:
+                    if whole:  # the table is there but did not read: nothing says the id is gone
                         return None
             return out
         finally:

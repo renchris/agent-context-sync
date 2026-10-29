@@ -35543,6 +35543,15 @@ done`, never `no purge queued` (`HOLD_LIST_READ`, `HOLD_LIST_NONE`, `HOLD_LIST_G
 `test_a_clean_state_lists_the_hold_list_and_the_queue_as_checked`,
 `test_the_hold_lines_ok_words_say_whether_a_hold_list_was_read_c624`.
 
+C667 (2026-10-28): **a lost purge closes only on a manifest really read (ruling 70).** `_read_manifest_ids` took
+every sqlite error of an `item_aliases` read as a manifest older than the table, so under `whole=True` a corrupt
+alias table read as no aliases and `_erased_and_gone` dropped a lost stable-id purge whose id only an alias still
+names. Under `whole` it now asks `sqlite_master` first: no `item_aliases` table reads as no aliases, as before; a
+table that is there but fails to read returns None, as an unreadable items or tombstones table does, so the record
+stays lost. Without `whole` (`_manifest_ids`, `_rebuilt_ids`) every table is read as far as it goes, so the
+rebuilt redo keeps the items' and tombstones' ids. Test: `test_governance.py`
+`test_an_alias_table_that_fails_to_read_never_clears_a_lost_purge_c667`.
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

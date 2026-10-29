@@ -2623,3 +2623,74 @@ def test_the_governance_folders_fix_asks_a_kept_folder_back_first_and_keeps_its_
     else:
         assert "from a copy; only where none was ever kept, moves " in err.fix, err.fix
         assert "the person checks with the records owner, and sets each hold again" in err.fix, err.fix
+
+
+def _alias_manifest(state: Path, *, aliases: bool = True) -> Path:
+    """A manifest of 50 items (source ``contoso``, ids ``item-<n>``) with, when ``aliases``, 200 alias rows
+    (``alias-<n>`` of each item), in 1 KiB pages so the alias table and its index fill pages of their own."""
+    state.mkdir(parents=True, exist_ok=True)
+    db = state / "manifest.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA page_size = 1024")
+    conn.execute("CREATE TABLE items (source_id TEXT, stable_id TEXT, PRIMARY KEY (source_id, stable_id))")
+    conn.execute("CREATE TABLE tombstones (source_id TEXT, stable_id TEXT)")
+    conn.executemany("INSERT INTO items VALUES ('contoso', ?)", [(f"item-{n}",) for n in range(50)])
+    if aliases:
+        conn.execute(
+            "CREATE TABLE item_aliases (source_id TEXT, alias_id TEXT, stable_id TEXT, "
+            "PRIMARY KEY (source_id, alias_id))"
+        )
+        conn.execute("CREATE INDEX item_aliases_by_item ON item_aliases (source_id, stable_id)")
+        rows = [(f"alias-{n}-{k}", f"item-{n}") for n in range(50) for k in range(4)]
+        conn.executemany("INSERT INTO item_aliases VALUES ('contoso', ?, ?)", rows)
+    conn.commit()
+    conn.close()
+    return db
+
+
+def _break_alias_pages(db: Path) -> None:
+    """Overwrite the root page of the item_aliases table and of each of its indexes, so a count of it raises
+    while items and tombstones still read."""
+    conn = sqlite3.connect(db)
+    roots = [r for (r,) in conn.execute("SELECT rootpage FROM sqlite_master WHERE tbl_name = 'item_aliases'")]
+    size = conn.execute("PRAGMA page_size").fetchone()[0]
+    conn.close()
+    with db.open("r+b") as fh:
+        for root in roots:
+            fh.seek((root - 1) * size)
+            fh.write(b"\xa5" * size)
+    probe = sqlite3.connect(db)
+    try:
+        with pytest.raises(sqlite3.DatabaseError):
+            probe.execute("SELECT count(*) FROM item_aliases").fetchone()
+        assert probe.execute("SELECT count(*) FROM items").fetchone() == (50,)
+    finally:
+        probe.close()
+
+
+def test_an_alias_table_that_fails_to_read_never_clears_a_lost_purge_c667(tmp_path: Path) -> None:
+    """B13 round 32 C667 (ruling 70): every sqlite error of an item_aliases read was taken as a manifest older
+    than the table, so a corrupt alias table read under ``whole`` as no aliases, and a lost stable-id purge
+    whose id only an alias still names was dropped from the lost queue. An alias table that is there but
+    does not read gives None under ``whole``, an absent one no aliases, and without ``whole`` the items' ids
+    are still read, so the rebuilt redo is not lost."""
+    rec = {
+        "action": "purge-enqueued",
+        "source_id": "contoso",
+        "selector_kind": "stable-id",
+        "stable_id_sha256": hashlib.sha256(b"alias-7-2").hexdigest(),
+    }
+    old = tmp_path / "old"
+    _alias_manifest(old, aliases=False)
+    ids = gv._read_manifest_ids(old / "manifest.sqlite", whole=True)
+    assert ids == {("contoso", f"item-{n}") for n in range(50)}
+    state = tmp_path / "state"
+    db = _alias_manifest(state)
+    whole = gv._read_manifest_ids(db, whole=True)
+    assert whole is not None and len(whole) == 50 + 200 and ("contoso", "alias-7-2") in whole
+    assert gv._erased_and_gone(state, [rec]) == set()  # an alias names it: it stays lost
+    _break_alias_pages(db)
+    assert gv._read_manifest_ids(db, whole=True) is None
+    assert gv._erased_and_gone(state, [rec]) == set()  # was {id(rec)}: dropped on a failed read
+    part = gv._read_manifest_ids(db, whole=False)
+    assert part is not None and {("contoso", f"item-{n}") for n in range(50)} <= part
