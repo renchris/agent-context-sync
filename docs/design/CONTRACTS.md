@@ -35529,3 +35529,14 @@ for a stuck one. CLAUDE.md adds the twelve and gives the waits as 63, 50, 48 and
 over an hour (63:27 in round 31); ci.yml's note adds the twelve and both waits after round 30's, keeping its round 24
 wait sentence. `timeout-minutes` stays 80, about 23 minutes above the slowest job, and a wait still does not count
 against it. Test: `test_claude_md_gives_cis_time_and_its_limit`, whose pins move in the same commit.
+
+**The README lists the Office formats both label-screened and converted** (C672; README.md outside the prompt
+block). It said only `.docx`, `.xlsx`, `.pptx` and `.vsdx` among the Office formats carry a sensitivity label, but
+`policy.read_labels` screens every suffix of `policy.OOXML_SUFFIXES`, so a reader took an `.xlsm` to skip the label
+exclusions. The list now reads `.docx`, `.xlsx` and `.xlsm`, `.pptx` and the `.potx` template, `.vsdx` and `.vsdm`:
+the suffixes some converter also claims (pandoc's, xlsx's, pptx's and diagram's `extensions`). The finder's fix,
+every screened suffix or a blanket "macro and template variants" clause, would tell a person that a dropped
+`.docm`, `.dotx`, `.xltx` or `.pptm` becomes a labelled page, but no converter claims them and none becomes a page
+(makes worse True); they stay out. Test:
+`test_the_readme_lists_the_office_formats_that_are_both_label_screened_and_converted`, which compares the list with
+the screened suffixes the four converters claim.

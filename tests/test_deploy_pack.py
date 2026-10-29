@@ -7179,6 +7179,30 @@ def test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_wh
     assert governance._summary_closes("dlp-remediation", "dlp-remediation")
 
 
+def test_the_readme_lists_the_office_formats_that_are_both_label_screened_and_converted() -> None:
+    """B13 round 32 C672: the README said only `.docx`, `.xlsx`, `.pptx` and `.vsdx` among the Office formats
+    carry a sensitivity label, but the label reader screens every suffix of `policy.OOXML_SUFFIXES`, so a
+    reader took an `.xlsm` to skip the label exclusions. Its list is every suffix both screened and converted
+    (a converter claims it); `.docm`, `.dotx`, `.xltx` and `.pptm` have none, become no page, and stay out of
+    it, as would a blanket `macro and template variants` clause (makes worse True)."""
+    from agentsync import policy  # noqa: PLC0415
+    from agentsync.convert import diagram, pandoc, pptx, xlsx  # noqa: PLC0415
+
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    [listed] = re.findall(r"`\.pdf` and the Office formats \(([^)]*)\) carry a sensitivity label", readme)
+    assert listed == "`.docx`, `.xlsx` and `.xlsm`, `.pptx` and the `.potx` template, `.vsdx` and `.vsdm`"
+    claimed = {
+        *pandoc.PandocConverter.extensions,
+        *xlsx.XlsxConverter.extensions,
+        *pptx.PptxConverter.extensions,
+        *diagram.DiagramConverter.extensions,
+    }
+    both = {ext for ext in policy.OOXML_SUFFIXES if ext in claimed}
+    assert set(re.findall(r"`(\.\w+)`", listed)) == both
+    assert {".docm", ".dotx", ".xltx", ".pptm"} <= set(policy.OOXML_SUFFIXES) - both
+    assert "macro and template variants" not in readme
+
+
 def test_round_32s_stale_quotes_carry_one_dated_line_each() -> None:
     """B13 round 32 C652, C653, C654, C673 (ruling 74): four CONTRACTS quotes a later change made stale. Each
     gets one dated line beside the code it quotes, never a rewrite of another round's text and never a second

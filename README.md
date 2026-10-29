@@ -58,8 +58,9 @@ a message out as `.eml`, and a meeting transcript as `.docx` or `.vtt`. Teams me
 files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`), one file per
 channel or chat and month, written by your own export script under the
 [inbox writer contract](docs/design/CONTRACTS.md#11-local-arm-and-hydration).
-Only `.eml`, a `.msg` saved as MIME text, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`, `.vsdx`) carry a
-sensitivity label, so a `.vtt`, a `.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer
+Only `.eml`, a `.msg` saved as MIME text, `.pdf` and the Office formats (`.docx`, `.xlsx` and `.xlsm`, `.pptx` and
+the `.potx` template, `.vsdx` and `.vsdm`) carry a sensitivity label, so a `.vtt`, a `.teams.json` or pasted text
+skips the label exclusions in `sources.toml`; prefer
 `.eml` and `.docx`. A screenshot or a photo carries no label agentsync can read either, so while a label exclusion is set no image file is converted
 ([Images and scans](#images-and-scans-on-device-ocr)). An Outlook `.msg` is converted like an `.eml`, but the label
 of a binary Outlook-format one is not read, so while a label exclusion is set it is not converted (one saved as MIME
