@@ -1568,8 +1568,12 @@ rc_signal_words() {
 	case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
 	if [ -n "$n" ]; then printf 'stopped by SIG%s (signal %s)' "${n#SIG}" "$(($1 - 128))"; else printf 'exit %s' "$1"; fi
 }
-# What an agentsync (or launchd) exit code means, for the messages.
-# A signal's exit (128 + N) that no line above names reads as rc_signal_words gives it.
+# What an agentsync (or launchd) exit code means, for the messages, each inside its caller's bracket.
+# A signal's exit (128 + N) that no line above names is `stopped by SIG<NAME>` alone, as 129 and 130 read: the
+# callers put the code beside it, and rc_signal_words' `(signal N)` nested a bracket in theirs (`exit 137
+# (stopped by SIGKILL (signal 9))`; B13 round 31 ruling 58, round 32 ruling 66: C655 with C661). A code no
+# signal names stays `exit N`, never empty: setup-report's warn and the first sync's NEXT print no code of their
+# own; a caller that prints the code beside it drops that repeat through rc_aside.
 rc_meaning() {
 	case "$1" in
 	0) printf 'ok' ;;
@@ -1587,8 +1591,19 @@ rc_meaning() {
 	129) printf 'stopped by SIGHUP' ;;
 	130) printf 'stopped by SIGINT' ;;
 	143) printf 'stopped by SIGTERM, perhaps a tool timeout' ;; # no inner brackets: callers wrap it (B13 round 20 X7)
-	*) rc_signal_words "$1" ;;
+	*)
+		local n=""
+		case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
+		if [ -n "$n" ]; then printf 'stopped by SIG%s' "${n#SIG}"; else printf 'exit %s' "$1"; fi
+		;;
 	esac
+}
+# rc_meaning beside the code its caller prints (`exit 137 (stopped by SIGKILL)`): " (<meaning>)", or nothing
+# when rc_meaning would only repeat the code (`exit 170`, never `exit 170 (exit 170)`)
+rc_aside() { # CODE
+	local m
+	m="$(rc_meaning "$1")"
+	[ "$m" = "exit $1" ] || printf ' (%s)' "$m"
 }
 # with_timeout's watchdog, and start_pandoc_once's limit: kills PID once LIMIT seconds have passed. It waits
 # on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11). It
@@ -4663,7 +4678,7 @@ fallback_install_line() { # RC
 	local head last at rc begin what label
 	head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $(commit_shown)"
 	if [ "$REPORT_ONLY" -eq 0 ]; then
-		say "$head, exit $1 ($(rc_meaning "$1"))"
+		say "$head, exit $1$(rc_aside "$1")"
 		return 0
 	fi
 	head="$head; this --report-only run only writes the report"
@@ -4678,7 +4693,7 @@ fallback_install_line() { # RC
 		say "$head; no install run in the install log"
 		return 0
 	fi
-	if [ -z "$rc" ]; then what="has no end line (stopped or still running)"; else what="exit $rc ($(rc_meaning "$rc"))"; fi
+	if [ -z "$rc" ]; then what="has no end line (stopped or still running)"; else what="exit $rc$(rc_aside "$rc")"; fi
 	begin="$(utc_stamp "$(friction_attempt_begin)")"
 	label="$(install_run_label)"
 	[ -z "$label" ] || label=", run $label" # a comma, as the Python report's: no bracket in the line's own
@@ -5160,7 +5175,7 @@ fallback_body() {
 				n="$(launchd_field "$p" "last exit code")"
 				k="$(leading_int "$n")"
 				n="state $(launchd_field "$p" state), runs $(launchd_field "$p" runs), last exit code ${n:-?}"
-				[ -z "$k" ] || n="$n ($(rc_meaning "$k"))"
+				[ -z "$k" ] || n="$n$(rc_aside "$k")"
 				if [ "$v" = present ]; then
 					say "- $l: plist present · loaded: $n"
 				else
@@ -10239,7 +10254,7 @@ else
 		exit 1
 	else
 		step_end failed "$SYNC_RC"
-		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC ($(rc_meaning "$SYNC_RC"))"
+		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC$(rc_aside "$SYNC_RC")"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")), then re-run: $SELF$RERUN_ARGS"
 		exit 1
@@ -10271,7 +10286,7 @@ else
 		say "the first background run starts now; if macOS asks $PROMPT_TEXT, click Allow"
 		step_end "done"
 	else
-		LAST_ERROR="agentsync install-agent exited $AGENT_RC ($(rc_meaning "$AGENT_RC"))"
+		LAST_ERROR="agentsync install-agent exited $AGENT_RC$(rc_aside "$AGENT_RC")"
 		step_end failed "$AGENT_RC"
 	fi
 fi
@@ -10372,7 +10387,7 @@ else
 				break
 			elif [ "$code" -eq 79 ] || [ "$code" -eq 75 ]; then
 				[ "$code" -ne 79 ] || action_once
-				say "wait: background run $runs exited $code ($(rc_meaning "$code")); starting it again"
+				say "wait: background run $runs exited $code$(rc_aside "$code"); starting it again"
 				target=$((runs + 1))
 				kickstart
 			else
@@ -10412,12 +10427,12 @@ else
 		step_end "done" 0 running
 		;;
 	failed)
-		LAST_ERROR="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE"))"
+		LAST_ERROR="the first background run exited $WAIT_CODE$(rc_aside "$WAIT_CODE")"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		step_end failed "$WAIT_CODE"
 		;;
 	*)
-		LAST_ERROR="no background run exited 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}$([ -z "$WAIT_CODE" ] || printf ', %s' "$(rc_meaning "$WAIT_CODE")"); state: ${WAIT_STATE:-not loaded})"
+		LAST_ERROR="no background run exited 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}$([ -z "$WAIT_CODE" ] || { m="$(rc_meaning "$WAIT_CODE")"; [ "$m" = "exit $WAIT_CODE" ] || printf ', %s' "$m"; }); state: ${WAIT_STATE:-not loaded})"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		step_end failed "${WAIT_CODE:-3}" "$WAIT_RESULT"
 		;;
@@ -10515,7 +10530,7 @@ elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null
 	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
 	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)
 	EXIT_RC=1
-	next="agentsync status exited $DOCTOR_RC ($(rc_meaning "$DOCTOR_RC")) with no [FAIL] line: what it printed above (its error, if it printed one; $AGENTSYNC status prints it again) is the person's to fix, not a step for the agent, so show them those lines and go on to the report; once fixed, the next run is: $SELF$RERUN_ARGS"
+	next="agentsync status exited $DOCTOR_RC$(rc_aside "$DOCTOR_RC") with no [FAIL] line: what it printed above (its error, if it printed one; $AGENTSYNC status prints it again) is the person's to fix, not a step for the agent, so show them those lines and go on to the report; once fixed, the next run is: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
 	EXIT_RC=1
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$RERUN_ARGS"
@@ -10536,7 +10551,7 @@ elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT
 		EXIT_RC=3
 		next="the first background run did not exit 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}); check $AGENTSYNC status, then re-run: $SELF$RERUN_ARGS"
 	else
-		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$RERUN_ARGS"
+		next="the first background run exited $WAIT_CODE$(rc_aside "$WAIT_CODE"); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$RERUN_ARGS"
 	fi
 else # the loop's NEXT, after the background-sync result when it was asked for
 	loop_next

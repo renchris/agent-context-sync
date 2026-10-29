@@ -34811,6 +34811,9 @@ SIGKILL (signal 9))`), the verifier's makes-worse case. rc_meaning's default bra
 phrase standing alone (`stopped by SIG<NAME> (signal N)`, `exit N` for a code no signal names), which rc_meaning's
 default calls and the note calls directly; rc_meaning 143 is unchanged for its bracketed callers. Test:
 `test_a_closing_status_a_signal_stopped_is_said_and_logged`, whose SIGTERM row reads `stopped by SIGTERM (signal 15)`.
+Amended 2026-10-28, §16.214 C655: rc_meaning's default no longer calls `rc_signal_words`; for its bracketed
+callers it is the flat signal name, `stopped by SIG<NAME>`, and `exit N` for a code no signal names, which
+`rc_aside` drops beside a code the caller prints. `rc_signal_words` and this note are unchanged.
 
 **A first sync a signal stopped is safe to re-run once** (C515; ruling 58; amends §16.111 Q22; `scripts/install.sh`).
 A signal's exit (129 to 192) at the first sync took the generic branch, `fix what the first sync printed above
@@ -35786,6 +35789,22 @@ pairs left them and never prints a form the cut has not seen, so `(<tmp>/Zephyr 
 Notes)` reads `(<tmp>/<path>)`. Python's twin, cutting its collapsed note's one form, is lane RA's (c). Test:
 `test_an_added_sources_note_whose_forms_redact_alike_is_one_form_cut`, forced to the shell fallback for the linked
 home (equal to build_report's line) and the TMPDIR folder.
+
+**A signal is named once in every bracket of the installer's lines** (C655 with C661; ruling 66, which holds ruling
+58 in every reader; amends §16.209 C513; `scripts/install.sh`). rc_meaning's default branch was `rc_signal_words`, R81's standing-alone
+phrase, and every caller wraps rc_meaning in a bracket beside the code, so a signal no line names read `exit 137
+(stopped by SIGKILL (signal 9))` in the fallback install line, launchd's last exit code, the install-agent, status
+and background-run errors and the wait's `(last exit: 137, stopped by SIGKILL (signal 9); state: ...)`. Its
+default now prints `stopped by SIG<NAME>` alone when `kill -l` names the signal, as 129 and 130 already read, and
+keeps `exit N` for a code none names, never empty: setup-report's warn (`setup-report failed (exit 170)`) and the
+first sync's NEXT (`fix what the first sync printed above (exit 170)`) print no code of their own. A caller that
+prints the code beside it takes `rc_aside`, which prints ` (<meaning>)` or nothing when rc_meaning would only repeat
+the code, so `exited 170 (exit 170)` reads `exited 170`. `rc_signal_words` keeps R81's phrase for the lines that
+stand alone (the closing note, C513; the first sync's signal branch, C515). Doctor's pandoc line takes the git line's
+colon form in lane E's commit. Tests: `test_a_signal_exit_is_named_by_its_signal` (the flat form and R81's beside
+it) and `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`, which runs every caller line of
+install.sh under /bin/bash 3.2 at each code from 129 to 192 and finds no `(signal`, no bracket in a bracket, no
+empty bracket, no `, ;` and no code twice.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 

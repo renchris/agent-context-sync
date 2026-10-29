@@ -1094,7 +1094,10 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
         "1": "failed",
         "170": "exit 170",  # B13 round 31 C515's review: in the signal range, but no signal on macOS
     }[rc]
-    assert f"the first sync (agentsync sync --once) exited {rc} ({meaning})" in cp.stderr
+    # B13 round 32 ruling 66 (C655): a code no word names is not repeated beside itself (`exited 170`); the
+    # NEXT, which prints no code of its own, keeps `(exit 170)`
+    shown = "" if meaning == f"exit {rc}" else f" ({meaning})"
+    assert f"the first sync (agentsync sync --once) exited {rc}{shown}\n" in cp.stderr
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     if rc == "78":
         assert last_line(cp) == (
@@ -14680,31 +14683,33 @@ def test_a_signal_while_the_report_is_written_still_ends_the_run(
 
 
 def test_a_signal_exit_is_named_by_its_signal() -> None:
-    """``rc_meaning`` names any signal's exit (128 + N) as ``stopped by SIG<NAME> (signal N)``, the phrase of
-    ``ocr._ended``: a first sync jetsam killed read "exit 137". 129, 130 and 143 keep their words, and a code
-    that is no signal's stays ``exit N`` (B13 round 2 R81)."""
+    """``rc_meaning`` names any signal's exit (128 + N) by its signal: a first sync jetsam killed read "exit
+    137". 129, 130 and 143 keep their words, and a code that is no signal's stays ``exit N`` (B13 round 2
+    R81). B13 round 32 ruling 66 (C655 with C661): every caller puts it in a bracket beside the code, so
+    its default is ``stopped by SIG<NAME>`` alone, as 129 and 130 read, never rc_signal_words' ``(signal
+    N)`` nested inside; rc_signal_words keeps R81's phrase standing alone."""
     text = INSTALL_SH.read_text(encoding="utf-8")
     fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", text, re.M | re.S)
-    # B13 round 31 ruling 58 (C513): its default branch is rc_signal_words, R81's phrase standing alone
     sig = re.search(r"^rc_signal_words\(\) \{\n.*?^\}\n", text, re.M | re.S)
     assert fn is not None and sig is not None
+    assert "rc_signal_words" not in fn.group(0).split("\n", 1)[1], "the bracketed form is its own"
     codes = ["137", "134", "141", "143", "130", "200", "1", "64", "65"]
-    cp = subprocess.run(
-        [
-            BASH32,
-            "-c",
-            sig.group(0) + fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done',
-            "-",
-            *codes,
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+    run = (
+        sig.group(0)
+        + fn.group(0)
+        + 'for c in "$@"; do rc_meaning "$c"; echo; rc_signal_words "$c"; echo; done'
     )
-    assert cp.stdout.splitlines() == [
+    cp = subprocess.run([BASH32, "-c", run, "-", *codes], capture_output=True, text=True, check=True)
+    lines = cp.stdout.splitlines()
+    assert lines[1::2][:3] == [  # R81's phrase standing alone, unchanged
         "stopped by SIGKILL (signal 9)",
         "stopped by SIGABRT (signal 6)",
         "stopped by SIGPIPE (signal 13)",
+    ]
+    assert lines[::2] == [
+        "stopped by SIGKILL",
+        "stopped by SIGABRT",
+        "stopped by SIGPIPE",
         "stopped by SIGTERM, perhaps a tool timeout",  # B13 round 20 X7: no brackets in the brackets
         "stopped by SIGINT",
         "exit 200",
@@ -14712,6 +14717,56 @@ def test_a_signal_exit_is_named_by_its_signal() -> None:
         "the launcher refused the job: its program is not the one it starts, or an option is wrong",
         "the state file, manifest.sqlite, cannot be read: the person's to fix",  # B13 round 17 U55, U65; Y62
     ]
+
+
+def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> None:
+    """B13 round 32 ruling 66 (C655 with C661): every line of install.sh that calls rc_meaning or rc_aside is
+    run under bash 3.2 with its code at each of 129 to 192 (and a few plain codes): none prints `(signal`,
+    a bracket inside a bracket, an empty bracket, `, ;` or a code twice (`exit 170 (exit 170)`), and every
+    rc_meaning is a phrase, never empty."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(
+        re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", text, re.M | re.S).group(0)  # type: ignore[union-attr]
+        for name in ("rc_signal_words", "rc_meaning", "rc_aside")
+    )
+    callers = [
+        ln.strip()
+        for ln in text.splitlines()
+        if ("$(rc_meaning " in ln or "$(rc_aside " in ln) and not ln.lstrip().startswith("#")
+    ]
+    assert len(callers) >= 20, callers
+    codes = [*range(129, 193), 0, 1, 65, 200, 255]
+    script = ["say() { printf '%s\\n' \"$*\"; }", 'warn() { say "$@"; }', fns]
+    for i, line in enumerate(callers):
+        names = sorted(set(re.findall(r'\$\(rc_(?:meaning|aside) "\$([A-Za-z_]\w*)"\)', line)))
+        assigned = sorted(set(re.findall(r"(?:^|[\s;|&])([A-Za-z_]\w*)=\"", line)) - {"m"})
+        sets = " ".join(f'{n}="$c"' for n in names)
+        shows = "".join(f'; printf "%s\\n" "${{{n}-}}"' for n in assigned)
+        each = f'(set -- "$c"; {sets} :; echo "@{i} $c"; {line}{shows})'
+        script.append(f"for c in {' '.join(map(str, codes))}; do {each}; done")
+    cp = subprocess.run([BASH32, "-c", "\n".join(script)], capture_output=True, text=True, check=False)
+    assert cp.returncode == 0, cp.stderr
+    out: dict[str, list[str]] = {}
+    key = ""
+    for ln in cp.stdout.splitlines():
+        if ln.startswith("@"):
+            key = ln
+            out[key] = []
+        else:
+            out[key].append(ln)
+    assert len(out) == len(callers) * len(codes), "every caller ran at every code"
+    for at, said in out.items():
+        line = callers[int(at[1:].split()[0])]
+        for s in said:
+            assert "(signal" not in s and "()" not in s and ", ;" not in s, (line, at, s)
+            assert not re.search(r"\([^()]*\(", s), (line, at, s)  # a bracket inside a bracket
+            assert not re.search(r"\b(\d+) \(exit \1\)", s), (line, at, s)
+    run = fns + 'for c in $(seq 0 255); do printf "%s|" "$(rc_meaning "$c")"; done'
+    words = subprocess.run([BASH32, "-c", run], capture_output=True, text=True, check=True).stdout.split("|")[
+        :-1
+    ]
+    assert len(words) == 256 and all(words), words
+    assert words[137] == "stopped by SIGKILL" and words[170] == "exit 170" and words[143].endswith("timeout")
 
 
 def test_report_only_without_a_link_prints_no_link_line(env: dict[str, str]) -> None:
