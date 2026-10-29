@@ -3894,6 +3894,52 @@ def test_an_added_sources_typed_folder_is_cut_with_no_logged_argument_for_it(
     assert numbered(py) == numbered(shown), (py, shown)
 
 
+@pytest.mark.parametrize("case", ["home", "tmpdir"])
+def test_an_added_sources_note_whose_forms_redact_alike_is_one_form_cut(
+    env: dict[str, str], tmp_path: Path, case: str
+) -> None:
+    """B13 round 32 C658's (a) and (b): a home reached through a link (/var/folders/... is /private/var/...)
+    printed `(~/Projects/<folder-1>, stored as /private~/Projects/<folder-1>)`, since only $HOME was
+    paired with `~`, and a note whose two forms redacted alike (a TMPDIR folder, both spellings `<tmp>`)
+    showed both, where the agentsync report shows `(<typed>)` (round 6 G41). pwd -P's home is `~` too, and
+    after the cut a note whose two forms the pairs left equal is one form, cut: the typed folder is never
+    shown uncut."""
+    real = Path(os.path.realpath(tmp_path))
+    assert str(real).startswith("/private/"), "macOS keeps tmp under /private"
+    linked = str(real)[len("/private") :]  # the same folder through /var -> /private/var
+    env = {**env, "HOME": f"{linked}/home", "TMPDIR": f"{linked}/T/"}
+    home = Path(env["HOME"])
+    (real / "T").mkdir()
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    if case == "home":
+        stored = real / "home" / "Projects" / "Contoso Ledger"
+        stored.mkdir(parents=True)
+        cfg.write_text(f'[[source]]\nid = "ledger"\nkind = "local"\npath = "{stored}"\n')
+        typed = f"{home}/Projects/Contoso Ledger"
+    else:
+        stored = real / "T" / "Zephyr Notes"
+        stored.mkdir()
+        cfg.write_text("")
+        typed = f"{linked}/T/Zephyr Notes"
+    (home / "agent-context" / "setup").mkdir(parents=True)
+    note = f"added source 'ledger' to {cfg} ({typed}, stored as {stored}): one form"
+    friction_path(env).write_text(f"Prompt: v33\nF1 | step 2 | clean | 0 | {note} | -\n")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    [shown] = re.findall(r"added source '<?[a-z0-9-]+>?' to \S+ (\([^()]*\)): one form", text)
+    assert shown == ("(~/Projects/<folder-1>)" if case == "home" else "(<tmp>/<path>)"), shown
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        body = path.read_text()
+        assert "/private~" not in body and "stored as <tmp>" not in body and "Zephyr" not in body, path
+    if case == "home":  # as the agentsync report collapses it on the same home
+        [py] = re.findall(
+            r"added source '<?[a-z0-9-]+>?' to \S+ (\([^()]*\)): one form", _py_report(env, cfg)
+        )
+        assert re.sub(r"<folder-\d+>", "<folder-N>", py) == re.sub(r"<folder-\d+>", "<folder-N>", shown)
+
+
 @pytest.mark.parametrize("before", ["\u201c", "\u00a0", "\u2014", " ", ""])
 def test_a_typed_note_after_punctuation_outside_ascii_is_cut(before: str) -> None:
     """The review of B13 round 32 C666: Python's \\b matches `added source` after a curly quote, a no-break

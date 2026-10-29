@@ -2582,6 +2582,10 @@ redaction_pairs() {
 		add_pair "$(cd "$TMPDIR" && pwd -P)" "<tmp>"
 		add_pair "${TMPDIR%/}" "<tmp>"
 	fi
+	# the home as pwd -P gives it (/private/tmp/... for a /tmp home) is ~ too, as in the Python report: the $HOME
+	# pair alone matched inside it and left `/private~/` (B13 round 32 C658's (a))
+	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
+	[ -z "$hp" ] || [ "$hp" = "$HOME" ] || add_pair "$hp" "~"
 	add_pair "$HOME" "~"
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
 		v="$(printf '%q' "$w")"
@@ -3880,7 +3884,10 @@ redact_stream() {
 # fixed macOS component, a generic drive folder, a generic home dir in any case or the part after CloudStorage,
 # then <path>; <stored> is left as the pairs left it. So a typed folder install.log has no argument for (a
 # relative --source-local, which install.sh made absolute before add-source printed it; a lost log; an
-# add-source the agent ran itself) is cut too (B13 round 32 ruling 72, C666). The word lists through ENVIRON
+# add-source the agent ran itself) is cut too (B13 round 32 ruling 72, C666). A note whose two forms the pairs
+# left equal (a /tmp-linked home, a TMPDIR folder) is one form, cut, as setup_report shows `(<typed>)` and cuts
+# it (C658's (b) with lane RA's (c)): the collapse compares the forms as the pairs left them and never prints
+# one the cut has not seen. The word lists through ENVIRON
 # (BSD awk takes no newline in -v; generic_folder's and generic_home_dir's words, a test keeps them equal),
 # byte-wise.
 typed_note_cut() {
@@ -3933,7 +3940,7 @@ typed_note_cut() {
 					if (e) {
 						typed = substr(rest, ts, t)
 						stored = substr(rest, ss, e)
-						done = done substr(s, 1, a - 1) substr(rest, 1, ts - 1) cut(typed) ", stored as " stored
+						done = done substr(s, 1, a - 1) substr(rest, 1, ts - 1) cut(typed) (typed == stored ? "" : ", stored as " stored)
 						s = substr(rest, ss + e)
 						continue
 					}

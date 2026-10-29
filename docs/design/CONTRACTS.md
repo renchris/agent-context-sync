@@ -34787,7 +34787,8 @@ same-stored collapse, so a note whose two forms redact alike shows both. Tests:
 `test_an_added_sources_typed_folder_is_cut_as_its_source_local_argument_is`, forced to the shell fallback with the
 note in the friction log in two spellings of the home, and `test_the_path_legend_says_only_a_relative_argument_is_one`.
 Amended 2026-10-28, §16.214 C666: the `(<path>, stored as` pairs are gone; typed_note_cut reads the note by its
-structure after every pair, so a relative or unlogged --source-local is cut too.
+structure after every pair, so a relative or unlogged --source-local is cut too, and since C658 a note whose two
+forms redact alike is one form, cut.
 
 **The shell report's sync-stop kinds are the agentsync report's, every one** (C531 with C552, C562, C575; ruling 57;
 `scripts/install.sh`). Lane B's round 30 C345 records a sync stopped on a suppression list or purge queue that lost a
@@ -35773,6 +35774,18 @@ stage under `LC_ALL=C`. The rooted `(<path>, stored as` pairs are dropped: the p
 Tests: `test_an_added_sources_typed_folder_is_cut_with_no_logged_argument_for_it`, forced to the shell fallback
 with a relative argument and with no install.log, each equal to build_report's line on the same home, and
 `test_the_typed_cuts_word_lists_are_the_shells_and_the_reports`.
+
+**A home through a link is `~`, and a note whose forms redact alike is one form, cut** (C658's (a) and (b);
+ruling 72; `scripts/install.sh`). redaction_pairs paired only $HOME with `~`, so on a home reached through a link
+(`/var/folders/...`, which `pwd -P` gives as `/private/var/folders/...`) the $HOME pair matched inside the resolved
+form and the stored form read `/private~/Projects/<folder-1>`; it now pairs `pwd -P`'s home with `~` too, before
+$HOME's. And the shell had no same-stored collapse, so a note whose two forms the pairs left equal (that home; a
+TMPDIR folder, both spellings `<tmp>`) showed both where the agentsync report shows `(<typed>)` (round 6 G41).
+typed_note_cut now prints such a note as its one form, cut by `_cut_path`'s rule: it compares the two forms as the
+pairs left them and never prints a form the cut has not seen, so `(<tmp>/Zephyr Notes, stored as <tmp>/Zephyr
+Notes)` reads `(<tmp>/<path>)`. Python's twin, cutting its collapsed note's one form, is lane RA's (c). Test:
+`test_an_added_sources_note_whose_forms_redact_alike_is_one_form_cut`, forced to the shell fallback for the linked
+home (equal to build_report's line) and the TMPDIR folder.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
