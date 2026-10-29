@@ -289,6 +289,12 @@ _ESCAPED_FOLD_META = "convert-escaped-fold:done"
 """Set once the failed conversions' stubs whose stored reason a round 29 build wrote an escaped spelling of
 the staging folder or home folder into had it folded in place, row and page (``_Cycle._fold_escaped_reasons``,
 B13 round 31 C546): its one-shot re-read was used, so no conversion wrote the reason again."""
+_PATH_FOLD_V2_META = "convert-path-fold-v2:done"
+"""Set once the failed conversions' stubs whose stored reason an older build cut inside the login (8 to
+11 characters into a staging folder under the home folder, below the old floor of 12), or whose page's reason
+still names the staging or home folder, had it folded in place, row and page (``_Cycle._fold_pathed_reasons``,
+B13 round 32 C660): on a Mac whose re-read and escaped-fold keys were already written, nothing else reads
+them."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -2160,6 +2166,7 @@ class _Cycle:
                 )
             self._queue_path_stubs()
             self._fold_escaped_reasons()
+            self._fold_pathed_reasons()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
@@ -2820,6 +2827,58 @@ class _Cycle:
         if folded:  # a count, never a name
             log.info("%d stored reason(s) of a failed conversion folded an escaped folder path", folded)
 
+    def _fold_pathed_reasons(self) -> None:
+        """Once per manifest (meta ``_PATH_FOLD_V2_META``): fold, in place as ``_fold_escaped_reasons``
+        does, the stored reason of each failed conversion's stub whose stored reason ``_names_a_path`` reads
+        (down to ``_cut_floor``, so a reason an older build cut 8 to 11 characters into a staging folder under
+        the home folder, inside the login) or whose page's reason holds any spelling of the staging or home
+        folder (a path the 200-character stored cut left out, but the page's 300 kept). The once-per-manifest
+        re-read (``_queue_path_stubs``) and escaped fold had already run on a Mac that ran a round 29 or later
+        build, so neither reads such a stub again (B13 round 32 C660). In place, not another re-read: a stub
+        whose one-shot re-read was used, a dataless one and one whose converter cannot start are folded too.
+        Not a stub ``_queue_path_stubs`` queued, in this run or an earlier one that did not read its source,
+        whose conversion writes its reason anew. The page
+        is written only where its plan differs; ``_sync/QUARANTINE.tsv`` follows from the row. No verdict or
+        count moves. The key is written only on a run that covers every live source and only when every page
+        it had to rewrite was written (C564)."""
+        if self.manifest.get_meta(_PATH_FOLD_V2_META) is not None:
+            return
+        if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
+            return  # a run of some sources only: the next full one folds them all
+        folded, pending = 0, False
+        for src in [s for s in self.config.sources if s.state is not SourceState.RETIRED]:
+            for row in list(self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))):
+                reason = row.state_reason or ""
+                if (
+                    row.is_dir
+                    or not reason.startswith(CONVERSION_FAILED)
+                    or (src.id, row.stable_id) in self._path_queued
+                    or (  # queued for its one-shot re-read by an earlier run that did not read its source
+                        row.last_verdict is Verdict.ERROR
+                        and not reason.startswith(CONVERTER_UNAVAILABLE)
+                        and self._names_a_path(reason)
+                    )
+                ):
+                    continue
+                result = self._failed_stub_again(row)
+                page = (result.reason or "") if result is not None else ""
+                if not self._names_a_path(reason) and not (
+                    convert_common._stub_with_a_path(page) or self._names_a_path(page)
+                ):
+                    continue
+                full = page if page.startswith(CONVERSION_FAILED) else reason
+                folded += self._store_folded(src, row, _one_line(self._fold_staging(full, row.name), 200))
+                if result is not None and not self._write_folded(
+                    src, row, result, self._fold_staging(page, row.name)
+                ):
+                    pending = True
+        if not pending:
+            self.manifest.set_meta(_PATH_FOLD_V2_META, "1")
+        if folded:  # a count, never a name
+            log.info(
+                "%d stored reason(s) of a failed conversion folded a folder path an older build kept", folded
+            )
+
     def _escaped_spellings(self) -> list[str]:
         """The spellings of this Mac's staging folder and home folder (``_common._spellings``) that differ
         from the plain one: what a round 29 build left in a reason (B13 round 31 C546)."""
@@ -2834,11 +2893,13 @@ class _Cycle:
     def _cut_in_staging(self, text: str, *, only_escaped: bool = False) -> int:
         """The length of the cut tail of this Mac's staging folder ``text`` ends with (a reason the manifest
         cut inside it, ``_names_a_path``), 0 for none; with ``only_escaped``, a tail of an escaped spelling
-        that the plain one does not share (B13 round 31 C546)."""
+        that the plain one does not share (B13 round 31 C546). A text that ends cut is read down to
+        ``_cut_floor`` (B13 round 32 C660), any other down to 12."""
+        cut = text.endswith("…")
         text = text.removesuffix("…")
         plain = {str(form) + "/" for form in convert_common._forms(self.staging)}
         for root in self._staging_roots():
-            for n in range(len(root) - 1, 11, -1):
+            for n in range(len(root) - 1, (self._cut_floor(root) if cut else 12) - 1, -1):
                 tail = root[:n]
                 if text.endswith(tail) and not (only_escaped and any(p.startswith(tail) for p in plain)):
                     return n
@@ -6314,14 +6375,33 @@ class _Cycle:
     def _names_a_path(self, reason: str) -> bool:
         """``_stub_with_a_path``, or a reason the manifest cut inside this Mac's staging folder: a long
         ``state_dir`` outside the home folder puts the cut before ``/staging/`` (B13 round 29 C181), in any of
-        its spellings (B13 round 31 C547)."""
+        its spellings (B13 round 31 C547), and a reason that ends cut down to ``_cut_floor`` (B13 round 32
+        C660)."""
         if convert_common._stub_with_a_path(reason):
             return True
+        cut = reason.endswith("…")
         text = reason.removesuffix("…")
         return any(
-            root in text or any(text.endswith(root[:n]) for n in range(12, len(root)))
+            root in text
+            or any(text.endswith(root[:n]) for n in range(self._cut_floor(root) if cut else 12, len(root)))
             for root in self._staging_roots()
         )
+
+    def _cut_floor(self, root: str) -> int:
+        """The shortest cut tail of the staging folder spelling ``root`` that a reason ending cut (``…``) is
+        read by (``_names_a_path``, ``_cut_in_staging``): for a root under the home folder, one character past
+        the home folder's parent (``/Users/a``), so a reason an older build cut inside the login keeps no
+        letter of it; else, or with no home folder to read, 12, the floor before (B13 round 32 C660). Never
+        above 12: a tail the old floor read is still read."""
+        try:
+            home = Path.home()
+        except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
+            return 12
+        for spelling in convert_common._spellings(home):
+            for form in dict.fromkeys((spelling, " ".join(spelling.split()))):
+                if len(form) > 1 and root.startswith(form + "/"):
+                    return min(12, len(form.rpartition("/")[0]) + 2)
+        return 12
 
     def _staging_roots(self) -> list[str]:
         """This Mac's staging folder, each ``_spellings`` form with a ``/`` after it, longest first, and

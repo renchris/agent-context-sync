@@ -670,6 +670,7 @@ def test_names_a_path_reads_a_reason_cut_inside_the_escaped_staging_folder() -> 
 
     fake = SimpleNamespace(staging=Path("/Volumes/Contoso\tState/agentsync/staging"))
     fake._staging_roots = lambda: cycle_mod._Cycle._staging_roots(fake)  # type: ignore[attr-defined]
+    fake._cut_floor = lambda root: cycle_mod._Cycle._cut_floor(fake, root)  # type: ignore[attr-defined]
     names = lambda reason: cycle_mod._Cycle._names_a_path(fake, reason)  # type: ignore[arg-type]  # noqa: E731
     head = "conversion failed: [Errno 20] Not a directory: '/Volumes/Contoso"
     assert names(head + "\\tState/agentsync/sta…")
@@ -794,6 +795,7 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
 
     fake = SimpleNamespace(staging=Path("/Volumes/Contoso\tState/agentsync/staging"))
     fake._staging_roots = lambda: cycle_mod._Cycle._staging_roots(fake)  # type: ignore[attr-defined]
+    fake._cut_floor = lambda root: cycle_mod._Cycle._cut_floor(fake, root)  # type: ignore[attr-defined]
     fake._cut_in_staging = lambda text, **kw: cycle_mod._Cycle._cut_in_staging(fake, text, **kw)  # type: ignore[attr-defined]
     fold = lambda text, name: cycle_mod._Cycle._fold_staging(fake, text, name)  # type: ignore[arg-type]  # noqa: E731
     root = "/Volumes/Contoso\\tState/agentsync/staging/0123456789abcdef"
@@ -822,6 +824,155 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
     assert fold(f"{root}.docx in {staging}", "Plan.docx") == "Plan.docx in its folder", (
         "the 16-hex forms first"
     )
+
+
+@pytest.mark.parametrize("home", ["/Users/contosoquill", "/Volumes/Contoso Disk/Users/contosoquill"])
+def test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent(
+    monkeypatch: pytest.MonkeyPatch, home: str
+) -> None:
+    """B13 round 32 C660: the floor of 12 left a reason an older build cut 8 to 11 characters into a
+    staging folder under the home folder (``/Users/c`` to ``/Users/cont``) unread by ``_names_a_path`` and
+    uncut by ``_cut_in_staging``, so its stored reason kept up to 4 letters of the login. Under the home
+    folder the floor is one letter past the home folder's parent, never above 12; outside it, or not cut,
+    12."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    monkeypatch.setenv("HOME", home)
+    fake = SimpleNamespace(staging=Path(home) / "Library" / "Application Support" / "agentsync" / "staging")
+    fake._staging_roots = lambda: cycle_mod._Cycle._staging_roots(fake)  # type: ignore[attr-defined]
+    fake._cut_floor = lambda root: cycle_mod._Cycle._cut_floor(fake, root)  # type: ignore[attr-defined]
+    fake._cut_in_staging = lambda text, **kw: cycle_mod._Cycle._cut_in_staging(fake, text, **kw)  # type: ignore[attr-defined]
+    names = lambda reason: cycle_mod._Cycle._names_a_path(fake, reason)  # type: ignore[arg-type]  # noqa: E731
+    fold = lambda text: cycle_mod._Cycle._fold_staging(fake, text, "Plan.docx")  # type: ignore[arg-type]  # noqa: E731
+    head = "conversion failed: python-pptx cannot read the deck: file '"
+    parent = len(home) - len("contosoquill")
+    for letters in (1, 3, 4, 8):
+        tail = str(fake.staging)[: parent + letters]
+        assert names(head + tail + "…"), tail
+        assert fake._cut_in_staging(head + tail + "…") == len(tail)
+        assert fold(head + tail + "…") == head + "…", tail
+    if parent + 3 < 12:
+        assert not names(head + str(fake.staging)[: parent + 3]), "not cut: the floor stays 12"
+    outside = SimpleNamespace(staging=Path("/Volumes/Contoso/agentsync/staging"))
+    outside._staging_roots = lambda: cycle_mod._Cycle._staging_roots(outside)  # type: ignore[attr-defined]
+    outside._cut_floor = lambda root: cycle_mod._Cycle._cut_floor(outside, root)  # type: ignore[attr-defined]
+    assert not cycle_mod._Cycle._names_a_path(outside, head + "/Volumes/C…")  # type: ignore[arg-type]
+    assert cycle_mod._Cycle._names_a_path(outside, head + "/Volumes/Con…")  # type: ignore[arg-type]
+
+
+def _login_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, under: bool = True):  # type: ignore[no-untyped-def]
+    """A made-up home ``<tmp>/Contoso Users/contosoquill``, and a config whose state is under it (or not)."""
+    from test_review_fixes import cfg_text, write_config  # noqa: PLC0415
+
+    home = tmp_path / "Contoso Users" / "contosoquill"
+    home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    src = tmp_path / "source"
+    src.mkdir()
+    (src / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    state = home / "Library" / "Application Support" / "agentsync" if under else tmp_path / "state"
+    config = write_config(tmp_path, cfg_text(tmp_path, src).replace(str(tmp_path / "state"), str(state)))
+    return config, src, home
+
+
+@pytest.mark.parametrize("letters", [1, 3, 4])
+def test_a_reason_cut_inside_the_login_is_folded_on_a_mac_past_both_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, letters: int
+) -> None:
+    """B13 round 32 C660: a stored reason an older build cut 1 to 4 letters into the login (8 to 11 characters
+    into a staging folder under ``/Users``) was never re-read (C181) nor folded (C546), and its page, whose
+    reason holds 300 characters, kept the whole path; on a Mac that already ran a round 29 or later build
+    both once-per-manifest keys are written, so lowering the floor alone changed nothing. The
+    ``convert-path-fold-v2:done`` pass folds it in place, row and page, converting nothing; a page it could
+    not write keeps the key unwritten, and the run after leaves the page byte for byte."""
+    from agentsync.publish import Publisher  # noqa: PLC0415
+
+    config, src, home = _login_home(tmp_path, monkeypatch)
+    word_package(src / "Contoso renamed doc.potx")
+    tries = _counted(monkeypatch)
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        mp.setattr(cycle_mod._Cycle, "_fold_pathed_reasons", lambda _self: None)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    page = "mirror/src/contoso-renamed-doc.potx.md"
+    staging = str(config.state_paths.staging)
+    assert staging in page_fm(config, page)["reason"], "the older build's page holds the whole path"
+    row = _row(config, "Contoso renamed doc.potx")
+    cut = staging[: len(str(home.parent)) + 1 + letters]
+    with Manifest(config.state_paths.db) as m:
+        m.set_state(
+            "src",
+            row.stable_id,
+            RowState.QUARANTINED,
+            f"conversion failed: python-pptx cannot read the deck: file '{cut}…",
+        )
+        m.set_meta(cycle_mod._PATH_REREAD_META, "1")  # a round 29 or later build ran both passes
+        m.set_meta(cycle_mod._ESCAPED_FOLD_META, "1")
+    tries.clear()
+
+    def full_disk(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise OSError(28, "No space left on device")
+
+    with monkeypatch.context() as mp:
+        mp.setattr(Publisher, "write_pages", full_disk)
+        run(config)
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._PATH_FOLD_V2_META) is None, "a failed rewrite keeps the key unwritten"
+    assert "Contoso Users" not in (_row(config, "Contoso renamed doc.potx").state_reason or "")
+    assert run(config).exit_code == 0
+    assert tries == [], "folded in place: no conversion"
+    reason = _row(config, "Contoso renamed doc.potx").state_reason or ""
+    assert (
+        reason.startswith("conversion failed: python-pptx cannot read the deck: ")
+        and "/staging/" not in reason
+    )
+    assert "Contoso Users" not in reason and "Application Support" not in reason, reason
+    for rel in (page, "_sync/QUARANTINE.tsv", "_manifest/src.jsonl"):
+        assert "Contoso Users" not in git(config.docs_repo, "show", f"HEAD:{rel}"), rel
+    # every file in the docs repo: the README names the state folder as ``~/Library/...``, never the home
+    for path in config.docs_repo.rglob("*"):
+        if path.is_file() and ".git" not in path.relative_to(config.docs_repo).parts:
+            data = path.read_text(encoding="utf-8", errors="replace")
+            assert "Contoso Users" not in data and staging not in data, path
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._PATH_FOLD_V2_META) == "1"
+    before = (config.docs_repo / page).read_bytes()
+    assert run(config).exit_code == 0
+    assert tries == [] and (config.docs_repo / page).read_bytes() == before, "once per manifest"
+
+
+def test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C660 (verifier): a reason whose path starts past character 200 leaves a clean stored reason, so neither
+    the re-read nor either fold read it, while its page, cut at 300, kept the path. The v2 pass reads the
+    page's reason too."""
+    config, src, _home = _login_home(tmp_path, monkeypatch, under=False)
+    (src / "Contoso Quarterly.pptx").write_bytes(build_potx(tmp_path / "t.potx").read_bytes())
+
+    def refuses(self: PptxConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
+        raise ConversionError("the deck's Contoso parts " + "cannot be read " * 12 + f"from '{path}'")
+
+    monkeypatch.setattr(PptxConverter, "convert", refuses)
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        mp.setattr(cycle_mod._Cycle, "_fold_pathed_reasons", lambda _self: None)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    page = "mirror/src/contoso-quarterly.pptx.md"
+    stored = _row(config, "Contoso Quarterly.pptx").state_reason or ""
+    shown = page_fm(config, page)["reason"]
+    tmp = str(tmp_path.resolve())
+    assert tmp not in stored and tmp[:40] not in stored, "the stored cut falls before the path"
+    assert tmp[:40] in shown, "the page holds the path"
+    assert run(config).exit_code == 0
+    for rel in (page, "_sync/QUARANTINE.tsv", "_manifest/src.jsonl"):
+        assert tmp[:40] not in git(config.docs_repo, "show", f"HEAD:{rel}"), rel
+    assert page_fm(config, page)["reason"].endswith("from '…")
+    before = (config.docs_repo / page).read_bytes()
+    assert run(config).exit_code == 0
+    assert (config.docs_repo / page).read_bytes() == before
 
 
 def test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash(tmp_path: Path) -> None:

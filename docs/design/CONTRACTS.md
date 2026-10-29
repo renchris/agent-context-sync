@@ -35180,6 +35180,9 @@ file; the next leaves the page byte for byte) and
 Amended 2026-10-28, §16.216 C645: for a Graph source the staging folder itself is the staged file's folder, so the
 staging folder named alone becomes `its folder` and any other path in it, a converter's `.media-` or `.ocr-` temp
 folder included, loses the folder.
+Amended 2026-10-28, §16.216 C660: a reason that ends cut is read down to one character past the home folder's parent
+for a staging folder under the home folder, never above 12, and `convert-path-fold-v2:done` folds what the two older
+once-per-manifest keys left: a stored reason cut inside the login, or a page whose reason still names the folder.
 
 **A fold whose page could not be written is tried again (C564 with C576, ruling 48; `agentsync.cycle`; amends
 §16.206 C361).** `_fold_unavailable_reasons` wrote its once-per-manifest key after a page rewrite failed
@@ -35498,6 +35501,32 @@ other name, as `_pathless` folds a Graph file's folder; the 16-hex forms go firs
 becomes the name. Test:
 `test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text` (a `.media-` and
 an `.ocr-` path lose the folder, the folder alone with or without its slash reads `its folder`).
+
+**A reason cut inside the login is read and folded, also where both fold keys are set (C660, ruling 71;
+`agentsync.cycle`; amends §16.211 C546).** `_names_a_path` and `_cut_in_staging` read a cut tail of the staging
+folder only from 12 characters on, so a reason an older build cut 8 to 11 characters into a staging folder under
+`/Users` (`/Users/c` to `/Users/cont`) was neither re-read (§16.201 C181) nor folded (C546), and its page, whose
+`reason:` holds 300 characters to the manifest's 200, kept the whole path. Both now read a text that ends cut
+(`…`) down to `Cycle._cut_floor`: for a staging spelling under one of the home folder's spellings, one character past
+that spelling's parent, never above 12; else, or with no home folder to read, 12; a text not cut stays at 12.
+Lowering the floor alone changes nothing on a Mac whose `convert-path-reread:done` and `convert-escaped-fold:done`
+are already written, so `Cycle._fold_pathed_reasons`, once per manifest (`convert-path-fold-v2:done`, written only
+on a run that covers every live source and only when every page it had to rewrite was written), folds in place, as
+the escaped fold does, each failed conversion's stub (a paused source's too) whose stored reason `_names_a_path`
+reads or whose page's `reason:` holds a spelling of the staging or home folder: from the page's full reason, through
+`_fold_staging`, stored cut to 200, the page rewritten only where its plan differs. In place rather than another
+re-read, so a stub whose one-shot re-read was used, a dataless one and one whose converter cannot start fold too;
+not one queued for its re-read, in this run or in an earlier one that did not read its source, whose conversion
+writes its reason anew. No verdict or count moves. Tests:
+`test_convert_family.py::test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent` (1, 3, 4
+and 8 letters into `/Users/contosoquill` read, counted and cut; a text not cut keeps the floor of 12; a staging
+folder outside the home folder keeps it too; a home under a long parent never goes above 12),
+`test_convert_family.py::test_a_reason_cut_inside_the_login_is_folded_on_a_mac_past_both_passes` (stored reasons
+cut 1, 3 and 4 letters into a made-up login, both older keys written; a full disk keeps the new key unwritten; the
+next sync converts nothing and leaves no letter of the login in the row, the HEAD page, QUARANTINE.tsv, the
+source's manifest file or any file of the docs folder; the one after leaves the page byte for byte) and
+`test_convert_family.py::test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too` (a clean stored reason
+whose page held the path).
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
