@@ -10478,7 +10478,10 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         f"converted; {looping} of those "
         "converted at least one file again from the same bytes and converter options its own page was made "
         "from, which the run just before had converted too (the sign of a loop; a copy of a file is a new "
-        "file and is not counted, nor is a file re-screened for a label-rule change)",
+        # B13 round 32 C623 (ruling 73): nor a mail the new label reader re-screens, which keeps its action
+        # key but never counts as seen (cycle.py: no prior read for the reader's re-screen)
+        "file and is not counted, nor is a file re-screened for a label-rule change or for a new mail label "
+        "reader)",
         "",
         "The last runs, newest first:",
         "",

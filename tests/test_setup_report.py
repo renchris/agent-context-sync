@@ -14892,8 +14892,8 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "- of the last 3 runs, 2 recorded what they converted; 2 of those converted at least one file "
         "again from the same bytes and converter options its own page was made from, which the run just "
         "before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, "
-        "nor is a file re-screened for a label-rule change)\n" in part
-    )
+        "nor is a file re-screened for a label-rule change or for a new mail label reader)\n" in part
+    ), part  # B13 round 32 C623 (ruling 73): the reader's re-screen is left out too
     # a re-screen under a label-rule change gets a new action key, so the bullet no longer covers it in words
     # it does not count it by (B13 round 10 L71)
     assert "again from the bytes its page was made from" not in part

@@ -18801,6 +18801,9 @@ again from the bytes its page was made from", which a label-rule re-screen of un
 the run just before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, nor
 is a file re-screened for a label-rule change)", and `_repeat_part`'s docstring names the action key. Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned bullet).
+Amended 2026-10-28, §16.213 C623: the bracket ends `nor is a file re-screened for a label-rule change or for a new
+mail label reader)`: the reader's re-screen keeps its action key but is never counted as seen (cycle.py's `prior` is
+None for it).
 
 **A rewrite path of tool words is no value** (L69; dated line at §16.80 K10). K77's measured leak is the tool-path
 skip's, which spares a match by where it sits; a word list spares a path only when every word in it is on the
@@ -35675,6 +35678,14 @@ label rule's re-screen empty. A secret rule is no converter option, so its re-sc
 key and is counted in the 'same bytes' column (`cycle._tally_converted`). The note ends `one re-screened for a secret
 rule is counted in that column`. The guide's Repeat conversions row is lane D's. Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned note).
+
+**Repeat conversions' head names the mail label reader's re-screen among what it leaves out** (C623, ruling 73;
+`src/agentsync/setup_report.py`). The head's bracket listed a copy and a label-rule re-screen as not counted, but a
+mail the new mail label reader re-screens keeps its action key (same bytes, same converter options) and is never
+counted in the 'same bytes' column either (cycle.py takes no prior read for it; the reader bullet says `counted apart
+from the 'same bytes' column`), so the head read as if it were a loop. The bracket ends `nor is a file re-screened for
+a label-rule change or for a new mail label reader)`; both phrases are already among `_FIXED_VALUE_PHRASES`. The §16.85
+L71 quote has a dated line. Test: `test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned head).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
