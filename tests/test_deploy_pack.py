@@ -7367,6 +7367,15 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
         assert part in note, part
     [command] = re.findall(r"rerun every copy's shasum check,\s+`\((sed [^`]*)\)`", raw)
     assert command == "sed 's|  tree/|  <copy>/|' manifest.sha256 | shasum -a 256 -c -"
+    # B13 round 32 C664's (1) (ruling 75): both checks name their lists bare, so the note says where the lists
+    # live and where the checks run, outside the backticked commands, which stay as pinned
+    where = (
+        "Both dirs.txt and manifest.sha256 are the fixture's, under"
+        " ~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks"
+        " run from the folder that holds them (round 32 C664)."
+    )
+    assert note.count(where) == 1
+    assert all(where not in span for span in re.findall(r"`[^`]*`", note))
     if shutil.which("shasum") is None:
         pytest.skip("shasum is macOS's; the note's words are checked above")
     tree = tmp_path / "tree"

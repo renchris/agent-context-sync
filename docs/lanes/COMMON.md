@@ -711,7 +711,9 @@ d | LC_ALL=C sort | LC_ALL=C sed 's#^\.#tree#') | diff - dirs.txt` and stop on a
 an upstream deletion deletes a file it made itself (a `cp -p` of a fixture file under a made-up name, synced before
 it goes), never a manifest file; one that must move a manifest file names that one file, and its copy's check passes
 only when that file is the one line missing, its hash checked where it went against its manifest line (round 31 C573,
-C504). A rehearsal that crosses local midnight checks every step after it again: an empty-folder alarm or wait gone
+C504). Both dirs.txt and manifest.sha256 are the fixture's, under ~/.cache/agentsync-bring-back/fixtures/v1/ (or
+copied beside <root>/fixture/tree), and both checks run from the folder that holds them (round 32 C664). A rehearsal
+that crosses local midnight checks every step after it again: an empty-folder alarm or wait gone
 just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing, not agentsync's.
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and

@@ -35551,3 +35551,17 @@ no harm. The last cell says so and keeps `the audit is kept by design`; the row 
 test key holds, and audit.jsonl gets no row of its own. Test:
 `test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live`, extended to read the cell
 beside `_purge_locked`'s source and the size cap.
+
+**The kit note says where its two lists live** (C664's (1), ruling 75; `docs/lanes/COMMON.md`). Its folder check
+ends `| diff - dirs.txt` and its shasum check reads a bare `manifest.sha256`, which work only from a folder that
+holds them (diff exits 2 anywhere else, which still stops the run), while round 32's brief named dirs.txt by its
+full path. One sentence after the deletion rule, outside the backticked commands, says both lists are the
+fixture's, under ~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks
+run from the folder that holds them. The finder's fix, the full path inside the command, would fail
+`test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder`'s `endswith(" | diff - dirs.txt")` pin, reverse
+ruling 61's split and leave manifest.sha256 bare beside it (makes worse True), so both commands stay as pinned.
+C664's (2) and (3) (the brief's shasum clause after every `cp -Rp` and when its folder check runs), C604 (a bounded
+copy of built helpers into a probe home), C605 (one sandbox root per round, stopping if it exists) and C630
+(kitcheck.sh's homes found from the root) are the lead's, written into round 33's brief through tools/edit.py.
+Test: `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, extended to read the sentence
+once and outside every backticked span.
