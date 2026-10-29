@@ -13153,8 +13153,11 @@ def test_a_manifest_busy_under_read_only_reads_reads_as_busy_and_a_newer_one_sti
     # the loop read's error, which the report files under the state file, is the same refusal, never a note
     assert isinstance(hooks.state_error(), ManifestSchemaError), hooks.state_error()
 
-    def aged(lines: list[str]) -> list[str]:  # the heartbeat's age can tick a second between the two runs
-        return [re.sub(r"\(\d+s ago", "(Ns ago", ln) for ln in lines]
+    def aged(lines: list[str]) -> list[str]:
+        # the heartbeat's age can tick a second between the two runs, and the free space moves with any other
+        # writer on the disk
+        lines = [re.sub(r"\(\d+s ago", "(Ns ago", ln) for ln in lines]
+        return [re.sub(r"— [\d.]+ GiB free", "— N GiB free", ln) for ln in lines]
 
     assert aged(inside) == aged(outside)
     assert not any(manifest_mod.SCHEMA_READ_NOTE in ln for ln in inside), inside
