@@ -141,8 +141,8 @@ def _pathless(text: str, src: Path, name: str) -> str:
     ``PosixPath`` prints its path with ``repr``, so a tab is ``\\t`` there and a backslash doubled (B13 round
     30 C364), and in the forced single-quote spelling too, which an error naming a file with a double quote
     gives its folder's apostrophes (B13 round 31 C578). The folder named alone, with nothing of a file after
-    it, is cut only at a path's end, to a fixed word, so a sibling whose name extends it stays whole and a
-    quoted path never reads ``''`` (C578)."""
+    it, is cut only at a path's end (``_PATH_END``), to a fixed word, so a sibling whose name extends it with
+    no space stays whole and a quoted path never reads ``''`` (C578, B13 round 32 C646)."""
     for spelling in _spellings(src):
         text = text.replace(spelling, name)
     folder = [spelling for spelling in _spellings(src.parent) if len(spelling) > 1]
@@ -156,10 +156,14 @@ def _pathless(text: str, src: Path, name: str) -> str:
 _FOLDER_WORD = "its folder"
 """What a staged file's folder named alone in a reason becomes (``_pathless``, B13 round 31 C578): fixed
 words, never a path and never empty."""
-_PATH_END = r"(?=$|[\s'\":,;)\]])"
-"""Where a path named alone ends in an error's text: the end, a space, a quote, or punctuation after it."""
-_PATH_GOES_ON = r"(?=/|$|[\s'\":,;)\]])"
-"""Where a staged file's path ends in an error's text, or goes on into a part below it (``<file>/x``)."""
+_PATH_END = r"(?=$|\.(?=$|\s)|\\'|[\s'\":,;)\]>])"
+"""Where a path named alone ends in an error's text: the end, whitespace, a quote or an escaped quote
+(``\\'``), one of ``:,;)]>`` (``<DirEntry …>``), or a sentence-ending ``.`` (the end or whitespace after it),
+never a bare ``.``, so ``<folder>.bak`` stays whole. Whitespace stays an end, so the first of two paths
+(``cp <folder> /dest``) is cut (B13 round 32 C646)."""
+_PATH_GOES_ON = r"(?=/|$|\.(?=$|\s)|\\'|[\s'\":,;)\]>])"
+"""Where a staged file's path ends in an error's text (as ``_PATH_END``), or goes on into a part below it
+(``<file>/x``)."""
 
 
 def _homeless(text: str) -> str:

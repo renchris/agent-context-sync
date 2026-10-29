@@ -757,6 +757,27 @@ def test_pathless_cuts_every_quote_spelling_and_the_folder_named_alone(tmp_path:
     assert _pathless(sibling, plain / "deck.pdf", "deck.pdf") == sibling, "a sibling folder stays whole"
 
 
+def test_pathless_cuts_the_folder_named_alone_before_a_period_a_bracket_or_an_escaped_quote(
+    tmp_path: Path,
+) -> None:
+    """B13 round 32 C646: the folder named alone was kept whole before a sentence-ending ``.``, a ``>``
+    (``<DirEntry …>``) or an escaped quote. A bare ``.`` is no end, so a dotted sibling stays whole, and
+    whitespace stays one, so the first of two paths is still cut."""
+    from agentsync.convert._common import _FOLDER_WORD, _pathless  # noqa: PLC0415
+
+    staged = tmp_path / "Contoso state" / "staging" / "abc0123456789def"
+    staged.mkdir(parents=True)
+    src = staged / "deck.pdf"
+    cut = lambda text: _pathless(text, src, "deck.pdf")  # noqa: E731
+    assert cut(f"cannot list {staged}.") == f"cannot list {_FOLDER_WORD}."
+    assert cut(f"cannot list {staged}. Try again") == f"cannot list {_FOLDER_WORD}. Try again"
+    assert cut(f"<DirEntry {staged}>") == f"<DirEntry {_FOLDER_WORD}>"
+    assert cut(f"cannot open {staged}\\'") == f"cannot open {_FOLDER_WORD}\\'"
+    assert cut(f"cp {staged} /Volumes/Contoso/x") == f"cp {_FOLDER_WORD} /Volumes/Contoso/x"
+    for sibling in (f"cannot open '{staged}.bak/x.png'", f"cannot open '{staged}2/x.png'"):
+        assert cut(sibling) == sibling, "a sibling whose name extends it with no space stays whole"
+
+
 def test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -780,8 +801,14 @@ def test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash(tmp_path:
     assert "no substring" not in (_spellings.__doc__ or ""), "the docstring says only: longest first"
     staged = tmp_path / "Contoso\\"
     found = _spellings(staged)
-    assert [len(s) for s in found] == sorted({len(s) for s in found}, reverse=True), "no two of one length"
+    assert [len(s) for s in found] == sorted({len(s) for s in found}, reverse=True), "longest first"
     src = staged / "notes.docx"
+    assert _pathless(f"[Errno 2] No such file: {str(src)!r}", src, "notes.docx") == (
+        "[Errno 2] No such file: 'notes.docx'"
+    )
+    # B13 round 32 C647: an input whose fold depends on the order, a staged file whose own name ends in a
+    # backslash: shortest first leaves 'notes.docx\\'
+    src = tmp_path / "Contoso" / "notes\\"
     assert _pathless(f"[Errno 2] No such file: {str(src)!r}", src, "notes.docx") == (
         "[Errno 2] No such file: 'notes.docx'"
     )

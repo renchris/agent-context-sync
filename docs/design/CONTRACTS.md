@@ -35203,11 +35203,15 @@ alone, a trailing slash or none, only at a path's end (the end, a space, a quote
 `test_convert_family.py::test_pathless_cuts_every_quote_spelling_and_the_folder_named_alone`,
 `test_convert_family.py::test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash` and
 `test_convert_family.py::test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling`.
+Amended 2026-10-28, §16.216 C646: a path's end is the end, whitespace, a quote or an escaped quote, one of `:,;)]>`,
+or a `.` with the end or whitespace after it, so a sibling whose name extends the folder with no space stays whole.
 
 **The spellings' order, said as it is (C551, ruling 48; words only).** `_spellings`' docstring and §16.206 C364 said
 the plain spelling is no substring of the escaped one, false for a path ending in a backslash; both now say only
 that spellings are replaced longest first (two different spellings never have one length). Test:
 `test_convert_family.py::test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash`.
+Amended 2026-10-28, §16.216 C647: two different spellings of one length, such as a link and a target of the same
+length, cannot contain each other, so their order does not matter.
 
 **The mail label reader's re-screen is counted and named as its own, row by row (C505 with C517, C518, C524,
 C544, ruling 53; `agentsync.cycle`, `agentsync.cli`, `agentsync.model`, `agentsync.manifest`; amends §16.206 C404
@@ -35527,6 +35531,23 @@ next sync converts nothing and leaves no letter of the login in the row, the HEA
 source's manifest file or any file of the docs folder; the one after leaves the page byte for byte) and
 `test_convert_family.py::test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too` (a clean stored reason
 whose page held the path).
+
+**The folder named alone ends where a path does (C646, ruling 71; `agentsync.convert`; amends §16.211 C578).**
+`_common._PATH_END` kept the staged file's folder named alone whole before a sentence-ending `.`, a `>` (an
+`os.DirEntry`'s repr) or an escaped quote `\'`, and cut a sibling whose name adds a space. The end set now holds
+the end, whitespace, a quote or an escaped quote, one of `:,;)]>`, and a `.` only when the end or whitespace
+follows it, never a bare `.`, so `<folder>.bak/x` and `<folder>2/x` stay whole; `_PATH_GOES_ON` takes the same set
+with `/`. Whitespace stays an end (a fix makes things worse otherwise: `cp <folder> /dest` would keep the first path
+whole), so a sibling that extends the folder with a space is still cut; agentsync makes none. Test:
+`test_convert_family.py::test_pathless_cuts_the_folder_named_alone_before_a_period_a_bracket_or_an_escaped_quote`
+(`.` at the end and before a space, `>`, `\'` and `cp <folder> /dest` cut; `.bak` and `2` siblings whole).
+
+**The spellings' order, said and tested as it is (C647, ruling 71; words and a test; amends §16.211 C551).**
+§16.211 C551 said two different spellings never have one length, false across forms: a link and a target of the
+same length give two. Two different strings of one length cannot contain each other, so their order does not
+matter. The test's `_pathless` half used an input whose fold does not depend on the order; it now also folds a
+staged file whose own name ends in a backslash, which shortest first leaves as `'notes.docx\'`. Test:
+`test_convert_family.py::test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash`.
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
