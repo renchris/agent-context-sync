@@ -36332,3 +36332,16 @@ the flag, `FOLDER_LOST_SAID`, `ACCEPT_PATH_KEPT_RECORD`) and gives both refusals
 trail has lost what purge-record.json keeps, with it when the trail has lost nothing and holds no
 `audit-trail-lost` line. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, which reads
 the bullet beside governance's constants and `accept_lost_suppression`'s two refusals.
+
+**The guide's Repeat conversions row gives the folder-path clause both triggers and each count its column**
+(C651 with ruling 73; `docs/deploy/setup-feedback.md`; after lane RA's ff38befe1 and 667696ce4). Since §16.211
+C506 `_repeat_part` shows the clause after `once it starts` for `pathed`, the runs that counted a re-read or
+`legacy_pathed`, but its `tried once more after an upgrade:` note only for `reread_runs`, while the row said the
+clause shows only on a re-read and the note then follows: false twice for a run whose upgrade retry took a failure
+whose stored reason named a folder. The row gives both triggers, says that retry's `tried again after an upgrade:`
+note says so with no `tried once more` note for those files, and ties the `tried once more` note to a re-read; the
+`then gives, per run` that `test_the_repeat_conversions_row_gives_the_path_re_read` pins stays. In ruling 73's
+words, written once: a file re-screened after a secret-rule change is `counted in that column` (C622, C627), and the
+waiting line says a later run that reads it counts it under files converted, or under failed or unreadable (C628).
+Test: `test_the_repeat_conversions_row_names_the_clause_its_note_follows`, extended to read the two triggers beside
+`_repeat_part`'s `pathed` and `reread_runs` and the report's ruling 73 words.

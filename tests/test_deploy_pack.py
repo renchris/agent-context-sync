@@ -7581,11 +7581,36 @@ def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
     [row] = [line for line in _feedback_page().splitlines() if line.startswith("| Repeat conversions |")]
     assert "That last clause shows only when" not in row
     said = (
-        "The clause after `once it starts`, on a failure an older build stored a folder path in, shows only"
-        " when a shown run counted such a re-read"
+        "The clause after `once it starts`, on a failure an older build stored a folder path in, shows when a"
+        " shown run counted such a re-read, or when an upgrade's retry of the failures an older build had"
+        " given up on took one whose stored reason named a folder"
     )
     assert said in row and row.index("once it starts") < row.index(said)
     assert "a failure an older build stored a folder path in is tried once more after an upgrade" in row
+    # B13 round 32 C651 (ruling 73): two triggers, and the `tried once more` note tied to a re-read only, as
+    # the report gates the clause on `pathed` and the note on `reread_runs`
+    assert "shows only when a shown run counted such a re-read" not in row
+    assert (
+        "that retry's `tried again after an upgrade:` note says so, and no `tried once more` note follows for"
+        " those files (B13 round 32 C651). For a shown run that counted a re-read, a `tried once more after"
+        " an upgrade:` note under the table then gives, per run," in row
+    )
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    assert 'pathed = [x for x in runs[:_RUNS_SHOWN] if x in reread_runs or x.n("legacy_pathed")]' in source
+    assert "    if reread_runs:\n" in source
+    # ruling 73's words, as lane RA's report prints them
+    assert "one re-screened for a secret rule is counted in that column" in source
+    assert "a file re-screened after a secret-rule change is counted in that column" in row
+    assert (
+        "cannot start counts that file in no column above; a later run that reads it counts it under "
+        in source
+    )
+    assert (
+        "says a later run that reads it counts it under files converted, or under failed or unreadable when"
+        " that is how it ended" in row
+    )
 
 
 def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
