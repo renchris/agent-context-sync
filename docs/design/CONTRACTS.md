@@ -35430,3 +35430,23 @@ did not parse` (`their label data` for more than one), and since lane RA's C567 
 Summary re-renders it after K's clause; the row gave K's clause only. It now gives L's after K's, with its plural,
 counted in R and not in K. Test: `test_the_summary_row_gives_the_label_data_clause_after_k`, which reads the clause
 from `cli` and its re-render from `setup_report`.
+
+### 16.213 Round 32: setup report: install.sh's hold words, a Loop line that points only at what the report prints, a signal-stopped first sync named by its signal and the Repeat conversions counts (2026-10-28, wave B13 round 32 lane RA)
+
+Reserved for round 32 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 32").
+
+### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
+
+Reserved for round 32 lane RB of B13.
+
+### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
+
+Reserved for round 32 lane B of B13.
+
+### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
+
+Reserved for round 32 lane E of B13.
+
+### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
+
+Reserved for round 32 lane D of B13.

@@ -2147,7 +2147,7 @@ probe rewrites the `-shm` read marks as every reader of a live WAL does, and no 
 snapshot would copy the db and `-wal` on every doctor run, the cost C526's verifier ruled out; lane RA's test
 compares that `-shm` by mode and mtime); C521's three shapes agentsync never writes (a UTF-8 BOM, a NaN, a scope
 holding `\null`) keep today's cautious words (lane RB); C523's settled split (ruling 54 chose C545's reword); C508's
-optional NEXT rewrite (the ruling names only the wait); C515's step note in install.log (the report's first-sync
+optional NEXT rewrite (the ruling names only the wait; round 32's ruling 67 builds it, C656); C515's step note in install.log (the report's first-sync
 step words carry it, ruling 58).
 
 | Lane | Landed (lane commits) |
@@ -2177,6 +2177,45 @@ Round 32: the round 31 workflow (`round31/round31-workflow.js` through `round32/
 above) with the harvest list in `round32/tools/harvest-lead.txt`, on this section's landed tip, BASE `7f132615`, ids
 C601 and up, outputs `round32/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since
 no lane changed the prompt.
+
+### B13 round 32: v33 rehearsal, cross-lane review, harvest, Codex beside Claude (2026-10-28)
+
+Run `wf_435d0939-83d` on `357f6d5b` (89 agents, 0 errors, 1 hour 46 minutes). All six scenarios pass their
+EXPECTED; no name leaks; every fixture copy matched its folder list and its `shasum` check, and the kit halves of
+C503 and C504 worked as written. 73 findings after dedupe, 68 confirmed (0 turns, 10 wrongs, 58 small), 5 refuted
+(C608, C611, C619, C663, C665). None needs prompt text: v33 stays the prompt to paste. 8 items are data integrity,
+most on round 31's own new paths: `--accept-lost` writing a fresh one-line audit trail over a lost governance folder,
+so the old trail is lost silently (C606); a lost purge cleared on a failed alias read (C667); purge `--forget`'s help
+sending the person to run every queued purge (C610); the staging path and up to 4 letters of the login kept in a
+stored reason, its page, QUARANTINE.tsv and the manifest (C645, C660); typed folder names in the shell report (C666,
+C658); and a page published again with no warning (C649 with C671). Codex's four reviews ran (8 findings) and its
+second opinion gave 10 opinions, none disputed. A triage workflow (`wf_814979c5-0f6`) placed every item once and
+drafted the rulings.
+
+Lead rulings for round 32 (in `lanes/COMMON31.md`, mirrored in `docs/lanes/COMMON.md`), all code-only: (63) with
+governance/ gone, every lost-file reader names the folder; (64) every governance line says what is on disk and what
+is really lost; (65) ruling 60's guard answers whether a sync runs, and every reader beside a stop says none runs
+until it is fixed; (66) ruling 58 holds in every bracket and every reader; (67) the report's Loop line points only at
+a line the report prints, and says whose reading it quotes; (68) ruling 55 holds for install.sh's own printed lines,
+and a new hold-word clause enters both phrase lists in the commit that prints it; (69) purge's help says what
+`--forget` and `--accept-lost` do since round 31; (70) a lost purge closes only on a manifest really read, and the
+records page says when a hand purge clears it; (71) ruling 48 holds for every staging form and cut length; (72)
+ruling 49 holds in the shell report for every typed form; (73) each Repeat conversions line says where the file it
+names is counted; (74) a stale CONTRACTS quote gets one dated line, never a rewrite of another round's text; (75) the
+rehearsal kit's brief is the lead's, and COMMON.md's kit note says where the kit's lists live; (76) the lead's calls:
+one FAIL per lost file in the folder's words (C601's verifier measured that dropping a reader's error lets the sync
+run), the no-copy acknowledgement is `--folder-lost`, lane B builds C625 right after its three data-integrity items,
+ruling 70's code half is words only, and the kit halves of C604, C605, C630 and C664 (2) (3) are the lead's, in
+round 33's script.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104, 111, 100, 77, 68 over rounds 2 and 4 to 32; turns as before, then 0; wrongs as before, then 10.
+
+Lanes (`--account auto`, CONTRACTS §16.213 to §16.217, land lock `/tmp/b13-r32-land.lock`, scratch under `round32/`,
+back-channel pane 3 or its successor): RA 19 (C634's phrase lists first, since the other lanes' new clauses depend on
+them), B 20 (C606, C667 and C610 first: data integrity; then C625 and rulings 63, 64, 65, 69 and 70), RB 7 (C666
+and C658 first: data integrity; then ruling 66), E 8 (C645 and C660 first: data integrity; then ruling 71), D 14
+(C649 with C671 first: data integrity; then ruling 74's dated lines and ruling 75's kit sentence).
 
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
