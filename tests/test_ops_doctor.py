@@ -235,7 +235,8 @@ def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """subprocess gives a signal's stop as a negative code: git and pandoc read "stopped by SIGKILL (signal
-    9)", the phrase of ``ocr._ended``, not "exit -9"; a plain exit keeps its words (B13 round 2 R81)."""
+    9)", the phrase of ``ocr._ended``, not "exit -9"; a plain exit keeps its words (B13 round 2 R81). Both
+    after a colon, so the phrase's own bracket sits in no other (B13 round 32 ruling 66, C655 with C661)."""
     real_run = doctor._run
     pandoc = str(doctor._pandoc_route(sample_config)[0])
     codes = {GIT: -9, pandoc: -9}
@@ -248,7 +249,7 @@ def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it(
     monkeypatch.setattr(doctor, "_run", fake_run)
     found = by_name(run_checks(sample_config))
     assert found["git"].detail == f"{GIT} --version failed: stopped by SIGKILL (signal 9)"
-    assert found["pandoc"].detail == f"{pandoc} --version failed (stopped by SIGKILL (signal 9))"
+    assert found["pandoc"].detail == f"{pandoc} --version failed: stopped by SIGKILL (signal 9)"
     codes.update({GIT: 1, pandoc: 2})
     found = by_name(run_checks(sample_config))
     assert found["git"].detail == f"{GIT} --version failed: a line before the kill"

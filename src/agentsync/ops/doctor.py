@@ -909,9 +909,11 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     lines = cp.stdout.strip().splitlines()
     if cp.returncode == 0 and lines and lines[0].startswith("pandoc"):
         return [_ok("pandoc", f"{lines[0]} at {pandoc}{which}")]
-    said = f"exit {cp.returncode}): {cp.stderr.strip()[:200]}" if cp.returncode >= 0 else ""
-    said = said or f"{_exit_words(cp.returncode, cp.stderr)})"
-    return [_bad("pandoc", f"{pandoc}{failed} --version failed ({said}", fix=fix)]
+    if cp.returncode < 0:  # a signal: the git line's colon form, no bracket inside one (B13 round 32 C661)
+        said = f": {_exit_words(cp.returncode, cp.stderr)}"
+    else:
+        said = f" (exit {cp.returncode}): {cp.stderr.strip()[:200]}"
+    return [_bad("pandoc", f"{pandoc}{failed} --version failed{said}", fix=fix)]
 
 
 def _check_ocr(config: Config) -> list[CheckResult]:

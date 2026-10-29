@@ -35549,6 +35549,13 @@ matter. The test's `_pathless` half used an input whose fold does not depend on 
 staged file whose own name ends in a backslash, which shortest first leaves as `'notes.docx\'`. Test:
 `test_convert_family.py::test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash`.
 
+**Doctor's pandoc line names a signal after a colon (ruling 66, for lane RB's C655 with C661;
+`agentsync.ops.doctor`).** A pandoc that a signal stopped on `--version` read `<pandoc> --version failed (stopped by
+SIGKILL (signal 9))`, a bracket inside a bracket, beside the git line's `<git> --version failed: stopped by SIGKILL
+(signal 9)`. It now takes the git line's colon form, `<pandoc> --version failed: stopped by SIGKILL (signal 9)`; a
+plain exit keeps `--version failed (exit N): <stderr>`. Test:
+`test_ops_doctor.py::test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it`.
+
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
 **The records page says a hand purge of any reason clears a lost purge only while the item stays gone** (C649
