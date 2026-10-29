@@ -6629,11 +6629,36 @@ def test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy
     assert cli.main(["purge", "--help"]) == 0
     out = " ".join(capsys.readouterr().out.split())
     help_ = (
-        "with an audit line: its items, and a copy of content agentsync's audit trail fingerprints, stay "
+        "with an audit line for each: its items, and a copy of content agentsync's audit trail fingerprints, "
+        "stay "
         "out, but a new file at an item's older name or in other letter case does not; an older build's "
         "purge, which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard"
     )
     assert help_ in out and "no longer kept out" not in out, out
+
+
+def test_purge_help_says_forget_looks_the_entry_up_and_accept_lost_takes_every_record_c610(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 32 C610, C650, C640 (ruling 69): --forget's help still took only an entry "a run looked up
+    and found nothing for", so the person ran `purge --queue` first, which runs every other queued purge,
+    though forget looks the entry up itself since C565; --accept-lost's named one purge where a time an older
+    build wrote can name several, each accepted with its own audit line."""
+    monkeypatch.setenv("COLUMNS", "400")
+    assert cli.main(["purge", "--help"]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    forget = (
+        "with --queue: take off the queue the upstream-deleted or label-escalation entry id=<queued id> "
+        "(with --source) whose id reaches nothing in the docs history: looked up here unless a queue run "
+        "already found nothing for it, so no run is needed first; refused while it reaches a page or a hold "
+        "covers its source; with an audit line; nothing is erased"
+    )
+    assert forget in out and "a run looked up and found nothing for" not in out, out
+    accept = (
+        "accept what the suppression list lost of every purge status names by this time (an older build's "
+        "purges can share one), with an audit line for each: its items,"
+    )
+    assert accept in out, out
 
 
 def test_a_purge_run_again_that_finds_its_content_again_clears_its_lost_record(

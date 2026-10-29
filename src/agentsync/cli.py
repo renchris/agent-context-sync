@@ -390,16 +390,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--forget",
         metavar="SELECTOR",
         help=(
-            "with --queue: take off the queue the entry id=<queued id> (with --source) a run looked up and "
-            "found nothing for, with an audit line; nothing is erased"
+            "with --queue: take off the queue the upstream-deleted or label-escalation entry id=<queued id> "
+            "(with --source) whose id reaches nothing in the docs history: looked up here unless a queue run "
+            "already found nothing for it, so no run is needed first; refused while it reaches a page or a "
+            "hold covers its source; with an audit line; nothing is erased"
         ),
     )
     p.add_argument(
         "--accept-lost",
         metavar="AT",
         help=(
-            "accept what the suppression list lost of the purge status names by this time, with an audit "
-            "line: its items, and a copy of content agentsync's audit trail fingerprints, stay out, but a "
+            "accept what the suppression list lost of every purge status names by this time (an older "
+            "build's purges can share one), with an audit line for each: its items, and a copy of content "
+            "agentsync's audit trail fingerprints, stay out, but a "
             "new file at an item's older name or in other letter case does not; an older build's purge, "
             "which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard"
         ),

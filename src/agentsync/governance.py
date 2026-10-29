@@ -5386,7 +5386,8 @@ def _forget_probe(config: Config, q: QueuedPurge, now: datetime | None = None) -
     """Judge ``q``, a kept kind no run has marked ``found_nothing``, exactly as :func:`run_purge_queue` does,
     and raise why it stays queued unless that run would keep it as one whose id reaches nothing: a kept note,
     a dry purge seeded with its aliases that targets anything, or an item an earlier purge already erased (B13
-    round 31 C565). The dry purge writes nothing and runs under the caller's lock; a hold refuses it, by its
+    round 31 C565). The dry purge writes nothing and runs under the caller's writer lock on a real forget (a
+    ``--dry-run`` forget holds none, as no dry purge does); a hold refuses it, by its
     words. C178's short-circuit is the run's alone: it saves the run a second history walk, and here, before
     the dry purge reads the holds, it invited the `purge --queue` a hold refuses (rulings 19, 32); a live item
     outside the stored aliases is targeted by the dry purge, so it is refused as reaching a page all the

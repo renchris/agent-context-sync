@@ -35552,6 +35552,19 @@ stays lost. Without `whole` (`_manifest_ids`, `_rebuilt_ids`) every table is rea
 rebuilt redo keeps the items' and tombstones' ids. Test: `test_governance.py`
 `test_an_alias_table_that_fails_to_read_never_clears_a_lost_purge_c667`.
 
+C610 with C640, C650 (2026-10-28): **`purge --help` says what --forget and --accept-lost do since round 31
+(ruling 69).** --forget's help still took only an entry "a run looked up and found nothing for", which sent the
+person to `purge --queue`, which runs every other queued purge, though forget looks the entry up itself since C565.
+It reads `with --queue: take off the queue the upstream-deleted or label-escalation entry id=<queued id> (with
+--source) whose id reaches nothing in the docs history: looked up here unless a queue run already found nothing for
+it, so no run is needed first; refused while it reaches a page or a hold covers its source; with an audit line;
+nothing is erased` (C610, C650). --accept-lost's head reads `accept what the suppression list lost of every purge
+status names by this time (an older build's purges can share one), with an audit line for each: its items, ...`,
+its tail (quoted in §16.210 C537) kept (C650). `_forget_probe`'s docstring says the dry purge runs under the
+caller's writer lock on a real forget and a `--dry-run` forget holds none (C640). Tests: `test_cli.py`
+`test_purge_help_says_forget_looks_the_entry_up_and_accept_lost_takes_every_record_c610`,
+`test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy_out`.
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the
