@@ -42,7 +42,9 @@ name: ci
 # c8a4298b) took 37:56 to 59:43, all green on their last attempt (e4945ad5's first attempt lost its runner at
 # 46:01, its rerun 50:19), four past 50 (the slowest 2919a7b9, pytest's step 59:08 at 6468 tests), which left 70
 # only 10:17 above it, and the slowest rose 8:33 in one round, so it is 80: about 20 minutes above it (B13 round
-# 31 C571).
+# 31 C571). Round 31's twelve jobs (7f132615 to 357f6d5b) took 43:35 to 57:05, all green on attempt 1 (the slowest
+# 76dc4e8f, pytest's step 56:38 at 6631 tests), so 80 stays about 23 minutes above them; runner waits reached 63:27
+# (ef12f28f) and 49:42 (357f6d5b), still not counted against timeout-minutes (B13 round 32 C662).
 on:
   workflow_dispatch:
   push:

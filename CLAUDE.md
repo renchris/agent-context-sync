@@ -83,9 +83,11 @@ it, from 71388552 to b2724d9c, took 30:19 to 44:27, the slowest on 3f1dee54, 619
 the nine after those, from 673a72a0 to fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345
 tests and pytest's step 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past
 50, the slowest on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was
-green; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner, counted from the run
-appearing to its job starting (one waited 48 minutes, another 46); the job's limit is 80 minutes (`timeout-minutes`
-in ci.yml), and a wait does not count against it.
+green; the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the slowest
+on 76dc4e8f, 6631 tests and pytest's step 56:38; one run took 34 on a runner loaded 5 to 8 per core), plus any wait
+for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another
+50, and earlier ones 48 and 46); the job's limit is 80 minutes (`timeout-minutes` in ci.yml), and a wait does not
+count against it.
 
 Before starting work, check trunk: `gh run list --branch main --limit 5`. A red run on `main` is fixed
 before unrelated work lands on top of it. Read the failure with `gh run view <id> --log-failed`.

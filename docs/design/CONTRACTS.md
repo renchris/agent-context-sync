@@ -35519,3 +35519,13 @@ the <reason> purge at <iso>: <how>` in `governance.queue_lost`'s fix and its tes
 `test_round_32s_stale_quotes_carry_one_dated_line_each`, which reads each line beside the code it quotes
 (`_spellings`' three, `queue_lost`'s format, the report's `not recorded`, install.sh's 160 to 192 comment and row
 170) and that no paragraph holds a second copy.
+
+**CI's times take round 31's twelve jobs and its 63-minute runner wait** (C662; CLAUDE.md, `docs/lanes/COMMON.md`,
+`.github/workflows/ci.yml`). Round 31's twelve ci jobs on main (7f132615 to 357f6d5b) took 43:35 to 57:05, all green
+on attempt 1, the slowest 76dc4e8f (pytest's step 56:38 at 6631 tests), inside the 18 to 60 range; but run
+40749409606 on ef12f28f waited 63:27 for a macOS runner and 40787736885 on 357f6d5b 49:42, while CLAUDE.md gave 48
+and 46 as the waits and COMMON.md `up to about 48 minutes`, so a reader would take a run still queued at minute 50
+for a stuck one. CLAUDE.md adds the twelve and gives the waits as 63, 50, 48 and 46; COMMON.md says a run can wait
+over an hour (63:27 in round 31); ci.yml's note adds the twelve and both waits after round 30's, keeping its round 24
+wait sentence. `timeout-minutes` stays 80, about 23 minutes above the slowest job, and a wait still does not count
+against it. Test: `test_claude_md_gives_cis_time_and_its_limit`, whose pins move in the same commit.
