@@ -148,6 +148,20 @@ is a copy that no purge reaches, so exclude it too.
   purge is put back or accepted (B13 round 31 C537, C577). A purge run again by hand clears its record only when it
   is verified and finds the content again; one that finds nothing, because the first purge erased it, clears nothing
   (B13 round 29 C172; B13 round 30 C383, C402, C401, C344).
+- **Over a missing governance folder:** while the governance folder itself is gone, and with it the hold list,
+  agentsync's audit trail, the purge queue and the suppression list, and purge-record.json still records a purge or
+  hold-record.json names a hold, `agentsync status` still FAILs each lost file, its detail opening `<governance
+  folder>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`
+  and naming purge-record.json as what keeps the purges, and the sync refuses. Every fix, and the sync's stop, leads
+  with putting agentsync's governance folder back whole from the copy kept. With no copy, run each lost queued purge
+  by hand as its FAIL names it, and accept each lost suppression with `agentsync purge --accept-lost <at>
+  --folder-lost` (preview it with `--dry-run` first): `--folder-lost` is your word that no copy of the folder is
+  left, and the act first records in the new audit trail and in purge-record.json that the old audit trail was lost
+  (an `audit-trail-lost` line), so a new trail never reads as the whole history. Without `--folder-lost`,
+  `--accept-lost` refuses while the audit trail has lost what purge-record.json keeps; with it, the act refuses
+  when the trail has lost nothing and holds no `audit-trail-lost` line. The accepted purges' items stay out by their id and by the one source path
+  purge-record.json keeps for each item still listed when it was purged, and a copy under another name of content
+  purge-record.json fingerprints stays out (B13 round 32 C601, C606, C618; ruling 63).
 
 ## Legal and records hold
 

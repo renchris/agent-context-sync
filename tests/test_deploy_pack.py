@@ -7223,6 +7223,34 @@ def test_the_records_page_says_a_hand_purge_of_any_reason_clears_a_lost_purge_wh
     assert governance._summary_closes("dlp-remediation", "dlp-remediation")
 
 
+def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> None:
+    """B13 round 32 ruling 63 (C601, C606, C618; lane B's words): with governance/ gone and a record
+    outside it naming what it kept, every lost-file FAIL names the folder, its fix puts the folder back whole
+    first, and `--accept-lost` takes `--folder-lost`, the no-copy acknowledgement, which first writes
+    `audit-trail-lost`. The records page had no word of it. Its bullet quotes the FAIL's lead, the put-back,
+    the flag and what the act records, in lane B's words, read here, and both refusals."""
+    from agentsync import cli, governance  # noqa: PLC0415
+
+    page = " ".join(_page("docs/deploy/data-governance.md").split())
+    [bullet] = re.findall(r"- \*\*Over a missing governance folder:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert f"`<governance folder>/ {governance.GOVERNANCE_GONE_HEAD}`" in bullet
+    put_back = "putting agentsync's governance folder back whole from the copy kept"
+    assert put_back in bullet and "back whole from the copy kept" in inspect.getsource(governance)
+    assert "`agentsync purge --accept-lost <at> --folder-lost`" in bullet and "`--dry-run`" in bullet
+    assert f"the act first {governance.FOLDER_LOST_SAID}" in bullet
+    assert f"(an `{governance.AUDIT_TRAIL_LOST}` line)" in bullet
+    assert governance.ACCEPT_PATH_KEPT_RECORD in bullet
+    assert "a copy under another name of content purge-record.json fingerprints stays out" in bullet
+    assert "B13 round 32 C601, C606, C618; ruling 63" in bullet
+    # both refusals the page names, as the act makes them
+    act = inspect.getsource(governance.accept_lost_suppression)
+    assert (
+        "if trail_lost and not folder_lost:" in act and "if folder_lost and not (trail_lost or said):" in act
+    )
+    assert "only with no copy left" in act
+    assert '"--folder-lost",' in inspect.getsource(cli)
+
+
 def test_the_readme_lists_the_office_formats_that_are_both_label_screened_and_converted() -> None:
     """B13 round 32 C672: the README said only `.docx`, `.xlsx`, `.pptx` and `.vsdx` among the Office formats
     carry a sensitivity label, but the label reader screens every suffix of `policy.OOXML_SUFFIXES`, so a

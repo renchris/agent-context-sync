@@ -36144,3 +36144,16 @@ copy of built helpers into a probe home), C605 (one sandbox root per round, stop
 (kitcheck.sh's homes found from the root) are the lead's, written into round 33's brief through tools/edit.py.
 Test: `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, extended to read the sentence
 once and outside every backticked span.
+
+**The records page says what to do over a missing governance folder** (ruling 63, C601, C606, C618's records page
+half; `docs/deploy/data-governance.md`; after lane B's 08012edbd and 55808777b). With governance/ gone and
+purge-record.json recording a purge or hold-record.json naming a scope, every lost-file FAIL's detail opens
+`<gov>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`
+(`governance.GOVERNANCE_GONE_HEAD`), every fix and the sync's stop lead with putting the governance folder back
+whole, and `--accept-lost` refuses without `--folder-lost`, the no-copy acknowledgement, which first writes
+`audit-trail-lost` (`governance.AUDIT_TRAIL_LOST`) to the new audit trail and to purge-record.json; the page named
+none of it. A bullet after the lost suppression list's says so in lane B's words (the FAIL's lead, the put-back,
+the flag, `FOLDER_LOST_SAID`, `ACCEPT_PATH_KEPT_RECORD`) and gives both refusals: without the flag while the audit
+trail has lost what purge-record.json keeps, with it when the trail has lost nothing and holds no
+`audit-trail-lost` line. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, which reads
+the bullet beside governance's constants and `accept_lost_suppression`'s two refusals.
