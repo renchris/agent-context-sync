@@ -2853,11 +2853,7 @@ class _Cycle:
                     row.is_dir
                     or not reason.startswith(CONVERSION_FAILED)
                     or (src.id, row.stable_id) in self._path_queued
-                    or (  # queued for its one-shot re-read by an earlier run that did not read its source
-                        row.last_verdict is Verdict.ERROR
-                        and not reason.startswith(CONVERTER_UNAVAILABLE)
-                        and self._names_a_path(reason)
-                    )
+                    or self._reread_pending(src, row)
                 ):
                     continue
                 result = self._failed_stub_again(row)
@@ -2878,6 +2874,23 @@ class _Cycle:
             log.info(
                 "%d stored reason(s) of a failed conversion folded a folder path an older build kept", folded
             )
+
+    def _reread_pending(self, src: SourceConfig, row: ItemRow) -> bool:
+        """True for a stub an earlier run queued for its one-shot re-read and did not read (its source not
+        in that run): ERROR, fetched, not dataless, its stored reason naming a path and its retry record
+        leaving it a conversion (``_retries``), so the conversion writes its reason anew and the sync's note
+        says it. One whose re-read is used up, or a dataless one, which ``_queue_path_stubs`` never queues,
+        is folded instead (B13 round 32 C660, review)."""
+        reason = row.state_reason or ""
+        if (
+            row.last_verdict is not Verdict.ERROR
+            or row.dataless
+            or reason.startswith(CONVERTER_UNAVAILABLE)
+            or not self._names_a_path(reason)
+        ):
+            return False
+        held = self._retry_load(src.id).get(row.stable_id)
+        return held is None or held[1] <= _CONVERT_RETRIES
 
     def _escaped_spellings(self) -> list[str]:
         """The spellings of this Mac's staging folder and home folder (``_common._spellings``) that differ
@@ -2922,7 +2935,9 @@ class _Cycle:
             folder = re.escape(root) + r"[0-9a-f]{16}"
             for spelt in sorted(names, key=len, reverse=True):
                 text = re.sub(folder + "/" + re.escape(spelt) + goes_on, lambda _m: name, text)
-            text = re.sub(folder + r"\.[^\s'\":,;)\]/]+" + goes_on, lambda _m: name, text)
+            # the shortest suffix that ends a path (``_PATH_GOES_ON``), so a sentence's ``.``, a ``>`` or an
+            # escaped quote after it stays, and ``.tar.gz`` stays whole (B13 round 32 C646, review)
+            text = re.sub(folder + r"\.[^\s'\":,;)\]>/\\]+?" + goes_on, lambda _m: name, text)
             text = re.sub(folder + "/?" + end, convert_common._FOLDER_WORD, text)
             text = re.sub(folder + "/", "", text)
             # a Graph source's file sits in the staging folder itself (graph/drive.py:883), and a converter's

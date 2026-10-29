@@ -35523,37 +35523,43 @@ an `.ocr-` path lose the folder, the folder alone with or without its slash read
 `agentsync.cycle`; amends §16.211 C546).** `_names_a_path` and `_cut_in_staging` read a cut tail of the staging
 folder only from 12 characters on, so a reason an older build cut 8 to 11 characters into a staging folder under
 `/Users` (`/Users/c` to `/Users/cont`) was neither re-read (§16.201 C181) nor folded (C546), and its page, whose
-`reason:` holds 300 characters to the manifest's 200, kept the whole path. Both now read a text that ends cut
-(`…`) down to `Cycle._cut_floor`: for a staging spelling under one of the home folder's spellings, one character past
-that spelling's parent, never above 12; else, or with no home folder to read, 12; a text not cut stays at 12.
-Lowering the floor alone changes nothing on a Mac whose `convert-path-reread:done` and `convert-escaped-fold:done`
-are already written, so `Cycle._fold_pathed_reasons`, once per manifest (`convert-path-fold-v2:done`, written only
-on a run that covers every live source and only when every page it had to rewrite was written), folds in place, as
-the escaped fold does, each failed conversion's stub (a paused source's too) whose stored reason `_names_a_path`
-reads or whose page's `reason:` holds a spelling of the staging or home folder: from the page's full reason, through
-`_fold_staging`, stored cut to 200, the page rewritten only where its plan differs. In place rather than another
-re-read, so a stub whose one-shot re-read was used, a dataless one and one whose converter cannot start fold too;
-not one queued for its re-read, in this run or in an earlier one that did not read its source, whose conversion
-writes its reason anew. No verdict or count moves. Tests:
-`test_convert_family.py::test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent` (1, 3, 4
-and 8 letters into `/Users/contosoquill` read, counted and cut; a text not cut keeps the floor of 12; a staging
-folder outside the home folder keeps it too; a home under a long parent never goes above 12),
-`test_convert_family.py::test_a_reason_cut_inside_the_login_is_folded_on_a_mac_past_both_passes` (stored reasons
-cut 1, 3 and 4 letters into a made-up login, both older keys written; a full disk keeps the new key unwritten; the
-next sync converts nothing and leaves no letter of the login in the row, the HEAD page, QUARANTINE.tsv, the
-source's manifest file or any file of the docs folder; the one after leaves the page byte for byte) and
+`reason:` holds 300 characters to the manifest's 200, kept the whole path. Both now read a text that ends cut (`…`)
+down to `Cycle._cut_floor`: for a staging spelling under one of the home folder's spellings, one character past that
+spelling's parent, never above 12; else, or with no home folder to read, 12; a text not cut stays at 12. Lowering the
+floor alone changes nothing on a Mac whose `convert-path-reread:done` and `convert-escaped-fold:done` are already
+written, so `Cycle._fold_pathed_reasons`, once per manifest (`convert-path-fold-v2:done`, written only on a run that
+covers every live source and only when every page it had to rewrite was written), folds in place, as the escaped fold
+does, each failed conversion's stub (a paused source's too) whose stored reason `_names_a_path` reads or whose page's
+`reason:` holds a spelling of the staging or home folder: from the page's full reason, through `_fold_staging`,
+stored cut to 200, the page rewritten only where its plan differs. In place rather than another re-read, so a stub
+whose one-shot re-read was used, a dataless one and one whose converter cannot start fold too; not one still to be
+read once more (`Cycle._reread_pending`: ERROR, not dataless, its stored reason naming a path and its retry record
+leaving it the conversion, queued in this run or in an earlier one that did not read its source), whose conversion
+writes its reason anew; one whose one-shot re-read is used up is folded. No verdict or count moves. Tests:
+`test_convert_family.py::test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent` (1, 3, 4 and
+8 letters into `/Users/contosoquill` read, counted and cut; a text not cut keeps the floor of 12; a staging folder
+outside the home folder keeps it too; a home under a long parent never goes above 12),
+`test_convert_family.py::test_a_reason_cut_inside_the_login_is_folded_on_a_mac_past_both_passes` (stored reasons cut
+1, 3 and 4 letters into a made-up login, both older keys written; a full disk keeps the new key unwritten; the next
+sync converts nothing and leaves no letter of the login in the row, the HEAD page, QUARANTINE.tsv, the source's
+manifest file or any file of the docs folder; the one after leaves the page byte for byte) and
 `test_convert_family.py::test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too` (a clean stored reason
-whose page held the path).
+whose page held the path) and
+`test_convert_family.py::test_the_v2_fold_skips_only_a_stub_whose_re_read_is_still_to_come`.
 
 **The folder named alone ends where a path does (C646, ruling 71; `agentsync.convert`; amends §16.211 C578).**
 `_common._PATH_END` kept the staged file's folder named alone whole before a sentence-ending `.`, a `>` (an
-`os.DirEntry`'s repr) or an escaped quote `\'`, and cut a sibling whose name adds a space. The end set now holds
-the end, whitespace, a quote or an escaped quote, one of `:,;)]>`, and a `.` only when the end or whitespace
-follows it, never a bare `.`, so `<folder>.bak/x` and `<folder>2/x` stay whole; `_PATH_GOES_ON` takes the same set
-with `/`. Whitespace stays an end (a fix makes things worse otherwise: `cp <folder> /dest` would keep the first path
-whole), so a sibling that extends the folder with a space is still cut; agentsync makes none. Test:
+`os.DirEntry`'s repr) or an escaped quote `\'`, and cut a sibling whose name adds a space. The end set now holds the
+end, whitespace, a quote or an escaped quote, one of `:,;)]>`, and a `.` only when the end or whitespace follows it,
+never a bare `.`, so `<folder>.bak/x` and `<folder>2/x` stay whole; `_PATH_GOES_ON` takes the same set with `/`, and
+the escaped fold's Graph suffix (`<staging>/<16 hex><suffix>`) is the shortest that ends a path, so a `.`, `>` or
+`\'` after it stays and `.tar.gz` stays whole. Whitespace stays an end (a fix makes things worse otherwise: `cp
+<folder> /dest` would keep the first path whole), so a sibling that extends the folder with a space is still cut;
+agentsync makes none. Test:
 `test_convert_family.py::test_pathless_cuts_the_folder_named_alone_before_a_period_a_bracket_or_an_escaped_quote`
-(`.` at the end and before a space, `>`, `\'` and `cp <folder> /dest` cut; `.bak` and `2` siblings whole).
+(`.` at the end and before a space, `>`, `\'` and `cp <folder> /dest` cut; `.bak` and `2` siblings whole) and
+`test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text` (the suffix
+cases).
 
 **The spellings' order, said and tested as it is (C647, ruling 71; words and a test; amends §16.211 C551).**
 §16.211 C551 said two different spellings never have one length, false across forms: a link and a target of the

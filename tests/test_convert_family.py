@@ -919,6 +919,11 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
     assert fold(f"{root}.docx in {staging}", "Plan.docx") == "Plan.docx in its folder", (
         "the 16-hex forms first"
     )
+    # C646 (review): the suffix ends where a path does, so what follows it stays
+    assert fold(f"cannot open {root}.docx. Retry", "Plan.docx") == "cannot open Plan.docx. Retry"
+    assert fold(f"<DirEntry {root}.docx>", "Plan.docx") == "<DirEntry Plan.docx>"
+    assert fold(f"cannot open '{root}.docx\\'", "Plan.docx") == "cannot open 'Plan.docx\\'"
+    assert fold(f"cannot open '{root}.tar.gz'", "Plan.tar.gz") == "cannot open 'Plan.tar.gz'"
 
 
 @pytest.mark.parametrize("home", ["/Users/contosoquill", "/Volumes/Contoso Disk/Users/contosoquill"])
@@ -979,7 +984,9 @@ def test_a_reason_cut_inside_the_login_is_folded_on_a_mac_past_both_passes(
     reason holds 300 characters, kept the whole path; on a Mac that already ran a round 29 or later build
     both once-per-manifest keys are written, so lowering the floor alone changed nothing. The
     ``convert-path-fold-v2:done`` pass folds it in place, row and page, converting nothing; a page it could
-    not write keeps the key unwritten, and the run after leaves the page byte for byte."""
+    not write keeps the key unwritten, and the run after leaves the page byte for byte. A home under tmp has
+    a parent far longer than 12 characters, so the floor stays 12 here: the lowered floor itself is
+    ``test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent``'s."""
     from agentsync.publish import Publisher  # noqa: PLC0415
 
     config, src, home = _login_home(tmp_path, monkeypatch)
@@ -1162,3 +1169,36 @@ def test_the_text_converters_docstrings_give_the_decode_order_the_code_uses() ->
         assert said in " ".join((doc or "").split()), doc
     assert contracts.count(said) == 2 and "decoded (utf-8, then utf-8-sig/utf-16 BOM" not in contracts
     assert text.PlainTextConverter(ConvertConfig()).options()["decode"] == "bom,utf-8,cp1252,latin-1"
+
+
+def test_the_v2_fold_skips_only_a_stub_whose_re_read_is_still_to_come() -> None:
+    """C660 (review): the v2 pass skipped every ERROR stub whose stored reason names a path, so one whose
+    one-shot re-read was used up (``_retries`` never converts it again) or a dataless one (never queued)
+    was left with its path once the key was written. It skips only a stub a conversion will still read."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from agentsync.model import Verdict  # noqa: PLC0415
+
+    tries: dict[str, tuple[str, int]] = {}
+    fake = SimpleNamespace(_names_a_path=lambda reason: "/staging/" in reason, _retry_load=lambda _sid: tries)
+
+    def pending(**kw: object) -> bool:
+        return cycle_mod._Cycle._reread_pending(fake, SimpleNamespace(id="src"), SimpleNamespace(**kw))  # type: ignore[arg-type]
+
+    row = {
+        "stable_id": "a1",
+        "last_verdict": Verdict.ERROR,
+        "dataless": False,
+        "state_reason": "conversion failed: file '/Volumes/x/agentsync/staging/ab12/a.pptx'",
+    }
+    assert pending(**row), "queued and not read: its conversion writes the reason anew"
+    tries["a1"] = ("h1", cycle_mod._CONVERT_RETRIES)
+    assert pending(**row), "the one-shot still to come"
+    tries["a1"] = ("h1", cycle_mod._CONVERT_RETRIES + 1)
+    assert not pending(**row), "the one-shot used up: folded"
+    tries.clear()
+    assert not pending(**{**row, "dataless": True}), "dataless: never queued, folded"
+    assert not pending(**{**row, "last_verdict": None}), "settled: folded"
+    assert not pending(**{**row, "state_reason": "conversion failed: not-ooxml"}), (
+        "no path: nothing to wait for"
+    )
