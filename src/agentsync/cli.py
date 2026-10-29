@@ -1413,8 +1413,9 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
                 + " would also match a folder whose files are mirrored: rename or remove the empty "
                 f"{'folder' if one else 'folders'} in the cloud drive"
             )
-        # a sync its own guard stops prints no alarm until that FAIL is fixed (B13 round 31 C520; ruling 60)
-        stopped = loop._sync_stopped_on(config) if gone else None
+        # a sync its own guard stops prints no alarm until that FAIL is fixed (B13 round 31 C520; ruling 60),
+        # and lists nothing: the head says so too (B13 round 32 C631; ruling 65)
+        stopped = loop._sync_stopped_on(config)
         held = (
             "; "
             + "; ".join(parts)
@@ -1440,13 +1441,14 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     finally:
         lock.release()
     listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in exclude)
+    # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
+    lists = f"the next sync lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
+    if stopped is not None and not gone:  # with folders left, the pointer below says it, once (C631)
+        lists = f"once the {stopped} [FAIL] line is fixed, {lists}; until then no sync runs"
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
         f"({len(clear)} empty cloud {'folder' if len(clear) == 1 else 'folders'} added); an excluded "
-        "folder is not mirrored if it later gains "
-        # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
-        f"files; the next sync lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
-        f"{held}"
+        f"folder is not mirrored if it later gains files; {lists}{held}"
     )
     return EXIT_OK
 

@@ -113,10 +113,33 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_o
     governance._holds_file(expand(load_config(cfg).state_paths.root)).mkdir(parents=True)
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK, out
+    # B13 round 32 C631 (ruling 65): and that no sync runs until then, said once in the line
     assert (
         "once the governance.hold [FAIL] line is fixed, a plain `~/.local/bin/agentsync sync` prints it "
-        "again with the 1 folder left"
+        "again with the 1 folder left; until then no sync runs"
     ) in out, out
+    assert out.count("until then no sync runs") == 1 and out.count("[FAIL] line is fixed") == 1, out
+    assert "; the next sync lists work without that folder; " in out, out
+
+
+def test_beside_a_fail_the_syncs_guard_stops_on_the_head_says_no_sync_runs_c631(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 32 C631 (ruling 65): with no folder left for the alarm to name, exclude-empty's head said
+    the next sync lists the source without the folder, while every sync stopped on holds.json as a folder.
+    The head names the FAIL and that no sync runs until it is fixed."""
+    root = _root()
+    (root / "Empty").mkdir()
+    (root / "Note.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    governance._holds_file(expand(load_config(cfg).state_paths.root)).mkdir(parents=True)
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK, out
+    assert out.rstrip().endswith(
+        "files; once the governance.hold [FAIL] line is fixed, the next sync lists work without that "
+        "folder; until then no sync runs"
+    ), out
 
 
 def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(

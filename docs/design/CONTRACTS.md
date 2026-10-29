@@ -22507,6 +22507,7 @@ docstring and one test's said every wait carries the five clause, `true for any 
 rule.
 Amended 2026-10-28, §16.210 C520: beside a [FAIL] the sync's own guard stops on, the pointer ends `once the <check>
 [FAIL] line is fixed, a plain \`<bin> sync\` prints it again with the N folders left`; STATE.md's form is unchanged.
+Amended 2026-10-28, §16.215 C631: that pointer now ends `...with the N folders left; until then no sync runs`.
 
 **S44: the in-all clause follows the missed files under the gone folders (`agentsync.loop`, `agentsync.manifest`;
 amends §16.113 Q81).** The could-not-list line's `in all, ... did not list N files ..., the one under the empty
@@ -35011,6 +35012,9 @@ alarm, after the folders it left, takes the same stop (`cli._cmd_exclude_empty`)
 holds.json a folder: the sync stops, the wait names governance.hold and keeps `exclude-empty work`; `_named_since`'s
 form; a lost hold and no FAIL keep the plain words), `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
+Amended 2026-10-28, §16.215 C631: `_named_since`'s stopped form ends `; until then no sync runs`, and
+exclude-empty's head, with no folder left for the pointer, reads `once the <check> [FAIL] line is fixed, the next
+sync lists <id> without that folder; until then no sync runs`.
 
 C530 (2026-10-28): **governance/'s fix says a purge is lost only if one was ever run here, and sends the person to the
 records owner** (ruling 60; data integrity). With no purge record naming a purge, the governance folder's fix
@@ -35641,6 +35645,18 @@ governance.purge_queue check, so an erasure request stays in WAITING ON YOU. STA
 stops on the record's own error before it writes STATE.md (measured), so no STATE.md is written in this state.
 `on the purge record:` joins both phrase lists (ruling 68). Test: `test_cli.py`
 `test_a_queued_purge_beside_an_unread_purge_record_is_counted_and_never_invited_c643`.
+
+C631 (2026-10-28): **beside a stop, the after-exclude pointer and exclude-empty say no sync runs until the FAIL is
+fixed (ruling 65).** C520's `_named_since` form and exclude-empty's own head never said that every sync stops until
+the FAIL is fixed. `_named_since(stopped=...)` ends `once the <check> [FAIL] line is fixed, a plain \`<bin> sync\`
+prints it again with the N folders left; until then no sync runs`, as `_named`'s stopped form already did. In
+`_cmd_exclude_empty`, `loop._sync_stopped_on` is read whatever was left; with folders left the pointer carries the
+clause and the head stays plain, so the line says it once; with none left the head reads `once the <check> [FAIL]
+line is fixed, the next sync lists <id> without that folder|those folders; until then no sync runs`. Dated lines at
+§16.119 S32 and §16.210 C520. Tests: `test_loop.py`
+`test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_it_c520`, `test_exclude_empty.py`
+`test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520` (the clause once in the line)
+and `test_beside_a_fail_the_syncs_guard_stops_on_the_head_says_no_sync_runs_c631`.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 

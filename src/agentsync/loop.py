@@ -257,7 +257,8 @@ def _named_since(
     too)" as well, so sync is said once. ``in_state`` and ``stopped``: as :func:`_named`."""
     again = f"a plain `{BIN} sync` prints it again with the {plural(left, 'folder')} left"
     if stopped is not None and not in_state:
-        again = f"once the {stopped} [FAIL] line is fixed, {again}"
+        # no sync runs while that FAIL stands, said once (B13 round 32 C631; ruling 65)
+        again = f"once the {stopped} [FAIL] line is fixed, {again}; until then no sync runs"
     if in_state:
         return (
             f"the alarm line under ## {sid} below is from that source's last sync, before the exclude, so it "

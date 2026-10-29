@@ -486,7 +486,7 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_
     since = loop._named_since(config, "work", 2, stopped="governance.hold")
     assert since.endswith(
         f"once the governance.hold [FAIL] line is fixed, a plain `{BIN} sync` prints it again "
-        "with the 2 folders left"
+        "with the 2 folders left; until then no sync runs"
     ), since
     holds.rmdir()
     hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
