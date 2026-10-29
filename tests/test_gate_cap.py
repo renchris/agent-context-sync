@@ -1,10 +1,12 @@
 """scripts/gate.sh's machine-wide test-gate slot (cc-gate-slot), taken from the script and run over a stub CLI
-that logs its argv and prints a chosen verdict line or exits a chosen status."""
+that logs its argv and prints a chosen verdict line or exits a chosen status; and scripts/ship-land.sh's
+refusal to wait for the land lock while holding a slot."""
 
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -15,6 +17,7 @@ import exec_stub
 
 REPO = Path(__file__).resolve().parents[1]
 GATE = REPO / "scripts" / "gate.sh"
+SHIP_LAND = REPO / "scripts" / "ship-land.sh"
 BASH = "/bin/bash" if Path("/bin/bash").exists() else "bash"
 
 # A stand-in cc-gate-slot: every call is logged; acquire prints STUB_LINE and exits STUB_RC, after sleeping
@@ -269,3 +272,75 @@ def test_finish_releases_only_a_slot_this_gate_owns(
     assert done.returncode == 0, done.stderr
     assert _log(tmp_path) == ([f"release --token {TOKEN}"] if released else [])
     assert " rc=0 " in (tmp_path / "gate-verdicts.log").read_text(encoding="utf-8")
+
+
+def _land_clone(tmp_path: Path, env: dict[str, str]) -> tuple[Path, Path]:
+    """A bare remote seeded with ship-land.sh and a green stub land gate, and a clone one commit ahead."""
+    bare = tmp_path / "remote.git"
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(seed)], check=True)
+    (seed / "scripts").mkdir()
+    shutil.copy(SHIP_LAND, seed / "scripts" / "ship-land.sh")
+    (seed / "scripts" / "gate.sh").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+    (seed / "scripts" / "gate.sh").chmod(0o755)
+    for args in (["add", "-A"], ["commit", "-qm", "seed"], ["push", "-q", str(bare), "main"]):
+        subprocess.run(["git", *args], cwd=seed, check=True, env=env)
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True, env=env)
+    (clone / "one.txt").write_text("one\n", encoding="utf-8")
+    for args in (["add", "-A"], ["commit", "-qm", "one"]):
+        subprocess.run(["git", *args], cwd=clone, check=True, env=env)
+    return bare, clone
+
+
+@pytest.mark.parametrize(
+    ("token", "held_rc", "in_test", "refused"),
+    [
+        (TOKEN, "0", False, True),
+        (TOKEN, "0", True, False),
+        (TOKEN, "1", False, False),
+        ("", "0", False, False),
+    ],
+)
+def test_ship_land_refuses_to_wait_for_the_land_lock_while_holding_a_gate_slot(
+    tmp_path: Path, token: str, held_rc: str, in_test: bool, refused: bool
+) -> None:
+    """The one cycle the cap can make: a slot holder waiting on land.lock while the land gate inside the lock
+    waits for a slot. Only a live token refuses, exit 10; under a test marker the CLI's ``held`` answers 1
+    (the stub keeps that contract), so the fixture lands in tests/test_ship_land.py still land."""
+    env = _env(tmp_path, STUB_HELD_RC=held_rc, CC_GATE_SLOT_TOKEN=token)
+    env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com")
+    env.update(GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+    if not in_test:
+        env.pop("PYTEST_CURRENT_TEST", None)
+    bare, clone = _land_clone(tmp_path, env)
+    before = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=bare, capture_output=True, text=True, check=True
+    ).stdout
+    done = subprocess.run(
+        ["scripts/ship-land.sh", "--no-ci"],
+        cwd=clone,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    after = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=bare, capture_output=True, text=True, check=True
+    ).stdout
+    refusal = (
+        "ship-land: refusing to wait for the land lock while holding a gate slot "
+        "(lock order is land lock → gate slot); run it outside cc-gate-slot"
+    )
+    if refused:
+        assert done.returncode == 10, (done.stdout, done.stderr)
+        assert refusal in done.stderr
+        assert "waiting for the land lock" not in done.stdout
+        assert after == before, "nothing pushed"
+    else:
+        assert done.returncode == 0, (done.stdout, done.stderr)
+        assert refusal not in done.stderr
+        assert after != before, "landed"
+    assert _log(tmp_path) == (["held"] if token else [])

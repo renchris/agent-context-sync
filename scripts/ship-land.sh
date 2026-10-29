@@ -12,7 +12,7 @@
 # 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, no run appeared, or a run lost its hosted runner): before
 # the push nothing is pushed, after it the line says LANDED and the runs are read back by hand. A run that lost its
 # runner is rerun (gh run rerun <id> --failed) and waited for, never landed past, with or without --allow-red-trunk
-# (B13 round 31 C569).
+# (B13 round 31 C569). 10 refused: holding a gate slot, before the lock is taken (nothing fetched or pushed).
 set -euo pipefail
 
 usage() {
@@ -182,6 +182,15 @@ trunk_known_red() {
 }
 
 if [ "$locked" = 0 ]; then
+  # The one deadlock the machine-wide gate cap can make: a slot holder waiting here while the land gate inside the
+  # lock waits for a slot. `held` answers 1 under a test marker, so the fixture lands in tests are not refused.
+  gate_slot_bin=${CC_GATE_SLOT_BIN:-}
+  [ -n "$gate_slot_bin" ] || gate_slot_bin=$(command -v cc-gate-slot || true)
+  [ -n "$gate_slot_bin" ] || [ ! -x "$HOME/.claude/bin/cc-gate-slot" ] || gate_slot_bin=$HOME/.claude/bin/cc-gate-slot
+  if [ -n "${CC_GATE_SLOT_TOKEN:-}" ] && [ -n "$gate_slot_bin" ] && "$gate_slot_bin" held >/dev/null 2>&1; then
+    echo "ship-land: refusing to wait for the land lock while holding a gate slot (lock order is land lock → gate slot); run it outside cc-gate-slot" >&2
+    exit 10
+  fi
   echo "== waiting for the land lock $lock"
   rc=0
   if command -v lockf >/dev/null; then
