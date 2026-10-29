@@ -3993,11 +3993,9 @@ def test_an_added_sources_note_whose_forms_redact_alike_is_one_form_cut(
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         body = path.read_text()
         assert "/private~" not in body and "stored as <tmp>" not in body and "Zephyr" not in body, path
-    if case == "home":  # as the agentsync report collapses it on the same home
-        [py] = re.findall(
-            r"added source '<?[a-z0-9-]+>?' to \S+ (\([^()]*\)): one form", _py_report(env, cfg)
-        )
-        assert re.sub(r"<folder-\d+>", "<folder-N>", py) == re.sub(r"<folder-\d+>", "<folder-N>", shown)
+    # as the agentsync report collapses it on the same home, its one form cut too since lane RA's C658 (c)
+    [py] = re.findall(r"added source '<?[a-z0-9-]+>?' to \S+ (\([^()]*\)): one form", _py_report(env, cfg))
+    assert re.sub(r"<folder-\d+>", "<folder-N>", py) == re.sub(r"<folder-\d+>", "<folder-N>", shown)
 
 
 @pytest.mark.parametrize("before", ["\u201c", "\u00a0", "\u2014", " ", ""])

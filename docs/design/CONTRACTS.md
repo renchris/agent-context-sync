@@ -35797,7 +35797,7 @@ typed_note_cut now prints such a note as its one form, cut by `_cut_path`'s rule
 pairs left them and never prints a form the cut has not seen, so `(<tmp>/Zephyr Notes, stored as <tmp>/Zephyr
 Notes)` reads `(<tmp>/<path>)`. Python's twin, cutting its collapsed note's one form, is lane RA's (c). Test:
 `test_an_added_sources_note_whose_forms_redact_alike_is_one_form_cut`, forced to the shell fallback for the linked
-home (equal to build_report's line) and the TMPDIR folder.
+home and the TMPDIR folder, each equal to build_report's line (the TMPDIR one since lane RA's C658 (c), 89fc61bfc).
 
 **A signal is named once in every bracket of the installer's lines** (C655 with C661; ruling 66, which holds ruling
 58 in every reader; amends §16.209 C513; `scripts/install.sh`). rc_meaning's default branch was `rc_signal_words`, R81's standing-alone
