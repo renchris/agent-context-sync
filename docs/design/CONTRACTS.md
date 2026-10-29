@@ -35619,6 +35619,16 @@ reads true. Tests: `test_cli.py` `test_a_lost_glob_stops_the_sync_though_the_lis
 and the glob, no hashes), `test_accepting_an_older_builds_purge_names_the_copy_guard_it_gives_up` (the path guard
 and the older build's hashes).
 
+C639 (2026-10-28): **the empty-folder wait beside a governance file this account cannot open (ruling 65).** With
+purge-record.json or governance/suppressed.json at 0000 every sync stopped on it in its refused kind, past the
+guard C520's wait asks (`doctor.state_not_a_file`), so the wait still said a plain sync prints the alarm.
+`loop._sync_stopped_on` now also reads `governance.recorded_purges` and `governance.load_suppressions` when that
+guard finds nothing, and a bare `GovernanceError` caused by a `PermissionError` names governance.suppressed, the
+check that FAILs either; never holds.json, hold-record.json or audit.jsonl, which a sync runs over at 0000. Test:
+`test_loop.py` `test_a_governance_file_this_account_cannot_open_says_no_sync_runs_c639` (the two files at 0000:
+the sync stops and the wait says `until then no sync runs`, the plain words back at 0600; the hold record at 0000:
+the sync runs and the plain words stay).
+
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
 Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the

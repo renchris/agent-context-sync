@@ -496,6 +496,49 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_
     assert wait().endswith(plain), wait()
 
 
+@pytest.mark.parametrize("which", ["purge-record.json", "governance/suppressed.json", "hold-record.json"])
+def test_a_governance_file_this_account_cannot_open_says_no_sync_runs_c639(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], which: str
+) -> None:
+    """B13 round 32 C639 (ruling 65): with purge-record.json or the suppression list at 0000, every sync
+    stopped on it in its refused kind, past the guard C520's wait asked, so the wait still said a plain sync
+    prints the alarm. It names governance.suppressed, the check that FAILs either, until the mode is fixed;
+    a hold record at 0000, which the sync runs over, keeps the plain words."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    plain = f"which names the folder (a plain `{BIN} sync` prints it too)"
+
+    def wait() -> str:
+        (line,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        return line
+
+    state = expand(config.state_paths.root)
+    path = state / which
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = {"purge-record.json": '{"purges": []}', "hold-record.json": '{"holds": []}'}.get(which, "{}")
+    path.write_text(body + "\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        capsys.readouterr()
+        rc = cli.main(["sync", "--config", cfg])
+        if which == "hold-record.json":
+            assert rc == cli.EXIT_OK and wait().endswith(plain), wait()
+            return
+        assert rc != cli.EXIT_OK, "the sync stops on it in its refused kind"
+        stopped = (
+            "which names the folder (once the governance.suppressed [FAIL] line is fixed, a plain "
+            f"`{BIN} sync` prints it too; until then no sync runs)"
+        )
+        assert wait().endswith(stopped), wait()
+    finally:
+        path.chmod(0o600)
+    assert wait().endswith(plain), wait()
+
+
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

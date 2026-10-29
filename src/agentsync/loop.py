@@ -274,11 +274,26 @@ def _sync_stopped_on(config: Config) -> str | None:
     """The status check whose [FAIL] the sync's own guard stops on before it runs, by that guard itself
     (``doctor.state_not_a_file`` with the sync's flags, as ``cli`` calls it: a governance file or governance/
     not a file, damaged, or a list that lost a purge, the lock, heartbeat.json), or None: never a hold the
-    hold list lost, whose sync runs (B13 round 31 C520; ruling 60)."""
+    hold list lost, whose sync runs (B13 round 31 C520; ruling 60). Also the purge record or the
+    suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
+    governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
+    which a sync runs over at 0000 (B13 round 32 C639; ruling 65)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
     found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
-    return None if found is None else found[1].name
+    if found is not None:
+        return found[1].name
+    root = config.state_paths.root
+    for read in (governance.recorded_purges, governance.load_suppressions):
+        try:
+            read(root)
+        except governance.GovernanceError as exc:
+            cause = exc.__cause__
+            if type(exc) is governance.GovernanceError and isinstance(cause, PermissionError):
+                return "governance.suppressed"
+        except Exception:  # every other error is its own line's, as before
+            continue
+    return None
 
 
 def _baseline(docs: Path) -> str:
