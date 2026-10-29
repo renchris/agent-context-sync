@@ -14998,9 +14998,10 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     assert "| 3 | poll | ok | 2026-10-06T10:00:00Z | 0 | 0 | 0 | 0 | 0 |" in part, "no column is added"
     # B13 round 20 X2, X10: whether a stub waits is the manifest's now; this one has none
     assert (
-        "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. No run reads a file "
-        "waiting for its converter, so none is in a column above; none waits now: Quarantine by reason holds "
-        "no stub of a file waiting for its converter\n" in part
+        "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. A run in which a "
+        "file's converter cannot start counts that file in no column above; a later run that reads it "
+        "counts it under files converted (and under failed or unreadable when that is how it ended); none "
+        "waits now: Quarantine by reason holds no stub of a file waiting for its converter\n" in part
     ), part
     assert "- a conversion that failed is counted in each run it failed in" in part, "no run has a failure"
     rows = {ln.split(" | ")[0]: ln for ln in parts["OCR"].splitlines() if re.match(r"\| \d", ln)}
@@ -15019,10 +15020,25 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     seed.close()
     part = status_parts(fake_mac)[1]["Repeat conversions"]
     assert (
-        "- waiting for a converter that could not start: run 4, 1 file. No run reads a file waiting for its "
-        "converter, so none is in a column above;" in part
+        "- waiting for a converter that could not start: run 4, 1 file. A run in which a file's converter "
+        "cannot start counts that file in no column above;" in part
     ), part
     assert "Nothing read them" not in part, part
+    # B13 round 32 C628 (ruling 73, the rehearsal's runs 14 and 15): the converter came back and run 15
+    # converted the file run 14 waited on; the note no longer says it is in no column above
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DELETE FROM runs WHERE run_id = 4")
+    seed.run(14, {"converted": 0, "converter_waiting": 1})
+    seed.run(15, {"converted": 1})
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert "| 15 | poll | ok | 2026-10-06T10:00:00Z | 1 | 0 | 0 | 0 | 0 |" in part, part
+    assert (
+        "- waiting for a converter that could not start: run 14, 1 file. A run in which a file's converter "
+        "cannot start counts that file in no column above; a later run that reads it counts it under files "
+        "converted" in part
+    ), part
+    assert "none is in a column above" not in part, part
 
 
 @pytest.mark.usefixtures("roomy_calls")

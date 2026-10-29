@@ -10507,9 +10507,12 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         out += [
             "",
-            # B13 round 31 C527: no pronoun from the runs' sum, which counts a file again in each run it waits
-            f"- waiting for a converter that could not start: {each}. No run reads a file waiting for its "
-            f"converter, so none is in a column above; {now}",
+            # B13 round 31 C527: no pronoun from the runs' sum, which counts a file again in each run it
+            # waits. B13 round 32 C628 (ruling 73): which run leaves the file out, the one it waits in, and
+            # where a later run that reads it counts it (none named: a file also leaves when its source goes)
+            f"- waiting for a converter that could not start: {each}. A run in which a file's converter "
+            "cannot start counts that file in no column above; a later run that reads it counts it under "
+            f"files converted (and under failed or unreadable when that is how it ended); {now}",
         ]
     # B13 round 30 C362, C319 (ruling 45): the runs that counted the one-shot re-read of a failure whose
     # stored reason an older build wrote a folder path into, a try past the 2 the sentence below names

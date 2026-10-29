@@ -25124,6 +25124,9 @@ run in which the converter starts converts it/them`, or `none waits now: Quarant
 file waiting for its converter`.
 Amended 2026-10-28, §16.208 C527: the sentence after the runs reads `No run reads a file waiting for its converter, so
 none is in a column above`, true of one file and of several, with no pronoun picked from the runs' sum.
+Amended 2026-10-28, §16.213 C628: it reads `A run in which a file's converter cannot start counts that file in no
+column above; a later run that reads it counts it under files converted (and under failed or unreadable when that is
+how it ended)` (ruling 73).
 
 **A manifest this account cannot open fails a Doctor line, and the report points at it** (W64; amends §16.128 U21).
 With manifest.sqlite at mode 0000 (or another account's, after a sudo sync) status exited 0 with `[ok]
@@ -34700,6 +34703,9 @@ whose converter cannot start is counted again in each run it still waits in, so 
 one file. The sentence reads `No run reads a file waiting for its converter, so none is in a column above`, true for
 any count. Test: `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`, now with
 a one-run, one-file case.
+Amended 2026-10-28, §16.213 C628: it reads `A run in which a file's converter cannot start counts that file in no
+column above; a later run that reads it counts it under files converted (and under failed or unreadable when that is
+how it ended)` (ruling 73).
 
 **Every manifest read a report's hooks make is read-only, and the private copy always goes** (C560 with C541;
 ruling 52, the report's half of lane B's `manifest.read_only_reads` and `manifest.remove_ro_copy`;
@@ -35686,6 +35692,17 @@ counted in the 'same bytes' column either (cycle.py takes no prior read for it; 
 from the 'same bytes' column`), so the head read as if it were a loop. The bracket ends `nor is a file re-screened for
 a label-rule change or for a new mail label reader)`; both phrases are already among `_FIXED_VALUE_PHRASES`. The §16.85
 L71 quote has a dated line. Test: `test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned head).
+
+**Repeat conversions' waiting line says which run leaves the waiting file out and where a later run counts it** (C628,
+ruling 73; `src/agentsync/setup_report.py`). The line said `No run reads a file waiting for its converter, so none is
+in a column above`, with nothing to scope it, while the rehearsal's table showed run 15's `files converted 1` for the
+file run 14 waited on: once the converter starts, a run converts it and counts it in that run's row. The sentence now
+reads `A run in which a file's converter cannot start counts that file in no column above; a later run that reads it
+counts it under files converted (and under failed or unreadable when that is how it ended)`. It names the column, not
+an outcome (failed and unreadable are counted inside files converted), and names no run as the one that read it (a
+file also leaves when its source goes, round 20 X2). The §16.140 W52 and §16.208 C527 quotes have dated lines. Test:
+`test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record` (its pins in the new words,
+and run 14 waiting with run 15 converting one file).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 
