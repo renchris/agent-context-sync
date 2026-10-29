@@ -805,6 +805,23 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
     assert fold(f"cannot list '{root}/'", "Plan.docx") == "cannot list 'its folder'"
     assert fold("bad header in /Volumes/Contoso", "Plan.eml") == "bad header in /Volumes/Contoso", "not cut"
     assert fold("bad header in '/Volumes/Contoso\\tState/agentsync/sta…", "Plan.eml") == "bad header in '…"
+    # B13 round 32 C645: a Graph file's folder is the staging folder itself, where a converter makes its temp
+    # folders (``.media-``, ``.ocr-``); it lost no folder, and the folder named alone stayed whole
+    staging = "/Volumes/Contoso\\tState/agentsync/staging"
+    assert (
+        fold(f"No such file: '{staging}/.media-ab12/a.wav'", "Talk.wav")
+        == "No such file: '.media-ab12/a.wav'"
+    )
+    assert fold(f"No such file: '{staging}/.ocr-k3j2x/page-1.png'", "Plan.pdf") == (
+        "No such file: '.ocr-k3j2x/page-1.png'"
+    )
+    for named in (staging, staging + "/"):
+        assert (
+            fold(f"No space left on device: '{named}'", "Talk.wav") == "No space left on device: 'its folder'"
+        )
+    assert fold(f"{root}.docx in {staging}", "Plan.docx") == "Plan.docx in its folder", (
+        "the 16-hex forms first"
+    )
 
 
 def test_pathless_never_leaves_an_empty_quote_for_a_folder_with_a_trailing_slash(tmp_path: Path) -> None:

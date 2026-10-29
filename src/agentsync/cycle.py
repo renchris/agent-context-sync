@@ -2781,7 +2781,8 @@ class _Cycle:
         staging folder or home folder (``_common._spellings``), which a round 29 build wrote before C364 and
         whose one-shot re-read (``_queue_path_stubs``) it had already used, so no conversion ever wrote it
         again (B13 round 31 C546): the staged file's path becomes its name, any other path in its folder
-        loses the folder, the folder named alone becomes ``_common._FOLDER_WORD``, a reason cut inside the
+        loses the folder, the folder named alone becomes ``_common._FOLDER_WORD`` (for a Graph source the
+        staging folder itself is that folder, B13 round 32 C645), a reason cut inside the
         staging folder loses the cut path, and the home folder becomes ``~``. Not a stub this run queued for
         its re-read, whose conversion writes its reason anew. The page is written only where its plan
         differs; ``_sync/QUARANTINE.tsv`` follows from the row. No verdict or count moves. The key is written
@@ -2848,7 +2849,10 @@ class _Cycle:
         folds a new reason, and the home folder as ``~`` (B13 round 31 C546). The staged file is
         ``<staging>/<16 hex>/<name>`` for a local source (``arm_local._staging_dest``) and
         ``<staging>/<16 hex><suffix>`` for a Graph one (drive, mail, teams): either becomes the row's name.
-        Only a text that ends cut (``…``) loses a cut staging path at its end."""
+        Then the staged file's folder named alone becomes ``_common._FOLDER_WORD`` and any other path in it
+        loses the folder; for a Graph source that folder is the staging folder itself, which also holds a
+        converter's temp folders (B13 round 32 C645). Only a text that ends cut (``…``) loses a cut staging
+        path at its end."""
         end, goes_on = convert_common._PATH_END, convert_common._PATH_GOES_ON
         names = [n for n in convert_common._spellings(Path(name)) if "/" not in n] or [name]
         for root in self._staging_roots():
@@ -2860,6 +2864,12 @@ class _Cycle:
             text = re.sub(folder + r"\.[^\s'\":,;)\]/]+" + goes_on, lambda _m: name, text)
             text = re.sub(folder + "/?" + end, convert_common._FOLDER_WORD, text)
             text = re.sub(folder + "/", "", text)
+            # a Graph source's file sits in the staging folder itself (graph/drive.py:883), and a converter's
+            # temp folder beside it (``.media-``, ``.ocr-``): that folder named alone, a slash after it or
+            # none, then the folder before any other name in it, as _pathless does, after the 16-hex forms
+            # (B13 round 32 C645)
+            text = re.sub(re.escape(root[:-1]) + "/?" + end, convert_common._FOLDER_WORD, text)
+            text = text.replace(root, "")
         if text.endswith("…") and (cut := self._cut_in_staging(text)):
             text = text.removesuffix("…")[:-cut].rstrip() + "…"
         return convert_common._homeless(text)

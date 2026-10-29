@@ -35177,6 +35177,9 @@ and leaves no escaped path or `/staging/` in the row, the HEAD page, QUARANTINE.
 file; the next leaves the page byte for byte) and
 `test_convert_family.py::test_names_a_path_reads_a_reason_cut_inside_the_escaped_staging_folder` and
 `test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text`.
+Amended 2026-10-28, §16.216 C645: for a Graph source the staging folder itself is the staged file's folder, so the
+staging folder named alone becomes `its folder` and any other path in it, a converter's `.media-` or `.ocr-` temp
+folder included, loses the folder.
 
 **A fold whose page could not be written is tried again (C564 with C576, ruling 48; `agentsync.cycle`; amends
 §16.206 C361).** `_fold_unavailable_reasons` wrote its once-per-manifest key after a page rewrite failed
@@ -35480,7 +35483,21 @@ Reserved for round 32 lane B of B13.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
-Reserved for round 32 lane E of B13.
+Round 32's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 32"; specs `round32/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 54, 66 and 71 settle it). A dated line this round writes reads
+`Amended 2026-10-28, §16.216 C<n>`.
+
+**A Graph source's staging folder is folded too (C645, ruling 71; `agentsync.cycle`; amends §16.211 C546).**
+`_fold_staging` folded only `<staging>/<16 hex>...`, but a Graph source stages a file as `<staging>/<16 hex><suffix>`
+(drive, mail, teams), so its folder is the staging folder itself, where the recording and PDF converters make their
+`.media-` and `.ocr-` temp folders. A round 29 reason naming such a temp path, or the staging folder alone, set off
+the escaped fold, which stored the text unchanged and wrote `convert-escaped-fold:done`, so the path stayed in the
+page, `_sync/QUARANTINE.tsv` and the manifest. After its four 16-hex substitutions the fold now turns the staging
+folder named alone (a slash after it or none, at a path's end) into `its folder`, then drops `<staging>/` before any
+other name, as `_pathless` folds a Graph file's folder; the 16-hex forms go first, so `<staging>/<16 hex>.docx` still
+becomes the name. Test:
+`test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text` (a `.media-` and
+an `.ocr-` path lose the folder, the folder alone with or without its slash reads `its folder`).
 
 ### 16.217 Round 32: the records page on a hand purge, dated lines for stale quotes and the kit note's lists (2026-10-28, wave B13 round 32 lane D)
 
