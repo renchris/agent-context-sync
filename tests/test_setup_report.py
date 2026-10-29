@@ -9639,6 +9639,28 @@ def test_the_loop_line_over_a_state_folder_at_0000_names_the_folder(
     assert "a file cannot be opened" not in loop, loop
 
 
+def test_a_loop_stage_status_left_unread_by_its_read_note_says_its_words_c638(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 32 C638 (ruling 67): under read-only reads a manifest a build ahead (or one a sync is
+    writing) makes status print ``last runs: not read yet: ...`` and no ``status: cannot read the state:``
+    line, so the Loop line fell back to ``not read (status cannot read the state)``, kept only for when
+    status said no words. The note's words now follow "status says"; status's own unread words, when it
+    printed them, stay."""
+    for note in (manifest_mod.SCHEMA_READ_NOTE, manifest_mod.BUSY_READ_NOTE):
+        hooks = setup_report.ReportHooks(status=lambda c, n=note: ["loop: skill current", f"last runs: {n}"])
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        loop = _line(section(text, "Summary"), "- Loop: ")
+        assert loop.startswith(f"- Loop: not read: status says {note}; NEXT: "), loop
+        assert "status cannot read the state" not in loop, loop
+    unread = "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
+    note = f"last runs: {manifest_mod.SCHEMA_READ_NOTE}"
+    hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current", f"{unread} says why", note])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    assert loop.startswith("- Loop: not read: status says the configuration is refused: "), loop
+
+
 def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

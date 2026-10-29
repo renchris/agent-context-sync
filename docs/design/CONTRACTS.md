@@ -24317,6 +24317,8 @@ no `last runs:` line and stays `not read`. The line reads `- Loop: not read: sta
 when status said no words, `not read (status cannot read the state)`. Tests:
 `test_a_loop_stage_status_could_not_read_is_not_read_not_installed`,
 `test_cli.py::test_status_prints_every_check_when_its_state_cannot_be_read`.
+Amended 2026-10-28, §16.213 C638: status's `last runs: not read ...` read note counts as its words when it printed no
+`status: cannot read the state:` line, so the fallback is only for a status that said neither.
 
 **Status's reasons carry no bracket of their own** (V11; amends §16.128 U21). `_unread_words` wrote `the state file
 cannot be read (file is not a database)`, which the report put inside its own bracket. Each reason follows a colon:
@@ -35560,6 +35562,17 @@ install.sh)`), the damage clause too. The `not read (...)` returns show
 no NEXT and are unchanged. Test: `test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620` (no
 attempt: no bracket; the stopped v8 attempt; and the same with the damage flag set, one bracket; rule 9's NEXT, with
 and without the damage flag, one bracket).
+
+**A Loop stage left unread by status's read note says its words** (C638, ruling 67; `src/agentsync/setup_report.py`).
+Under read-only reads a manifest one schema ahead (or one a sync is writing) makes status print `last runs:
+<manifest.read_note>` (`not read yet: agentsync's state file is not yet at the schema this build reads ...` or `not
+read this time: ...`) and no `status: cannot read the state:` line, so `loop_unread` stayed None and the Loop line
+fell back to `not read (status cannot read the state)`, kept (§16.134 V10, V54) only for when status said no words.
+`_status` fills `loop_unread` from that note, after `last runs: `, only when status printed no unread words of its
+own, so a governance or damage reason is never overwritten; the line reads `- Loop: not read: status says not read
+yet: ...; NEXT: ...`. Test: `test_a_loop_stage_status_left_unread_by_its_read_note_says_its_words_c638` (both
+notes, and a refused [governance] beside the note keeping its own words). The spec's asserts in the two C560 tests in
+`tests/test_cli.py` wait on lane B's C642, which moves those lines.
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

@@ -7715,6 +7715,11 @@ def _status(r: _Run) -> list[str]:
         # no "last runs:" line because status could not read the state: unknown, not "no sync" (U7); nor
         # one that says it was not read (lane B's read note under read_only_reads, B13 round 31 C560)
         noted = any(ln.startswith("last runs: not read") for ln in ran)
+        # B13 round 32 C638: that note is status's words for why the stage is not read, when it printed no
+        # unread words of its own (a governance or damage reason is never overwritten)
+        note = next((ln for ln in ran if ln.startswith("last runs: not read")), None)
+        if note is not None and r.facts.loop_unread is None:
+            r.facts.loop_unread = note.removeprefix("last runs: ").strip() or None
         synced: bool | None = (
             any(ln != "last runs: none" for ln in ran) if (ran or unread is None) and not noted else None
         )
