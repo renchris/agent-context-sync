@@ -7277,6 +7277,17 @@ def test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copie
     )
     logs = rows["| `~/Library/Logs/agentsync`, `…/governance/audit.jsonl`"]
     assert "for the logs; the audit trail is append-only" in logs
+    # B13 round 32 C657: the last cell says a purge scrubs the logs, as _purge_locked does, with its note
+    last = logs.rstrip(" |").rsplit(" | ", 1)[1]
+    assert (
+        "logs: yes, each purge removes every line naming a purged id or path from each UTF-8 text file up to"
+        " 64 MiB in the log folder and the state folder's `logs/`" in last
+    )
+    assert "(`cannot scrub compressed log <path>: delete it`)" in last and last.endswith("kept by design")
+    purge = inspect.getsource(governance._purge_locked)
+    assert "_scrub_logs([expand(config.log_dir), sp.logs], log_scrubber)" in purge
+    assert 'f"cannot scrub compressed log {p}: delete it"' in purge
+    assert governance._SCRUB_MAX_BYTES == 64 * 1024 * 1024
 
 
 def test_the_guide_gives_the_hold_record_and_the_purge_record_their_own_step_1_tails() -> None:

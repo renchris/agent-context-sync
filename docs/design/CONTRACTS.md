@@ -35540,3 +35540,14 @@ every screened suffix or a blanket "macro and template variants" clause, would t
 (makes worse True); they stay out. Test:
 `test_the_readme_lists_the_office_formats_that_are_both_label_screened_and_converted`, which compares the list with
 the screened suffixes the four converters claim.
+
+**The records page's Logs row says a purge scrubs the logs** (C657; `docs/deploy/data-governance.md`). The Where
+copies live row for `~/Library/Logs/agentsync` and `…/governance/audit.jsonl` said under "Purge reaches it" only
+that the audit is kept by design, though every real purge runs `_scrub_logs([expand(config.log_dir), sp.logs],
+log_scrubber)` in `governance._purge_locked`, removing each line that names a purged id or path from each regular,
+non-link UTF-8 file up to 64 MiB (`_SCRUB_MAX_BYTES`) under both folders, and notes each compressed log it cannot
+scrub, `cannot scrub compressed log <path>: delete it`; round 31 C558's not-built reason ("not measured here") was
+no harm. The last cell says so and keeps `the audit is kept by design`; the row and its first cell stay, so its
+test key holds, and audit.jsonl gets no row of its own. Test:
+`test_the_records_page_lists_the_hold_record_and_the_purge_record_where_copies_live`, extended to read the cell
+beside `_purge_locked`'s source and the size cap.
