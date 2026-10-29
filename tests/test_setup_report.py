@@ -7619,6 +7619,12 @@ def test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c51
             assert setup_report._reached(one) == reached
             assert setup_report._run_end(one, [one]) == end
             assert "(signal" not in reached + end
+            # B13 round 32 C614, C635 (ruling 66): the outcome names the signal as the step row does; a plain
+            # rc keeps "with rc N"
+            [why] = setup_report.compute_outcome(None, [one]).why
+            joined = f", {words}" if words != "rc 1" else " with rc 1"
+            assert why == f"install.sh exited 1: its first-sync step failed{joined}", why
+            assert "(signal" not in why
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -23211,7 +23217,8 @@ def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path
         ("0", "that run ended rc 0"),  # B13 round 25 D15; B13 round 26 E20: a clause of its own
         ("2", "that run ended rc 2"),
         ("1", "that run ended rc 1"),
-        ("143", "that run ended rc 143"),
+        ("143", "that run was stopped by SIGTERM, exit 143"),  # B13 round 32 C635: named by its signal
+        ("130", "that run was stopped by SIGINT, exit 130"),
         (None, "that run has no end line"),
     ):
         tail = f"2026-10-20T10:05:00Z run={run} end rc={rc} seconds=60\n" if rc is not None else ""

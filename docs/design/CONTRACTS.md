@@ -12076,6 +12076,8 @@ Amended 2026-10-15, §16.92 M24 (M41 the same defect): the outcome detail has no
 `install.sh has no end line after its failed <step> step, <state>` (the step before the causes, so it never reads as
 one of them), and `install.sh exited <rc>: its <step> step failed with rc <n>` (`with no rc logged` when its line has
 none), which says whose each exit code is.
+Amended 2026-10-28, §16.213 C614: a step a signal stopped (rc 129-192, a signal this Mac names) reads `its <step> step
+failed, stopped by SIG<NAME>, rc <n>`, as its step row does; a plain rc keeps `with rc <n>`.
 
 **The "nothing started since" note says install.log** (B13 H17; amends §16.37). The note said "no install.sh
 run began since attempt <N> finished", but the report it sits in is written by `install.sh --report-only` (step 3,
@@ -35573,6 +35575,16 @@ own, so a governance or damage reason is never overwritten; the line reads `- Lo
 yet: ...; NEXT: ...`. Test: `test_a_loop_stage_status_left_unread_by_its_read_note_says_its_words_c638` (both
 notes, and a refused [governance] beside the note keeping its own words). The spec's asserts in the two C560 tests in
 `tests/test_cli.py` wait on lane B's C642, which moves those lines.
+
+**The outcome names a step a signal stopped by its signal** (C614 with C635, ruling 66; `src/agentsync/setup_report.py`).
+When install.sh exited 1 after its first sync was stopped by a signal from outside it (the step's rc 137 or 143, not
+install.sh's own exit), `compute_outcome` read `install.sh exited 1: its first-sync step failed with rc 143` while the
+sync line and the step row said `stopped by SIGTERM, rc 143`. The outcome now takes `_rc_words`: `its <step> step
+failed, stopped by SIGTERM, rc 143` (`stopped by SIGKILL, rc 137`); a code no signal names keeps `failed with rc
+<n>`, and the raw rc still decides `during`. A stand-alone run after a stopped copy that a signal stopped reads `(that
+run was stopped by SIGTERM, exit 143)`, the STOPPED_EXITS outcome's words, never `ended rc 143`. No `(signal` in either
+bracket. Tests: `test_a_signal_stopped_step_is_named_by_its_signal_with_no_nested_bracket_c516` (137, 143 and 1) and
+`test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` (143 and 130).
 
 ### 16.214 Round 32: the installer's typed folders cut, a signal named in every bracket and the tails of two lost governance files (2026-10-28, wave B13 round 32 lane RB)
 

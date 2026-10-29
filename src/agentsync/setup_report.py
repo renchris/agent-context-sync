@@ -3502,6 +3502,10 @@ def compute_outcome(
             # B13 round 26 E20: the late run's state in a clause of its own, never "which" after "its end
             # line", where it read as the attempt's end line
             ended = "that run has no end line" if late_rc is None else f"that run ended rc {late_rc}"
+            if late_rc in STOPPED_EXITS:
+                # B13 round 32 C635 (ruling 66): a late run a signal stopped is named by its signal, in the
+                # STOPPED_EXITS outcome's words, never "ended rc 143"
+                ended = f"that run was stopped by {_SIGNAL_NAMES[late_rc]}, exit {late_rc}"
             n = (
                 "the install.sh run"
                 if len(late_installs) == 1
@@ -3648,11 +3652,14 @@ def compute_outcome(
         failing = last.failed_step()
         # whose each exit code is, with no bracket inside the outcome's own (B13 round 11 M24, M41)
         rc = failing[1].get("rc", "") if failing else ""
-        where = (
-            (f": its {failing[0]} step failed " + (f"with rc {rc}" if rc else "with no rc logged"))
-            if failing
-            else ""
-        )
+        # B13 round 32 C614, C635 (ruling 66): a step a signal stopped is named by its signal, as the step row
+        # and the sync line name it ("failed, stopped by SIGTERM, rc 143"); a plain rc keeps "with rc N", and
+        # ``rc`` stays raw for the "during" check below
+        words = _rc_words(rc) if rc else ""
+        said = f" with rc {rc}" if rc else " with no rc logged"
+        if words.startswith("stopped by "):
+            said = f", {words}"
+        where = f": its {failing[0]} step failed{said}" if failing else ""
         if last.rc is None:
             # the failed step before the open state's "a, b, or c", never read as a fourth cause (H14 C2)
             last_failed = f" after its failed {failing[0]} step" if failing else ""
