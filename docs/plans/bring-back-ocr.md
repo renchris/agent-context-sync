@@ -2217,6 +2217,51 @@ them), B 20 (C606, C667 and C610 first: data integrity; then C625 and rulings 63
 and C658 first: data integrity; then ruling 66), E 8 (C645 and C660 first: data integrity; then ruling 71), D 14
 (C649 with C671 first: data integrity; then ruling 74's dated lines and ruling 75's kit sentence).
 
+### B13 round 32 landed (2026-10-29)
+
+All five lanes landed; the prompt is still v33. Notes `lanes/r32-<lane>.md`, lead notes `round29/lead-notes.md`. All
+68 confirmed items are built: 68 in the lanes' 63 commits (`35e2f468..f48feb0e`, every landed tip CI green), the
+repo half of C664 (1) by lane D (`9cb86828`), and the kit halves of C604, C605, C630 and C664 (2) (3) by the lead in
+round 33's script (`round33/tools/edit.py`: the folder check runs before step 2, before reading a role run's state
+and at the end of each act, and the `shasum` check right after every `cp -Rp` and snapshot restore; each round has
+its own sandbox root and stops if it exists; scenario B's helper source names round 32's roots; a probe or sub-home
+copies built helpers only under six conditions; a kit check script finds its homes from its root). Optional halves
+not built, each with a measured reason: C617's no-end-line form (outside ruling 66; lane RA); a damaged purge record
+beside a suppression list that lost a purge gives no `,lost-suppressed`, since the build's check reads the record, so
+step 2 never names governance.suppressed twice (lane RB); a suffix-less Graph stage `<staging>/<16 hex>` folds to
+`its folder`, not its name (older than this round; a converted Graph file always carries a suffix, so no stored
+reason holds one; lane E).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `db57aade..114692b6`, 8 commits |
+| D | `1fb736a0..9cb86828`, `c78b8904` and `f48feb0e`, 8 commits |
+| B | `08012edb..55808777`, `b9189965` and `e802230a`, 17 commits |
+| RA | `35e2f468..9f6cfc47`, `a06dd752..561234c3` and `c84ce48c..4d1ee626`, 22 commits |
+| RB | `abedb8de..4f0f42f2`, `d9a6b8dd` and `8eec78fe`, 8 commits |
+
+Learnings: from the fire (05:10Z) to the last land (21:35Z) took 16.5 hours, 2.5 more than round 31. The critical
+path was the cross-lane chain, not one lane: lane B's C609 waited on lane RA's `_LABEL_UNPARSED_RE` (ruling 68), and
+lane D's C651 on lane RA's ruling 73 words and lanes B and RB's `--folder-lost` lines. Land gates went red on load,
+never on a diff, at load averages of about 200 to 300: two `test_install_oneshot` tests whose `pandoc --version` ran
+past 60 seconds (lane B), and C651's first two lands (19 install.sh subprocess timeouts, then a first pytest step
+that printed nothing; each passed alone). The machine-wide gate slot that sizes xdist's width and stops a slot holder
+waiting on the land lock (`845ef361..bf58a36e`) landed outside the lanes after the last land. No CI run went red or
+lost its runner; the slowest took 64 minutes with an 18-minute runner wait (`55808777`). A fresh worktree needs
+`npm ci` before ship-land (lane RA's second worktree failed `diagrams:check` without it).
+
+Residuals the lanes named for round 33's harvest (in their notes): a report built with `cli._report_hooks()` over an
+older-schema manifest under read-only reads gives the Loop line `NEXT: the state_dir.files check failed: ...` while
+`_read_only_reads`' own step is the schema NEXT (lane RA, sent to lane B, not measured); a new note shape that prints
+a folder needs its own cut in install.sh's `typed_note_cut` and in setup_report (RB); new names for the readers:
+`purge --accept-lost <at> --folder-lost`, the meta key `convert-path-fold-v2:done` (one commit of rewritten stub
+pages on a Mac with such stubs), `rc_signal_words` and `rc_aside` beside the bracket-only `rc_meaning` (B, E, RB).
+
+Round 33: the round 32 workflow (`round32/round32-workflow.js` through `round33/tools/edit.py`, with the kit halves
+above) with the harvest list in `round33/tools/harvest-lead.txt`, on this section's landed tip, BASE `62b8a943`, ids
+C701 and up, outputs `round33/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since
+no lane changed the prompt.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
