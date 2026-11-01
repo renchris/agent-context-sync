@@ -263,7 +263,7 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     assert speech.engine(sample_config.convert, cache) is None
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     (r,) = doctor._check_speech(sample_config)
-    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({refusal})")
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed: {refusal}")
     # a helper that reports a commit after the floor is refused too: the check is the exact pin, so the
     # refusal never says "or later" (W67)
     later = json.dumps({"engine": "fluidaudio", "fluidaudio": "2" * 40, "helper": "0.1.0"})

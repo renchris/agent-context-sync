@@ -1478,7 +1478,7 @@ def test_the_module_entry_point_builds_under_the_configured_cache_dir(
     ocr._helper_path(cache).unlink()
     assert ocr._main() == 1
     out = capsys.readouterr().out
-    assert out == "OCR helper: not built (no Xcode or Command Line Tools (xcode-select -p names no folder))\n"
+    assert out == "OCR helper: not built: no Xcode or Command Line Tools (xcode-select -p names no folder)\n"
 
     config_file.write_text("[convert]\nocr = maybe\n")
     assert ocr._main() == 78  # EX_CONFIG: install.sh logs the helpers step skipped (B13 round 11 M25)
@@ -1549,8 +1549,8 @@ def test_what_an_earlier_build_left_is_tidied_when_nothing_is_built(
     script(tools / "swiftc", 'echo "error: the stub compiler fails" >&2\nexit 1')
     assert ocr._main() == 1
     assert capsys.readouterr().out == (
-        "OCR helper: not built (swiftc did not build the OCR helper (exit 1): "
-        "error: the stub compiler fails)\n"
+        "OCR helper: not built: swiftc did not build the OCR helper (exit 1): "
+        "error: the stub compiler fails\n"
     )
     tidied()
     assert ocr.probe(CFG, cache)[0] == "failed"
@@ -1986,3 +1986,60 @@ def test_the_url_cut_docstring_says_a_scheme_starts_at_a_letter() -> None:
     doc = " ".join((ocr._plain.__doc__ or "").split())
     assert "A letter, a digit or a ``.`` before a URL is part of its scheme" not in doc
     assert "one that starts with a digit, ``_``, ``.`` or a non-ASCII letter makes the URL a path" in doc
+
+
+def _deepest_bracket(line: str) -> int:
+    """How deep ``line``'s round brackets nest (0 when it has none, 1 when none is inside another)."""
+    depth = deepest = 0
+    for ch in line:
+        if ch == "(":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif ch == ")":
+            depth -= 1
+    return deepest
+
+
+@pytest.mark.parametrize("number", range(1, 32))
+def test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_c719(
+    number: int, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C719 (ruling 85): ``_ended``'s ``stopped by SIGKILL (signal 9)`` is the standing-alone
+    phrase, but every helper line put the whole reason in a bracket, so the signal's bracket sat inside it:
+    ``speech: not built (swift package resolve was stopped by SIGKILL (signal 9); ...)`` from ``_entry``,
+    ``speech: failed (...)`` and ``media helper: not working (...)`` from doctor. A failure takes the colon
+    form, as OCR's doctor line already did, the trailing ``(fix: ...)`` kept. Every helper, every signal from
+    1 to 31, empty stderr (a crash's own line is free text): no bracket inside another, read by depth."""
+    from agentsync.convert import speech  # noqa: PLC0415
+
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    status = {"ocr": "_ocr_status", "media": "_media_status", "speech": "_speech_status"}
+    checks = {"ocr": doctor._check_ocr, "media": doctor._check_media, "speech": doctor._check_speech}
+    for name, kind, label in (
+        ("ocr", ocr._OCR, None),
+        ("media", media.MEDIA, None),
+        ("speech", speech.SPEECH, "speech"),
+    ):
+        for head in (f"swiftc, building the {kind.name}, was ", "swift package resolve was "):
+            reason = ocr._signal_reason(head, -number)
+            assert f"(signal {number})" in reason or f"signal {number}" in reason, reason
+
+            def broken(_cache: Path, reason: str = reason) -> Path:
+                raise ocr.OcrError(reason)
+
+            def failing(_cfg: ConvertConfig, _cache: Path, reason: str = reason) -> tuple[str, str]:
+                return "failed", reason
+
+            def built(cache: Path) -> Path:
+                return cache
+
+            for build_, probe_ in ((broken, failing), (built, failing)):
+                assert ocr._entry(kind, lambda _cfg: "", build_, probe_, label=label) == 1
+                line = capsys.readouterr().out
+                assert line.count("\n") == 1 and reason in line, line
+                assert _deepest_bracket(line) <= 1, line
+            monkeypatch.setattr(doctor, status[name], lambda _config, reason=reason: ("failed", reason))
+            (result,) = checks[name](None)  # type: ignore[arg-type]
+            assert result.severity == doctor.Severity.WARN and result.fix, result
+            rendered = doctor.format_results([result])
+            assert f"signal {number}" in rendered and _deepest_bracket(rendered) <= 1, rendered

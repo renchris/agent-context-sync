@@ -492,7 +492,7 @@ def test_the_module_entry_prints_one_speech_line(
     ocr._helper_path(cache, speech.SPEECH).unlink()
     assert speech._main() == 1
     assert capsys.readouterr().out == (
-        "speech: not built (no Xcode or Command Line Tools (xcode-select -p names no folder))\n"
+        "speech: not built: no Xcode or Command Line Tools (xcode-select -p names no folder)\n"
     )
 
 

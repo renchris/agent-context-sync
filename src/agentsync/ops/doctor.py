@@ -951,7 +951,9 @@ def _check_media(config: Config) -> list[CheckResult]:
     switched off (``[convert] recordings = false`` among the switches); a not-ok INFO line when it is not
     built (scripts/install.sh builds it; this check never compiles); WARN with the reason when it failed,
     with a fix only when the developer tools are missing, the build ran out of time (W49) or a signal
-    stopped it (B13 round 25 D85).  Never a FAIL."""
+    stopped it (B13 round 25 D85).  Never a FAIL.  The WARN reads ``media helper: not working: <reason>``,
+    the colon form OCR's line has: a reason can end in ``stopped by SIGKILL (signal 9)``, which no bracket
+    may hold (B13 round 33 C719, ruling 85)."""
     try:
         state, detail = _media_status(config)
     except Exception as exc:
@@ -964,12 +966,14 @@ def _check_media(config: Config) -> list[CheckResult]:
         return [_bad("media", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "media")
     detail = _helper_detail(detail, fix)
-    return [_bad("media", f"media helper: not working ({detail})", Severity.WARN, fix=fix)]
+    return [_bad("media", f"media helper: not working: {detail}", Severity.WARN, fix=fix)]
 
 
 def _check_speech(config: Config) -> list[CheckResult]:
     """The speech engine (words and voices of a recording), optional as the media helper is and checked the
-    same way, one ``speech: <state> (<detail>)`` line: ok when ready or off (whatever switches the media
+    same way, one ``speech: <state> (<detail>)`` line (the WARN's ``speech: failed: <reason>``, the colon
+    form, since a reason can end in ``stopped by SIGKILL (signal 9)``, which no bracket may hold: B13 round 33
+    C719, ruling 85): ok when ready or off (whatever switches the media
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
     built; WARN with the reason when it failed, a helper built from a FluidAudio commit other than the
     pinned one among them, with a fix only for missing developer tools, a build that ran out of time or a
@@ -991,7 +995,7 @@ def _check_speech(config: Config) -> list[CheckResult]:
     else:
         fix = _helper_again_fix(detail, "speech") or _resolve_again_fix(detail)
     detail = _helper_detail(detail, fix)
-    return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
+    return [_bad("speech", f"speech: {state}: {detail}", Severity.WARN, fix=fix)]
 
 
 _RETRY_CLAUSE = HELPER_RETRY_CLAUSE

@@ -195,7 +195,7 @@ def test_a_media_build_that_fails_leaves_ocr_ready(
 
     config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n')
     assert media._main() == 1
-    assert capsys.readouterr().out == f"media helper: not built ({reason})\n"
+    assert capsys.readouterr().out == f"media helper: not built: {reason}\n"
     assert ocr._main() == 0
     assert capsys.readouterr().out == "OCR helper: ready (paper-vision revision 2, helper 0.3.0)\n"
 
@@ -216,7 +216,7 @@ def test_the_module_entry_point_prints_one_media_helper_line(
     ocr._helper_path(cache, media.MEDIA).unlink()
     assert media._main() == 1
     assert capsys.readouterr().out == (
-        "media helper: not built (no Xcode or Command Line Tools (xcode-select -p names no folder))\n"
+        "media helper: not built: no Xcode or Command Line Tools (xcode-select -p names no folder)\n"
     )
 
 

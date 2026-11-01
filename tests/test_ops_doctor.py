@@ -3769,7 +3769,7 @@ def test_media_reads_the_helper_under_the_configured_cache_dir(
     fake_media(helper.parent, version_exit=3, name=helper.name)  # built, and it stopped answering
     r = by_name(run_checks(sample_config))["media"]
     assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
-    assert r.detail == "media helper: not working (the media helper exited 3: no message)"
+    assert r.detail == "media helper: not working: the media helper exited 3: no message"
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     r = by_name(run_checks(sample_config))["media"]
     assert r.fix == f"xcode-select --install, then run {INSTALL_SH} again"
@@ -3853,7 +3853,7 @@ def test_speech_failed_is_a_warn_never_a_fail(sample_config: Config, monkeypatch
     fake_speech(helper.parent, version_exit=3, name=helper.name)
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.severity) == (False, Severity.WARN)
-    assert r.detail == "speech: failed (the speech helper exited 3: no message)"
+    assert r.detail == "speech: failed: the speech helper exited 3: no message"
     assert r.fix == f"xcode-select --install, then run {INSTALL_SH} again"
 
     def crash(cfg: Config) -> tuple[str, str]:
@@ -3888,7 +3888,7 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
         r = by_name(run_checks(sample_config))["speech"]
         assert (r.ok, r.severity) == (False, Severity.WARN)
         # B13 round 20 X20: the marker's retry clause is dropped where the fix says the re-run
-        assert r.detail == f"speech: failed ({speech.BUILD_TIMED_OUT})", r.detail
+        assert r.detail == f"speech: failed: {speech.BUILD_TIMED_OUT}", r.detail
         # B13 round 19 W20: the re-run said once (the marker's clause says it too), the 20 minutes a limit
         assert r.fix == (
             f"run {INSTALL_SH} again; the build stops after 20 minutes, and if it stops again, run it "
@@ -3907,7 +3907,7 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
     marker.write_text(speech._TIMED_OUT, encoding="utf-8")
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     r = by_name(run_checks(sample_config))["speech"]
-    assert r.fix == doctor._OCR_DEVTOOLS_FIX and r.detail == f"speech: failed ({speech._TIMED_OUT})", r
+    assert r.fix == doctor._OCR_DEVTOOLS_FIX and r.detail == f"speech: failed: {speech._TIMED_OUT}", r
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     marker.write_text("swift build failed (exit 1): error: no such module 'FluidAudio'", encoding="utf-8")
     assert not speech.build_timed_out(sample_config.cache_dir)
@@ -3933,7 +3933,7 @@ def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
     marker.write_text(reason, encoding="utf-8")
     monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
     r = by_name(run_checks(sample_config))["speech"]
-    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({reason})"), r
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed: {reason}"), r
     assert r.fix == (
         f"run {INSTALL_SH} again; it fetches FluidAudio and the library it links from GitHub again, and if "
         "this line comes back, check that this Mac reaches github.com, or the SwiftPM mirror it uses for "
@@ -3963,7 +3963,7 @@ def test_a_speech_build_whose_fetch_failed_has_the_re_run_as_its_fix(
     marker.write_text(too_old, encoding="utf-8")
     monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
     r = by_name(run_checks(sample_config))["speech"]
-    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({too_old})"), r
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed: {too_old}"), r
     assert r.fix == (
         "update the Command Line Tools (or Xcode) in Software Update to a release with Swift 6.0.0 or later "
         f"(on a macOS too old for that release, update macOS first), then run {INSTALL_SH} again"

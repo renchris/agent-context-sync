@@ -5639,7 +5639,7 @@ def test_a_warn_lines_fix_is_the_persons_and_not_a_hint_for_the_agent_c602() -> 
     clause lists the [FAIL] fixes' kinds (doctor.PERSONS_KINDS), which a speech helper's rebuild is not."""
     run = [
         "# run=20261028T100000Z-4242 2026-10-28T10:00:00Z install.sh --source-local x",
-        "[warn] speech — speech: failed (the speech helper's build ran out of time) (fix: run "
+        "[warn] speech — speech: failed: the speech helper's build ran out of time (fix: run "
         "~/src/agent-context-sync/scripts/install.sh again without --report-only)",
         "NEXT: review ~/agent-context/setup-report.md",
     ]
@@ -13398,7 +13398,7 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     config = load_config(fake_mac["config"])
     marker = ocr._marker(ocr._helper_path(config.cache_dir, speech.SPEECH))
     marker.parent.mkdir(parents=True, exist_ok=True)
-    warn = f"[warn] speech — speech: failed ({speech._TIMED_OUT}) (fix: run install.sh again)"
+    warn = f"[warn] speech — speech: failed: {speech._TIMED_OUT} (fix: run install.sh again)"
     marker.write_text(speech._TIMED_OUT, encoding="utf-8")
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert (
@@ -13407,7 +13407,7 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     ), summary
     assert "expected 1" not in summary
     # V5's review: a marker that ran out of time beside a warn with another reason (an untrusted helper)
-    other = "[warn] speech — speech: failed (the speech helper is not owned by this user)"
+    other = "[warn] speech — speech: failed: the speech helper is not owned by this user"
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", other])
     assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary
     marker.write_text("swift package resolve failed (exit 1): could not reach the host", encoding="utf-8")
@@ -13416,7 +13416,7 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     reworded = "the speech helper took too long to build"
     monkeypatch.setattr(speech, "BUILD_TIMED_OUT", reworded)
     marker.write_text(f"{reworded}; install.sh tries the build again on its next run", encoding="utf-8")
-    warn = f"[warn] speech — speech: failed ({reworded}; ...) (fix: run install.sh again)"
+    warn = f"[warn] speech — speech: failed: {reworded}; ... (fix: run install.sh again)"
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert "from a helper build that ran out of time (1 check): speech warn" in summary, summary
 
@@ -13436,7 +13436,7 @@ def test_an_ocr_or_media_build_that_ran_out_of_time_shares_the_helper_bucket(
     words["media"] = "swiftc ran out of time building the media helper"
     ocr_warn = f"[warn] ocr — on-device OCR is not working: {words['ocr']}{retry} (fix: run install.sh again)"
     media_warn = (
-        f"[warn] media — media helper: not working ({words['media']}{retry}) (fix: run install.sh again)"
+        f"[warn] media — media helper: not working: {words['media']}{retry} (fix: run install.sh again)"
     )
     marker = ocr._marker(ocr._helper_path(config.cache_dir))
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -13483,8 +13483,8 @@ def test_a_helper_build_a_signal_stopped_is_install_shs_to_build_again_never_une
         detail = doctor._helper_detail(reason, fix)
         said = {
             "ocr": f"on-device OCR is not working: {detail}",
-            "media": f"media helper: not working ({detail})",
-            "speech": f"speech: failed ({detail})",
+            "media": f"media helper: not working: {detail}",
+            "speech": f"speech: failed: {detail}",
         }[name]
         return f"[warn] {name} — {said}" + (f" (fix: {fix})" if fix else "")
 
@@ -13559,7 +13559,7 @@ def test_a_speech_build_that_needs_a_newer_swift_is_the_command_line_tools_updat
 
     def doctor_line(fix: str | None) -> str:
         detail = doctor._helper_detail(reason, fix)
-        said = f"[warn] speech — speech: failed ({detail})" + (f" (fix: {fix})" if fix else "")
+        said = f"[warn] speech — speech: failed: {detail}" + (f" (fix: {fix})" if fix else "")
         _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", said])
         return _line(summary, "- doctor: ")
 
