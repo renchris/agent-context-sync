@@ -36345,3 +36345,23 @@ words, written once: a file re-screened after a secret-rule change is `counted i
 waiting line says a later run that reads it counts it under files converted, or under failed or unreadable (C628).
 Test: `test_the_repeat_conversions_row_names_the_clause_its_note_follows`, extended to read the two triggers beside
 `_repeat_part`'s `pathed` and `reread_runs` and the report's ruling 73 words.
+
+### 16.218 Round 33: setup report: a read it did not get named as not read, a warn not judged when the Loop line was not read, the trail-lost bucket and the doctor grace figure (2026-11-01, wave B13 round 33 lane RA)
+
+Reserved for round 33 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 33").
+
+### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
+
+Reserved for round 33 lane RB of B13.
+
+### 16.220 Round 33: an unread audit trail never lost, a hold on every forget branch, the store each lost record credits, and purge's --folder-lost help (2026-11-01, wave B13 round 33 lane B)
+
+Reserved for round 33 lane B of B13.
+
+### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
+
+Reserved for round 33 lane E of B13.
+
+### 16.222 Round 33: the records page on which governance loss stops the sync, the setup guide's quotes and the gate's signal words (2026-11-01, wave B13 round 33 lane D)
+
+Reserved for round 33 lane D of B13.

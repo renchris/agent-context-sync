@@ -2263,6 +2263,48 @@ C701 and up, outputs `round33/`; scenario C keeps the v32 block at `c93fcd96` an
 no lane changed the prompt.
 
 
+### B13 round 33: v33 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini refused (2026-11-01)
+
+Operator ruling 2026-10-31: the loop stops when a round's Claude rehearsal, review and harvest plus a non-Anthropic
+adversarial round (Codex and Gemini, each reading only a `git archive` export of committed code) confirm 0 turns and 0
+wrongs; that round's small items get one final build batch, with no further round. Run `wf_10203e7e-fb8` on
+`7a3be9af` (BASE `62b8a943`; 106 agents, 0 errors, 4 hours 7 minutes): 84 findings after dedupe, 77 confirmed (1 turn,
+16 wrongs, 60 small), 7 refuted (C704, C705, C714, C717, C723, C773, C775). None needs prompt text: v33 stays the
+prompt to paste. The turn is C784, from Codex's whole-prompt finder: purge `--help`'s `--folder-lost` text contradicts
+the recovery code. Two items are data integrity, both on round 32's own new paths: an `audit-trail-lost` line written
+into a trail agentsync never read (C741) and a queued purge forgotten while a hold covers its source (C778). Most
+wrongs sit on the governance folder and `--folder-lost` family and on the report reading a timeout as a fact. Codex's
+five finders ran (9 findings) and its second opinion gave 17 opinions, none disputed. All five Gemini slots (Gemini
+3.8 Flash through Antigravity's `agy`, `round33/tools/agy-review.sh`, confinement canary-proven 2026-10-31) were
+refused by Claude Code's auto-mode classifier as data exfiltration before the script started; the lead asked the
+operator for the allow rule `Bash(<round33/tools/agy-review.sh>:*)` and did not retry. So round 33's non-Anthropic
+half is Codex-only; the stop rule is not met in any case (1 turn, 16 wrongs). A triage workflow (`wf_f3a39bb3-03d`,
+its synthesis re-run once after a network drop) placed every item once and drafted the rulings.
+
+Lead rulings for round 33 (in `lanes/COMMON32.md`, mirrored in `docs/lanes/COMMON.md`), all code-only: (77) an audit
+trail or governance folder agentsync cannot read is never a lost trail; (78) a hold stops `purge --queue --forget` on
+every branch; (79) once the trail has lost a purge line, each line about a lost record credits what keeps that record;
+(80) purge's help and docstring say what `--folder-lost` does; (81) the heartbeat note beside a governance loss says
+what its FAIL says; (82) the report and the installer read the trail-lost state in lane B's words; (83) a read the
+report did not get is `not measured` or `not read`, never a fact; (84) a warn the Loop line could have named is `not
+judged` when the Loop line was not read; (85) ruling 58's one-bracket form holds in the hold cut, the no-end-line
+line, the helper lines and step 2's NEXT; (86) every recovery step status and the installer give works when followed,
+and every stop that follows is named; (87) every line beside a stop that blocks every sync says none runs until its
+FAIL is fixed, naming no actor; (88) the records page says which governance loss stops the sync; (89) the setup guide
+quotes what the report and the installer print now; (90) the lead's calls: duplicates built once, ruling 68 binds
+every new hold-word literal, C769's parts split across lanes E, RB and D, and the kit items (C713, C715, C724, C725
+and C774's brief half) are the lead's. C715 is done: the scenario B helpers are copied out of /tmp to
+`~/.cache/agentsync-bring-back/b13/helpers-4a42af9/` with a shasum manifest (2026-11-01).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81,
+77, 91, 104, 111, 100, 77, 68, 77 over rounds 2 and 4 to 33; turns as before, then 1; wrongs as before, then 16.
+
+Lanes (`--account auto`, CONTRACTS §16.218 to §16.222, land lock `/tmp/b13-r33-land.lock`, scratch under `round33/`,
+back-channel pane 3 or its successor): RA 19 (the two regexes lane B waits on first; then rulings 83 and 84), B 27 (C741 and
+C778 first: data integrity; then rulings 79 and 80, whose words lanes RA, RB and D wait on), RB 7 (ruling 86's
+installer half first), E 8 (C719 first, which lane RA waits on), D 12 (C770 first: every fresh worktree's gate
+needs it). The lead holds 4 kit items (C715, C713, C724, C725) for round 34's script.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
