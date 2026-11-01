@@ -23,7 +23,10 @@ it differs, as written: the proxy, git proxy and URL rewrite hosts, and the host
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within a 12 s budget (`TIME_BUDGET_S`); a slow doctor is given at least 20 s and the deadline
 moves to make room, so on a busy Mac the report can take about 35 s (the Summary's took line names the moved limit,
-e.g. `time limit 12s, moved to 26.2s for a slow doctor`), still inside install.sh's 120 s bound on it. The docs repo's
+e.g. `time limit 12s, moved to 26.2s for a slow doctor`, and a cut-off call that came back late adds to it, said apart
+(e.g. `time limit 12s, moved to 29.0s for a slow doctor; 47.3s more while the cut-off doctor call and its reads came
+back`), still inside install.sh's 120 s bound on it. On a Mac too busy for that budget, `AGENTSYNC_REPORT_TIME_LIMIT`
+(seconds, 12 to 60) gives the report and its per-call limits more time, and Run metadata names it. The docs repo's
 remote check (a local `git remote` read, made only when doctor printed a `governance.remote` FAIL) is not counted
 against the budget. Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.

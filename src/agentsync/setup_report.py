@@ -115,6 +115,7 @@ import importlib.metadata
 import itertools
 import json
 import logging
+import math
 import os
 import platform
 import plistlib
@@ -371,6 +372,15 @@ INSTRUCTION_KINDS = ("NEXT:", "next:", "fix:", "run:")
 expected), and any other hint an agent may act on before it (``next:``, ``(fix: ...)``, ``run:``)."""
 TIME_BUDGET_S = 12.0
 """The whole report's wall-clock budget; external commands get what is left of it (minus a reserve)."""
+TIME_LIMIT_ENV = "AGENTSYNC_REPORT_TIME_LIMIT"
+"""A longer budget, in seconds, for a Mac too busy for :data:`TIME_BUDGET_S` (B13 round 33 C726): read only
+when no budget is passed, clamped to :data:`_TIME_LIMIT_MIN_S` to :data:`_TIME_LIMIT_MAX_S`, well inside
+install.sh's 120 s bound on the report. A variable, not a flag: an older installed build ignores it, and would
+refuse a flag it does not know and drop to the thinner shell report. A value it did not use is said in Run
+metadata; the per-call caps scale with it (:meth:`_Run.cap`), or a slow Status build still cuts the Loop
+line."""
+_TIME_LIMIT_MIN_S = 12.0
+_TIME_LIMIT_MAX_S = 60.0
 _REPO_SLUG = "renchris/agent-context-sync"
 ISSUE_URL = f"https://github.com/{_REPO_SLUG}/issues/new?template=setup-report.yml"
 ISSUE_LINK_LABEL = "issue link (review the report first):"
@@ -4257,6 +4267,32 @@ def _pandoc_from_doctor(r: _Run) -> str:
     return "not checked: no doctor pandoc check ran (see Doctor)"
 
 
+def _time_limit() -> tuple[float, str]:
+    """The report's budget with no budget passed, and Run metadata's line about :data:`TIME_LIMIT_ENV`, ""
+    when it is not set (B13 round 33 C726). Never the value's own text: it says what it did with the value."""
+    raw = os.environ.get(TIME_LIMIT_ENV, "").strip()
+    if not raw:
+        return TIME_BUDGET_S, ""
+    try:
+        asked = float(raw)
+    except ValueError:
+        asked = math.nan
+    low, high = _TIME_LIMIT_MIN_S, _TIME_LIMIT_MAX_S
+    if not math.isfinite(asked):
+        return (
+            low,
+            f"- time limit: {low:.0f}s: {TIME_LIMIT_ENV} is not a number of seconds, so it was not used",
+        )
+    if asked < low:
+        return low, f"- time limit: {low:.0f}s: {TIME_LIMIT_ENV} is below {low:.0f}, so it was not used"
+    if asked > high:
+        return (
+            high,
+            f"- time limit: {high:.0f}s: {TIME_LIMIT_ENV} is above {high:.0f}, so {high:.0f} was used",
+        )
+    return asked, f"- time limit: {asked:.0f}s, from {TIME_LIMIT_ENV} ({low:.0f} to {high:.0f})"
+
+
 def _not_answered(rc: int, note: str) -> bool:
     """Whether (rc, note) is the runner's own non-answer, a time-out or a spent budget, rather than an answer
     (B13 round 33 ruling 83): nothing was measured, so a reader says ``not measured`` or ``not read``, never
@@ -4338,9 +4374,16 @@ class _Run:
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
         self.last_call_limit: float | None = None  # the wait :meth:`call` last gave its function (V3, V49)
         self.doctor_grace = 0.0  # the seconds the deadline moved for a slow doctor (_DOCTOR_GRACE_S, V4)
+        # the part of doctor_grace past the planned move: a cut-off call and its reads came back late (C708)
+        self.doctor_overrun = 0.0
+        self.time_scale = 1.0  # how far TIME_LIMIT_ENV raised the budget, for the per-call caps (C726)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
+
+    def cap(self, seconds: float) -> float:
+        """A per-call cap in this report's budget: as written, unless :data:`TIME_LIMIT_ENV` raised it."""
+        return seconds * self.time_scale
 
     def run(self, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
         """``argv``'s (exit status, stdout + stderr), bounded by ``timeout`` and the budget; never raises
@@ -5257,7 +5300,7 @@ def _build_redactor(r: _Run) -> Redactor:
         return found
 
     try:
-        listed = r.call(listing, timeout=_LISTING_S)
+        listed = r.call(listing, timeout=r.cap(_LISTING_S))
     except Exception as exc:
         listed, listing_ok = [], False
         r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
@@ -5387,7 +5430,7 @@ def _build_redactor(r: _Run) -> Redactor:
     if r.hooks.job_proxy is not None:
         with contextlib.suppress(Exception):
             job = r.hooks.job_proxy
-            for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=_PROXY_S)):
+            for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=r.cap(_PROXY_S))):
                 _add_proxy_host(red, host)
     # A host an earlier friction line's resolver message names, then the hosts install.sh's --log lines kept:
     # after the LaunchAgent's, in install.sh's order, so no shared <proxy-N> moves (B13 round 11 M29). A proxy
@@ -7667,6 +7710,7 @@ def _doctor(r: _Run) -> list[str]:
     doctor_fn = r.hooks.doctor
     left = r.remaining()
     limit = max(1.0, left - 2.0 - _LOOP_FLOOR_S)
+    first_share = limit
     held = left - limit  # the share of the parts after Doctor (the Loop line, the late listing)
     deadline = r.deadline
     moved = False  # read here: r.doctor_grace is set only in the finally, after the except's words (W4)
@@ -7698,6 +7742,9 @@ def _doctor(r: _Run) -> list[str]:
     finally:  # a doctor done within its first share moves nothing
         r.deadline = max(deadline, time.monotonic() + held)
         r.doctor_grace = r.deadline - deadline
+        # the words only: the deadline above keeps the later parts' share, however late the call came back
+        planned = max(0.0, (r.last_call_limit or 0.0) - first_share)
+        r.doctor_overrun = max(0.0, r.doctor_grace - planned)
     lines = _with_evidence_damage(r, config, lines)
     tags: Counter[str] = Counter()
     ok_names: list[str] = []
@@ -7798,7 +7845,7 @@ def _status(r: _Run) -> list[str]:
         return ["Not run: no status hook."]
     config = r.config
     status_fn = r.hooks.status
-    lines = r.call(lambda: status_fn(config), timeout=_STATUS_S)
+    lines = r.call(lambda: status_fn(config), timeout=r.cap(_STATUS_S))
     baselines = [m.group(1) for m in (_BASELINE_RE.match(ln) for ln in lines) if m is not None]
     if baselines:
         r.facts.baseline = (baselines.count("complete"), len(baselines))
@@ -10827,7 +10874,7 @@ def _evidence(r: _Run) -> list[str]:
         active = bool(policy.load_policy(r.config).labels_active)
     mirror = _Mirror(
         r.config.state_paths.db,
-        min(EVIDENCE_BUDGET_S, r.remaining() - _RESERVE_S),
+        min(r.cap(EVIDENCE_BUDGET_S), r.remaining() - _RESERVE_S),
         latest=r.deadline - _RESERVE_S,
         labels_active=active,
     )
@@ -12618,7 +12665,7 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
             continue
         provider = cloud_storage_root() / parts[0]
         if provider not in r.provider_states:
-            limit = min(_LISTING_S, r.remaining() - _RESERVE_S)
+            limit = min(r.cap(_LISTING_S), r.remaining() - _RESERVE_S)
             r.provider_states[provider] = (
                 doctor.provider_state(provider, timeout=limit) if limit > 0.2 else "signed-in"
             )
@@ -15367,7 +15414,7 @@ def _loop_line(r: _Run) -> str:
         return f"- Loop: {stage}; NEXT: not read (no loop hook){damaged}"
     config, next_fn = r.config, r.hooks.loop_next
     try:
-        got = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
+        got = r.call(lambda: next_fn(config), timeout=r.cap(_LOOP_NEXT_S))
         lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
         said = _why_not_read(exc)
@@ -17547,8 +17594,13 @@ def _build_report(
     (``red.private_only``: a word-named placeholder shown, or a CloudStorage listing that did not finish,
     B13 round 8 J69), which ends after its Redaction section (B13 round 7 H75)."""
     moment = now or datetime.now(UTC)
-    budget_s = TIME_BUDGET_S if budget_s is None else budget_s  # read at the call: a test can widen it
+    limit_note = ""
+    scale = 1.0
+    if budget_s is None:  # read at the call: a test can widen it
+        budget_s, limit_note = _time_limit()
+        scale = budget_s / _TIME_LIMIT_MIN_S if limit_note else 1.0
     r = _Run(config_path, hooks or ReportHooks(), budget_s)
+    r.time_scale = scale
     r.now = moment
     if friction_path is not None:
         r.friction_path = expand(friction_path)
@@ -17595,8 +17647,9 @@ def _build_report(
     for title, fn in order:
         if title == "Agent friction log" and _late_listing(r):  # before the first redact-then-cut (K76)
             said = f"- redaction: {r.listing_note}"
+            waited = r.cap(_LISTING_S)
             bodies["Environment"] = [
-                f"- redaction: the CloudStorage listing finished after {_LISTING_S:.1f}s and was used for "
+                f"- redaction: the CloudStorage listing finished after {waited:.1f}s and was used for "
                 "redaction"
                 if line == said
                 else line
@@ -17611,8 +17664,17 @@ def _build_report(
         r.loop_line = _loop_line(r)
     except Exception as exc:
         r.loop_line = f"- Loop: not read ({_why_not_read(exc)})"
-    # V4; the moved limit as one number, which the doctor's cut-off seconds fall inside (B13 round 23 A28)
-    grace = f", moved to {budget_s + r.doctor_grace:.1f}s for a slow doctor" if r.doctor_grace >= 0.05 else ""
+    # V4; the moved limit as one number, which the doctor's cut-off seconds fall inside (B13 round 23 A28);
+    # and the seconds past that move apart, so the figure is the wait the doctor was given (B13 round 33 C708)
+    planned = r.doctor_grace - r.doctor_overrun
+    grace = f", moved to {budget_s + planned:.1f}s for a slow doctor" if planned >= 0.05 else ""
+    if r.doctor_overrun >= 0.05:
+        grace += (
+            f"{'; ' if grace else ', '}{r.doctor_overrun:.1f}s more while the cut-off doctor call and its "
+            "reads came back"
+        )
+    if limit_note:
+        header.append(limit_note)
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s{grace})")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     # the friction section is built first: it says the Summary's F<n> ids are its line numbers only when the

@@ -8727,25 +8727,29 @@ def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
     """B13 round 19 W58: both guides said the report finishes within 12 s, but round 18 V4 gives a slow doctor
     at least `_DOCTOR_GRACE_S` and moves the deadline to make room (the report's own figure is about 35 s, and
     its took line names the moved limit), and V55 reads the docs repo's remotes outside the budget. Each
-    figure and the took line's words are read from setup_report."""
+    figure and the took line's words are read from setup_report. B13 round 33 C708: the moved figure is the
+    planned move, and a call that came back late is said apart; the guide says so, and C726's variable."""
     from agentsync import setup_report  # noqa: PLC0415
 
     assert (setup_report.TIME_BUDGET_S, setup_report._DOCTOR_GRACE_S) == (12.0, 20.0)
     source = inspect.getsource(setup_report)
     flat = " ".join(source.split())
     assert "the report then takes at most about 35 s, inside install.sh's 120 s bound" in flat
-    [took] = re.findall(
-        r'grace = f", moved to \{budget_s \+ r\.doctor_grace:\.1f\}s (for a slow doctor)"', source
-    )
+    [took] = re.findall(r'grace = f", moved to \{budget_s \+ planned:\.1f\}s (for a slow doctor)"', source)
+    assert "s more while the cut-off doctor call and its " in source
     page = " ".join(_feedback_page().split())
     assert "the whole report within 12 s" not in page
     assert (
         "the whole report within a 12 s budget (`TIME_BUDGET_S`); a slow doctor is given at least 20 s and"
         " the deadline moves to make room, so on a busy Mac the report can take about 35 s" in page
     )
+    assert f"e.g. `time limit 12s, moved to 26.2s {took}`" in page
     assert (
-        f"e.g. `time limit 12s, moved to 26.2s {took}`), still inside install.sh's 120 s bound on it." in page
+        "and a cut-off call that came back late adds to it, said apart (e.g. `time limit 12s, moved to 29.0s "
+        f"{took}; 47.3s more while the cut-off doctor call and its reads came back`), still inside "
+        "install.sh's 120 s bound on it." in page
     )
+    assert f"`{setup_report.TIME_LIMIT_ENV}` (seconds, 12 to 60)" in page
     assert "a `governance.remote` FAIL) is not counted against the budget." in page
     readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert "takes under 12 s." not in readme
@@ -9308,7 +9312,7 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     page = " ".join(_page("docs/deploy/setup-feedback.md").split())
     bound = f"{setup_report._LISTING_S:.1f}"
     late = f"- redaction: the CloudStorage listing finished after {bound}s and was used for "
-    assert late.replace(f"{setup_report._LISTING_S:.1f}", "{_LISTING_S:.1f}") in source
+    assert late.replace(f"{setup_report._LISTING_S:.1f}", "{waited:.1f}") in source
     assert f"`{late}redaction`" in page
     assert (
         setup_report._LATE_LISTING_S == 0.5

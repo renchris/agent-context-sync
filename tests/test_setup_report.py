@@ -10,6 +10,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import inspect
 import itertools
 import json
 import logging
@@ -10168,7 +10169,10 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     assert "[warn] logs — something odd" in section(text, "Doctor")
     assert "- pandoc: pandoc 3.9 at /opt/pandoc\n" in section(text, "Environment")
     assert re.search(
-        r"^- took: [0-9.]+s \(time limit 4s, moved to [0-9.]+s for a slow doctor\)$", text, re.M
+        r"^- took: [0-9.]+s \(time limit 4s, moved to [0-9.]+s for a slow doctor"
+        r"(?:; [0-9.]+s more while the cut-off doctor call and its reads came back)?\)$",
+        text,
+        re.M,
     ), text
     assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
 
@@ -21437,6 +21441,122 @@ def test_the_budget_used_up_says_not_measured_in_every_part_c716_c720(
         text, "Summary"
     )
     assert "commit and origin not read: the report's time limit" in text
+
+
+@pytest.mark.parametrize(
+    ("value", "budget", "line"),
+    [
+        (None, 12.0, ""),
+        ("", 12.0, ""),
+        ("30", 30.0, "- time limit: 30s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)"),
+        ("12", 12.0, "- time limit: 12s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)"),
+        ("60", 60.0, "- time limit: 60s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)"),
+        ("11.9", 12.0, "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is below 12, so it was not used"),
+        ("-5", 12.0, "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is below 12, so it was not used"),
+        ("61", 60.0, "- time limit: 60s: AGENTSYNC_REPORT_TIME_LIMIT is above 60, so 60 was used"),
+        (
+            "soon",
+            12.0,
+            "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is not a number of seconds, so it was not used",
+        ),
+        (
+            "nan",
+            12.0,
+            "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is not a number of seconds, so it was not used",
+        ),
+        (
+            "inf",
+            12.0,
+            "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is not a number of seconds, so it was not used",
+        ),
+    ],
+)
+def test_the_report_time_limit_variable_is_clamped_and_said_c726(
+    monkeypatch: pytest.MonkeyPatch, value: str | None, budget: float, line: str
+) -> None:
+    """B13 round 33 C726 (ruling 83): at load 420 to 650 the 12 s limit cut the Loop read in nearly every
+    report. A variable gives a busy Mac more time, 12 to 60 s, well inside install.sh's 120 s bound, and a bad
+    or low value is said, never quoted."""
+    if value is None:
+        monkeypatch.delenv(setup_report.TIME_LIMIT_ENV, raising=False)
+    else:
+        monkeypatch.setenv(setup_report.TIME_LIMIT_ENV, value)
+    assert setup_report._time_limit() == (budget, line)
+
+
+def test_the_time_limit_variable_scales_each_per_call_cap_c726(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C726: a raised limit raises Status's, the Loop hook's, the listing's, the proxy read's and
+    the evidence parts' caps with it, or a slow Status build cuts the Loop read however large the limit; a
+    budget passed in is taken as it stands, with no variable read and no cap moved; Run metadata names it."""
+    monkeypatch.setenv(setup_report.TIME_LIMIT_ENV, "24")
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 24.0)
+    assert r.cap(setup_report._STATUS_S) == setup_report._STATUS_S
+    seen: list[float] = []
+    real = setup_report._Run.call
+
+    def call(self: setup_report._Run, fn: Any, timeout: float) -> Any:
+        seen.append(self.cap(1.0))
+        return real(self, fn, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "call", call)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert seen and set(seen) == {2.0}, seen
+    metadata = section(text, "Summary")
+    assert "- time limit: 24s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)\n" in metadata, metadata
+    assert "(time limit 24s" in metadata, metadata
+    seen.clear()
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=40.0
+    )
+    assert "(time limit 40s" in text and "- time limit:" not in text
+    assert set(seen) == {1.0}, seen
+    source = inspect.getsource(setup_report)
+    for name in ("_LISTING_S", "_PROXY_S", "_STATUS_S", "_LOOP_NEXT_S", "EVIDENCE_BUDGET_S"):
+        assert f"r.cap({name})" in source, name
+    assert setup_report.TIME_LIMIT_ENV not in setup_report._IDLE_AGAIN  # ruling 83: install.sh keys on it
+
+
+@pytest.mark.parametrize("late", [3.0, 0.0], ids=["came-back-late", "on-time"])
+def test_the_moved_limit_is_the_planned_move_and_a_late_return_is_apart_c708(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, late: float
+) -> None:
+    """B13 round 33 C708: `moved to` printed the deadline's whole move, 79.3 s beside a doctor cut off after
+    19.1 s. It is the planned move, the wait Doctor names less the first share; what the cut-off call and its
+    reads took past it is said apart, naming neither as the cause. Wording only: the deadline is as before."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 4.0)
+
+    def hung(_config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    def at() -> str:
+        time.sleep(late)
+        return "heartbeat"
+
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung, doctor_at=at), budget_s=4.0
+    )
+    had = _seconds(r"did not finish within (\d+\.\d)s", section(text, "Doctor"))
+    found = re.search(r"^- took: [0-9.]+s \(time limit 4s(.*)\)$", text, re.M)
+    assert found is not None, text
+    words = found.group(1)
+    assert f", moved to {4.0 + max(0.0, had - 1.0):.1f}s for a slow doctor" in words, words  # first share 1 s
+    over = re.search(r"; (\d+\.\d)s more while the cut-off doctor call and its reads came back$", words)
+    if late:
+        assert over is not None and float(over.group(1)) >= late - 0.05, words
+
+
+def test_a_doctor_done_within_its_grace_says_no_overrun_c708(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C708's negative: a doctor that returns inside its wait has no late return to say."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 60.0)
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=lambda _c: ["[ok  ] x — y"]), budget_s=4.0
+    )
+    assert "more while the cut-off doctor call" not in text
 
 
 def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:
