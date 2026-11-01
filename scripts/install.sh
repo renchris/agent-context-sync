@@ -2212,6 +2212,8 @@ FIXED_VALUE_PHRASES+="|governance folder is missing while its hold record keeps 
 FIXED_VALUE_PHRASES+="|on the purge record:"
 FIXED_VALUE_PHRASES+="|audit-trail-lost|the old audit trail's loss is written first, to the new audit trail|the audit trail was lost before"
 FIXED_VALUE_PHRASES+="|because a label rule could not read its label data|because a label rule could not read their label data"
+FIXED_VALUE_PHRASES+="|purge-record.json records: agentsync's audit trail no longer holds it"
+FIXED_VALUE_PHRASES+="|because a label rule could not parse or open its label data|because a label rule could not parse or open their label data"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their

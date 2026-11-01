@@ -519,6 +519,53 @@ def test_a_label_it_cannot_read_is_its_own_quarantine_class_c326() -> None:
         assert split is not None and split.groups() == ("0", "0", "3", "1"), split
 
 
+def test_the_label_unparsed_clause_reads_every_builds_words_c728() -> None:
+    """B13 round 33 C728 (ruling 90): lane B's ``could not parse or open`` reads apart from K's ``cannot be
+    read``; the report's reader takes it and both older forms, so it lands before lane B's words; R and K stay
+    ``_SPLIT_RE``'s; and each word's phrase is whole under a hold value "Label"."""
+    head = (
+        "(of the converted: 0 unreadable, 0 failed, 3 refused, 1 of them withheld: its label cannot be read, "
+    )
+    for clause in (
+        "2 of them because a label rule could not parse or open their label data",
+        "2 of them because a label rule could not read their label data",
+        "2 of them under a label rule because their label data did not parse",
+    ):
+        found = setup_report._LABEL_UNPARSED_RE.search(f"{head}{clause})")
+        assert found is not None and found.group(1) == "2", clause
+        split = setup_report._SPLIT_RE.search(f"{head}{clause})")
+        assert split is not None and split.groups() == ("0", "0", "3", "1"), clause
+    for whose in ("its label data", "their label data"):
+        assert f"because a label rule could not parse or open {whose}" in setup_report._FIXED_VALUE_PHRASES
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "has lost a purge the audit trail records",
+        "has lost a purge purge-record.json records: agentsync's governance folder is missing",
+        "has lost a purge that purge-record.json records: agentsync's governance folder is missing",
+        "has lost a purge that purge-record.json records: agentsync's audit trail no longer holds it",
+    ],
+)
+def test_the_listing_note_reads_each_builds_governance_words_ruling_81(said: str) -> None:
+    """B13 round 33 ruling 81 (C722, C747): the report reads doctor's listing note in each build's words, so
+    it lands before lane B changes doctor.py:268; each form opens ``has lost``, which the lost-list bucket
+    keys on, and a hold value "Records" leaves it whole."""
+    note = (
+        f"as of its last walk: the purge queue {said}; no sync lists it again until the person fixes it; "
+        "the governance.purge_queue [FAIL] line says what to do first"
+    )
+    found = setup_report._LISTING_GOVERNANCE_RE.search(f"enumeration incomplete for x ... ({note})")
+    assert found is not None
+    assert found.group("said") == said and found.group("said").startswith("has lost")
+    assert found.group("check") == "governance.purge_queue" and found.group("role") == "the purge queue"
+    for word in ("Records", "Audit"):
+        red = setup_report.Redactor()
+        red.add("value", word, ignore_case=True)
+        assert red.redact(note) == note and not red.private_only
+
+
 @pytest.mark.parametrize("form", ["converted", "name", "published"])
 @pytest.mark.parametrize("rules", [(), ("aws-access-key", "private-key")])
 def test_the_stub_alarm_without_its_source_is_still_read_as_one_c328(
@@ -2570,6 +2617,7 @@ def test_an_audit_hold_value_leaves_every_audit_line_whole_c302(tmp_path: Path) 
     }
     assert set(built) <= literals, set(built) - literals
     texts = [t for lit in literals for t in built.get(lit, [lit])]
+    texts += [line for line in _OLDER_PRINTED if "audit" in line]  # B13 round 33 ruling 81's listing note
     assert len(texts) > 25, texts
     red = setup_report.Redactor()
     red.add("value", "Audit", ignore_case=True)
@@ -2661,10 +2709,15 @@ _HOLD_WORDS = ("record", "records", "legal", "review", "label")
 _OLDER_PRINTED = (
     "3 refused, 1 of them under a label rule because its label data did not parse",
     "3 refused, 2 of them under a label rule because their label data did not parse",
+    "3 refused, 1 of them because a label rule could not read its label data",
+    "3 refused, 2 of them because a label rule could not read their label data",
+    "as of its last walk: the purge queue has lost a purge that purge-record.json records: agentsync's audit "
+    "trail no longer holds it",
 )
 """Lines an older agentsync printed and no literal under src/agentsync holds any more, which an older
 install.out still keeps and the report quotes, so their phrases stay in both lists: round 31's label data
-clause (B13 round 32 C609)."""
+clause (B13 round 32 C609) and round 32's (B13 round 33 C728, ruling 90). Ruling 81's trail form of the
+listing note is here too: lane RA's phrase lands before lane B's doctor.py prints it."""
 
 
 @functools.cache
@@ -2710,9 +2763,15 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
             "3 refused, 1 of them because a label rule could not read its label data",
             "3 refused, 2 of them because a label rule could not read their label data",
         ],
-        "its label data": ["3 refused, 1 of them because a label rule could not read its label data"],
+        " of them because a label rule could not parse or open ": [
+            "3 refused, 1 of them because a label rule could not parse or open its label data",
+            "3 refused, 2 of them because a label rule could not parse or open their label data",
+        ],
+        "its label data": [
+            "3 refused, 1 of them because a label rule could not parse or open its label data"
+        ],
         "their label data": [
-            "3 refused, 2 of them because a label rule could not read their label data",
+            "3 refused, 2 of them because a label rule could not parse or open their label data",
         ],
         "sensitivity label ": ["refused: sensitivity label Contoso Secret is excluded by [policy]"],
         "launchd label ": ["launchd label 'com.contoso.x y' is invalid: use letters, digits, '.', '-', '_'"],
@@ -7901,21 +7960,21 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "the unreadable/failed/refused split and the withheld-unread count: install.out)",
         ),
         (  # B13 round 31 ruling 59 (C567, C583): lane B's label-unreadable share, after K's, re-rendered;
-            # a round 31 install.out's words still read, re-rendered in round 32's (C609)
+            # a round 31 install.out's words still read, re-rendered in round 33's (C728)
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
             "refused, 1 of them withheld: its label cannot be read, 2 of them under a label rule because "
             "their label data did not parse)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused, 1 of "
-            "them withheld: its label cannot be read, 2 of them because a label rule could not read their "
-            "label data (install.log; the unreadable/failed/refused split: install.out)",
+            "them withheld: its label cannot be read, 2 of them because a label rule could not parse or open "
+            "their label data (install.log; the unreadable/failed/refused split: install.out)",
         ),
         (  # ... and one, with no K before it
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 "
             "refused, 1 of them under a label rule because its label data did not parse)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 1 refused, 1 of "
-            "them because a label rule could not read its label data (install.log; the "
+            "them because a label rule could not parse or open its label data (install.log; the "
             "unreadable/failed/refused split: install.out)",
         ),
         (  # B13 round 32 C609: lane B's words since, R=2 with one refused by its label's name and one whose
@@ -7924,7 +7983,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 2 "
             "refused, 1 of them because a label rule could not read its label data)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 2 refused, 1 of "
-            "them because a label rule could not read its label data (install.log; the "
+            "them because a label rule could not parse or open its label data (install.log; the "
             "unreadable/failed/refused split: install.out)",
         ),
         (  # ... and their, for more than one, after K's
@@ -7933,8 +7992,17 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "refused, 1 of them withheld: its label cannot be read, 2 of them because a label rule could not "
             "read their label data)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused, 1 of "
-            "them withheld: its label cannot be read, 2 of them because a label rule could not read their "
-            "label data (install.log; the unreadable/failed/refused split: install.out)",
+            "them withheld: its label cannot be read, 2 of them because a label rule could not parse or open "
+            "their label data (install.log; the unreadable/failed/refused split: install.out)",
+        ),
+        (  # B13 round 33 C728 (ruling 90): lane B's words since, which K's no longer reads like
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
+            "refused, 1 of them withheld: its label cannot be read, 2 of them because a label rule could not "
+            "parse or open their label data)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused, 1 of "
+            "them withheld: its label cannot be read, 2 of them because a label rule could not parse or open "
+            "their label data (install.log; the unreadable/failed/refused split: install.out)",
         ),
         (  # B13 round 8 J39: the files refused without a read, after the split as on the CLI's line
             "note=converted-4-deferred-0",

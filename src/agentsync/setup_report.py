@@ -1148,10 +1148,12 @@ _SPLIT_RE = re.compile(  # K, of the refused, withheld: the CLI prints it after 
 # and since B13 round 31 ruling 59 (lane B's C525) ", L of them under a label rule because its label data did
 # not parse" (their label data, for more) after K's clause, read apart so _SPLIT_RE keeps its four groups
 # (C567, C583); since B13 round 32 C609 ", L of them because a label rule could not read its label data"
-# (their), which no longer reads as if R's other refusals were not under a label rule; both read, an older
-# agentsync's install.out keeps round 31's
+# (their), which no longer reads as if R's other refusals were not under a label rule; since B13 round 33 C728
+# (ruling 90) ", L of them because a label rule could not parse or open its label data" (their), which K's
+# "withheld: its label cannot be read" no longer reads like; all three read, an older agentsync's install.out
+# keeps its own
 _LABEL_UNPARSED_RE = re.compile(
-    r"\b(\d+) of them (?:because a label rule could not read (?:its|their) label data"
+    r"\b(\d+) of them (?:because a label rule could not (?:parse or open|read) (?:its|their) label data"
     r"|under a label rule because (?:its|their) label data did not parse)\b"
 )
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
@@ -1500,6 +1502,11 @@ _FIXED_VALUE_PHRASES = (
     # lane B's sync line since B13 round 32 C609 (round 31's above stay: an older install.out keeps them)
     "because a label rule could not read its label data",
     "because a label rule could not read their label data",
+    # lane B's listing note where the FAIL credits purge-record.json with the folder there (ruling 81, C747)
+    "purge-record.json records: agentsync's audit trail no longer holds it",
+    # lane B's sync line since B13 round 33 C728 (ruling 90; the two above stay for an older install.out)
+    "because a label rule could not parse or open its label data",
+    "because a label rule could not parse or open their label data",
 )
 """The report's own fixed phrases, as written, that hold a word a hold's one-word value can be ("page", the
 value the rehearsal measured; B13 round 27 P107): a match inside one is the report's word, not the value, so
@@ -4147,7 +4154,8 @@ class _Facts:
     # that line's "(of the converted: U unreadable, F failed, R refused, K of them withheld by the label
     # rule)" as (N, U, F, R, K), R and K 0 when an older line has none; None: the line has no split
     first_sync_unreadable: tuple[int, int, int, int, int] | None = None
-    # its ", L of them because a label rule could not read its label data" (or round 31's words) as (N, L);
+    # its ", L of them because a label rule could not parse or open its label data" (or an older build's
+    # words) as (N, L);
     # None: none
     # (B13 round 31 ruling 59, C567, C583)
     first_sync_label_unparsed: tuple[int, int] | None = None
@@ -12861,12 +12869,15 @@ older than 3 x cadence, which no wait explains and which a background sync that 
 one can be the person's."""
 _LISTING_GOVERNANCE_RE = re.compile(
     r"\(as of its last walk: (?P<role>[a-z' -]+?) (?P<said>is not a file|cannot be read|has lost a purge the "
-    r"audit trail records|has lost a purge purge-record\.json records: agentsync's governance folder is "
-    r"missing); no sync lists it again until the person fixes it; the "  # the folder's (lane B, C618)
+    r"audit trail records|has lost a purge (?:that )?purge-record\.json records: agentsync's governance "
+    r"folder is missing|has lost a purge that purge-record\.json records: agentsync's audit trail no longer "
+    r"holds it); no sync lists it again until the person fixes it; the "  # the folder's (lane B, C618)
     r"(?P<check>governance\.[a-z_]+) \[FAIL\] line says what to do first\)$"
 )
 """``doctor.listing_state_governance_note`` in the brackets that end the incomplete-listing warn: lane B's
-note beside a governance file the sync's own guard stops on, by its role (B13 round 30 C321)."""
+note beside a governance file the sync's own guard stops on, by its role (B13 round 30 C321). Since B13 round
+33 ruling 81 it reads ``that`` in the folder's form (C722) and, where the FAIL credits purge-record.json with
+the folder there, the trail's form (C747); an older doctor's words still read."""
 _LISTING_GOVDIR_NOTE = (
     "as of its last walk: agentsync's governance folder is not a folder, so no sync lists it again until the "
     "person fixes it; the governance.hold [FAIL] line says what to do first"
@@ -14936,11 +14947,11 @@ def _sync_line_end(
             unparsed = r.facts.first_sync_label_unparsed
             if split[3] and unparsed is not None and unparsed[0] == converted and unparsed[1]:
                 # the label-unreadable share, after K's as on the CLI's line, in its words (ruling 59, C567;
-                # B13 round 32 C609's, whichever words install.out holds)
+                # B13 round 33 C728's, whichever words install.out holds)
                 why = (
-                    "because a label rule could not read its label data"
+                    "because a label rule could not parse or open its label data"
                     if unparsed[1] == 1
-                    else "because a label rule could not read their label data"
+                    else "because a label rule could not parse or open their label data"
                 )
                 refused += f", {unparsed[1]} of them {why}"
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
