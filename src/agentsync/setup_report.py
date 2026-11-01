@@ -1521,6 +1521,7 @@ _FIXED_VALUE_PHRASES = (
     "the old audit trail's loss would be written first, to the new audit trail",  # B13 round 33 C743, C744
     "the old audit trail's loss was already recorded",
     "refused while the trail has lost nothing and records no such loss",  # purge --help (ruling 80)
+    "once the records owner decides to release ",  # the lost queue's no-copy branch (C701; ruling 86)
     "your word that no copy is left of an audit trail that has lost purge lines",
     "the audit trail was lost before",
     # lane B's sync line since B13 round 32 C609 (round 31's above stay: an older install.out keeps them)

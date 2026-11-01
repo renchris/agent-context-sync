@@ -36689,6 +36689,19 @@ trail or purge-record.json fingerprints`, as `audited_suppressions` reads both. 
 `CORRECTED` line for its two stale clauses. No behavior changes. Test:
 `test_purge_help_says_folder_lost_is_judged_by_the_trails_content_c784`.
 
+**C701 (ruling 86's governance half).** With no copy, the queue FAIL's hand purge is the only way past a refusing sync, and
+a hold in force refuses it; setting the hold again keeps it refused, and no line said so. `_queue_lost`, in both forms
+(the folder gone, the file gone), reads the holds that block any lost purge (`_lost_queue_holds`: sources.toml's, the
+state's and the hold record's, by the record's source, or every hold for an every-source selector), and names the
+release first, as the records owner's decision: `or, with no copy, once the records owner decides to release <the hold
+on all> (<its command, or hold = false in sources.toml's [governance]>; setting it again keeps every purge it covers
+refused), runs each purge by hand before the next sync, which refuses until then (...)`; with no hold in force the
+clause is absent and the branch reads as before. `governance_lost` and `queue_lost` take `gov`, sources.toml's
+`[governance]`; install.sh's caller gives none and its queue clause is lane RB's. `once the records owner decides to
+release ` joins both phrase lists (ruling 68). Tests:
+`test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_hand_purge_c701` and
+`test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701`.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

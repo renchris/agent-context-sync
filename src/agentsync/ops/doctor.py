@@ -2000,7 +2000,9 @@ def state_not_a_file(
             # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
             odd = governance.governance_damaged(expand(sp.root), record=record)
         if odd is None and lost:
-            odd = governance.governance_lost(expand(sp.root))
+            odd = governance.governance_lost(
+                expand(sp.root), governance.governance_or_none(config.config_path)
+            )
         if odd is not None:
             return odd.path, _bad(governance_check(odd.path), odd.detail, fix=odd.fix)
     except Exception:  # the error path: never a second error over the first

@@ -2265,7 +2265,7 @@ def _governance_listing_note(config: Config | None) -> str | None:
         err = (
             governance.governance_not_a_file(root)
             or governance.governance_damaged(root)
-            or governance.governance_lost(root)
+            or governance.governance_lost(root, governance.governance_or_none(config.config_path))
         )
     except Exception:  # the error path: never a second error over the first
         return None
@@ -2868,7 +2868,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         governance.recorded_purges(config.state_paths.root)
     except (AgentSyncError, OSError):  # its governance.suppressed FAIL says why
         record_read = False
-    gone = governance.queue_lost(config.state_paths.root)  # queued purges the file lost (B13 round 29 C172)
+    gone = governance.queue_lost(config.state_paths.root, gov)  # queued purges the file lost (C172)
     if not queued and not kept and gone is None:  # one governance.purge_queue line in every state (C155)
         # never "no purge queued" beside the FAIL of a queue that lost one (B13 round 30 C345; ruling 40)
         if record_read:  # with the folder gone, never "no purge queued" (B13 round 32 C624; ruling 64)

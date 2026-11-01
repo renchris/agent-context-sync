@@ -2529,18 +2529,19 @@ def _when(recs: Sequence[Mapping[str, Any]]) -> str:
     return "; ".join(f"the {r.get('reason')} purge at {r.get('at')}" for r in recs)
 
 
-def governance_lost(state_dir: Path) -> GovernanceLostError | None:
+def governance_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> GovernanceLostError | None:
     """The suppression list's or the purge queue's :class:`GovernanceLostError`, the first; None when
     neither lost a purge the audit trail records, or either cannot be read (its own FAIL says why). The
     commands' guard: None too over a purge record this account cannot open, so the sync stops on that record
     in its own refused kind, with the chmod that fixes it, never as the person's lost list (B13 round 31
-    C539's review); status's governance.purge_queue line reads :func:`queue_lost` itself."""
+    C539's review); status's governance.purge_queue line reads :func:`queue_lost` itself. ``gov``:
+    sources.toml's ``[governance]``, whose hold :func:`queue_lost` counts (B13 round 33 C701)."""
     try:
         recorded_purges(state_dir)
     except GovernanceError as exc:
         if type(exc) is GovernanceError:  # refused open: no Unread kind, its cause the PermissionError
             return None
-    return suppressions_lost(state_dir) or queue_lost(state_dir)
+    return suppressions_lost(state_dir) or queue_lost(state_dir, gov)
 
 
 def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
@@ -2600,18 +2601,51 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
     return None
 
 
-def queue_lost(state_dir: Path) -> GovernanceLostError | None:
+def queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> GovernanceLostError | None:
     """:func:`_queue_lost`, once per :func:`read_only_build` (C644)."""
-    found = _built_once("queue_lost", state_dir, lambda: _queue_lost(state_dir))
+    found = _built_once("queue_lost", state_dir, lambda: _queue_lost(state_dir, gov))
     return cast("GovernanceLostError | None", found)
 
 
-def _queue_lost(state_dir: Path) -> GovernanceLostError | None:
+def governance_or_none(config_path: Path) -> GovernanceConfig | None:
+    """:func:`load_governance`, or None for a ``[governance]`` it refuses, for words alone: the guard that
+    asks for a lost list's fix stops on the loss whatever sources.toml says (B13 round 33 C701)."""
+    try:
+        return load_governance(config_path)
+    except (AgentSyncError, OSError):
+        return None
+
+
+def _lost_queue_holds(
+    state_dir: Path, gone: Sequence[Mapping[str, Any]], gov: GovernanceConfig | None
+) -> list[Hold]:
+    """The holds in force, sources.toml's (``gov``) and the hold record's among them, that refuse a hand run
+    of any lost queued purge of ``gone``: its source's, or every hold for an every-source selector, as
+    :func:`purge` reads them. A hold list or record that cannot be read names none: its own FAIL says why, and
+    the purge's refusal does (B13 round 33 C701; ruling 86)."""
+    config = config_holds(gov) if gov is not None else ()
+    try:
+        holds: tuple[Hold, ...] = (*config, *state_holds(state_dir), *lost_holds(state_dir))
+    except (AgentSyncError, OSError):
+        holds = config
+    found: list[Hold] = []
+    for rec in gone:
+        sid = rec.get("source_id")
+        for hold in blocking_holds(holds, [sid] if isinstance(sid, str) and sid else None):
+            if hold not in found:
+                found.append(hold)
+    return found
+
+
+def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> GovernanceLostError | None:
     """The purge queue's :class:`GovernanceLostError` (:func:`lost_queued`), or None. A purge record that
     cannot be read (its own governance.suppressed FAIL says why) is judged past, from the audit trail alone
     (:func:`lost_queued`), so a queued purge the queue lost is never hidden behind the record's error (B13
     round 31 C539; ruling 46); a sync over that record still stops on the record's own error first
-    (:func:`governance_damaged`, :func:`governance_lost`)."""
+    (:func:`governance_damaged`, :func:`governance_lost`). With no copy the hand purge is the only way past
+    the refusing sync, and a hold refuses it, so a hold covering a lost purge's source puts the records
+    owner's release before it, worded as their decision: setting the hold again keeps every purge refused (B13
+    round 33 C701; ruling 86)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):
@@ -2650,9 +2684,16 @@ def _queue_lost(state_dir: Path) -> GovernanceLostError | None:
             # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
             redo = zip(gone, _redo_all(state_dir, gone), strict=True)
             ways = "; ".join(f"for the {r.get('reason')} purge at {r.get('at')}: {w}" for r, w in redo)
+            blocked = _lost_queue_holds(state_dir, gone, gov)
+            release = (
+                f"once the records owner decides to release {_named_holds(blocked)} "
+                f"({_release_how(blocked)}; setting it again keeps every purge it covers refused), "
+                if blocked
+                else ""
+            )
             fix = (
-                f"{put_back}; or, with no copy, runs each purge by hand before the next sync, which refuses "
-                f"until then ({ways})"
+                f"{put_back}; or, with no copy, {release}runs each purge by hand before the next sync, which "
+                f"refuses until then ({ways})"
             )
             return GovernanceLostError(path, "the purge queue", detail, fix)
     return None
@@ -5458,14 +5499,30 @@ def held_purges(
     return runnable, held
 
 
-def _hold_names(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
-    """Each hold of ``held`` by name, never by where it is printed: ``the hold on all``, ``the hold on source
-    '<id>'``, ``the hold set in sources.toml's [governance]``, joined with "and" (B13 round 29 C115, C132)."""
-    scopes = sorted({h.scope for _q, hs in held for h in hs if h.origin != "config"})
+def _named_holds(holds: Iterable[Hold]) -> str:
+    """Each hold by name, never by where it is printed: ``the hold on all``, ``the hold on source '<id>'``,
+    ``the hold set in sources.toml's [governance]``, joined with "and" (B13 round 29 C115, C132)."""
+    holds = list(holds)
+    scopes = sorted({h.scope for h in holds if h.origin != "config"})
     names = ["the hold on all" if s == HOLD_ALL else f"the hold on source {s!r}" for s in scopes]
-    if any(h.origin == "config" for _q, hs in held for h in hs):
+    if any(h.origin == "config" for h in holds):
         names.append("the hold set in sources.toml's [governance]")
     return " and ".join(names)
+
+
+def _hold_names(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
+    """:func:`_named_holds` of what each queued entry of ``held`` waits on."""
+    return _named_holds(h for _q, hs in held for h in hs)
+
+
+def _release_how(holds: Iterable[Hold]) -> str:
+    """How the records owner releases each hold, by its command, or sources.toml's line, joined with "or"."""
+    holds = list(holds)
+    scopes = sorted({h.scope for h in holds if h.origin != "config"})
+    how = [f"`{AGENTSYNC_BIN} hold {s} --release --owner <name>`" for s in scopes]
+    if any(h.origin == "config" for h in holds):
+        how.append("hold = false in sources.toml's [governance]")
+    return " or ".join(how)
 
 
 def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
@@ -5476,16 +5533,14 @@ def held_words(held: Sequence[tuple[QueuedPurge, list[Hold]]]) -> str:
     ``purge --queue`` (B13 round 28 I91)."""
     scopes = sorted({h.scope for _q, hs in held for h in hs if h.origin != "config"})
     config = any(h.origin == "config" for _q, hs in held for h in hs)
-    how = [f"`{AGENTSYNC_BIN} hold {s} --release --owner <name>`" for s in scopes]
-    if config:
-        how.append("hold = false in sources.toml's [governance]")
     n = len(held)
     verb, them = ("waits", "it") if n == 1 else ("wait", "them")
     holds = len(scopes) + config
     release = "releases it" if holds == 1 else "releases them"
     return (
         f"{plural(n, 'queued purge')} {verb} on {_hold_names(held)}; once its records owner {release} "
-        f"({' or '.join(how)}), the next sync asks you to run `{AGENTSYNC_BIN} purge --queue`, which runs "
+        f"({_release_how(h for _q, hs in held for h in hs)}), the next sync asks you to run "
+        f"`{AGENTSYNC_BIN} purge --queue`, which runs "
         f"{them}"
     )
 

@@ -3092,6 +3092,100 @@ def test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618
     capsys.readouterr()
 
 
+@pytest.mark.parametrize("how", ["folder gone", "queue file gone"])
+@pytest.mark.parametrize("held", [True, False])
+def test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_hand_purge_c701(
+    initialised: Config, capsys: pytest.CaptureFixture[str], held: bool, how: str
+) -> None:
+    """B13 round 33 C701 (ruling 86): the no-copy branch offered a hand purge a hold in force refuses,
+    whatever the person did next: setting the hold again keeps it refused, and no line said a release must
+    come first. In both forms it names the records owner's release first, as their decision; a re-set still
+    refuses and a release lets it run; with no hold the clause is absent."""
+    cfg, root, page = _hold_and_queue_dlp(initialised, capsys)
+    release = ["hold", "all", "--release", "--owner", "Ada", "--config", cfg]
+    if not held:
+        assert cli.main(release) == cli.EXIT_OK
+    capsys.readouterr()
+    if how == "folder gone":
+        governance.governance_dir(root).rename(root / "governance.kept")
+    else:
+        queue = governance._queue_file(root)
+        queue.rename(queue.with_suffix(".kept"))
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert rc == cli.EXIT_FAILED
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    stop = capsys.readouterr().err
+    clause = "once the records owner decides to release the hold on all ("
+    for words in (failed, stop):
+        assert "runs each purge by hand before the next sync" in words, words
+        if held:
+            assert clause in words and "--release --owner <name>`;" in words, words
+            assert "setting it again keeps every purge it covers refused" in words, words
+            assert words.index(clause) < words.index("runs each purge by hand"), words
+        else:
+            assert "records owner decides" not in words and "setting it again" not in words, words
+    named = ["purge", f"docs={page}", "--reason", "dlp-remediation", "--dry-run", "--config", cfg]
+    if held:
+        assert cli.main(named) == cli.EXIT_FAILED
+        again = ["hold", "all", "--reason", "matter 8", "--owner", "Ada", "--config", cfg]
+        assert cli.main(again) == cli.EXIT_OK
+        assert cli.main(named) == cli.EXIT_FAILED
+        assert cli.main(release) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(named) == cli.EXIT_OK
+    capsys.readouterr()
+
+
+def test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C701's new read of sources.toml, inside the guard's own try: a [governance] it refuses asks for words
+    alone, so the sync's guard still finds the lost queue."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    path = Path(cfg)
+    path.write_text(path.read_text(encoding="utf-8") + '\n[governance]\nhold = "yes"\n', encoding="utf-8")
+    with pytest.raises(AgentSyncError):
+        governance.load_governance(path)
+    assert governance.governance_or_none(path) is None
+    found = doctor.state_not_a_file(initialised, manifest=False, damaged=True, lost=True)
+    assert found is not None and found[0] == governance._queue_file(root), found
+
+
+def test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C701: sources.toml's hold refuses the hand purge too, and its release is its own line; a hold on
+    another source does not block a purge of this one, and a hold on this source does."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    gov = governance.GovernanceConfig(hold=True, hold_reason="matter 9", hold_owner="Ada")
+    lost = governance.queue_lost(root, gov)
+    assert (
+        lost is not None
+        and "release the hold set in sources.toml's [governance] (hold = false in" in lost.fix
+    )
+    lost = governance.queue_lost(root)
+    assert lost is not None and "records owner decides" not in lost.fix, lost.fix
+    other = ["hold", "other-source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(other) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None and "records owner decides" not in lost.fix, lost.fix
+    mine = ["hold", "source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(mine) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None and "to release the hold on source 'source' (" in lost.fix, lost.fix
+    assert "other-source" not in lost.fix, lost.fix
+    capsys.readouterr()
+
+
 def test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
