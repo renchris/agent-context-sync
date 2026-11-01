@@ -8670,7 +8670,7 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section
     from agentsync import governance  # noqa: PLC0415
 
-    assert "return suppressions_lost(state_dir) or queue_lost(state_dir)" in inspect.getsource(
+    assert "return suppressions_lost(state_dir) or queue_lost(state_dir, gov)" in inspect.getsource(
         governance.governance_lost
     )
     assert section.index(tails["suppression list"]) < section.index(tails["purge queue"])

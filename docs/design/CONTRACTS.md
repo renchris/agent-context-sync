@@ -36662,7 +36662,8 @@ audit trail records as queued and not done (<entries>)`, `no longer holds <n> pu
 queued and not done (<entries>)`, and under a lead with none in the trail the pinned `purge-record.json keeps <n> purge
 as queued and not done (<entries>)`. `accept_kept(record=, trail=)` picks the path clause and the fingerprint store:
 `ACCEPT_PATH_KEPT` and `agentsync's audit trail`, `ACCEPT_PATH_KEPT_RECORD` and `purge-record.json`, or, mixed, the new
-`ACCEPT_PATH_KEPT_EITHER` and `agentsync's audit trail or purge-record.json`. `accept_lost_words` takes `record=` and
+`ACCEPT_PATH_KEPT_EITHER` and `agentsync's audit trail or purge-record.json` (`ACCEPT_STORE_TRAIL`, `ACCEPT_STORE_RECORD`,
+`ACCEPT_STORE_EITHER`). `accept_lost_words` takes `record=` and
 `trail=` apart from `folder=`, which alone names `--folder-lost`: `audit_trail_lost` still picks the lead, the put-back,
 `--folder-lost` and the act's gates, so no `audit-trail-lost` line is written twice and plain `--accept-lost` stays
 valid after the first. C755's `audit_trail_short` and its `was lost before <at>` lead are not built: ruling 79 keeps
