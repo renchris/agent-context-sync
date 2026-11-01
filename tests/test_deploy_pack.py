@@ -7694,6 +7694,57 @@ def test_the_purge_queue_row_gives_the_lost_queue_line_and_the_not_judged_line()
     assert "the entry stays queued and is judged after the next sync, or once that FAIL is fixed" in row
 
 
+def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition() -> None:
+    """B13 round 33 C761 with C739 (ruling 89): the guide said the Loop line's NEXT is the one status would
+    print, while the report points rule 1's `below` at Doctor's line, brackets a run with no install.sh and
+    swaps the lost-hold wait's pointer, and its stage has forms the list left out. Each is given with its
+    condition, since without it the rewrite would read wrong; every form is read from the report's source."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    para = page.split("How far the loop got after it is the Summary's `Loop:` line", 1)[1].split(
+        "The run type is computed too:", 1
+    )[0]
+    source = re.sub(r'"\s*\n\s*f?"', "", inspect.getsource(setup_report))
+    # the stage's forms beyond the list
+    for form in (
+        "unknown (no status loop line)",
+        "not read: status says",
+        "not read (status cannot read the state)",
+    ):
+        assert form in source and f"`{form}" in para, form
+    # rule 1's three `below` forms, each on Doctor's printing that line, else `below` stays
+    head = (
+        "When the NEXT is rule 1's `the <check> check failed: ...` and the report's Doctor section prints"
+        " that check's [FAIL] line, its `[FAIL] line below` reads `Doctor's <check> [FAIL] line`"
+    )
+    assert head in para and "; else `below` stays (B13 round 32 C603, C656; ruling 67)" in para
+    pointer = "Doctor's <check> [FAIL] line"
+    for _below, said in setup_report._FAIL_BELOW:
+        assert f"`{said.format(pointer)}`" in para, said
+    # the no-install bracket, its --list-folders variant (lane RA's C709), the damage form, the join
+    no_run = "status when this report was written; this attempt ran no install.sh"
+    only = "status when this report was written; this attempt ran only install.sh --list-folders"
+    # the report joins the bracket's head to the run words: `f"status when this report was written; {ran}"`
+    assert 'f"status when this report was written; {ran}"' in source
+    assert f'"{no_run.split("; ", 1)[1]}"' in source and f'"{only.split("; ", 1)[1]}"' in source
+    assert f"the NEXT ends `({no_run})`" in para
+    assert f"`({only})` (B13 round 33 C709, lane RA's cb1ce5195)" in para
+    assert "When the attempt ran no install.sh (the Summary says `install.sh: no run during this" in para
+    assert "no run during this attempt" in source
+    assert "(the loop's own read when this report was written; ...`" in para
+    assert "it joins any bracket the NEXT already ends in (B13 round 32 C620)" in para
+    # the lost-hold wait's pointer, on its condition
+    assert (
+        f"A lost hold's wait says `{setup_report._LOST_HOLD_IN_DOCTOR}` in place of `run"
+        " ~/.local/bin/agentsync status; its governance.hold [FAIL] line gives the person's fix` when the"
+        " report's Doctor section prints that [FAIL] line, and keeps the sync's own words otherwise" in para
+    )
+    assert setup_report._LOST_HOLD_RUN_STATUS.replace("`", "") == (
+        f"run {setup_report.AGENTSYNC_BIN} status; its governance.hold [FAIL] line gives the person's fix"
+    )
+
+
 def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
     """B13 round 31 C554: the row said "That last clause shows only when a shown run counted such a re-read"
     right after the clause about images only a download would read, while the clause it means, on a failure an

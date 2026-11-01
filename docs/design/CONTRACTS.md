@@ -36931,6 +36931,15 @@ text.py's body paragraph and tuple and names both routes; its decode phrase stay
 `test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`. Test:
 `test_the_plain_text_reference_says_what_text_py_does`, which reads the body and the tuple from the class.
 
+**The guide's Loop paragraph gives each rewrite of status's NEXT with its condition** (C761 with C739, ruling 89;
+`docs/deploy/setup-feedback.md`; built once). The paragraph said the NEXT is the one status would print, and only the
+report's cuts differ, while `_loop_line` also points rule 1's `below` at Doctor's line (§16.213 C603, C656), adds a
+bracket for an attempt with no install.sh (§16.213 C620; §16.218 C709, lane RA's cb1ce5195, for one that only listed
+folders) and swaps the lost-hold wait's pointer (§16.208 C508, §16.213 C636), and the stage has `not read` and `unknown` forms the list left
+out. Each form is named with its condition: without Doctor's [FAIL] line `below` stays, and without the condition no
+bracket is added. Test: `test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`, which
+reads every form from the report's source.
+
 **The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
 `docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
 or unreadable, but `cycle._tally_converted` always adds to `converted` and then to its failed or unreadable share, the

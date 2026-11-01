@@ -555,11 +555,13 @@ the rules only with its steps.
 The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
 `Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
 `baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
-status's loop line; the NEXT line is the one `agentsync status` would print, with every path cut to its last part
+status's loop line (when status cannot read the state, `not read: status says <status's own words>`, or `not read
+(status cannot read the state)` when it gives none; `unknown (no status loop line)` when status printed no loop
+line); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 except agentsync's own fixed `~/.local/bin/agentsync`, which holds no name, matches doctor's fixes and the status
 lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`,
 the docs repo's AGENTS.md (named by rules 4, 6 and 8) reads `the docs repo's AGENTS.md`, its _sync/STATE.md (named
-by the waits for empty and unlisted folders) reads `the docs repo's _sync/STATE.md`, and the config file reads `the config file <its file name>` (`the config file sources.toml` for the default config), never its path. So a setup that synced and stopped before drafting the baseline
+by the waits for empty and unlisted folders) reads `the docs repo's _sync/STATE.md`, and the config file reads `the config file <its file name>` (`the config file sources.toml` for the default config), never its path. Two more changes are the report's own, each only on its condition. When the NEXT is rule 1's `the <check> check failed: ...` and the report's Doctor section prints that check's [FAIL] line, its `[FAIL] line below` reads `Doctor's <check> [FAIL] line` (`its fix on Doctor's <check> [FAIL] line is the person's`, `do what the fix on Doctor's <check> [FAIL] line says`, `Doctor's <check> [FAIL] line says why`), since the report holds that line in Doctor's section; else `below` stays (B13 round 32 C603, C656; ruling 67). When the attempt ran no install.sh (the Summary says `install.sh: no run during this attempt`), the NEXT ends `(status when this report was written; this attempt ran no install.sh)`, and when its only install.sh run listed folders, `(status when this report was written; this attempt ran only install.sh --list-folders)` (B13 round 33 C709, lane RA's cb1ce5195); beside the evidence-damage clause it opens `(the loop's own read when this report was written; ...`, and it joins any bracket the NEXT already ends in (B13 round 32 C620). So a setup that synced and stopped before drafting the baseline
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
 something waits on the person, the line ends with every `WAITING ON YOU:` line the loop printed: first the one
 the loop stopped on, then the others in the loop's order; when the command printed that one after others, a
@@ -568,6 +570,9 @@ fixed clause before them says so ("also waiting, which the command prints before
 stopped on is the draft baseline's when the NEXT line says "(see the WAITING ON YOU line)" or, over two or
 more waits, "(see the WAITING ON YOU lines)", else a listing macOS holds for an Allow click, else the
 first. The loop prints its queued purges first, so shown by place they hid the wait the NEXT line points at.
+A lost hold's wait says `Doctor's governance.hold [FAIL] line gives the person's fix` in place of `run
+~/.local/bin/agentsync status; its governance.hold [FAIL] line gives the person's fix` when the report's Doctor section
+prints that [FAIL] line, and keeps the sync's own words otherwise (B13 round 31 C508; B13 round 32 C636; ruling 67).
 When files are still to be read again, the loop's note about them
 follows (two notes when the last sync did not get to one of the sources): `note: sync again: N files ...`
 means the report was written before the one-time re-read finished (section "The evidence parts" says what that
