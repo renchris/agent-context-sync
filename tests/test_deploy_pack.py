@@ -235,7 +235,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     60, and the limit is 80, about 20 minutes above it; C372's sentence keeps the 70 it set. B13 round 32
     C662: round 31's twelve jobs (7f132615 to 357f6d5b) took 43:35 to 57:05, all green on attempt 1, inside
     the range, but a run waited 63:27 for a macOS runner (ef12f28f), against the 48 the guides gave as the
-    most: they add the twelve and the wait, and the limit stays 80, about 23 minutes above the slowest."""
+    most: they add the twelve and the wait, and the limit stays 80, about 23 minutes above the slowest. B13
+    round 33 C772: round 32's fourteen jobs (62b8a943 to 7a3be9af) took 41:28 to 58:25, all green on attempt
+    1, inside the range, 21:35 under the limit: the guides add the fourteen, and the headline and the 80
+    stay."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -260,8 +263,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the slowest on 2919a7b9,"
         " 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was green; the"
         " twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the"
-        " slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; one run took 34 on a runner loaded 5 to 8"
-        " per core), plus any wait for a macOS runner, counted from the run appearing to its job starting"
+        " slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen after those, from 62b8a943"
+        " to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest on 9cb86828, 6706 tests and"
+        " pytest's step 57:51; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS"
+        " runner, counted from the run appearing to its job starting"
         " (one waited 63 minutes, on ef12f28f, another 50, and earlier ones 48 and 46); the job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
@@ -307,6 +312,11 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " slowest 76dc4e8f, pytest's step 56:38 at 6631 tests), so 80 stays about 23 minutes above them;"
         " runner waits reached 63:27 (ef12f28f) and 49:42 (357f6d5b), still not counted against"
         " timeout-minutes (B13 round 32 C662)."
+    ) in note
+    assert (
+        "Round 32's fourteen jobs (62b8a943 to 7a3be9af) took 41:28 to 58:25, all green on attempt 1 (the"
+        " slowest 9cb86828, pytest's step 57:51 at 6706 tests), so 80 stays 21:35 above them; runner waits"
+        " reached 18:03 (55808777), not counted against timeout-minutes (B13 round 33 C772)."
     ) in note
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
     assert "which left 45 only 8:36 above them" in note

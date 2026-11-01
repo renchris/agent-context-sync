@@ -87,7 +87,9 @@ the nine after those, from 673a72a0 to fa32c452, took 35:36 to 51:10, six past 4
 tests and pytest's step 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past
 50, the slowest on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was
 green; the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the slowest
-on 76dc4e8f, 6631 tests and pytest's step 56:38; one run took 34 on a runner loaded 5 to 8 per core), plus any wait
+on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen after those, from 62b8a943 to 7a3be9af, took 41:28 to
+58:25, all green on attempt 1, the slowest on 9cb86828, 6706 tests and pytest's step 57:51; one run took 34 on a
+runner loaded 5 to 8 per core), plus any wait
 for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another
 50, and earlier ones 48 and 46); the job's limit is 80 minutes (`timeout-minutes` in ci.yml), and a wait does not
 count against it.
