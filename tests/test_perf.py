@@ -144,3 +144,35 @@ def test_the_timing_marker_names_both_kinds_of_test_it_holds(request: pytest.Fix
 
     limit = f"above {conftest._TIMING_LOAD_PER_CORE:g} per core skips it (AGENTSYNC_TIMING=1 runs it anyway)"
     assert limit in timing, timing
+
+
+def test_the_session_warms_the_wheel_pandoc_once_and_never_fails_c769(
+    request: pytest.FixtureRequest, tmp_path: Path
+) -> None:
+    """B13 round 33 C769: a ``real_env`` test's agentsync runs this venv's wheel pandoc, whose first start
+    under Rosetta took 101.8 s on a loaded Mac, past doctor's 60 s probe and install_sh's 120 s bound, so a
+    land gate went red on load. A session fixture starts it once before any test, waits up to install.sh's own
+    ``PANDOC_START_SECONDS`` (300), and never fails the session: a pandoc that hangs is killed at the bound,
+    one that is missing or fails is passed over. It warms the real wheel pandoc, never a stub."""
+    import re  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    import conftest  # noqa: PLC0415 - the fixture under test
+    import exec_stub  # noqa: PLC0415
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+
+    assert request.getfixturevalue("_warm_bundled_pandoc") in ("warm", "absent", "timed out", "failed")
+    assert conftest._wheel_pandoc_or_none() == pandoc_mod._wheel_pandoc(), "the real wheel pandoc"
+    install_sh = (Path(__file__).resolve().parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [start] = re.findall(r"^PANDOC_START_SECONDS=(\d+)$", install_sh, re.M)
+    assert conftest._PANDOC_WARM_S == float(start) == 300.0
+    assert conftest._warm_pandoc(None) == "absent"
+    assert conftest._warm_pandoc(tmp_path / "missing") == "absent"
+    fails = exec_stub.write(tmp_path / "fails", "#!/bin/sh\nexit 3\n")
+    assert conftest._warm_pandoc(fails) == "failed"
+    answers = exec_stub.write(tmp_path / "answers", "#!/bin/sh\necho 'pandoc 3.9'\n")
+    assert conftest._warm_pandoc(answers) == "warm"
+    hangs = exec_stub.write(tmp_path / "hangs", f"#!{sys.executable}\nimport time\ntime.sleep(60)\n")
+    started = time.monotonic()
+    assert conftest._warm_pandoc(hangs, timeout=1.0) == "timed out"
+    assert time.monotonic() - started < 30, "killed at its bound, not waited out"

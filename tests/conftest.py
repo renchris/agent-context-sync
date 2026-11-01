@@ -224,6 +224,56 @@ _TIMING_LOAD_PER_CORE = 4.0
 budget tests failed at 10 to 60 per core, and pass on CI's runners and an idle Mac, well under 1)."""
 
 
+_PANDOC_WARM_S = 300.0
+"""How long the session's pandoc warm-up waits (:func:`_warm_bundled_pandoc`): install.sh's own
+``PANDOC_START_SECONDS``, the longest a cold pandoc's first start may take where it is waited for (B13 round
+33 C769; a test keeps the two equal)."""
+
+
+def _warm_pandoc(pandoc: Path | None, timeout: float = _PANDOC_WARM_S) -> str:
+    """Run ``<pandoc> --version`` once and say how it went: ``warm``, ``absent`` (no such file), ``timed out``
+    (killed at ``timeout``) or ``failed`` (it could not start, or exited non-zero). Never raises: a warm-up
+    that does not work leaves each test to start pandoc as before (B13 round 33 C769)."""
+    if pandoc is None or not pandoc.is_file():
+        return "absent"
+    try:
+        done = subprocess.run(
+            [str(pandoc), "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:  # subprocess.run has killed it
+        return "timed out"
+    except OSError:
+        return "failed"
+    return "warm" if done.returncode == 0 else "failed"
+
+
+def _wheel_pandoc_or_none() -> Path | None:
+    """The pypandoc_binary wheel's pandoc this venv holds (``convert.pandoc._wheel_pandoc``), else None."""
+    try:
+        from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415 - imports pypandoc only here
+
+        return pandoc_mod._wheel_pandoc()
+    except Exception:  # no pypandoc: nothing to warm
+        return None
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _warm_bundled_pandoc() -> str:
+    """B13 round 33 C769: the real agentsync a ``real_env`` test starts (tests/test_install_oneshot.py) runs
+    this venv's own wheel pandoc, an x86_64 binary that macOS translates on its first start: measured at
+    101.8 s cold on a loaded Mac and 0.25 to 0.5 s after, so the first test to start it under load ran past
+    doctor's 60 s probe (``[FAIL] pandoc ... did not answer within 60s``) or install_sh's 120 s bound, a land
+    gate red on load and not on a diff. Each session (each xdist worker) starts it once here, before any test,
+    waiting up to :data:`_PANDOC_WARM_S`, and never fails the session. The real pandoc stays: a stub through
+    ``[convert] pandoc_path`` would change the config those tests compare and the branch doctor and install.sh
+    take."""
+    return _warm_pandoc(_wheel_pandoc_or_none())
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _owner_only_umask() -> Iterator[None]:
     """Tests run under the umask production runs under (LaunchAgent ``Umask = 63``, ``cli.main`` 077)."""
