@@ -2637,11 +2637,15 @@ class PlainTextConverter:
     """Plain text: decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1) into a
     fenced block.
 
-    The body is a heading with the file name then the text inside a fenced block (``csv``/``tsv`` rendered as
-    a GFM table up to max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).
+    The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
+    max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key
+    does not include the name and a rename keeps bodies, so output depends on the bytes and suffix only.
+    A ``.url`` internet shortcut is fenced as ``ini``; its title is left empty so the page takes the file's
+    name, and its summary names the ``URL=`` target.  ``.vtt`` is not here: it routes to ``vtt-turns``
+    (§16.35); ``.url`` joined per §16.42.
     """
     converter_id = "text-plain"
-    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".vtt", ".json", ".xml", ".yaml", ".yml")
+    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".url")
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
@@ -36375,3 +36379,10 @@ holds.json, while `governance.no_hold_words` gives the folder's own form in ruli
 round 32 line stands and one dated line gives all four, naming the review by its heading, "C606's, C639's and C624's
 review". Test: `test_governance_holds_four_ok_forms_are_in_one_dated_line_at_its_quote`, which reads each form from
 governance's constant.
+
+**§15's plain-text reference says what text.py does** (C782; docs only). C670 corrected the block's decode order and
+left its other words: a heading with the file name, where text.py says the action key does not include the name, and
+an extension list with `.vtt`, which routes to `vtt-turns` (§16.35), and without `.url` (§16.42). The block takes
+text.py's body paragraph and tuple and names both routes; its decode phrase stays, counted twice by
+`test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`. Test:
+`test_the_plain_text_reference_says_what_text_py_does`, which reads the body and the tuple from the class.

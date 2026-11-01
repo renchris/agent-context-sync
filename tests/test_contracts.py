@@ -671,3 +671,29 @@ def test_the_dead_function_scan_reads_code_not_text() -> None:
     dead, defs = _dead_private_functions({"agentsync.a": _SCAN_SAMPLE_A, "agentsync.b": _SCAN_SAMPLE_B})
     assert defs == 8
     assert dead == ["agentsync.a._dead_in_prose", "agentsync.a._now", "agentsync.a._recursive"]
+
+
+def test_the_plain_text_reference_says_what_text_py_does() -> None:
+    """B13 round 33 C782: §15's PlainTextConverter copy kept its old heading sentence and extension list after
+    C670 corrected its decode order: it said the body opens with the file name, where text.py says the action
+    key does not include the name, and it listed .vtt, which routes to vtt-turns, not .url. The copy gives
+    text.py's own words and tuple, names the two routes, and leaves the decode phrase, which
+    test_the_text_converters_docstrings_give_the_decode_order_the_code_uses counts, at exactly two."""
+    from agentsync.convert import text  # noqa: PLC0415
+    from agentsync.convert.vtt import VttConverter  # noqa: PLC0415
+
+    raw = CONTRACTS.read_text(encoding="utf-8")
+    start = raw.index("### `agentsync.convert.text` — `src/agentsync/convert/text.py`")
+    block = raw[start : raw.index("\n### ", start + 1)]
+    flat = " ".join(block.split())
+    assert "a heading with the file name" not in flat
+    doc = " ".join((text.PlainTextConverter.__doc__ or "").split())
+    body = doc.split("into a fenced block. ", 1)[1]
+    assert body in flat, "the code's own body paragraph, word for word"
+    [listed] = re.findall(r"extensions: tuple\[str, \.\.\.\] = (\([^)]*\))", block)
+    assert ast.literal_eval(listed) == text.PlainTextConverter.extensions
+    assert ".url" in listed and ".vtt" not in listed
+    assert VttConverter.converter_id == "vtt-turns" and VttConverter.extensions == (".vtt",)
+    assert "``.vtt`` is not here: it routes to ``vtt-turns`` (§16.35); ``.url`` joined per §16.42." in flat
+    said = "decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
+    assert " ".join(raw.split()).count(said) == 2
