@@ -2671,6 +2671,7 @@ _HOLD_WORD_SKIPS = {
     "_WITHHELD_UNREAD_RE",
     "_LABEL_UNPARSED_RE",
     "_LISTING_GOVERNANCE_RE",
+    "_GOVERNANCE_TRAIL_LOST_RE",
     "_LABEL_VALUE_RE",
     "_MSIP_ANY_KEY_RE",
     "_MSIP_KEY_RE",
@@ -10530,6 +10531,347 @@ def test_a_queue_lost_with_the_governance_folder_reads_the_folders_kind_c618(
         "folder, which is missing (see Doctor's governance.purge_queue line)"
     ) in queue, queue
     assert "<value>" not in text
+
+
+def _lost_queue_entry(root: Path, source: str) -> None:
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id=source, stable_id="ledger-2031"),
+        governance.PurgeReason.UPSTREAM_DELETED,
+        now=datetime(2026, 10, 26, 9, 30, tzinfo=UTC),
+    )
+
+
+@pytest.mark.parametrize("held", [False, True], ids=["no-hold", "held"])
+def test_a_listing_warn_beside_the_folders_lost_queue_is_the_folders_c734(
+    fake_mac: dict[str, Path], held: bool
+) -> None:
+    """B13 round 33 C734 (ruling 81): with governance/ gone, the listing warn beside the lost queue's FAIL
+    fell to unexpected: the FAIL's folder words are no lost-list words. It takes the folder's bucket by state
+    read before the loop, in doctor's real order (the heartbeat before the governance checks), never by bucket
+    membership, in the folder's words once."""
+    cfg = fake_mac["config"]
+    config = load_config(cfg)
+    root = expand(config.state_paths.root)
+    if held:
+        governance.set_hold(root, "all", reason="matter 8", owner="Avery Quill")
+    _lost_queue_entry(root, config.sources[0].id)
+    shutil.rmtree(governance.governance_dir(root))
+    assert governance.folder_lost_case(root)
+    for first in (True, False):
+        listing = doctor.CheckResult(
+            "heartbeat.project-x",
+            False,
+            f"{doctor.LISTING_INCOMPLETE}4 consecutive passes; deletions held",
+            doctor.Severity.WARN,
+            fix="nothing to do",
+        )
+        status = cli._status_checks(config)
+        checks = cli._listings_unread(
+            [listing, *status] if first else [*status, listing], None, root, config=config
+        )
+        r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+        r.facts.doctor_problems = [
+            (tag, name.strip(), detail)
+            for line in doctor.format_results([c for c in checks if not c.ok]).splitlines()
+            for tag, name, detail in [re.match(r"\[(\w+) *\] (\S+) +— (.*)", line).groups()]  # type: ignore[union-attr]
+        ]
+        sort = setup_report._sort_doctor(r, [])
+        words = setup_report._LISTING_GOV_GONE_END
+        assert (
+            f"heartbeat.project-x warn (not judged: {words}; no sync runs until it is fixed)"
+            in sort.from_govgone
+        ), sort
+        assert "governance.purge_queue FAIL (the person's; see Doctor)" in sort.from_govgone, sort
+        assert not [w for w in (*sort.unexpected, *sort.yours) if w.startswith("heartbeat.")], sort
+
+
+def test_a_listing_warn_beside_the_folders_lost_suppression_list_is_the_folders_c734(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """C734's other list: the suppression list's folder form, by the note's own check; the note's old and new
+    words both read, and the entry never doubles the folder's words."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    gov = governance.governance_dir(root)
+    shutil.rmtree(gov, ignore_errors=True)
+    fail = (
+        f"{gov}{setup_report._GOV_GONE}{gov}/suppressed.json no longer lists what 1 purge suppressed, kept "
+        "by purge-record.json (x)"
+    )
+    for that in ("", "that "):
+        note = (
+            f"as of its last walk: the suppression list has lost a purge {that}purge-record.json records: "
+            "agentsync's governance folder is missing; no sync lists it again until the person fixes it; the "
+            "governance.suppressed [FAIL] line says what to do first"
+        )
+        r.doctor_sorted = None
+        r.facts.doctor_problems = [
+            ("warn", "heartbeat.project-x", f"{doctor.LISTING_INCOMPLETE}4 passes; deletions held ({note})"),
+            ("FAIL", "governance.suppressed", fail),
+        ]
+        sort = setup_report._sort_doctor(r, [])
+        assert sort.from_govgone[0].startswith("heartbeat.project-x warn (not judged: agentsync's gov"), sort
+        assert sort.from_govgone[0].count("governance folder is missing") == 1
+        assert not sort.unexpected, sort
+
+
+def _trail_lost_state(fake_mac: dict[str, Path], which: str) -> Path:
+    """governance/ moved aside and a later hold re-creating it with a new audit trail (C606's review): each
+    named list has lost a purge only purge-record.json keeps."""
+    config = load_config(fake_mac["config"])
+    root = expand(config.state_paths.root)
+    source = config.sources[0].id
+    if "queue" in which:
+        _lost_queue_entry(root, source)
+    if "suppressed" in which:
+        at = "2026-10-01T00:00:00Z"
+        item = {"action": "purge", "at": at, "reason": "dlp-remediation", "source_id": source}
+        governance.append_audit(
+            root, {**item, "path_sha256": None, "stable_id_sha256": governance._sha("c1")}
+        )
+        line = {"action": "purge-summary", "at": at, "reason": "dlp-remediation", "verified": True}
+        line |= {"selector_kind": "stable-id", "selector_sha256": governance._sha("sel-c1")}
+        governance.append_audit(root, {**line, "source_id": source})
+    governance.record_purges(root)
+    shutil.rmtree(governance.governance_dir(root))
+    governance.set_hold(root, "contoso-matter", reason="matter 8", owner="Avery Quill")
+    assert not governance.folder_lost_case(root) and governance.audit_trail_lost(root)
+    return root
+
+
+@pytest.mark.parametrize(
+    ("which", "failed", "words"),
+    [
+        (
+            "queue",
+            ["governance.purge_queue"],
+            "from a purge queue that lost a purge purge-record.json keeps",
+        ),
+        (
+            "suppressed",
+            ["governance.suppressed"],
+            "from a suppression list that lost a purge purge-record.json keeps",
+        ),
+        (
+            "queue suppressed",
+            ["governance.suppressed", "governance.purge_queue"],
+            "from a suppression list and a purge queue that lost a purge purge-record.json keeps",
+        ),
+    ],
+    ids=["queue", "suppressed", "both"],
+)
+def test_a_re_created_folders_lost_list_credits_purge_record_c735_c740_c756(
+    fake_mac: dict[str, Path], which: str, failed: list[str], words: str
+) -> None:
+    """B13 round 33 ruling 82 (C735, C740, C756): a later write re-creates governance/, and the FAIL opens
+    TRAIL_LOST_HEAD. The report called it an unexpected doctor FAIL and said `recorded in the audit trail`.
+    It has its own bucket, cause and Purge queue words, never the folder's or the audit trail's."""
+    _trail_lost_state(fake_mac, which)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+    summary = section(text, "Summary")
+    outcome = _line(summary, "- **outcome: ")
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    line = _line(summary, "- doctor: ")
+    for check in failed:
+        assert f"{check} FAIL" not in line.split("unexpected", 1)[1], line
+    assert words in line, line
+    assert setup_report._GOVGONE_WORDS not in text
+    queue = section(text, "Status").split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
+    assert "recorded in the audit trail" not in queue, queue
+    if "queue" in which:
+        assert (
+            "- 1 purge purge-record.json keeps as queued and not done is not in the queue file, and "
+            "agentsync's audit trail no longer holds its line (see Doctor's governance.purge_queue line)"
+        ) in queue, queue
+
+
+_TRAIL_FAILS = {
+    # TRAIL_LOST_HEAD's lead, then lane B's credit after the first --folder-lost, then the mixed form
+    "suppressed-lead": (
+        "governance.suppressed",
+        f"{governance.TRAIL_LOST_HEAD}: /x/suppressed.json no longer lists what 2 purges suppressed, kept by "
+        "purge-record.json (y): z",
+        True,
+    ),
+    "suppressed-credit": (
+        "governance.suppressed",
+        "/x/suppressed.json no longer lists what 2 purges suppressed, kept by purge-record.json (y): z",
+        True,
+    ),
+    "suppressed-mixed": (
+        "governance.suppressed",
+        "/x/suppressed.json no longer lists what 1 purge the audit trail records suppressed (y) and what 1 "
+        "purge suppressed, kept by purge-record.json (y): z",
+        False,
+    ),
+    "suppressed-trail": (
+        "governance.suppressed",
+        "/x/suppressed.json no longer lists what 1 purge the audit trail records suppressed (y): z",
+        False,
+    ),
+    "queue-lead": (
+        "governance.purge_queue",
+        f"{governance.TRAIL_LOST_HEAD}: purge-record.json keeps 1 purge as queued and not done (y)",
+        True,
+    ),
+    "queue-credit": (
+        "governance.purge_queue",
+        "/x/purge-queue.json no longer holds 1 purge that purge-record.json keeps as queued and not done (y)",
+        True,
+    ),
+    "queue-mixed-lead": (
+        "governance.purge_queue",
+        f"{governance.TRAIL_LOST_HEAD}: /x/purge-queue.json no longer holds 1 purge the audit trail records "
+        "as queued and not done (y) and 1 purge that purge-record.json keeps as queued and not done (y)",
+        True,
+    ),
+    "queue-trail": (
+        "governance.purge_queue",
+        "/x/purge-queue.json no longer holds 1 purge the audit trail records as queued and not done (y)",
+        False,
+    ),
+}
+
+
+@pytest.mark.parametrize("form", sorted(_TRAIL_FAILS))
+def test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82(form: str) -> None:
+    """Ruling 82: alternative phrase sets beside _LOST_LIST_PHRASES: the audit trail's form keeps its tuple;
+    the folder's form is never this one; a FAIL with neither stays the caller's unexpected."""
+    check, detail, trail = _TRAIL_FAILS[form]
+    assert setup_report._trail_form(check, detail) is trail, detail
+    assert not setup_report._trail_form(check, f"/x{setup_report._GOV_GONE}{detail}")
+    assert not setup_report._trail_form(check, "stopped: its file is out of date")
+    assert not setup_report._trail_form("governance.hold", detail)
+
+
+@pytest.mark.parametrize(
+    ("fails", "reads", "bucket", "cause"),
+    [
+        (
+            [("governance.suppressed", "suppressed-lead")],
+            ["governance.suppressed"],
+            "from a suppression list that lost a purge purge-record.json keeps",
+            " on agentsync's suppression list, which lost a purge purge-record.json keeps: the person's to "
+            "fix",
+        ),
+        (
+            [("governance.purge_queue", "queue-credit")],
+            ["governance.purge_queue"],
+            "from a purge queue that lost a purge purge-record.json keeps",
+            " on agentsync's purge queue, which lost a purge purge-record.json keeps: the person's to fix",
+        ),
+        (
+            [("governance.suppressed", "suppressed-credit"), ("governance.purge_queue", "queue-lead")],
+            ["governance.suppressed", "governance.purge_queue"],
+            "from a suppression list and a purge queue that lost a purge purge-record.json keeps",
+            " on agentsync's suppression list and purge queue, which each lost a purge purge-record.json "
+            "keeps: the person's to fix",
+        ),
+    ],
+    ids=["suppressed", "queue", "both"],
+)
+def test_a_trail_lost_fail_has_its_own_bucket_and_cause_per_list_and_both_ruling_82(
+    fake_mac: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    fails: list[tuple[str, str]],
+    reads: list[str],
+    bucket: str,
+    cause: str,
+) -> None:
+    """Ruling 82: a test per list and both together: the bucket by the report's own read of each list and the
+    FAIL's words, the cause known to the outcome; and a FAIL without the words stays unexpected."""
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    governance.governance_dir(root).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(setup_report, "_lost_lists", lambda _c: list(reads))
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", check, _TRAIL_FAILS[form][1]) for check, form in fails]
+    sort = setup_report._sort_doctor(r, [])
+    assert sort.trail_lost_words == bucket and not sort.unexpected, sort
+    assert sort.from_trail_lost == [f"{check} FAIL (the person's; see Doctor)" for check, _ in fails]
+    assert not sort.from_lost_list and not sort.from_govgone
+    assert setup_report._trail_lost_cause(reads) == cause
+    assert cause in setup_report._LOST_CAUSES
+    r.doctor_sorted = None
+    r.facts.doctor_problems = [("FAIL", check, "stopped: its file is out of date") for check, _ in fails]
+    sort = setup_report._sort_doctor(r, [])
+    assert not sort.from_trail_lost and len(sort.unexpected) == len(fails), sort
+
+
+def test_a_sync_stop_on_a_trail_lost_list_reads_as_purge_records_ruling_82() -> None:
+    """Ruling 82: the sync's own error line, in each of lane B's words, is read apart from the audit trail's
+    and from the folder's."""
+    rx = setup_report._GOVERNANCE_TRAIL_LOST_RE
+    for line, kind in (
+        (
+            "error: state: /x/suppressed.json no longer lists what 2 purges suppressed, kept by "
+            "purge-record.json (",
+            "s",
+        ),
+        (
+            f"error: state: {governance.TRAIL_LOST_HEAD}: purge-record.json keeps 1 purge as queued and not "
+            "done (",
+            "q",
+        ),
+        (
+            "error: state: /x/purge-queue.json no longer holds 2 purges that purge-record.json keeps as "
+            "queued (",
+            "q",
+        ),
+    ):
+        found = rx.search(line)
+        assert found is not None, line
+        assert (bool(found.group("lead")) or found.group("verb") == "holds") is (kind == "q"), line
+    assert (
+        rx.search("error: state: /x/purge-queue.json no longer holds 1 purge the audit trail records") is None
+    )
+
+
+@pytest.mark.parametrize("held", [False, True], ids=["no-hold", "held"])
+def test_the_purge_queue_part_says_status_words_with_the_folder_gone_c765(
+    fake_mac: dict[str, Path], held: bool
+) -> None:
+    """B13 round 33 C765 (C771's F2; ruling 64): governance/ gone with nothing queued said `no purge is
+    queued` beside status's `the purge queue is missing with the governance folder`. The part takes status's
+    own function: with purge-record.json read, QUEUE_GONE_OK; with only the hold record,
+    QUEUE_GONE_UNRECORDED, never `keeps no purge` of a record that is not there; both agree with status."""
+    config = load_config(fake_mac["config"])
+    root = expand(config.state_paths.root)
+    governance.set_hold(root, "all", reason="matter 8", owner="Avery Quill")
+    if not held:  # a purge record that holds no queued purge: QUEUE_GONE_OK
+        governance.purge_record_file(root).write_text('{"purges": []}\n', encoding="utf-8")
+    shutil.rmtree(governance.governance_dir(root))
+    assert governance.folder_lost_case(root)
+    said = governance.QUEUE_GONE_UNRECORDED if held else governance.QUEUE_GONE_OK
+    assert setup_report._queue_gone_said(config) == said
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+    queue = section(text, "Status").split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
+    assert f"- {said}\n" in f"{queue}\n" and "no purge is queued" not in queue, queue
+    status = [c.detail for c in cli._status_checks(config) if c.name == "governance.purge_queue"]
+    assert status == [said], status
+    guide = " ".join((Path(__file__).parents[1] / "docs/deploy/setup-feedback.md").read_text("utf-8").split())
+    assert f"`{governance.QUEUE_GONE_OK}` (or `{governance.QUEUE_GONE_UNRECORDED}` when no" in guide
+
+
+def test_the_purge_queue_part_keeps_its_line_over_an_unread_record_c765(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C765's guard: never `keeps no purge` over a purge record it cannot read; and QUEUE_GONE_OK where the
+    record reads and holds no queued purge."""
+    config = load_config(fake_mac["config"])
+    monkeypatch.setattr(governance, "folder_lost_case", lambda _root: True)
+    monkeypatch.setattr(governance, "recorded_purges", lambda _root: [])
+    monkeypatch.setattr(governance, "queue_gone_words", lambda _root: governance.QUEUE_GONE_OK)
+    assert setup_report._queue_gone_said(config) == governance.QUEUE_GONE_OK
+
+    def unread(_root: Path) -> list[dict[str, Any]]:
+        raise OSError("refused")
+
+    monkeypatch.setattr(governance, "recorded_purges", unread)
+    assert setup_report._queue_gone_said(config) == ""
+    monkeypatch.setattr(governance, "recorded_purges", lambda _root: [])
+    monkeypatch.setattr(governance, "folder_lost_case", lambda _root: False)
+    assert setup_report._queue_gone_said(config) == ""
 
 
 def test_the_loop_lines_lost_hold_wait_in_the_folder_form_names_doctors_line_c613(
@@ -20832,21 +21174,39 @@ def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_o
 
 
 def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
-    """A hook that gives lines (an older CLI), fails or times out names no check: the warn is unexpected."""
+    """A hook that gives lines (an older CLI) names no check: the warn is unexpected. One that fails or times
+    out left the Loop line unread, so the warn it could have named is not judged (B13 round 33 C721, C703,
+    C706; ruling 84), with the idle advice only where waiting helps; none says yours, and the evidence line
+    is unchanged."""
 
     def slow(config: Config) -> list[str]:
         time.sleep(setup_report._LOOP_NEXT_S + 1)
         return []
 
     def crash(config: Config) -> list[str]:
-        raise OSError("disk gone")
+        raise ValueError("no state")
 
-    for hook in (lambda config: _yours_step().lines(), crash, slow):
+    idle = "; a report written when this Mac is idle sorts it"
+    for hook, says in (
+        (lambda config: _yours_step().lines(), "unexpected 1: heartbeat.project-x warn"),
+        (
+            crash,
+            "not judged (the Loop line was not read: an unexpected error: ValueError) 1: "
+            "heartbeat.project-x warn · unexpected 0",
+        ),
+        (
+            slow,
+            f"not judged (the Loop line was not read: it did not finish in time{idle}) 1: "
+            "heartbeat.project-x warn · unexpected 0",
+        ),
+    ):
         hooks = setup_report.ReportHooks(doctor=lambda config: [_INCOMPLETE], loop_next=hook)
         text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
         summary = section(text, "Summary")
         assert "yours" not in summary
-        assert "unexpected 1: heartbeat.project-x warn" in summary
+        assert says in summary, summary
+        assert ("not judged" in summary) is (hook is crash or hook is slow), summary
+        assert (idle in summary) is (hook is slow), summary
 
 
 def test_no_yours_group_when_the_loop_line_is_not_read(
@@ -20866,7 +21226,47 @@ def test_no_yours_group_when_the_loop_line_is_not_read(
     summary = section(text, "Summary")
     assert "- Loop: not read (an unexpected error: ValueError)" in summary
     assert "yours" not in summary
-    assert "unexpected 1: heartbeat.project-x warn" in summary
+    assert (
+        "not judged (the Loop line was not read: an unexpected error: ValueError) 1: heartbeat.project-x warn"
+        " · unexpected 0" in summary
+    ), summary
+
+
+def test_a_warn_the_loop_could_not_name_stays_unexpected_ruling_84(fake_mac: dict[str, Path]) -> None:
+    """B13 round 33 ruling 84 (C721, C703, C706): with the Loop line unread, the incomplete listing's warn, a
+    governance.purge_queue warn and a governance.hold warn are not judged. A `last success` heartbeat warn
+    (C706) and any other warn stay unexpected, a FAIL never moves, the outcome and the evidence line are as
+    they were, and no hook at all says so without the idle advice."""
+    last = "[warn] heartbeat.project-y — last success 2026-09-01T00:00:00Z is older than 3 x cadence"
+    lines = [
+        _INCOMPLETE,
+        "[warn] governance.purge_queue — 1 purge request queued (upstream-deleted)",
+        "[warn] governance.hold — HOLD: hold all",
+        last,
+        "[warn] logs — something odd",
+        "[FAIL] governance.purge_queue — stopped",
+    ]
+    hooks = setup_report.ReportHooks(doctor=lambda config: lines)
+    summary = section(setup_report.build_report(fake_mac["config"], hooks=hooks)[0], "Summary")
+    doctor = _line(summary, "- doctor: ")
+    assert (
+        "not judged (the Loop line was not read: no loop hook) 3: heartbeat.project-x warn, "
+        "governance.purge_queue warn, governance.hold warn · unexpected 3: heartbeat.project-y warn, logs "
+        "warn, governance.purge_queue FAIL"
+    ) in doctor, doctor
+    assert "a report written when this Mac is idle" not in doctor, doctor
+    assert "1 unexpected doctor FAIL: governance.purge_queue" in _line(summary, "- **outcome: "), summary
+    assert "not judged" not in _line(summary, "- evidence: "), summary
+    assert setup_report._why_not_read(TimeoutError()) == setup_report._NOT_IN_TIME
+
+
+def test_a_stopped_copys_unread_loop_gives_no_idle_advice_ruling_84(fake_mac: dict[str, Path]) -> None:
+    """Ruling 84 with C718: a copy not for sending has no use for a report written when idle."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    r.facts.loop_unread_why = setup_report._NOT_IN_TIME
+    assert setup_report._loop_unread_head(r).endswith(f"{setup_report._IDLE_SORTS})")
+    r.facts.copy_stopped = True
+    assert setup_report._IDLE_SORTS not in setup_report._loop_unread_head(r)
 
 
 @pytest.mark.usefixtures("roomy_budget")
