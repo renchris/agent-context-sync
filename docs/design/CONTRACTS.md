@@ -36756,6 +36756,10 @@ docstring moves back under its constant, no text changed, and `test_governance.p
 `test_every_module_docstring_in_governance_follows_its_own_constant` scans the module as `test_cycle.py`'s guard scans
 cycle.py.
 
+**C749.** `HOLD_LIST_GONE_UNRECORDED` and `QUEUE_GONE_UNRECORDED`, from C606's review, had no test. Each is read on the real
+status path: `test_the_ok_lines_name_no_record_that_is_not_there_c749` and
+`test_the_queue_ok_line_names_no_purge_record_that_is_not_there_c749`.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

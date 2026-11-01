@@ -2876,6 +2876,42 @@ def _ok_line(out: Sequence[str], name: str) -> str:
     return line.split(" — ", 1)[1]
 
 
+def test_the_ok_lines_name_no_record_that_is_not_there_c749(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 33 C749: C606's review added two ok-line forms no test read, over the real status path: with
+    no hold-record.json, the hold line names no hold record; with no purge-record.json, the queue line names
+    no purge record. (A sync pass's record_holds writes hold-record.json, so the first case unlinks it.)"""
+    cfg, root, _page = _erased(initialised, capsys)
+    gov = governance.governance_dir(root)
+    kept = root / "governance.kept"
+    gov.rename(kept)
+    record = governance.hold_record_file(root)
+    if record.exists():
+        record.unlink()
+    _rc, out = _status(cfg, capsys)
+    line = _ok_line(out, "governance.hold")
+    assert line == governance.HOLD_LIST_GONE_UNRECORDED and "hold record read" not in line, line
+
+
+def test_the_queue_ok_line_names_no_purge_record_that_is_not_there_c749(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C749's queue half: no purge ran, so no purge-record.json; a hold record names a scope, so governance/
+    moved aside is ruling 63's case, and the lost hold's FAIL stands beside the ok line."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    assert not os.path.lexists(governance.purge_record_file(root))
+    hold = ["hold", "contoso-matter", "--reason", "matter 8", "--owner", "Ada", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    capsys.readouterr()
+    governance.governance_dir(root).rename(root / "governance.kept")
+    _rc, out = _status(cfg, capsys)
+    line = _ok_line(out, "governance.purge_queue")
+    assert line == governance.QUEUE_GONE_UNRECORDED and "purge-record.json" not in line, line
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+
+
 def test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
