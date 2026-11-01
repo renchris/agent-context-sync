@@ -2432,16 +2432,23 @@ _NO_TRAIL_ALONE = (
     "agentsync's audit trail is not on disk either, so nothing shows a queued purge the queue lost: the "
     "purge record cannot be read, and the governance.suppressed line says why"
 )
+_UNREAD_TRAIL_ALONE = (
+    "agentsync's audit trail cannot be read either, so nothing shows a queued purge the queue lost: the "
+    "purge record cannot be read, and the governance.suppressed line says why"
+)
 """governance.purge_queue's clause over a purge record that cannot be read and a queue that lost nothing
 (B13 round 31 C539 and its review): its own [info] line with nothing queued, after the kept entries' line.
 :func:`_trail_alone_words` picks by the file."""
 
 
 def _trail_alone_words(config: Config) -> str:
-    """:data:`_TRAIL_ALONE`, or :data:`_NO_TRAIL_ALONE` with no audit trail on disk: never judged from a trail
-    that is not there (B13 round 33 C733), as the ok lines word themselves by what is on disk (C624)."""
-    there = os.path.lexists(governance.audit_path(expand(config.state_paths.root)))
-    return _TRAIL_ALONE if there else _NO_TRAIL_ALONE
+    """:data:`_TRAIL_ALONE`, :data:`_NO_TRAIL_ALONE` with no audit trail on disk, or
+    :data:`_UNREAD_TRAIL_ALONE` over one that cannot be read: never judged from a trail that is not there or
+    was not read (B13 round 33 C733, ruling 77), as the ok lines word themselves by what is on disk (C624)."""
+    root = expand(config.state_paths.root)
+    if not governance._audit_read(root)[1]:
+        return _UNREAD_TRAIL_ALONE
+    return _TRAIL_ALONE if os.path.lexists(governance.audit_path(root)) else _NO_TRAIL_ALONE
 
 
 _PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy")
@@ -2714,8 +2721,12 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
     elif not out:  # it opens for append: its bytes may still not read, and judge nothing (C741; ruling 77)
         unread_trail = governance.audit_unread(root)
-        if unread_trail is not None:
+        if isinstance(unread_trail, governance.GovernanceUnreadError):
             out.append(_refused_check(config, "governance.audit", unread_trail))
+        elif unread_trail is not None:  # its cause's own line, never the whole group's crash
+            cause = unread_trail.__cause__
+            shown = cause if isinstance(cause, Exception) else unread_trail
+            out.append(doctor.stopped(config, "governance.audit", shown))
     list_unread = False
     # the suppression list, then the purge record beside hold-record.json: one that cannot be read is its own
     # FAIL, never no purges (B13 round 30 C381; ruling 34)

@@ -1200,9 +1200,12 @@ def _audit_read(state_dir: Path) -> tuple[list[dict[str, Any]], bool]:
     refuses the read (a mode, a folder that refuses a search, a link to nothing, a file at governance/, bytes
     that are not UTF-8) as not read, which says nothing about what the trail holds (B13 round 33 C741; ruling
     77)."""
+    path = audit_path(state_dir)
     try:
-        text = read_regular_text(audit_path(state_dir))
+        text = read_regular_text(path)
     except (OSError, ValueError, UnicodeDecodeError):
+        return [], False
+    if text is None and path.is_symlink():  # a link to nothing, a gone volume: never a deleted file
         return [], False
     out: list[dict[str, Any]] = []
     for line in (text or "").splitlines():
@@ -1233,7 +1236,10 @@ def audit_unread(state_dir: Path) -> GovernanceError | None:
         return folder
     path = audit_path(state_dir)
     try:
-        read_regular_text(path)
+        if read_regular_text(path) is None and path.is_symlink():  # a link to nothing, its own kind
+            return GovernanceNotAFileError(
+                path, doctor.governance_file_kind(path) or "a symlink to nothing", "the audit trail"
+            )
     except UnicodeDecodeError:
         return GovernanceDamagedError(path, "the audit trail", "its bytes are not UTF-8 text")
     except ValueError:
@@ -2612,11 +2618,12 @@ def queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governan
 
 
 def governance_or_none(config_path: Path) -> GovernanceConfig | None:
-    """:func:`load_governance`, or None for a ``[governance]`` it refuses, for words alone: the guard that
-    asks for a lost list's fix stops on the loss whatever sources.toml says (B13 round 33 C701)."""
+    """:func:`load_governance`, or None for a ``[governance]`` it cannot read, whatever it raises, for words
+    alone: the guard that asks for a lost list's fix stops on the loss whatever sources.toml says (B13 round
+    33 C701)."""
     try:
         return load_governance(config_path)
-    except (AgentSyncError, OSError):
+    except Exception:  # a ValueError from a remote prefix too: never lifts the guard around it
         return None
 
 
@@ -2625,13 +2632,19 @@ def _lost_queue_holds(
 ) -> list[Hold]:
     """The holds in force, sources.toml's (``gov``) and the hold record's among them, that refuse a hand run
     of any lost queued purge of ``gone``: its source's, or every hold for an every-source selector, as
-    :func:`purge` reads them. A hold list or record that cannot be read names none: its own FAIL says why, and
-    the purge's refusal does (B13 round 33 C701; ruling 86)."""
-    config = config_holds(gov) if gov is not None else ()
+    :func:`purge` reads them. Each read stands alone: a hold record that cannot be read keeps the hold list's
+    holds and the trail's, as status does, and a hold list that cannot be read names none of its own; its FAIL
+    says why, and the purge's refusal does (B13 round 33 C701; ruling 86)."""
+    listed: tuple[Hold, ...] = ()
+    with contextlib.suppress(AgentSyncError, OSError):
+        listed = state_holds(state_dir)
+    kept: Sequence[Hold] = ()
     try:
-        holds: tuple[Hold, ...] = (*config, *state_holds(state_dir), *lost_holds(state_dir))
+        kept = lost_holds(state_dir, listed)
     except (AgentSyncError, OSError):
-        holds = config
+        with contextlib.suppress(AgentSyncError, OSError):
+            kept = audit_lost_holds(state_dir, listed)
+    holds = (*(config_holds(gov) if gov is not None else ()), *listed, *kept)
     found: list[Hold] = []
     for rec in gone:
         sid = rec.get("source_id")

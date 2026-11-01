@@ -2735,6 +2735,44 @@ def _second_lost_purge(root: Path) -> str:
     return at
 
 
+def test_an_audit_trail_that_is_a_link_to_nothing_is_never_a_lost_trail_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C741's review: a dangling audit.jsonl read as a missing file, so a gone volume read as a lost trail and
+    invited --folder-lost. It is not read, and the act gives its own words, dry run included."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    audit = governance.audit_path(root)
+    audit.unlink()
+    audit.symlink_to(root / "gone-volume" / "audit.jsonl")
+    assert not governance.audit_trail_lost(root)
+    assert governance._audit_read(root) == ([], False)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and "the audit trail records" in failed, failed
+    assert governance.TRAIL_LOST_HEAD not in failed and "--folder-lost" not in failed, failed
+    for extra in ([], ["--dry-run"], ["--folder-lost", "--dry-run"]):
+        assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        assert err.startswith(f"error: state: {audit}") and "symlink to nothing" in err, err
+        assert governance.TRAIL_LOST_HEAD not in err, err
+
+
+def test_a_trail_read_error_no_chmod_fixes_is_its_own_line_never_the_groups_crash_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C741's review: an unread trail's error that is no refused state path re-raised out of the governance
+    group: `check crashed`, and no governance.suppressed line. It stays governance.audit's own."""
+    cfg, root, _at = _erased_and_list_gone(initialised, capsys)
+    audit = governance.audit_path(root)
+    failure = governance.GovernanceError(f"{audit} cannot be opened: Input/output error")
+    failure.__cause__ = OSError(errno.EIO, "Input/output error", str(audit))
+    monkeypatch.setattr(governance, "audit_unread", lambda _root: failure)
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.audit ")], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
+    assert not [ln for ln in out if "check crashed" in ln and " governance " in ln], out
+
+
 def _trail_lost_lines(root: Path) -> int:
     """How many ``audit-trail-lost`` lines audit.jsonl holds, by bytes, whatever they decode as."""
     return governance.audit_path(root).read_bytes().count(b"audit-trail-lost")
@@ -3173,21 +3211,45 @@ def test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_h
     capsys.readouterr()
 
 
+@pytest.mark.parametrize(
+    ("table", "raises"),
+    [('hold = "yes"', AgentSyncError), ('remote_url_prefixes = ["https://host:abc/x"]', ValueError)],
+)
 def test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
+    initialised: Config, capsys: pytest.CaptureFixture[str], table: str, raises: type[Exception]
 ) -> None:
-    """C701's new read of sources.toml, inside the guard's own try: a [governance] it refuses asks for words
-    alone, so the sync's guard still finds the lost queue."""
+    """C701's new read of sources.toml, inside the guard's own try: a [governance] it refuses, by any error,
+    asks for words alone, so the sync's guard still finds the lost queue."""
     cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
     queue = governance._queue_file(root)
     queue.rename(queue.with_suffix(".kept"))
     path = Path(cfg)
-    path.write_text(path.read_text(encoding="utf-8") + '\n[governance]\nhold = "yes"\n', encoding="utf-8")
-    with pytest.raises(AgentSyncError):
+    path.write_text(path.read_text(encoding="utf-8") + f"\n[governance]\n{table}\n", encoding="utf-8")
+    with pytest.raises(raises):
         governance.load_governance(path)
     assert governance.governance_or_none(path) is None
     found = doctor.state_not_a_file(initialised, manifest=False, damaged=True, lost=True)
     assert found is not None and found[0] == governance._queue_file(root), found
+
+
+def test_a_hold_record_that_cannot_be_read_keeps_the_hold_lists_release_clause_c701(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C701's review: one try over both reads dropped the release when only the hold record was shut, though
+    the hold list named the hold that refuses the hand purge."""
+    _cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    record = governance.hold_record_file(root)
+    record.write_text('{"holds": ["all"]}\n', encoding="utf-8")
+    record.chmod(0o000)
+    try:
+        lost = governance.queue_lost(root)
+    finally:
+        record.chmod(0o600)
+    assert lost is not None and "once the records owner decides to release the hold on all (" in lost.fix, (
+        lost.fix
+    )
 
 
 def test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701(
@@ -7609,6 +7671,15 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     (only,) = [ln for ln in out if " governance.purge_queue " in ln]
     assert only.startswith("[info] ") and "judged from agentsync's audit trail alone" in only, only
     assert " no longer holds " not in only, only
+    # a trail there that cannot be read shows nothing either (C733's review; ruling 77)
+    audit = governance.audit_path(root)
+    keep_trail = audit.read_bytes()
+    audit.write_bytes(b"\xff\n")
+    _rc, out = _status(cfg, capsys)
+    (only,) = [ln for ln in out if " governance.purge_queue " in ln]
+    assert only.startswith("[info] ") and "agentsync's audit trail cannot be read either" in only, only
+    assert " alone" not in only and "which shows" not in only, only
+    audit.write_bytes(keep_trail)
     sid = _stable_id(initialised, "projects/sample.txt")
     selector = governance.PurgeSelector(stable_id=sid, source_id="source")
     assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)

@@ -36760,6 +36760,19 @@ cycle.py.
 status path: `test_the_ok_lines_name_no_record_that_is_not_there_c749` and
 `test_the_queue_ok_line_names_no_purge_record_that_is_not_there_c749`.
 
+**The lane's review of C741, C701 and C733.** A dangling audit.jsonl read as a missing file, so a gone volume read as a lost
+trail: `_audit_read` calls a link to nothing not read, and `audit_unread` gives its not-a-file words. An unread trail's
+error that is no refused state path is governance.audit's own line (`doctor.stopped`), never the group's crash. Over a
+trail there that cannot be read, `_trail_alone_words` says `agentsync's audit trail cannot be read either, so nothing shows
+a queued purge the queue lost: ...`. `governance_or_none` takes any error, a remote prefix's ValueError too, so C701's new
+read never lifts the guard around it. `_lost_queue_holds` reads each hold source alone, falling back to `audit_lost_holds`,
+so a shut hold record never drops the hold list's release clause. Tests:
+`test_an_audit_trail_that_is_a_link_to_nothing_is_never_a_lost_trail_c741`,
+`test_a_trail_read_error_no_chmod_fixes_is_its_own_line_never_the_groups_crash_c741`,
+`test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701`,
+`test_a_hold_record_that_cannot_be_read_keeps_the_hold_lists_release_clause_c701` and
+`test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the
