@@ -956,13 +956,15 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not
   damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or
   follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed
-  line`, logged `state-suppressed-lost`; else a purge queue that no longer holds a purge the audit trail records as
+  line`, logged `state-suppressed-lost`; a purge queue that no longer holds a purge the audit trail records as
   queued and not done gives `; step 2 stops at its status step on agentsync's purge queue, which no longer holds a
   purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put
   the purge queue back from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status
-  prints it on its governance.purge_queue line`, logged `state-queue-lost` (the suppression list's when both lost one,
-  as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first; B13 round 30
-  ruling 40, lane RB's dc266be78, C311; B13 round 31 C532). A hold list that no longer lists
+  prints it on its governance.purge_queue line`, logged `state-queue-lost`. When both lost one, the suppression list
+  comes first, as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first,
+  and the queue's clause follows it opening `; the same stop names agentsync's purge queue`, logged
+  `config_err=state-suppressed-lost,state-queue-lost` (B13 round 30 ruling 40, lane RB's dc266be78, C311; B13 round 31
+  C532; B13 round 33 ruling 86, C776). A hold list that no longer lists
   a hold its records keep as set and not released gives `; step 2 stops at its status step on agentsync's hold list,
   which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
   person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),
@@ -982,9 +984,14 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   its <check> line`, `<what>` joining with `, and ` `its records keep a hold as set and not released` (a lost hold,
   whose fix adds `, or the records owner sets the hold again or releases it` and whose `<check>` is
   `governance.hold`, which status's `NEXT:` leads with), `purge-record.json keeps a purge as queued and not done`
-  (`; with no copy, they run each such purge by hand before the next sync`, `governance.purge_queue`) or
+  (`; with no copy, they run each such purge by hand before the next sync`, `governance.purge_queue`) and
   `purge-record.json keeps what a purge suppressed` (`; with no copy, they accept each loss with --folder-lost, as
-  its status line says`, `governance.suppressed`); for a queued purge alone: `; step 2 stops at its status step on
+  its status line says`, `governance.suppressed`), each that is so; with both lists, the usual case since a folder
+  holds both, the suppression list comes first: `while purge-record.json keeps what a purge suppressed, and
+  purge-record.json keeps a purge as queued and not done`, the fix ending `; with no copy, they accept each loss with
+  --folder-lost, as its status line says, and run each such purge by hand before the next sync`, its `<check>`
+  `governance.suppressed`, logged `config_err=state-suppressed-lost,state-queue-lost,state-governance-lost` (B13 round
+  33 ruling 86, C776, C767); for a queued purge alone: `; step 2 stops at its status step on
   agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
   the suppression list in it, while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
   fixing that is the person's (they put agentsync's governance folder back whole from the copy kept; with no copy,
@@ -1005,7 +1012,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   after the config step's (`config_err=state-file-notfile,state-queue-lost`); step 2's config-step `NEXT:` for a
   file that is not a file adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
   lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
-  governance.suppressed line) and ends `once both are fixed, the next run is: ...`. Never when the file that stops
+  governance.suppressed line; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
+  the purge queue lost a purge the audit trail records, also the person's to fix`) and ends `once both are fixed, the
+  next run is: ...`. Never when the file that stops
   first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

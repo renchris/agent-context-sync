@@ -36472,7 +36472,23 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 
-Reserved for round 33 lane RB of B13.
+**Both lists lost a purge: every tail names both** (ruling 86: C776 with C767; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`). `governance.governance_lost` returns the suppression list's loss first and alone,
+and `folder_gone_words` and step 1's and step 2's tails took each list in one `case`, so losing a governance folder
+that held a run purge and a queued one, the usual case, named the suppression list only: the person who accepted that
+loss met the queue's stop unwarned, and `state-queue-lost` was never logged. `LOST_HOLD_PY` keeps `governance_lost` as
+the gate (None over a purge record this account cannot open, whose own chmod FAIL comes first) and asks
+`governance.queue_lost` in its own try when the first loss is suppressed.json, so it says
+`none,lost-suppressed-govgone,lost-queue-govgone`, or `none,lost-suppressed,lost-queue` with the folder there; a build
+without the reader keeps the one word. Each list has its own case, suppression first as status's NEXT leads: the
+folder's words join `, and` with its check `governance.suppressed`, the no-copy fix ending `; with no copy, they accept
+each loss with --folder-lost, as its status line says, and run each such purge by hand before the next sync`, logged
+`config_err=state-suppressed-lost,state-queue-lost,state-governance-lost`; with the folder there one helper,
+`lost_list_tail`, writes step 1's two tails, the queue's clause opening `; the same stop names agentsync's purge queue`
+(status FAILs both at one stop), and step 2's second stop joins `, and, on its governance.purge_queue line in that same
+stop, ...`. Tests: `test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_lost_the_gate`,
+`test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder`, the `suppressed-queue` case of
+`test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`.
 
 ### 16.220 Round 33: an unread audit trail never lost, a hold on every forget branch, the store each lost record credits, and purge's --folder-lost help (2026-11-01, wave B13 round 33 lane B)
 

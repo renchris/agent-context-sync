@@ -1186,7 +1186,11 @@ misplaced_reader() { # PYTHON [SRC]
 # lost_hold_words raises, keeps "lost-hold". A lost list whose fix opens with the same whole-folder put-back
 # (governance/ gone while purge-record.json keeps the purge: lane B's ruling 63 words) adds "-govgone" to its
 # word, ",lost-queue-govgone" or ",lost-suppressed-govgone"; an older build's fix never opens so, and keeps
-# ",lost-queue" or ",lost-suppressed" (B13 round 32 ruling 63).
+# ",lost-queue" or ",lost-suppressed" (B13 round 32 ruling 63). governance_lost returns only the first, the
+# suppression list, so with both lists lost the queue's reader is asked too, in its own try, governance_lost still
+# the gate (it stays None over a purge record this account cannot open, whose own chmod FAIL comes first): the
+# suppression list's word, then the queue's, as status's NEXT leads; a build without the reader adds nothing
+# (B13 round 33 ruling 86: C776, C767).
 LOST_HOLD_PY='
 import os, sys
 from pathlib import Path
@@ -1219,14 +1223,22 @@ if lost:
             said = "lost-hold-govgone"
     except BaseException:
         pass
-try:
-    odd = governance.governance_lost(expand(root))
+def list_word(odd):
     word = {"purge-queue.json": ",lost-queue", "suppressed.json": ",lost-suppressed"}.get(odd.path.name, "") if odd else ""
     if word and str(getattr(odd, "fix", "")).startswith("the person puts agentsync\x27s governance folder ("):
         word += "-govgone"
-    said += word
+    return word
+odd = None
+try:
+    odd = governance.governance_lost(expand(root))
+    said += list_word(odd)
 except BaseException:
     pass
+if odd is not None and odd.path.name == "suppressed.json":
+    try:
+        said += list_word(governance.queue_lost(expand(root)))
+    except BaseException:
+        pass
 print(said)'
 lost_hold_reader() { # PYTHON [SRC]
 	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
@@ -1234,8 +1246,10 @@ lost_hold_reader() { # PYTHON [SRC]
 # With governance/ itself gone, every lost file is the folder's, named once in one tail (B13 round 32 ruling 63,
 # lane B's words): what the records outside it keep, each with its own fix after the whole-folder put-back, the
 # hold's clause only under lost-hold-govgone, and the check status's NEXT leads with (governance.hold when a hold
-# is lost). From the lost-hold reader's verdict; returns 1 when nothing is the folder's. Fixed words: no scope,
-# owner, reason, selector or time.
+# is lost, else the suppression list's when both lists lost one). One case per list, since a folder holds both and
+# losing it usually loses both (B13 round 33 ruling 86: C776, C767): the one branch hid the queue's clause, its log
+# word and its by-hand step. From the lost-hold reader's verdict; returns 1 when nothing is the folder's. Fixed
+# words: no scope, owner, reason, selector or time.
 folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG (the list's own word, then the folder's)
 	GONE_WHAT="" GONE_FIX="they put agentsync's governance folder back whole from the copy kept" GONE_CHECK="" GONE_LOG=""
 	case ",$1," in
@@ -1252,15 +1266,42 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG 
 		GONE_CHECK="${GONE_CHECK:-governance.suppressed}"
 		GONE_LOG=",state-suppressed-lost"
 		;;
+	esac
+	case ",$1," in
 	*,lost-queue-govgone,*)
 		GONE_WHAT="${GONE_WHAT:-while}${GONE_WHAT:+, and} purge-record.json keeps a purge as queued and not done"
-		GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand before the next sync"
+		case ",$1," in
+		*,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand before the next sync" ;;
+		*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand before the next sync" ;;
+		esac
 		GONE_CHECK="${GONE_CHECK:-governance.purge_queue}"
-		GONE_LOG=",state-queue-lost"
+		GONE_LOG="$GONE_LOG,state-queue-lost"
 		;;
 	esac
 	[ -n "$GONE_WHAT" ] || return 1
 	GONE_LOG="$GONE_LOG,state-governance-lost"
+}
+# Step 1's tail for a suppression list and a purge queue that lost a purge, with the folder there: one case per list,
+# the suppression list first as status's NEXT leads, the one status stop naming both (B13 round 33 ruling 86: C776);
+# never the list that CROLE says stops first. LEAD opens the first clause; BYHAND goes before the queue's by-hand run.
+lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
+	local lead="$3"
+	LIST_TAIL="" LIST_LOG=""
+	case ",$1,:$2" in
+	*:role-suppressed) ;;
+	*,lost-suppressed,*)
+		LIST_TAIL="; $lead agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
+		LIST_LOG=",state-suppressed-lost"
+		lead="the same stop names"
+		;;
+	esac
+	case ",$1,:$2" in
+	*:role-queue) ;;
+	*,lost-queue,*)
+		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+		LIST_LOG="$LIST_LOG,state-queue-lost"
+		;;
+	esac
 }
 # The words for the manifest's -wal and -shm that are not files, from a list such as "wal-folder shm-fifo" (each
 # side, then its kind by its own lstat: folder, fifo, socket, symlink or other) that step 1's probe and step 2's
@@ -8525,18 +8566,11 @@ list_folders() {
 		# its status step, once that is fixed: named after it, with its words and its own word in the log, so the
 		# person meets no second stop unwarned; never when the file that stops first is that list itself. A purge
 		# run by hand stops on a damaged purge record, so that fix comes after the first (B13 round 32 C607;
-		# rehearsal probe LOSTQPR). An older build prints neither word: the tail is as before.
-		case ",$chold,:$crole" in
-		*,lost-suppressed,*:role-suppressed | *,lost-queue,*:role-queue) ;;
-		*,lost-suppressed,*)
-			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
-			clog="$clog,state-suppressed-lost"
-			;;
-		*,lost-queue,*)
-			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or, once the first is fixed, run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
-			clog="$clog,state-queue-lost"
-			;;
-		esac
+		# rehearsal probe LOSTQPR). An older build prints neither word: the tail is as before. One case per list,
+		# the suppression list first, as status's NEXT leads: status FAILs both in the one stop (ruling 86: C776).
+		lost_list_tail "$chold" "$crole" "once that is fixed, step 2 stops again at its status step on" ", once the first is fixed, "
+		ctail="$ctail$LIST_TAIL"
+		clog="$clog$LIST_LOG"
 		# with governance/ gone, the folder's words, once (B13 round 32 ruling 63); never when governance/ that is
 		# not a folder is the file that stops first
 		if [ "$crole" != role-governance ] && folder_gone_words "$chold"; then
@@ -8545,24 +8579,17 @@ list_folders() {
 		fi
 	elif [ -n "$chold" ] && [ "$chold" != none ]; then
 		# A suppression list or purge queue that lost a purge the audit trail records fails step 2's status
-		# first, on its governance.suppressed or governance.purge_queue line (the suppression list's when both
-		# lost one: governance_lost, which status's NEXT leads with, reads it before the queue; B13 round 30
-		# ruling 40, C311; round 31 C532's order); then a hold the hold list lost (holds.json moved aside
+		# first, on its governance.suppressed or governance.purge_queue line (the suppression list's first when
+		# both lost one: governance_lost, which status's NEXT leads with, reads it before the queue, and each list
+		# has its own case, the one stop naming both; B13 round 30 ruling 40, C311; round 31 C532's order; round
+		# 33 ruling 86: C776); then a hold the hold list lost (holds.json moved aside
 		# or rewritten as no holds, or a hold only a record names) on its governance.hold line (B13 round 29
 		# ruling 27: C122, C197, C206). Each fix is the person's, and step 1 said "(none is needed)" over that
 		# stop. Only when nothing else is predicted: a config-step stop comes first, and a list that cannot be
 		# read is the misplaced or access tail's. Fixed words: no scope, owner, reason, selector or time.
 		ctail="" clog=""
-		case ",$chold," in
-		*,lost-queue,*)
-			ctail="; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
-			clog=",state-queue-lost"
-			;;
-		*,lost-suppressed,*)
-			ctail="; step 2 stops at its status step on agentsync's suppression list, which no longer lists what a purge the audit trail records suppressed (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
-			clog=",state-suppressed-lost"
-			;;
-		esac
+		lost_list_tail "$chold" "" "step 2 stops at its status step on" ""
+		ctail="$LIST_TAIL" clog="$LIST_LOG"
 		# governance/ itself gone, the audit trail with it, under a hold its records keep: the folder is put back
 		# whole, as status's governance.hold FAIL says from the build's lost_hold_words, never the hold list
 		# alone (B13 round 31 ruling 60: C507; round 30 C313). Its own word; `lost-hold` matches only itself
@@ -9728,8 +9755,12 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")"
 		[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")"
 		case ",$lost,:$STATE_MISPLACED" in
-		*,lost-suppressed,*:suppressed | *,lost-queue,*:queue) ;;
+		*:suppressed) ;;
 		*,lost-suppressed,*) second=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
+		esac
+		case ",$lost,:$STATE_MISPLACED" in
+		*:queue) ;;
+		*,lost-suppressed,lost-queue,*) second="$second, and, on its governance.purge_queue line in that same stop, the purge queue lost a purge the audit trail records, also the person's to fix" ;;
 		*,lost-queue,*) second=" and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge the audit trail records, also the person's to fix" ;;
 		esac
 		# ruling 63: with governance/ gone, in step 1's folder words

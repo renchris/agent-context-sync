@@ -8584,10 +8584,20 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         noun: tail
         for tail, noun in re.findall(
             r'ctail="(?:\$ctail)?(; step 2 stops at its status step on agentsync\'s'
-            r' (purge queue|suppression list|hold list|governance folder)[^"]*)"',
+            r' (hold list|governance folder)[^"]*)"',
             script,
         )
     }
+    # B13 round 33 ruling 86 (C776): each list's clause is one template in lost_list_tail, $lead opening it
+    lists = {
+        noun: clause
+        for clause, noun in re.findall(
+            r'LIST_TAIL="(?:\$LIST_TAIL)?; \$lead (agentsync\'s (purge queue|suppression list)[^"]*)"', script
+        )
+    }
+    assert sorted(lists) == ["purge queue", "suppression list"], sorted(lists)
+    for noun, clause in lists.items():
+        tails[noun] = f"; step 2 stops at its status step on {clause}".replace("${4:- }", " ")
     assert sorted(tails) == ["governance folder", "hold list", "purge queue", "suppression list"], sorted(
         tails
     )
@@ -8626,8 +8636,10 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     for noun, word in words.items():
         if noun == "governance folder":
             continue
-        own = noun == "hold list"  # after a lost list's word, when both
-        assert f'clog="{"$clog" if own else ""},{word}"' in script, word
+        if noun == "hold list":  # after a lost list's word, when both
+            assert f'clog="$clog,{word}"' in script, word
+        else:
+            assert f'LIST_LOG="{"$LIST_LOG" if noun == "purge queue" else ""},{word}"' in script, word
         assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
     assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
     assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section
@@ -8639,24 +8651,28 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     assert section.index(tails["suppression list"]) < section.index(tails["purge queue"])
     # B13 round 32 C607: beside a config-step stop, the list that also lost a purge is the stop that follows
     follows = {
-        noun: tail
-        for tail, noun in re.findall(
-            r'ctail="\$ctail(; once that is fixed, step 2 stops again at its status step on agentsync\'s'
-            r' (purge queue|suppression list)[^"]*)"',
-            script,
+        noun: f"; once that is fixed, step 2 stops again at its status step on {clause}".replace(
+            "${4:- }", ", once the first is fixed, "
         )
+        for noun, clause in lists.items()
     }
-    assert sorted(follows) == ["purge queue", "suppression list"]
     for noun, tail in follows.items():
         assert f"`{tail}`" in section, noun
     assert "(`config_err=state-file-notfile,state-queue-lost`)" in section
     assert "a second stop that follows: the purge queue lost a purge the audit trail records, also" in script
     assert "`and, on its governance.purge_queue line, a second stop that follows: the purge queue" in section
-    assert "(the suppression list's when both lost one, as status's `NEXT:` leads with it" in section
+    assert (
+        "When both lost one, the suppression list comes first, as status's `NEXT:` leads with it" in section
+    )
+    assert "`config_err=state-suppressed-lost,state-queue-lost,state-governance-lost`" in section
+    assert "; the same stop names agentsync's purge queue" in section
+    assert "$LIST_TAIL; $lead agentsync's purge queue" in script and 'lead="the same stop names"' in script
     assert "the purge queue's first when both lost one" not in section
     assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script
     # every state- word install.sh can log after config_err= is one the guide names
-    logged = set(re.findall(r'(?:clog|GONE_LOG)="(?:\$clog|\$GONE_LOG)?,(state-[a-z-]+)"', script))
+    logged = set(
+        re.findall(r'(?:clog|GONE_LOG|LIST_LOG)="(?:\$clog|\$GONE_LOG|\$LIST_LOG)?,(state-[a-z-]+)"', script)
+    )
     assert logged == set(words.values())
     for word in logged:
         assert f"`{word}`" in section, word

@@ -12935,6 +12935,14 @@ GOVGONE_TAILS = {
         "hold again or releases it; with no copy, they run each such purge by hand before the next "
         "sync), and ~/.local/bin/agentsync status prints it on its governance.hold line"
     ),
+    "suppressed-queue": (
+        f"; {GOVGONE_LEAD}"
+        "purge-record.json keeps what a purge suppressed, and purge-record.json keeps a purge as queued "
+        "and not done (not damage, not a mode): fixing that is the person's (they put agentsync's "
+        "governance folder back whole from the copy kept; with no copy, they accept each loss with "
+        "--folder-lost, as its status line says, and run each such purge by hand before the next sync), "
+        "and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
+    ),
 }
 """Step 1's one folder tail with governance/ gone while purge-record.json or the hold record keeps what it
 held (B13 round 32 ruling 63, lane B's words): the folder named once, the hold's clause only under a lost
@@ -12978,7 +12986,73 @@ def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix
     assert _lost_hold_probe(cfg, src) == "none,lost-queue"
 
 
-@pytest.mark.parametrize("lost", ["queue", "suppressed", "hold-queue"])
+def _both_lists_lost_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A config and a state folder whose purge-record.json keeps a run purge and a queued one (made-up
+    ids), the way a purge writes them: both lists hold them, until a test moves one or the folder aside."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    gov = state / "governance"
+    gov.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    at = "2026-10-26T01:00:00Z"
+    item = {"action": "purge", "at": at, "source_id": "alpha", "stable_id_sha256": "a" * 64}
+    summary = {"action": "purge-summary", "at": at, "reason": "erasure-request", "verified": True}
+    (gov / "audit.jsonl").write_text(json.dumps(item) + "\n" + json.dumps(summary) + "\n", encoding="utf-8")
+    (gov / "suppressed.json").write_text(
+        json.dumps({"items": [{"source_id": "alpha", "stable_id": "x"}]}), encoding="utf-8"
+    )
+    sel = governance.PurgeSelector(stable_id="y" * 16, source_id="alpha")
+    assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    governance.record_purges(state)
+    return cfg, state
+
+
+def test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_lost_the_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 ruling 86 (C776, C767): governance_lost returns only the first lost list, so losing a
+    governance folder that held a run purge and a queued one gave `none,lost-suppressed-govgone` alone, while
+    status FAILs both. The probe now asks the queue's reader in its own try, suppression first, as status's
+    NEXT leads. governance_lost stays the gate: over a purge record this account cannot open it gives no
+    list word, since that record's own chmod FAIL comes first; a build without the reader keeps one word."""
+    cfg, state = _both_lists_lost_state(tmp_path, monkeypatch)
+    src = Path(__file__).resolve().parents[1] / "src"
+    gov = state / "governance"
+    gov.rename(state / "governance.kept")
+    assert governance.suppressions_lost(state) and governance.queue_lost(state)
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-govgone,lost-queue-govgone"
+    older = tmp_path / "older"  # an installed build with no queue_lost: the first word alone
+    shutil.copytree(src / "agentsync", older / "agentsync")
+    gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
+    assert gtext.count("def queue_lost(") == 1
+    (older / "agentsync" / "governance.py").write_text(
+        gtext.replace("def queue_lost(", "def _no_queue_lost(").replace(
+            "suppressions_lost(state_dir) or queue_lost(state_dir)", "suppressions_lost(state_dir)"
+        ),
+        encoding="utf-8",
+    )
+    assert _lost_hold_probe(cfg, older) == "none,lost-suppressed-govgone"
+    (state / "governance.kept").rename(gov)
+    for name in ("suppressed.json", "purge-queue.json"):
+        (gov / name).rename(state / f"{name}.kept")
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue"
+    record = state / "purge-record.json"
+    record.chmod(0o000)
+    try:
+        if os.access(record, os.R_OK):
+            pytest.skip("this account opens a 0000 file")
+        assert _lost_hold_probe(cfg, src) == "none"
+    finally:
+        record.chmod(0o600)
+    # a damaged suppression list is that file's own FAIL: only the queue is lost, and its one word says so
+    (gov / "suppressed.json").write_bytes(b"\xff\xfe not json")
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue"
+
+
+@pytest.mark.parametrize("lost", ["queue", "suppressed", "hold-queue", "suppressed-queue"])
 def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     real_env: dict[str, str], wheel: Path, lost: str
 ) -> None:
@@ -12988,7 +13062,9 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     suppression list alone (`the audit trail records`, put that list back), or the folder for the hold
     only. Step 1 now gives one folder tail naming the folder once, the hold's clause only under a lost
     hold, logged with the list's own word beside `state-governance-lost`; putting the folder back, as the
-    words say, ends it."""
+    words say, ends it. With both lists lost (the usual case: a folder holds both) both clauses show, and the
+    no-copy branch names the hand purge that the suppression list's acceptance leaves (ruling 86: C776, C767:
+    its one case arm hid the queue's clause, log word and by-hand step, a second stop no line named)."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -12998,7 +13074,7 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     assert first.returncode == 0, first.stdout + first.stderr
     root = _state_db(env).parent
     agentsync = f"{env['HOME']}/.local/bin/agentsync"
-    if lost == "suppressed":
+    if lost.startswith("suppressed"):
         purged = subprocess.run(
             [agentsync, "purge", "path=notes.txt", "--reason", "erasure-request"],
             capture_output=True,
@@ -13007,7 +13083,7 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
             env=env,
         )
         assert purged.returncode == 0, purged.stdout + purged.stderr
-    else:
+    if lost != "suppressed":
         sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
         assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
     if lost == "hold-queue":
@@ -13027,8 +13103,11 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     assert last_line(listed).count("agentsync's governance folder, which is missing") == 1
     assert "the audit trail records" not in last_line(listed), last_line(listed)
     log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
-    word = "state-suppressed-lost" if lost == "suppressed" else "state-queue-lost"
-    assert f"config_err={word},state-governance-lost" in log, log
+    word = {
+        "suppressed": "state-suppressed-lost",
+        "suppressed-queue": "state-suppressed-lost,state-queue-lost",
+    }
+    assert f"config_err={word.get(lost, 'state-queue-lost')},state-governance-lost" in log, log
     kept.rename(gov)  # the person puts the governance folder back whole from the copy kept
     assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
 
@@ -13144,6 +13223,71 @@ def test_step_1_predicts_a_purge_list_that_lost_a_purge_and_step_2_names_its_kin
     assert LOST_LIST_TAILS[lost] not in last_line(install_sh(env, "--list-folders"))
     again = install_sh(env, str(wheel))
     assert fail not in again.stdout + again.stderr, again.stdout + again.stderr
+
+
+def test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 33 ruling 86 (C776), with the real agentsync, the folder there: a run purge's suppression
+    list and a queued purge's queue both moved aside. Status FAILs both in one stop, suppression first, but
+    each of the three tails named one list by its first match, so the person who fixed it met the other
+    unwarned. Step 1 and step 2's second stop now name both, logged with both words; a config-step stop
+    beside them says so too, and putting one list back leaves the other named alone."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("made-up notes\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    purged = subprocess.run(
+        [f"{env['HOME']}/.local/bin/agentsync", "purge", "path=notes.txt", "--reason", "erasure-request"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert purged.returncode == 0, purged.stdout + purged.stderr
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    gov = root / "governance"
+    for name in ("suppressed.json", "purge-queue.json"):
+        (gov / name).rename(gov / f"{name}.kept")
+    same_stop = (
+        "; the same stop names agentsync's purge queue, which no longer holds a purge the audit trail "
+        "records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge "
+        "queue back from a copy they trust, or"
+    )
+    queue_end = (
+        "run each such purge by hand), and ~/.local/bin/agentsync status prints it on its "
+        "governance.purge_queue line"
+    )
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert tail.endswith(LOST_LIST_TAILS["suppressed"] + same_stop + " " + queue_end), tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-suppressed-lost,state-queue-lost" in log, log
+    lock = root / "agentsync.lock"
+    if lock.exists():
+        lock.unlink()
+    lock.mkdir()
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert tail.endswith(same_stop + ", once the first is fixed, " + queue_end), tail
+    assert tail.index("on its governance.suppressed line") < tail.index("the same stop names"), tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-file-notfile,state-suppressed-lost,state-queue-lost" in log, log
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        "on its lock line and, on its governance.suppressed line, a second stop that follows: the "
+        "suppression list lost a purge the audit trail records, also the person's to fix, and, on its "
+        "governance.purge_queue line in that same stop, the purge queue lost a purge the audit trail "
+        "records, also the person's to fix): fixing it is the person's ("
+    ) in last_line(cp), last_line(cp)
+    assert "; once both are fixed, the next run is: " in last_line(cp)
+    lock.rmdir()
+    (gov / "suppressed.json.kept").replace(gov / "suppressed.json")  # one list back: the other named alone
+    assert last_line(install_sh(env, "--list-folders")).endswith(LOST_LIST_TAILS["queue"])
 
 
 def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(
