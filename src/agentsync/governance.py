@@ -5480,7 +5480,8 @@ def forget_queued(
     """Take off the queue the one entry ``selector`` names (a source and id), only an ``upstream-deleted`` or
     ``label-escalation`` entry whose id reaches nothing: one a queue run looked up and found nothing for
     (``found_nothing``), else one :func:`_forget_probe` looks up here as that run would, dry, and finds
-    nothing for, so forgetting one entry never runs the rest of the queue (B13 round 31 C565). It writes a
+    nothing for, so forgetting one entry never runs the rest of the queue (B13 round 31 C565). A hold covering
+    its source refuses either way, dry run included (B13 round 33 C778; ruling 78). It writes a
     ``purge-forgotten`` audit line, under the writer lock; a refused audit trail drops nothing (A79).
     ``dry_run`` makes the same look-up, says what it would take off and writes nothing. Any other entry is
     refused with why it stays queued, a DLP, erasure or operator entry by its kind, which no run makes one
@@ -5510,7 +5511,19 @@ def forget_queued(
                 "upstream-deleted or label-escalation entry whose id reaches nothing in the docs history; "
                 f"`{AGENTSYNC_BIN} purge --queue` runs it"
             )
-        if not q.found_nothing:
+        if q.found_nothing:
+            # no look-up here, but the holds are read all the same, and in the probe's words: a hold set after
+            # the run that marked it covers its source (B13 round 33 C778; ruling 78). Not caught past a hold
+            # list that cannot be read, which raises as in the queue's run
+            sources = sorted({str(q.selector.source_id)} | {s for s, _i in _stored_ids(q)})
+            try:
+                _refuse_if_held(
+                    blocking_holds(active_holds(sp.root, load_governance(config.config_path)), sources),
+                    "purge",
+                )
+            except HoldActiveError as exc:
+                raise GovernanceError(f"not forgotten: stays queued: {exc}") from exc
+        else:
             # no run marked it: looked up here, dry, as the queue's run judges it, so forgetting one entry
             # never runs every other queued erasure first (B13 round 31 C565, C371's half (4))
             _forget_probe(config, q, now)

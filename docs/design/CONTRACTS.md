@@ -36626,6 +36626,15 @@ records`. Tests: `test_an_audit_trail_this_account_cannot_open_is_never_a_lost_t
 `test_a_trail_that_is_not_utf8_fails_its_own_check_and_takes_no_loss_line_c741` and
 `test_a_trail_really_gone_still_reads_as_lost_c741`.
 
+**C778 (ruling 78; data integrity).** `forget_queued`'s `found_nothing` branch read no hold, so a hold set after the run
+that marked the entry took no effect: rc 0, the entry gone, a `purge-forgotten` line. Before the dry-run return it now runs
+`_refuse_if_held(blocking_holds(active_holds(<root>, load_governance(<config>)), <the queued source and every source
+among its stored aliases>), "purge")` and raises `not forgotten: stays queued: <the hold's refusal>`, `_forget_probe`'s
+words; the unmarked branch stays, and a hold list that cannot be read raises as in the queue's run. Ruling 69's help is
+then true and does not change. Test:
+`test_forget_of_an_entry_a_run_found_nothing_for_stops_at_a_hold_set_after_that_run_c778`, over a hold on the source, on
+all, a lost hold and an unreadable holds.json, with the release and the forget after it.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

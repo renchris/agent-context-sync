@@ -12020,6 +12020,57 @@ def test_forget_of_an_entry_whose_id_reaches_a_page_under_a_hold_says_the_queue_
     assert governance.pending_purges(root) == [q]
 
 
+@pytest.mark.parametrize("how", ["source", "all", "lost", "unread"])
+def test_forget_of_an_entry_a_run_found_nothing_for_stops_at_a_hold_set_after_that_run_c778(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 33 C778 (ruling 78): the found_nothing branch skipped the one hold read on forget's path, so
+    a hold set after the run that marked the entry took no effect: rc 0, the entry gone, a purge-forgotten
+    line, against the help's `refused while ... a hold covers its source`. Forget and its dry run refuse in
+    the probe's words under a hold on the source or on all and a lost hold, and on the hold list's own error
+    when it cannot be read; the same forget goes after the release."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    purge = ["purge", "--queue", "--config", cfg]
+    selector = governance.PurgeSelector.parse("id=contoso-volume:retired-0042", source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.UPSTREAM_DELETED)
+    assert cli.main(purge) == cli.EXIT_OK
+    (q,) = governance.pending_purges(root)
+    assert q.found_nothing
+    scope = "all" if how == "all" else "source"
+    assert cli.main(["hold", scope, "--reason", "matter 7", "--owner", "legal", "--config", cfg]) == 0
+    holds = governance._holds_file(root)
+    keep = holds.read_bytes()
+    if how == "lost":
+        holds.write_text('{"holds": []}\n', encoding="utf-8")
+    elif how == "unread":
+        holds.write_text("{", encoding="utf-8")
+    capsys.readouterr()
+    forget = _forget_argv(cfg, q.selector.stable_id)
+
+    def forgotten() -> list[dict[str, object]]:
+        return [r for r in governance.read_audit(root) if r.get("action") == "purge-forgotten"]
+
+    for argv in (forget, [*forget, "--dry-run"]):
+        assert cli.main(argv) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        if how == "unread":
+            assert err.startswith("error: state: ") and "is not the hold list agentsync can read" in err, err
+        else:
+            assert "not forgotten: stays queued: purge suspended by legal/records hold: " in err, err
+            assert "Release it first (records owner)." in err, err
+        assert "purge --queue`" not in err, err
+    assert governance.pending_purges(root) == [q] and not forgotten()
+    holds.write_bytes(keep)
+    assert cli.main(["hold", scope, "--release", "--owner", "legal", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main([*forget, "--dry-run"]) == cli.EXIT_OK
+    assert governance.pending_purges(root) == [q] and not forgotten()
+    assert cli.main(forget) == cli.EXIT_OK
+    assert governance.pending_purges(root) == [] and len(forgotten()) == 1
+    capsys.readouterr()
+
+
 def test_forget_under_a_hold_on_its_source_refuses_with_the_hold(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
