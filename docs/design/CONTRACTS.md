@@ -35883,6 +35883,8 @@ governance.suppressed) inside its bracket, ending `once both are fixed, the next
 neither word and the words stay as before. Tests: `test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops`
 (the real agentsync; after the record is moved aside, step 1 gives the plain lost-queue tail) and the guide's quotes
 in `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+Amended 2026-11-01, §16.219 C737: every config_failed NEXT that ends `once it is fixed` asks that reader through
+`second_stop_words`, not the misplaced branch alone.
 
 **Step 1 names a missing governance folder once, for every list it kept** (ruling 63's install.sh half, lane B's
 words; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). Since lane B's ruling 63 every lost-file FAIL while
@@ -35902,7 +35904,7 @@ suppressed`, `; with no copy, they accept each loss with --folder-lost, as its s
 is C507's, byte for byte. It is logged with the list's own word beside the folder's
 (`config_err=state-queue-lost,state-governance-lost`). Beside a config-step stop, C607's second stop and step 2's
 NEXT use the same words (`a second stop that follows: agentsync's governance folder is missing while <what>, also the
-person's to fix (<fixes>)`). Step 2's status-step NEXT keeps the person's-kinds list, which lane B left unchanged.
+person's to fix: <fixes>`). Step 2's status-step NEXT keeps the person's-kinds list, which lane B left unchanged.
 The tail's parts are printed literals with hold words, so lane RA's C634 scan reads `GONE_WHAT` and `GONE_FIX` too
 (`tests/test_setup_report.py`, `_INSTALL_PRINTED`), and the hold's part keeps the listed phrase `while its records
 keep a hold as set and not released` whole (ruling 68).
@@ -36471,6 +36473,24 @@ Not built: C771's F3 and F4 are ruling 80's and ruling 86's, lanes B and RB. C72
 budget from the load, is optional and left out: the variable is the supported way.
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
+
+**Every config-step NEXT names the stop that follows** (C737, C736; rulings 85 and 86; amends §16.214 C607;
+`scripts/install.sh`, `docs/deploy/setup-feedback.md`). Step 1 named a lost list's second stop beside any config-step
+stop, but step 2 read the reader only in config_failed's misplaced branch, so a lost manifest, another account's file,
+a refused value or a damaged manifest beside a lost list ended `once it is fixed, the next run is:` and the re-run
+stopped on a line no step 2 words named. `second_stop_words EXCLUDE` asks the reader (the checkout's build, else the
+installed one) for every NEXT that ends so: the rc 78 form that loads, the state folder that is not a folder, the
+misplaced file (EXCLUDE: its role, so the list itself is never its own second stop), the lost manifest, another
+account's file, the file that is not a file, the side files, the refusal and rc 65, each with `$SECOND` inside its status
+bracket and `once both are fixed` (`once all are fixed` after the plural side-file NEXT's `once they are fixed`). The
+heartbeat's chmod form puts it in its bracket too, not after `if the re-run stops on the lost manifest` as the verifier
+wrote: `$SECOND` reads `and, on its <check> line, ...`, which only a status clause can carry; it has no `once`. The two
+chmod NEXTs stay, since the agent's re-run reaches the status step, whose NEXT names the list; `once it loads` stays,
+since a config that does not load gives the reader nothing to read. Step 1's clause is not narrowed. With governance/
+gone the fix follows a colon, `also the person's to fix: <fixes>`, since the NEXT's own bracket holds it (no `))`).
+Tests: `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict`,
+`test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follows`,
+`test_a_config_step_stop_beside_a_lost_queue_names_the_stop_that_follows`.
 
 **Both lists lost a purge: every tail names both** (ruling 86: C776 with C767; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). `governance.governance_lost` returns the suppression list's loss first and alone,

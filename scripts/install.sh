@@ -9736,39 +9736,51 @@ state_stop_holds() {
 	state_not_a_folder || state_misplaced || state_lost || state_owned_elsewhere || state_not_a_file ||
 		state_side_not_a_file || [ -n "$(state_open_fix)" ]
 }
+# A purge queue or suppression list that also lost a purge is a stop that follows any config-step stop, named as step
+# 1's tail names it, or the person meets it unwarned; the error above names only the first (B13 round 32 C607; round
+# 33 ruling 86: C737, every NEXT that ends "once it is fixed", where only the misplaced branch asked). Sets SECOND,
+# which goes inside the NEXT's status bracket, so it holds no bracket of its own (ruling 85: C736, the colon before
+# GONE_FIX), and ONCE, "once both are fixed" when it names one. EXCLUDE: the list this stop itself is, by its
+# misplaced_words role. An older build prints no word, and the words stay "once it is fixed". The two chmod NEXTs
+# never ask: the agent's re-run reaches the status step, whose own NEXT names the list.
+second_stop_words() { # EXCLUDE
+	local lost=""
+	SECOND="" ONCE="once it is fixed"
+	lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")"
+	[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")"
+	case ",$lost,:$1" in
+	*:suppressed) ;;
+	*,lost-suppressed,*) SECOND=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
+	esac
+	case ",$lost,:$1" in
+	*:queue) ;;
+	*,lost-suppressed,lost-queue,*) SECOND="$SECOND, and, on its governance.purge_queue line in that same stop, the purge queue lost a purge the audit trail records, also the person's to fix" ;;
+	*,lost-queue,*) SECOND=" and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge the audit trail records, also the person's to fix" ;;
+	esac
+	# ruling 63: with governance/ gone, in step 1's folder words
+	if [ "$1" != governance ] && folder_gone_words "$lost"; then
+		SECOND=" and, on its $GONE_CHECK line, a second stop that follows: agentsync's governance folder is missing $GONE_WHAT, also the person's to fix: $GONE_FIX"
+	fi
+	[ -z "$SECOND" ] || ONCE="once both are fixed"
+}
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
-	local rc=$?
+	local rc=$? once=""
 	if [ "$rc" -eq 78 ]; then
 		if [ -n "$(synced_count)" ]; then
-			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses a value in it or in policy.toml beside it (the configuration error above names the file; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+			second_stop_words ""
+			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses a value in it or in policy.toml beside it (the configuration error above names the file; ~/.local/bin/agentsync status prints it again$SECOND): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 		elif [ "$CONFIG_STATE" != "created" ]; then
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
 	fi
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
-		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		second_stop_words ""
+		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line$SECOND): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_misplaced && misplaced_words "$STATE_MISPLACED" "$STATE_MISPLACED_KIND"; then
 		# init's not-a-file guard runs before it opens anything, so ahead of the lost manifest and the owner's
-		# (B13 round 27 ruling 16). A purge queue or suppression list that also lost a purge is a second stop that
-		# follows, named as step 1's tail names it (B13 round 32 C607): the error above names only the first file
-		local lost="" second="" once="once it is fixed"
-		lost="$(lost_hold_reader "$TOOL_PY" "$repo/src")"
-		[ -n "$lost" ] || lost="$(lost_hold_reader "$TOOL_PY")"
-		case ",$lost,:$STATE_MISPLACED" in
-		*:suppressed) ;;
-		*,lost-suppressed,*) second=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
-		esac
-		case ",$lost,:$STATE_MISPLACED" in
-		*:queue) ;;
-		*,lost-suppressed,lost-queue,*) second="$second, and, on its governance.purge_queue line in that same stop, the purge queue lost a purge the audit trail records, also the person's to fix" ;;
-		*,lost-queue,*) second=" and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge the audit trail records, also the person's to fix" ;;
-		esac
-		# ruling 63: with governance/ gone, in step 1's folder words
-		if [ "$STATE_MISPLACED" != governance ] && folder_gone_words "$lost"; then
-			second=" and, on its $GONE_CHECK line, a second stop that follows: agentsync's governance folder is missing $GONE_WHAT, also the person's to fix ($GONE_FIX)"
-		fi
-		[ -z "$second" ] || once="once both are fixed"
-		FAIL_NEXT="$MISPLACED_NOUN $MISPLACED_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line$second): fixing it is the person's ($MISPLACED_FIX), not a step for the agent, so show them the error and go on to the report; $once, the next run is: $SELF$RERUN_ARGS"
+		# (B13 round 27 ruling 16)
+		second_stop_words "$STATE_MISPLACED"
+		FAIL_NEXT="$MISPLACED_NOUN $MISPLACED_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its $MISPLACED_CHECK line$SECOND): fixing it is the person's ($MISPLACED_FIX), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_lost; then
 		# a symlink to nothing in a folder a sync can write: named as one, the same fix (round 26 E19); a symlink
 		# into a folder that is gone or refuses a write: the link goes first (round 25 D79: D-L1c); heartbeat.json
@@ -9790,22 +9802,28 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			[ -z "$STATE_LOST_UNREAD" ] || lfact="empty or too short to be a manifest, and heartbeat.json beside it cannot be read, so earlier passes cannot be ruled out"
 		fi
 		! round28_pending || lfix="$ROUND28_FIRST${lfix/they remove the link first; /they remove the link; }" # a round 28 hold record goes with heartbeat.json (C351); its lead says "first" once (B13 round 31 ruling 60: C543, lane B's words)
-		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		second_stop_words ""
+		FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line$SECOND): fixing it is the person's ($lfix), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 		# heartbeat.json this account's own at a mode that refuses it: its chmod leads, the agent's, as status's
 		# NEXT leads with it (B13 round 28 ruling 21, lane B's I42); only a stop after it is the person's
 		[ -z "$STATE_LOST_HBFIX" ] ||
-			FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first: run $STATE_LOST_HBFIX once, then re-run: $SELF$RERUN_ARGS; if the re-run stops on the lost manifest, fixing that is the person's ($lfix), not a step for the agent, so show them the error and go on to the report"
+			FAIL_NEXT="agentsync's state file, manifest.sqlite, is $lwhat$lfact (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line$SECOND): heartbeat.json's mode refuses this account (a mode, not damage), so the fix is the agent's first: run $STATE_LOST_HBFIX once, then re-run: $SELF$RERUN_ARGS; if the re-run stops on the lost manifest, fixing that is the person's ($lfix), not a step for the agent, so show them the error and go on to the report"
 	elif [ "$rc" -eq 1 ] && state_owned_elsewhere; then
-		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		second_stop_words ""
+		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it$SECOND): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then
-		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		second_stop_words ""
+		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line$SECOND): fixing it is the person's (keeping a copy, they put the file back, or move the folder aside and heartbeat.json with it, so the next sync starts a new manifest$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_side_not_a_file; then
 		# which side and what is there, every one: init's error names the first (B13 round 27 P21, P119)
 		side_words "$STATE_SIDE_BAD"
+		second_stop_words ""
 		if [ "$SIDE_N" -gt 1 ]; then
-			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names the first; ~/.local/bin/agentsync status prints each and its fix on its state_dir.files lines): fixing them is the person's (keeping a copy, they move each aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once they are fixed, the next run is: $SELF$RERUN_ARGS"
+			once="once they are fixed"
+			[ -z "$SECOND" ] || once="once all are fixed"
+			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names the first; ~/.local/bin/agentsync status prints each and its fix on its state_dir.files lines$SECOND): fixing them is the person's (keeping a copy, they move each aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; $once, the next run is: $SELF$RERUN_ARGS"
 		else
-			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.files line): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+			FAIL_NEXT="$SIDE_NOUN $SIDE_IS (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.files line$SECOND): fixing it is the person's (keeping a copy, they move it aside$SHUT_OPEN), not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 		fi
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ]; then
 		local fix
@@ -9818,7 +9836,8 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"
 			;;
 		refused)
-			FAIL_NEXT="this account is refused agentsync's state folder or a file in it, and no change of that folder's or file's mode fixes that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines; a fix it names for a folder above it, even a chmod, is the person's): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+			second_stop_words ""
+			FAIL_NEXT="this account is refused agentsync's state folder or a file in it, and no change of that folder's or file's mode fixes that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines; a fix it names for a folder above it, even a chmod, is the person's$SECOND): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
 			;;
 		esac
 	fi
@@ -9828,8 +9847,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
 		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
 	fi
-	[ "$rc" -ne 65 ] ||
-		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+	if [ "$rc" -eq 65 ]; then
+		second_stop_words ""
+		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again$SECOND): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; $ONCE, the next run is: $SELF$RERUN_ARGS"
+	fi
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line

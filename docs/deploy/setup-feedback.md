@@ -1009,12 +1009,13 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the
   person's (they put the purge queue back from a copy they trust, or, once the first is fixed, run each such
   purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line`, its word logged
-  after the config step's (`config_err=state-file-notfile,state-queue-lost`); step 2's config-step `NEXT:` for a
-  file that is not a file adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
+  after the config step's (`config_err=state-file-notfile,state-queue-lost`); step 2's config-step `NEXT:` for any
+  config-step stop (other than the list itself) adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
   lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
   governance.suppressed line; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
   the purge queue lost a purge the audit trail records, also the person's to fix`) and ends `once both are fixed, the
-  next run is: ...`. Never when the file that stops
+  next run is: ...`, or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
+  with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). Never when the file that stops
   first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

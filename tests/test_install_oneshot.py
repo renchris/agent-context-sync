@@ -13148,11 +13148,12 @@ def test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_aft
     assert (
         "on its lock line and, on its governance.purge_queue line, a second stop that follows: "
         "agentsync's governance folder is missing while purge-record.json keeps a purge as queued and "
-        "not done, also the person's to fix (they put agentsync's governance folder back whole from the "
-        "copy kept; with no copy, they run each such purge by hand before the next sync)): fixing it is "
+        "not done, also the person's to fix: they put agentsync's governance folder back whole from the "
+        "copy kept; with no copy, they run each such purge by hand before the next sync): fixing it is "
         "the person's ("
     ) in last_line(cp), last_line(cp)
     assert "; once both are fixed, the next run is: " in last_line(cp)
+    assert "))" not in last_line(cp), last_line(cp)  # one bracket (B13 round 33 ruling 85: C736)
 
 
 LOST_LIST_TAILS = {
@@ -13256,8 +13257,8 @@ def test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder(
         (gov / name).rename(gov / f"{name}.kept")
     same_stop = (
         "; the same stop names agentsync's purge queue, which no longer holds a purge the audit trail "
-        "records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge "
-        "queue back from a copy they trust, or"
+        "records as queued and not done (not damage, not a mode): fixing that is the person's (they put the "
+        "purge queue back from a copy they trust, or"
     )
     queue_end = (
         "run each such purge by hand), and ~/.local/bin/agentsync status prints it on its "
@@ -13288,6 +13289,118 @@ def test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder(
     lock.rmdir()
     (gov / "suppressed.json.kept").replace(gov / "suppressed.json")  # one list back: the other named alone
     assert last_line(install_sh(env, "--list-folders")).endswith(LOST_LIST_TAILS["queue"])
+
+
+def _second_stop(verdict: str, exclude: str = "") -> tuple[str, str]:
+    """install.sh's second_stop_words under bash 3.2, the reader saying ``verdict``: (SECOND, ONCE)."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(
+        re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", text, re.M | re.S).group(0)  # type: ignore[union-attr]
+        for name in ("folder_gone_words", "second_stop_words")
+    )
+    script = (
+        f"{fns}\n"
+        f"lost_hold_reader() {{ [ -z \"${{2:-}}\" ] && printf '%s\\n' {shlex.quote(verdict)}; return 0; }}\n"
+        f"repo=/nowhere TOOL_PY=python3\n"
+        f"second_stop_words {shlex.quote(exclude)}\n"
+        'printf "%s\\n%s\\n" "$SECOND" "$ONCE"\n'
+    )
+    cp = subprocess.run([BASH32, "-c", script], capture_output=True, text=True, check=True, timeout=60)
+    second, once = cp.stdout.splitlines()
+    return second, once
+
+
+QUEUE_SECOND = (
+    " and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge the "
+    "audit trail records, also the person's to fix"
+)
+SUPPRESSED_SECOND = (
+    " and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge "
+    "the audit trail records, also the person's to fix"
+)
+
+
+def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict() -> None:
+    """B13 round 33 ruling 86 (C737 with C736's colon): every config_failed NEXT names the stop that follows
+    from one helper, which reads the checkout's build, else the installed one. An older build says nothing
+    and the NEXT stays `once it is fixed`; the list that stops first is never named again; with governance/
+    gone the folder's words carry the fix after a colon, since SECOND goes inside the NEXT's own bracket."""
+    assert _second_stop("") == ("", "once it is fixed")
+    assert _second_stop("none") == ("", "once it is fixed")
+    assert _second_stop("lost-hold") == ("", "once it is fixed")
+    assert _second_stop("none,lost-queue") == (QUEUE_SECOND, "once both are fixed")
+    assert _second_stop("none,lost-suppressed") == (SUPPRESSED_SECOND, "once both are fixed")
+    both = _second_stop("none,lost-suppressed,lost-queue")
+    assert both[0].startswith(
+        SUPPRESSED_SECOND + ", and, on its governance.purge_queue line in that same stop, "
+    )
+    assert both[1] == "once both are fixed"
+    assert _second_stop("none,lost-queue", "queue") == ("", "once it is fixed")
+    assert _second_stop("none,lost-suppressed", "suppressed") == ("", "once it is fixed")
+    assert _second_stop("none,lost-queue-govgone", "governance") == ("", "once it is fixed")
+    gone, once = _second_stop("lost-hold-govgone,lost-suppressed-govgone,lost-queue-govgone")
+    assert once == "once both are fixed" and "(" not in gone and ")" not in gone, gone
+    assert gone.startswith(
+        " and, on its governance.hold line, a second stop that follows: agentsync's governance"
+    )
+    assert "also the person's to fix: they put agentsync's governance folder back whole" in gone, gone
+
+
+def test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follows() -> None:
+    """B13 round 33 ruling 86 (C737): step 1 names the second stop beside any config-step stop, but only
+    config_failed's misplaced branch did, so the other NEXTs sent the person to a stop no step 2 line named.
+    The two chmod NEXTs keep their re-run, whose status step names the list."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    body = text.split("\nconfig_failed() {", 1)[1].split("\n}\n", 1)[0]
+    assert "once it is fixed, the next run is" not in body
+    nexts = [ln for ln in body.splitlines() if 'FAIL_NEXT="' in ln and "$ONCE, the next run is: " in ln]
+    assert len(nexts) == 9, nexts
+    assert all("$SECOND)" in ln for ln in nexts), nexts
+    assert body.count('second_stop_words "') == 9, "each branch asks, once, before its words"
+    hbmode = next(ln for ln in body.splitlines() if "so the fix is the agent's first" in ln)
+    assert "$SECOND)" in hbmode and "$ONCE" not in hbmode, hbmode
+
+
+@pytest.mark.parametrize("stop", ["lost-manifest", "manifest-folder"])
+def test_a_config_step_stop_beside_a_lost_queue_names_the_stop_that_follows(
+    real_env: dict[str, str], wheel: Path, stop: str
+) -> None:
+    """B13 round 33 ruling 86 (C737), with the real agentsync, followed: a queued purge whose
+    purge-queue.json moved aside, beside a lost manifest or a folder at the manifest. Step 2's NEXT named only
+    the first, ending `once it is fixed`, and the re-run the words promised stopped on
+    governance.purge_queue. It now names both, and with nothing else lost the NEXT is as before."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    kept = db.with_name("manifest.sqlite.kept")
+    db.rename(kept)
+    if stop == "manifest-folder":
+        db.mkdir()
+    alone = install_sh(env, str(wheel))
+    assert alone.returncode == 1, alone.stdout + alone.stderr
+    assert "; once it is fixed, the next run is: " in last_line(alone), last_line(alone)
+    assert "a second stop that follows" not in last_line(alone), last_line(alone)
+    root = db.parent
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    queue = root / "governance" / "purge-queue.json"
+    queue.rename(queue.with_name("purge-queue.json.kept"))
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert f"on its state_dir.manifest line{QUEUE_SECOND}): fixing it is the person's (" in last_line(cp), (
+        last_line(cp)
+    )
+    assert "; once both are fixed, the next run is: " in last_line(cp), last_line(cp)
+    if stop == "manifest-folder":
+        db.rmdir()
+    kept.rename(db)  # the first stop fixed, as the words say: the second is the one named
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 1, again.stdout + again.stderr
+    assert "[FAIL] governance.purge_queue " in again.stdout + again.stderr, again.stdout + again.stderr
 
 
 def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(
