@@ -545,3 +545,91 @@ def test_a_fresh_worktrees_gate_runs_npm_ci_once_and_only_when_node_modules_is_m
         "A fresh worktree has no node_modules (it is gitignored); scripts/gate.sh runs `npm ci` once when it"
         " is missing."
     ) in lanes
+
+
+@pytest.mark.parametrize(
+    ("rc", "name"),
+    [("129", "SIGHUP"), ("130", "SIGINT"), ("137", "SIGKILL"), ("143", "SIGTERM")],
+)
+def test_a_land_gate_a_signal_stopped_says_so_and_the_land_stays_refused(
+    remote: Path, tmp_path: Path, env: dict[str, str], rc: str, name: str
+) -> None:
+    """B13 round 33 C769's gate half: ship-land printed `the land gate is red` for any non-zero gate, so a
+    gate the machine killed (rc 137 on tree 05371f13, green on the same tree an hour later) read as a test
+    verdict. It names the signal and says there is no test verdict. It never says green or `not red`, since a
+    SIGKILL can come from the diff itself, and the land stays refused, exit 5, with nothing pushed."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    cp = _land(clone, {**env, "STUB_GATE_RC": rc}, "--no-ci")
+    assert cp.returncode == 5, cp.stdout + cp.stderr
+    assert (
+        f"ship-land: the land gate was stopped by {name} before it reported (no test verdict;" in cp.stderr
+        and "; nothing pushed" in cp.stderr
+    )
+    assert "is red" not in cp.stderr and "not red" not in cp.stderr and "green" not in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
+@pytest.mark.parametrize("rc", ["1", "2", "127", "128", "200"])
+def test_a_land_gate_no_signal_stopped_keeps_the_plain_red_line(
+    remote: Path, tmp_path: Path, env: dict[str, str], rc: str
+) -> None:
+    """C769: only a status a signal names reads as a stop; rc 1 to 128, and a code past the signals, stay
+    red."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    cp = _land(clone, {**env, "STUB_GATE_RC": rc}, "--no-ci")
+    assert cp.returncode == 5, cp.stdout + cp.stderr
+    assert "ship-land: the land gate is red; nothing pushed" in cp.stderr
+    assert "stopped by" not in cp.stderr
+
+
+def test_a_real_sigkill_of_the_land_gate_is_named(remote: Path, tmp_path: Path, env: dict[str, str]) -> None:
+    """C769: the gate process itself killed, as jetsam kills it, not a stand-in's exit status."""
+    clone = _clone(remote, tmp_path / "a", env)
+    (clone / "scripts" / "gate.sh").write_text('#!/bin/bash\nkill -KILL "$$"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "one"], cwd=clone, check=True, env=env)
+    before = _git(remote, "rev-parse", "main")
+    cp = _land(clone, env, "--no-ci")
+    assert cp.returncode == 5, cp.stdout + cp.stderr
+    assert "was stopped by SIGKILL before it reported" in cp.stderr and "is red" not in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+@pytest.mark.parametrize(("rc", "name"), [("137", "SIGKILL"), ("143", "SIGTERM")])
+def test_a_pytest_part_a_signal_stopped_says_so_and_the_gate_exits_with_its_status(
+    tmp_path: Path, env: dict[str, str], mode: str, rc: str, name: str
+) -> None:
+    """C769: in land mode a pytest part a signal stopped ended gate.sh under set -e with no line of its own;
+    in lane mode the same. The part says which signal, with no verdict on its tests, the verdict log keeps the
+    rc, and the later parts do not run."""
+    args = ["--lane"] if mode == "lane" else []
+    done, log = _real_gate(tmp_path, env, *args, STUB_PYTEST_RC=rc)
+    assert done.returncode == int(rc), done.stdout + done.stderr
+    assert f"== scan stopped by {name} (rc {rc}) before it reported a verdict" in done.stdout
+    assert "GATE GREEN" not in done.stdout
+    assert "test_deploy_pack.py" not in "".join(ln for ln in log if " --collect-only " not in ln)
+    verdicts = (tmp_path / "repo" / ".git" / "gate-verdicts.log").read_text(encoding="utf-8")
+    assert f" mode={mode} " in verdicts and f" rc={rc} " in verdicts
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+def test_a_pytest_part_that_failed_says_nothing_of_a_signal(
+    tmp_path: Path, env: dict[str, str], mode: str
+) -> None:
+    """C769: a part that reported red (rc 1), or one with a code no signal names, keeps pytest's own exit."""
+    args = ["--lane"] if mode == "lane" else []
+    for rc in ("1", "200"):
+        done, _log = _real_gate(tmp_path, env, *args, STUB_PYTEST_RC=rc)
+        assert done.returncode == int(rc), done.stdout + done.stderr
+        assert "stopped by" not in done.stdout and "GATE GREEN" not in done.stdout
+
+
+def test_a_green_gate_says_no_stop_and_counts_the_parts(tmp_path: Path, env: dict[str, str]) -> None:
+    """C769: run_part's green path, in both modes, still ends GATE GREEN after all three parts."""
+    for args in ((), ("--lane",)):
+        done, log = _real_gate(tmp_path, env, *args)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "GATE GREEN at " in done.stdout and "stopped by" not in done.stdout
+        assert sum(" pytest " in ln and "--collect-only" not in ln for ln in log) == 3

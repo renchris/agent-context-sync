@@ -117,16 +117,28 @@ union_check() {
   fi
 }
 
+# A part a signal stopped never reported on its tests: it says so, with no verdict on them, and the gate still exits
+# with the part's status, so the land stays refused. A status no signal names says nothing here and stays red. A
+# SIGKILL can come from the diff itself (a test that kills its own process group, memory growth), so a stop is never
+# called green or not red (B13 round 33 C769).
+part_stopped() {
+  local name
+  name=$(kill -l "$(($2 - 128))" 2>/dev/null) || return 0
+  echo "== $1 stopped by SIG${name#SIG} (rc $2) before it reported a verdict"
+}
+
 # One pytest part. In the lane modes it journals to <tree>-<salt>.<part>.jsonl; a journal with no summary
 # line whose holder (the gate.sh that wrote it) is gone was killed, and its passed tests are deselected.
 # Its output, stderr too, goes to <tree>-<salt>.<part>.out beside the journal, appended on a resume so a
 # killed run's text stays; a green part removes it, so a failed or killed part keeps its whole log, which
 # the journal's cut tails do not (B13 round 17 U106). Journals are never removed.
 run_part() {
-  local part=$1
+  local part=$1 rc=0
   shift
   if [ "$mode" = land ]; then
-    step pytest_q "$@" | tee "$tmp/$part.out"
+    step pytest_q "$@" | tee "$tmp/$part.out" || rc=$?
+    [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
+    [ "$rc" = 0 ] || return "$rc"
     count_timing_skips "$tmp/$part.out"
     return
   fi
@@ -139,7 +151,9 @@ run_part() {
   pid=$(cat "$holder" 2>/dev/null || true)
   if [ -n "$pid" ] && [ "$pid" != "$$" ] && ps -o pid= -p "$pid" >/dev/null; then
     echo "== gate $pid is running this tree: no journal for this run"
-    step pytest_q "$@" | tee "$tmp/$part.out"
+    step pytest_q "$@" | tee "$tmp/$part.out" || rc=$?
+    [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
+    [ "$rc" = 0 ] || return "$rc"
     count_timing_skips "$tmp/$part.out"
     return
   fi
@@ -157,10 +171,10 @@ run_part() {
     : >"$journal"
     : >"$out"
   fi
-  local rc=0
   # pipefail: rc is pytest's; unbuffered, so a SIGKILL leaves no tail in Python's buffer
   step env PYTHONUNBUFFERED=1 "GATE_DESELECT=$deselect" "GATE_JOURNAL=$journal" uv run --locked pytest -q \
     -p no:cacheprovider -p _gate_journal "$@" 2>&1 | tee -a "$out" || rc=$?
+  [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
   if [ "$rc" = 5 ] && [ -n "$deselect" ]; then rc=0; fi # every test had passed already
   [ "$rc" != 0 ] || rm -f "$out"

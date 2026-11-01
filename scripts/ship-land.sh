@@ -8,7 +8,8 @@
 # Run it exactly as `scripts/ship-land.sh`, with no env prefix and no `bash` in front: the user-level allow rule
 # Bash(scripts/ship-land.sh:*) is what lets it run without a prompt, and the push it makes is a subprocess the
 # Bash(git push:*) ask rule never sees. It never forces: a rejected push is fetched, rebased and gated again.
-# Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red,
+# Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red or
+# stopped by a signal before it reported (its line says which; nothing pushed either way, B13 round 33 C769),
 # 6 trunk CI red (before the gate when a run on origin/main has already ended red, else after it), 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, no run appeared, or a run lost its hosted runner): before
 # the push nothing is pushed, after it the line says LANDED and the runs are read back by hand. A run that lost its
 # runner is rerun (gh run rerun <id> --failed) and waited for, never landed past, with or without --allow-red-trunk
@@ -243,8 +244,18 @@ while :; do
     echo "ship-land: rebasing onto origin/main conflicts; resolve it by hand, nothing pushed" >&2
     exit 4
   fi
-  if ! scripts/gate.sh; then
-    echo "ship-land: the land gate is red; nothing pushed" >&2
+  grc=0
+  scripts/gate.sh || grc=$?
+  if [ "$grc" != 0 ]; then
+    # A signal's stop is no test verdict, and no pass: it can come from the load or from the diff itself (C769). A
+    # status no signal names, like one of 1 to 128, is the gate's own red.
+    gsig=''
+    [ "$grc" -le 128 ] || gsig=$(kill -l "$((grc - 128))" 2>/dev/null) || gsig=''
+    if [ -n "$gsig" ]; then
+      echo "ship-land: the land gate was stopped by SIG${gsig#SIG} before it reported (no test verdict; rerun once the machine is quieter, and if it recurs, check whether this diff kills or bloats processes); nothing pushed" >&2
+    else
+      echo "ship-land: the land gate is red; nothing pushed" >&2
+    fi
     exit 5
   fi
   rc=0
