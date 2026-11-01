@@ -2837,11 +2837,24 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     r = by_name(run_checks(sample_config))[name]
     assert r.ok and r.severity is Severity.INFO and r.fix is None and r.detail.startswith("last success ")
     assert r.detail.endswith(
-        "; listing incomplete for the last 2 passes, deletions held; no sync lists it again until the person "
-        "fixes the governance.hold [FAIL] line"
+        "; listing incomplete for the last 2 passes, deletions held; no sync lists it again until the "
+        "governance.hold [FAIL] line is fixed"
     ), r.detail
-    assert "a warn after" not in r.detail, r.detail
+    assert "a warn after" not in r.detail and "the person" not in r.detail, r.detail
     holds.rmdir()
+    # B13 round 33 C746 (ruling 87): a chmod's stop is the agent's, so the clause names no actor
+    record = expand(sample_config.state_paths.root) / "purge-record.json"
+    record.write_text('{"purges": []}\n', encoding="utf-8")
+    record.chmod(0o000)
+    try:
+        r = by_name(run_checks(sample_config))[name]
+        assert r.detail.endswith(
+            "deletions held; no sync lists it again until the governance.suppressed [FAIL] line is fixed"
+        ), r.detail
+        assert "the person" not in r.detail, r.detail
+    finally:
+        record.chmod(0o600)
+    record.unlink()
     assert by_name(run_checks(sample_config))[name].detail.endswith(", a warn after 3")
     _beat(sample_config)
     r = by_name(run_checks(sample_config))[name]

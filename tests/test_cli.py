@@ -4068,6 +4068,78 @@ def test_a_failed_loop_read_with_no_fail_still_logs_its_warning(
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize("hint", ["by hand", "install.sh"])
+def _three_incomplete_passes(config: Config, sid: str) -> None:
+    """heartbeat.json says source ``sid``'s last 3 passes listed it incompletely: the warn's threshold."""
+    hb = expand(config.state_paths.heartbeat)
+    data = json.loads(hb.read_text(encoding="utf-8"))
+    data[sid]["consecutive_incomplete"] = 3
+    hb.write_text(json.dumps(data), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("stop", "check"), [("the lock a folder", "lock"), ("purge-record.json at 0000", "governance.suppressed")]
+)
+def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
+    initialised: Config,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    stop: str,
+    check: str,
+) -> None:
+    """B13 round 33 C729 (ruling 87): with the lock a folder or the purge record shut, the heartbeat [warn]'s
+    fix was a sync the guard refuses, or a pointer that never said no sync runs, while the [ok] form named the
+    stop. The note says it in the [ok] line's words, its fix gone, its detail unchanged, also under
+    install.sh's hint-off, whose swap reads the other note."""
+    _synced(initialised)
+    sid = initialised.sources[0].id
+    _three_incomplete_passes(initialised, sid)
+    root = expand(initialised.state_paths.root)
+    record = governance.purge_record_file(root)
+    if stop == "the lock a folder":
+        lock = expand(initialised.state_paths.lock)
+        lock.unlink(missing_ok=True)
+        lock.mkdir()
+    else:
+        record.write_text('{"purges": []}\n', encoding="utf-8")
+        record.chmod(0o000)
+    try:
+        for hint in (None, "1"):
+            if hint:
+                monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", hint)
+            status = cli._build_status(initialised)
+            (warn,) = [c for c in status.checks if c.name == f"heartbeat.{sid}"]
+            assert warn.detail.startswith(doctor.LISTING_INCOMPLETE) and warn.fix is None, warn
+            assert warn.note == (
+                f"as of its last walk: no sync lists it again until the {check} [FAIL] line is fixed"
+            ), warn
+    finally:
+        monkeypatch.delenv("AGENTSYNC_NO_NEXT_HINT", raising=False)
+        if record.exists():
+            record.chmod(0o600)
+    capsys.readouterr()
+
+
+def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C729's other side: over a hold record at 0000 the sync runs, so nothing says no sync runs."""
+    _synced(initialised)
+    sid = initialised.sources[0].id
+    _three_incomplete_passes(initialised, sid)
+    root = expand(initialised.state_paths.root)
+    record = governance.hold_record_file(root)
+    record.write_text('{"holds": []}\n', encoding="utf-8")
+    record.chmod(0o000)
+    try:
+        status = cli._build_status(initialised)
+    finally:
+        record.chmod(0o600)
+    (warn,) = [c for c in status.checks if c.name == f"heartbeat.{sid}"]
+    assert warn.detail.startswith(doctor.LISTING_INCOMPLETE) and warn.fix, warn
+    assert "no sync lists it again" not in (warn.note or ""), warn
+    capsys.readouterr()
+
+
 def test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], hint: str
 ) -> None:

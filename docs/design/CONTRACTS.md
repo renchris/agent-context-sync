@@ -14453,7 +14453,8 @@ pass(es), deletions held, a warn after 3`; the detail still starts `last success
 `setup_report._yours_warn` is unaffected. The threshold and the warn are unchanged. Test: `test_heartbeat_states`.
 Amended 2026-10-28, §16.215 C633: beside a [FAIL] every sync stops on (`loop._sync_stopped_on`), the clause ends
 `, deletions held; no sync lists it again until the person fixes the <check> [FAIL] line` instead of `, a warn after
-3`.
+3`. Amended 2026-11-01, §16.220 C746: that clause reads `no sync lists it again until the <check> [FAIL] line is fixed`,
+naming no actor, and the [warn] takes it as its note (C729).
 
 **Q48: the held-lock line loses a dead branch (`agentsync.ops.doctor`).** The early return on a body
 `LockInfo.parse` rejects (an empty one, or a corrupt leftover under install.sh's `lockf`) stays as §16.45 R37
@@ -36079,7 +36080,9 @@ the FAIL is fixed. `_named_since(stopped=...)` ends `once the <check> [FAIL] lin
 prints it again with the N folders left; until then no sync runs`, as `_named`'s stopped form already did. In
 `_cmd_exclude_empty`, `loop._sync_stopped_on` is read whatever was left; with folders left the pointer carries the
 clause and the head stays plain, so the line says it once; with none left the head reads `once the <check> [FAIL]
-line is fixed, the next sync lists <id> without that folder|those folders; until then no sync runs`. Dated lines at
+line is fixed, the next sync lists <id> without that folder|those folders; until then no sync runs`. Amended
+2026-11-01, §16.220 C731: with folders left beside a stop the head reads `the next sync that runs lists <id> without
+that folder|those folders`, the pointer still saying the no-sync clause once. Dated lines at
 §16.119 S32 and §16.210 C520. Tests: `test_loop.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_it_c520`, `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520` (the clause once in the line)
@@ -36092,7 +36095,8 @@ raises; a lost hold, whose sync runs, is never named) only when a pass was incom
 lists it again until the person fixes the <check> [FAIL] line`; the line stays `[ok]`, INFO, with no fix, its
 detail still starting `last success`, so status, doctor and the report take it alike. Dated line at §16.51 Q14/Q35.
 Test: `test_ops_doctor.py` `test_heartbeat_states` (holds.json a folder: the FAIL named, no `a warn after`; the
-folder gone, `a warn after 3` back).
+folder gone, `a warn after 3` back). Amended 2026-11-01, §16.220 C746: the clause names no actor (ruling 87, amending
+ruling 65's words).
 
 C644 (2026-10-28): **one status replays the lost queue once (ruling 65).** C520's guard (`loop._sync_stopped_on`
 through `doctor.state_not_a_file` and `governance_lost`) made the fifth replay of the purge record and the audit
@@ -36710,6 +36714,20 @@ loss for a damaged record, which install.sh's `,lost-suppressed` tail reads (its
 still stops on the record first. `accept_lost_suppression` reads the record first and raises its error, as it did when
 `lost_suppressions` raised it: the act's line goes to that record after the trail, so none is written over it. Test:
 `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_suppression_c768`, damaged and refused.
+
+**C746, C729, C731 (ruling 87).** Every line beside a stop that blocks every sync says no sync runs until its [FAIL] line is
+fixed, and names no actor. `doctor.stopped_listing_clause(check)` is one string, `no sync lists it again until the <check>
+[FAIL] line is fixed`: C746's [ok] heartbeat tail, since a chmod's stop (`purge-record.json` at 0000, governance/ at 0000) is
+the agent's beside a clause that said `the person`, and the FAIL line and NEXT already say whose; and C729's [warn],
+through `cli._stopped_listing_note`, the last branch of `_listings_unread`, keyed on `loop._sync_stopped_on`, whose note is
+`as of its last walk: ` + the clause, fix None, detail unchanged, while a hold-record.json at 0000 the sync runs over keeps
+the old fix. It does not end in C321's `says what to do first`, so `_LISTING_GOVERNANCE_RE` never reads it, and the
+report's C637 lock bucket keys on the detail. C731: exclude-empty with folders left beside a stop heads `the next sync that
+runs lists <id> without that folder|those folders`, its pointer giving the no-sync clause once. Tests: `test_ops_doctor.py`
+`test_heartbeat_states` (with a chmod case), `test_cli.py`
+`test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729` and
+`test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729`, `test_exclude_empty.py`
+`test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 

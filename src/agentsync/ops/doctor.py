@@ -252,6 +252,13 @@ def listing_state_side_note(sides: Sequence[Path]) -> str:
     )
 
 
+def stopped_listing_clause(check: str) -> str:
+    """The clause of a heartbeat line beside a stop that blocks every sync (``loop._sync_stopped_on``), naming
+    no actor: a chmod's stop is the agent's, a move aside the person's, and the FAIL line and NEXT say which
+    (B13 round 32 C633; B13 round 33 C746, C729; ruling 87)."""
+    return f"no sync lists it again until the {check} [FAIL] line is fixed"
+
+
 def listing_state_governance_note(err: GovernanceUnreadError, check: str) -> str:
     """The listing note beside a governance file the sync's guard stops on (``state_not_a_file`` with
     ``damaged`` and ``lost``: the hold list, the purge queue, the suppression list, the audit trail, the hold
@@ -3797,7 +3804,8 @@ def _check_heartbeat(
                 # beside a FAIL every sync stops on, no pass counts toward the warn (B13 round 32 C633)
                 stopped = loop._sync_stopped_on(config)
                 if stopped is not None:
-                    detail += f"; no sync lists it again until the person fixes the {stopped} [FAIL] line"
+                    # actor-free, as the loop's: the FAIL's fix and NEXT say whose it is (B13 round 33 C746)
+                    detail += f"; {stopped_listing_clause(stopped)}"
                 else:
                     detail += f", a warn after {_INCOMPLETE_RUNS}"
             out.append(_ok(name, detail))

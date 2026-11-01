@@ -1453,8 +1453,11 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         lock.release()
     listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in exclude)
     # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
-    lists = f"the next sync lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
-    if stopped is not None and not gone:  # with folders left, the pointer below says it, once (C631)
+    without = f"lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
+    lists = f"the next sync {without}"
+    if stopped is not None and gone:  # the pointer below says no sync runs until then, once (C631, C731)
+        lists = f"the next sync that runs {without}"
+    elif stopped is not None:
         lists = f"once the {stopped} [FAIL] line is fixed, {lists}; until then no sync runs"
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
@@ -2235,6 +2238,8 @@ def _listings_unread(
         note = doctor.LISTING_STATE_SHUT_NOTE
     elif (governed := _governance_listing_note(config)) is not None:
         note = governed
+    elif (stopped := _stopped_listing_note(config)) is not None:
+        note = stopped
     else:
         return checks
     return [
@@ -2272,6 +2277,21 @@ def _governance_listing_note(config: Config | None) -> str | None:
     if err is None or err.path != where:
         return None
     return doctor.listing_state_governance_note(err, result.name)
+
+
+def _stopped_listing_note(config: Config | None) -> str | None:
+    """The listing note beside any other stop that blocks every sync (``loop._sync_stopped_on``: the lock, or
+    a purge record or suppression list this account cannot open), in the [ok] line's words, so one check reads
+    alike above and below the warn's threshold; its fix was a sync the guard refuses, or a pointer that never
+    said no sync runs. None where the sync runs, as over a hold record at 0000, which keeps its fix (B13 round
+    33 C729; ruling 87)."""
+    if config is None:
+        return None
+    try:
+        stopped = loop._sync_stopped_on(config)
+    except Exception:  # the error path: never a second error over the first
+        return None
+    return None if stopped is None else f"as of its last walk: {doctor.stopped_listing_clause(stopped)}"
 
 
 def _loop_read(config: Config) -> tuple[loop.NextStep | None, Exception | None]:

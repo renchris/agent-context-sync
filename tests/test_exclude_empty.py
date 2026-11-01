@@ -119,7 +119,9 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_o
         "again with the 1 folder left; until then no sync runs"
     ) in out, out
     assert out.count("until then no sync runs") == 1 and out.count("[FAIL] line is fixed") == 1, out
-    assert "; the next sync lists work without that folder; " in out, out
+    # B13 round 33 C731 (ruling 87): its head says no more than it knows about a sync that cannot run yet
+    assert "; the next sync that runs lists work without that folder; " in out, out
+    assert "; the next sync lists work" not in out, out
 
 
 def test_beside_a_fail_the_syncs_guard_stops_on_the_head_says_no_sync_runs_c631(

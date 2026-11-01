@@ -6454,6 +6454,9 @@ _ROUND_33_B_PARAGRAPH_AMENDS = (
     ("16.205", "C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost", "§16.220 C744"),
     ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C744"),
     ("16.210", "C537 with C577 (2026-10-28): **accepting a lost suppression says", "§16.220 C745"),
+    ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.220 C746"),
+    ("16.215", "C633 (2026-10-28): **beside a FAIL that stops every sync", "§16.220 C746"),
+    ("16.215", "C631 (2026-10-28): **beside a stop, the after-exclude pointer", "§16.220 C731"),
 )
 """Round 33 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C744's return and output at the `--accept-lost` paragraph and C606's."""
