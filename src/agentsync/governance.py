@@ -5666,11 +5666,14 @@ def accept_lost_suppression(
     (:func:`_iso_fine`), but lines an older build wrote, or purges given one ``now``, can share one: the act
     then accepts each record that time names, and the CLI says how many.
 
-    With governance/ missing, the audit trail with it, a new one-line trail read as the whole history and the
-    old one was lost unsaid (B13 round 32 C606; ruling 63): the act refuses, leading with the folder's
-    put-back, unless ``folder_lost``, the person's word that no copy is left, which first writes
-    :data:`AUDIT_TRAIL_LOST` to the new trail and to purge-record.json; with the folder there it is
-    refused."""
+    A new trail read as the whole history and the old one was lost unsaid (B13 round 32 C606; ruling 63). So
+    while the audit trail has lost purge lines purge-record.json keeps (:func:`audit_trail_lost`, judged by
+    content: governance/ missing, or re-created by a later write with a new trail), the act refuses, leading
+    with the folder's put-back when governance/ is missing and with the trail's otherwise, unless
+    ``folder_lost``, the person's word that no copy is left, which first writes :data:`AUDIT_TRAIL_LOST` to
+    the new trail and to purge-record.json, once. ``folder_lost`` is refused while the trail has lost nothing
+    and holds no such line; once that line is written, a later acceptance needs no ``folder_lost``, and one
+    given it writes no second line (B13 round 33 C784, C779, C745, C758, C766; ruling 80)."""
     sp = config.state_paths
     with _maybe_lock(sp, lock and not dry_run):
         unread = audit_unread(sp.root)  # its own error and fix, so no acceptance writes into it (C741)

@@ -7118,9 +7118,9 @@ def test_purge_help_says_accepting_a_lost_suppression_keeps_a_fingerprinted_copy
     assert cli.main(["purge", "--help"]) == 0
     out = " ".join(capsys.readouterr().out.split())
     help_ = (
-        "with an audit line for each: its items, and a copy of content agentsync's audit trail fingerprints, "
-        "stay "
-        "out, but a new file at an item's older name or in other letter case does not; an older build's "
+        "with an audit line for each: its items, and a copy of content agentsync's audit trail or "
+        "purge-record.json fingerprints, stay out, but a new file at an item's older name or in other letter "
+        "case does not; an older build's "
         "purge, which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard"
     )
     assert help_ in out and "no longer kept out" not in out, out
@@ -7148,6 +7148,35 @@ def test_purge_help_says_forget_looks_the_entry_up_and_accept_lost_takes_every_r
         "purges can share one), with an audit line for each: its items,"
     )
     assert accept in out, out
+
+
+def test_purge_help_says_folder_lost_is_judged_by_the_trails_content_c784(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C784, C779, C745, C758, C766 (ruling 80): --folder-lost's help said it goes `only while
+    agentsync's governance folder is missing`, while the status FAIL names it with the folder re-created, and
+    the act takes it there, so a person who read the help left out the flag and was refused. The help names
+    purge-record.json, the first time and the refusal; the docstring agrees; and --accept-lost's help credits
+    both stores."""
+    monkeypatch.setenv("COLUMNS", "400")
+    assert cli.main(["purge", "--help"]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    folder_lost = (
+        "with --accept-lost, your word that no copy is left of an audit trail that has lost purge lines "
+        "purge-record.json keeps (the governance folder missing, or re-created by a later write with a new "
+        f"trail): the first time, it {governance.FOLDER_LOST_SAID}; refused while the trail has lost nothing "
+        "and records no such loss"
+    )
+    assert folder_lost in out, out
+    assert "only while agentsync's governance folder is missing" not in out, out
+    assert "agentsync's audit trail or purge-record.json fingerprints, stay out" in out, out
+    doc = " ".join((governance.accept_lost_suppression.__doc__ or "").split())
+    assert "with the folder there it is refused" not in doc, doc
+    assert "judged by content: governance/ missing, or re-created by a later write with a new trail" in doc, (
+        doc
+    )
+    assert "a later acceptance needs no ``folder_lost``, and one given it writes no second line" in doc, doc
+    assert "holds no such line" in doc, doc
 
 
 def test_a_purge_run_again_that_finds_its_content_again_clears_its_lost_record(

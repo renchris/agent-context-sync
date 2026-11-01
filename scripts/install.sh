@@ -2277,6 +2277,7 @@ FIXED_VALUE_PHRASES+="|governance folder is missing while its hold record keeps 
 FIXED_VALUE_PHRASES+="|on the purge record:"
 FIXED_VALUE_PHRASES+="|audit-trail-lost|the old audit trail's loss is written first, to the new audit trail|the audit trail was lost before"
 FIXED_VALUE_PHRASES+="|the old audit trail's loss would be written first, to the new audit trail|the old audit trail's loss was already recorded"
+FIXED_VALUE_PHRASES+="|refused while the trail has lost nothing and records no such loss|your word that no copy is left of an audit trail that has lost purge lines"
 FIXED_VALUE_PHRASES+="|because a label rule could not read its label data|because a label rule could not read their label data"
 FIXED_VALUE_PHRASES+="|purge-record.json records: agentsync's audit trail no longer holds it"
 FIXED_VALUE_PHRASES+="|because a label rule could not parse or open its label data|because a label rule could not parse or open their label data"

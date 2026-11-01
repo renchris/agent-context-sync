@@ -35161,7 +35161,8 @@ listed when it was purged) is no longer kept out" (`ACCEPT_PATH_LOST`), "; an ol
 content, so a copy of its content under another name is no longer kept out" when one is not, and "; a new file under its
 source-path glob is no longer kept out" for a lost glob. The help reads "its items, and a copy of content agentsync's
 audit trail fingerprints, stay out, but a new file at an item's older name or in other letter case does not; an older
-build's purge, which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard". The new
+build's purge, which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard".
+Amended 2026-11-01, §16.220 C745: that help now reads `agentsync's audit trail or purge-record.json fingerprints`. The new
 words keep to fixed phrases the setup report's hold-value redaction knows ("agentsync's audit trail", "with an audit
 line"), so `test_setup_report.py::test_an_audit_hold_value_leaves_every_audit_line_whole_c302` holds them whole.
 `audited_suppressions`, the cycle's check and the sync stop are unchanged. Tests: `test_cli.py`
@@ -35961,7 +35962,11 @@ fix's `records in the new audit trail and in purge-record.json that the old audi
 `ACCEPT_PATH_KEPT_RECORD`, `cli.FOLDER_LOST_DONE`; the `--folder-lost` option joins `purge`'s pinned surface,
 the one new option the ruling names (ruling 76). Tests: `test_cli.py`
 `test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_every_lost_file_c606`,
-`test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold). Amended
+`test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold).
+CORRECTED (2026-11-01, §16.220 C758): `--accept-lost` refuses, and `--folder-lost` goes, while `audit_trail_lost` holds
+(governance/ missing, or re-created with a new trail that lacks a purge line purge-record.json keeps) or after the
+`audit-trail-lost` line was written, folder there or not, as C606's review below says; `--folder-lost` without
+`--accept-lost`, or over a trail that lost nothing and records no such loss, is refused. Amended
 2026-11-01, §16.220 C744: the act's output opens with that clause only when it writes the line, `would be written
 first` on `--dry-run` and `the old audit trail's loss was already recorded` on a later `--folder-lost`; what stays out
 credits purge-record.json where it holds the record's line.
@@ -36671,6 +36676,18 @@ purge-record.json`) on `--dry-run`; `cli.FOLDER_LOST_ALREADY` (`the old audit tr
 later `--folder-lost`, which writes no second line. Those two and `ACCEPT_PATH_KEPT_EITHER` join both phrase lists
 (ruling 68). Tests: the C606 tests, each reading the acceptance's output, and
 `test_a_plain_accept_after_the_loss_credits_what_holds_its_line_c707`.
+
+**C784, C779, C745, C758, C766 (ruling 80; the round's one turn; one defect from five finders, built once).**
+`--folder-lost`'s help said `only while agentsync's governance folder is missing`, against the code and the status FAIL
+naming it with the folder re-created, so a person who read it left the flag out and was refused. It reads `with
+--accept-lost, your word that no copy is left of an audit trail that has lost purge lines purge-record.json keeps (the
+governance folder missing, or re-created by a later write with a new trail): the first time, it ` + `FOLDER_LOST_SAID` +
+`; refused while the trail has lost nothing and records no such loss`, whose last clause joins both phrase lists
+(ruling 68). `accept_lost_suppression`'s docstring says the same, judged by content, the line written once, a later
+acceptance needing no `folder_lost`. C745's optional half is built too: `--accept-lost`'s help credits `agentsync's audit
+trail or purge-record.json fingerprints`, as `audited_suppressions` reads both. §16.215's C606 paragraph takes one dated
+`CORRECTED` line for its two stale clauses. No behavior changes. Test:
+`test_purge_help_says_folder_lost_is_judged_by_the_trails_content_c784`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 

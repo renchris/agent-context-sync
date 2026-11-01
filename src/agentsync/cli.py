@@ -402,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "accept what the suppression list lost of every purge status names by this time (an older "
             "build's purges can share one), with an audit line for each: its items, and a copy of content "
-            "agentsync's audit trail fingerprints, stay out, but a "
+            "agentsync's audit trail or purge-record.json fingerprints, stay out, but a "
             "new file at an item's older name or in other letter case does not; an older build's purge, "
             "which fingerprints no content, loses its copy guard, a source-path glob purge its glob guard"
         ),
@@ -411,8 +411,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--folder-lost",
         action="store_true",
         help=(
-            "with --accept-lost, only while agentsync's governance folder is missing and no copy of it is "
-            f"left: first {governance.FOLDER_LOST_SAID}"
+            "with --accept-lost, your word that no copy is left of an audit trail that has lost purge lines "
+            "purge-record.json keeps (the governance folder missing, or re-created by a later write with a "
+            f"new trail): the first time, it {governance.FOLDER_LOST_SAID}; refused while the trail has lost "
+            "nothing and records no such loss"
         ),
     )
     p.add_argument(

@@ -6453,6 +6453,7 @@ lost record at its C370 paragraph's known residual, and C511's purge name at tha
 _ROUND_33_B_PARAGRAPH_AMENDS = (
     ("16.205", "C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost", "§16.220 C744"),
     ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C744"),
+    ("16.210", "C537 with C577 (2026-10-28): **accepting a lost suppression says", "§16.220 C745"),
 )
 """Round 33 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C744's return and output at the `--accept-lost` paragraph and C606's."""
