@@ -2428,8 +2428,21 @@ _TRAIL_ALONE = (
     "judged from agentsync's audit trail alone, which shows no queued purge the queue lost: the purge record "
     "cannot be read, and the governance.suppressed line says why"
 )
+_NO_TRAIL_ALONE = (
+    "agentsync's audit trail is not on disk either, so nothing shows a queued purge the queue lost: the "
+    "purge record cannot be read, and the governance.suppressed line says why"
+)
 """governance.purge_queue's clause over a purge record that cannot be read and a queue that lost nothing
-(B13 round 31 C539 and its review): its own [info] line with nothing queued, after the kept entries' line."""
+(B13 round 31 C539 and its review): its own [info] line with nothing queued, after the kept entries' line.
+:func:`_trail_alone_words` picks by the file."""
+
+
+def _trail_alone_words(config: Config) -> str:
+    """:data:`_TRAIL_ALONE`, or :data:`_NO_TRAIL_ALONE` with no audit trail on disk: never judged from a trail
+    that is not there (B13 round 33 C733), as the ok lines word themselves by what is on disk (C624)."""
+    there = os.path.lexists(governance.audit_path(expand(config.state_paths.root)))
+    return _TRAIL_ALONE if there else _NO_TRAIL_ALONE
+
 
 _PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy")
 
@@ -2897,7 +2910,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             queue_said = governance.queue_gone_words(sroot) if gone_case else "no purge queued"
             out.append(_check("governance.purge_queue", True, queue_said, doctor.Severity.INFO))
         else:  # an [info] line, never a second FAIL of the record, nor "no longer holds" (C539)
-            out.append(_check("governance.purge_queue", False, _TRAIL_ALONE, doctor.Severity.INFO))
+            alone = _trail_alone_words(config)
+            out.append(_check("governance.purge_queue", False, alone, doctor.Severity.INFO))
     if gone is not None:
         out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
     kept_text = "; ".join(governance.kept_lines(kept))
@@ -2905,7 +2919,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     if not queued and kept and record_read:
         out.append(_check("governance.purge_queue", True, kept_text, doctor.Severity.INFO))
     elif not queued and kept:  # never [ok] over a record that cannot be read (C539's review)
-        trail = "" if gone is not None else f"; {_TRAIL_ALONE}"
+        trail = "" if gone is not None else f"; {_trail_alone_words(config)}"
         out.append(_check("governance.purge_queue", False, kept_text + trail, doctor.Severity.INFO))
     if queued:
         # each reason actually queued, never a fixed list that misnamed a published credential (I91)

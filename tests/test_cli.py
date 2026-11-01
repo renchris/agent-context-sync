@@ -7563,6 +7563,14 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     _rc, out = _status(cfg, capsys)
     assert [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ") and str(record) in ln], out
     (only,) = [ln for ln in out if " governance.purge_queue " in ln]
+    # no audit trail on disk: nothing is judged from one that is not there (B13 round 33 C733)
+    assert not governance.audit_path(root).exists()
+    assert only.startswith("[info] ") and "agentsync's audit trail is not on disk either" in only, only
+    assert " alone" not in only and "which shows" not in only and " no longer holds " not in only, only
+    # one line in the trail: the words that read it
+    governance.append_audit(root, {"action": "note", "at": "2026-10-01T00:00:00Z"})
+    _rc, out = _status(cfg, capsys)
+    (only,) = [ln for ln in out if " governance.purge_queue " in ln]
     assert only.startswith("[info] ") and "judged from agentsync's audit trail alone" in only, only
     assert " no longer holds " not in only, only
     sid = _stable_id(initialised, "projects/sample.txt")

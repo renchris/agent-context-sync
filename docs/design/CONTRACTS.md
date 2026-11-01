@@ -34939,7 +34939,9 @@ apart, as the hold record's C349: `no purge queued` only when it read; else, wit
 lost: the purge record cannot be read, and the governance.suppressed line says why` (no second FAIL, no ` no longer
 holds `; "agentsync's audit trail" and "the purge record cannot be read" are fixed phrases of the report's value
 screen); with kept entries only, their line is `[info]`, never `[ok  ]`, the same clause after it when nothing is
-lost. A damaged record still stops the sync first on its own error (`governance_damaged` runs before
+lost. Amended 2026-11-01, §16.220 C733: with no audit.jsonl on disk that clause reads `agentsync's audit trail is not on
+disk either, so nothing shows a queued purge the queue lost: the purge record cannot be read, and the
+governance.suppressed line says why`. A damaged record still stops the sync first on its own error (`governance_damaged` runs before
 `governance_lost`), and a record this account cannot open, which `governance_damaged` passes, makes
 `governance_lost` (the commands' guard) return None, so the sync stops on it in its own kind (`file=purge-record
 owner=agent kind=refused`, the chmod on stderr) and, after the chmod, beside a lost queue as the lost list
@@ -36742,6 +36744,12 @@ print the configured one, so on a HOME under /tmp one state file read as two pat
 it; only `state_path_fix` is judged on the resolved paths, so a linked record or state folder still gets its target's chmod.
 governance.suppressed, governance.hold, governance.purge_queue, heartbeat and lock take it together. Test:
 `test_a_refused_state_file_prints_the_one_path_under_a_linked_home_c732`.
+
+**C733.** With purge-record.json unread and no audit.jsonl on disk, status said the queue was `judged from agentsync's audit
+trail alone`, a trail that does not exist. `cli._trail_alone_words(config)`, keyed on the file, gives `_TRAIL_ALONE` over a
+trail there and `agentsync's audit trail is not on disk either, so nothing shows a queued purge the queue lost: the purge
+record cannot be read, and the governance.suppressed line says why` otherwise, at both call sites. It holds only fixed
+phrases already in both lists, so no new phrase. Test: `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
