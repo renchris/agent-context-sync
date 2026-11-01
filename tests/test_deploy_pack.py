@@ -380,6 +380,13 @@ def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path:
     assert "LC_ALL=C sort)` with dirs.txt and stop on a difference" not in note
     [command] = re.findall(r"run `(\(cd <home>/Library/CloudStorage/OneDrive-Contoso && [^`]*)`", note)
     assert command.endswith(" | diff - dirs.txt") and "and stop on a non-zero exit" in note
+    # B13 round 33 C774: the folder check runs when the shasum check does and over the root's fixture copy
+    # too, words outside the backticks, which stay as pinned
+    assert "Right before step 2, before reading a role run's state and at each act's end, run `(cd " in note
+    assert (
+        " | diff - dirs.txt` on each home's copy, and the same command with <root>/fixture/tree in place of"
+        " the home's folder, and stop on a non-zero exit" in note
+    )
     # the command, run over a tree made like the fixture's, prints dirs.txt's form
     home = tmp_path / "home"
     tree = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
@@ -7499,6 +7506,13 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
     )
     assert note.count(where) == 1
     assert all(where not in span for span in re.findall(r"`[^`]*`", note))
+    # B13 round 33 C774: a probe's made-up folder is named, and its lines are the only ones the check allows
+    assert note.count("names each one in its report") == 1
+    assert (
+        "A probe that adds a made-up folder (for example `Project Alpha/Contoso Empty 2`) names each one in"
+        " its report, and that home's folder check passes only when those lines are the only extra lines; any"
+        " other extra or missing line stops the run (round 33 C774)."
+    ) in note
     if shutil.which("shasum") is None:
         pytest.skip("shasum is macOS's; the note's words are checked above")
     tree = tmp_path / "tree"

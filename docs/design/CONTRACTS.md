@@ -36386,3 +36386,11 @@ an extension list with `.vtt`, which routes to `vtt-turns` (§16.35), and withou
 text.py's body paragraph and tuple and names both routes; its decode phrase stays, counted twice by
 `test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`. Test:
 `test_the_plain_text_reference_says_what_text_py_does`, which reads the body and the tuple from the class.
+
+**The kit note's folder check runs when its shasum check does, and allows only a named made-up folder** (C774's repo
+half; `docs/lanes/COMMON.md`). The note ran the folder check right before step 2 and before reading a role run's state
+on a home's copy; the round's brief and every rehearsal also ran it at each act's end and on `<root>/fixture/tree`, and
+one home added a made-up folder under an allowance of its own. The words outside the backticks say so, and a probe's
+made-up folder is named in its report, its lines the only extras the check allows; the backticked commands stay. The
+brief's half is the lead's (ruling 90). Test: `test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder` and
+`test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it` carry an assert for each.
