@@ -356,14 +356,27 @@ def wheel(tmp_path: Path) -> Path:
     return w
 
 
+def _install_bound(given: float, per_core: float | None = None) -> float:
+    """How long a test waits for an install.sh run (B13 round 33 C769): at least 120 s, what install.sh's
+    own report step may take, scaled by the 1-minute load per core above the load the ``timing`` tests give up
+    at, and at most 600 s, so a hang is still killed. Land gates went red at load 200 to 650 on these bounds,
+    never on a diff: a real agentsync run took 54 to 86 s at about 31 per core."""
+    import conftest  # noqa: PLC0415 - the load the timing tests give up at
+
+    load = os.getloadavg()[0] / (os.cpu_count() or 1) if per_core is None else per_core
+    return min(600.0, max(given, 120.0) * max(1.0, load / conftest._TIMING_LOAD_PER_CORE))
+
+
 def install_sh(
     env: dict[str, str],
     *args: str,
     timeout: float = 120,
+    exact: bool = False,
     script: Path = INSTALL_SH,
     wrap: Sequence[str] = (),
 ) -> subprocess.CompletedProcess[str]:
-    """One install.sh run (``script``: a copy in another checkout; ``wrap``: the argv it runs under, such as
+    """One install.sh run (``timeout``: :func:`_install_bound` of it, or itself with ``exact``, for a test of
+    the timeout; ``script``: a copy in another checkout; ``wrap``: the argv it runs under, such as
     ``sandbox-exec -p <profile>``). Its NEXT says of the [FAIL] lines above it that "each names its fix", so
     every run of every test is held to that: the real agentsync's lines, and the stub's, which are written as
     the real ones are. The run has a session of its own, and a timeout kills its whole process group: a kill
@@ -379,7 +392,7 @@ def install_sh(
         start_new_session=True,
     ) as proc:
         try:
-            stdout, stderr = proc.communicate(timeout=timeout)
+            stdout, stderr = proc.communicate(timeout=timeout if exact else _install_bound(timeout))
         except BaseException:  # a timeout, or a Ctrl-C, which no longer reaches a run in its own session
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGKILL)
@@ -434,6 +447,20 @@ def rerun(wheel: Path, folder: Path | None = None) -> str:
     return f"{INSTALL_SH} {wheel}{named} --confirm-install-agent"
 
 
+def test_install_sh_waits_at_least_as_long_as_install_sh_may_and_never_past_its_cap() -> None:
+    """B13 round 33 C769: an install_sh bound shorter than install.sh's own waits turned land gates red at
+    load 200 to 650, so it scales with the load and stops at 600 s, where a hang is still killed; a quiet
+    Mac and CI keep 120 s, so a hang costs them no more than it did."""
+    import conftest  # noqa: PLC0415 - the load the timing tests give up at
+
+    assert _install_bound(3, per_core=0.5) == 120.0
+    assert _install_bound(90, per_core=conftest._TIMING_LOAD_PER_CORE) == 120.0
+    assert _install_bound(120, per_core=conftest._TIMING_LOAD_PER_CORE * 3) == 360.0
+    assert _install_bound(300, per_core=conftest._TIMING_LOAD_PER_CORE * 3) == 600.0
+    assert _install_bound(120, per_core=1000.0) == 600.0
+    assert _install_bound(120) >= 120.0
+
+
 def test_a_timed_out_install_run_leaves_none_of_its_processes_running(tmp_path: Path) -> None:
     """B13 round 23 A96: install_sh's subprocess.run(timeout=...) killed only the bash it started, so a hung
     run's pipeline stages went on under launchd (twelve of them burned two cores for a day, writing into a
@@ -442,7 +469,7 @@ def test_a_timed_out_install_run_leaves_none_of_its_processes_running(tmp_path: 
     hang = tmp_path / "hang.sh"
     hang.write_text(f'sleep 300 & printf "%s" "$!" >"{pid_file}"\nwait\n')
     with pytest.raises(subprocess.TimeoutExpired):
-        install_sh({"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}, timeout=3, script=hang)
+        install_sh({"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}, timeout=3, exact=True, script=hang)
     pid = int(pid_file.read_text())
     try:
         deadline = time.monotonic() + 10
