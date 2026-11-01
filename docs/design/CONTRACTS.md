@@ -36474,6 +36474,23 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 
+**A cut install-source line asks for the re-run, and a busy Mac has a limit to raise** (C702's and C726's installer
+half, ruling 83; `scripts/install.sh`). install.sh's cut-off grep read only the Summary's doctor and evidence lines, so
+lane RA's install-source line ending with the advice gave no NEXT: it now reads `^- (doctor|evidence|install source): `.
+Under sustained load `once it is idle` is no remedy, so the NEXT adds `, or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front
+of that command if it stays busy`; lane RA's report clamps the value to 12 to 60, an older build ignores it (an unknown
+flag would have exited 2), and with_timeout's 120 s stays above it. install.sh passes its environment to the report
+as it is, and a test proves the report sees it. `time limit` stays out of the NEXT, as round 20's X37 pinned; the
+variable's name is not those words. Tests: `test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review`
+(its `install source` case), `test_the_report_runs_with_the_time_limit_the_person_gave_it`.
+
+**install_sh waits as long as install.sh may** (C769's install_sh half, ruling 90; `tests/test_install_oneshot.py`).
+A test's 120 s bound on a real agentsync run went red at loads of 200 to 650, never on a diff, and install.sh itself may
+wait 300 s for a cold pandoc. `_install_bound` gives at least 120 s, scaled by the load per core above
+`conftest._TIMING_LOAD_PER_CORE`, capped at 600 s, so a hang is still killed; the one test of the timeout itself says
+`exact=True`. Lane E warms pandoc and lane D names a signal stop. Test:
+`test_install_sh_waits_at_least_as_long_as_install_sh_may_and_never_past_its_cap`.
+
 **--list-folders leaves no side file beside the manifest** (C727; `scripts/install.sh`). A plain `mode=ro` open of a WAL
 database makes its -wal and -shm, 0400 over a 0400 manifest, so the run that says it installs nothing grew the state
 folder and step 2's chmod named three files. `vanished_folders` takes the build's `manifest.open_read_only`, and on a

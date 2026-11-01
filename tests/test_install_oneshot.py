@@ -4839,7 +4839,7 @@ def _busy_evidence_line() -> str:
     return setup_report._evidence_line(r)
 
 
-@pytest.mark.parametrize("cause", ["slow doctor", "busy state file"])
+@pytest.mark.parametrize("cause", ["slow doctor", "busy state file", "install source"])
 @pytest.mark.parametrize("locked", [False, True])
 def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review(
     env: dict[str, str], tmp_path: Path, locked: bool, cause: str
@@ -4852,17 +4852,21 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     B13 round 20 X37: the NEXT said "the report's time limit cut part of it off", but the marker is also in
     an evidence line whose only gap is a state file a sync held, and round 19 W4 calls a slow doctor's cut
     "the wait the report gives a slow doctor", not the time limit. The clause names no cause; the Summary
-    does. Keying on the cut-off words alone would drop the advice a busy state file needs."""
+    does. Keying on the cut-off words alone would drop the advice a busy state file needs.
+
+    B13 round 33 ruling 83: an install source line whose git did not answer carries the advice too, and the
+    grep read only the doctor and evidence lines (C702); under sustained load "once it is idle" is no remedy,
+    so the NEXT names the report's bounded limit beside it (C726), and "time limit" stays out of it."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
-    summary = (
-        "- doctor: cut off after 20.0s, the wait the report gives "
-        f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}"
-        if cause == "slow doctor"
-        else _busy_evidence_line()
-    )
+    summary = {
+        "slow doctor": "- doctor: cut off after 20.0s, the wait the report gives "
+        f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}",
+        "install source": "- install source: ~/src/agent-context-sync @ a73e4ea74b2c · origin: not read "
+        f"· on origin/main: not read · {setup_report._IDLE_AGAIN}",
+    }.get(cause) or _busy_evidence_line()
     assert setup_report._IDLE_AGAIN in summary and "time" not in summary.replace("this Mac", ""), summary
     old.write_text(
         f"# agentsync setup report\n\n## Summary\n\n{summary}\n\n## Redaction\n\n"
@@ -4882,8 +4886,8 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     assert cp.returncode == 0, cp.stdout + cp.stderr
     head = (
         "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
-        "was busy, run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle; "
-        "either way, "
+        "was busy, run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle, or "
+        "put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy; either way, "
     )
     rest = (
         f"{back} does not hold 1 kept patch file" if locked else f"review {back} and copy that one file back"
@@ -4972,13 +4976,31 @@ def test_a_cut_off_report_with_local_work_branches_says_either_way_once(
     again = "~/src/agent-context-sync/scripts/install.sh --report-only again"
     assert last_line(cp) == (
         "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
-        f"was busy, run {again} once it is idle; also, {back} does not carry the commits of 1 local-work "
+        f"was busy, run {again} once it is idle, or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that "
+        f"command if it stays busy; also, {back} does not carry the commits of 1 local-work "
         f"branch (its section 3 says how to add them as patches, then run {again}; a branch for which "
         "section 3's format-patch command writes no patch holds no new commit, and this line then comes back "
         f"on every run); either way, review {back} and copy that one file back privately "
         f"(nothing is sent for you) [setup report: {report_path(env)}]"
     ), last_line(cp)
     assert last_line(cp).count("either way") == 1, last_line(cp)
+
+
+def test_the_report_runs_with_the_time_limit_the_person_gave_it(env: dict[str, str]) -> None:
+    """B13 round 33 ruling 83 (C726): the NEXT names AGENTSYNC_REPORT_TIME_LIMIT in front of the command, so
+    the agentsync setup-report that --report-only runs must see it; the report itself clamps it."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    seen = home / "limit-seen"
+    _write_exe(
+        home / ".local" / "bin" / "agentsync",
+        "#!/bin/bash\n"
+        f'[ "$1" != setup-report ] || printf "%s" "$AGENTSYNC_REPORT_TIME_LIMIT" > "{seen}"\n'
+        f'exec "{env["STUB_AGENTSYNC"]}" "$@"\n',
+    )
+    cp = install_sh({**env, "AGENTSYNC_REPORT_TIME_LIMIT": "45"}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert seen.read_text(encoding="utf-8") == "45"
 
 
 def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:

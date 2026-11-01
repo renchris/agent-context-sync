@@ -7378,16 +7378,19 @@ on_exit() {
 				# agent. The marker is setup_report._IDLE_AGAIN, which every cut-off part writes, and so does an
 				# evidence line whose only gap is a state file a sync held (B13 round 20 X37): the words name no
 				# cause, the Summary does. An older installed agentsync without it adds nothing. Before the remedy
-				# for an unreadable patch, which keeps its words. Read only at the start of the Summary's doctor and
-				# evidence lines, the two that write it: the Summary and the friction log both repeat an agent's
-				# notes word for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66)
+				# for an unreadable patch, which keeps its words. Read only at the start of the Summary's doctor,
+				# evidence and install source lines, the three that write it (lane RA's round 33 ruling 83, C702: a
+				# git the report could not ask): the Summary and the friction log both repeat an agent's notes word
+				# for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66). A Mac that stays
+				# busy gets more time, which the report's own AGENTSYNC_REPORT_TIME_LIMIT clamps and an older build
+				# ignores, and which this run's environment passes on (ruling 83: C726).
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ -f "$REPORT_PATH" ] &&
-					LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$REPORT_PATH"; then
+					LC_ALL=C grep -qE '^- (doctor|evidence|install source): .*write the report again when this Mac is idle' "$REPORT_PATH"; then
 					# Y23's branch NEXT already owns the one "either way" before the review: "also" then joins the
 					# two pieces of advice (B13 round 22 Z44: the line said "either way" twice)
 					join="; either way, "
 					case "$NEXT_MSG" in *"; either way, "*) join="; also, " ;; esac
-					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle$join$NEXT_MSG"
+					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle, or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy$join$NEXT_MSG"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier
