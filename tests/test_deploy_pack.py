@@ -6884,7 +6884,7 @@ def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut(
     )
     # the shell report's hold_cut and hold_values do the same (lane RB, 29eef8c92)
     install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert '": lost from the hold list, owner not shown" end' in install and '" (owner not shown)"' in install
+    assert '": lost from the hold list, owner not shown" end' in install and '" (owner not shown"' in install
     assert "the installer's fallback report since 29eef8c92, §16.199) both reports also cut a hold" in page
 
 
@@ -8749,7 +8749,7 @@ def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
         f"{took}; 47.3s more while the cut-off doctor call and its reads came back`), still inside "
         "install.sh's 120 s bound on it." in page
     )
-    assert f"`{setup_report.TIME_LIMIT_ENV}` (seconds, 12 to 60)" in page
+    assert f"`{setup_report._TIME_LIMIT_ENV}` (seconds, 12 to 60)" in page
     assert "a `governance.remote` FAIL) is not counted against the budget." in page
     readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert "takes under 12 s." not in readme

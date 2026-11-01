@@ -2787,7 +2787,7 @@ _LOST_HOLD_LINES = {
     ),
     "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by the records owner (kept "
     "by hold-record.json), and no release is recorded": (
-        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) (kept by "
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown; kept by "
         "hold-record.json), and no release is recorded"
     ),
     # an owner holding an anchor hides more, never less
@@ -2799,7 +2799,7 @@ _LOST_HOLD_LINES = {
     # the time only right before the record clause: an owner holding one hides more (lane RA, refined)
     "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Avery at "
     "2026-10-22T05:32:56Z Quill (kept by hold-record.json), and no release is recorded": (
-        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown) (kept by "
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown; kept by "
         "hold-record.json), and no release is recorded"
     ),
     # with no record clause, nothing after the cut (lane RA's rule): a time there kept "Quill"
@@ -2809,6 +2809,14 @@ _LOST_HOLD_LINES = {
     ),
     "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all set by Pat Doe": (
         "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown)"
+    ),
+    # the folder's records-owner line (lane B's C313 words), no time between: one bracket (C710, ruling 85)
+    "[FAIL] governance.hold — /x/governance/ is missing, with the hold list, agentsync's audit trail, the "
+    "purge queue and the suppression list in it: /x/governance/holds.json no longer lists the hold on all "
+    "set by the records owner (kept by hold-record.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/governance/ is missing, with the hold list, agentsync's audit trail, "
+        "the purge queue and the suppression list in it: /x/governance/holds.json no longer lists the hold "
+        "on all (owner not shown; kept by hold-record.json), and no release is recorded"
     ),
 }
 
@@ -2911,8 +2919,8 @@ def test_a_hold_scope_no_source_names_is_cut_from_the_shell_report_from_every_ho
     assert shown == [
         "HOLD: hold <source-2> (state) since 2026-10-22T05:00:00Z: reason and owner not shown",
         "HOLD: hold <source-1> (audit) since 2026-10-22T05:32:56Z: lost from the hold list, owner not shown",
-        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on <source-3> (owner not shown) "
-        "(kept by hold-record.json), and no release is recorded",
+        "[FAIL] governance.hold — /x/holds.json no longer lists the hold on <source-3> (owner not shown; "
+        "kept by hold-record.json), and no release is recorded",
         "HOLD: hold all (record): lost from the hold list, owner not shown",
         "hold docs released (owner not shown)",
         "beat-scope",

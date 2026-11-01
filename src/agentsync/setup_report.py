@@ -372,7 +372,7 @@ INSTRUCTION_KINDS = ("NEXT:", "next:", "fix:", "run:")
 expected), and any other hint an agent may act on before it (``next:``, ``(fix: ...)``, ``run:``)."""
 TIME_BUDGET_S = 12.0
 """The whole report's wall-clock budget; external commands get what is left of it (minus a reserve)."""
-TIME_LIMIT_ENV = "AGENTSYNC_REPORT_TIME_LIMIT"
+_TIME_LIMIT_ENV = "AGENTSYNC_REPORT_TIME_LIMIT"
 """A longer budget, in seconds, for a Mac too busy for :data:`TIME_BUDGET_S` (B13 round 33 C726): read only
 when no budget is passed, clamped to :data:`_TIME_LIMIT_MIN_S` to :data:`_TIME_LIMIT_MAX_S`, well inside
 install.sh's 120 s bound on the report. A variable, not a flag: an older installed build ignores it, and would
@@ -589,7 +589,8 @@ _LOST_AT_END_RE = re.compile(rf" at {_HOLD_ISO}\Z")
 """governance.hold's FAIL for a lost hold (``governance.lost_hold_words``: ``... no longer lists the hold on
 <scope> set by <owner> at <iso> (kept by <records>), and no release is recorded ...``; before lane B's round
 29 ruling 27 words, ``(audit.jsonl, heartbeat.json)``), whose owner the audit trail gives. The owner reads
-``(owner not shown)``; the scope, the time and the fixed words after it stay. Fail-safe: the cut runs through
+``(owner not shown)``, ``(owner not shown; kept by <records>)`` when no time stands between (B13 round 33
+C710); the scope, the time and the fixed words after it stay. Fail-safe: the cut runs through
 the line's last fixed anchor (its last record clause, with the time only when it stands right before it; a
 line with none, which agentsync never writes, keeps nothing after the owner), so an owner holding `` at
 <iso>`` or a record clause hides more, never less (B13 round 29 C101, C187; ruling 23; the cross-vendor
@@ -638,7 +639,9 @@ def _cut_holds(text: str) -> str:
         if records:  # the last record clause, and the time only when it stands right before it
             at = records[-1].start()
             before = _LOST_AT_END_RE.search(rest[:at])
-            return f"{m['head']} (owner not shown){before.group(0) if before else ''}{rest[at:]}"
+            if before is None:  # one bracket, with no time between (B13 round 33 C710; ruling 85)
+                return f"{m['head']} (owner not shown; {rest[at + 2 :]}"
+            return f"{m['head']} (owner not shown){before.group(0)}{rest[at:]}"
         # no record clause: a line agentsync never writes, so nothing after the owner is kept (fail-safe)
         return f"{m['head']} (owner not shown)"
 
@@ -4269,9 +4272,9 @@ def _pandoc_from_doctor(r: _Run) -> str:
 
 
 def _time_limit() -> tuple[float, str]:
-    """The report's budget with no budget passed, and Run metadata's line about :data:`TIME_LIMIT_ENV`, ""
+    """The report's budget with no budget passed, and Run metadata's line about :data:`_TIME_LIMIT_ENV`, ""
     when it is not set (B13 round 33 C726). Never the value's own text: it says what it did with the value."""
-    raw = os.environ.get(TIME_LIMIT_ENV, "").strip()
+    raw = os.environ.get(_TIME_LIMIT_ENV, "").strip()
     if not raw:
         return TIME_BUDGET_S, ""
     try:
@@ -4282,16 +4285,16 @@ def _time_limit() -> tuple[float, str]:
     if not math.isfinite(asked):
         return (
             low,
-            f"- time limit: {low:.0f}s: {TIME_LIMIT_ENV} is not a number of seconds, so it was not used",
+            f"- time limit: {low:.0f}s: {_TIME_LIMIT_ENV} is not a number of seconds, so it was not used",
         )
     if asked < low:
-        return low, f"- time limit: {low:.0f}s: {TIME_LIMIT_ENV} is below {low:.0f}, so it was not used"
+        return low, f"- time limit: {low:.0f}s: {_TIME_LIMIT_ENV} is below {low:.0f}, so it was not used"
     if asked > high:
         return (
             high,
-            f"- time limit: {high:.0f}s: {TIME_LIMIT_ENV} is above {high:.0f}, so {high:.0f} was used",
+            f"- time limit: {high:.0f}s: {_TIME_LIMIT_ENV} is above {high:.0f}, so {high:.0f} was used",
         )
-    return asked, f"- time limit: {asked:.0f}s, from {TIME_LIMIT_ENV} ({low:.0f} to {high:.0f})"
+    return asked, f"- time limit: {asked:.0f}s, from {_TIME_LIMIT_ENV} ({low:.0f} to {high:.0f})"
 
 
 def _not_answered(rc: int, note: str) -> bool:
@@ -4377,13 +4380,13 @@ class _Run:
         self.doctor_grace = 0.0  # the seconds the deadline moved for a slow doctor (_DOCTOR_GRACE_S, V4)
         # the part of doctor_grace past the planned move: a cut-off call and its reads came back late (C708)
         self.doctor_overrun = 0.0
-        self.time_scale = 1.0  # how far TIME_LIMIT_ENV raised the budget, for the per-call caps (C726)
+        self.time_scale = 1.0  # how far _TIME_LIMIT_ENV raised the budget, for the per-call caps (C726)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
 
     def cap(self, seconds: float) -> float:
-        """A per-call cap in this report's budget: as written, unless :data:`TIME_LIMIT_ENV` raised it."""
+        """A per-call cap in this report's budget: as written, unless :data:`_TIME_LIMIT_ENV` raised it."""
         return seconds * self.time_scale
 
     def run(self, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
@@ -5752,9 +5755,8 @@ def _install_source(r: _Run) -> str:
                 tree = start.get("tree") or _legacy_tree(lines)
                 if tree:
                     where += f" tree {tree} (the SHA-256 prefix of `git diff HEAD` in that checkout)"
-    if (
-        r.facts.install_source_cut
-    ):  # install.sh's --report-only NEXT reads it here; no count of the evidence line
+    # install.sh's --report-only NEXT reads it here; no count of the evidence line
+    if r.facts.install_source_cut:
         where += f" · {_idle_again(r)}"
     return where
 
@@ -15549,12 +15551,19 @@ def _fail_step_in_doctor(r: _Run, found: str) -> str:
     return found
 
 
-def _ran_no_install(r: _Run) -> bool:
-    """Whether the latest attempt ran no install.sh: the test behind the Summary's ``install.sh: no run during
-    this attempt`` (an attempt with a start line and none of the install log's runs). The Loop line's NEXT is
-    then status's reading of state earlier attempts left, which the line says (B13 round 32 C620)."""
+def _no_install_words(r: _Run) -> str | None:
+    """What the latest attempt ran when no install run of it did, the first-sync line's words; None when one
+    did: the Summary's ``install.sh: no run during this attempt`` (an attempt with a start line and none of
+    the install log's runs), or an attempt whose only run listed folders, which runs no sync (B13 round 33
+    C709). The Loop line's NEXT is then status's reading of state earlier attempts left, which the line says
+    (B13 round 32 C620)."""
     att = r.friction.latest if r.friction is not None else None
-    return att is not None and att.begin is not None and not _latest_runs(r)
+    if att is None or att.begin is None:
+        return None
+    runs = _latest_runs(r)
+    if not runs:
+        return "this attempt ran no install.sh"
+    return None if install_runs_only(runs) else "this attempt ran only install.sh --list-folders"
 
 
 def _one_bracket(text: str, words: str) -> str:
@@ -15616,14 +15625,14 @@ def _loop_line(r: _Run) -> str:
     )
     # B13 round 32 C620: with no install.sh run in the attempt, whose reading the NEXT is, in the one bracket
     # the damage clause has (two in a row read as a typo, B13 round 18 V11, V54)
-    fresh = found is not None and _ran_no_install(r)
+    ran = _no_install_words(r) if found is not None else None
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
         own = "the loop's own read"
-        if fresh:
-            own += " when this report was written; this attempt ran no install.sh"
+        if ran:
+            own += f" when this report was written; {ran}"
         text = _one_bracket(text, f"{own}; {_DAMAGE_SEEN}")
-    elif fresh:
-        text = _one_bracket(text, "status when this report was written; this attempt ran no install.sh")
+    elif ran:
+        text = _one_bracket(text, f"status when this report was written; {ran}")
     in_doctor = _doctor_fail_shown(r, "governance.hold")  # B13 round 32 C636
     waits = [
         ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR) if in_doctor else ln
@@ -15727,9 +15736,7 @@ def _install_line(
         return f"- install.sh: {where}"
     last = installs[-1]
     # "has no end line", as the outcome says it, never "the last no end line" (B13 round 25 D16)
-    status = (
-        _exit_text(last, r.install_runs) if last.rc is not None else f"has no end line ({_open_state(last)})"
-    )
+    status = _exit_text(last, r.install_runs) if last.rc is not None else "has no end line"
     closing = _closing_stopped(last.step("report"))
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
@@ -15745,6 +15752,9 @@ def _install_line(
     # the step bracket, which belongs to the exit, so R81's "(signal N)" never sits beside it
     if closing is not None:
         status += f", its closing status {closing}"
+    # B13 round 33 C764, C771's F1 (ruling 85): one bracket, and the state last, its causes reading as its own
+    if last.rc is None:
+        status += f", {_open_state(last)}"
     return f"- install.sh: {where}; the last {status}"
 
 

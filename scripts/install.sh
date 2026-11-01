@@ -3591,17 +3591,17 @@ hold_cut() {
 			iso = " at [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?"
 			while (match(s, /no longer lists the hold on [^ \t\r\f\v]+ set by /)) {
 				if (word(s, RSTART)) { out = out substr(s, 1, RSTART); s = substr(s, RSTART + 1); continue }
-				at = RSTART + RLENGTH; out = out substr(s, 1, at - 9) " (owner not shown)"
+				at = RSTART + RLENGTH; out = out substr(s, 1, at - 9) " (owner not shown"
 				rest = substr(s, at); cut = ""
 				# the last record clause, with the time only when it stands right before it (lane RA after a
 				# cross-vendor review: the last time first leaked "Avery at <iso> Quill" on a line with no set time)
 				for (r = rest; (k = index(r, " (")); r = substr(r, k + 1)) if (substr(r, k, 10) == " (kept by " || substr(r, k, 13) == " (audit.jsonl") cut = substr(r, k)
 				# with no record clause, which agentsync never writes, nothing after it: the whole rest goes
-				if (cut != "") {
-					pre = substr(rest, 1, length(rest) - length(cut))
-					if (match(pre, iso "$")) cut = substr(pre, RSTART) cut
-				}
-				return out cut
+				# one bracket when no time stands between (B13 round 33 C710; setup_report lost())
+				if (cut == "") return out ")"
+				pre = substr(rest, 1, length(rest) - length(cut))
+				if (match(pre, iso "$")) return out ")" substr(pre, RSTART) cut
+				return out "; " substr(cut, 3)
 			}
 			return out s
 		}

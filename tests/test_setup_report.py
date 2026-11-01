@@ -2010,6 +2010,19 @@ def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
     assert "<value>" not in report_text, section(report_text, "Redaction")
 
 
+def test_the_folders_records_owner_line_has_one_bracket_c710(tmp_path: Path) -> None:
+    """B13 round 33 C710 (ruling 85): with governance/ gone, lost_hold_words' records-owner line read `the
+    hold on all (owner not shown) (kept by hold-record.json)`, two brackets in a row. One now, with no time
+    between; install.sh's lostcut prints the same (its suite's _LOST_HOLD_LINES, the parity assert)."""
+    gone = governance.Hold(
+        "all", governance.LOST_HOLD_REASON, "the records owner", "", "record", ("hold-record.json",)
+    )
+    red = setup_report.Redactor()
+    said = red.redact(governance.lost_hold_words(tmp_path, gone)[0])
+    assert "on all (owner not shown; kept by hold-record.json), and no release is recorded" in said, said
+    assert ") (" not in said and " is missing, with the hold list" in said, said
+
+
 def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
     """B13 round 29 C101, C119, C156, C187 (ruling 23): a hold the hold list lost (origin ``audit``) printed
     its owner in clear in its ``HOLD:`` line and in doctor's FAIL. The ``(audit)`` line keeps the fixed
@@ -2042,7 +2055,7 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
     )
     assert red.redact(bare.describe()) == "hold all (audit): lost from the hold list, owner not shown"
     said = red.redact(governance.lost_hold_words(root, bare)[0])
-    assert "on all (owner not shown) (kept by heartbeat.json), and no release" in said, said
+    assert "on all (owner not shown; kept by heartbeat.json), and no release" in said, said
     # lane B's ruling 27 record clause, "(kept by <records>)": a hold the record alone keeps has no time
     for line, want in (
         (
@@ -2055,7 +2068,7 @@ def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
         (
             "/x/holds.json no longer lists the hold on all set by the records owner (kept by "
             "hold-record.json), and no release is recorded; purge and compaction stay suspended",
-            "/x/holds.json no longer lists the hold on all (owner not shown) (kept by hold-record.json), and "
+            "/x/holds.json no longer lists the hold on all (owner not shown; kept by hold-record.json), and "
             "no release is recorded; purge and compaction stay suspended",
         ),
     ):
@@ -2786,12 +2799,19 @@ def _hold_word_texts(word: str, root: Path) -> list[str]:
     return [t for lit in sorted(literals) for t in built.get(lit, [lit])] + older
 
 
-_INSTALL_PRINTED = re.compile(
-    r"(?<![\w$])(?:say |(NEXT_MSG|ctail|stail|lfact|lfix|MISPLACED_FIX|again|GONE_WHAT|GONE_FIX)\+?=)\""
-)
-"""Where install.sh starts a literal it prints, which install.out keeps: a ``say``, or one of the variables a
-``say`` prints (``NEXT_MSG`` behind its ``NEXT: `` prefix; ``GONE_WHAT`` and ``GONE_FIX``, the parts of step
-1's folder tail, B13 round 32 ruling 63)."""
+_INSTALL_PRINTED = re.compile(r"(?<![\w$])(?:say |(\w+)\+?=)\"")
+"""Where install.sh starts a literal it may print, which install.out keeps: a ``say``, or any assignment, so a
+new variable is read by default (B13 round 33 C738: ``second`` and ``PERSONS_FAILS`` reached ``NEXT_MSG``
+unread); :data:`_INSTALL_NOT_PRINTED` names the few that never are. ``NEXT_MSG`` is read behind its ``NEXT: ``
+prefix."""
+_INSTALL_NOT_PRINTED = {
+    "FIXED_VALUE_PHRASES",  # the phrase table itself: each entry would vouch for itself in the C502 scan
+    "FIXED_CAPS_PHRASES",
+    "used",  # the redaction legend's placeholder tokens, not prose
+    "rec",  # path-only: .../hold-record.json
+    "record",
+}
+"""Assignments :data:`_INSTALL_PRINTED` skips (C738): a short deny-list, each with its reason."""
 
 
 def _shell_quoted(line: str, at: int) -> str | None:
@@ -2829,9 +2849,8 @@ def _shell_quoted(line: str, at: int) -> str | None:
 
 @functools.cache
 def _install_hold_word_texts(word: str) -> list[str]:
-    """Every literal install.sh prints that holds ``word`` (B13 round 32 ruling 68, C634): its ``say`` lines
-    and the NEXT_MSG, ctail, stail, lfact, lfix, MISPLACED_FIX and ``again`` it builds them from, never a
-    comment or the FIXED_VALUE_PHRASES lines."""
+    """Every literal install.sh may print that holds ``word`` (B13 round 32 ruling 68, C634; round 33 C738):
+    its ``say`` lines and every assignment, never a comment or a name in :data:`_INSTALL_NOT_PRINTED`."""
     rx = re.compile(rf"(?i)(?<![a-z]){word}(?![a-z])")
     texts = []
     shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
@@ -2839,10 +2858,30 @@ def _install_hold_word_texts(word: str) -> list[str]:
         if line.lstrip().startswith("#"):
             continue
         for m in _INSTALL_PRINTED.finditer(line):
+            if m.group(1) in _INSTALL_NOT_PRINTED:
+                continue
             text = _shell_quoted(line, m.end() - 1)
             if text is not None and rx.search(text):
                 texts.append(("NEXT: " if m.group(1) == "NEXT_MSG" else "") + text)
     return texts
+
+
+def test_the_install_scan_reads_every_assignment_by_default_c738() -> None:
+    """B13 round 33 C738: the scan's allow-list missed `second=`, `PERSONS_FAILS=` and more that reach
+    install.out. It reads every assignment but a short deny-list: a made-up new variable holding a hold word
+    is read with no change to the scan; the literals C738 measured are among them; the deny-list's names
+    exist."""
+    new = '''  NEW_THING="a brand new line about a record"'''
+    found = _INSTALL_PRINTED.search(new)
+    assert found is not None and found.group(1) == "NEW_THING"
+    assert _shell_quoted(new, found.end() - 1) == "a brand new line about a record"
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    for name in _INSTALL_NOT_PRINTED:
+        assert re.search(rf"(?<![\w$]){name}\+?=\"", shell), name
+    texts = _install_hold_word_texts("records")
+    assert any("lost a purge the audit trail records" in t and "second" not in t for t in texts), texts
+    assert any(t.startswith("which lost a purge") for t in _install_hold_word_texts("records")), texts
+    assert not [t for t in texts if t.startswith("|")], "the phrase table is never read"
 
 
 @pytest.mark.parametrize("word", _HOLD_WORDS)
@@ -7670,6 +7709,30 @@ def test_a_step_3_stop_takes_doctors_kind_only_when_open_in_the_latest_attempt(
     assert record in setup_report._sync_stop_line(stop)
 
 
+def test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 33 C764, C771's F1 (ruling 85): the no-end-line form read `has no end line (<state>)
+    (<steps>)`, two brackets in a row. It has the step bracket, then the closing clause if any, then the
+    state, whose causes stay last, so none reads as a fourth cause."""
+    _append_killed_run(fake_mac)
+    with (fake_mac["setup"] / "install.log").open("a", encoding="utf-8") as fh:
+        fh.write(
+            f"2026-10-10T04:31:00Z run={_KILLED_RUN} step=report seconds=1 rc=0 result=done note=agentsync "
+            "closing_status=137\n"
+        )
+    _text, summary = summary_of(fake_mac)
+    line = _line(summary, "- install.sh: ")
+    clause = "), its closing status stopped by SIGKILL (signal 9), "
+    assert "has no end line (uv 0s" in line and clause in line, line
+    state = line.split(clause, 1)[1]
+    assert state in (
+        "interrupted, or still running",
+        "its process is gone: killed, the Mac restarted, or its end line could not be written",
+    ), line
+    assert ") (" not in line, line
+
+
 def test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -10892,6 +10955,59 @@ def test_the_loop_lines_lost_hold_wait_in_the_folder_form_names_doctors_line_c61
         assert head in line and "the hold list lost a hold" not in line, line
         assert ("Doctor's governance.hold [FAIL] line" in line) is in_doctor, line
         assert line.endswith("its governance.hold [FAIL] line gives the person's fix") is not in_doctor, line
+
+
+_LIST_ONLY_RUN = (
+    "2026-09-29T10:00:40Z run=20260929T100040Z-9 start install.sh compat=33 commit=- kind=checkout source=- "
+    "args=--list-folders\n"
+    "2026-09-29T10:00:41Z run=20260929T100040Z-9 step=list-folders seconds=1 rc=0 result=done\n"
+    "2026-09-29T10:00:42Z run=20260929T100040Z-9 end rc=0 seconds=2\n"
+)
+_LIST_ONLY_ATTEMPT = (
+    "Attempt: 2026-09-29T10:00:00Z\nPrompt: v33\nAgent: Contoso Bot\n"
+    "2026-09-29T10:00:30Z | step 1 | error | the folder question got no answer | -\n"
+    "2026-09-29T10:01:00Z | end | finished\n"
+)
+
+
+def test_the_loop_lines_next_says_whose_reading_it_is_with_only_a_list_run_c709(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 33 C709 (ruling 67's edge): an attempt whose only install.sh run was --list-folders had no
+    bracket, as `not _latest_runs` counted that run, while the outcome, install.sh and first-sync lines all
+    say no install run; it runs no sync, so `session done` is still earlier attempts' state. It has its own
+    words, never `ran no install.sh`; with an install run after the list run, no bracket."""
+    step = "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+    step += "session done"
+    wait = "WAITING ON YOU: answer the baseline questions"
+    ran = "this attempt ran only install.sh --list-folders"
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait])
+    log = fake_mac["setup"] / "install.log"
+    kept = log.read_text(encoding="utf-8")
+    log.write_text(_LIST_ONLY_RUN, encoding="utf-8")
+    write_friction(fake_mac, _LIST_ONLY_ATTEMPT)
+    r = setup_report._Run(fake_mac["config"], hooks, 60.0)
+    r.friction = setup_report.read_friction(r.friction_path)
+    assert setup_report._no_install_words(r) == ran, r.install_runs
+    line = setup_report._loop_line(r)
+    assert f"; session done (status when this report was written; {ran}); WAITING ON YOU: " in line, line
+    assert "ran no install.sh" not in line, line
+    r.facts.evidence_damage_failed = True
+    line = setup_report._loop_line(r)
+    assert (
+        f"; session done (the loop's own read when this report was written; {ran}; "
+        f"{setup_report._DAMAGE_SEEN}); WAITING ON YOU: " in line
+    ), line
+    start = (
+        "2026-09-29T10:00:50Z run=20260929T100050Z-9 start install.sh compat=33 commit=0123456789ab "
+        "kind=checkout source=- args=\n"
+    )
+    log.write_text(_LIST_ONLY_RUN + start, encoding="utf-8")
+    r = setup_report._Run(fake_mac["config"], hooks, 60.0)
+    r.friction = setup_report.read_friction(r.friction_path)
+    assert setup_report._no_install_words(r) is None, r.install_runs
+    assert "this attempt ran" not in setup_report._loop_line(r)
+    assert kept
 
 
 def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
@@ -16673,8 +16789,12 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
     )
     assert found is not None, "install.sh's cut-off test"
     assert setup_report._IDLE_AGAIN.startswith(found.group(2))
-    # the Summary's background line since C720, which lane RB's grep names (either grep passes)
-    reads = re.compile(rf"(?:- background sync: .*|{found.group(1)})" + re.escape(setup_report._IDLE_AGAIN))
+    # the Summary's background line and Run metadata's install source since C720 and C702, which lane RB's
+    # grep names (either grep passes)
+    reads = re.compile(
+        rf"(?:- (?:background sync|install source): .*|{found.group(1)})"
+        + re.escape(setup_report._IDLE_AGAIN)
+    )
     monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
 
     def hung(_config: object) -> list[str]:
@@ -17590,7 +17710,9 @@ def test_a_run_with_no_end_line_says_whether_its_process_is_gone(
         "step lines is launcher (skipped), and nothing after it is logged (a step's line is written when "
         "the step ends, so a step under way has none)\n" in inst
     )
-    assert f"- install.sh: 2 install runs; the last has no end line ({state}) (uv 0s" in summary
+    line = _line(summary, "- install.sh: ")
+    assert line.startswith("- install.sh: 2 install runs; the last has no end line (uv 0s"), line
+    assert line.endswith(f"), {state}") and ") (" not in line, line
     assert f"(computed: install.sh has no end line, {state})" in summary
     assert "reached launcher" not in text and "-4243" not in text
 
@@ -21878,9 +22000,9 @@ def test_the_report_time_limit_variable_is_clamped_and_said_c726(
     report. A variable gives a busy Mac more time, 12 to 60 s, well inside install.sh's 120 s bound, and a bad
     or low value is said, never quoted."""
     if value is None:
-        monkeypatch.delenv(setup_report.TIME_LIMIT_ENV, raising=False)
+        monkeypatch.delenv(setup_report._TIME_LIMIT_ENV, raising=False)
     else:
-        monkeypatch.setenv(setup_report.TIME_LIMIT_ENV, value)
+        monkeypatch.setenv(setup_report._TIME_LIMIT_ENV, value)
     assert setup_report._time_limit() == (budget, line)
 
 
@@ -21890,7 +22012,7 @@ def test_the_time_limit_variable_scales_each_per_call_cap_c726(
     """B13 round 33 C726: a raised limit raises Status's, the Loop hook's, the listing's, the proxy read's and
     the evidence parts' caps with it, or a slow Status build cuts the Loop read however large the limit; a
     budget passed in is taken as it stands, with no variable read and no cap moved; Run metadata names it."""
-    monkeypatch.setenv(setup_report.TIME_LIMIT_ENV, "24")
+    monkeypatch.setenv(setup_report._TIME_LIMIT_ENV, "24")
     r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 24.0)
     assert r.cap(setup_report._STATUS_S) == setup_report._STATUS_S
     seen: list[float] = []
@@ -21915,7 +22037,7 @@ def test_the_time_limit_variable_scales_each_per_call_cap_c726(
     source = inspect.getsource(setup_report)
     for name in ("_LISTING_S", "_PROXY_S", "_STATUS_S", "_LOOP_NEXT_S", "EVIDENCE_BUDGET_S"):
         assert f"r.cap({name})" in source, name
-    assert setup_report.TIME_LIMIT_ENV not in setup_report._IDLE_AGAIN  # ruling 83: install.sh keys on it
+    assert setup_report._TIME_LIMIT_ENV not in setup_report._IDLE_AGAIN  # ruling 83: install.sh keys on it
 
 
 @pytest.mark.parametrize("late", [3.0, 0.0], ids=["came-back-late", "on-time"])
