@@ -32989,6 +32989,11 @@ Amended 2026-10-26, §16.205 C353: the clause reads `S of the unreadable held ba
 for one page and `... their pages contained a credential` for more.
 Amended 2026-10-28, §16.215 C624: governance.hold's ok line reads `no hold set (no hold list on disk)` with no
 holds.json and `no hold set (hold list read)` only over a file.
+Amended 2026-11-01, §16.222 C763 (by §16.215 C624): that line has four forms. `no hold set (hold list read)` only
+over a holds.json and `no hold set (no hold list on disk)` with none, except in ruling 63's case (governance/ missing
+while purge-record.json records a purge or hold-record.json names a scope), where it reads `no hold set (hold record
+read; the hold list is missing with the governance folder)`, or `no hold set (the hold list is missing with the
+governance folder)` with no hold-record.json (§16.215 C624 and "C606's, C639's and C624's review").
 
 ### 16.201 Round 29: every conversion reason pathless, a mail label that fails closed, the kept pages' words and Finder's order (2026-10-26, wave B13 round 29 lane E)
 
@@ -36364,4 +36369,9 @@ Reserved for round 33 lane E of B13.
 
 ### 16.222 Round 33: the records page on which governance loss stops the sync, the setup guide's quotes and the gate's signal words (2026-11-01, wave B13 round 33 lane D)
 
-Reserved for round 33 lane D of B13.
+**Governance.hold's four ok forms are in one dated line at its quote** (C763, ruling 74; amends §16.200 C155; docs
+only). §16.215 C624's line at §16.200 gives two of the forms and says `no hold list on disk` whenever there is no
+holds.json, while `governance.no_hold_words` gives the folder's own form in ruling 63's case. Under ruling 74 the
+round 32 line stands and one dated line gives all four, naming the review by its heading, "C606's, C639's and C624's
+review". Test: `test_governance_holds_four_ok_forms_are_in_one_dated_line_at_its_quote`, which reads each form from
+governance's constant.

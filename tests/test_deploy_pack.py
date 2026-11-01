@@ -7290,6 +7290,32 @@ def test_the_readme_lists_the_office_formats_that_are_both_label_screened_and_co
     assert "macro and template variants" not in readme
 
 
+def test_governance_holds_four_ok_forms_are_in_one_dated_line_at_its_quote() -> None:
+    """B13 round 33 C763 (ruling 74): the round 32 line at §16.200 gave two of governance.hold's four ok forms
+    and said `no hold list on disk` whenever there is no holds.json, but in ruling 63's case `no_hold_words`
+    returns one of the folder's forms. One dated line gives all four, each the constant the code prints, and
+    names the review by its heading, leaving the round 32 line as it stands."""
+    from agentsync import governance  # noqa: PLC0415
+
+    flat = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = flat.split("Amended 2026-11-01, §16.222 C763 (by §16.215 C624): ", 1)[1].split(" ### ", 1)[0]
+    for form in (
+        governance.HOLD_LIST_READ,
+        governance.HOLD_LIST_NONE,
+        governance.HOLD_LIST_GONE,
+        governance.HOLD_LIST_GONE_UNRECORDED,
+    ):
+        assert f"`{form}`" in line, form
+    assert "ruling 63's case (governance/ missing while purge-record.json records a purge" in line
+    assert "(§16.215 C624 and \"C606's, C639's and C624's review\")." in line
+    assert "C606's, C639's and C624's review (2026-10-28): **the audit trail's loss" in flat
+    assert flat.count("§16.222 C763") == 1
+    assert (
+        "Amended 2026-10-28, §16.215 C624: governance.hold's ok line reads `no hold set (no hold list on"
+        " disk)` with no holds.json and `no hold set (hold list read)` only over a file." in flat
+    )
+
+
 def test_round_32s_stale_quotes_carry_one_dated_line_each() -> None:
     """B13 round 32 C652, C653, C654, C673 (ruling 74): four CONTRACTS quotes a later change made stale. Each
     gets one dated line beside the code it quotes, never a rewrite of another round's text and never a second
