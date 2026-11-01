@@ -36510,6 +36510,14 @@ their empty output passed every check. Each is a statement of its own now, at le
 the meaning of every code a signal names (rc_aside says nothing for a code none names). The install.sh lines pass as
 they were: the test was blind, not the words. Test: `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`.
 
+**Under a lost hold the hand purge waits for the release** (C701's installer half, ruling 86; `scripts/install.sh`).
+The queue's no-copy clause sent the person to a purge the hold refuses, right after saying the records owner could set
+the hold again. Under `lost-hold-govgone` it ends `by hand once the records owner releases the hold, since setting it
+again keeps every purge refused`, in fixed words with no bracket, a scope or an owner; without a lost hold it is as
+before. Lane B's FAIL and the sync's stop name the hold and its release command; step 1 and step 2 do not, as they
+print no scope. Test: the `hold-queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`
+and `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict`.
+
 **The person's kinds credit purge-record.json too** (C712; ruling 82; `scripts/install.sh`,
 `src/agentsync/ops/doctor.py`, `src/agentsync/setup_report.py`). With governance/ gone the only record of a queued
 purge is purge-record.json, yet step 2's NEXT beside its FAIL listed `a purge queue or suppression list that lost a

@@ -991,7 +991,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   purge-record.json keeps a purge as queued and not done`, the fix ending `; with no copy, they accept each loss with
   --folder-lost, as its status line says, and run each such purge by hand before the next sync`, its `<check>`
   `governance.suppressed`, logged `config_err=state-suppressed-lost,state-queue-lost,state-governance-lost` (B13 round
-  33 ruling 86, C776, C767); for a queued purge alone: `; step 2 stops at its status step on
+  33 ruling 86, C776, C767); under a lost hold the queue's clause ends `by hand once the records owner releases the
+  hold, since setting it again keeps every purge refused` (ruling 86, C701); for a queued purge alone: `; step 2 stops at its status step on
   agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
   the suppression list in it, while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
   fixing that is the person's (they put agentsync's governance folder back whole from the copy kept; with no copy,

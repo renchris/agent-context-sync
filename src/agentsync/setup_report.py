@@ -1358,6 +1358,7 @@ _FIXED_VALUE_PHRASES = (
     "no audit line: ",
     "lost a purge the audit trail records",
     "lost a purge the audit trail or purge-record.json records",
+    "once the records owner releases the hold, since setting it again keeps every purge refused",
     # the outcome over two lost governance lists, a hold list among them (B13 round 30 ruling 40)
     "lost a hold or a purge the audit trail records",
     # lane B's C313 gone governance folder (governance.lost_hold_words)

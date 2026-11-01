@@ -13086,8 +13086,9 @@ GOVGONE_TAILS = {
         "its records keep a hold as set and not released, and purge-record.json keeps a purge as "
         "queued and not done (not damage, not a mode): fixing that is the person's (they put "
         "agentsync's governance folder back whole from the copy kept, or the records owner sets the "
-        "hold again or releases it; with no copy, they run each such purge by hand before the next "
-        "sync), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+        "hold again or releases it; with no copy, they run each such purge by hand once the records owner "
+        "releases the hold, since setting it again keeps every purge refused), and "
+        "~/.local/bin/agentsync status prints it on its governance.hold line"
     ),
     "suppressed-queue": (
         f"; {GOVGONE_LEAD}"
@@ -13504,6 +13505,15 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
         " and, on its governance.hold line, a second stop that follows: agentsync's governance"
     )
     assert "also the person's to fix: they put agentsync's governance folder back whole" in gone, gone
+    # B13 round 33 ruling 86 (C701): under a lost hold the hand purge waits for the records owner's release
+    hand = (
+        "run each such purge by hand once the records owner releases the hold, since setting it again keeps"
+    )
+    assert gone.endswith(f"as its status line says, and {hand} every purge refused"), gone
+    gone, _ = _second_stop("lost-hold-govgone,lost-queue-govgone")
+    assert gone.endswith(f"; with no copy, they {hand} every purge refused"), gone
+    gone, _ = _second_stop("none,lost-queue-govgone")
+    assert gone.endswith("; with no copy, they run each such purge by hand before the next sync"), gone
 
 
 def test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follows() -> None:

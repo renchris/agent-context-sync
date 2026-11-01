@@ -1270,7 +1270,11 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG 
 	case ",$1," in
 	*,lost-queue-govgone,*)
 		GONE_WHAT="${GONE_WHAT:-while}${GONE_WHAT:+, and} purge-record.json keeps a purge as queued and not done"
+		# a lost hold covers the queue's run: setting it again keeps the purge refused, so only its release lets
+		# the purge run, the records owner's decision (B13 round 33 ruling 86: C701, lane B's act and order)
 		case ",$1," in
+		*,lost-hold-govgone,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;;
+		*,lost-hold-govgone,*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;;
 		*,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand before the next sync" ;;
 		*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand before the next sync" ;;
 		esac
@@ -2181,6 +2185,7 @@ FIXED_VALUE_PHRASES+="|the audit trail records suppressed (|the audit trail reco
 FIXED_VALUE_PHRASES+="|recorded in the audit trail|with an audit line|purge audit: |no audit line: "
 FIXED_VALUE_PHRASES+="|lost a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|lost a purge the audit trail or purge-record.json records"
+FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge refused"
 FIXED_VALUE_PHRASES+="|lost a hold or a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: "
 FIXED_VALUE_PHRASES+="|label policy|label unreadable"
