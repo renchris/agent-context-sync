@@ -36373,6 +36373,32 @@ Reserved for round 33 lane E of B13.
 
 ### 16.222 Round 33: the records page on which governance loss stops the sync, the setup guide's quotes and the gate's signal words (2026-11-01, wave B13 round 33 lane D)
 
+**A fresh worktree's gate runs `npm ci` when node_modules is missing** (C770; `scripts/gate.sh`, CLAUDE.md's list,
+`docs/lanes/COMMON.md`'s gate paragraph). node_modules is gitignored, so a worktree outside the main checkout has none,
+and its first land gate failed `npm run diagrams:check` with ERR_MODULE_NOT_FOUND, though CLAUDE.md says its list holds
+the CI steps and diagrams.yml runs `npm ci` first. The gate runs it right after `uv sync --locked`, only when the
+folder is missing: `npm ci` deletes the folder first, and a lock-free `--affected` gate in the same worktree may be
+reading it. A stale node_modules after a package-lock.json change stays as it was. Test:
+`test_a_fresh_worktrees_gate_runs_npm_ci_once_and_only_when_node_modules_is_missing`, the real gate.sh over stand-ins.
+
+**A land gate a signal stopped says so, with no test verdict, and the land stays refused** (C769's gate half, ruling
+90; `scripts/gate.sh`, `scripts/ship-land.sh`). `ship-land.sh` printed `the land gate is red` for any non-zero gate and
+`gate.sh` had no line for a pytest part a signal stopped, so a gate the machine killed read as a test verdict (rc 137
+on tree 05371f13, green on the same tree an hour later). A part now says `== <part> stopped by SIG<name> (rc N) before
+it reported a verdict`, in land and lane modes, and the gate exits with that status. `ship-land.sh` says `the land gate
+was stopped by SIG<name> before it reported (no test verdict; ...); nothing pushed` and exits 5, as its header says. It
+never says green or `not red`, since a SIGKILL can come from the diff itself. The plain red line stays for rc 1 to 128
+and for a code no signal names. The conftest warm-up is lane E's (§16.221) and install_sh's bound lane RB's (§16.219).
+Tests: `test_a_land_gate_a_signal_stopped_says_so_and_the_land_stays_refused`,
+`test_a_land_gate_no_signal_stopped_keeps_the_plain_red_line`, `test_a_real_sigkill_of_the_land_gate_is_named`,
+`test_a_pytest_part_a_signal_stopped_says_so_and_the_gate_exits_with_its_status`.
+
+**Round 32's fourteen CI jobs are in CLAUDE.md and ci.yml's note** (C772; docs only). Jobs 62b8a943 to 7a3be9af took
+41:28 to 58:25, all green on attempt 1, the slowest on 9cb86828 (6706 tests, pytest's step 57:51), 21:35 under the
+limit of 80; runner waits reached 18:03 on 55808777. The headline of 18 to 60 and the limit stay. The item's verifier
+read no pin on these words, but `test_claude_md_gives_cis_time_and_its_limit` pins CLAUDE.md's whole sentence, and it
+moves with them.
+
 **Governance.hold's four ok forms are in one dated line at its quote** (C763, ruling 74; amends §16.200 C155; docs
 only). §16.215 C624's line at §16.200 gives two of the forms and says `no hold list on disk` whenever there is no
 holds.json, while `governance.no_hold_words` gives the folder's own form in ruling 63's case. Under ruling 74 the
