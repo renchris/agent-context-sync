@@ -2778,6 +2778,7 @@ def _trail_lost_lines(root: Path) -> int:
     return governance.audit_path(root).read_bytes().count(b"audit-trail-lost")
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_an_audit_trail_this_account_cannot_open_is_never_a_lost_trail_c741(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -2807,6 +2808,7 @@ def test_an_audit_trail_this_account_cannot_open_is_never_a_lost_trail_c741(
     assert audit.read_bytes() == before
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_trail_of_only_writable_bytes_is_refused_too_c741(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -2823,6 +2825,7 @@ def test_a_trail_of_only_writable_bytes_is_refused_too_c741(
         audit.chmod(0o600)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize("extra", [[], ["--dry-run"], ["--folder-lost"]])
 def test_a_governance_folder_this_account_cannot_open_gives_its_own_chmod_c741(
     initialised: Config, capsys: pytest.CaptureFixture[str], extra: list[str]
@@ -3232,6 +3235,7 @@ def test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701(
     assert found is not None and found[0] == governance._queue_file(root), found
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_hold_record_that_cannot_be_read_keeps_the_hold_lists_release_clause_c701(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4164,8 +4168,6 @@ def test_a_failed_loop_read_with_no_fail_still_logs_its_warning(
     assert err.count("WARNING agentsync.loop: next step: cannot read the loop state") == 1, err
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
-@pytest.mark.parametrize("hint", ["by hand", "install.sh"])
 def _three_incomplete_passes(config: Config, sid: str) -> None:
     """heartbeat.json says source ``sid``'s last 3 passes listed it incompletely: the warn's threshold."""
     hb = expand(config.state_paths.heartbeat)
@@ -4174,6 +4176,7 @@ def _three_incomplete_passes(config: Config, sid: str) -> None:
     hb.write_text(json.dumps(data), encoding="utf-8")
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize(
     ("stop", "check"), [("the lock a folder", "lock"), ("purge-record.json at 0000", "governance.suppressed")]
 )
@@ -4217,6 +4220,7 @@ def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
     capsys.readouterr()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4238,6 +4242,7 @@ def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c7
     capsys.readouterr()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize(
     ("name", "check", "sync_stops"),
     [
@@ -4287,6 +4292,8 @@ def test_a_refused_state_file_prints_the_one_path_under_a_linked_home_c732(
     capsys.readouterr()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("hint", ["by hand", "install.sh"])
 def test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], hint: str
 ) -> None:
@@ -7699,6 +7706,7 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     assert " kind=lost-list" not in line, line
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize("how", ["damaged", "refused"])
 def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_suppression_c768(
     initialised: Config, capsys: pytest.CaptureFixture[str], how: str
