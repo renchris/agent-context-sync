@@ -36737,6 +36737,12 @@ owner whether one ran, and runs each such purge again by hand before the next sy
 holds the clause, and its phrase `the person checks with the records owner` is already in both lists. Test:
 `test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530`.
 
+**C732.** `doctor.refused_state_path` printed the resolved path where `sync`'s `error: state:` line and heartbeat line
+print the configured one, so on a HOME under /tmp one state file read as two paths. It prints the path as the error gives
+it; only `state_path_fix` is judged on the resolved paths, so a linked record or state folder still gets its target's chmod.
+governance.suppressed, governance.hold, governance.purge_queue, heartbeat and lock take it together. Test:
+`test_a_refused_state_file_prints_the_one_path_under_a_linked_home_c732`.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

@@ -1367,13 +1367,15 @@ def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult |
     above that refuses a search, the person's; B13 round 22 Z52); None for any other
     error. The one shape of status's governance lines (``cli._refused_check``) and of the lock and heartbeat
     checks, so each says what ``sync``'s ``error: state:`` line says (B13 round 21 Y43: those two gave the
-    generic "could not read ... report it" FAIL)."""
+    generic "could not read ... report it" FAIL). The path prints as the error gives it, the form ``sync``'s
+    line prints, never resolved (``/tmp`` against ``/private/tmp``); only the fix is judged on the resolved
+    paths, so a linked record or state folder gets its target's chmod (B13 round 33 C732)."""
     root = expand(config.state_paths.root)
     if exc.filename is None or not state_unopenable(exc, root):
         return None
-    path = Path(os.path.realpath(os.fsdecode(exc.filename)))
-    detail = f"{path} cannot be opened: {exc.strerror or exc}"
-    return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), path))
+    given = Path(os.fsdecode(exc.filename))
+    detail = f"{given} cannot be opened: {exc.strerror or exc}"
+    return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(given))))
 
 
 def refused_state_files(config: Config) -> list[Path]:

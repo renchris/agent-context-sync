@@ -4140,6 +4140,55 @@ def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c7
     capsys.readouterr()
 
 
+@pytest.mark.parametrize(
+    ("name", "check", "sync_stops"),
+    [
+        ("purge-record.json", "governance.suppressed", True),
+        ("heartbeat.json", "heartbeat", True),
+        ("hold-record.json", "governance.hold", False),
+    ],
+)
+def test_a_refused_state_file_prints_the_one_path_under_a_linked_home_c732(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    check: str,
+    sync_stops: bool,
+) -> None:
+    """B13 round 33 C732: on a HOME reached through a link, as /tmp is on macOS, status printed the resolved
+    path where the sync's error printed the HOME form, so one file read as two. pytest's tmp_path is already
+    resolved, so only a linked HOME shows it. Both print the path as given; the fix still chmods the file."""
+    real = tmp_path / "real-home"
+    real.mkdir()
+    link = tmp_path / "linked-home"
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", str(link))
+    path_cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(path_cfg)]) == cli.EXIT_OK
+    config = load_config(path_cfg)
+    cfg, root, _page = _erased(config, capsys)
+    assert str(root).startswith(str(link)), root
+    target = root / name
+    assert target.is_file(), target
+    target.chmod(0o000)
+    try:
+        _rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ") and name in ln]
+        assert f" — {target} cannot be opened: " in failed and str(real) not in failed.split("(fix:")[0], (
+            failed
+        )
+        assert "(fix: chmod 600 " in failed, failed
+        if sync_stops:
+            assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+            err = capsys.readouterr().err
+            assert f"{target} cannot be opened: " in err and str(real) not in err.split("(fix:")[0], err
+    finally:
+        target.chmod(0o600)
+    capsys.readouterr()
+
+
 def test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], hint: str
 ) -> None:
