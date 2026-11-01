@@ -3466,7 +3466,8 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
     name the state folder and each of them (lane B's words)."""
     kind = (
         "a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold "
-        "the hold list lost, a purge queue or suppression list that lost a purge the audit trail records, a "
+        "the hold list lost, a purge queue or suppression list that lost a purge the audit trail or "
+        "purge-record.json records, a "
         "state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a "
         "folder above it or a read-only volume refuses"
     )

@@ -36474,6 +36474,15 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 
+**The person's kinds credit purge-record.json too** (C712; ruling 82; `scripts/install.sh`,
+`src/agentsync/ops/doctor.py`, `src/agentsync/setup_report.py`). With governance/ gone the only record of a queued
+purge is purge-record.json, yet step 2's NEXT beside its FAIL listed `a purge queue or suppression list that lost a
+purge the audit trail records`. Every copy of the kinds now reads `the audit trail or purge-record.json records`, in
+this one commit (ruling 6): doctor.PERSONS_KINDS and its comment, setup_report._PERSONS_KINDS_COPY, install.sh's
+PERSONS_FAILS and header, and the test literals. No kind for the folder itself: `a folder or file to put back or
+sync` names that fix. The prompt's v33 list is unchanged, as it was for C311, and the new clause enters both phrase
+lists (ruling 68). Test: the `queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`.
+
 **Every config-step NEXT names the stop that follows** (C737, C736; rulings 85 and 86; amends §16.214 C607;
 `scripts/install.sh`, `docs/deploy/setup-feedback.md`). Step 1 named a lost list's second stop beside any config-step
 stop, but step 2 read the reader only in config_failed's misplaced branch, so a lost manifest, another account's file,

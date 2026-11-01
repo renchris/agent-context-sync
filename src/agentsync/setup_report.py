@@ -1357,6 +1357,7 @@ _FIXED_VALUE_PHRASES = (
     "purge audit: ",
     "no audit line: ",
     "lost a purge the audit trail records",
+    "lost a purge the audit trail or purge-record.json records",
     # the outcome over two lost governance lists, a hold list among them (B13 round 30 ruling 40)
     "lost a hold or a purge the audit trail records",
     # lane B's C313 gone governance folder (governance.lost_hold_words)
@@ -6609,9 +6610,9 @@ _PERSONS_KINDS_COPY = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after "
     "earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression "
-    "list that lost a purge the audit trail records, a state folder that is not a folder, or a state file or "
-    "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a "
-    "[convert] pandoc_path, Rosetta to install or a native pandoc copy"
+    "list that lost a purge the audit trail or purge-record.json records, a state folder that is not a "
+    "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
+    "volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
 )
 """``doctor.PERSONS_KINDS``, for a report written while doctor does not import (a test keeps them equal)."""
 

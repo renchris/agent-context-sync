@@ -937,9 +937,9 @@ PERSONS_NEXT = (
     "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
     "docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another "
     "account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge "
-    "the audit trail records, a state folder that is not a folder, or a state file or folder that an ACL, a "
-    "privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, "
-    "Rosetta to install or a native pandoc copy), not a step for the "
+    "the audit trail or purge-record.json records, a state folder that is not a folder, or a state file or "
+    "folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a "
+    "[convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the "
     "agent, so show them those lines and go on to the report; once fixed, "
 )
 
@@ -13108,6 +13108,10 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
         "suppressed-queue": "state-suppressed-lost,state-queue-lost",
     }
     assert f"config_err={word.get(lost, 'state-queue-lost')},state-governance-lost" in log, log
+    if lost == "queue":  # B13 round 33 ruling 82 (C712): purge-record.json keeps it, the audit trail is gone
+        step2 = install_sh(env, str(wheel))
+        assert step2.returncode == 1, step2.stdout + step2.stderr
+        assert "that lost a purge the audit trail or purge-record.json records, " in last_line(step2)
     kept.rename(gov)  # the person puts the governance folder back whole from the copy kept
     assert last_line(install_sh(env, "--list-folders")).endswith("(none is needed)")
 
@@ -13219,7 +13223,9 @@ def test_step_1_predicts_a_purge_list_that_lost_a_purge_and_step_2_names_its_kin
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert fail in cp.stdout + cp.stderr, cp.stdout + cp.stderr
     assert last_line(cp).startswith(PERSONS_NEXT), last_line(cp)
-    assert "a purge queue or suppression list that lost a purge the audit trail records" in last_line(cp)
+    assert (
+        "a purge queue or suppression list that lost a purge the audit trail or purge-record.json records"
+    ) in last_line(cp)
     kept.replace(gov / name)  # the person puts it back from the copy kept
     assert LOST_LIST_TAILS[lost] not in last_line(install_sh(env, "--list-folders"))
     again = install_sh(env, str(wheel))
