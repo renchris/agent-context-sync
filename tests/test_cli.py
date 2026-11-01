@@ -2700,6 +2700,151 @@ def test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_ever
     assert not (initialised.docs_repo / page).exists()
 
 
+def _erased_and_list_gone(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path, str]:
+    """:func:`_erased`, then suppressed.json moved aside: the config path, the state folder, the purge's
+    time."""
+    cfg, root, _page = _erased(initialised, capsys)
+    path = governance._suppress_file(root)
+    path.rename(path.with_suffix(".kept"))
+    (lost,) = governance.lost_suppressions(root)
+    return cfg, root, str(lost["at"])
+
+
+def _trail_lost_lines(root: Path) -> int:
+    """How many ``audit-trail-lost`` lines audit.jsonl holds, by bytes, whatever they decode as."""
+    return governance.audit_path(root).read_bytes().count(b"audit-trail-lost")
+
+
+def test_an_audit_trail_this_account_cannot_open_is_never_a_lost_trail_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 33 C741 (ruling 77): audit.jsonl at 0000 read as an empty trail, so the FAIL status's NEXT
+    names first opened "no longer holds purge lines purge-record.json keeps" and offered --folder-lost, whose
+    act would write ``audit-trail-lost`` into a trail agentsync never read. The FAIL keeps the audit trail's
+    credit, and the act gives the trail's own chmod, dry run included."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    audit = governance.audit_path(root)
+    before = audit.read_bytes()
+    audit.chmod(0o000)
+    try:
+        assert not governance.audit_trail_lost(root)
+        rc, out = _status(cfg, capsys)
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+        assert rc == cli.EXIT_FAILED and "the audit trail records" in failed, failed
+        assert governance.TRAIL_LOST_HEAD not in failed and "--folder-lost" not in failed, failed
+        chmod = f"chmod 600 {doctor._shell_path(audit)}"
+        assert any(ln.startswith("[FAIL] governance.audit ") and chmod in ln for ln in out), out
+        for extra in ([], ["--dry-run"], ["--folder-lost"], ["--folder-lost", "--dry-run"]):
+            assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_FAILED
+            err = capsys.readouterr().err
+            assert chmod in err and f"{audit} cannot be opened" in err, (extra, err)
+            assert governance.TRAIL_LOST_HEAD not in err and "--folder-lost" not in err, (extra, err)
+    finally:
+        audit.chmod(0o600)
+    assert audit.read_bytes() == before
+
+
+def test_a_trail_of_only_writable_bytes_is_refused_too_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 77's governance.audit: a 0200 trail passes the append open the check makes, and cannot be read,
+    so nothing can be judged from it: its own FAIL, with its chmod."""
+    cfg, root, _at = _erased_and_list_gone(initialised, capsys)
+    audit = governance.audit_path(root)
+    audit.chmod(0o200)
+    try:
+        _rc, out = _status(cfg, capsys)
+        chmod = f"chmod 600 {doctor._shell_path(audit)}"
+        assert any(ln.startswith("[FAIL] governance.audit ") and chmod in ln for ln in out), out
+    finally:
+        audit.chmod(0o600)
+
+
+@pytest.mark.parametrize("extra", [[], ["--dry-run"], ["--folder-lost"]])
+def test_a_governance_folder_this_account_cannot_open_gives_its_own_chmod_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str], extra: list[str]
+) -> None:
+    """C741: governance/ at 0000 gave the trail-lost refusal and offered --folder-lost; its chmod is the
+    fix."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    gov = governance.governance_dir(root)
+    gov.chmod(0o000)
+    try:
+        assert not governance.audit_trail_lost(root)
+        assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+    finally:
+        gov.chmod(0o700)
+    assert f"chmod 700 {doctor._shell_path(gov)}" in err, err
+    assert governance.TRAIL_LOST_HEAD not in err and "--folder-lost" not in err, err
+    assert _trail_lost_lines(root) == 0
+
+
+@pytest.mark.parametrize("shape", ["file", "dangling"])
+def test_a_governance_folder_that_is_not_one_gives_its_put_back_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    """C741: governance/ a file or a link to nothing gave the trail-lost refusal; it gives its own words."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    if shape == "file":
+        gov.write_text("not a folder\n", encoding="utf-8")
+    else:
+        gov.symlink_to(root / "nowhere")
+    assert not governance.audit_trail_lost(root)
+    assert not governance.audit_trail_loss_said(root)
+    for extra in ([], ["--dry-run"], ["--folder-lost"]):
+        assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        assert err.startswith(f"error: state: {gov}"), err
+        assert governance.TRAIL_LOST_HEAD not in err and "--folder-lost" not in err, err
+    assert os.path.lexists(gov) and not (root / "governance.kept" / "x").exists()
+
+
+def test_a_trail_that_is_not_utf8_fails_its_own_check_and_takes_no_loss_line_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C741: one non-UTF-8 byte read as an empty trail: governance.audit said nothing, and --folder-lost
+    exited 0 and appended ``audit-trail-lost`` to a trail that was never lost, which nothing clears after."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    audit = governance.audit_path(root)
+    with audit.open("ab") as f:
+        f.write(b'{"action": "note", "why": "\xff"}\n')
+    before = audit.read_bytes()
+    assert not governance.audit_trail_lost(root)
+    rc, out = _status(cfg, capsys)
+    (bad,) = [ln for ln in out if ln.startswith("[FAIL] governance.audit ")]
+    assert rc == cli.EXIT_FAILED and "is not the audit trail agentsync can read" in bad, bad
+    assert "the person restores " in bad and "--folder-lost" not in bad, bad
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert "the audit trail records" in failed and governance.TRAIL_LOST_HEAD not in failed, failed
+    for extra in ([], ["--dry-run"], ["--folder-lost"], ["--folder-lost", "--dry-run"]):
+        assert cli.main(["purge", "--accept-lost", at, *extra, "--config", cfg]) == cli.EXIT_FAILED
+        assert "is not the audit trail agentsync can read" in capsys.readouterr().err, extra
+    assert audit.read_bytes() == before and _trail_lost_lines(root) == 0
+
+
+@pytest.mark.parametrize("how", ["deleted", "folder moved"])
+def test_a_trail_really_gone_still_reads_as_lost_c741(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """C741's other side: a missing audit.jsonl is read and empty, so a deleted trail and a moved folder stay
+    the loss they are, and --folder-lost still takes them."""
+    cfg, root, at = _erased_and_list_gone(initialised, capsys)
+    if how == "deleted":
+        governance.audit_path(root).unlink()
+    else:
+        governance.governance_dir(root).rename(root / "governance.kept")
+    assert governance.audit_trail_lost(root)
+    assert governance.audit_unread(root) is None
+    assert cli.main(["purge", "--accept-lost", at, "--config", cfg]) == cli.EXIT_FAILED
+    assert "so nothing is accepted" in capsys.readouterr().err
+    assert cli.main(["purge", "--accept-lost", at, "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert _trail_lost_lines(root) == 1
+
+
 def _ok_line(out: Sequence[str], name: str) -> str:
     """The detail of status's one [ok] line for check ``name``."""
     (line,) = [ln for ln in out if ln.startswith(f"[ok  ] {name} ")]

@@ -1159,13 +1159,16 @@ def carry_round28_record(state_dir: Path) -> None:
         log.debug("governance: round 28 hold record not carried to %s: %s", path, exc)
 
 
-def _audit_events(state_dir: Path) -> list[dict[str, Any]]:
-    """The audit trail's records, oldest first, for the hold replay: a line that does not parse is skipped,
-    and a trail that cannot be read is none (its own governance.audit line says why)."""
+def _audit_read(state_dir: Path) -> tuple[list[dict[str, Any]], bool]:
+    """The audit trail's records, oldest first, and whether it was read: a line that does not parse is
+    skipped, a missing file reads as read and empty (a deleted trail is still a loss), and anything that
+    refuses the read (a mode, a folder that refuses a search, a link to nothing, a file at governance/, bytes
+    that are not UTF-8) as not read, which says nothing about what the trail holds (B13 round 33 C741; ruling
+    77)."""
     try:
         text = read_regular_text(audit_path(state_dir))
-    except (OSError, ValueError):
-        return []
+    except (OSError, ValueError, UnicodeDecodeError):
+        return [], False
     out: list[dict[str, Any]] = []
     for line in (text or "").splitlines():
         try:
@@ -1174,7 +1177,42 @@ def _audit_events(state_dir: Path) -> list[dict[str, Any]]:
             continue
         if isinstance(rec, dict):
             out.append(rec)
-    return out
+    return out, True
+
+
+def _audit_events(state_dir: Path) -> list[dict[str, Any]]:
+    """:func:`_audit_read`'s records, for the hold replay: a trail that cannot be read is none (its own
+    governance.audit line says why)."""
+    return _audit_read(state_dir)[0]
+
+
+def audit_unread(state_dir: Path) -> GovernanceError | None:
+    """Why the audit trail cannot be read, as its readers raise it, or None for a trail read or not there:
+    governance/ that is not a folder, by its own lstat; bytes that are not UTF-8 (the person's, restored from
+    a copy); anything else at the path that is not a file; a refused open, whose cause keeps the
+    PermissionError for its chmod (B13 round 33 C741; ruling 77)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    folder = governance_dir_error(state_dir)
+    if folder is not None:
+        return folder
+    path = audit_path(state_dir)
+    try:
+        read_regular_text(path)
+    except UnicodeDecodeError:
+        return GovernanceDamagedError(path, "the audit trail", "its bytes are not UTF-8 text")
+    except ValueError:
+        return GovernanceNotAFileError(
+            path, doctor.governance_file_kind(path) or "not a regular file", "the audit trail"
+        )
+    except OSError as exc:
+        kind = doctor.state_file_kind(path)
+        if kind is not None:  # a 0000 folder at the file: the person's move aside, its chmod first (P135)
+            return GovernanceNotAFileError(path, kind, "the audit trail")
+        unread = GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}")
+        unread.__cause__ = exc
+        return unread
+    return None
 
 
 def audit_holds(state_dir: Path) -> tuple[dict[str, dict[str, Any]], frozenset[str]]:
@@ -1289,10 +1327,15 @@ def audit_trail_lost(state_dir: Path) -> bool:
     purge-record.json keeps, which every purge line reaches only after the trail (:func:`record_purges`).
     Judged by content, never by the folder alone: a hold, a purge or an acceptance re-creates governance/ with
     a fresh audit.jsonl, after which the folder is there and its new trail read as the whole history (C606's
-    review). A record or trail that cannot be read says nothing here; its own FAIL does."""
+    review). A record or trail that cannot be read, or governance/ that refuses this account or is not a
+    folder, says nothing here; its own FAIL does (B13 round 33 C741; ruling 77)."""
     if folder_lost_case(state_dir):
         return True
-    trail = _audit_events(state_dir)
+    if governance_dir_error(state_dir) is not None:
+        return False
+    trail, read = _audit_read(state_dir)
+    if not read:
+        return False
     if any(r.get("action") == AUDIT_TRAIL_LOST for r in trail):
         return False
     try:
@@ -1309,8 +1352,9 @@ def audit_trail_lost(state_dir: Path) -> bool:
 
 
 def audit_trail_loss_said(state_dir: Path) -> bool:
-    """Whether the audit trail holds an ``audit-trail-lost`` line (``--folder-lost`` was run)."""
-    return any(r.get("action") == AUDIT_TRAIL_LOST for r in _audit_events(state_dir))
+    """Whether the audit trail holds an ``audit-trail-lost`` line (``--folder-lost`` was run); a trail that
+    cannot be read says nothing (ruling 77)."""
+    return any(r.get("action") == AUDIT_TRAIL_LOST for r in _audit_read(state_dir)[0])
 
 
 HOLD_LIST_READ = "no hold set (hold list read)"
@@ -5518,6 +5562,9 @@ def accept_lost_suppression(
     refused."""
     sp = config.state_paths
     with _maybe_lock(sp, lock and not dry_run):
+        unread = audit_unread(sp.root)  # its own error and fix, so no acceptance writes into it (C741)
+        if unread is not None:
+            raise unread
         trail_lost = audit_trail_lost(sp.root)  # by content: a re-created folder's new trail too (review)
         said = audit_trail_loss_said(sp.root)
         if trail_lost and not folder_lost:

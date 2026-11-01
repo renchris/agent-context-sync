@@ -2677,6 +2677,10 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
     if kind is not None:  # the words and the person's fix a hold's error gives (B13 round 25 D22, D41)
         detail, fix = governance.audit_not_a_file(audit, kind)
         out.append(_check("governance.audit", False, detail, doctor.Severity.ERROR, fix=fix))
+    elif not out:  # it opens for append: its bytes may still not read, and judge nothing (C741; ruling 77)
+        unread_trail = governance.audit_unread(root)
+        if unread_trail is not None:
+            out.append(_refused_check(config, "governance.audit", unread_trail))
     unread = False
     # the suppression list, then the purge record beside hold-record.json: one that cannot be read is its own
     # FAIL, never no purges (B13 round 30 C381; ruling 34)

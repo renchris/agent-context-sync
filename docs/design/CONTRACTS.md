@@ -36606,7 +36606,25 @@ stop, ...`. Tests: `test_the_lost_list_probe_names_both_lists_suppression_first_
 
 ### 16.220 Round 33: an unread audit trail never lost, a hold on every forget branch, the store each lost record credits, and purge's --folder-lost help (2026-11-01, wave B13 round 33 lane B)
 
-Reserved for round 33 lane B of B13.
+Round 33's rulings 77 to 81, 86's governance half and 87, in lane B's code: what a lost audit trail means and which store
+keeps what a lost list named. Each entry names its test.
+
+**C741 (ruling 77; data integrity).** `governance._audit_read(state_dir)` returns the trail's records and whether it was
+read: a missing file is read and empty, and an OSError, ValueError or UnicodeDecodeError is not read. `audit_trail_lost`
+keeps `folder_lost_case` first, then answers False for a governance/ that refuses this account, dangles or is a file
+(`governance_dir_error`) and for an unread trail, so a deleted audit.jsonl and a moved governance/ still read as lost
+and nothing else does; `audit_trail_loss_said` says nothing about an unread trail. `audit_unread(state_dir)` names why,
+as its readers raise it: `accept_lost_suppression` raises it first, `--dry-run` and `--folder-lost` included, so no
+acceptance writes into a trail agentsync never read (`chmod 600 <state>/governance/audit.jsonl`, `chmod 700
+<state>/governance`, the not-a-folder put-back). `cli._audit_checks` FAILs governance.audit on the same read when the
+append open passes: a trail that is not UTF-8 is `is not the audit trail agentsync can read: its bytes are not UTF-8
+text`, the person's, and a 0200 trail takes its chmod. A lost-list FAIL beside an unread trail keeps `the audit trail
+records`. Tests: `test_an_audit_trail_this_account_cannot_open_is_never_a_lost_trail_c741`,
+`test_a_trail_of_only_writable_bytes_is_refused_too_c741`,
+`test_a_governance_folder_this_account_cannot_open_gives_its_own_chmod_c741`,
+`test_a_governance_folder_that_is_not_one_gives_its_put_back_c741`,
+`test_a_trail_that_is_not_utf8_fails_its_own_check_and_takes_no_loss_line_c741` and
+`test_a_trail_really_gone_still_reads_as_lost_c741`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
