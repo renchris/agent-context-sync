@@ -36510,6 +36510,16 @@ their empty output passed every check. Each is a statement of its own now, at le
 the meaning of every code a signal names (rc_aside says nothing for a code none names). The install.sh lines pass as
 they were: the test was blind, not the words. Test: `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`.
 
+**The installer credits purge-record.json where the trail lost the line** (C735's installer half, ruling 82 on lane
+B's ruling 79 words; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). With governance/ there and the audit trail
+without the purge's line, status's FAIL credits purge-record.json while step 1 and step 2 said the audit trail records
+it. `LOST_HOLD_PY` adds `-trail` after the -govgone test when the build's detail says `purge-record.json keeps` or
+`kept by purge-record.json` (TRAIL_LOST_HEAD's lead holds the first, the form after the first `--folder-lost` either);
+`lost_list_tail` and `second_stop_words` take one arm for each of `,lost-suppressed-trail` and `,lost-queue-trail`, the
+log words unchanged, so no word goes unmatched. An older build never credits so. Tests:
+`test_the_lost_list_probe_credits_purge_record_json_when_the_trail_lost_the_line`,
+`test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_step_2`.
+
 **Under a lost hold the hand purge waits for the release** (C701's installer half, ruling 86; `scripts/install.sh`).
 The queue's no-copy clause sent the person to a purge the hold refuses, right after saying the records owner could set
 the hold again. Under `lost-hold-govgone` it ends `by hand once the records owner releases the hold, since setting it

@@ -8659,7 +8659,8 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     for noun, tail in follows.items():
         assert f"`{tail}`" in section, noun
     assert "(`config_err=state-file-notfile,state-queue-lost`)" in section
-    assert "a second stop that follows: the purge queue lost a purge the audit trail records, also" in script
+    assert 'lead=" and, on its governance.purge_queue line, a second stop that follows:"' in script
+    assert 'SECOND="$lead the purge queue lost a purge the audit trail records, also' in script
     assert "`and, on its governance.purge_queue line, a second stop that follows: the purge queue" in section
     assert "`NEXT:` for any config-step stop (other than the list itself) adds `and, on its" in section
     assert (

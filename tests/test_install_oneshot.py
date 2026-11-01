@@ -13109,8 +13109,9 @@ def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix
 ) -> None:
     """B13 round 32 ruling 63: with governance/ gone and purge-record.json keeping a queued purge, the
     build's governance_lost names the folder and leads its fix with the whole-folder put-back; the probe
-    says `,lost-queue-govgone` then, and `,lost-queue` with the folder there and only the queue gone, or
-    on a build whose fix does not open so."""
+    says `,lost-queue-govgone` then, and `,lost-queue` with the folder there and only the queue gone. On a
+    build whose fix does not open so, it credits purge-record.json as that build's detail does (B13 round 33
+    ruling 82: C735)."""
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     state = home / "Library" / "Application Support" / "agentsync"
@@ -13135,7 +13136,7 @@ def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix
         ),
         encoding="utf-8",
     )
-    assert _lost_hold_probe(cfg, older) == "none,lost-queue"
+    assert _lost_hold_probe(cfg, older) == "none,lost-queue-trail"
     (state / "governance.kept").rename(gov)
     (gov / "purge-queue.json").rename(state / "purge-queue.json.kept")
     assert _lost_hold_probe(cfg, src) == "none,lost-queue"
@@ -13452,6 +13453,82 @@ def test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder(
     assert last_line(install_sh(env, "--list-folders")).endswith(LOST_LIST_TAILS["queue"])
 
 
+def test_the_lost_list_probe_credits_purge_record_json_when_the_trail_lost_the_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 ruling 82 (C735's installer half, lane B's words): a later write re-created governance/,
+    so the folder is there, but the audit trail no longer holds the purge lines purge-record.json keeps. The
+    probe said `,lost-queue`, whose tail credits the audit trail, a store that records nothing. It adds
+    `-trail` after the -govgone test, and only on that credit."""
+    cfg, state = _both_lists_lost_state(tmp_path, monkeypatch)
+    src = Path(__file__).resolve().parents[1] / "src"
+    assert _lost_hold_probe(cfg, src) == "none"
+    gov = state / "governance"
+    gov.rename(state / "governance.kept")
+    governance.set_hold(state, "all", reason="matter 8", owner="Quinn Avery")
+    assert gov.is_dir()
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-trail,lost-queue-trail"
+    (gov / "audit.jsonl").unlink()
+    shutil.copy(state / "governance.kept" / "audit.jsonl", gov / "audit.jsonl")  # the trail back: its credit
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue"
+
+
+def test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_step_2(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 33 ruling 82 (C735's installer half), with the real agentsync: governance/ moved aside and a
+    later hold re-creating it. Step 1 said the audit trail records a queued purge the new trail never saw;
+    it now credits purge-record.json, as status's FAIL does, logged with the list's own word. Beside a
+    config-step stop the second stop says the same."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    (root / "governance").rename(root / "governance.kept")
+    held = subprocess.run(
+        [
+            f"{env['HOME']}/.local/bin/agentsync",
+            "hold",
+            "all",
+            "--reason",
+            "matter 8",
+            "--owner",
+            "Quinn Avery",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert held.returncode == 0, held.stdout + held.stderr
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert tail.endswith(
+        "; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge that "
+        "purge-record.json keeps as queued and not done (not damage, not a mode): fixing that is the "
+        "person's (they put the purge queue back from a copy they trust, or run each such purge by hand), "
+        "and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+    ), tail
+    assert "the audit trail records" not in tail, tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-queue-lost" in log, log
+    lock = root / "agentsync.lock"
+    if lock.exists():
+        lock.unlink()
+    lock.mkdir()
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        "on its lock line and, on its governance.purge_queue line, a second stop that follows: the purge "
+        "queue lost a purge that purge-record.json keeps, also the person's to fix): fixing it is the "
+        "person's ("
+    ) in last_line(cp), last_line(cp)
+
+
 def _second_stop(verdict: str, exclude: str = "") -> tuple[str, str]:
     """install.sh's second_stop_words under bash 3.2, the reader saying ``verdict``: (SECOND, ONCE)."""
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -13497,6 +13574,16 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
     )
     assert both[1] == "once both are fixed"
     assert _second_stop("none,lost-queue", "queue") == ("", "once it is fixed")
+    assert _second_stop("none,lost-queue-trail", "queue") == ("", "once it is fixed")
+    assert _second_stop("none,lost-suppressed-trail", "suppressed") == ("", "once it is fixed")
+    trail, once = _second_stop("none,lost-suppressed-trail,lost-queue-trail")
+    assert once == "once both are fixed" and "the audit trail records" not in trail, trail
+    assert "the suppression list lost what a purge suppressed, kept by purge-record.json, also" in trail, (
+        trail
+    )
+    assert "in that same stop, the purge queue lost a purge that purge-record.json keeps, also" in trail, (
+        trail
+    )
     assert _second_stop("none,lost-suppressed", "suppressed") == ("", "once it is fixed")
     assert _second_stop("none,lost-queue-govgone", "governance") == ("", "once it is fixed")
     gone, once = _second_stop("lost-hold-govgone,lost-suppressed-govgone,lost-queue-govgone")

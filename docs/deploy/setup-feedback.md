@@ -964,7 +964,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   comes first, as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first,
   and the queue's clause follows it opening `; the same stop names agentsync's purge queue`, logged
   `config_err=state-suppressed-lost,state-queue-lost` (B13 round 30 ruling 40, lane RB's dc266be78, C311; B13 round 31
-  C532; B13 round 33 ruling 86, C776). A hold list that no longer lists
+  C532; B13 round 33 ruling 86, C776). When the folder is there but the audit trail no longer holds the purge's line
+  (a later write re-created governance/), each tail credits purge-record.json instead, `which no longer lists what a
+  purge suppressed, kept by purge-record.json` and `which no longer holds a purge that purge-record.json keeps as
+  queued and not done`, under the same log words (ruling 82, C735). A hold list that no longer lists
   a hold its records keep as set and not released gives `; step 2 stops at its status step on agentsync's hold list,
   which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
   person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),
