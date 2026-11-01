@@ -506,10 +506,17 @@ def _out_path_reread_notes(report: CycleReport) -> None:
             f"sync and {'is' if n == 1 else 'are'} now current"
         )
     if n := report.path_reread_failed:  # never "failed again" (B13 round 31 C545)
-        # its own split, failed, unreadable and refused, as the sync line's counts cannot say which this one
-        # is, and where each file's reason is (B13 round 32 C626)
+        # its own split, failed, unreadable, refused and held, as the sync line's counts cannot say which this
+        # one is, and where each file's reason is (B13 round 32 C626); held is a stub the cycle made itself
+        # after a conversion that worked, which the sync line counts converted (B13 round 33 C754)
         unreadable, refused = report.path_reread_unreadable, report.path_reread_refused
-        split = [(n - unreadable - refused, "failed"), (unreadable, "unreadable"), (refused, "refused")]
+        held = report.path_reread_held
+        split = [
+            (n - unreadable - refused - held, "failed"),
+            (unreadable, "unreadable"),
+            (refused, "refused"),
+            (held, "held by this sync"),
+        ]
         said_split = ", ".join(f"{k} {word}" for k, word in split if k > 0)
         where = f"_sync/QUARANTINE.tsv in the docs folder gives {'its reason' if n == 1 else 'their reasons'}"
         _out(

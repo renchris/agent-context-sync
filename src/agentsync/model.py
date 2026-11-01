@@ -538,13 +538,16 @@ class CycleReport:
     # source's sync, paused, out of time), which the next sync of their source reads. The sync's notes and
     # the run record say each, as the legacy counts do (B13 round 30 C362, C327). Of the still a stub
     # (``path_reread_failed``, the total), the unreadable and the refused ones, so the note says which each
-    # is, the rest failed conversions (B13 round 32 C626)
+    # is, the rest failed conversions (B13 round 32 C626); and the held ones, a stub the cycle made itself
+    # after a conversion that worked (a path too long for the sidecar, a duplicate), which the sync line
+    # counts converted, not unreadable (``path_reread_held``, B13 round 33 C754)
     path_reread: int = 0
     path_reread_current: int = 0
     path_reread_failed: int = 0
     path_reread_unreadable: int = 0
     path_reread_refused: int = 0
     path_reread_waiting: int = 0
+    path_reread_held: int = 0
     # the heartbeat this account could not open (its PermissionError, with the path): the cycle stops trying
     # after the first source and logs nothing above DEBUG; the CLI says it once, an interactive sync as an
     # ``error: state:`` line, a NEXT to status and exit 1 (B13 round 23 A1, A34, A84; round 23 ruling 5)

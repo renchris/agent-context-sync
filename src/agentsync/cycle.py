@@ -2926,18 +2926,24 @@ class _Cycle:
         Then the staged file's folder named alone becomes ``_common._FOLDER_WORD`` and any other path in it
         loses the folder; for a Graph source that folder is the staging folder itself, which also holds a
         converter's temp folders (B13 round 32 C645). Only a text that ends cut (``…``) loses a cut staging
-        path at its end."""
+        path at its end, a staged file cut inside its 16 hex or its suffix included, to ``…`` (B13 round 33
+        C751; ``…`` is no suffix character, so the cut mark stays)."""
         end, goes_on = convert_common._PATH_END, convert_common._PATH_GOES_ON
         names = [n for n in convert_common._spellings(Path(name)) if "/" not in n] or [name]
         for root in self._staging_roots():
             if len(root) <= 2:
                 continue
             folder = re.escape(root) + r"[0-9a-f]{16}"
+            if text.endswith("…"):
+                # a staged file the cut ended inside: its 16 hex or its Graph suffix, which the root drop
+                # below would leave (``0123…``, ``0123456789abcdef.pp…``) or the suffix's lazy match took
+                # with the cut mark; the cut path goes as a cut inside the root does (B13 round 33 C751)
+                text = re.sub(re.escape(root) + r"[0-9a-f]{0,16}(?:\.[^\s'\":,;)\]>/\\…]*)?…$", "…", text)
             for spelt in sorted(names, key=len, reverse=True):
                 text = re.sub(folder + "/" + re.escape(spelt) + goes_on, lambda _m: name, text)
             # the shortest suffix that ends a path (``_PATH_GOES_ON``), so a sentence's ``.``, a ``>`` or an
             # escaped quote after it stays, and ``.tar.gz`` stays whole (B13 round 32 C646, review)
-            text = re.sub(folder + r"\.[^\s'\":,;)\]>/\\]+?" + goes_on, lambda _m: name, text)
+            text = re.sub(folder + r"\.[^\s'\":,;)\]>/\\…]+?" + goes_on, lambda _m: name, text)
             text = re.sub(folder + "/?" + end, convert_common._FOLDER_WORD, text)
             text = re.sub(folder + "/", "", text)
             # a Graph source's file sits in the staging folder itself (graph/drive.py:883), and a converter's
@@ -3562,7 +3568,9 @@ class _Cycle:
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
         cleared, settled, waiting = self._legacy_outcomes()
-        path_current, path_failed, path_unreadable, path_refused, path_waiting = self._path_outcomes()
+        path_current, path_failed, path_unreadable, path_refused, path_waiting, path_held = (
+            self._path_outcomes()
+        )
         return CycleReport(
             run_id=self.run_id,
             mode=self.mode,
@@ -3589,20 +3597,24 @@ class _Cycle:
             legacy_cleared=cleared,
             legacy_settled=settled,
             legacy_waiting=waiting,
-            path_reread=path_current + path_failed + path_unreadable + path_refused,
+            path_reread=path_current + path_failed + path_unreadable + path_refused + path_held,
             path_reread_current=path_current,
-            path_reread_failed=path_failed + path_unreadable + path_refused,
+            path_reread_failed=path_failed + path_unreadable + path_refused + path_held,
             path_reread_unreadable=path_unreadable,
             path_reread_refused=path_refused,
             path_reread_waiting=path_waiting,
+            path_reread_held=path_held,
         )
 
-    def _path_outcomes(self) -> tuple[int, int, int, int, int]:
+    def _path_outcomes(self) -> tuple[int, int, int, int, int, int]:
         """Of the stubs whose reason an older build wrote a path into, ``(current, failed, unreadable,
-        refused, waiting)`` after this run: current is one read again in this run and live (or dataless) now;
-        failed, unreadable and refused are one read again that is still a stub, which is not read again, by
-        its row: a failed conversion's stub, any other quarantined one (encrypted, not the type its name
-        says, no text) and a refused one, so the sync's note says which (B13 round 32 C626); waiting is one
+        refused, waiting, held)`` after this run: current is one read again in this run and live (or
+        dataless) now; failed, unreadable, refused and held are one read again that is still a stub, which
+        is not read again, by its row: a failed conversion's stub, a quarantined one the conversion found
+        unreadable (encrypted, not the type its name says, no text, a credential: the sync line's U, C145), a
+        refused one, and one the cycle itself stubbed after a conversion that worked (:data:`_SIDECAR_PATH`,
+        a ``duplicate-of`` copy: the sync line counts it converted, not unreadable), so the sync's note says
+        which (B13 round 32 C626, round 33 C754); waiting is one
         this run queued for the re-read but did not read (--source, paused, out of time), which the next sync
         of its source reads; a row read again and gone since counts in none. All 0 when the manifest cannot
         say (B13 round 30 C362)."""
@@ -3611,10 +3623,15 @@ class _Cycle:
             read = {(r.source_id, r.stable_id) for r in rows if r is not None} | self._path_reread
             queued = [self._path_row(sid, stable) for sid, stable in sorted(self._path_queued)]
         except Exception:  # the report never fails over a count
-            return 0, 0, 0, 0, 0
+            return 0, 0, 0, 0, 0, 0
         current = sum(1 for r in rows if r is not None and r.state in (RowState.LIVE, RowState.DATALESS))
         stubs = [r for r in rows if r is not None and r.state is RowState.QUARANTINED]
         failed = sum(1 for r in stubs if (r.state_reason or "").startswith(CONVERSION_FAILED))
+        held = sum(
+            1
+            for r in stubs
+            if (r.state_reason or "") == _SIDECAR_PATH or (r.state_reason or "").startswith(_DUPLICATE_OF)
+        )
         refused = sum(1 for r in rows if r is not None and r.state is RowState.REFUSED)
         # still the stub, still queued: not one this run converted some other way (new bytes), removed or
         # re-keyed into a re-read (B13 round 23 A62's alias rule)
@@ -3627,7 +3644,7 @@ class _Cycle:
             and (r.state_reason or "").startswith(CONVERSION_FAILED)
             and r.last_verdict is Verdict.ERROR
         )
-        return current, failed, len(stubs) - failed, refused, waiting
+        return current, failed, len(stubs) - failed - held, refused, waiting, held
 
     def _path_row(self, source_id: str, stable: str) -> ItemRow | None:
         """The row ``stable`` names, read under its new id when a safe-save re-keyed it in this run."""
@@ -3782,6 +3799,7 @@ class _Cycle:
         self._tally["path_reread_unreadable"] = report.path_reread_unreadable  # of the failed (C626)
         self._tally["path_reread_refused"] = report.path_reread_refused
         self._tally["path_reread_waiting"] = report.path_reread_waiting
+        self._tally["path_reread_held"] = report.path_reread_held  # of the failed (C754)
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
@@ -3859,7 +3877,9 @@ class _Cycle:
         wrote a path into that this run converted once more past their retries (``_retries``' one-shot, B13
         round 29 C181), ``path_reread_current`` and ``path_reread_failed`` the ones of them live now and still
         a stub, ``path_reread_unreadable`` and ``path_reread_refused`` the ones of the still a stub that
-        are an unreadable or a refused stub (B13 round 32 C626), and ``path_reread_waiting`` the ones this run
+        are an unreadable or a refused stub (B13 round 32 C626), ``path_reread_held`` the ones of the still a
+        stub that the cycle stubbed itself after a conversion that worked (a path too long for the sidecar, a
+        duplicate; B13 round 33 C754), and ``path_reread_waiting`` the ones this run
         queued for it and did not read, which a later sync of their source reads (``_path_outcomes``, B13
         round 30 C362);
         ``converted_unreadable``: of those, conversions whose
@@ -6563,7 +6583,7 @@ class _Cycle:
             for o in self.manifest.outputs_for(other.source_id, other.stable_id)
             if o.status is not OutputStatus.TOMBSTONE
         )
-        return f"duplicate-of {other.source_id}" + (f" ({pages[0]})" if pages else "")
+        return f"{_DUPLICATE_OF}{other.source_id}" + (f" ({pages[0]})" if pages else "")
 
     def _is_live_graph_row(self, src: SourceConfig, other: ItemRow) -> bool:
         if other.source_id == src.id or other.state not in (RowState.LIVE, RowState.DATALESS):
@@ -6960,6 +6980,10 @@ def _row_ids(row: ItemRow) -> tuple[str, str]:
 
 _CREDENTIAL = "contains a credential"
 _SIDECAR_PATH = "path too long for the full-content file this page needs (shorten a folder or file name)"
+_DUPLICATE_OF = "duplicate-of "
+"""How a duplicate's quarantine reason starts (``_duplicate_reason``): with :data:`_SIDECAR_PATH`, a stub the
+cycle makes itself after a conversion that worked, which the path re-read's note counts as held by this sync,
+never unreadable (B13 round 33 C754)."""
 
 
 def _stubbed_for_path(row: ItemRow) -> bool:

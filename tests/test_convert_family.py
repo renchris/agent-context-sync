@@ -3,6 +3,7 @@ error names the staged path or the home folder."""
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -419,6 +420,53 @@ def test_the_still_a_stub_note_splits_its_own_count_beside_a_refused_mail(
     assert "path_reread_refused" not in record
 
 
+def test_a_re_read_the_cycle_stubbed_after_it_converted_is_held_never_unreadable_c754(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 33 C754: a one-shot re-read whose conversion now works, then stubbed by the cycle itself (no
+    room for the full-content sidecar beside its page), was counted unreadable in the note, while the sync
+    line beside it counted the file converted with U = 0. It is held by this sync: still a stub, never
+    unreadable and never failed, and the run record carries ``path_reread_held`` inside the failed total."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.errors import SidecarPathError  # noqa: PLC0415
+    from agentsync.publish import Publisher  # noqa: PLC0415
+    from test_cycle import _run_record  # noqa: PLC0415
+
+    config, src = make_env(tmp_path)
+    word_package(src / "Contoso renamed doc.potx")
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config).exit_code == 0
+    deck = build_potx(tmp_path / "deck.potx")
+    converts = PptxConverter.convert
+    monkeypatch.setattr(PptxConverter, "convert", lambda self, _src, *, name: converts(self, deck, name=name))
+    plans = Publisher.plan_pages
+
+    def no_room(self, source, item, result, **kw):  # type: ignore[no-untyped-def]
+        if result.status is ConversionStatus.OK:
+            raise SidecarPathError("no room for the sidecar")
+        return plans(self, source, item, result, **kw)
+
+    monkeypatch.setattr(Publisher, "plan_pages", no_room)
+    capsys.readouterr()
+    cli.main(["sync", "--config", str(config.config_path)])
+    out = capsys.readouterr().out
+    assert re.search(r"converted 1, deferred 0 online-only", out) and "of the converted:" not in out, out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub (1 held by this "
+        "sync; _sync/QUARANTINE.tsv in the docs folder gives its reason), and it is not tried again"
+    ], out
+    assert _row(config, "Contoso renamed doc.potx").state_reason == cycle_mod._SIDECAR_PATH
+    record = _run_record(config)
+    assert (record["path_reread"], record["path_reread_failed"], record["path_reread_held"]) == (1, 1, 1)
+    assert "path_reread_unreadable" not in record and "path_reread_refused" not in record, record
+    for note in _notes(out):
+        assert not re.search(r"\bconverted\b|\bdeferred\b|\bread again\b|\bunreadable\b|\bfailed\b", note), (
+            note
+        )
+
+
 def test_the_still_a_stub_note_names_each_bucket_it_holds(capsys: pytest.CaptureFixture[str]) -> None:
     """C626: several files read again and still a stub are split in the note's own order, failed,
     unreadable, refused, a bucket holding none left out, plural words for several."""
@@ -439,6 +487,15 @@ def test_the_still_a_stub_note_names_each_bucket_it_holds(capsys: pytest.Capture
     assert _notes(capsys.readouterr().out) == [
         f"  note: 3 conversions {_SAID} were tried once more in this sync and are still a stub (1 failed, 2 "
         "refused; _sync/QUARANTINE.tsv in the docs folder gives their reasons), and they are not tried again"
+    ]
+    # B13 round 33 C754: a held one is its own bucket, last, and never counted failed
+    cli._out_path_reread_notes(
+        dataclasses.replace(report, path_reread=4, path_reread_failed=4, path_reread_held=1)
+    )
+    assert _notes(capsys.readouterr().out) == [
+        f"  note: 4 conversions {_SAID} were tried once more in this sync and are still a stub (1 failed, 2 "
+        "refused, 1 held by this sync; _sync/QUARANTINE.tsv in the docs folder gives their reasons), and "
+        "they are not tried again"
     ]
 
 
@@ -843,7 +900,13 @@ def test_pathless_cuts_the_folder_named_alone_before_a_period_a_bracket_or_an_es
     assert cut(f"cannot open {staged}\\'") == f"cannot open {_FOLDER_WORD}\\'"
     assert cut(f"cp {staged} /Volumes/Contoso/x") == f"cp {_FOLDER_WORD} /Volumes/Contoso/x"
     for sibling in (f"cannot open '{staged}.bak/x.png'", f"cannot open '{staged}2/x.png'"):
-        assert cut(sibling) == sibling, "a sibling whose name extends it with no space stays whole"
+        assert cut(sibling) == sibling, "a sibling that goes on past the folder with no end stays whole"
+    # B13 round 33 C752: one that goes on with an end is cut, so the docstring no longer says every sibling
+    # stays whole; it points at _PATH_END for the ends
+    assert cut(f"cannot open '{staged},v2/x.png'") == f"cannot open '{_FOLDER_WORD},v2/x.png'"
+    doc = " ".join((_pathless.__doc__ or "").split())
+    assert "a sibling whose name extends it with no space stays whole" not in doc, doc
+    assert "goes on past it with a character that is no end" in doc and "(``_PATH_END``)" in doc, doc
 
 
 def test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling(
@@ -924,6 +987,13 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
     assert fold(f"<DirEntry {root}.docx>", "Plan.docx") == "<DirEntry Plan.docx>"
     assert fold(f"cannot open '{root}.docx\\'", "Plan.docx") == "cannot open 'Plan.docx\\'"
     assert fold(f"cannot open '{root}.tar.gz'", "Plan.tar.gz") == "cannot open 'Plan.tar.gz'"
+    # B13 round 33 C751: a text cut inside the staged file's 16 hex kept those digits, and one cut inside its
+    # Graph suffix lost its cut mark to the suffix's match (``file 'Plan.pptx``, read as never cut)
+    head = "conversion failed: python-pptx cannot read the deck: file '"
+    for cut in ("0123", "0123456789abcde", "0123456789abcdef", "0123456789abcdef.", "0123456789abcdef.pp"):
+        assert fold(f"{head}{staging}/{cut}…", "Plan.pptx") == head + "…", cut
+        assert fold(f"{head}{staging}/{cut}", "Plan.pptx") != head, f"not cut: {cut} is no cut path"
+    assert fold(f"{head}{root}/Pl…", "Plan.pptx") == head + "Pl…", "a local name cut keeps its letters"
 
 
 @pytest.mark.parametrize("home", ["/Users/contosoquill", "/Volumes/Contoso Disk/Users/contosoquill"])
@@ -953,6 +1023,13 @@ def test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_pare
         assert fold(head + tail + "…") == head + "…", tail
     if parent + 3 < 12:
         assert not names(head + str(fake.staging)[: parent + 3]), "not cut: the floor stays 12"
+    if parent + 1 > 12:  # B13 round 33 C753: a long parent, where the cap holds the floor at 12
+        assert fake._cut_floor(str(fake.staging) + "/") == 12
+        for n in (12, 20, parent):
+            tail = str(fake.staging)[:n]
+            assert names(head + tail + "…"), tail
+            assert fake._cut_in_staging(head + tail + "…") == n
+            assert fold(head + tail + "…") == head + "…", tail
     outside = SimpleNamespace(staging=Path("/Volumes/Contoso/agentsync/staging"))
     outside._staging_roots = lambda: cycle_mod._Cycle._staging_roots(outside)  # type: ignore[attr-defined]
     outside._cut_floor = lambda root: cycle_mod._Cycle._cut_floor(outside, root)  # type: ignore[attr-defined]
@@ -1052,9 +1129,14 @@ def test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too(
     page's reason too."""
     config, src, _home = _login_home(tmp_path, monkeypatch, under=False)
     (src / "Contoso Quarterly.pptx").write_bytes(build_potx(tmp_path / "t.potx").read_bytes())
+    # B13 round 33 C750: the page's 300-character cut fell about 70 characters into the path, past the staging
+    # root under a tmp shorter than 54 characters, so the exact end below held only on a long tmp; a filler
+    # sized from the reason's own head puts it 20 characters into the root whatever tmp's length
+    words = "the deck's Contoso parts " + "cannot be read " * 12
+    filler = "~" * max(0, 299 - 20 - len(f"conversion failed: {words}from '"))
 
     def refuses(self: PptxConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
-        raise ConversionError("the deck's Contoso parts " + "cannot be read " * 12 + f"from '{path}'")
+        raise ConversionError(f"{words}{filler}from '{path}'")
 
     monkeypatch.setattr(PptxConverter, "convert", refuses)
     with monkeypatch.context() as mp:
@@ -1067,7 +1149,8 @@ def test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too(
     shown = page_fm(config, page)["reason"]
     tmp = str(tmp_path.resolve())
     assert tmp not in stored and tmp[:40] not in stored, "the stored cut falls before the path"
-    assert tmp[:40] in shown, "the page holds the path"
+    root = str(config.state_paths.staging.resolve()) + "/"
+    assert shown.endswith(f"from '{root[:20]}…"), "the page holds the path, cut 20 characters into the root"
     assert run(config).exit_code == 0
     for rel in (page, "_sync/QUARANTINE.tsv", "_manifest/src.jsonl"):
         assert tmp[:40] not in git(config.docs_repo, "show", f"HEAD:{rel}"), rel

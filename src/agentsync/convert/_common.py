@@ -141,8 +141,10 @@ def _pathless(text: str, src: Path, name: str) -> str:
     ``PosixPath`` prints its path with ``repr``, so a tab is ``\\t`` there and a backslash doubled (B13 round
     30 C364), and in the forced single-quote spelling too, which an error naming a file with a double quote
     gives its folder's apostrophes (B13 round 31 C578). The folder named alone, with nothing of a file after
-    it, is cut only at a path's end (``_PATH_END``), to a fixed word, so a sibling whose name extends it with
-    no space stays whole and a quoted path never reads ``''`` (C578, B13 round 32 C646)."""
+    it, is cut only at a path's end (``_PATH_END``), to a fixed word, so a sibling whose name goes on past it
+    with a character that is no end (``<folder>.bak``, ``<folder>2``) stays whole, while one that goes on with
+    an end (``<folder>,v2``, ``<folder>'s copy``) is cut, and a quoted path never reads ``''`` (C578, B13
+    round 32 C646; B13 round 33 C752: the ends are ``_PATH_END``'s, never a list here)."""
     for spelling in _spellings(src):
         text = text.replace(spelling, name)
     folder = [spelling for spelling in _spellings(src.parent) if len(spelling) > 1]
