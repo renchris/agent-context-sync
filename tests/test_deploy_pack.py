@@ -6455,6 +6455,7 @@ _ROUND_33_B_PARAGRAPH_AMENDS = (
     ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C744"),
     ("16.210", "C537 with C577 (2026-10-28): **accepting a lost suppression says", "§16.220 C745"),
     ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.220 C746"),
+    ("16.215", "C632 (2026-10-28): **the governance folder fix's hold half", "§16.220 C730"),
     ("16.215", "C633 (2026-10-28): **beside a FAIL that stops every sync", "§16.220 C746"),
     ("16.215", "C631 (2026-10-28): **beside a stop, the after-exclude pointer", "§16.220 C731"),
 )

@@ -6582,7 +6582,11 @@ def test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
     err = capsys.readouterr().err
     conditional = "so if an erasure, DLP or label purge was ever run here it is lost with the folder too"
-    owner = "the person checks with the records owner, and runs each such purge again by hand before the next"
+    # B13 round 33 C730: as the hold half and _purges_rewritten ask whether one was or ran
+    owner = (
+        "the person checks with the records owner whether one ran, and runs each such purge again by hand "
+        "before the next"
+    )
     for said in (failed, err):
         assert "run earlier is lost" not in said and "none is lost" not in said, said
         if purged:

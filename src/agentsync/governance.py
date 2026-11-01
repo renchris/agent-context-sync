@@ -822,8 +822,8 @@ def _record_keeps(state_dir: Path) -> str:
     # wrote none, the person can remove it), so the loss is said only of one that was run (B13 round 31 C530)
     return (
         f"{holds}; no purge record names a purge, so if an erasure, DLP or label purge was ever run here it "
-        "is lost with the folder too: the person checks with the records owner, and runs each such purge "
-        "again by hand before the next sync)"
+        "is lost with the folder too: the person checks with the records owner whether one ran, and runs "
+        "each such purge again by hand before the next sync)"
     )
 
 

@@ -36038,7 +36038,9 @@ checks with the records owner whether one ran, and runs each such erasure, DLP a
 the next sync"). Dated lines at §16.205 C381 and §16.210 C530. Tests: `test_cli.py`
 `test_the_governance_folders_fix_promises_no_record_that_is_not_there`,
 `test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530`,
-`test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges`.
+`test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges`. Amended 2026-11-01, §16.220 C730:
+`_record_keeps`' purge half reads the same, `the person checks with the records owner whether one ran, and runs each such
+purge again by hand before the next sync`; C530's quotes stay as written.
 
 C641 (2026-10-28): **the suppressed FAIL's detail names what is really lost (ruling 64).** Its detail said the sync
 "cannot rebuild the purged content's hashes" for every lost record, while the same line's fix said the audit trail
@@ -36728,6 +36730,12 @@ runs lists <id> without that folder|those folders`, its pointer giving the no-sy
 `test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729` and
 `test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729`, `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
+
+**C730.** The governance folder's fix asked the records owner `whether one was` of a hold, and `_purges_rewritten`'s tails
+`whether one ran` of a purge, but `_record_keeps`' purge half asked nothing. It reads `the person checks with the records
+owner whether one ran, and runs each such purge again by hand before the next sync`. No install.sh or setup_report copy
+holds the clause, and its phrase `the person checks with the records owner` is already in both lists. Test:
+`test_a_governance_folder_that_is_a_file_says_a_purge_is_lost_only_if_one_was_run_c530`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
