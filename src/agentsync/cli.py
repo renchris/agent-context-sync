@@ -3668,7 +3668,13 @@ def _print_purge(rep: governance.PurgeReport) -> None:
 FOLDER_LOST_DONE = (
     "the old audit trail's loss is written first, to the new audit trail and to purge-record.json"
 )
-"""``purge --accept-lost <at> --folder-lost``'s own clause, before what stays out (B13 round 32 C606)."""
+FOLDER_LOST_WOULD = (
+    "the old audit trail's loss would be written first, to the new audit trail and to purge-record.json"
+)
+FOLDER_LOST_ALREADY = "the old audit trail's loss was already recorded"
+"""``purge --accept-lost <at> --folder-lost``'s own clause, before what stays out (B13 round 32 C606), by what
+the act decided under its lock: the line written, it would be on ``--dry-run``, or an earlier act wrote it, so
+this one writes none (B13 round 33 C743, C744; ruling 79)."""
 
 
 def _cmd_purge(args: argparse.Namespace) -> int:
@@ -3691,19 +3697,19 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         _open_state_or_raise(config)  # sync's own line and exit, whatever the queue holds (P24)
     if args.accept_lost is not None:
         # the one audited way past a lost suppression nothing can put back (B13 round 30 C344, C401)
-        lost = governance.accept_lost_suppression(
+        accepted = governance.accept_lost_suppression(
             config, args.accept_lost, dry_run=bool(args.dry_run), folder_lost=bool(args.folder_lost)
         )
+        lost = accepted.lost
         what = governance._when(lost)  # the <reason> purge at <at> (B13 round 31 C511)
         if len(lost) > 1:  # purges an older build timed to the second can share one
             what = f"{len(lost)} purges, as that time names {len(lost)} records ({governance._when(lost)})"
         # what stays out and what is given up, per record, as the FAIL says it (B13 round 31 C537, C577)
-        said = f"its items stay out by their id and by {governance.ACCEPT_PATH_KEPT}"
-        if any(governance._fingerprinted(r) for r in lost):  # the audit trail's hashes keep a copy out
-            said += (
-                ", and a copy of its content under another name by the content fingerprints in agentsync's "
-                "audit trail"
-            )
+        # credited to what holds each record's lines, as the FAIL says it (B13 round 33 C707, C780; ruling 79)
+        path_kept, store = governance.accept_kept(record=accepted.in_record, trail=accepted.in_trail)
+        said = f"its items stay out by their id and by {path_kept}"
+        if any(governance._fingerprinted(r) for r in lost):  # the hashes keep a copy out
+            said += f", and a copy of its content under another name by the content fingerprints in {store}"
         said += f"; {governance.ACCEPT_PATH_LOST}"  # the list's older names and letter case (C537's review)
         if not all(governance._fingerprinted(r) for r in lost):
             said += (
@@ -3713,8 +3719,10 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         held = governance._glob_fingerprints(governance.load_suppressions(config.state_paths.root))
         if any(governance._glob_lost(r, held) for r in lost):  # as the FAIL judges: a held glob still guards
             said += "; a new file under its source-path glob is no longer kept out"
-        if args.folder_lost:  # the old audit trail's loss, said first, as the act writes it first (C606)
-            said = f"{FOLDER_LOST_DONE}; {said}"
+        if accepted.writes_loss:  # the old audit trail's loss, said first, as the act writes it first (C606)
+            said = f"{FOLDER_LOST_WOULD if args.dry_run else FOLDER_LOST_DONE}; {said}"
+        elif accepted.loss_recorded:  # a later --folder-lost: no second line (C744)
+            said = f"{FOLDER_LOST_ALREADY}; {said}"
         if args.dry_run:
             _out(f"dry run: would accept the suppression list's loss of {what} ({said}); nothing written")
         else:

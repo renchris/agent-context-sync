@@ -535,8 +535,32 @@ listed when it was purged (C537's review); an item it no longer listed gets a ``
 ACCEPT_PATH_KEPT_RECORD = (
     "the one source path purge-record.json keeps for each item still listed when it was purged"
 )
-""":data:`ACCEPT_PATH_KEPT` while governance/ is missing, the audit trail with it: the purge record keeps
-the same lines (B13 round 32 C606; ruling 63)."""
+""":data:`ACCEPT_PATH_KEPT` for a record the audit trail no longer holds: the purge record keeps the same
+lines (B13 round 32 C606; ruling 63; B13 round 33 C742, C755; ruling 79)."""
+ACCEPT_PATH_KEPT_EITHER = (
+    "the one source path agentsync's audit trail or purge-record.json keeps for each item still listed when "
+    "it was purged"
+)
+""":data:`ACCEPT_PATH_KEPT` when some of the records named are in the audit trail and some only in the purge
+record (ruling 79)."""
+ACCEPT_STORE_TRAIL = "agentsync's audit trail"
+ACCEPT_STORE_RECORD = "purge-record.json"
+ACCEPT_STORE_EITHER = "agentsync's audit trail or purge-record.json"
+"""The store that keeps a lost record's content fingerprints, by the records it names, in the fix's and the
+act's words: :func:`accept_kept` picks (ruling 79)."""
+
+
+def accept_kept(*, record: bool, trail: bool = False) -> tuple[str, str]:
+    """What keeps a lost record's items out, by what holds their lines (ruling 79): the path clause and the
+    store of its content fingerprints. ``record``: a record named is only in purge-record.json; ``trail``: a
+    record named is in the audit trail; both when mixed; the audit trail when told nothing."""
+    if record and trail:
+        return ACCEPT_PATH_KEPT_EITHER, ACCEPT_STORE_EITHER
+    return (
+        (ACCEPT_PATH_KEPT_RECORD, ACCEPT_STORE_RECORD) if record else (ACCEPT_PATH_KEPT, ACCEPT_STORE_TRAIL)
+    )
+
+
 SUPPRESSED_PATH_GUARD = (
     "the list's path guard beyond that one path (an item's older name, its name in other letter case, or the "
     "name of an item no longer listed when it was purged)"
@@ -551,7 +575,14 @@ ACCEPT_PATH_LOST = (
 beyond the trail's one exact path, and the path of an item the trail keeps no path for (C537's review)."""
 
 
-def accept_lost_words(*, glob: bool = False, unhashed: bool = False, folder: bool = False) -> str:
+def accept_lost_words(
+    *,
+    glob: bool = False,
+    unhashed: bool = False,
+    folder: bool = False,
+    record: bool | None = None,
+    trail: bool = False,
+) -> str:
     """The suppression list's way out with no copy, in both its FAILs, beside the copy (B13 round 30 C344,
     C401; ruling 33): the person's, after "with no copy, ". Its items stay out by their id and by the one
     source path the audit trail keeps for each item still listed when it was purged (each ``purge`` line's
@@ -564,21 +595,25 @@ def accept_lost_words(*, glob: bool = False, unhashed: bool = False, folder: boo
     no content fingerprints (an older build's), so accepting it gives up its guard against a copy under
     another name. ``glob``: a lost record is a purge by a source-path glob, which the audit trail keeps only
     by its fingerprint, so accepting it also gives up the glob's guard against a new file under it (C344's
-    review). ``folder``: governance/ is missing, the audit trail with it, so the act takes ``--folder-lost``,
-    which first writes ``audit-trail-lost``, and what keeps the items out is purge-record.json (B13 round 32
-    C606; ruling 63)."""
+    review). ``folder``: the audit trail lost what purge-record.json keeps (:func:`audit_trail_lost`), so the
+    act takes ``--folder-lost``, which first writes ``audit-trail-lost`` (B13 round 32 C606; ruling 63).
+    ``record`` and ``trail``, apart from which command it names: a record named is only in purge-record.json
+    (True when ``folder`` and told nothing), or in the audit trail, each credited as :func:`accept_kept`
+    says, so the words stay true after the first ``--folder-lost`` clears ``folder`` (B13 round 33 C742,
+    C755; ruling 79)."""
+    path_kept, store = accept_kept(record=folder if record is None else record, trail=trail)
     if folder:
         text = (
             f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at> --folder-lost` (`--dry-run` "
             f"first), which first {FOLDER_LOST_SAID}, <at> being the time status names for it, while its "
-            f"items stay out by their id and by {ACCEPT_PATH_KEPT_RECORD}, and a copy under another name of "
-            f"content purge-record.json fingerprints stays out, but {ACCEPT_PATH_LOST}"
+            f"items stay out by their id and by {path_kept}, and a copy under another name of "
+            f"content {store} fingerprints stays out, but {ACCEPT_PATH_LOST}"
         )
     else:
         text = (
             f"accepts each loss with `{AGENTSYNC_BIN} purge --accept-lost <at>` (`--dry-run` first), <at> "
             f"being the time status names for it, while its items stay out by their id and by "
-            f"{ACCEPT_PATH_KEPT}, and a copy under another name of content agentsync's audit trail "
+            f"{path_kept}, and a copy under another name of content {store} "
             f"fingerprints stays out, but {ACCEPT_PATH_LOST}"
         )
     if unhashed:
@@ -1355,6 +1390,32 @@ def audit_trail_loss_said(state_dir: Path) -> bool:
     """Whether the audit trail holds an ``audit-trail-lost`` line (``--folder-lost`` was run); a trail that
     cannot be read says nothing (ruling 77)."""
     return any(r.get("action") == AUDIT_TRAIL_LOST for r in _audit_read(state_dir)[0])
+
+
+def split_by_trail(
+    state_dir: Path, recs: Sequence[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """``recs``, lost records, split by whether each one's own line is in a read audit trail: those it holds,
+    then those only purge-record.json keeps, line for line as :func:`audit_trail_lost` counts. A trail that
+    cannot be read, or governance/ that refuses or is not a folder, holds them all, as it says nothing of a
+    loss (ruling 77). What each line about a lost record credits, once the trail lost its purge lines: an
+    ``audit-trail-lost`` line clears :func:`audit_trail_lost`, which alone still picks the lead, the put-back,
+    ``--folder-lost`` and the act's gates, but brings no purge line back (B13 round 33 C742, C755; ruling
+    79)."""
+    trail, read = _audit_read(state_dir)
+    if not read or governance_dir_error(state_dir) is not None:
+        return list(recs), []
+    have = Counter(_line_key(r) for r in trail if r.get("action") in _PURGE_ACTIONS)
+    held: list[dict[str, Any]] = []
+    only: list[dict[str, Any]] = []
+    for rec in recs:
+        key = _line_key(rec)
+        if have[key]:
+            have[key] -= 1
+            held.append(rec)
+        else:
+            only.append(rec)
+    return held, only
 
 
 HOLD_LIST_READ = "no hold set (hold list read)"
@@ -2503,30 +2564,37 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
             if globbed:
                 what += ", and a source-path glob"
             folder = audit_trail_lost(state_dir)  # by content, the folder there again too (C606's review)
-            if folder:  # the audit trail went with the folder: purge-record.json keeps it (C606; ruling 63)
+            put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
+            lead = ""
+            if folder:  # the audit trail lost it: purge-record.json keeps it (C606; ruling 63)
                 if governance_gone(state_dir):
-                    lead, put_back = _folder_gone_words(state_dir)
+                    folder_lead, put_back = _folder_gone_words(state_dir)
+                    lead = f"{folder_lead}: "
                 else:
-                    lead = TRAIL_LOST_HEAD
-                    put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
-                detail = (
-                    f"{lead}: {path} no longer lists what {plural(len(lost), 'purge')} suppressed, kept by "
-                    f"purge-record.json ({_when(lost)}): the sync keeps the erased items out by their id and "
-                    f"by {ACCEPT_PATH_KEPT_RECORD}, but cannot rebuild {what}"
+                    lead = f"{TRAIL_LOST_HEAD}: "
+            # each record credits what keeps it, the first --folder-lost's line bringing none back (ruling 79)
+            in_trail, only = split_by_trail(state_dir, lost)
+            lists = []
+            if in_trail:
+                lists.append(
+                    f"what {plural(len(in_trail), 'purge')} the audit trail records suppressed "
+                    f"({_when(in_trail)})"
                 )
-            else:
-                put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
-                detail = (
-                    f"{path} no longer lists what {plural(len(lost), 'purge')} "
-                    f"the audit trail records suppressed ({_when(lost)}): "
-                    f"the sync keeps the erased items out by their id and by {ACCEPT_PATH_KEPT}, but cannot "
-                    f"rebuild {what}"
+            if only:
+                lists.append(
+                    f"what {plural(len(only), 'purge')} suppressed, kept by purge-record.json ({_when(only)})"
                 )
+            path_kept = accept_kept(record=bool(only), trail=bool(in_trail))[0]
+            detail = (
+                f"{lead}{path} no longer lists {' and '.join(lists)}: the sync keeps the erased items out by "
+                f"their id and by {path_kept}, but cannot rebuild {what}"
+            )
+            words = accept_lost_words(
+                glob=globbed, unhashed=unhashed, folder=folder, record=bool(only), trail=bool(in_trail)
+            )
             fix = (
-                f"{put_back}; or, with no copy, "
-                f"{accept_lost_words(glob=globbed, unhashed=unhashed, folder=folder)}; a purge run again by "
-                "hand clears its record only when it finds the content again, and the next sync refuses "
-                "until then"
+                f"{put_back}; or, with no copy, {words}; a purge run again by hand clears its record only "
+                "when it finds the content again, and the next sync refuses until then"
             )
             return GovernanceLostError(path, "the suppression list", detail, fix)
     return None
@@ -2550,23 +2618,35 @@ def _queue_lost(state_dir: Path) -> GovernanceLostError | None:
         gone = lost_queued(state_dir)
         if gone:
             path = _queue_file(state_dir)
-            entries = "; ".join(_lost_entry(r) for r in gone)
+            put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
+            lead = ""
             if audit_trail_lost(state_dir):  # the audit trail went with the folder (C601, C618; ruling 63)
                 if governance_gone(state_dir):
-                    lead, put_back = _folder_gone_words(state_dir)
+                    folder_lead, put_back = _folder_gone_words(state_dir)
+                    lead = f"{folder_lead}: "
                 else:  # a later write re-created the folder: by content (C606's review)
-                    lead = TRAIL_LOST_HEAD
-                    put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
+                    lead = f"{TRAIL_LOST_HEAD}: "
+            # each record credits what keeps it, the first --folder-lost's line bringing none back (ruling 79)
+            held, only = split_by_trail(state_dir, gone)
+            in_trail, in_record = ("; ".join(_lost_entry(r) for r in part) for part in (held, only))
+            if lead and not held:
                 detail = (
-                    f"{lead}: purge-record.json keeps {plural(len(gone), 'purge')} as queued and not done "
-                    f"({entries})"
+                    f"{lead}purge-record.json keeps {plural(len(only), 'purge')} as queued and not done "
+                    f"({in_record})"
                 )
             else:
-                put_back = f"the person puts {doctor._shell_path(path)} back from a copy they trust"
-                detail = (
-                    f"{path} no longer holds {plural(len(gone), 'purge')} the audit trail records as queued "
-                    f"and not done ({entries})"
-                )
+                holds = []
+                if held:
+                    holds.append(
+                        f"{plural(len(held), 'purge')} the audit trail records as queued and not done "
+                        f"({in_trail})"
+                    )
+                if only:
+                    holds.append(
+                        f"{plural(len(only), 'purge')} that purge-record.json keeps as queued and not done "
+                        f"({in_record})"
+                    )
+                detail = f"{lead}{path} no longer holds {' and '.join(holds)}"
             # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
             redo = zip(gone, _redo_all(state_dir, gone), strict=True)
             ways = "; ".join(f"for the {r.get('reason')} purge at {r.get('at')}: {w}" for r, w in redo)
@@ -5545,6 +5625,21 @@ def forget_queued(
     return q
 
 
+@dataclass(frozen=True)
+class LostAccepted:
+    """What :func:`accept_lost_suppression` decided under the lock: the records it accepts (``lost``), whether
+    it writes the ``audit-trail-lost`` line, or would on a dry run (``writes_loss``), whether ``folder_lost``
+    went with that line already written (``loss_recorded``), and whether a record it accepts is in the audit
+    trail (``in_trail``) or only in purge-record.json (``in_record``), as :func:`split_by_trail` tells (B13
+    round 33 C707, C780, C743, C744; ruling 79)."""
+
+    lost: list[dict[str, Any]]
+    writes_loss: bool
+    loss_recorded: bool
+    in_trail: bool
+    in_record: bool
+
+
 def accept_lost_suppression(
     config: Config,
     at: str,
@@ -5553,13 +5648,16 @@ def accept_lost_suppression(
     folder_lost: bool = False,
     lock: bool = True,
     now: datetime | None = None,
-) -> list[dict[str, Any]]:
+) -> LostAccepted:
     """Accept what the suppression list lost of the purge run at ``at`` (the time status names it by,
     :func:`lost_suppressions`) with a ``suppression-lost-accepted`` audit line, under the writer lock, after
     which that record no longer stops the sync; a refused audit trail clears nothing (A79). ``dry_run``
-    returns the record and writes nothing. Its items stay out by their id and by :data:`ACCEPT_PATH_KEPT`,
-    and a copy under another name of content the trail fingerprints stays out (:func:`audited_suppressions`
-    never reads this line). Every accepted record gives up the list's guard on the other paths it held
+    returns what it would do and writes nothing. It returns :class:`LostAccepted`, decided under the lock, so
+    the command's words follow what the act did, never its flag or a second read (B13 round 33 C707, C780,
+    C743, C744; ruling 79). Its items stay out by their id and by :data:`ACCEPT_PATH_KEPT` for a record the
+    trail holds or :data:`ACCEPT_PATH_KEPT_RECORD` for one only purge-record.json keeps, and a copy under
+    another name of content either fingerprints stays out (:func:`audited_suppressions` never reads this
+    line). Every accepted record gives up the list's guard on the other paths it held
     (:data:`ACCEPT_PATH_LOST`); a record whose line holds no content fingerprints, an older build's, also
     loses its guard against such a copy, and a source-path glob purge whose glob the list no longer holds its
     guard against a new file under it (B13 round 31 C537, C577). It is the one way out for a record no copy of
@@ -5603,11 +5701,20 @@ def accept_lost_suppression(
                 f"no purge at {at} is one the suppression list lost; `{AGENTSYNC_BIN} status` names each by "
                 "its reason and time"
             )
+        held, only = split_by_trail(sp.root, lost)
+        writes_loss = folder_lost and trail_lost
+        done = LostAccepted(
+            lost,
+            writes_loss=writes_loss,
+            loss_recorded=folder_lost and not writes_loss,
+            in_trail=bool(held),
+            in_record=bool(only),
+        )
         if dry_run:
-            return lost
+            return done
         with _audit_appender(sp.root) as audit:
             when = _iso(_now(now))
-            if folder_lost and trail_lost:  # first, once, so the trail never reads as complete (C606)
+            if writes_loss:  # first, once, so the trail never reads as complete (C606)
                 audit({"action": AUDIT_TRAIL_LOST, "at": when})
             for rec in lost:
                 audit(
@@ -5621,7 +5728,7 @@ def accept_lost_suppression(
                     }
                 )
         record_purges(sp.root)  # the acceptance outside governance/ too, so the record's loss stays cleared
-    return lost
+    return done
 
 
 def _probed(q: QueuedPurge) -> bool:

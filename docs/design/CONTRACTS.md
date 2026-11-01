@@ -33906,7 +33906,8 @@ record nothing can put back is `purge --accept-lost <at>` (with `--dry-run`; it 
 record it names, by time and selector. Where an older time names more than one record, the dry run and the act say
 "loss of <n> purges, as that time names <n> records (...)" and accept each; a time that names no lost record is
 refused, and an audit trail it cannot append to clears nothing
-(A79). It never edits suppressed.json, and the audit trail's ids, paths and hashes stay in force. Both FAILs name
+(A79). Amended 2026-11-01, §16.220 C744: it also takes `folder_lost`, and returns `LostAccepted`, what it decided
+under the lock. It never edits suppressed.json, and the audit trail's ids, paths and hashes stay in force. Both FAILs name
 it beside the copy (`accept_lost_words`, and `ACCEPT_LOST_WORDS` its no-glob form): the lost FAIL's fix reads "puts
 <list> back from a copy they trust; or, with no copy, accepts each loss with `~/.local/bin/agentsync purge
 --accept-lost <at>` (`--dry-run` first), <at> being the time status names for it, which gives up that purge's guard
@@ -35960,7 +35961,10 @@ fix's `records in the new audit trail and in purge-record.json that the old audi
 `ACCEPT_PATH_KEPT_RECORD`, `cli.FOLDER_LOST_DONE`; the `--folder-lost` option joins `purge`'s pinned surface,
 the one new option the ruling names (ruling 76). Tests: `test_cli.py`
 `test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_every_lost_file_c606`,
-`test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold).
+`test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold). Amended
+2026-11-01, §16.220 C744: the act's output opens with that clause only when it writes the line, `would be written
+first` on `--dry-run` and `the old audit trail's loss was already recorded` on a later `--folder-lost`; what stays out
+credits purge-record.json where it holds the record's line.
 
 C624 with C618's item 6 (2026-10-28): **the ok lines say what is on disk (ruling 64).** governance.hold's ok line
 said `no hold set (hold list read)` with no holds.json. `governance.no_hold_words` says `no hold set (no hold list
@@ -36634,6 +36638,39 @@ words; the unmarked branch stays, and a hold list that cannot be read raises as 
 then true and does not change. Test:
 `test_forget_of_an_entry_a_run_found_nothing_for_stops_at_a_hold_set_after_that_run_c778`, over a hold on the source, on
 all, a lost hold and an unreadable holds.json, with the release and the forget after it.
+
+**C742, C755 (ruling 79; one build).** After the first `--folder-lost`, `audit_trail_lost` is False, and the FAILs went
+back to crediting the audit trail for what only purge-record.json keeps. `governance.split_by_trail(state_dir, recs)`
+splits lost records by whether each one's own line is in a read audit trail, counted line for line as `audit_trail_lost`
+counts; a trail that cannot be read holds them all (ruling 77). `suppressions_lost` and `_queue_lost` credit each record
+by it: `no longer lists what <n> purge the audit trail records suppressed (<when>)`, `no longer lists what <n> purge
+suppressed, kept by purge-record.json (<when>)`, joined ` and ` when mixed; the queue's `no longer holds <n> purge the
+audit trail records as queued and not done (<entries>)`, `no longer holds <n> purge that purge-record.json keeps as
+queued and not done (<entries>)`, and under a lead with none in the trail the pinned `purge-record.json keeps <n> purge
+as queued and not done (<entries>)`. `accept_kept(record=, trail=)` picks the path clause and the fingerprint store:
+`ACCEPT_PATH_KEPT` and `agentsync's audit trail`, `ACCEPT_PATH_KEPT_RECORD` and `purge-record.json`, or, mixed, the new
+`ACCEPT_PATH_KEPT_EITHER` and `agentsync's audit trail or purge-record.json`. `accept_lost_words` takes `record=` and
+`trail=` apart from `folder=`, which alone names `--folder-lost`: `audit_trail_lost` still picks the lead, the put-back,
+`--folder-lost` and the act's gates, so no `audit-trail-lost` line is written twice and plain `--accept-lost` stays
+valid after the first. C755's `audit_trail_short` and its `was lost before <at>` lead are not built: ruling 79 keeps
+one test for the gates. Tests: the review test
+`test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606`, now reading status between the two
+acts, `test_a_later_plain_accept_lost_after_the_first_folder_lost_goes_c742`,
+`test_a_lost_list_credits_each_record_by_where_its_own_line_is_c742_c755`,
+`test_an_unread_trail_holds_every_lost_record_for_the_credit_c742` and
+`test_a_lost_queued_purge_credits_purge_record_after_the_first_folder_lost_c755`.
+
+**C707, C780, C743, C744 (ruling 79; one defect from four finders, built once).** `accept_lost_suppression` returns
+`LostAccepted(lost, writes_loss, loss_recorded, in_trail, in_record)`, decided under the lock, and `_cmd_purge`'s words
+follow it, never `args.folder_lost` or a second read. What stays out credits the store that holds each record
+(`accept_kept`): `by <the path clause>` and `the content fingerprints in <the store>`, so the `--folder-lost` output names
+purge-record.json where it named the trail it had just recorded as lost. `cli.FOLDER_LOST_DONE` (`the old audit trail's
+loss is written first, to the new audit trail and to purge-record.json`) leads only when the act writes the line;
+`cli.FOLDER_LOST_WOULD` (`the old audit trail's loss would be written first, to the new audit trail and to
+purge-record.json`) on `--dry-run`; `cli.FOLDER_LOST_ALREADY` (`the old audit trail's loss was already recorded`) on a
+later `--folder-lost`, which writes no second line. Those two and `ACCEPT_PATH_KEPT_EITHER` join both phrase lists
+(ruling 68). Tests: the C606 tests, each reading the acceptance's output, and
+`test_a_plain_accept_after_the_loss_credits_what_holds_its_line_c707`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 

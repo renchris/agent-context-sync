@@ -6450,6 +6450,12 @@ _ROUND_31_B_PARAGRAPH_AMENDS = (
 """Round 31 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C539's unread purge record at §16.205's C345 paragraph, and C561's erased
 lost record at its C370 paragraph's known residual, and C511's purge name at that paragraph's redo words."""
+_ROUND_33_B_PARAGRAPH_AMENDS = (
+    ("16.205", "C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost", "§16.220 C744"),
+    ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C744"),
+)
+"""Round 33 lane B's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C744's return and output at the `--accept-lost` paragraph and C606's."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -6628,6 +6634,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
+        *_ROUND_33_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

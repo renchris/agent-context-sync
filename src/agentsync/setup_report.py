@@ -1518,6 +1518,8 @@ _FIXED_VALUE_PHRASES = (
     # --folder-lost's audit line and words (C606's review)
     "audit-trail-lost",
     "the old audit trail's loss is written first, to the new audit trail",
+    "the old audit trail's loss would be written first, to the new audit trail",  # B13 round 33 C743, C744
+    "the old audit trail's loss was already recorded",
     "the audit trail was lost before",
     # lane B's sync line since B13 round 32 C609 (round 31's above stay: an older install.out keeps them)
     "because a label rule could not read its label data",

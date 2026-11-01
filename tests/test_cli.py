@@ -2684,12 +2684,23 @@ def test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_ever
     # with no copy left: --folder-lost writes the old trail's loss first, then the acceptance
     gov.rename(kept)
     assert cli.main([*accept, "--folder-lost", "--dry-run"]) == cli.EXIT_OK
-    assert cli.FOLDER_LOST_DONE in capsys.readouterr().out and not os.path.lexists(gov)
+    preview = capsys.readouterr().out
+    assert cli.FOLDER_LOST_WOULD in preview and cli.FOLDER_LOST_DONE not in preview, preview
+    assert not os.path.lexists(gov)
     assert cli.main([*accept, "--folder-lost"]) == cli.EXIT_OK
-    assert capsys.readouterr().out.startswith(
+    act = capsys.readouterr().out
+    assert act.startswith(
         f"accepted the suppression list's loss of the erasure-request purge at {lost['at']} (audited): "
         f"{cli.FOLDER_LOST_DONE}; "
     )
+    # what stays out is credited to what keeps it, the store the FAIL named, never the trail just recorded as
+    # lost (B13 round 33 C707, C780, C743; ruling 79)
+    for said in (preview, act):
+        assert governance.ACCEPT_PATH_KEPT_RECORD in said, said
+        assert "by the content fingerprints in purge-record.json" in said, said
+        assert governance.ACCEPT_PATH_KEPT not in said and "fingerprints in agentsync's audit" not in said, (
+            said
+        )
     trail = [json.loads(ln) for ln in governance.audit_path(root).read_text(encoding="utf-8").splitlines()]
     assert [r["action"] for r in trail] == ["audit-trail-lost", "suppression-lost-accepted"], trail
     recorded = [r["action"] for r in governance.recorded_purges(root)]
@@ -2708,6 +2719,20 @@ def _erased_and_list_gone(initialised: Config, capsys: pytest.CaptureFixture[str
     path.rename(path.with_suffix(".kept"))
     (lost,) = governance.lost_suppressions(root)
     return cfg, root, str(lost["at"])
+
+
+def _second_lost_purge(root: Path) -> str:
+    """A second verified purge in the trail and in purge-record.json, whose item the list never had: its
+    time."""
+    at = "2026-10-01T00:00:00Z"
+    item = {"action": "purge", "at": at, "reason": "dlp-remediation", "source_id": "source"}
+    governance.append_audit(root, {**item, "path_sha256": None, "stable_id_sha256": governance._sha("c1")})
+    line = {"action": "purge-summary", "at": at, "reason": "dlp-remediation", "verified": True}
+    line |= {"selector_kind": "stable-id", "selector_sha256": governance._sha("sel-c1")}
+    line["source_id"] = "source"
+    governance.append_audit(root, line)
+    governance.record_purges(root)
+    return at
 
 
 def _trail_lost_lines(root: Path) -> int:
@@ -2881,14 +2906,155 @@ def test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c
     assert len(lost) == 2, lost
     assert cli.main(["purge", "--accept-lost", lost[0], "--config", cfg]) == cli.EXIT_FAILED
     assert governance.TRAIL_LOST_HEAD + ", so nothing is accepted" in capsys.readouterr().err
-    for when in lost:  # each as the FAIL names it; the loss line written once
-        assert cli.main(["purge", "--accept-lost", when, "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    # each as the FAIL names it; the loss line written once
+    assert cli.main(["purge", "--accept-lost", lost[0], "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    # the record left is still only in purge-record.json, whatever the first act's line cleared (C742, C755)
+    assert not governance.audit_trail_lost(root)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and governance.TRAIL_LOST_HEAD not in failed, failed
+    assert f"suppressed, kept by purge-record.json (the erasure-request purge at {lost[1]})" in failed, failed
+    assert governance.ACCEPT_PATH_KEPT_RECORD in failed and "content purge-record.json fingerprints" in failed
+    assert "the audit trail records" not in failed and governance.ACCEPT_PATH_KEPT not in failed, failed
+    assert "agentsync's audit trail fingerprints" not in failed, failed
+    assert "purge --accept-lost <at>` (`--dry-run` first)" in failed and "--folder-lost" not in failed, failed
+    # the act's words follow what it decided: the loss line is written once, and said once (C744)
+    second = ["purge", "--accept-lost", lost[1], "--folder-lost", "--config", cfg]
+    assert cli.main([*second, "--dry-run"]) == cli.EXIT_OK
+    preview = capsys.readouterr().out
+    assert cli.FOLDER_LOST_ALREADY in preview and cli.FOLDER_LOST_WOULD not in preview, preview
+    assert cli.main(second) == cli.EXIT_OK
+    act = capsys.readouterr().out
+    assert f"(audited): {cli.FOLDER_LOST_ALREADY}; " in act and cli.FOLDER_LOST_DONE not in act, act
+    assert governance.ACCEPT_PATH_KEPT_RECORD in act and "fingerprints in purge-record.json" in act, act
     trail = governance.read_audit(root)
     assert [r["action"] for r in trail].count("audit-trail-lost") == 1, trail
     assert governance._purges_rewritten(root).startswith("; the audit trail was lost before ")
     rc, out = _status(cfg, capsys)
     assert not [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
     assert cli.main(["purge", "--accept-lost", lost[0], "--folder-lost", "--config", cfg]) == cli.EXIT_FAILED
+
+
+def test_a_plain_accept_after_the_loss_credits_what_holds_its_line_c707(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 79: the plain act over a record only purge-record.json keeps says so and writes no second loss
+    line; over a record the trail holds, whatever the record beside it, it keeps the audit trail's words."""
+    cfg, root, _page = _erased(initialised, capsys)
+    at = _second_lost_purge(root)
+    list_file = governance._suppress_file(root)
+    list_file.rename(list_file.with_suffix(".kept"))
+    in_trail = next(str(r["at"]) for r in governance.lost_suppressions(root) if r["at"] != at)
+    assert cli.main(["purge", "--accept-lost", in_trail, "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert governance.ACCEPT_PATH_KEPT in said and "fingerprints in agentsync's audit trail" in said, said
+    assert "old audit trail" not in said, said
+    governance.governance_dir(root).rename(root / "governance.kept")
+    assert cli.main(["purge", "--accept-lost", at, "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["purge", "--accept-lost", in_trail, "--config", cfg]) == cli.EXIT_OK
+    said = capsys.readouterr().out
+    assert governance.ACCEPT_PATH_KEPT_RECORD in said and "old audit trail" not in said, said
+    assert "fingerprints in purge-record.json" in said, said
+    assert _trail_lost_lines(root) == 1
+
+
+def test_a_later_plain_accept_lost_after_the_first_folder_lost_goes_c742(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 33 C742 (ruling 79): after the first --folder-lost, the other lost purge's FAIL credited the
+    audit trail, which holds none of it; the plain --accept-lost its fix names still goes, and the FAIL
+    clears."""
+    cfg, root, _page = _erased(initialised, capsys)
+    _second_lost_purge(root)
+    governance.governance_dir(root).rename(root / "governance.kept")
+    lost = sorted(r["at"] for r in governance.lost_suppressions(root))
+    assert cli.main(["purge", "--accept-lost", lost[0], "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert rc == cli.EXIT_FAILED and "kept by purge-record.json" in failed, failed
+    assert "the audit trail records" not in failed and "--folder-lost" not in failed, failed
+    assert cli.main(["purge", "--accept-lost", lost[1], "--config", cfg]) == cli.EXIT_OK
+    assert "fingerprints in purge-record.json" not in capsys.readouterr().err
+    rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
+
+
+def test_a_lost_list_credits_each_record_by_where_its_own_line_is_c742_c755(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 79, the mixed case: one lost record's line is in the trail and another's only in
+    purge-record.json: each is credited as what keeps it, and both stores are named for the path and the
+    fingerprints."""
+    cfg, root, _page = _erased(initialised, capsys)
+    at = _second_lost_purge(root)
+    list_file = governance._suppress_file(root)
+    list_file.rename(list_file.with_suffix(".kept"))
+    audit = governance.audit_path(root)
+    kept = [ln for ln in audit.read_text(encoding="utf-8").splitlines() if at not in ln]
+    audit.write_text(
+        "".join(f"{ln}\n" for ln in kept) + '{"action": "audit-trail-lost", "at": "x"}\n', encoding="utf-8"
+    )
+    assert not governance.audit_trail_lost(root)
+    held, only = governance.split_by_trail(root, governance.lost_suppressions(root))
+    assert len(held) == 1 and [r["at"] for r in only] == [at], (held, only)
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert (
+        rc == cli.EXIT_FAILED
+        and "the audit trail records suppressed (the erasure-request purge at " in failed
+    )
+    assert f"suppressed, kept by purge-record.json (the dlp-remediation purge at {at})" in failed, failed
+    assert governance.ACCEPT_PATH_KEPT_EITHER in failed and "--folder-lost" not in failed, failed
+    assert f"content {governance.ACCEPT_STORE_EITHER} fingerprints" in failed, failed
+
+
+def test_an_unread_trail_holds_every_lost_record_for_the_credit_c742(tmp_path: Path) -> None:
+    """Ruling 79 on ruling 77: an unread trail says nothing of a loss, so it keeps the audit trail's
+    credit."""
+    root = tmp_path
+    rec = {"action": "purge-summary", "at": "2026-10-01T00:00:00Z"}
+    governance.append_audit(root, rec)
+    audit = governance.audit_path(root)
+    audit.write_bytes(b"\xff\n")
+    assert governance.split_by_trail(root, [rec]) == ([rec], [])
+    audit.write_text('{"action": "note"}\n', encoding="utf-8")
+    assert governance.split_by_trail(root, [rec, rec]) == ([], [rec, rec])
+    audit.write_text(json.dumps(rec, sort_keys=True) + "\n", encoding="utf-8")
+    assert governance.split_by_trail(root, [rec, rec]) == ([rec], [rec])
+
+
+@pytest.mark.parametrize("words", ["folder gone", "after the first"])
+def test_a_lost_queued_purge_credits_purge_record_after_the_first_folder_lost_c755(
+    initialised: Config, capsys: pytest.CaptureFixture[str], words: str
+) -> None:
+    """C755's queue variant: the queue's FAIL went back to `the audit trail records` once an
+    ``audit-trail-lost`` line was written, though only purge-record.json keeps the queued purge."""
+    cfg, root, _page = _erased(initialised, capsys)
+    selector = governance.PurgeSelector.parse("docs=mirror/source/other/*", source_id=None)
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.DLP_REMEDIATION)
+    governance.record_purges(root)
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    if words == "after the first":
+        (lost,) = governance.lost_suppressions(root)
+        assert (
+            cli.main(["purge", "--accept-lost", lost["at"], "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+        )
+        capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert rc == cli.EXIT_FAILED and "the audit trail records" not in failed, failed
+    if words == "folder gone":
+        assert "purge-record.json keeps 1 purge as queued and not done" in failed, failed
+    else:
+        path = governance._queue_file(root)
+        assert (
+            f"{path} no longer holds 1 purge that purge-record.json keeps as queued and not done (" in failed
+        )
+        assert governance.TRAIL_LOST_HEAD not in failed, failed
 
 
 @pytest.mark.parametrize("held", [True, False])
