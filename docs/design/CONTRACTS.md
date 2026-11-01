@@ -36751,6 +36751,11 @@ trail there and `agentsync's audit trail is not on disk either, so nothing shows
 record cannot be read, and the governance.suppressed line says why` otherwise, at both call sites. It holds only fixed
 phrases already in both lists, so no new phrase. Test: `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
 
+**C748.** `TRAIL_LOST_HEAD` had landed between `FOLDER_LOST_SAID` and its attribute docstring, which documented nothing. The
+docstring moves back under its constant, no text changed, and `test_governance.py`
+`test_every_module_docstring_in_governance_follows_its_own_constant` scans the module as `test_cycle.py`'s guard scans
+cycle.py.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

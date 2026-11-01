@@ -1985,10 +1985,10 @@ purge-record.json: the audit trail before it was lost with the governance folder
 round 32 C606; ruling 63), so a new one-line trail never reads as the whole history."""
 
 FOLDER_LOST_SAID = "records in the new audit trail and in purge-record.json that the old audit trail was lost"
+""":data:`AUDIT_TRAIL_LOST`'s act, in the fix that names ``--folder-lost`` and in the act's output (C606)."""
 TRAIL_LOST_HEAD = "agentsync's audit trail no longer holds purge lines purge-record.json keeps"
 """What :func:`audit_trail_lost` finds while governance/ is there (re-created by a later write): the lead of
 the suppression list's and the queue's FAILs then, and of ``--accept-lost``'s refusal (C606's review)."""
-""":data:`AUDIT_TRAIL_LOST`'s act, in the fix that names ``--folder-lost`` and in the act's output (C606)."""
 
 SUPPRESSION_LOST_ACCEPTED = "suppression-lost-accepted"
 """The audit line of ``purge --accept-lost <at>``: the one act that clears a lost suppression no copy and no

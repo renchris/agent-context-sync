@@ -6,8 +6,10 @@ Every git test runs real git on repos under tmp_path.  The only Keychain writes 
 
 from __future__ import annotations
 
+import ast
 import fcntl
 import hashlib
+import itertools
 import json
 import os
 import pwd
@@ -2735,3 +2737,29 @@ def test_an_alias_table_that_fails_to_read_never_clears_a_lost_purge_c667(tmp_pa
     assert gv._erased_and_gone(state, [rec]) == set()  # was {id(rec)}: dropped on a failed read
     part = gv._read_manifest_ids(db, whole=False)
     assert part is not None and {("contoso", f"item-{n}") for n in range(50)} <= part
+
+
+def test_every_module_docstring_in_governance_follows_its_own_constant() -> None:
+    """B13 round 33 C748: TRAIL_LOST_HEAD landed between FOLDER_LOST_SAID and its attribute docstring, which
+    then followed the new constant's docstring and documented nothing: cycle.py's K52 and P48, in the module
+    whose guard scanned no further. Each module-level string after the docstring follows an assignment."""
+    from agentsync import governance  # noqa: PLC0415
+
+    tree = ast.parse(Path(governance.__file__).read_text(encoding="utf-8"))
+    stray = [
+        node.lineno
+        for prev, node in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and not isinstance(prev, ast.Assign | ast.AnnAssign)
+    ]
+    assert stray == [], stray
+    after = {
+        node.targets[0].id: nxt
+        for node, nxt in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+    }
+    doc = after["FOLDER_LOST_SAID"]
+    assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
+    assert str(doc.value.value).startswith(":data:`AUDIT_TRAIL_LOST`'s act"), doc.value.value
