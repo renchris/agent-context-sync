@@ -8937,6 +8937,17 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 # ---- OCR ------------------------------------------------------------------------------------------------
 
 
+def _helper_state(label: str, words: dict[str, str], state: str, detail: str) -> str:
+    """A helper's line: ``(<detail>)`` for a state, the colon form for a failure's reason, as ``ocr._entry``
+    and doctor print it, so a signal's ``stopped by SIG<NAME> (signal N)`` is never inside a bracket (B13
+    round 33 C719, ruling 85)."""
+    shown = _shorten(detail, 200)
+    word = words.get(state, "unknown state")
+    return (
+        f"- {label}: {word}: {shown}" if state in ("failed", "not-built") else f"- {label}: {word} ({shown})"
+    )
+
+
 def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, str]) -> str:
     """``- <label>: <state> (<detail>)`` from ``agentsync.convert.<module>.probe``, the call Doctor's check of
     the same name makes, with a wait of its own (:data:`_PROBE_S`, not counted: ``_Mirror.not_counted``).
@@ -8947,7 +8958,7 @@ def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, 
     try:
         probe = importlib.import_module(f"agentsync.convert.{module}").probe  # lazy, as in _ocr_helper
         found, detail = r.call(lambda: probe(config.convert, config.cache_dir), timeout=_PROBE_S)
-        return f"- {label}: {words.get(str(found), 'unknown state')} ({_shorten(str(detail), 200)})"
+        return _helper_state(label, words, str(found), str(detail))
     except TimeoutError:
         late = NOT_MEASURED if room < _PROBE_S else f"did not answer within {_PROBE_S:.1f}s"
         return f"- {label}: {late}"
@@ -8981,7 +8992,7 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
 
         found, detail = r.call(lambda: ocr.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
         state = str(found)
-        out = [f"- helper: {words.get(state, 'unknown state')} ({_shorten(str(detail), 200)})"]
+        out = [_helper_state("helper", words, state, str(detail))]
     except TimeoutError:
         if room < _PROBE_S:  # the report's own time ended the wait, not the helper
             out = [f"- helper: {NOT_MEASURED}"]

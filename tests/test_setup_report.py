@@ -14571,7 +14571,7 @@ def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
     assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
     assert helper.stat().st_mtime == 1_700_000_000, "the report is no use of the helper"
     helper.unlink()
-    assert "- helper: not built (the OCR helper is not built)\n" in status_parts(fake_mac)[1]["OCR"]
+    assert "- helper: not built: the OCR helper is not built\n" in status_parts(fake_mac)[1]["OCR"]
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
         + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
@@ -17223,7 +17223,7 @@ def test_the_ocr_part_has_a_speech_line_of_its_own(
         speech, "probe", lambda _convert, _cache_dir: ("not-built", "the speech helper is not built")
     )
     _text, parts = status_parts(fake_mac)
-    assert "- speech: not built (the speech helper is not built)\n" in parts["OCR"]
+    assert "- speech: not built: the speech helper is not built\n" in parts["OCR"]
 
     def broken(_convert: ConvertConfig, _cache_dir: Path) -> tuple[str, str]:
         raise RuntimeError("Contoso")
@@ -22079,6 +22079,31 @@ def test_a_doctor_done_within_its_grace_says_no_overrun_c708(
         fake_mac["config"], hooks=setup_report.ReportHooks(doctor=lambda _c: ["[ok  ] x — y"]), budget_s=4.0
     )
     assert "more while the cut-off doctor call" not in text
+
+
+def _bracket_depth_of_signal(line: str) -> int:
+    """How many brackets stand open where ``(signal`` starts in ``line``; 0 when it stands in none."""
+    at = line.index("(signal")
+    return line[:at].count("(") - line[:at].count(")")
+
+
+@pytest.mark.parametrize("label", ["helper", "media helper", "speech"])
+@pytest.mark.parametrize("state", ["failed", "not-built"])
+@pytest.mark.parametrize("signum", range(1, 32))
+def test_a_helper_line_holds_its_signal_in_no_bracket_c719(label: str, state: str, signum: int) -> None:
+    """B13 round 33 C719 (ruling 85; lane E's ocr._entry and doctor take the same form): a helper's failed or
+    not-built detail nested `(signal N)` in the report's bracket. The colon form holds it at depth 0, by
+    every helper and every signal, and `ready` and `off` keep their bracket, with no reason in it."""
+    from agentsync.convert import ocr  # noqa: PLC0415
+
+    words = {"ready": "ready", "off": "off", "not-built": "not built", "failed": "failed"}
+    reason = ocr._signal_reason("swift package resolve was ", -signum).split(";")[0]
+    if "(signal" not in reason:  # a signal this Python does not name reads without the bracket
+        pytest.skip(reason)
+    line = setup_report._helper_state(label, words, state, reason)
+    assert line.startswith(f"- {label}: {words[state]}: "), line
+    assert _bracket_depth_of_signal(line) == 0, line
+    assert setup_report._helper_state(label, words, "ready", "x 0.1.0") == f"- {label}: ready (x 0.1.0)"
 
 
 def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:

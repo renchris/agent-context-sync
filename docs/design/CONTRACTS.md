@@ -5410,6 +5410,8 @@ issue form's Outcome options are unchanged: the outcome judges the install, the 
 link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
 Amended 2026-10-28, §16.213 C620: when the attempt ran no install.sh, the NEXT carries `(status when this report was
 written; this attempt ran no install.sh)`, merged with the damage clause into one bracket.
+Amended 2026-11-01, §16.218 C709: an attempt whose only install.sh run was `--list-folders` carries the same bracket
+with `this attempt ran only install.sh --list-folders`; `_no_install_words` replaces `_ran_no_install`.
 **Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install (`INSTALL_STEP`), 3 sync loop and report
 (`REPORT_STEP`); the folder question and the one announced Allow click (step 1, `V7_ALLOW_CLICK_STEPS`: since
 K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v6;
@@ -28246,6 +28248,8 @@ lead-ins read `that is above its core count (a busy Mac): <_IDLE_AGAIN>`, `… i
 as `time limit 12s, moved to 26.2s for a slow doctor`. See the dated line there. Tests:
 `test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy`,
 `test_the_guides_give_the_reports_time_with_a_slow_doctor`.
+Amended 2026-11-01, §16.218 C708: the figure is the planned move; what the cut-off call and its reads took past it
+follows, `; N s more while the cut-off doctor call and its reads came back`.
 
 **The upgrade bullet's noun follows its count** (A30; amends §16.158 Z35). `An older build had given up on that
 file's conversion` when the listed runs hold one file, `these conversions` otherwise. See the dated line there.
@@ -35611,6 +35615,8 @@ install.sh)`), the damage clause too. The `not read (...)` returns show
 no NEXT and are unchanged. Test: `test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620` (no
 attempt: no bracket; the stopped v8 attempt; and the same with the damage flag set, one bracket; rule 9's NEXT, with
 and without the damage flag, one bracket).
+Amended 2026-11-01, §16.218 C709: `_ran_no_install` is now `_no_install_words`, which returns the words, and an
+attempt whose only install.sh run listed folders reads `this attempt ran only install.sh --list-folders`.
 
 **A Loop stage left unread by status's read note says its words** (C638, ruling 67; `src/agentsync/setup_report.py`).
 Under read-only reads a manifest one schema ahead (or one a sync is writing) makes status print `last runs:
@@ -35654,6 +35660,8 @@ after 57s (uv 0s · agentsync 41s · ...), its closing status stopped by SIGTERM
 word those of the report step's row and the Every run cell (C135). The no-end-line form `has no end line (<state>)
 (<steps>)` is unchanged. Test: `test_a_closing_status_a_signal_stopped_is_said_in_the_report_step_and_the_summary`
 (the whole line, equal to the plain line plus the clause, and no `) (`).
+Amended 2026-11-01, §16.218 C764: the no-end-line form now reads `has no end line (<steps>)`, then `, its closing status
+<n>` if any, then `, <state>` last, so the line has one bracket and the state's causes stay last.
 
 **The lock a signal-stopped first sync left is expected** (C616, ruling 66; `src/agentsync/setup_report.py`). A first
 sync stopped by SIGKILL or SIGTERM leaves its lock body, and doctor's `free, but <holder> ended without releasing it;
@@ -36357,7 +36365,110 @@ Test: `test_the_repeat_conversions_row_names_the_clause_its_note_follows`, exten
 
 ### 16.218 Round 33: setup report: a read it did not get named as not read, a warn not judged when the Loop line was not read, the trail-lost bucket and the doctor grace figure (2026-11-01, wave B13 round 33 lane RA)
 
-Reserved for round 33 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 33").
+**A read the report did not get says so** (C702, C716, C720, ruling 83; `src/agentsync/setup_report.py`). On a loaded
+Mac the runner's rc 124 read as a fact: `origin: none`, `no origin/main in this checkout`, `(git cannot read its
+.git)`, `Xcode Command Line Tools: not installed`, `poll not installed`, about a Mac that has them. One helper,
+`_not_answered(rc, note)`, names rc 124 with the runner's own note (`timed out after ` or `skipped: the report's time
+budget`); `_git_ro_err` now gives that note on stderr. `_checkout_facts` says `origin: not read (git did not answer
+within the report's time limit)`, `on origin/main: not read (time limit)` with no fetch's date beside it, ` (uncommitted
+changes: not read, time limit)`, and a cut `rev-parse` ` (git did not answer within the report's time limit)`.
+`_Run.devtools` has three states, and its None gives ` (commit and origin not read: the report's time limit)`. `clt`
+says `not measured (xcode-select -p exited 124: ...)`. `_background` writes `- <label>: not measured (<why>; plist
+present|absent): <advice>` and `<suffix> not measured` in `facts.background`, and the Summary's background line carries
+the advice once. A real non-zero exit keeps `not installed` and `NOT loaded`. None is counted in the evidence line,
+which counts Status's parts only and whose `facts.evidence` those parts assign after these run. The install-source line
+ends with the advice (`facts.install_source_cut`), which lane RB's install.sh grep reads. Tests:
+`test_a_git_read_the_time_limit_cut_is_not_read_never_a_fact_c702`, `test_a_git_answer_still_says_what_it_says_c702`,
+`test_the_command_line_tools_time_out_is_not_measured_c716`,
+`test_the_install_source_says_a_devtools_read_that_did_not_answer_c716`,
+`test_a_launchctl_print_that_did_not_answer_is_not_measured_c720`,
+`test_a_real_launchctl_exit_still_says_not_installed_c720`,
+`test_the_budget_used_up_says_not_measured_in_every_part_c716_c720`.
+
+**A stopped copy gives no advice to send it** (C718, ruling 83). `_IDLE_AGAIN` stays byte-identical; every site reads
+it through `_idle_again(r)`, `this copy is not for sending` in a stopped copy: `_evidence_line`, the Summary's doctor
+line, Doctor's `Not run` line, the two lines above, and `_cut_off_words`, which there keeps its facts and drops `send
+the report as it is`. Tests: `test_a_stopped_copy_gives_no_advice_to_send_it_c718`,
+`test_a_stopped_copys_cut_off_doctor_keeps_its_facts_c718`.
+
+**A time limit variable for a busy Mac** (C726, ruling 83). `AGENTSYNC_REPORT_TIME_LIMIT`, seconds, is read only when no
+budget is passed and clamped 12 to 60, well inside install.sh's 120 s bound; `_time_limit` says in Run metadata that it
+was used, or why not, never quoting the value. `_Run.cap` scales `_STATUS_S`, `_LOOP_NEXT_S`, `_LISTING_S`, `_PROXY_S`
+and `EVIDENCE_BUDGET_S` with it, or a slow Status build still cuts the Loop read. A variable, not a flag: an older
+installed build ignores it. Lane RB's re-run NEXT names it; `_IDLE_AGAIN` never does. Tests:
+`test_the_report_time_limit_variable_is_clamped_and_said_c726`, `test_the_time_limit_variable_scales_each_per_call_cap_c726`.
+
+**The took line's moved figure is the planned move** (C708). `_doctor` keeps the deadline arithmetic and splits only
+the words: `moved to` is the budget plus the wait the doctor was given less its first share, and `doctor_overrun`, what
+the deadline moved past that, reads `; N s more while the cut-off doctor call and its reads came back`, naming neither
+as the cause. Capping the deadline would take the Loop line's share back (V4). Tests:
+`test_the_moved_limit_is_the_planned_move_and_a_late_return_is_apart_c708`,
+`test_a_doctor_done_within_its_grace_says_no_overrun_c708`,
+`test_the_guides_give_the_reports_time_with_a_slow_doctor`.
+
+**A warn the Loop line could have named is not judged when the Loop line was not read** (C721, C703, C706, ruling 84).
+`_loop_line` records why on `facts.loop_unread_why` (the hook's failure or time-out, no hook, a failure after it
+answered), in `_sort_doctor`'s cache key. After the expected and `from_*` buckets, a `heartbeat.<id>` warn opening
+`_LISTING_INCOMPLETE`, a `governance.purge_queue` warn or a `governance.hold` warn reads `not judged (the Loop line was
+not read: <why>) N: <check> warn`, before `unexpected`, with `; a report written when this Mac is idle sorts it` only
+for a time-out or a busy state file, and not in a stopped copy. Every other warn stays unexpected (C706's `last
+success`), a FAIL never moves, an older CLI's plain-list hook stays unexpected, and doctor's note and the evidence line
+do not change. Tests: `test_no_yours_group_without_the_loops_checks`, `test_no_yours_group_when_the_loop_line_is_not_read`,
+`test_a_warn_the_loop_could_not_name_stays_unexpected_ruling_84`,
+`test_a_stopped_copys_unread_loop_gives_no_idle_advice_ruling_84`.
+
+**The listing note and the label clause in each build's words** (rulings 81 and 90). `_LISTING_GOVERNANCE_RE` reads the
+old folder form, C722's `that` and C747's `... records: agentsync's audit trail no longer holds it`;
+`_LABEL_UNPARSED_RE` reads C728's `could not parse or open` and both older clauses, and the Summary re-renders C728's
+words. All landed before lane B changed doctor.py and cli.py, the new phrases in both lists (ruling 68). The folder-form
+note beside a FAIL in `_GOV_GONE`'s lead takes the folder's bucket, `not judged: agentsync's governance folder is
+missing`, keyed on state read before the loop, since doctor sorts the heartbeat before the governance checks (C734).
+Tests: `test_the_listing_note_reads_each_builds_governance_words_ruling_81`,
+`test_the_label_unparsed_clause_reads_every_builds_words_c728`,
+`test_a_listing_warn_beside_the_folders_lost_queue_is_the_folders_c734`,
+`test_a_listing_warn_beside_the_folders_lost_suppression_list_is_the_folders_c734`.
+
+**A list that lost what only purge-record.json keeps, with governance/ there** (C735, C740, C756, ruling 82). A later
+write re-creates the folder; the FAIL opens `TRAIL_LOST_HEAD`, or carries ruling 79's credit after the first
+`--folder-lost`, and the report called it an unexpected doctor FAIL and said `recorded in the audit trail`.
+`_TRAIL_LIST_PHRASES` is an alternative beside `_LOST_LIST_PHRASES`, never appended to its all-required tuples, and
+`_trail_form` reads `TRAIL_LOST_HEAD` by `getattr`. `_trail_lost_named` keys on the report's own reads of each list and
+the folder's lstat; the folder-gone branch comes first. The Doctor line says `from a purge queue that lost a purge
+purge-record.json keeps` (or the suppression list's, or both), the outcome `_trail_lost_cause`, the sync's own line
+`_GOVERNANCE_TRAIL_LOST_RE`, and the Purge queue part `N purge(s) purge-record.json keeps as queued and not done is/are
+not in the queue file, and agentsync's audit trail no longer holds its line`; a mixed form with no lead keeps the audit
+trail's bucket, and the part says `recorded in the audit trail or purge-record.json`. A FAIL without those words stays
+unexpected. Tests: `test_a_re_created_folders_lost_list_credits_purge_record_c735_c740_c756`,
+`test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82`,
+`test_a_trail_lost_fail_has_its_own_bucket_and_cause_per_list_and_both_ruling_82`,
+`test_a_sync_stop_on_a_trail_lost_list_reads_as_purge_records_ruling_82`.
+
+**The Purge queue part in status's words with governance/ gone** (C765, C771's F2, ruling 64). `_queue_gone_said` takes
+`governance.queue_gone_words` under status's condition (`recorded_purges` reads and `folder_lost_case` holds), by
+`getattr`, so `QUEUE_GONE_OK` with the record read and `QUEUE_GONE_UNRECORDED` with none, never `keeps no purge` over a
+record it cannot read and never `no purge is queued`. Tests:
+`test_the_purge_queue_part_says_status_words_with_the_folder_gone_c765`,
+`test_the_purge_queue_part_keeps_its_line_over_an_unread_record_c765`.
+
+**One bracket in the hold cut, the no-end-line line and the helper lines** (C710, C764, C771's F1, C719, ruling 85).
+The redacted lost-hold FAIL reads `(owner not shown; kept by <file>)` when no time stands between, `lost()` and
+install.sh's lostcut in one commit, the time case unchanged. A run with no end line reads `has no end line (<steps>)`,
+then `, its closing status <n>` if any, then `, <state>` last. A helper's failed or not-built detail takes the colon
+form in `_helper_state`, for `_helper_line` and `_ocr_helper`, on lane E's `ocr._entry` and doctor; `ready` and `off`
+keep their bracket. Tests: `test_the_folders_records_owner_line_has_one_bracket_c710`,
+`test_the_shell_report_cuts_a_lost_holds_owner_and_keeps_its_fixed_reason`,
+`test_a_run_with_no_end_line_and_a_closing_status_keeps_its_state_last_c764`,
+`test_a_helper_line_holds_its_signal_in_no_bracket_c719`.
+
+**The list-only attempt's Loop line and the install scan** (C709, C738). An attempt whose only install.sh run listed
+folders carries `(status when this report was written; this attempt ran only install.sh --list-folders)`, as
+`_no_install_words` returns it, never `ran no install.sh`. The C502 scan reads `say` and every assignment by default,
+with a short deny-list, `_INSTALL_NOT_PRINTED`. Tests:
+`test_the_loop_lines_next_says_whose_reading_it_is_with_only_a_list_run_c709`,
+`test_the_install_scan_reads_every_assignment_by_default_c738`.
+
+Not built: C771's F3 and F4 are ruling 80's and ruling 86's, lanes B and RB. C726's automatic version, raising the
+budget from the load, is optional and left out: the variable is the supported way.
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 

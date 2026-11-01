@@ -6402,6 +6402,15 @@ and round 31's C508 paragraph, the signal stop's C614 and C617 at §16.40 and I2
 and C529, C637 at C519's paragraph, ruling 73's C622 with C627, C623 and C628 at L71, W52 and round 31's
 Repeat conversions paragraphs, and C609's re-render at C567's."""
 
+_ROUND_33_RA_PARAGRAPH_AMENDS = (
+    ("16.14", "KISS K16b revision (2026-10-05; supersedes the paragraphs above", "§16.218 C709"),
+    ("16.164", '**The cut-off advice says "Mac" once, and the took line names', "§16.218 C708"),
+    ("16.213", "**The Loop line says whose reading its NEXT is when the attempt", "§16.218 C709"),
+    ("16.213", "**The Summary's closing-status clause follows the step bracket**", "§16.218 C764"),
+)
+"""Round 33 lane RA's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C709's at K16b and C620's paragraph, C708's at A28, C764's at C617's."""
+
 _ROUND_30_B_PARAGRAPH_AMENDS = (
     (
         "16.200",
@@ -6604,6 +6613,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_31_E_PARAGRAPH_AMENDS,
         *_ROUND_32_E_PARAGRAPH_AMENDS,
         *_ROUND_32_RA_PARAGRAPH_AMENDS,
+        *_ROUND_33_RA_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
