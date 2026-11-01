@@ -15267,7 +15267,10 @@ def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> N
     """B13 round 32 ruling 66 (C655 with C661): every line of install.sh that calls rc_meaning or rc_aside is
     run under bash 3.2 with its code at each of 129 to 192 (and a few plain codes): none prints `(signal`,
     a bracket inside a bracket, an empty bracket, `, ;` or a code twice (`exit 170 (exit 170)`), and every
-    rc_meaning is a phrase, never empty."""
+    rc_meaning is a phrase, never empty. Each code reaches its caller (B13 round 33 C777): `X="$c" :` is a
+    prefix assignment that bash 3.2 ends with the `:`, so the 13 callers that pass a variable ran with no code
+    at all and their empty output passed every check, so each is a statement of its own, and such a caller
+    at each signal code prints that code's meaning."""
     text = INSTALL_SH.read_text(encoding="utf-8")
     fns = "".join(
         re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", text, re.M | re.S).group(0)  # type: ignore[union-attr]
@@ -15281,12 +15284,15 @@ def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> N
     assert len(callers) >= 20, callers
     codes = [*range(129, 193), 0, 1, 65, 200, 255]
     script = ["say() { printf '%s\\n' \"$*\"; }", 'warn() { say "$@"; }', fns]
+    passing = []
     for i, line in enumerate(callers):
         names = sorted(set(re.findall(r'\$\(rc_(?:meaning|aside) "\$([A-Za-z_]\w*)"\)', line)))
         assigned = sorted(set(re.findall(r"(?:^|[\s;|&])([A-Za-z_]\w*)=\"", line)) - {"m"})
-        sets = " ".join(f'{n}="$c"' for n in names)
+        if names:
+            passing.append(i)
+        pre = "".join(f'{n}="$c"; ' for n in names)
         shows = "".join(f'; printf "%s\\n" "${{{n}-}}"' for n in assigned)
-        each = f'(set -- "$c"; {sets} :; echo "@{i} $c"; {line}{shows})'
+        each = f'(set -- "$c"; {pre}echo "@{i} $c"; {line}{shows})'
         script.append(f"for c in {' '.join(map(str, codes))}; do {each}; done")
     cp = subprocess.run([BASH32, "-c", "\n".join(script)], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
@@ -15311,6 +15317,12 @@ def test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code() -> N
     ]
     assert len(words) == 256 and all(words), words
     assert words[137] == "stopped by SIGKILL" and words[170] == "exit 170" and words[143].endswith("timeout")
+    assert len(passing) >= 13, [callers[i] for i in passing]  # a regex drift cannot quietly shrink the set
+    named = [c for c in range(129, 193) if not words[c].startswith("exit ")]
+    assert 137 in named and 143 in named, named
+    for i in passing:  # each signal's code reached its caller (rc_aside says nothing for a code none names)
+        for c in named:
+            assert words[c] in " ".join(out[f"@{i} {c}"]), (callers[i], c, out[f"@{i} {c}"])
 
 
 def test_report_only_without_a_link_prints_no_link_line(env: dict[str, str]) -> None:

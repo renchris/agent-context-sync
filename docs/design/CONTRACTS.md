@@ -36474,6 +36474,12 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 
+**The rc_meaning caller test reaches its callers** (C777; `tests/test_install_oneshot.py`). Each caller ran with
+`X="$c" :`, a prefix assignment bash 3.2 ends with the `:`, so the 13 that pass a variable ran with no code at all and
+their empty output passed every check. Each is a statement of its own now, at least 13 such callers run, and each prints
+the meaning of every code a signal names (rc_aside says nothing for a code none names). The install.sh lines pass as
+they were: the test was blind, not the words. Test: `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`.
+
 **The person's kinds credit purge-record.json too** (C712; ruling 82; `scripts/install.sh`,
 `src/agentsync/ops/doctor.py`, `src/agentsync/setup_report.py`). With governance/ gone the only record of a queued
 purge is purge-record.json, yet step 2's NEXT beside its FAIL listed `a purge queue or suppression list that lost a
