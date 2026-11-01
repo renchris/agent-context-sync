@@ -36474,6 +36474,19 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 ### 16.219 Round 33: the installer's recovery steps under a hold, the trail-lost tails and one bracket in step 2's NEXT (2026-11-01, wave B13 round 33 lane RB)
 
+**--list-folders leaves no side file beside the manifest** (C727; `scripts/install.sh`). A plain `mode=ro` open of a WAL
+database makes its -wal and -shm, 0400 over a 0400 manifest, so the run that says it installs nothing grew the state
+folder and step 2's chmod named three files. `vanished_folders` takes the build's `manifest.open_read_only`, and on a
+build without it `MANIFEST_RO_PY`, `doctor._probe_uri`'s rule (a plain open only with both sides or a -journal there,
+which then makes nothing; `immutable=1`, stamped before and after, with no -wal or an empty one and no -shm; no read of a
+-wal with frames and no -shm). `config_errors` does not open the file again where the build has `_probe_uri`, whose
+`manifest_unreadable` just read every b-tree, and an older build's pass uses the same rule, dropping a `state-table`
+word an immutable read saw change under it. The verifier's `skip when a -wal exists` is not built: with a sync running it
+would drop a vanished source and bring back round 16's T6. An installed build from before ruling 36 has an
+`open_read_only` that still opens plain when it can write the file; such a Mac keeps its two empty files until step 2.
+Tests: `test_list_folders_leaves_no_side_file_beside_the_manifest`,
+`test_the_vanished_source_reader_still_reads_beside_a_running_sync`, `test_the_installers_read_only_rule_is_doctors`.
+
 **The rc_meaning caller test reaches its callers** (C777; `tests/test_install_oneshot.py`). Each caller ran with
 `X="$c" :`, a prefix assignment bash 3.2 ends with the `:`, so the 13 that pass a variable ran with no code at all and
 their empty output passed every check. Each is a statement of its own now, at least 13 such callers run, and each prints

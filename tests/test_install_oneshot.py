@@ -9324,7 +9324,9 @@ def _install_sh_python(function: str) -> ast.Module:
     """The Python that install.sh's shell function ``function`` passes to ``-c``, parsed."""
     text = INSTALL_SH.read_text(encoding="utf-8")
     body = text[text.index(f"\n{function}() {{") :]
-    code = body[body.index("-c '\n") + len("-c '\n") :]
+    opened = re.search(r"""-c (?:"\$MANIFEST_RO_PY")?'\n""", body)
+    assert opened is not None, function
+    code = body[opened.end() :]
     return ast.parse(code[: code.index("\n' ")])
 
 
@@ -9406,7 +9408,9 @@ def test_the_vanished_source_reader_imports_no_agentsync_name_an_older_build_lac
     present = Path(manifest.__file__).read_text(encoding="utf-8")
     for words in ("SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 ", "AND state IN ("):
         assert words in code and words in present, words
-    assert "?mode=ro" in code and "Manifest" not in code
+    # read-only by the build's open_read_only or install.sh's own rule, never agentsync's Manifest (C727)
+    assert "open_read_only" in code and "manifest_ro_uri" in code and "Manifest" not in code
+    assert '"?mode=ro"' in INSTALL_SH.read_text(encoding="utf-8").split("\nMANIFEST_RO_PY='", 1)[1]
 
 
 def _state_db(env: dict[str, str]) -> Path:
@@ -10682,6 +10686,107 @@ def test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_i
     assert str(beta) not in last_line(cp)
     assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=0 vanished=4")
     assert "contoso" not in cp.stdout + "\n".join(install_log(env))
+
+
+def _wal_manifest(env: dict[str, str], beta: Path) -> Path:
+    """A manifest in WAL mode that closed cleanly, so only the file itself is there, as a sync leaves it."""
+    _manifest_rows(env, ("project-beta", "live", 14), roots={"project-beta": beta})
+    db = _state_db(env)
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        conn.execute("PRAGMA journal_mode=WAL").fetchone()
+    assert sorted(p.name for p in db.parent.iterdir()) == ["manifest.sqlite"]
+    return db
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o400])
+@pytest.mark.parametrize("build", ["this one", "no open_read_only", "no _probe_uri"])
+def test_list_folders_leaves_no_side_file_beside_the_manifest(
+    env: dict[str, str], mode: int, build: str
+) -> None:
+    """B13 round 33 C727: a plain mode=ro open of a WAL database makes its -wal and -shm, 0400 over a 0400
+    manifest, so --list-folders, which says it installs nothing, grew the state folder and step 2's chmod
+    named three files. Both readers now open the manifest as the report does, by the build's open_read_only or
+    _probe_uri's rule, and config_errors opens it once where the build read it already. The list reads
+    the same: the vanished source is still named."""
+    _cfg, _alpha, beta = _vanished_list(env)
+    if build == "no open_read_only":
+        _tool_python_without(env, "agentsync.manifest", "open_read_only")
+    elif build == "no _probe_uri":
+        _tool_python_without(env, "agentsync.ops.doctor", "_probe_uri", "manifest_unreadable")
+    else:
+        _tool_python(env)
+    db = _wal_manifest(env, beta)
+    db.chmod(mode)
+    try:
+        cp = install_sh(env, "--list-folders")
+        assert sorted(p.name for p in db.parent.iterdir()) == ["manifest.sqlite"], cp.stdout + cp.stderr
+    finally:
+        db.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "is still mirrored but has no [[source]] block" in last_line(cp), last_line(cp)
+    assert "state-table" not in "\n".join(install_log(env))
+
+
+@pytest.mark.parametrize("build", ["this one", "no open_read_only"])
+def test_the_vanished_source_reader_still_reads_beside_a_running_sync(
+    env: dict[str, str], build: str
+) -> None:
+    """B13 round 33 C727, the verifier's trap: with both sides there a plain mode=ro open creates nothing and
+    reads the WAL's frames, so a build without open_read_only must still read it, or step 1 says "(none is
+    needed)" over a source step 2 FAILs on (round 16 T6, T30)."""
+    _cfg, _alpha, beta = _vanished_list(env)
+    if build == "no open_read_only":
+        _tool_python_without(env, "agentsync.manifest", "open_read_only")
+    else:
+        _tool_python(env)
+    db = _wal_manifest(env, beta)
+    holder = sqlite3.connect(db)  # a sync running: its frames only in the -wal
+    try:
+        with holder:
+            holder.execute("DELETE FROM items WHERE source_id = ?", ("project-beta",))
+            holder.executemany("INSERT INTO items VALUES (?, 0, ?)", [("project-beta", "live")] * 3)
+        assert (db.with_name("manifest.sqlite-wal")).stat().st_size > 0
+        cp = install_sh(env, "--list-folders")
+    finally:
+        holder.close()
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "is still mirrored but has no [[source]] block" in last_line(cp), last_line(cp)
+
+
+def test_the_installers_read_only_rule_is_doctors(tmp_path: Path) -> None:
+    """B13 round 33 C727: MANIFEST_RO_PY, for a build older than doctor._probe_uri, gives the same open in
+    each state of the side files, and reads no -wal that holds frames with no -shm, which any open makes."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    code = text.split("\nMANIFEST_RO_PY='", 1)[1].split("\n'\n", 1)[0]
+    space: dict[str, object] = {}
+    exec(code, space)  # install.sh's own program, as its readers run it
+    ours = space["manifest_ro_uri"]
+    db = tmp_path / "manifest.sqlite"
+    db.write_bytes(b"x")
+    sides = {s: db.with_name(db.name + s) for s in ("-wal", "-shm", "-journal")}
+    for state in (
+        {},
+        {"-wal": b""},
+        {"-wal": b"frames"},
+        {"-shm": b""},
+        {"-wal": b"f", "-shm": b""},
+        {"-journal": b"j"},
+    ):
+        for path in sides.values():
+            path.unlink(missing_ok=True)
+        for suffix, body in state.items():
+            sides[suffix].write_bytes(body)
+        theirs = doctor._probe_uri(db, db)
+        mine = ours(db)  # type: ignore[operator]
+        assert (mine is None) == (theirs is None), state
+        if theirs is not None:
+            assert mine.partition("?")[2] == theirs.partition("?")[2], state
+    for path in sides.values():
+        path.unlink(missing_ok=True)
+    before = space["manifest_stamps"](db)  # type: ignore[operator]
+    assert before[1] is None and before[0][0] == 1
+    db.write_bytes(b"xy")
+    assert space["manifest_stamps"](db) != before  # type: ignore[operator]
 
 
 @pytest.mark.parametrize("manifest", ["none", "not a database", "a reader that fails"])

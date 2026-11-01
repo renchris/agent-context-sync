@@ -7677,12 +7677,46 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # that source's root (meta scope_root:<id>, "<run>:<path>", which every sync since 2026-10-06 writes), whose
 # derive_source_id (the configured ids taken, as add-source derives it) is that id. A name alone never matches:
 # a folder of the same name elsewhere is another folder. A source the inbox step 2 adds back is none.
+# A read-only open of the manifest that leaves no -wal or -shm beside it, for a build older than
+# manifest.open_read_only and doctor._probe_uri, whose rule this is (B13 round 31 C526; round 33 C727: a plain
+# mode=ro open of a WAL database makes both, 0400 over a 0400 manifest, so --list-folders, which says it installs
+# nothing, left them, and step 2's chmod then named three files): with both sides there, or a -journal, a plain
+# mode=ro, which makes nothing then; with no -wal or an empty one and no -shm, immutable=1, which takes no lock, so
+# the caller checks manifest_stamps before and after; a -wal with frames and no -shm, which any open makes, is not
+# read: None. Python, spliced in front of each reader that opens the manifest.
+MANIFEST_RO_PY='
+import os, stat
+def manifest_ro_uri(db):
+    real = os.path.realpath(db)
+    def side(suffix):
+        try:
+            return os.lstat(real + suffix)
+        except OSError:
+            return None
+    plain = db.as_uri() + "?mode=ro"
+    wal, shm, journal = side("-wal"), side("-shm"), side("-journal")
+    if journal is not None or (wal is not None and shm is not None):
+        return plain
+    if wal is not None and not (stat.S_ISREG(wal.st_mode) and wal.st_size == 0):
+        return None
+    return plain + "&immutable=1"
+def manifest_stamps(db):
+    real, out = os.path.realpath(db), []
+    for name in (real, real + "-wal"):
+        try:
+            st = os.stat(name)
+            out.append((st.st_size, st.st_mtime_ns))
+        except OSError:
+            out.append(None)
+    return out
+'
 # A reader of its own, after synced_folders and allowed to fail: the list and its marks do not depend on it.
-# The manifest is opened read-only (sqlite3 mode=ro, never agentsync's Manifest, which migrates it), with the
+# The manifest is opened read-only (manifest.open_read_only, an in-memory copy, or MANIFEST_RO_PY on a build
+# without it; never agentsync's Manifest, which migrates it), with the
 # same query as setup_report._live_refusal, and a manifest it cannot read is none. Only names every agentsync
 # since 2026-09-29 has, PRESENT_STATES behind a guard. Prints no source id: the report names none either.
 vanished_folders() { # PYTHON LIST
-	with_timeout 5 "$1" -I -c '
+	with_timeout 5 "$1" -I -c "$MANIFEST_RO_PY"'
 import os, sqlite3, sys
 from pathlib import Path
 from agentsync.config import canonical_source_root, derive_source_id, load_config
@@ -7700,25 +7734,36 @@ db = expand(config.state_paths.db)
 vanished, roots = set(), {}
 if db.is_file():
     try:
-        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
-        marks = ", ".join("?" for _ in states)
+        before = None
         try:
-            rows = conn.execute(
-                "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
-                f"AND state IN ({marks}) GROUP BY source_id",
-                states,
-            ).fetchall()
-            vanished = {str(sid) for sid, n in rows if str(sid) not in configured and n}
+            from agentsync.manifest import open_read_only
+
+            conn = open_read_only(db, 1.0)
+        except ImportError:
+            uri = manifest_ro_uri(db)
+            before = manifest_stamps(db)
+            conn = sqlite3.connect(uri, uri=True, timeout=1.0) if uri else None
+        if conn is not None:
+            marks = ", ".join("?" for _ in states)
             try:
-                roots = dict(
-                    conn.execute("SELECT key, value FROM meta WHERE key LIKE ?", ("scope_root:%",)).fetchall()
-                )
-            except sqlite3.Error:
-                roots = {}
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        vanished = set()
+                rows = conn.execute(
+                    "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+                    f"AND state IN ({marks}) GROUP BY source_id",
+                    states,
+                ).fetchall()
+                vanished = {str(sid) for sid, n in rows if str(sid) not in configured and n}
+                try:
+                    roots = dict(
+                        conn.execute("SELECT key, value FROM meta WHERE key LIKE ?", ("scope_root:%",)).fetchall()
+                    )
+                except sqlite3.Error:
+                    roots = {}
+            finally:
+                conn.close()
+            if before is not None and manifest_stamps(db) != before:  # a checkpoint under the read: none
+                vanished, roots = set(), {}
+    except (sqlite3.Error, OSError):
+        vanished, roots = set(), {}
 inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")
 if not any(s.path is not None and s.path == inbox for s in config.sources):
     vanished.discard(derive_source_id(inbox, configured))
@@ -7788,7 +7833,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # exception, a git call's included, so it cannot take the other words with it). -I: nothing from the folder
 # this runs in is imported.
 config_errors() { # PYTHON [MISPLACED: misplaced_reader's line]
-	with_timeout 5 "$1" -I -c '
+	with_timeout 5 "$1" -I -c "$MANIFEST_RO_PY"'
 import errno, json, os, sqlite3, stat, sys
 from pathlib import Path
 from agentsync.config import ConfigError, load_config
@@ -8161,13 +8206,20 @@ elif access:
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
     words.append("state-notfile")
 elif db.is_file():
+    whole = False  # the build whose manifest_unreadable reads every table and index, leaving no file (C727)
     try:
+        from agentsync.ops import doctor
         from agentsync.ops.doctor import manifest_unreadable
+
+        whole = hasattr(doctor, "_probe_uri")
     except ImportError:
 
         def manifest_unreadable(path):
+            uri = manifest_ro_uri(path)
+            if uri is None:
+                return None
             try:
-                conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=0.5)
+                conn = sqlite3.connect(uri, uri=True, timeout=0.5)
                 try:
                     conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
                 finally:
@@ -8181,28 +8233,36 @@ elif db.is_file():
     if manifest_unreadable(db) is not None:
         words.append("state")
     else:
-        try:
-            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=0.5)
+        # That build read them just now: nothing more to open. An older one reads less, so the b-trees here.
+        uri = None if whole else manifest_ro_uri(db)
+        if uri is not None:
             try:
-                # every table and index (a view or trigger has no b-tree); upper case, as the shell report
-                # reads a lower-case word in the strings of this program as one it prints
-                trees = conn.execute("SELECT type, name, TBL_NAME FROM sqlite_master WHERE ROOTPAGE > 0").fetchall()
-                for kind, name, table in trees:
-                    q = "\"%s\"" % name.replace("\"", "\"\"")
-                    if kind == "table":
-                        q += " NOT INDEXED"
-                    else:
-                        q = "\"%s\" INDEXED BY %s" % (table.replace("\"", "\"\""), q)
-                    try:
-                        conn.execute("SELECT 1 FROM %s LIMIT 1" % q).fetchall()
-                    except sqlite3.DatabaseError as exc:
-                        if getattr(exc, "sqlite_errorcode", 0) & 0xFF in (11, 26):
-                            words.append("state-table")
-                            break
-            finally:
-                conn.close()
-        except sqlite3.Error:
-            pass
+                before = manifest_stamps(db)
+                found = False
+                conn = sqlite3.connect(uri, uri=True, timeout=0.5)
+                try:
+                    # every table and index (a view or trigger has no b-tree); upper case, as the shell report
+                    # reads a lower-case word in the strings of this program as one it prints
+                    trees = conn.execute("SELECT type, name, TBL_NAME FROM sqlite_master WHERE ROOTPAGE > 0").fetchall()
+                    for kind, name, table in trees:
+                        q = "\"%s\"" % name.replace("\"", "\"\"")
+                        if kind == "table":
+                            q += " NOT INDEXED"
+                        else:
+                            q = "\"%s\" INDEXED BY %s" % (table.replace("\"", "\"\""), q)
+                        try:
+                            conn.execute("SELECT 1 FROM %s LIMIT 1" % q).fetchall()
+                        except sqlite3.DatabaseError as exc:
+                            if getattr(exc, "sqlite_errorcode", 0) & 0xFF in (11, 26):
+                                found = True
+                                break
+                finally:
+                    conn.close()
+                # an immutable read that a checkpoint moved under is no finding
+                if found and ("immutable" not in uri or manifest_stamps(db) == before):
+                    words.append("state-table")
+            except sqlite3.Error:
+                pass
 if checked:
     words.append(checked)
     words.append("role-" + role)  # read apart from the words: step 1 names the file (B13)
