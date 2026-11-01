@@ -36928,6 +36928,14 @@ text.py's body paragraph and tuple and names both routes; its decode phrase stay
 `test_the_text_converters_docstrings_give_the_decode_order_the_code_uses`. Test:
 `test_the_plain_text_reference_says_what_text_py_does`, which reads the body and the tuple from the class.
 
+**The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
+`docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
+or unreadable, but `cycle._tally_converted` always adds to `converted` and then to its failed or unreadable share, the
+columns read `of them failed` and `of them unreadable`, and the report says `(and under ...)`. The row says `and also
+under`. §16.217 C651's `or` stays as round 32 wrote it. Test:
+`test_the_repeat_conversions_row_names_the_clause_its_note_follows`, which now reads the report's whole sentence
+across its source lines; `test_setup_report.py` pins the rendered text.
+
 **The kit note's folder check runs when its shasum check does, and allows only a named made-up folder** (C774's repo
 half; `docs/lanes/COMMON.md`). The note ran the folder check right before step 2 and before reading a role run's state
 on a home's copy; the round's brief and every rehearsal also ran it at each act's end and on `<root>/fixture/tree`, and

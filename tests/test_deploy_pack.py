@@ -7689,13 +7689,18 @@ def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
     # ruling 73's words, as lane RA's report prints them
     assert "one re-screened for a secret rule is counted in that column" in source
     assert "a file re-screened after a secret-rule change is counted in that column" in row
+    # B13 round 33 C760: failed and unreadable are subsets of converted (cycle's _tally_converted), so the row
+    # says `and also`, and this reads the report's whole sentence, joined across its source lines, so the two
+    # cannot drift apart again
     assert (
-        "cannot start counts that file in no column above; a later run that reads it counts it under "
-        in source
+        "cannot start counts that file in no column above; a later run that reads it counts it under files"
+        " converted (and under failed or unreadable when that is how it ended)"
+        in re.sub(r'"\s*\n\s*f?"', "", source)
     )
+    assert "counts it under files converted, or under failed" not in row
     assert (
-        "says a later run that reads it counts it under files converted, or under failed or unreadable when"
-        " that is how it ended" in row
+        "says a later run that reads it counts it under files converted, and also under failed or unreadable"
+        " when that is how it ended" in row
     )
 
 
