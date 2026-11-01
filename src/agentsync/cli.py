@@ -2683,7 +2683,7 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
         unread_trail = governance.audit_unread(root)
         if unread_trail is not None:
             out.append(_refused_check(config, "governance.audit", unread_trail))
-    unread = False
+    list_unread = False
     # the suppression list, then the purge record beside hold-record.json: one that cannot be read is its own
     # FAIL, never no purges (B13 round 30 C381; ruling 34)
     for read in (governance.load_suppressions, governance.recorded_purges):
@@ -2703,8 +2703,8 @@ def _audit_checks(config: Config) -> list[doctor.CheckResult]:
             out.append(doctor.stopped(config, "governance.suppressed", exc))
         else:
             continue
-        unread = True
-    if not unread:
+        list_unread = list_unread or read is governance.load_suppressions
+    if not list_unread:  # past a record that cannot be read, from the trail, both at once (C768; ruling 86)
         lost = governance.suppressions_lost(root)  # purges the audit trail records that the list lost (C172)
         if lost is not None:
             out.append(

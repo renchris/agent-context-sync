@@ -36702,6 +36702,15 @@ release ` joins both phrase lists (ruling 68). Tests:
 `test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_hand_purge_c701` and
 `test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701`.
 
+**C768 (ruling 86; the residual lane RB measured).** `lost_suppressions` reads the purge record's and the trail's lines, or
+the trail's alone when the record cannot be read (`_queue_events`, as `lost_queued` does; `audited_suppressions` keeps
+raising), and `cli._audit_checks` skips `suppressions_lost` only when the list itself failed, so status prints the
+record's FAIL and the loss's together on governance.suppressed, the record's first, and `governance_lost` returns the
+loss for a damaged record, which install.sh's `,lost-suppressed` tail reads (its `precord` case is lane RB's). The sync
+still stops on the record first. `accept_lost_suppression` reads the record first and raises its error, as it did when
+`lost_suppressions` raised it: the act's line goes to that record after the trail, so none is written over it. Test:
+`test_a_purge_record_that_cannot_be_read_never_hides_a_lost_suppression_c768`, damaged and refused.
+
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
 Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the

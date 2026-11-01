@@ -2034,7 +2034,10 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     of the same selector clears a record only when it is verified and found content again (a record an older
     build wrote, with no ``canonical_sha256s``, only when it found that record's own items again); an empty
     or unverified run rebuilt nothing. A ``suppression-lost-accepted`` line clears the record it names, by
-    its time and selector (:func:`accept_lost_suppression`; C401, C344; ruling 33)."""
+    its time and selector (:func:`accept_lost_suppression`; C401, C344; ruling 33). A purge record that cannot
+    be read is judged past, from the audit trail alone, as :func:`lost_queued` does, so its FAIL and the
+    loss's are named at once, never as a second stop once the record is fixed (B13 round 33 C768; ruling
+    86)."""
     sup = load_suppressions(state_dir) if listed is None else listed
     have = {(sid, _sha(i)) for sid, i in sup.items}
     held_globs = _glob_fingerprints(sup)
@@ -2042,7 +2045,7 @@ def lost_suppressions(state_dir: Path, listed: Suppressions | None = None) -> li
     out: list[dict[str, Any]] = []
     own: dict[int, set[tuple[object, object]]] = {}  # each lost record's items, as its purge lines name them
     group: list[dict[str, Any]] = []
-    for rec in _purge_events(state_dir):
+    for rec in _queue_events(state_dir):  # past a record that cannot be read, from the trail (C768)
         action = rec.get("action")
         if action == "purge":
             group.append(rec)
@@ -2221,7 +2224,8 @@ def _erased_and_gone(state_dir: Path, recs: Sequence[Mapping[str, Any]]) -> set[
 
 def _queue_events(state_dir: Path) -> list[dict[str, Any]]:
     """:func:`_purge_events`, or the audit trail's lines alone when the purge record cannot be read (its own
-    governance.suppressed FAIL says why), for :func:`lost_queued` (B13 round 31 C539's review)."""
+    governance.suppressed FAIL says why), for :func:`lost_queued` (B13 round 31 C539's review) and
+    :func:`lost_suppressions` (B13 round 33 C768)."""
     try:
         return _purge_events(state_dir)
     except (AgentSyncError, OSError):
@@ -5734,6 +5738,7 @@ def accept_lost_suppression(
         unread = audit_unread(sp.root)  # its own error and fix, so no acceptance writes into it (C741)
         if unread is not None:
             raise unread
+        recorded_purges(sp.root)  # its own error too: the record gets this act's line after it (C768)
         trail_lost = audit_trail_lost(sp.root)  # by content: a re-created folder's new trail too (review)
         said = audit_trail_loss_said(sp.root)
         if trail_lost and not folder_lost:

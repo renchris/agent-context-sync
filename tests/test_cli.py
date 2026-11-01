@@ -7459,6 +7459,46 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     assert " kind=lost-list" not in line, line
 
 
+@pytest.mark.parametrize("how", ["damaged", "refused"])
+def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_suppression_c768(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 33 C768 (ruling 86): an erasure, the list moved aside, purge-record.json unread: status
+    FAILed only the record, and the sync's next stop, on the loss, came as a surprise once the record was
+    fixed. Both FAILs print at once on governance.suppressed, the record's first; the sync still refuses on
+    the record, then on the loss, and the page is never published."""
+    cfg, root, page = _erased(initialised, capsys)
+    list_file = governance._suppress_file(root)
+    list_file.rename(list_file.with_suffix(".kept"))
+    record = governance.purge_record_file(root)
+    keep = record.read_bytes()
+    if how == "damaged":
+        record.write_text("{", encoding="utf-8")
+    else:
+        record.chmod(0o000)
+    try:
+        rc, out = _status(cfg, capsys)
+        failed = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+        assert rc == cli.EXIT_FAILED and len(failed) == 2, out
+        assert str(record) in failed[0], failed
+        assert "the audit trail records suppressed (the erasure-request purge at " in failed[1], failed
+        assert governance.TRAIL_LOST_HEAD not in failed[1], failed
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        assert str(record) in err and " no longer lists what " not in err, err
+        (lost,) = governance.lost_suppressions(root)
+        assert cli.main(["purge", "--accept-lost", lost["at"], "--config", cfg]) == cli.EXIT_FAILED
+        assert str(record) in capsys.readouterr().err
+    finally:
+        record.chmod(0o600)
+    assert not [r for r in governance.read_audit(root) if r.get("action") == "suppression-lost-accepted"]
+    if how == "damaged":
+        record.write_bytes(keep)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    assert " no longer lists what 1 purge the audit trail records suppressed (" in capsys.readouterr().err
+    assert not (initialised.docs_repo / page).exists()
+
+
 def test_a_purge_record_this_account_cannot_open_stops_the_sync_on_its_chmod_before_a_lost_queue(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -8143,8 +8183,11 @@ def test_a_purge_record_that_cannot_be_read_is_the_persons_never_no_purges(
     else:
         record.chmod(0)
     try:
-        with pytest.raises(AgentSyncError):
-            governance.lost_suppressions(root)
+        with pytest.raises(AgentSyncError):  # what keeps an erased item out never reads past it
+            governance.audited_suppressions(root)
+        assert (
+            governance.lost_suppressions(root) == []
+        )  # judged from the trail, here gone with its folder (C768)
         for command in ("status", "doctor"):
             rc = cli.main([command, "--config", cfg])
             out = capsys.readouterr().out.splitlines()
