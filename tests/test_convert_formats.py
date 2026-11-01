@@ -518,6 +518,47 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
         PptxConverter(CFG).convert(make_zip(tmp_path / "c.potx", {"x": b"y"}), name="c.potx")
 
 
+@pytest.mark.parametrize("codec", ["utf-16-le", "utf-16-be"])
+def test_a_potx_whose_content_types_are_utf_16_is_read_as_a_deck_c781(tmp_path: Path, codec: str) -> None:
+    """B13 round 33 C781: the template's type was looked for as UTF-8 bytes, so a ``[Content_Types].xml``
+    saved in UTF-16 (which ECMA-376 allows and python-pptx reads) went to python-pptx unadapted and the
+    template became a ``cannot read the deck`` stub. The part is decoded, its type replaced, and encoded in
+    UTF-16 again, the same byte order and one mark, so its ``encoding="UTF-16"`` declaration stays true; the
+    staged file is not touched, and the UTF-8 path above is unchanged."""
+    import codecs  # noqa: PLC0415
+
+    from agentsync.convert import pptx as pptx_mod  # noqa: PLC0415
+
+    utf8 = build_potx(tmp_path / "utf8.potx")
+    bom = codecs.BOM_UTF16_LE if codec == "utf-16-le" else codecs.BOM_UTF16_BE
+    template = tmp_path / "Contoso Quarterly.potx"
+    with zipfile.ZipFile(utf8) as zin, zipfile.ZipFile(template, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                text = data.decode("utf-8").replace("encoding='UTF-8'", "encoding='UTF-16'")
+                assert "encoding='UTF-16'" in text and POTX_MAIN in text
+                data = bom + text.encode(codec)
+            zout.writestr(info, data)
+    before = template.read_bytes()
+    u = _one(PptxConverter(CFG).convert(template, name=template.name))
+    assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
+    assert template.read_bytes() == before, "the rewrite is in memory; the staged file is not touched"
+    adapted = pptx_mod._template_as_deck(template)
+    assert adapted is not None
+    with zipfile.ZipFile(adapted) as z:
+        types = z.read("[Content_Types].xml")
+    assert types.startswith(bom) and not types[len(bom) :].startswith(
+        (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
+    )
+    text = types[len(bom) :].decode(codec)
+    assert PPTX_MAIN in text and POTX_MAIN not in text and "encoding='UTF-16'" in text, text
+    with zipfile.ZipFile(utf8) as z:
+        plain = z.read("[Content_Types].xml")
+    with zipfile.ZipFile(pptx_mod._template_as_deck(utf8) or utf8) as z:
+        assert z.read("[Content_Types].xml") == plain.replace(POTX_MAIN.encode(), PPTX_MAIN.encode())
+
+
 def build_empty_template(path: Path) -> Path:
     """A made-up Contoso template as PowerPoint saves one: no slides, a master with a fixed text box, a
     layout renamed "Contoso Title" holding a fixed text box of its own, a second layout repeating the

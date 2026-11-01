@@ -9,6 +9,7 @@ no engine.
 
 from __future__ import annotations
 
+import codecs
 import io
 import logging
 import re
@@ -384,21 +385,47 @@ def _template_as_deck(src: Path) -> io.BytesIO | None:
     python-pptx opens only the deck, macro-deck and slideshow main types and raises on a template's, though
     the parts are the same.  Every member is copied as it is and only ``[Content_Types].xml`` changes.  None
     when that part does not carry the template type: the file is opened as it is and python-pptx's own
-    error stands."""
+    error stands.
+
+    The part may be UTF-16 (ECMA-376 Part 2 allows it; python-pptx reads it): one with a UTF-16 byte order
+    mark is decoded, its type replaced, and encoded again in UTF-16 in the same byte order with one mark, so
+    its own ``encoding="UTF-16"`` declaration stays true and only the content type changes; the UTF-8 bytes
+    are replaced as bytes, as before (B13 round 33 C781)."""
     with zipfile.ZipFile(src) as zin:
         try:
             types = zin.read(_CONTENT_TYPES)
         except KeyError:
             return None
-        if _TEMPLATE_MAIN not in types:
+        deck_types = _deck_types(types)
+        if deck_types is None:
             return None
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zout:
             for info in zin.infolist():
                 deck = info.filename == _CONTENT_TYPES
-                zout.writestr(info, types.replace(_TEMPLATE_MAIN, _DECK_MAIN) if deck else zin.read(info))
+                zout.writestr(info, deck_types if deck else zin.read(info))
     buffer.seek(0)
     return buffer
+
+
+def _deck_types(types: bytes) -> bytes | None:
+    """``[Content_Types].xml``'s bytes with the template main type replaced by the deck's, in the part's own
+    encoding (UTF-8, or UTF-16 by its byte order mark); None when the part does not carry the template type
+    (:func:`_template_as_deck`, B13 round 33 C781)."""
+    if _TEMPLATE_MAIN in types:
+        return types.replace(_TEMPLATE_MAIN, _DECK_MAIN)
+    for bom, codec in ((codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be")):
+        if not types.startswith(bom):
+            continue
+        try:
+            text = types[len(bom) :].decode(codec)
+        except UnicodeDecodeError:
+            return None
+        template, deck = _TEMPLATE_MAIN.decode("ascii"), _DECK_MAIN.decode("ascii")
+        if template not in text:
+            return None
+        return bom + text.replace(template, deck).encode(codec)
+    return None
 
 
 class PptxConverter:
