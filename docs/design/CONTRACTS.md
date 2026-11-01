@@ -36384,6 +36384,9 @@ the flag, `FOLDER_LOST_SAID`, `ACCEPT_PATH_KEPT_RECORD`) and gives both refusals
 trail has lost what purge-record.json keeps, with it when the trail has lost nothing and holds no
 `audit-trail-lost` line. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, which reads
 the bullet beside governance's constants and `accept_lost_suppression`'s two refusals.
+Amended 2026-11-01, §16.222 C757, C783: the sync's stop leads so only while purge-record.json keeps a purge the
+suppression list or the queue lost; with only a hold kept the sync runs, its wait naming the folder and status FAILing
+governance.hold (§16.215 C613; ruling 64).
 
 **The guide's Repeat conversions row gives the folder-path clause both triggers and each count its column**
 (C651 with ruling 73; `docs/deploy/setup-feedback.md`; after lane RA's ff38befe1 and 667696ce4). Since §16.211
@@ -36935,6 +36938,17 @@ columns read `of them failed` and `of them unreadable`, and the report says `(an
 under`. §16.217 C651's `or` stays as round 32 wrote it. Test:
 `test_the_repeat_conversions_row_names_the_clause_its_note_follows`, which now reads the report's whole sentence
 across its source lines; `test_setup_report.py` pins the rendered text.
+
+**The records page says which governance loss stops the sync** (C757 with C783, ruling 88; amends §16.217 C606;
+`docs/deploy/data-governance.md`; built once). The missing-folder bullet joined purge-record.json's purge and
+hold-record.json's hold with `or`, then said `the sync refuses`, but `governance_lost` asks only `suppressions_lost`
+and `queue_lost`: with only a hold kept the sync exits 0 and prints the folder's wait (`test_cli`'s C613 test runs it).
+One sentence says the sync refuses while purge-record.json keeps a purge the suppression list or the purge queue
+lost and runs while only hold-record.json keeps a hold, purge and compaction suspended for its scope and status
+FAILing governance.hold, and every fix, and the sync's stop when it refuses, leads with the whole-folder put-back. The
+hold's own fix with no copy follows, from `lost_hold_words`; the page never says a lost hold blocks `--accept-lost` or
+the hand purge, and the bullet's pinned phrases stay byte for byte. Test:
+`test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, extended.
 
 **The kit note's folder check runs when its shasum check does, and allows only a named made-up folder** (C774's repo
 half; `docs/lanes/COMMON.md`). The note ran the folder check right before step 2 and before reading a role run's state

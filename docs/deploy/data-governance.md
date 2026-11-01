@@ -151,10 +151,14 @@ is a copy that no purge reaches, so exclude it too.
 - **Over a missing governance folder:** while the governance folder itself is gone, and with it the hold list,
   agentsync's audit trail, the purge queue and the suppression list, and purge-record.json still records a purge or
   hold-record.json names a hold, `agentsync status` still FAILs each lost file, its detail opening `<governance
-  folder>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`
-  and naming purge-record.json as what keeps the purges, and the sync refuses. Every fix, and the sync's stop, leads
-  with putting agentsync's governance folder back whole from the copy kept. With no copy, run each lost queued purge
-  by hand as its FAIL names it, and accept each lost suppression with `agentsync purge --accept-lost <at>
+  folder>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`.
+  The sync refuses while purge-record.json keeps a purge the suppression list or the purge queue lost, its FAIL
+  naming purge-record.json as what keeps the purges, and runs while only hold-record.json keeps a hold, with purge
+  and compaction suspended for that hold's scope and status FAILing governance.hold; every fix, and the sync's stop
+  when it refuses, leads with putting agentsync's governance folder back whole from the copy kept (B13 round 33 C757,
+  C783; ruling 88). For a lost hold with no copy, the records owner sets it again with `agentsync hold <scope>
+  --reason <why> --owner <name>`, or releases it with `agentsync hold <scope> --release --owner <name>`. With no copy,
+  run each lost queued purge by hand as its FAIL names it, and accept each lost suppression with `agentsync purge --accept-lost <at>
   --folder-lost` (preview it with `--dry-run` first): `--folder-lost` is your word that no copy of the folder is
   left, and the act first records in the new audit trail and in purge-record.json that the old audit trail was lost
   (an `audit-trail-lost` line), so a new trail never reads as the whole history. Without `--folder-lost`,

@@ -7310,6 +7310,24 @@ def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> 
     assert governance.ACCEPT_PATH_KEPT_RECORD in bullet
     assert "a copy under another name of content purge-record.json fingerprints stays out" in bullet
     assert "B13 round 32 C601, C606, C618; ruling 63" in bullet
+    # B13 round 33 C757, C783 (ruling 88): the bullet said the sync refuses under either record, but a lost
+    # hold alone lets it run (test_cli's c613 runs it): governance_lost asks only the suppression list and the
+    # queue
+    assert (
+        "The sync refuses while purge-record.json keeps a purge the suppression list or the purge queue lost,"
+        " its FAIL naming purge-record.json as what keeps the purges, and runs while only hold-record.json"
+        " keeps a hold, with purge and compaction suspended for that hold's scope and status FAILing"
+        " governance.hold; every fix, and the sync's stop when it refuses, leads with " + put_back in bullet
+    )
+    assert "and the sync refuses. Every fix" not in bullet
+    gone = inspect.getsource(governance.governance_lost)
+    assert "suppressions_lost(" in gone and "queue_lost(" in gone and "lost_holds" not in gone
+    assert "purge and compaction stay suspended" in inspect.getsource(governance.lost_hold_words)
+    assert "keeps a hold, so purge and compaction stay suspended" in governance.LOST_HOLD_WAIT_GOVGONE
+    assert "`agentsync hold <scope> --reason <why> --owner <name>`" in bullet
+    assert "`agentsync hold <scope> --release --owner <name>`" in bullet
+    # nothing here says a lost hold blocks accepting a loss or a hand purge (ruling 88)
+    assert not re.search(r"hold[^.]*\b(?:blocks|stops|refuses)\b[^.]*(?:--accept-lost|hand)", bullet)
     # both refusals the page names, as the act makes them
     act = inspect.getsource(governance.accept_lost_suppression)
     assert (
