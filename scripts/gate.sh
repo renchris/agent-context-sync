@@ -51,6 +51,9 @@ GIT_INDEX_FILE="$tmp/index" git add -A
 tree=$(GIT_INDEX_FILE="$tmp/index" git write-tree)
 
 step uv sync --locked
+# node_modules is gitignored, so a fresh worktree has none, and diagrams:check cannot start without it. Only when it
+# is missing: npm ci deletes the folder first, and a lock-free --affected gate may be reading it (B13 round 33 C770)
+[ -d node_modules ] || step npm ci
 salt=$({
   cat uv.lock
   uv run --locked python --version

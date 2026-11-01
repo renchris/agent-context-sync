@@ -11,6 +11,7 @@ Run these before a push. They are the CI steps, copied from `.github/workflows/c
 
 ```sh
 uv sync --locked
+[ -d node_modules ] || npm ci  # a fresh worktree has none (diagrams.yml runs npm ci before diagrams:check)
 uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
 uv run --locked mypy src

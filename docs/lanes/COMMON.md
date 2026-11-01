@@ -848,7 +848,8 @@ Gate: the repo's `scripts/gate.sh`, never a hand-copied script. While you build,
 `scripts/gate.sh --affected` (every static step, then the tests your diff can turn red; `scripts/gate.sh --lane`
 is the full set, resumed where a killed run of the same tree stopped). Before every push run the land gate,
 `scripts/gate.sh`: the full CLAUDE.md list, the full test set (the whole-tree scanners first), and it ends
-`GATE GREEN at <sha>`.
+`GATE GREEN at <sha>`. A fresh worktree has no node_modules (it is gitignored); scripts/gate.sh runs `npm ci` once when
+it is missing.
 
 Landing (round 33): land with `scripts/ship-land.sh --lock /tmp/b13-r33-land.lock`, typed exactly so (no env prefix,
 no `bash` in front, its own command). It takes the one lock, fetches, reads trunk's CI once without waiting (a run

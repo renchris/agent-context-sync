@@ -460,3 +460,88 @@ def test_claude_md_and_the_lane_brief_say_when_allow_red_trunk_is_right() -> Non
     )
     header = SHIP_LAND.read_text(encoding="utf-8").split("\nset -euo pipefail\n", 1)[0]
     assert "9 CI not read (gh failed, no run appeared, or a run lost its hosted runner)" in header
+
+
+# scripts/gate.sh itself, in a repo of its own, over stand-ins for every tool it runs. Each logs its argv, so
+# the order of the steps can be read; `uv` answers the collect runs with one test id per part and each pytest
+# part with $STUB_PYTEST_RC.
+STUB_UV = """#!/bin/bash
+echo "uv $*" >>"$STUB_TOOL_LOG"
+case "$*" in
+  *--collect-only*--ignore=*) echo tests/test_rest.py::c ;;
+  *--collect-only*test_contracts*) echo tests/test_contracts.py::a ;;
+  *--collect-only*test_deploy_pack*) echo tests/test_deploy_pack.py::b ;;
+  *--collect-only*)
+    printf 'tests/test_contracts.py::a\\ntests/test_deploy_pack.py::b\\ntests/test_rest.py::c\\n' ;;
+  *skipped-timing*) echo 0 ;;
+  *_gate_journal.py*) exit 1 ;;
+  *pytest*) exit "${STUB_PYTEST_RC:-0}" ;;
+esac
+"""
+STUB_TOOL = '#!/bin/bash\necho "$(basename "$0") $*" >>"$STUB_TOOL_LOG"\n'
+
+
+def _real_gate(
+    tmp_path: Path, env: dict[str, str], *args: str, **extra: str
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """Runs the real scripts/gate.sh in a fresh repo (no node_modules) over the stand-ins: result and log."""
+    repo = tmp_path / "repo"
+    if not repo.exists():
+        (repo / "scripts").mkdir(parents=True)
+        shutil.copy(REPO / "scripts" / "gate.sh", repo / "scripts" / "gate.sh")
+        (repo / "uv.lock").write_text("lock\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=env)
+        subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True, env=env)
+        bin_dir = tmp_path / "gate-bin"
+        bin_dir.mkdir()
+        exec_stub.write(bin_dir / "uv", STUB_UV)
+        for tool in ("uvx", "node", "npm", "make"):
+            (bin_dir / tool).write_text(STUB_TOOL, encoding="utf-8")  # it reads its own $0: a plain #! file
+            (bin_dir / tool).chmod(0o755)
+    bin_dir = tmp_path / "gate-bin"
+    log = tmp_path / "tools.log"
+    log.unlink(missing_ok=True)
+    done = subprocess.run(
+        ["/bin/bash", "scripts/gate.sh", *args],
+        cwd=repo,
+        env={
+            **env,
+            "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}",
+            "STUB_TOOL_LOG": str(log),
+            "CC_GATE_SLOT_BIN": "/usr/bin/false",  # the helper errors, so the gate runs uncapped
+            **extra,
+        },
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    return done, log.read_text(encoding="utf-8").splitlines()
+
+
+def test_a_fresh_worktrees_gate_runs_npm_ci_once_and_only_when_node_modules_is_missing(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 33 C770: a fresh worktree has no node_modules (it is gitignored), so its first land gate
+    failed `npm run diagrams:check` with ERR_MODULE_NOT_FOUND, though CLAUDE.md's list says it holds the CI
+    steps and diagrams.yml runs npm ci first. The gate runs it right after `uv sync --locked`, and only when
+    the folder is missing: npm ci deletes it first, and a lock-free --affected gate in the same worktree may
+    be reading it."""
+    done, log = _real_gate(tmp_path, env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert log.count("npm ci") == 1
+    assert log.index("uv sync --locked") + 1 == log.index("npm ci") < log.index("npm run diagrams:check")
+    (tmp_path / "repo" / "node_modules").mkdir()
+    done, log = _real_gate(tmp_path, env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "npm ci" not in log and "npm run diagrams:check" in log
+    # the two lists that say so, in the commit that makes it true
+    claude = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
+    gate_list = claude.split("```sh\n", 1)[1].split("```", 1)[0].splitlines()
+    assert gate_list[0] == "uv sync --locked" and gate_list[1].startswith("[ -d node_modules ] || npm ci  # ")
+    lanes = " ".join((REPO / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8").split())
+    assert (
+        "A fresh worktree has no node_modules (it is gitignored); scripts/gate.sh runs `npm ci` once when it"
+        " is missing."
+    ) in lanes
