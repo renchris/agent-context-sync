@@ -36476,7 +36476,7 @@ budget from the load, is optional and left out: the variable is the supported wa
 
 **A cut install-source line asks for the re-run, and a busy Mac has a limit to raise** (C702's and C726's installer
 half, ruling 83; `scripts/install.sh`). install.sh's cut-off grep read only the Summary's doctor and evidence lines, so
-lane RA's install-source line ending with the advice gave no NEXT: it now reads `^- (doctor|evidence|install source): `.
+lane RA's install-source line ending with the advice gave no NEXT: it now reads `^- (doctor|evidence|install source|background sync): `, the last for lane RA's C720.
 Under sustained load `once it is idle` is no remedy, so the NEXT adds `, or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front
 of that command if it stays busy`; lane RA's report clamps the value to 12 to 60, an older build ignores it (an unknown
 flag would have exited 2), and with_timeout's 120 s stays above it. install.sh passes its environment to the report

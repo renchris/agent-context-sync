@@ -4866,7 +4866,7 @@ def _busy_evidence_line() -> str:
     return setup_report._evidence_line(r)
 
 
-@pytest.mark.parametrize("cause", ["slow doctor", "busy state file", "install source"])
+@pytest.mark.parametrize("cause", ["slow doctor", "busy state file", "install source", "background sync"])
 @pytest.mark.parametrize("locked", [False, True])
 def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review(
     env: dict[str, str], tmp_path: Path, locked: bool, cause: str
@@ -4893,6 +4893,8 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
         f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}",
         "install source": "- install source: ~/src/agent-context-sync @ a73e4ea74b2c · origin: not read "
         f"· on origin/main: not read · {setup_report._IDLE_AGAIN}",
+        "background sync": "- background sync: poll not measured · reconcile not measured: "
+        f"{setup_report._IDLE_AGAIN}",
     }.get(cause) or _busy_evidence_line()
     assert setup_report._IDLE_AGAIN in summary and "time" not in summary.replace("this Mac", ""), summary
     old.write_text(
