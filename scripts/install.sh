@@ -8093,6 +8093,19 @@ for p in () if notdir else (db.parent, db, *sides):
     if st.st_uid != os.getuid():
         access = word + "owner"
         break
+    # beside a WAL-mode manifest (header bytes 18 and 19 both 2) an empty -wal with no -shm holds nothing and the
+    # next open removes it: no stop, whatever its mode. The plain open this probe ran before C727 removed it first,
+    # so it was never judged (round 21 Y57); beside a rollback-journal manifest it stays, and is judged (PM-wal)
+    if word == "state-side-" and p.name.endswith("-wal") and st.st_size == 0 and not os.path.lexists(str(p)[:-3] + "shm"):
+        head = b""
+        try:
+            if stat.S_ISREG(os.stat(db).st_mode):
+                with open(db, "rb") as fh:
+                    head = fh.read(20)
+        except OSError:
+            pass
+        if len(head) == 20 and head[18] == 2 and head[19] == 2:
+            continue
     if not os.access(p, os.R_OK | os.W_OK | (os.X_OK if p == db.parent else 0)):
         want = 0o700 if p == db.parent else 0o600
         try:

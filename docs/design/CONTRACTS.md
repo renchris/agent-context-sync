@@ -36498,7 +36498,11 @@ build without it `MANIFEST_RO_PY`, `doctor._probe_uri`'s rule (a plain open only
 which then makes nothing; `immutable=1`, stamped before and after, with no -wal or an empty one and no -shm; no read of a
 -wal with frames and no -shm). `config_errors` does not open the file again where the build has `_probe_uri`, whose
 `manifest_unreadable` just read every b-tree; on an older build it never calls that build's `manifest_unreadable`, which
-opens plain, and its schema read and b-tree pass use the same rule, dropping a word an immutable read saw change under it. The verifier's `skip when a -wal exists` is not built: with a sync running it
+opens plain, and its schema read and b-tree pass use the same rule, dropping a word an immutable read saw change under it.
+Beside a WAL-mode manifest an empty -wal with no -shm is no stop whatever its mode: the plain open had hidden that from
+`config_errors` by removing it first, as round 21's Y57 test measured, so the access judge now skips it itself, keyed on
+the manifest's header (bytes 18 and 19 both 2); beside a rollback-journal manifest that open left it, and it is judged
+as before (`PM-wal`). The verifier's `skip when a -wal exists` is not built: with a sync running it
 would drop a vanished source and bring back round 16's T6. An installed build from before ruling 36 has an
 `open_read_only` that still opens plain when it can write the file; such a Mac keeps its two empty files until step 2.
 Tests: `test_list_folders_leaves_no_side_file_beside_the_manifest`,
