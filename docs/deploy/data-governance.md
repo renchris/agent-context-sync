@@ -147,7 +147,9 @@ is a copy that no purge reaches, so exclude it too.
   against a new file under that glob; the act's output says which applies. The sync still refuses until each lost
   purge is put back or accepted (B13 round 31 C537, C577). A purge run again by hand clears its record only when it
   is verified and finds the content again; one that finds nothing, because the first purge erased it, clears nothing
-  (B13 round 29 C172; B13 round 30 C383, C402, C401, C344).
+  (B13 round 29 C172; B13 round 30 C383, C402, C401, C344). When the FAIL opens `agentsync's audit trail no longer
+  holds purge lines purge-record.json keeps`, accepting takes `--folder-lost`, as the next bullet says (B13 round 33
+  C759).
 - **Over a missing governance folder:** while the governance folder itself is gone, and with it the hold list,
   agentsync's audit trail, the purge queue and the suppression list, and purge-record.json still records a purge or
   hold-record.json names a hold, `agentsync status` still FAILs each lost file, its detail opening `<governance
@@ -165,7 +167,13 @@ is a copy that no purge reaches, so exclude it too.
   `--accept-lost` refuses while the audit trail has lost what purge-record.json keeps; with it, the act refuses
   when the trail has lost nothing and holds no `audit-trail-lost` line. The accepted purges' items stay out by their id and by the one source path
   purge-record.json keeps for each item still listed when it was purged, and a copy under another name of content
-  purge-record.json fingerprints stays out (B13 round 32 C601, C606, C618; ruling 63).
+  purge-record.json fingerprints stays out (B13 round 32 C601, C606, C618; ruling 63). A later `hold` or hand purge
+  re-creates the governance folder with a new audit trail that lacks the old purge lines. Until an `audit-trail-lost`
+  line is written, the suppression list's and the purge queue's lost FAILs then open `agentsync's audit trail no longer
+  holds purge lines purge-record.json keeps`, and their fix leads with putting that one file back from a copy you
+  trust. With no copy, plain `--accept-lost` and its `--dry-run` are refused until the first `agentsync purge
+  --accept-lost <at> --folder-lost` writes that line, after which plain `--accept-lost` accepts the rest (B13 round
+  33 C759; ruling 88).
 
 ## Legal and records hold
 

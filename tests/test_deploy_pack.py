@@ -7328,12 +7328,29 @@ def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> 
     assert "`agentsync hold <scope> --release --owner <name>`" in bullet
     # nothing here says a lost hold blocks accepting a loss or a hand purge (ruling 88)
     assert not re.search(r"hold[^.]*\b(?:blocks|stops|refuses)\b[^.]*(?:--accept-lost|hand)", bullet)
+    # B13 round 33 C759 (ruling 88): the folder a later write re-creates, in the words its FAILs print.
+    # test_cli's test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606 runs each one
+    recreated = bullet.split("A later `hold` or hand purge re-creates the governance folder", 1)[1]
+    assert f"lost FAILs then open `{governance.TRAIL_LOST_HEAD}`" in recreated
+    assert "their fix leads with putting that one file back from a copy you trust" in recreated
+    assert (
+        "plain `--accept-lost` and its `--dry-run` are refused until the first `agentsync purge --accept-lost"
+        " <at> --folder-lost` writes that line, after which plain `--accept-lost` accepts the rest"
+        in recreated
+    )
+    [lost_bullet] = re.findall(r"- \*\*Over a lost suppression list:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert (
+        f"When the FAIL opens `{governance.TRAIL_LOST_HEAD}`, accepting takes `--folder-lost`" in lost_bullet
+    )
+    # the head is the suppression list's FAIL's, the queue's and the act's refusal's
+    assert len(re.findall(r"lead = f?\"?\{?TRAIL_LOST_HEAD", inspect.getsource(governance))) == 3
     # both refusals the page names, as the act makes them
     act = inspect.getsource(governance.accept_lost_suppression)
     assert (
         "if trail_lost and not folder_lost:" in act and "if folder_lost and not (trail_lost or said):" in act
     )
     assert "only with no copy left" in act
+    assert act.index("if trail_lost and not folder_lost:") < act.index("if dry_run")  # its dry run is refused
     assert '"--folder-lost",' in inspect.getsource(cli)
 
 

@@ -36950,6 +36950,15 @@ hold's own fix with no copy follows, from `lost_hold_words`; the page never says
 the hand purge, and the bullet's pinned phrases stay byte for byte. Test:
 `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, extended.
 
+**The records page names the re-created folder, where plain `--accept-lost` is refused** (C759, ruling 88;
+`docs/deploy/data-governance.md`). The missing-folder bullet read only while governance/ is gone, while a later `hold`
+or hand purge re-creates the folder with a new trail that lacks the old purge lines; `audit_trail_lost`, judged by
+content, keeps refusing plain `--accept-lost` and its `--dry-run` there. The bullet says the lost-list FAILs then open
+with `TRAIL_LOST_HEAD`, that their fix leads with the one file, and that the refusal holds until the first
+`--folder-lost` writes `audit-trail-lost`, after which plain `--accept-lost` accepts the rest; the first `--folder-lost`
+is not among the writes that cause this state, since it writes the line that ends it. The lost suppression list's
+bullet points there. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, extended.
+
 **The kit note's folder check runs when its shasum check does, and allows only a named made-up folder** (C774's repo
 half; `docs/lanes/COMMON.md`). The note ran the folder check right before step 2 and before reading a role run's state
 on a home's copy; the round's brief and every rehearsal also ran it at each act's end and on `<root>/fixture/tree`, and
