@@ -16289,13 +16289,16 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
     Summary line starting ``- doctor:`` or ``- evidence:`` holds :data:`setup_report._IDLE_AGAIN`, and nothing
     pinned that those two are its only writers: a new Summary line giving the advice would get no NEXT.
 
-    (a) The source: only the four functions that write it today name ``_IDLE_AGAIN``, and ``_cut_off_words``
+    (a) The source: only the functions that write it today read ``_idle_again`` (B13 round 33 C718), and only
+    that helper and ``_cut_off_words``, which quotes it in its other wordings, name ``_IDLE_AGAIN``;
+    ``_cut_off_words``
     is called only from the Doctor section and the doctor line, so a new writer fails here whatever condition
     reaches it. (b) The render: a doctor cut off, one never started, an evidence part cut off and one a sync
     held, with no agent note, each give the advice only in lines install.sh's own pattern reads."""
     tree = ast.parse(Path(setup_report.__file__).read_text(encoding="utf-8"))
     names: set[str] = set()
     callers: set[str] = set()
+    writers: set[str] = set()
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef):
             continue
@@ -16304,7 +16307,18 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
                 names.add(fn.name)
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_cut_off_words":
                 callers.add(fn.name)
-    assert names == {"_cut_off_words", "_doctor", "_doctor_line", "_evidence_line"}, names
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_idle_again":
+                writers.add(fn.name)
+    assert names == {"_cut_off_words", "_idle_again"}, names
+    assert writers == {
+        "_background",  # a Background runs line; the Summary's own, which install.sh reads, is below
+        "_cut_off_words",
+        "_doctor",
+        "_doctor_line",
+        "_evidence_line",
+        "_install_source",  # Run metadata's line, which install.sh's grep reads
+        "_summary",
+    }, writers
     assert callers == {"_doctor", "_doctor_line"}, callers
 
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
@@ -16313,7 +16327,8 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
     )
     assert found is not None, "install.sh's cut-off test"
     assert setup_report._IDLE_AGAIN.startswith(found.group(2))
-    reads = re.compile(found.group(1) + re.escape(setup_report._IDLE_AGAIN))
+    # the Summary's background line since C720, which lane RB's grep names (either grep passes)
+    reads = re.compile(rf"(?:- background sync: .*|{found.group(1)})" + re.escape(setup_report._IDLE_AGAIN))
     monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
 
     def hung(_config: object) -> list[str]:
@@ -21136,6 +21151,292 @@ def test_a_rewrite_paths_hits_are_counted_as_proxy_values() -> None:
     shown = red.redact("https://mirror.northwind.invalid/northwind-team/x.git and /northwind-team-tools")
     assert shown == "https://<proxy-1>/<proxy-2>/x.git and /<proxy-2>-tools", shown
     assert red.counts == {"proxy": 3} and red._used == {"<proxy-1>", "<proxy-2>"}, (red.counts, red._used)
+
+
+_STOPPED_ATTEMPT = (
+    "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7 or older\nAgent: Contoso Bot\n"
+    "2026-09-29T09:58:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is v7 or "
+    "older and this installer is for setup prompt v16: the pasted copy is not the current one; setup "
+    "stopped (exit 2) | copy the prompt again from README.md on the main branch\n"
+    "2026-09-29T09:58:00Z | end | finished\n"
+)
+
+
+@pytest.mark.parametrize("budget", [5.0, 0.5], ids=["cut-off", "never-started"])
+def test_a_stopped_copy_gives_no_advice_to_send_it_c718(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, budget: float
+) -> None:
+    """B13 round 33 C718: a stopped copy's first line says not to send it, while its evidence and doctor lines
+    told the person to write it again `before sending it` and, cut off, to `send the report as it is`. Every
+    writer reads ``_idle_again``: a stopped copy says it is not for sending; any other report built from the
+    same state keeps ``_IDLE_AGAIN`` byte for byte, which install.sh's NEXT keys on."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    monkeypatch.setattr(setup_report, "EVIDENCE_BUDGET_S", 0.0)
+
+    def hung(_config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    def report() -> str:
+        return setup_report.build_report(
+            fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung), budget_s=budget
+        )[0]
+
+    (fake_mac["setup"] / "install.log").unlink()
+    write_friction(fake_mac, _STOPPED_ATTEMPT)
+    stopped = report().split("\n## Redaction\n", 1)[0]  # its legend's fixed note is not advice to re-run
+    assert setup_report._STOPPED_NOT_SENT in section(stopped, "Summary"), stopped
+    assert "before sending it" not in stopped
+    assert "send the report as it is" not in stopped
+    assert "write the report again when this Mac is idle" not in stopped
+    write_friction(fake_mac, V6_HAPPY)
+    other = report()
+    assert setup_report._IDLE_AGAIN in section(other, "Summary"), other
+    assert setup_report._STOPPED_NOT_SENT not in other
+
+
+@pytest.mark.parametrize(
+    ("reading", "busy", "at"), [(True, True, ""), (True, False, ""), (False, False, "heartbeat")]
+)
+def test_a_stopped_copys_cut_off_doctor_keeps_its_facts_c718(
+    fake_mac: dict[str, Path], reading: bool, busy: bool, at: str
+) -> None:
+    """B13 round 33 C718: each branch of ``_cut_off_words`` in a stopped copy: the check or the read and the
+    load stay, the advice goes, and so does `send the report as it is`."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    r.facts.copy_stopped = True
+    r.facts.doctor_cut_off_at = at
+    r.facts.doctor_cut_off_reading = reading
+    r.facts.doctor_cut_off_load = (31.5, 10)
+    if busy:
+        r.facts.evidence_why[setup_report._BUSY_WHY] = 1
+    words = setup_report._cut_off_words(r)
+    assert words.endswith(setup_report._STOPPED_NOT_SENT), words
+    assert "the 1-minute load was 31.5 on 10 cores" in words
+    assert ("heartbeat check" in words) is bool(at)
+    assert setup_report._IDLE_AGAIN not in words and "send the report" not in words
+
+
+def _git_cut(monkeypatch: pytest.MonkeyPatch, *subcommands: str) -> None:
+    """The report's git hits its limit on each subcommand named, as on a Mac under load (C702)."""
+    real = subprocess.run
+
+    def run(argv: Any, *args: Any, **kwargs: Any) -> Any:
+        if any(word in subcommands for word in argv[:5] if isinstance(word, str)):
+            raise subprocess.TimeoutExpired(argv, 3.0)
+        return real(argv, *args, **kwargs)
+
+    monkeypatch.setattr(setup_report.subprocess, "run", run)
+
+
+def _checkout_with_origin(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for argv in (
+        ["init", "-q", "-b", "main"],
+        ["config", "user.email", "a@contoso.example"],
+        ["config", "user.name", "A"],
+        ["remote", "add", "origin", "https://github.com/contoso/fork.git"],
+        ["commit", "-q", "--allow-empty", "-m", "x"],
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *argv], check=True, capture_output=True)
+    return repo
+
+
+@pytest.mark.parametrize(
+    ("cut", "says", "never"),
+    [
+        (
+            ("config",),
+            "origin: not read (git did not answer within the report's time limit)",
+            ("origin: none",),
+        ),
+        (("merge-base",), "on origin/main: not read (time limit)", ("no origin/main in this checkout",)),
+        (("diff",), " (uncommitted changes: not read, time limit)", ()),
+        (("rev-parse",), " (git did not answer within the report's time limit)", ("cannot read its .git",)),
+    ],
+    ids=["origin", "on-main", "dirty", "rev-parse"],
+)
+def test_a_git_read_the_time_limit_cut_is_not_read_never_a_fact_c702(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cut: tuple[str, ...],
+    says: str,
+    never: tuple[str, ...],
+) -> None:
+    """B13 round 33 C702 (ruling 83): on a loaded Mac git's rc 124 read as `origin: none`, `no origin/main in
+    this checkout`, a clean tree or `(git cannot read its .git)` about a checkout that has them all."""
+    repo = _checkout_with_origin(tmp_path)
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    with monkeypatch.context() as m:
+        _git_cut(m, *cut)
+        line = setup_report._install_source(run)
+    assert says in line, line
+    for words in never:
+        assert words not in line, line
+    assert line.endswith(f" · {setup_report._IDLE_AGAIN}"), line
+    assert run.facts.install_source_cut is True
+    assert run.facts.evidence is None, "no count of the evidence line"
+
+
+def test_a_git_answer_still_says_what_it_says_c702(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C702's negative: git that answers keeps its words, with no advice: no origin is `none`, a
+    missing origin/main keeps `unknown (no origin/main in this checkout)`."""
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+    for argv in (
+        ["config", "user.email", "a@contoso.example"],
+        ["config", "user.name", "A"],
+        ["commit", "-q", "--allow-empty", "-m", "x"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *argv], check=True, capture_output=True)
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    line = setup_report._install_source(run)
+    assert " · origin: none · on origin/main: unknown (no origin/main in this checkout)" in line, line
+    assert "not read" not in line and setup_report._IDLE_AGAIN not in line, line
+    assert run.facts.install_source_cut is False
+
+
+@pytest.mark.parametrize(
+    ("answer", "says"),
+    [
+        ((124, "timed out after 3.0s"), "not measured (xcode-select -p exited 124: timed out after 3.0s)"),
+        (
+            (124, "skipped: the report's time budget is used up"),
+            "not measured (xcode-select -p exited 124: skipped: the report's time budget is used up)",
+        ),
+        ((2, "xcode-select: error: unable to get active developer directory"), "not installed"),
+    ],
+)
+def test_the_command_line_tools_time_out_is_not_measured_c716(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, answer: tuple[int, str], says: str
+) -> None:
+    """B13 round 33 C716 (ruling 83): `xcode-select -p` with no tools exits 2, so 124 only says it was not
+    measured; a real non-zero exit keeps `not installed`."""
+    real = setup_report._Run.run
+
+    def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        return answer if "/usr/bin/xcode-select" in argv else real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", run)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    line = next(ln for ln in setup_report._environment(r) if ln.startswith("- Xcode Command Line Tools: "))
+    assert line.startswith(f"- Xcode Command Line Tools: {says}"), line
+    assert ("not installed" in line) is (answer[0] == 2), line
+
+
+def test_the_install_source_says_a_devtools_read_that_did_not_answer_c716(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C716: `devtools` has three states. No tools says nothing, as ever; no answer says the
+    commit and origin were not read, and the line ends with the advice."""
+    repo = _checkout_with_origin(tmp_path)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    for answer, tools in (
+        ((124, "timed out after 3.0s"), None),
+        ((124, "skipped: the report's time budget is used up"), None),
+        ((2, "no tools"), False),
+    ):
+        monkeypatch.setattr(setup_report._Run, "run", lambda _self, _argv, _t=5.0, a=answer: a)
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+        assert r.devtools() is tools
+        line = setup_report._install_source(r)
+        cut = " (commit and origin not read: the report's time limit)"
+        if tools is None:
+            assert f"checkout {repo}{cut}" in line and line.endswith(setup_report._IDLE_AGAIN), line
+        else:
+            assert line.split(";")[0] == f"checkout {repo}", line
+            assert setup_report._IDLE_AGAIN not in line and " not read" not in line, line
+
+
+@pytest.mark.parametrize(
+    ("note", "why"),
+    [
+        ("timed out after 5.0s", "launchctl print did not answer within 5.0s"),
+        (
+            "skipped: the report's time budget is used up",
+            "the report's time limit was used up before launchctl print ran",
+        ),
+    ],
+)
+@pytest.mark.parametrize("has_plist", [True, False], ids=["plist", "no-plist"])
+def test_a_launchctl_print_that_did_not_answer_is_not_measured_c720(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, note: str, why: str, has_plist: bool
+) -> None:
+    """B13 round 33 C720 (ruling 83): launchctl print's rc 124 said `not installed` or `NOT loaded`, with
+    `install-agent` advice, of jobs this Mac has loaded. It is not measured: the plist's presence still said,
+    the advice once on the Summary's line, the evidence line's count untouched."""
+    agents = Path.home() / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    state = "absent"
+    if has_plist:
+        (agents / "com.agentsync.poll.plist").write_text("x", encoding="utf-8")
+        (agents / "com.agentsync.reconcile.plist").write_text("x", encoding="utf-8")
+        state = "present"
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda _run, _label: (124, note))
+    lines = setup_report._background(r)
+    for job in ("poll", "reconcile"):
+        assert (
+            f"- com.agentsync.{job}: not measured ({why}; plist {state}): {setup_report._IDLE_AGAIN}" in lines
+        ), lines
+    assert not any("not installed" in ln or "NOT loaded" in ln or "install-agent" in ln for ln in lines)
+    assert r.facts.background == ["poll not measured", "reconcile not measured"]
+    assert r.facts.evidence is None and not r.facts.evidence_why
+
+
+@pytest.mark.parametrize("has_plist", [True, False], ids=["plist", "no-plist"])
+def test_a_real_launchctl_exit_still_says_not_installed_c720(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, has_plist: bool
+) -> None:
+    """B13 round 33 C720's negative: a job that is not loaded exits 113, and keeps its words."""
+    agents = Path.home() / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    if has_plist:
+        (agents / "com.agentsync.poll.plist").write_text("x", encoding="utf-8")
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda _run, _label: (113, "Could not find"))
+    poll, reconcile = setup_report._background(r)[:2]
+    assert ("plist present · NOT loaded" in poll) is has_plist, poll
+    assert ("not installed" in poll) is not has_plist, poll
+    assert "not installed" in reconcile and "not measured" not in poll + reconcile
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_the_budget_used_up_says_not_measured_in_every_part_c716_c720(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C716, C720: a whole report past its budget. Environment, Background runs and the Summary
+    say nothing is installed or unloaded; the Summary's background line carries the advice once."""
+    real = setup_report._Run.run
+
+    note = "skipped: the report's time budget is used up"
+
+    def spent(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        return (124, note) if argv and argv[0] == "/usr/bin/xcode-select" else real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", spent)
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda _run, _label: (124, note))
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert "- Xcode Command Line Tools: not measured (" in section(text, "Environment")
+    for part in ("Background runs", "Summary"):
+        body = section(text, part)
+        assert "not installed" not in body and "NOT loaded" not in body, body
+        assert "install-agent` loads it" not in body, body
+    idle = setup_report._IDLE_AGAIN
+    assert f"- background sync: poll not measured · reconcile not measured: {idle}\n" in section(
+        text, "Summary"
+    )
+    assert "commit and origin not read: the report's time limit" in text
 
 
 def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:

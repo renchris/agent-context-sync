@@ -455,7 +455,12 @@ _LOOP_FLOOR_S = 1.0  # held back from Doctor's share, so the hook gets at least 
 _IDLE_AGAIN = f"write the report again when this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
 """The advice for a part the report's time limit cut off, or a state file a sync held (``_RETRY_WHYS``): the
 Summary's evidence and doctor lines; Doctor. install.sh's ``--report-only`` NEXT keys on it (B13 round 20
-X37)."""
+X37). Byte-identical on every report that was not stopped, and read through :func:`_idle_again`."""
+_NOT_ANSWERED_NOTES = ("timed out after ", "skipped: the report's time budget")
+"""How :meth:`_Run.run` and :func:`_git_ro_err` say a command did not answer, the note beside their rc 124."""
+_STOPPED_NOT_SENT = "this copy is not for sending"
+"""What a stopped copy says where any other report gives :data:`_IDLE_AGAIN` (B13 round 33 C718): its first
+line says not to send it, and nothing brings it back."""
 _DOCTOR_GRACE_S = 20.0
 """The least the doctor call is given (B13 round 18 V4): on a busy Mac its pandoc start alone can take longer
 than what is left of :data:`TIME_BUDGET_S`, which cut the last report of a setup off with no Doctor section.
@@ -4140,6 +4145,7 @@ class _Facts:
         default_factory=list
     )  # (tag, name, detail)
     copy_stopped: bool = False  # the installer stopped the latest attempt's copy (_stopped_before_the_list)
+    install_source_cut: bool = False  # a read of the install source did not answer in time (C702, ruling 83)
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
@@ -4249,6 +4255,13 @@ def _pandoc_from_doctor(r: _Run) -> str:
             return "not checked: the doctor call was cut off (see Doctor)"
         return "not checked: the doctor call was cut off by the report's time limit"
     return "not checked: no doctor pandoc check ran (see Doctor)"
+
+
+def _not_answered(rc: int, note: str) -> bool:
+    """Whether (rc, note) is the runner's own non-answer, a time-out or a spent budget, rather than an answer
+    (B13 round 33 ruling 83): nothing was measured, so a reader says ``not measured`` or ``not read``, never
+    what an answer with that exit code would mean."""
+    return rc == 124 and note.startswith(_NOT_ANSWERED_NOTES)
 
 
 def _exited(rc: int, text: str | None = None) -> str:
@@ -4366,8 +4379,11 @@ class _Run:
         except CallTimedOutError as exc:  # the report names it TimeoutError, as it always has
             raise TimeoutError(str(exc)) from None
 
-    def devtools(self) -> bool:
+    def devtools(self) -> bool | None:
+        """Whether the developer tools are there; None when ``xcode-select`` did not answer (C716)."""
         rc, out = self.run(["/usr/bin/xcode-select", "-p"], 3.0)
+        if _not_answered(rc, out):
+            return None
         return rc == 0 and Path(out.splitlines()[0] if out else "").is_dir()
 
     def log_dir(self) -> Path:
@@ -5648,7 +5664,8 @@ def _installed_from() -> tuple[str, Path | None]:
 def _install_source(r: _Run) -> str:
     where, directory = _installed_from()
     # Why a checkout has no commit or origin, which said nothing before (B13 round 9 K29): no .git, or a .git
-    # git cannot read. Without the developer tools nothing is read, and nothing is said, as before.
+    # git cannot read. Without the developer tools nothing is read, and nothing is said, as before; when the
+    # report's time limit cut that read, it says so (B13 round 33 C716, ruling 83).
     if directory is not None and not (directory / ".git").exists():
         # not "checkout <path> (not a git checkout ...)", which called it a checkout first (B13 round 10 L28);
         # an editable install keeps its "(editable)"
@@ -5656,18 +5673,23 @@ def _install_source(r: _Run) -> str:
             where.removeprefix("checkout ")
             + ", a copy that is not a git checkout (no .git, so no commit or origin)"
         )
-    elif directory is not None and r.devtools():
+    elif directory is not None and (tools := r.devtools()):
         # git's refusal of a folder another user account owns, said as the shell report says it (B13 round 10
         # L29); never that account's name
         facts = _checkout_facts(r, directory)
         if not facts:
-            refused = b"dubious ownership" in _git_ro_err(r, directory, "rev-parse", "HEAD")[2]
-            facts = (
-                " (git refuses its .git: the folder belongs to another user account)"
-                if refused
-                else " (git cannot read its .git)"
-            )
+            rc, _out, err = _git_ro_err(r, directory, "rev-parse", "HEAD")
+            if _not_answered(rc, err.decode("utf-8", "replace")):  # the second read's turn to be cut
+                r.facts.install_source_cut = True
+                facts = _GIT_NOT_ANSWERED
+            elif b"dubious ownership" in err:
+                facts = " (git refuses its .git: the folder belongs to another user account)"
+            else:
+                facts = " (git cannot read its .git)"
         where += facts
+    elif directory is not None and tools is None:
+        r.facts.install_source_cut = True
+        where += " (commit and origin not read: the report's time limit)"
     with contextlib.suppress(Exception):
         # The last run that reached an install step: a --list-folders run and a run a usage error stopped log
         # ``commit=-`` before reading their source's commit, so they say nothing about the installed copy.
@@ -5686,6 +5708,10 @@ def _install_source(r: _Run) -> str:
                 tree = start.get("tree") or _legacy_tree(lines)
                 if tree:
                     where += f" tree {tree} (the SHA-256 prefix of `git diff HEAD` in that checkout)"
+    if (
+        r.facts.install_source_cut
+    ):  # install.sh's --report-only NEXT reads it here; no count of the evidence line
+        where += f" · {_idle_again(r)}"
     return where
 
 
@@ -5705,13 +5731,14 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
     budget, once per report: a failed lookup falls back to ``/usr/bin/git``, which is kept too, so a slow
     or hanging xcrun is asked once, within the budget, never once per call; B13 round 14 Q53)."""
     limit = min(timeout, r.remaining() - _RESERVE_S)
+    spent = b"skipped: the report's time budget is used up"  # as _Run.run says it (_not_answered)
     if limit <= 0.2:
-        return 124, b"", b""
+        return 124, b"", spent
     if r.git is None:
         r.git = gitops.usr_bin_git(timeout=min(gitops._XCRUN_TIMEOUT_S, r.remaining() - _RESERVE_S))
         limit = min(timeout, r.remaining() - _RESERVE_S)  # the git run itself still fits the budget
         if limit <= 0.2:
-            return 124, b"", b""
+            return 124, b"", spent
     git = r.git
     env = {**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
     with contextlib.suppress(OSError, RuntimeError):
@@ -5728,7 +5755,7 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return 124, b"", b""
+        return 124, b"", f"timed out after {limit:.1f}s".encode()
     except OSError:
         return 127, b"", b""
     return cp.returncode, cp.stdout, cp.stderr
@@ -5754,16 +5781,35 @@ def tree_fingerprint(diff: bytes) -> str:
     return hashlib.sha256(diff).hexdigest()[:12]
 
 
+_GIT_NOT_ANSWERED = " (git did not answer within the report's time limit)"
+"""A checkout whose first git read was cut (B13 round 33 C702): never ``(git cannot read its .git)``."""
+
+
+def _git_read(r: _Run, directory: Path, *args: str) -> tuple[int, bytes, bool]:
+    """:func:`_git_ro` and whether the read went unanswered (:func:`_not_answered`), which it records for the
+    install-source line's advice (B13 round 33 C702, ruling 83)."""
+    rc, out, err = _git_ro_err(r, directory, *args)
+    cut = _not_answered(rc, err.decode("utf-8", "replace"))
+    if cut:
+        r.facts.install_source_cut = True
+    return rc, out, cut
+
+
 def _checkout_facts(r: _Run, directory: Path) -> str:
     """`` @ <sha>[ (uncommitted changes) tree=<fp>] · origin: ... · on origin/main: yes|no|unknown[, N
     ahead][, N behind] (<fetch>)`` for the installed checkout (every git call read-only; the origin URL itself
-    is never shown)."""
-    rc, out = _git_ro(r, directory, "rev-parse", "--short=12", "HEAD")
+    is never shown). A read the report's time limit cut says ``not read``, never what that exit code would
+    mean from git (B13 round 33 C702): no origin, no origin/main, a clean tree or a .git it cannot read."""
+    rc, out, cut = _git_read(r, directory, "rev-parse", "--short=12", "HEAD")
+    if cut:
+        return _GIT_NOT_ANSWERED
     if rc != 0:
         return ""
     sha = out.decode("ascii", "replace").strip()
     text = f" @ {sha}"
-    dirty, _ = _git_ro(r, directory, "diff", "--quiet", "HEAD", "--")
+    dirty, _, cut = _git_read(r, directory, "diff", "--quiet", "HEAD", "--")
+    if cut:
+        text += " (uncommitted changes: not read, time limit)"
     if dirty == 1:
         rc, diff = _git_ro(r, directory, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
         text += " (uncommitted changes" + (f", tree={tree_fingerprint(diff)})" if rc == 0 else ")")
@@ -5772,7 +5818,7 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     # The first url key, the one git fetches from, after the last empty one (an empty ``url =`` clears the
     # list): ``config --get`` gives the last key, which differs from get-url's with no rewrite anywhere
     # (B13 round 23 A24, A50, A90)
-    rc, out = _git_ro(r, directory, "config", "--get-all", "remote.origin.url")
+    rc, out, cut = _git_read(r, directory, "config", "--get-all", "remote.origin.url")
     keys = out.decode("utf-8", "replace").split("\n")[:-1] if rc == 0 else []
     # B13 round 24 B101: an older git (CI's macos-15 /usr/bin/git) keeps an empty url as a key and fetches
     # from the first: the report's own git says which, by a probe that needs no repository
@@ -5781,7 +5827,11 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     else:
         urls = keys[len(keys) - keys[::-1].index("") :] if "" in keys else keys
     label = origin_label(urls[0]) if urls else "none"
-    text += f" · origin: {label}"
+    text += (
+        " · origin: not read (git did not answer within the report's time limit)"
+        if cut
+        else f" · origin: {label}"
+    )
     notes = [f"{len(urls)} url keys, git fetches from the first"] if len(urls) > 1 else []
     # a rewrite only when an insteadOf changes that first URL (B13 round 24 B101): ``remote get-url`` gives
     # an older git's first key, before an empty one, which no rewrite sent anywhere
@@ -5789,7 +5839,9 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     if rewritten is not None and label != "none" and origin_label(rewritten) != label:
         notes.append("a URL rewrite sends it elsewhere")
     text += f" ({'; '.join(notes)})" if notes else ""
-    rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
+    rc, _, cut = _git_read(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
+    if cut:  # no fetch's date beside it: a read that did not answer has no origin/main to date
+        return text + " · on origin/main: not read (time limit)"
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
     if rc in (0, 1):  # "yes" is any ancestor: say how far behind it is, and a "no" how far ahead (H22)
         crc, out = _git_ro(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
@@ -6002,6 +6054,8 @@ def _environment(r: _Run) -> list[str]:
         rc, text = r.run(["/usr/bin/xcode-select", "-p"], 3.0)
         if rc == 0 and text and Path(text.splitlines()[0]).is_dir():
             return f"present ({text.splitlines()[0]})"
+        if _not_answered(rc, text):  # no tools exits 2: 124 only says it was not measured (C716, ruling 83)
+            return f"not measured (xcode-select -p {_exited(rc, text)})"
         return f"not installed (xcode-select -p {_exited(rc)})"
 
     def shell() -> str:
@@ -7536,6 +7590,12 @@ def _read_cut_off(r: _Run) -> None:
             r.facts.doctor_cut_off_reading = at is None
 
 
+def _idle_again(r: _Run) -> str:
+    """The advice for a part cut off (:data:`_IDLE_AGAIN`), which a copy the installer stopped has no use for
+    (:data:`_STOPPED_NOT_SENT`; B13 round 33 C718): every line that gives the advice reads it here."""
+    return _STOPPED_NOT_SENT if r.facts.copy_stopped else _IDLE_AGAIN
+
+
 def _cut_off_words(r: _Run) -> str:
     """What a doctor call the report cut off says after its wait (B13 round 21 Y22): the check it was in and
     the load as figures, then the advice as install.sh's NEXT gives it (:data:`_IDLE_AGAIN` kept whole in
@@ -7575,6 +7635,8 @@ def _cut_off_words(r: _Run) -> str:
             if cores
             else f"the 1-minute load was {load:.1f}"
         )
+    if r.facts.copy_stopped:  # no advice to send it as it is, in a copy not for sending (C718)
+        return "; ".join([*facts, _idle_again(r)])
     if reading and busy:
         return "; ".join([*facts, f"{_IDLE_AGAIN}, once the sync ends"])
     check = f"the {at} check" if at else "the loop state read" if reading else "a check"
@@ -7621,7 +7683,7 @@ def _doctor(r: _Run) -> list[str]:
         r.facts.doctor_cut_off = had if had > 0.2 else 0.0
         r.facts.doctor_cut_off_moved = moved
         if r.facts.doctor_cut_off == 0.0:
-            return [f"Not run: the report's time budget was used up before doctor started; {_IDLE_AGAIN}."]
+            return [f"Not run: the report's time budget was used up before doctor started; {_idle_again(r)}."]
         _read_cut_off(r)
         if moved:  # B13 round 19 W4: the doctor's own wait, past the time limit Run metadata names
             return [
@@ -11058,10 +11120,12 @@ def _evidence_line(r: _Run) -> str:
     if retry == count:
         them = "it" if count == 1 else "them"
         if not cut:
-            return f"{head} because a sync held the state file: {_IDLE_AGAIN}"
+            return f"{head} because a sync held the state file: {_idle_again(r)}"
         if not busy:
-            return f"{head} because the report's time limit cut {them} off: {_IDLE_AGAIN}"
-        return f"{head}: {cut} ran out of time and {busy} found the state file held by a sync: {_IDLE_AGAIN}"
+            return f"{head} because the report's time limit cut {them} off: {_idle_again(r)}"
+        return (
+            f"{head}: {cut} ran out of time and {busy} found the state file held by a sync: {_idle_again(r)}"
+        )
     state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
@@ -11174,7 +11238,7 @@ def _evidence_line(r: _Run) -> str:
         if n
     ]
     if again:
-        said.append(" and ".join(again) + f": {_IDLE_AGAIN}")
+        said.append(" and ".join(again) + f": {_idle_again(r)}")
     if len(said) == 1:
         return f"{head} {said[0].split(' ', 1)[1]}"
     return f"{head}: " + "; ".join(said)
@@ -11464,6 +11528,16 @@ def _background(r: _Run) -> list[str]:
         plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
         has_plist = plist.exists()
         rc, text = _launchctl_print(r.run, label)
+        if _not_answered(rc, text):  # never `NOT loaded` or `not installed`: a job is not, at 113 (C720)
+            why = (
+                f"launchctl print did not answer within {text.removeprefix('timed out after ')}"
+                if text.startswith("timed out after ")
+                else "the report's time limit was used up before launchctl print ran"
+            )
+            state = "present" if has_plist else "absent"
+            out.append(f"- {label}: not measured ({why}; plist {state}): {_idle_again(r)}")
+            r.facts.background.append(f"{suffix} not measured")
+            continue
         if rc != 0:
             if has_plist:
                 line = (
@@ -14509,7 +14583,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             )
         # B13 round 18 V4: a report written when idle has the section; round 21 Y22: only if this Mac was
         # busy, with the check and the load that tell a busy Mac from a hung check
-        return f"{line} · {_cut_off_words(r) if had else _IDLE_AGAIN}"
+        return f"{line} · {_cut_off_words(r) if had else _idle_again(r)}"
     if d is None:
         return "- doctor: not run (see Doctor)"
     sort = _sort_doctor(r, runs)
@@ -16700,7 +16774,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     if run_type == "simulated launchd" or r.facts.launchd_simulated:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")
     elif r.facts.background:
-        out.append("- background sync: " + " · ".join(r.facts.background))
+        cut = any(said.endswith(" not measured") for said in r.facts.background)  # the advice once (C720)
+        out.append(
+            "- background sync: " + " · ".join(r.facts.background) + (f": {_idle_again(r)}" if cut else "")
+        )
     layout = att.layout if att is not None else prompt_layout(None)  # no friction log: the newest prompt
     if layout.version < 7 or expand(IT_DRAFT).exists():  # since v7 there is no IT request step
         out.append(_it_draft_line(4 if layout.version == 5 else REPORT_STEP))
