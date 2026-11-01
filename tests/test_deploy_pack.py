@@ -6380,6 +6380,16 @@ _ROUND_32_E_PARAGRAPH_AMENDS = (("16.28", "| `path_reread_unreadable` |", "§16.
 """Round 32 lane E's dated lines at a section its claim names with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C626's two rows in §16.28's run-record table, the re-read note's split."""
 
+_ROUND_33_E_PARAGRAPH_AMENDS = (
+    ("16.25", "`OCR helper: not built (<reason>)`", "§16.221 C719"),
+    ("16.34", "`media helper: not built (<reason>)`", "§16.221 C719"),
+    ("16.35", "Amended 2026-10-20, §16.150 X57: exit 1 also covers", "§16.221 C719"),
+    ("16.28", "| `path_reread_held` |", "§16.221 C754"),
+)
+"""Round 33 lane E's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C719's colon form at the OCR, media and speech helpers' line quotes, and
+C754's rows in §16.28's run-record table, the re-read note's held bucket."""
+
 _ROUND_32_RA_PARAGRAPH_AMENDS = (
     ("16.14", "KISS K16b revision (2026-10-05; supersedes the paragraphs above", "§16.213 C620"),
     ("16.40", "**A run with no end line says whether its process is gone**", "§16.213 C614"),
@@ -6612,6 +6622,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_30_B_PARAGRAPH_AMENDS,
         *_ROUND_31_E_PARAGRAPH_AMENDS,
         *_ROUND_32_E_PARAGRAPH_AMENDS,
+        *_ROUND_33_E_PARAGRAPH_AMENDS,
         *_ROUND_32_RA_PARAGRAPH_AMENDS,
         *_ROUND_33_RA_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,

@@ -1064,6 +1064,7 @@ class CycleReport:
     path_reread_unreadable: int = 0  # 2026-10-28 (§16.216 C626): of the still a stub, the unreadable ones (the note's split)
     path_reread_refused: int = 0  # 2026-10-28 (§16.216 C626): of the still a stub, the refused ones (the note's split)
     path_reread_waiting: int = 0  # 2026-10-26 (§16.206 C362): queued for it in this run and not read (the note's)
+    path_reread_held: int = 0  # 2026-11-01 (§16.221 C754): of the still a stub, the cycle's own stubs (the note's split)
     heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
     new_manifest_pages: int = 0  # 2026-10-23 (§16.174 B37): the CLI's one note, not a WARNING per page
     new_manifest_removed: int = 0  # 2026-10-23 (§16.185 E10): of those, the ones this run did not write back
@@ -6786,6 +6787,9 @@ the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 
 `OCR helper: not built (<reason>)`. A switched-off OCR builds nothing. `probe` and `engine` never compile, so
 `status`, a dry run and the LaunchAgent never start `xcrun` or `swiftc`. (Doctor itself asks
 `/usr/bin/xcode-select -p` to word its line; see Doctor.)
+Amended 2026-11-01, §16.221 C719: a failure takes the colon form, `OCR helper: not built: <reason>` and, for a built
+helper failing its probe, `OCR helper: <state>: <detail>`, since a reason can end in `stopped by SIGKILL (signal 9)`;
+`ready` and `off` keep their bracket.
 Amended 2026-10-15, §16.93 M8: a config that cannot be read prints `OCR helper: not checked (the config cannot be
 read)` (exit 78, §16.96 M25), not `not built`: the helper is not looked at, and may be built. Media and speech
 share the entry.
@@ -8152,8 +8156,9 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `path_reread` | **Amended 2026-10-26, §16.206 C362:** stubs whose reason an older build wrote a staging or home path into that this run converted once more past their retries (§16.201 C181's one-shot re-read, `Cycle._retries`); the sync's notes say each outcome |
 | `path_reread_current` | **Amended 2026-10-26, §16.206 C362:** of those, the ones live (or dataless) after this run |
 | `path_reread_failed` | **Amended 2026-10-26, §16.206 C362:** of those, the ones still a stub (failed again, or settled as unreadable or refused), which no later run converts until the bytes change; with `path_reread_current` always `path_reread` |
-| `path_reread_unreadable` | **Amended 2026-10-28, §16.216 C626:** of the `path_reread_failed`, the ones an unreadable stub after this run (quarantined for a reason other than a failed conversion: encrypted, not the type its name says, no text), so the note can say which each is |
+| `path_reread_unreadable` | **Amended 2026-10-28, §16.216 C626:** of the `path_reread_failed`, the ones an unreadable stub after this run (quarantined for a reason other than a failed conversion: encrypted, not the type its name says, no text), so the note can say which each is. **Amended 2026-11-01, §16.221 C754:** a credential stub among them (the sync line's U, C145), and never a stub the cycle made itself after a conversion that worked, which is `path_reread_held` |
 | `path_reread_refused` | **Amended 2026-10-28, §16.216 C626:** of the `path_reread_failed`, the ones a refused stub after this run; the rest of `path_reread_failed` are failed conversions' stubs |
+| `path_reread_held` | **Amended 2026-11-01, §16.221 C754:** of the `path_reread_failed`, the ones the cycle stubbed itself after a conversion that worked: a page path with no room for its full-content sidecar (`path too long ...`) or a `duplicate-of` copy, which the sync line counts converted, not unreadable; the note calls them `held by this sync`; the rest of `path_reread_failed`, less the unreadable, refused and held, are failed conversions' stubs |
 | `path_reread_waiting` | **Amended 2026-10-26, §16.206 C362:** stubs this run queued for the re-read (`_queue_path_stubs`, once per manifest) and did not read (another source's run, paused, out of time), never in `path_reread`; the next sync of their source reads them |
 | `converted_unreadable` | (**Amended 2026-10-11, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
@@ -10457,7 +10462,10 @@ the folder. Only `scripts/install.sh` builds it, in the `helpers` step right aft
 `python -I -m agentsync.convert.media`, which prints one line and exits 0 when the helper is ready or switched
 off, 1 when it is not built: `media helper: ready (avfoundation, helper 1.0.0)`, `media helper: off ([convert]
 recordings = false)` (or OCR's reason when OCR is off), `media helper: not built (<reason>)`; without developer
-tools the installer prints `media helper: not built (no Xcode or Command Line Tools)`. `status`, the `doctor`
+tools the installer prints `media helper: not built (no Xcode or Command Line Tools)`. Amended 2026-11-01, §16.221
+C719: the module's not-built line is `media helper: not built: <reason>` and doctor's `failed` WARN `media helper: not
+working: <detail>`, the colon form, since a reason can end in `stopped by SIGKILL (signal 9)`; the installer's own
+two lines keep their bracket, which holds no signal. `status`, the `doctor`
 alias, the setup report, a dry run, a sync and the LaunchAgent never compile. It reads a recording with
 AVFoundation; nothing leaves the Mac.
 Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
@@ -10712,6 +10720,9 @@ Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that can
 prints that line itself.
 Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and fails its probe (its line then reads
 `speech: failed (<reason>)`); the module docstring says so now.
+Amended 2026-11-01, §16.221 C719: that line, the module's not-built line and doctor's `failed` WARN take the colon
+form, `speech: failed: <reason>` and `speech: not built: <reason>`, since a reason can end in `stopped by SIGKILL
+(signal 9)`, which no bracket may hold.
 
 Amended 2026-10-11 by §16.48 (R90): SwiftPM's cache, configuration and security folders are `swiftpm/` beside the
 build tree, passed to both swift steps, instead of the real `~/Library` ones.
@@ -35296,6 +35307,9 @@ alone, a trailing slash or none, only at a path's end (the end, a space, a quote
 `test_convert_family.py::test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling`.
 Amended 2026-10-28, §16.216 C646: a path's end is the end, whitespace, a quote or an escaped quote, one of `:,;)]>`,
 or a `.` with the end or whitespace after it, so a sibling whose name extends the folder with no space stays whole.
+Amended 2026-11-01, §16.221 C752: the sibling that stays whole is one whose name goes on past the folder with a
+character that is no such end (`.bak`, `2`); one that goes on with an end (`,v2`, `'s copy`) is cut. The ends are
+`_common._PATH_END`'s, which the `_pathless` docstring points at rather than listing them.
 
 **The spellings' order, said as it is (C551, ruling 48; words only).** `_spellings`' docstring and §16.206 C364 said
 the plain spelling is no substring of the escaped one, false for a path ending in a backslash; both now say only
@@ -36596,7 +36610,93 @@ Reserved for round 33 lane B of B13.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
-Reserved for round 33 lane E of B13.
+Round 33's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 33"; specs `round33/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 71, 85 and 90 settle it). A dated line this round writes reads
+`Amended 2026-11-01, §16.221 C<n>`.
+
+**A helper's failure holds its signal in no bracket (C719, ruling 85; `agentsync.convert.ocr`,
+`agentsync.ops.doctor`; amends §16.25, §16.34 and §16.35).** `ocr._signal_reason` ends a build step a signal
+stopped with `_ended`'s standing-alone `stopped by SIGKILL (signal 9)`, but every helper line put the whole reason in
+a bracket: `speech: not built (swift package resolve was stopped by SIGKILL (signal 9); ...)` from `ocr._entry`, which
+the OCR, media and speech modules share, and doctor's `speech: failed (...)` and `media helper: not working (...)`.
+A failure now takes the colon form OCR's doctor line already had: `<label>: not built: <reason>` and `<label>:
+<state>: <detail>` in `_entry` (`ready` and `off` keep their bracket), `speech: failed: <detail>` and `media helper:
+not working: <detail>` in doctor, the trailing `(fix: ...)` kept as on the git line. `_ended`'s phrase does not
+change (its readers pin it), and install.sh's own `not built (the build did not run)` and `(no Xcode or Command Line
+Tools)` lines keep their bracket, which holds no signal. The report's own helper lines (`setup_report._helper_line`,
+`_ocr_helper`) are lane RA's half. Dated lines at §16.25's module paragraph, §16.34's install paragraph and §16.35's
+X57 line. Tests: `test_ocr.py::test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_c719` (OCR, media and
+speech, signals 1 to 31, empty stderr, both build heads: `_entry`'s not-built and failed lines and doctor's rendered
+warn, by bracket depth, never deeper than 1), with the line pins in `test_ocr.py`, `test_media.py`,
+`test_ops_doctor.py`, `test_voice_naming.py` and `test_setup_report.py` moved to the colon form.
+
+**A cut inside a staged file's 16 hex or its suffix folds to the cut mark (C751, ruling 71; `agentsync.cycle`;
+after §16.216 C645).** `_fold_staging` folded a text cut just past the staging root to `0123…` (the root dropped,
+the digits kept) and one cut inside a Graph suffix to `Plan.pptx` with no `…`, the suffix's lazy match taking the cut
+mark, so it read as never cut. In each spelling's pass, before the Graph-suffix substitution and the root drop, a
+text ending `…` whose tail is `<root>` plus 0 to 16 hex and an optional cut suffix becomes `…`, and `…` joins the
+suffix's excluded class. The digits hold no path (`sha256(source, stable id)[:16]`); a suffix cut exactly at its end
+(`<root><hex>.pptx…`) also reads `…`. Test:
+`test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text` (`0123…`, 15 and
+16 hex, `.…` and `.pp…` each fold to the head and `…`; the same tails uncut stay; a local name cut keeps its letters).
+
+**The page-fold test cuts inside the root whatever tmp's length (C750, ruling 71; a test; after §16.216 C660).**
+`test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too` held only under a tmp of 54 characters or more: the
+page's 300-character cut fell about 70 characters into the path, past the root of a shorter tmp, inside the 16 hex.
+The error's text now carries a filler sized from its own head, so the cut falls 20 characters into the staging root,
+asserted (`from '<root[:20]>…`) before the fold; the exact `endswith("from '…")` after it stays. Test: that test.
+
+**The C646 words say which sibling stays whole (C752; words only; amends §16.211 C578).**
+`_pathless`' docstring, §16.211's C578 text and its C646 line said a sibling that extends the folder with no space
+stays whole, false when the next character is an end (`<folder>,v2`, `<folder>'s copy` are cut). They now say a
+sibling that goes on past the folder with a character that is no end (`.bak`, `2`) stays whole, pointing at
+`_common._PATH_END` for the ends rather than listing them. Dated line at §16.211's C578 paragraph. Test:
+`test_convert_family.py::test_pathless_cuts_the_folder_named_alone_before_a_period_a_bracket_or_an_escaped_quote`
+(a `,v2` sibling cut; the docstring's words).
+
+**The cut floor's cap of 12 is tested (C753; a test).** No test held `_cut_floor`'s `min(12, ...)`: under a long
+parent every tail tried was already at the uncapped floor. With the home's parent past 12 characters, the test now
+asserts a floor of 12 and that tails of 12, 20 and the parent's length are read by `_names_a_path`, cut whole by
+`_cut_in_staging` and folded to `…`; the `/Users/contosoquill` case (parent 7) skips it, so §16.216's "never goes
+above 12" is now true of the test. Test:
+`test_convert_family.py::test_a_reason_cut_inside_the_login_is_read_to_one_letter_past_the_homes_parent`.
+
+**The re-read's still-a-stub note has a held bucket (C754, Option A; `agentsync.cycle`, `agentsync.cli`,
+`agentsync.model`; after §16.216 C626; amends §16.28).** A one-shot re-read whose conversion now worked, then stubbed by
+the cycle itself (a page path with no room for its sidecar, `_SIDECAR_PATH`, or a `duplicate-of` copy), was counted
+unreadable in the note while the sync line beside it counted the file converted with U = 0. `_path_outcomes` now
+counts those as `held` (a sixth value), the rest of the quarantined non-failed rows unreadable, credential stubs
+included as the sync line's U does (C145). `path_reread_held` (CycleReport and the run record, left out when 0)
+stays inside `path_reread_failed`, so the totals and the report's `left as a stub` do not move; the note's failed is
+`n - unreadable - refused - held`, and its split gains `held by this sync` last: `(1 held by this sync; ... gives its
+reason)`. No bucket says `converted`, `deferred` or `read again`. Lanes RA and RB were sent the field and the words.
+Tests: `test_convert_family.py::test_a_re_read_the_cycle_stubbed_after_it_converted_is_held_never_unreadable_c754`
+(the older build's `.potx` re-read with a deck that converts and `plan_pages` raising `SidecarPathError`: the line
+`converted 1` with no `of the converted:` split, the note `1 held by this sync`, never unreadable or failed, the
+record `path_reread_held` 1 inside `path_reread_failed` 1) and
+`test_convert_family.py::test_the_still_a_stub_note_names_each_bucket_it_holds` (four buckets in order).
+
+**A UTF-16 template is read as a deck (C781; `agentsync.convert.pptx`).** `_template_as_deck` looked for the template
+main type as UTF-8 bytes, so a `[Content_Types].xml` saved in UTF-16 (ECMA-376 Part 2 allows it; python-pptx reads
+it) went to python-pptx unadapted and the `.potx` became a `cannot read the deck` stub. A part with a UTF-16 byte
+order mark is decoded, its type replaced, and encoded again in UTF-16 in the same byte order with one mark, so its
+own `encoding='UTF-16'` declaration stays true and nothing else is re-serialized; the UTF-8 bytes are replaced as
+before. Test: `test_convert_formats.py::test_a_potx_whose_content_types_are_utf_16_is_read_as_a_deck_c781` (little
+and big endian: the slide title read, the staged file untouched, one mark, the declaration kept, the UTF-8 part's
+bytes as before).
+
+**The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
+`real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
+101.8 s on a loaded Mac and 0.25 to 0.5 s after, so the first test to start it ran past doctor's 60 s probe or
+install_sh's 120 s bound: a land gate red on load, not on a diff. A session-scoped autouse fixture
+(`_warm_bundled_pandoc`, each xdist worker once) runs `<wheel pandoc> --version` before any test, waits up to
+`_PANDOC_WARM_S`, 300 s, install.sh's own `PANDOC_START_SECONDS`, kills it at that bound and never fails the session.
+The real pandoc stays: a stub through `[convert] pandoc_path` would change the config those tests compare and move
+doctor and install.sh onto the configured-copy branch (the verifier's makes-worse). install_sh's bound is lane RB's
+part and gate.sh's and ship-land.sh's signal words lane D's. Test:
+`test_perf.py::test_the_session_warms_the_wheel_pandoc_once_and_never_fails_c769` (the fixture warms the real wheel
+pandoc; the bound equals install.sh's; a missing, failing and hanging pandoc each return without raising, the hang
+killed at its bound).
 
 ### 16.222 Round 33: the records page on which governance loss stops the sync, the setup guide's quotes and the gate's signal words (2026-11-01, wave B13 round 33 lane D)
 
