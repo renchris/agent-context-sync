@@ -1017,8 +1017,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   config-step stop (other than the list itself) adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
   lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
   governance.suppressed line; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
-  the purge queue lost a purge the audit trail records, also the person's to fix`) and ends `once both are fixed, the
-  next run is: ...`, or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
+  the purge queue lost a purge the audit trail records, also the person's to fix`; a hold the hold list lost likewise on
+  governance.hold, logged `state-hold-lost`, and under it the queue's by-hand run ends `once the records owner releases
+  the hold, since setting it again keeps every purge refused`) and ends `once both are fixed, the
+  next run is: ...` (`once both are settled` after a remote the policy refuses), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
   with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). Never when the file that stops
   first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).

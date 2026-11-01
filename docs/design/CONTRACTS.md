@@ -36497,8 +36497,8 @@ folder and step 2's chmod named three files. `vanished_folders` takes the build'
 build without it `MANIFEST_RO_PY`, `doctor._probe_uri`'s rule (a plain open only with both sides or a -journal there,
 which then makes nothing; `immutable=1`, stamped before and after, with no -wal or an empty one and no -shm; no read of a
 -wal with frames and no -shm). `config_errors` does not open the file again where the build has `_probe_uri`, whose
-`manifest_unreadable` just read every b-tree, and an older build's pass uses the same rule, dropping a `state-table`
-word an immutable read saw change under it. The verifier's `skip when a -wal exists` is not built: with a sync running it
+`manifest_unreadable` just read every b-tree; on an older build it never calls that build's `manifest_unreadable`, which
+opens plain, and its schema read and b-tree pass use the same rule, dropping a word an immutable read saw change under it. The verifier's `skip when a -wal exists` is not built: with a sync running it
 would drop a vanished source and bring back round 16's T6. An installed build from before ruling 36 has an
 `open_read_only` that still opens plain when it can write the file; such a Mac keeps its two empty files until step 2.
 Tests: `test_list_folders_leaves_no_side_file_beside_the_manifest`,
@@ -36549,7 +36549,12 @@ bracket and `once both are fixed` (`once all are fixed` after the plural side-fi
 heartbeat's chmod form puts it in its bracket too, not after `if the re-run stops on the lost manifest` as the verifier
 wrote: `$SECOND` reads `and, on its <check> line, ...`, which only a status clause can carry; it has no `once`. The two
 chmod NEXTs stay, since the agent's re-run reaches the status step, whose NEXT names the list; `once it loads` stays,
-since a config that does not load gives the reader nothing to read. Step 1's clause is not narrowed. With governance/
+since a config that does not load gives the reader nothing to read. A remote the policy refuses ends `once both are
+settled`. A hold the hold list lost is a stop that follows too (ruling 86; this lane's fresh review): both steps name it
+on governance.hold, logged `state-hold-lost`, never when the hold list, its record or the folder stops first, and under
+it the queue's by-hand run waits for the release at step 1 with the folder there as under the folder's words. A hold still
+in the hold list beside a lost queue is not said at step 1, which reads no active hold: status's fix names its release.
+Step 1's clause is not narrowed. With governance/
 gone the fix follows a colon, `also the person's to fix: <fixes>`, since the NEXT's own bracket holds it (no `))`).
 Tests: `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict`,
 `test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follows`,

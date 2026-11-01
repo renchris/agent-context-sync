@@ -10761,7 +10761,7 @@ def test_list_folders_leaves_no_side_file_beside_the_manifest(
     if build == "no open_read_only":
         _tool_python_without(env, "agentsync.manifest", "open_read_only")
     elif build == "no _probe_uri":
-        _tool_python_without(env, "agentsync.ops.doctor", "_probe_uri", "manifest_unreadable")
+        _tool_python_without(env, "agentsync.ops.doctor", "_probe_uri")  # its plain open is never called
     else:
         _tool_python(env)
     db = _wal_manifest(env, beta)
@@ -10774,6 +10774,13 @@ def test_list_folders_leaves_no_side_file_beside_the_manifest(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "is still mirrored but has no [[source]] block" in last_line(cp), last_line(cp)
     assert "state-table" not in "\n".join(install_log(env))
+
+
+def test_the_vanished_reader_checks_only_an_immutable_read_for_change() -> None:
+    """B13 round 33 C727's review: a plain open reads a running sync through its locks, and a change under it
+    is no fault of that read; only the immutable read, which takes no lock, is checked."""
+    tree = _install_sh_python("vanished_folders")
+    assert "'immutable' in uri" in ast.unparse(tree)
 
 
 @pytest.mark.parametrize("build", ["this one", "no open_read_only"])
@@ -13565,7 +13572,16 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
     gone the folder's words carry the fix after a colon, since SECOND goes inside the NEXT's own bracket."""
     assert _second_stop("") == ("", "once it is fixed")
     assert _second_stop("none") == ("", "once it is fixed")
-    assert _second_stop("lost-hold") == ("", "once it is fixed")
+    hold = "the hold list lost a hold its records keep as set and not released, also the person's to fix"
+    assert _second_stop("lost-hold") == (
+        f" and, on its governance.hold line, a second stop that follows: {hold}",
+        "once both are fixed",
+    )
+    assert _second_stop("lost-hold", "holds") == ("", "once it is fixed")
+    assert _second_stop("lost-hold", "record") == ("", "once it is fixed")
+    assert _second_stop("lost-hold,lost-queue")[0] == (
+        f"{QUEUE_SECOND}, and, on its governance.hold line in that same stop, {hold}"
+    )
     assert _second_stop("none,lost-queue") == (QUEUE_SECOND, "once both are fixed")
     assert _second_stop("none,lost-suppressed") == (SUPPRESSED_SECOND, "once both are fixed")
     both = _second_stop("none,lost-suppressed,lost-queue")
@@ -13612,8 +13628,13 @@ def test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follo
     assert "once it is fixed, the next run is" not in body
     nexts = [ln for ln in body.splitlines() if 'FAIL_NEXT="' in ln and "$ONCE, the next run is: " in ln]
     assert len(nexts) == 9, nexts
+    assert (
+        "$once, the next run is: " in body
+        and "once it is settled" in body
+        and "once both are settled" in body
+    )
     assert all("$SECOND)" in ln for ln in nexts), nexts
-    assert body.count('second_stop_words "') == 9, "each branch asks, once, before its words"
+    assert body.count('second_stop_words "') == 10, "each branch asks, once, before its words"
     hbmode = next(ln for ln in body.splitlines() if "so the fix is the agent's first" in ln)
     assert "$SECOND)" in hbmode and "$ONCE" not in hbmode, hbmode
 
@@ -13658,6 +13679,53 @@ def test_a_config_step_stop_beside_a_lost_queue_names_the_stop_that_follows(
     again = install_sh(env, str(wheel))
     assert again.returncode == 1, again.stdout + again.stderr
     assert "[FAIL] governance.purge_queue " in again.stdout + again.stderr, again.stdout + again.stderr
+
+
+def test_a_config_step_stop_beside_a_lost_hold_names_the_hold_and_its_release(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 33 ruling 86 (the fresh review of C737 and C701), with the real agentsync: a hold moved out
+    of holds.json and a queued purge out of purge-queue.json, beside a lock that is a folder. Status FAILs
+    governance.hold at the step that follows, yet neither step named it, and the queue's by-hand run under
+    that hold is refused until its release. Step 1 and step 2 name the hold in that same stop, and the hand
+    purge waits for the release."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    governance.set_hold(root, "all", reason="matter 8", owner="Quinn Avery")
+    gov = root / "governance"
+    for name in ("holds.json", "purge-queue.json"):
+        (gov / name).rename(gov / f"{name}.kept")
+    lock = root / "agentsync.lock"
+    if lock.exists():
+        lock.unlink()
+    lock.mkdir()
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert tail.endswith(
+        "or, once the first is fixed, run each such purge by hand once the records owner releases the hold, "
+        "since setting it again keeps every purge refused), and ~/.local/bin/agentsync status prints it on "
+        "its governance.purge_queue line; the same stop names agentsync's hold list, which no longer lists a "
+        "hold its records keep as set and not released (not damage, not a mode): fixing that is the "
+        "person's (they put the hold list back from the copy kept, or the records owner sets the hold again "
+        "or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+    ), tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-file-notfile,state-queue-lost,state-hold-lost" in log, log
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        "on its lock line and, on its governance.purge_queue line, a second stop that follows: the purge "
+        "queue lost a purge the audit trail records, also the person's to fix, and, on its "
+        "governance.hold line in that same stop, the hold list lost a hold its records keep as set and "
+        "not released, also the person's to fix): fixing it is the person's ("
+    ) in last_line(cp), last_line(cp)
+    assert "; once both are fixed, the next run is: " in last_line(cp)
 
 
 def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(

@@ -8597,7 +8597,8 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     }
     assert sorted(lists) == ["purge queue", "suppression list"], sorted(lists)
     for noun, clause in lists.items():
-        tails[noun] = f"; step 2 stops at its status step on {clause}".replace("${4:- }", " ")
+        said = clause.replace("$hand", "run each such purge by hand")
+        tails[noun] = f"; step 2 stops at its status step on {said}".replace("${4:- }", " ")
     assert sorted(tails) == ["governance folder", "hold list", "purge queue", "suppression list"], sorted(
         tails
     )
@@ -8652,7 +8653,7 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     # B13 round 32 C607: beside a config-step stop, the list that also lost a purge is the stop that follows
     follows = {
         noun: f"; once that is fixed, step 2 stops again at its status step on {clause}".replace(
-            "${4:- }", ", once the first is fixed, "
+            "${4:- }$hand", ", once the first is fixed, run each such purge by hand"
         )
         for noun, clause in lists.items()
     }

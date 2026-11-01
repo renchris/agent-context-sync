@@ -1296,7 +1296,9 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG 
 # the suppression list first as status's NEXT leads, the one status stop naming both (B13 round 33 ruling 86: C776);
 # never the list that CROLE says stops first. LEAD opens the first clause; BYHAND goes before the queue's by-hand run.
 lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
-	local lead="$3"
+	local lead="$3" hand="run each such purge by hand"
+	# a lost hold refuses that purge until its release, as under the folder's words (ruling 86: C701)
+	case ",$1," in *,lost-hold,*) hand="run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;; esac
 	LIST_TAIL="" LIST_LOG=""
 	case ",$1,:$2" in
 	*:role-suppressed) ;;
@@ -1314,11 +1316,11 @@ lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
 	case ",$1,:$2" in
 	*:role-queue) ;;
 	*,lost-queue-trail,*)
-		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge that purge-record.json keeps as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge that purge-record.json keeps as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }$hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
 		LIST_LOG="$LIST_LOG,state-queue-lost"
 		;;
 	*,lost-queue,*)
-		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }$hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
 		LIST_LOG="$LIST_LOG,state-queue-lost"
 		;;
 	esac
@@ -7765,7 +7767,8 @@ if db.is_file():
             conn = open_read_only(db, 1.0)
         except ImportError:
             uri = manifest_ro_uri(db)
-            before = manifest_stamps(db)
+            # only an immutable read is checked: a plain one reads a running sync through its locks
+            before = manifest_stamps(db) if uri and "immutable" in uri else None
             conn = sqlite3.connect(uri, uri=True, timeout=1.0) if uri else None
         if conn is not None:
             marks = ", ".join("?" for _ in states)
@@ -8230,18 +8233,19 @@ elif access:
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
     words.append("state-notfile")
 elif db.is_file():
-    whole = False  # the build whose manifest_unreadable reads every table and index, leaving no file (C727)
+    # A build with _probe_uri: its manifest_unreadable reads every table and index and leaves no file. An older
+    # one opens plain, which makes the side files, so never that one: this rule, then the b-trees below (C727).
+    whole = True
     try:
-        from agentsync.ops import doctor
-        from agentsync.ops.doctor import manifest_unreadable
-
-        whole = hasattr(doctor, "_probe_uri")
+        from agentsync.ops.doctor import _probe_uri, manifest_unreadable
     except ImportError:
+        whole = False
 
         def manifest_unreadable(path):
             uri = manifest_ro_uri(path)
             if uri is None:
                 return None
+            before = manifest_stamps(path)
             try:
                 conn = sqlite3.connect(uri, uri=True, timeout=0.5)
                 try:
@@ -8251,13 +8255,14 @@ elif db.is_file():
             except sqlite3.OperationalError:
                 return None
             except sqlite3.DatabaseError as exc:
-                return exc
+                # an immutable read that a checkpoint moved under is no finding
+                return exc if "immutable" not in uri or manifest_stamps(path) == before else None
             return None
 
     if manifest_unreadable(db) is not None:
         words.append("state")
     else:
-        # That build read them just now: nothing more to open. An older one reads less, so the b-trees here.
+        # That build read them just now: nothing more to open.
         uri = None if whole else manifest_ro_uri(db)
         if uri is not None:
             try:
@@ -8656,6 +8661,17 @@ list_folders() {
 		lost_list_tail "$chold" "$crole" "once that is fixed, step 2 stops again at its status step on" ", once the first is fixed, "
 		ctail="$ctail$LIST_TAIL"
 		clog="$clog$LIST_LOG"
+		# a hold the hold list lost fails the same status step (ruling 86: every stop that follows is named), never
+		# when the file that stops first is the hold list, its record or the folder that holds them
+		case ",$chold,:$crole" in
+		*:role-holds | *:role-record | *:role-governance) ;;
+		*,lost-hold,*)
+			local hlead="once that is fixed, step 2 stops again at its status step on"
+			[ -z "$LIST_TAIL" ] || hlead="the same stop names"
+			ctail="$ctail; $hlead agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+			clog="$clog,state-hold-lost"
+			;;
+		esac
 		# with governance/ gone, the folder's words, once (B13 round 32 ruling 63); never when governance/ that is
 		# not a folder is the file that stops first
 		if [ "$crole" != role-governance ] && folder_gone_words "$chold"; then
@@ -9846,6 +9862,13 @@ second_stop_words() { # EXCLUDE
 	*,lost-queue-trail,*) SECOND="$lead the purge queue lost a purge that purge-record.json keeps, also the person's to fix" ;;
 	*,lost-queue,*) SECOND="$lead the purge queue lost a purge the audit trail records, also the person's to fix" ;;
 	esac
+	# a hold the hold list lost fails the same status step, and is that file's own stop when it stops first
+	lead=" and, on its governance.hold line, a second stop that follows:"
+	[ -z "$SECOND" ] || lead="$SECOND, and, on its governance.hold line in that same stop,"
+	case ",$lost,:$1" in
+	*:holds | *:record | *:governance) ;;
+	*,lost-hold,*) SECOND="$lead the hold list lost a hold its records keep as set and not released, also the person's to fix" ;;
+	esac
 	# ruling 63: with governance/ gone, in step 1's folder words
 	if [ "$1" != governance ] && folder_gone_words "$lost"; then
 		SECOND=" and, on its $GONE_CHECK line, a second stop that follows: agentsync's governance folder is missing $GONE_WHAT, also the person's to fix: $GONE_FIX"
@@ -9934,7 +9957,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	# it reads the remotes (cli._ensure_setup), so with both, the error above is the state's and no governance:
 	# line was printed (B13 round 25 D76)
 	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
-		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
+		second_stop_words ""
+		once="once it is settled"
+		[ -z "$SECOND" ] || once="once both are settled"
+		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again$SECOND): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; $once, the next run is: $SELF$RERUN_ARGS"
 	fi
 	if [ "$rc" -eq 65 ]; then
 		second_stop_words ""
