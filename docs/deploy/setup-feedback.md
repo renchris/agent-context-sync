@@ -1020,7 +1020,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the purge queue lost a purge the audit trail records, also the person's to fix`; a hold the hold list lost likewise on
   governance.hold, logged `state-hold-lost`, and under it the queue's by-hand run ends `once the records owner releases
   the hold, since setting it again keeps every purge refused`) and ends `once both are fixed, the
-  next run is: ...` (`once both are settled` after a remote the policy refuses), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
+  next run is: ...` (`once both are settled` after a remote the policy refuses; beside a damaged purge record, whose
+  own FAIL is on governance.suppressed too, `and, on that same governance.suppressed line, a second FAIL that follows:
+  ...`, ruling 86, C768), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
   with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). Never when the file that stops
   first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).

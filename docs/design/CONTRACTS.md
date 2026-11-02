@@ -36514,6 +36514,14 @@ their empty output passed every check. Each is a statement of its own now, at le
 the meaning of every code a signal names (rc_aside says nothing for a code none names). The install.sh lines pass as
 they were: the test was blind, not the words. Test: `test_no_rc_meaning_caller_nests_a_signals_bracket_or_repeats_its_code`.
 
+**A damaged purge record no longer hides a suppression list's loss from the installer** (C768's installer half, ruling
+86 on lane B's C768 commit; `scripts/install.sh`). Lane B's build judges the list from the audit trail alone beside a
+damaged record, so `governance_lost` returns the loss and step 1's lost-list tail fires by itself. Step 2's second stop
+takes a `*,lost-suppressed,*:precord` arm ahead of the generic one, `and, on that same governance.suppressed line, a
+second FAIL that follows: ...`, as both FAILs print on one check and the generic words would name it twice. The sync
+still refuses on the record first. Test: `test_a_damaged_purge_record_beside_a_lost_suppression_names_both_on_one_line`,
+skipped on a build without lane B's change.
+
 **The installer credits purge-record.json where the trail lost the line** (C735's installer half, ruling 82 on lane
 B's ruling 79 words; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). With governance/ there and the audit trail
 without the purge's line, status's FAIL credits purge-record.json while step 1 and step 2 said the audit trail records

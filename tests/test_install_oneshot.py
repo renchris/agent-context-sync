@@ -24,6 +24,7 @@ import contextlib
 import dataclasses
 import fcntl
 import hashlib
+import inspect
 import itertools
 import json
 import os
@@ -13592,6 +13593,9 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
     )
     assert both[1] == "once both are fixed"
     assert _second_stop("none,lost-queue", "queue") == ("", "once it is fixed")
+    assert _second_stop("none,lost-suppressed", "precord")[0].startswith(
+        " and, on that same governance.suppressed line, a second FAIL that follows: "
+    )
     assert _second_stop("none,lost-queue-trail", "queue") == ("", "once it is fixed")
     assert _second_stop("none,lost-suppressed-trail", "suppressed") == ("", "once it is fixed")
     trail, once = _second_stop("none,lost-suppressed-trail,lost-queue-trail")
@@ -13737,8 +13741,7 @@ def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(
     purge-record.json damaged and purge-queue.json moved aside. Status FAILs both, but step 1's tail and step
     2's NEXT named only the purge record, so the person who fixed it met a second stop. Step 1 now names the
     purge queue after the record, as the stop that follows, logged with both words, and step 2's NEXT names
-    it; once the record is fixed, step 1 gives the plain lost-queue tail. (A run purge's suppression list
-    moved aside beside a damaged record gives no second word: its check reads the record.)"""
+    it; once the record is fixed, step 1 gives the plain lost-queue tail."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -13778,6 +13781,51 @@ def test_a_damaged_purge_record_beside_a_lost_queue_names_both_stops(
     assert "; once both are fixed, the next run is: " in last_line(cp), last_line(cp)
     record.rename(record.with_name("purge-record.json.kept"))  # the person's fix for the record
     assert last_line(install_sh(env, "--list-folders")).endswith(LOST_LIST_TAILS["queue"])
+
+
+def test_a_damaged_purge_record_beside_a_lost_suppression_names_both_on_one_line(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 33 ruling 86 (C768's installer half, on lane B's sha), C607's twin: a run purge, then
+    purge-record.json damaged and suppressed.json moved aside. Lane B's build judges the list from the audit
+    trail alone there, and status FAILs both on governance.suppressed, the record's first, so step 1 names the
+    list as the stop that follows and step 2's NEXT says it follows on that same line, never naming it
+    twice."""
+    if "_queue_events(state_dir)" not in inspect.getsource(governance.lost_suppressions):
+        pytest.skip("lane B's C768 is not in this build: a damaged record still hides the loss")
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("made-up notes\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    purged = subprocess.run(
+        [f"{env['HOME']}/.local/bin/agentsync", "purge", "path=notes.txt", "--reason", "erasure-request"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert purged.returncode == 0, purged.stdout + purged.stderr
+    record = root / "purge-record.json"
+    record.write_bytes(b"\xff\xfe not json")
+    listed = root / "governance" / "suppressed.json"
+    listed.rename(listed.with_name("suppressed.json.kept"))
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert "on agentsync's purge record, which is damaged, empty or of the wrong shape" in tail, tail
+    follows = "; once that is fixed, step 2 stops again at its status step on agentsync's suppression list"
+    assert follows in tail, tail
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    assert "config_err=state-file-notfile,state-suppressed-lost" in log, log
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        "on its governance.suppressed line and, on that same governance.suppressed line, a second FAIL that "
+        "follows: the suppression list lost a purge the audit trail records, also the person's to fix): "
+    ) in last_line(cp), last_line(cp)
+    assert "; once both are fixed, the next run is: " in last_line(cp), last_line(cp)
 
 
 def test_the_lost_list_probe_rides_the_lost_hold_probe_and_is_silent_on_a_build_without_it(
