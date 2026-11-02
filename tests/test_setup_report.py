@@ -10097,6 +10097,7 @@ def test_the_reports_pandoc_line_is_the_doctors_check_and_never_starves_doctor(
     assert "exited 124" not in text and "[warn] logs — something odd" in section(text, "Doctor")
 
 
+@pytest.mark.timing
 def test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
