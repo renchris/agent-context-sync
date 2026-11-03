@@ -37195,6 +37195,19 @@ hold on beta, a sourceless record of a page in source: the purge runs with beta 
 `test_a_lost_purge_two_holds_refuse_says_setting_any_of_them_again_c841` and
 `test_queue_lost_in_one_build_answers_each_hold_state_apart_c842`.
 
+**C804 (doctor's half).** A doctor call the setup report's time limit cut off left its program running past the report's
+end: `doctor._run` was a plain `subprocess.run` whose own limit (120 s for `git ls-files`) only the abandoned thread
+could enforce, and the interpreter's exit never stops a child. `_run` now starts each program with `Popen(...,
+process_group=0)` and `stdin` from /dev/null (its own group is not the terminal's), and on `TimeoutExpired` or an
+interrupt kills the whole group with SIGKILL before it waits, so a shim's own git goes too. `doctor.RUN_DEADLINE`, a
+contextvar holding a `time.monotonic()` deadline, shortens each limit when a caller sets it (a deadline already past
+starts nothing and raises `TimeoutExpired`); unset, as standalone `agentsync doctor` runs, each program keeps its own
+limit. `doctor.end_children()` kills every program still running, with its group, and returns how many: a registry of
+live children under a lock, each removed once its wait returns. Lane RA's report half sets the deadline in the context
+`_Run.call` copies and calls `end_children()` in a finally. Tests:
+`test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804` and
+`test_end_children_kills_a_program_a_caller_abandoned_c804` (test_ops_doctor.py).
+
 ### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
 
 Round 34's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 34"; specs `round34/items/C<n>.md`, the

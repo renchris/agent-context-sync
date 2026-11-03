@@ -10,6 +10,7 @@ time. Every FAIL names a fix: scripts/install.sh tells its reader so.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import ctypes
 import enum
 import errno
@@ -20,11 +21,13 @@ import os
 import plistlib
 import re
 import shutil
+import signal
 import sqlite3
 import stat
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -405,12 +408,72 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+RUN_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "doctor_run_deadline", default=None
+)
+"""A caller's deadline (a :func:`time.monotonic` value) for every :func:`_run` in its context, the setup
+report's time limit among them: a program still running then times out inside doctor, its check's own
+time-out line, instead of outliving the call that gave up on it. Unset, as standalone ``agentsync doctor``
+runs, each program keeps its own limit (B13 round 34 C804)."""
+_LIVE_CHILDREN: set[int] = set()
+_LIVE_LOCK = threading.Lock()
+
+
+def _end_group(pid: int) -> None:
+    """SIGKILL the process group ``pid`` leads: the program and every child it started (a shim's git)."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pid, signal.SIGKILL)
+
+
+def end_children() -> int:
+    """SIGKILL each :func:`_run` program still running, with its process group, and return how many: a call
+    a caller abandoned (the setup report's time limit runs doctor in a thread it then leaves) keeps its child
+    otherwise, which the interpreter's exit never stops (B13 round 34 C804)."""
+    with _LIVE_LOCK:
+        live = sorted(_LIVE_CHILDREN)
+    for pid in live:
+        _end_group(pid)
+    return len(live)
+
+
 def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
     """Run ``argv`` with launchd's PATH, capturing text output; never raises on a non-zero exit. A program
-    that does not end within ``timeout`` raises ``subprocess.TimeoutExpired``, which the check that asked
-    turns into :func:`_timed_out` (and :func:`run_checks` does for one that gets past its check)."""
+    that does not end within ``timeout``, or by :data:`RUN_DEADLINE` when a caller set an earlier one, raises
+    ``subprocess.TimeoutExpired``, which the check that asked turns into :func:`_timed_out` (and
+    :func:`run_checks` does for one that gets past its check). Each program leads a process group of its own,
+    killed whole when it times out or the wait is interrupted, and :func:`end_children` can end it while it
+    runs (B13 round 34 C804)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
-    return subprocess.run(list(argv), capture_output=True, text=True, check=False, timeout=timeout, env=env)
+    deadline = RUN_DEADLINE.get()
+    if deadline is not None:
+        timeout = min(timeout, deadline - time.monotonic())
+        if timeout <= 0:
+            raise subprocess.TimeoutExpired(list(argv), 0.0)
+    with subprocess.Popen(  # its exit closes both pipes and reaps the program, an interrupted wait included
+        list(argv),
+        stdin=subprocess.DEVNULL,  # its own group is not the terminal's: a read there would stop it
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        process_group=0,
+    ) as proc:
+        with _LIVE_LOCK:
+            _LIVE_CHILDREN.add(proc.pid)
+        try:
+            try:
+                out, err = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _end_group(proc.pid)
+                out, err = proc.communicate()
+                raise subprocess.TimeoutExpired(list(argv), timeout, output=out, stderr=err) from None
+            except BaseException:
+                _end_group(proc.pid)
+                raise
+        finally:
+            with _LIVE_LOCK:
+                _LIVE_CHILDREN.discard(proc.pid)
+    return subprocess.CompletedProcess(list(argv), proc.returncode, out, err)
 
 
 def _git_path() -> Path:

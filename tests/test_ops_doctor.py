@@ -601,6 +601,78 @@ def test_the_run_again_crash_and_owner_only_fixes_nest_no_bracket(monkeypatch: p
     assert not doctor.is_persons_fix(again) and not doctor.is_persons_fix(CRASH_FIX)
 
 
+def _pid_gone(pid: int, within: float = 10.0) -> bool:
+    """True once ``pid`` no longer exists (its parent reaped it, or it was never a child here)."""
+    end = time.monotonic() + within
+    while time.monotonic() < end:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _pid_from(path: Path, within: float = 10.0) -> int:
+    end = time.monotonic() + within
+    while time.monotonic() < end:
+        text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        if text.endswith(";"):
+            return int(text[:-1])
+        time.sleep(0.05)
+    raise AssertionError(f"{path} never named a pid")
+
+
+def test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804(tmp_path: Path) -> None:
+    """B13 round 34 C804: doctor._run was a plain subprocess.run with its own limit (120 s for git ls-files),
+    so a report that gave up on doctor after its own seconds left the program running past the report's end,
+    and a timed-out program's own children (a shim's git) were never killed. A deadline its caller sets in
+    RUN_DEADLINE shortens the limit, and a time-out kills the program's whole process group."""
+    pidfile = tmp_path / "grandchild.pid"
+    script = f"/bin/sleep 600 & printf '%s;' $! > {pidfile}; wait"
+    token = doctor.RUN_DEADLINE.set(time.monotonic() + 2.0)
+    started = time.monotonic()
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as caught:
+            doctor._run(["/bin/sh", "-c", script], timeout=120)
+    finally:
+        doctor.RUN_DEADLINE.reset(token)
+    assert time.monotonic() - started < 60 and caught.value.timeout <= 2.0, caught.value
+    grandchild = _pid_from(pidfile)
+    assert _pid_gone(grandchild), "the program's own child outlived its time-out"
+    assert not doctor._LIVE_CHILDREN
+    with pytest.raises(subprocess.TimeoutExpired):  # a deadline already past starts nothing
+        token = doctor.RUN_DEADLINE.set(time.monotonic() - 1.0)
+        try:
+            doctor._run(["/bin/sh", "-c", f"printf 'x;' > {tmp_path / 'ran'}"], timeout=120)
+        finally:
+            doctor.RUN_DEADLINE.reset(token)
+    assert not (tmp_path / "ran").exists()
+    assert doctor.RUN_DEADLINE.get() is None  # standalone doctor keeps each program's own limit
+    assert doctor._run(["/bin/sh", "-c", "printf ok"], timeout=120).stdout == "ok"
+
+
+def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) -> None:
+    """C804: a call the report's time limit abandons leaves doctor's thread waiting on its program, which the
+    interpreter's exit never stops (the rehearsal found git ls-files 8 min 49 s old, its parent pid 1).
+    end_children kills every program still running, and the abandoned wait then returns."""
+    pidfile = tmp_path / "child.pid"
+    done: list[subprocess.CompletedProcess[str]] = []
+    worker = threading.Thread(
+        target=lambda: done.append(
+            doctor._run(["/bin/sh", "-c", f"printf '%s;' $$ > {pidfile}; exec /bin/sleep 600"], timeout=120)
+        ),
+        daemon=True,
+    )
+    worker.start()
+    child = _pid_from(pidfile)
+    assert doctor.end_children() == 1
+    worker.join(30)
+    assert not worker.is_alive() and done and done[0].returncode == -9, done
+    assert _pid_gone(child) and not doctor._LIVE_CHILDREN
+    assert doctor.end_children() == 0
+
+
 def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
     """A ``doctor._run`` under which a matching command never answers; any other one runs for real."""
     real_run = doctor._run
