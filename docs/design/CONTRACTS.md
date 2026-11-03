@@ -37175,7 +37175,20 @@ after a capital when it starts with a capital and a small letter, in `setup_repo
 
 ### 16.225 Round 34: the report: another home cut whole, organisation spellings, a read cut in time and the credit rule (2026-11-03, wave B13 round 34 lane RA)
 
-Reserved for round 34 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 34").
+**A path in another home is cut whole** (C822, ruling 91; data integrity; `src/agentsync/setup_report.py`). A moved
+home's install.log `source=` and `args=` lines and an installer output line naming that home printed its login, the
+provider folder's organisation and a folder in clear: `_build_redactor` registers only this account's home and login.
+`Redactor._compile` adds one alternative after the literals, so this home's own literal wins: `/Users/` not right
+after a word character, `.` or `-`, with `Shared`, a placeholder and the registered login left alone (each a whole
+component, ending at `/`, whitespace, a quote, a backtick, a bracket, `,`, `;` or the end); right after a quote or a
+backtick the cut runs to the closing one on the line, else one escape-aware component (`dana\ fabrikam`) and an
+optional `/` tail up to whitespace, a quote, a backtick, a bracket, `,` or `;`. `_replace` returns `/Users/<path>`,
+uncounted, the form a `--source-local` argument already gets; never a `/Users/<user-N>/` prefix, past which
+`_cut_path` would walk and print the organisation it hides today. `/var/folders` stays `_TMP_RE`'s. The legend's
+`<path>` item, the uncounted sentence and setup-feedback.md's table say `a path in another home` and its limit: an
+unquoted path with a space keeps its tail after the first space. install.sh's `redact_stream` makes the same cut (lane
+RB). Test: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole`; the `/Users/jdoe2/b` boundary case
+of `test_redactor_is_consistent_and_bounded` now reads `/Users/<path>`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

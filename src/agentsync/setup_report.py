@@ -670,6 +670,25 @@ _UNNUMBERED = frozenset(
 )
 _NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder-12>); never <mdmhost>
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
+# B13 round 34 C822 (ruling 91): a path in another home (a moved home's install.log source= or args=, an
+# install.out line), cut whole to /Users/<path> as a --source-local argument is: never a /Users/<user-N>/
+# prefix, past which _cut_path would walk and print the provider folder's organisation. Not right after a
+# word character, "." or "-"; /Users/Shared, a placeholder and this account's login (registered, so a
+# sandbox HOME's /Users/<user>/ stays) are left alone. Right after a quote or a backtick, to the closing one
+# on the line; else one component, escape-aware (``dana\ fabrikam``), then an optional tail up to
+# whitespace, a quote, a backtick, a bracket ()[]{}, "," or ";": an unquoted path with a space keeps its tail
+# after the first space
+_PATH_END = r"(?![^/\s\"'`()\[\]{},;])"  # a path component ends here
+_PATH_STOP = r"\s\\\"'`()\[\]{},;"  # a path cut stops at one of these: whitespace, a quote, a bracket
+
+
+def _other_home_re(logins: Iterable[str]) -> str:
+    """:data:`_PATH_END`'s comment: the pattern of a path in another home, ``logins`` left alone."""
+    head = rf"/Users/(?!Shared{_PATH_END})(?!<)" + "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
+    quoted = "".join(rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
+    return rf"{quoted}(?<![\w.-]){head}(?:[^/{_PATH_STOP}]|\\.)+(?:/(?:[^{_PATH_STOP}]|\\.)*)?"
+
+
 _GENERIC_FOLDERS = frozenset(
     {
         "Apps",
@@ -1038,7 +1057,8 @@ _LEGEND = {
     "path": (  # every <path> the body can show, the uncounted ones too (B13 round 27 P38)
         "<path> a link's target outside this home (a state file's or the docs repo's), or an item path or "
         "document name in a log line, a --source-local argument, an added source's typed folder or an "
-        "exclude entry, cut as its section says"
+        "exclude entry, cut as its section says, or a path in another home, cut whole to /Users/<path> (an "
+        "unquoted path with a space keeps its tail after the first space)"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -1662,6 +1682,7 @@ class Redactor:
         # _bare(value).lower() of a value that starts with a separator its placeholder writes back
         # (``add(keep_lead=True)``, a git URL rewrite's path: B13 round 9 K2, K27)
         self._lead_kept: set[str] = set()
+        self._logins: set[str] = set()  # a "user" value: its /Users/<login> is not another home (C822)
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
         self._pattern_values: dict[tuple[str, str], str] = {}
@@ -1780,6 +1801,8 @@ class Redactor:
             return
         if keep_lead:
             self._lead_kept.add(_bare(value).lower())
+        if kind == "user":
+            self._logins.add(value)
         joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in report_words()
         if joined and _norm(value) in self._joined:
             return
@@ -1976,6 +1999,8 @@ class Redactor:
             alts.insert(held_at, held)
             if literals:  # the forms of one value make one pattern now (_word_pattern): once each
                 alts.append("(?P<lit>" + "|".join(dict.fromkeys(literals)) + ")")
+            # after the literals, so this home's own literal wins (B13 round 34 C822)
+            alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins))})")
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
             self._regex = re.compile("|".join([f"(?P<hold>{_HELD_RE})", *alts]))
@@ -1994,6 +2019,8 @@ class Redactor:
         groups = m.groupdict()
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
+        if groups.get("otherhome") is not None:  # uncounted, as every <path> cut is (B13 round 34 C822)
+            return "/Users/<path>"
         if groups.get("govremote") is not None:
             groups["remote"] = text
         if any(groups.get(k) is not None for k in ("label", "remote", "value")):
@@ -17309,8 +17336,8 @@ def _redaction_section(
     # replaced" reads as if it were counted
     uncounted = (
         " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
-        "added source's typed folder or an exclude entry is not counted: only a link target replaced by "
-        "<path> is."
+        "added source's typed folder, an exclude entry or a path in another home is not counted: only a link "
+        "target replaced by <path> is."
         if "<path>" in probe
         else ""
     )

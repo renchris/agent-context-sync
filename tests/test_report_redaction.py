@@ -89,7 +89,8 @@ def test_the_repos_own_locator_is_never_cut_by_a_name_run_together() -> None:
     assert not red.counts
     assert red.redact(NAME_LINES[0]) == f"https://github.com/<name>/{REPO}-fork"
     assert red.redact(NAME_LINES[1]) == f"https://codeberg.org/<name>/{REPO}"
-    assert red.redact(NAME_LINES[2]) == "~/<name>-notes and /Users/<name>/x"
+    # B13 round 34 C822 (ruling 91): a path in another home is cut whole
+    assert red.redact(NAME_LINES[2]) == "~/<name>-notes and /Users/<path>"
 
 
 def test_the_python_report_keeps_the_repos_own_locator(

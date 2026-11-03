@@ -1054,8 +1054,8 @@ def test_the_path_legend_item_names_every_use_of_path() -> None:
     <path>; only a replaced link target counts."""
     uncounted = (
         " A <path> that cuts an item path or document name in a log line, a --source-local argument, an "
-        "added source's typed folder or an exclude entry is not counted: only a link target replaced by "
-        "<path> is."
+        "added source's typed folder, an exclude entry or a path in another home is not counted: only a link "
+        "target replaced by <path> is."
     )
     red = setup_report.Redactor()
     red.add("path", "/Volumes/Contoso Drive/state")
@@ -4515,7 +4515,7 @@ def test_redactor_is_consistent_and_bounded() -> None:
         "a@b.example A@B.EXAMPLE 1B4E28BA-2FA1-11D2-883F-0016D3CCA427 1b4e28ba-2fa1-11d2-883f-0016d3cca427 x"
     )
     assert red.redact(text) == (
-        "~/a /Users/jdoe2/b <user> jdoes <folder-1>/<folder-2>/<folder-1> Alphabet <org-1> "
+        "~/a /Users/<path> <user> jdoes <folder-1>/<folder-2>/<folder-1> Alphabet <org-1> "
         "<org-1>.sharepoint.com <email-1> <email-1> <guid-1> <guid-1> x"
     )
     assert red.counts == {"home": 1, "user": 1, "folder": 3, "org": 2, "email": 2, "guid": 2}
@@ -4523,6 +4523,49 @@ def test_redactor_is_consistent_and_bounded() -> None:
     off = setup_report.Redactor(enabled=False)
     off.add("user", "jdoe")
     assert off.redact("jdoe a@b.example") == "jdoe a@b.example" and off.total == 0
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_path_in_another_home_is_cut_whole(fake_mac: dict[str, Path]) -> None:
+    """B13 round 34 C822 (ruling 91): install.log's source= and args= written under a moved home, and an
+    install.out line naming that home, printed the old login, the provider folder's organisation and a
+    folder in clear. A path in another home is cut whole to /Users/<path>, uncounted, never a
+    /Users/<user-N>/ prefix past which the --source-local cut would print the organisation; /Users/Shared and
+    this account's own login (a sandbox HOME's /Users/<user>/) stay, and the legend says so."""
+    old = "/Users/dana.fabrikam"
+    cloud = f"{old}/Library/CloudStorage/OneDrive-Fabrikam"
+    write_install_log(fake_mac)
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(
+        log.read_text(encoding="utf-8").replace(
+            "source=- launchd=simulated args=--source-local x --confirm-install-agent",
+            f"source={old}/src/agent-context-sync launchd=simulated args=--source-local "
+            f"/Users/dana\\ fabrikam/Library/CloudStorage/OneDrive-Fabrikam/Client\\ Alpha",
+        ),
+        encoding="utf-8",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"copied {cloud}/Fabrikam\\ Plans/plan.docx and '{cloud}/Client Alpha/a.docx' from {old}\n"
+        f"kept /Users/Shared/agentsync and /Users/{LOGIN}/Projects/x\n",
+        encoding="utf-8",
+    )
+    write_friction(fake_mac)
+    red = setup_report.Redactor()
+    red.add("user", LOGIN)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    inst = section(text, "Installer")
+    assert "source=/Users/<path> " in inst and "args=--source-local /Users/<path>" in inst, inst
+    for value in ("dana", "fabrikam", "Fabrikam", "Client Alpha", "Plans"):
+        assert value not in text, value
+    assert "/Users/Shared/agentsync" in inst and "/Users/<user>/Projects/x" in inst, inst
+    assert "<user-" not in text
+    assert "a path in another home, cut whole to /Users/<path>" in section(text, "Redaction")
+    # the cut is uncounted, and a bare /Users/<login> or a placeholder is never one
+    assert red.redact(f"{old} and /Users/{LOGIN} and /Users/<path>") == (
+        "/Users/<path> and /Users/<user> and /Users/<path>"
+    )
+    assert red.counts == {"user": 1}
 
 
 # ---- K4, K6, K9, K10, K17 -------------------------------------------------------------------------------
