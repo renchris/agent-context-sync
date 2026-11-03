@@ -36948,6 +36948,16 @@ then (`-govgone` matches none of the lists' arms). The sentence gives both in th
 folder stops first. Test: `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which derives each quote
 from the script's own literal.
 
+**The guide says what the report prints for a read it did not get** (rulings 83, 84 and 85, lane RA's C702, C716,
+C718, C720, C721 and C764: the guide's half, written once after lane RA's 864c4673a, 541fe447a and cb1ce5195;
+`docs/deploy/setup-feedback.md`). The guide's time-limit paragraph named only `not measured (time limit)`; it now gives
+the checkout's `not read` forms, a Background runs line's and the Command Line Tools' `not measured (...)`, the idle
+advice those lines end with and a stopped copy's `this copy is not for sending`, and the doctor line's `not judged`
+bucket for a warn the Loop line could have named, its idle clause only for a time-out or a busy state file. The
+Installer row gives the `install.sh:` line's one bracket for a run with no end line, its closing status and its state
+last. Test: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, which reads each quote from the
+report's source.
+
 **The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
 `docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
 or unreadable, but `cycle._tally_converted` always adds to `converted` and then to its failed or unreadable share, the

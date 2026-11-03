@@ -7745,6 +7745,43 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
     )
 
 
+def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> None:
+    """B13 round 33 rulings 83, 84 and 85 (lane RA's C702, C716, C718, C720, C721, C764): the report says
+    `not read` or `not measured` for a runner that did not answer, ends each such line with the idle advice
+    (`this copy is not for sending` in a stopped copy), files a warn the Loop line could have named as not
+    judged when that line was not read, and keeps one bracket on a run with no end line. The guide named none
+    of it; each quote is read from the report's source."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    source = re.sub(r'"\s*\n\s*f?"', "", inspect.getsource(setup_report))
+    for said in (
+        "origin: not read (git did not answer within the report's time limit)",
+        "on origin/main: not read (time limit)",
+        "(uncommitted changes: not read, time limit)",
+        "not judged (the Loop line was not read: ",
+    ):
+        assert said in source and f"`{said}" in page, said
+    assert "not measured ({why}; plist {state}): {_idle_again(r)}" in source
+    assert "`not measured (<why>; plist present|absent)`" in page
+    assert 'f"not measured (xcode-select -p {_exited(rc, text)})"' in source
+    assert "`not measured (xcode-select -p ...)`" in page
+    assert setup_report._IDLE_AGAIN.startswith("write the report again when this Mac is idle (")
+    assert setup_report._IDLE_AGAIN.endswith(") before sending it")
+    assert "`write the report again when this Mac is idle (...) before sending it`" in page
+    assert f"which a stopped copy gives as `{setup_report._STOPPED_NOT_SENT}`" in page
+    assert f"adding `{setup_report._IDLE_SORTS}` only for a time-out or a busy state file" in page
+    # the no-end-line line: the step bracket, the closing status, the state last
+    assert 'status = _exit_text(last, r.install_runs) if last.rc is not None else "has no end line"' in source
+    assert source.index('status += f", its closing status {closing}"') < source.index(
+        'status += f", {_open_state(last)}"'
+    )
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| Installer: every run |")]
+    assert "`has no end line (<steps>)`, then `, its closing status <n>` when a signal stopped its" in row
+    for state in ("its process is gone: ", "its process id is in use: ", "interrupted, or still running"):
+        assert state in source and f"`{state}" in row, state
+
+
 def test_the_repeat_conversions_row_names_the_clause_its_note_follows() -> None:
     """B13 round 31 C554: the row said "That last clause shows only when a shown run counted such a re-read"
     right after the clause about images only a download would read, while the clause it means, on a failure an
