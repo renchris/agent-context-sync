@@ -36893,6 +36893,8 @@ Tests: `test_convert_family.py::test_a_re_read_the_cycle_stubbed_after_it_conver
 `converted 1` with no `of the converted:` split, the note `1 held by this sync`, never unreadable or failed, the
 record `path_reread_held` 1 inside `path_reread_failed` 1) and
 `test_convert_family.py::test_the_still_a_stub_note_names_each_bucket_it_holds` (four buckets in order).
+Amended 2026-11-03, §16.228 C844: the `duplicate-of` route is tested too, by
+`test_convert_family.py::test_a_re_read_refused_as_an_inbox_duplicate_by_its_bytes_is_held_c754`.
 
 **A UTF-16 template is read as a deck (C781; `agentsync.convert.pptx`).** `_template_as_deck` looked for the template
 main type as UTF-8 bytes, so a `[Content_Types].xml` saved in UTF-16 (ECMA-376 Part 2 allows it; python-pptx reads
@@ -37194,6 +37196,16 @@ name holding `\q` or `\1` is never read as a template. No new fold key: no re-fo
 folded to `…` stays. Test: `test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text`
 (`.pptx…` under `Plan.pptx` and `Plan.PPTX`, `.teams.json…`, names with `\q` and `\1` kept literally; `.docx…` under
 `Plan.pptx`, `0123.pptx…`, and a suffix-less row's `…`, `0123…` and 16 hex each still `…`).
+
+**C754's `duplicate-of` half is tested (C844; a test; amends §16.221 C754).** `_path_outcomes` counts a re-read
+the cycle stubbed as `duplicate-of` held, but only the `_SIDECAR_PATH` route had a test: with the `duplicate-of`
+clause removed every test passed. The new test drives the one route that reaches the count, `_inbox_duplicate` by
+canonical hash after the conversion: an older build's `.potx` stub in an inbox re-read once, converting, beside a
+Graph file with the same bytes under another name. The finder's `_inbox_name_size_duplicate` route is not used: it
+refuses the file in `_process` before the fetch, so the re-read never runs and no count is made (measured by the
+verifier). Test: `test_convert_family.py::test_a_re_read_refused_as_an_inbox_duplicate_by_its_bytes_is_held_c754`
+(the row `duplicate-of drive`, the note `1 held by this sync`, the record's `path_reread`, `path_reread_failed` and
+`path_reread_held` 1 each, no unreadable or refused key; red with the `duplicate-of` clause removed).
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 

@@ -580,6 +580,63 @@ def test_a_re_read_the_cycle_stubbed_after_it_converted_is_held_never_unreadable
         )
 
 
+def test_a_re_read_refused_as_an_inbox_duplicate_by_its_bytes_is_held_c754(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 34 C844: C754's held bucket takes a ``duplicate-of`` stub as well as ``_SIDECAR_PATH``, but
+    only the sidecar route was tested. Here the one-shot re-read converts, then ``_inbox_duplicate`` finds a
+    Graph file with the same bytes (the canonical hash, after the conversion) and stubs the inbox row: held
+    by this sync, never unreadable. A Graph file of the same name and size would be refused before the fetch
+    (``_inbox_name_size_duplicate``), so the re-read would never run; the Graph file takes another name."""
+    import httpx  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.graph.client import GraphClient  # noqa: PLC0415
+    from test_cycle import INBOX_SOURCE, _run_record  # noqa: PLC0415
+    from test_e2e import GRAPH_SOURCE, FakeDrive, FakeTokens, config_with  # noqa: PLC0415
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drop = word_package(inbox / "Contoso renamed doc.potx")
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE + INBOX_SOURCE.format(path=inbox))
+    with monkeypatch.context() as mp:
+        _older_build(mp)
+        for _ in range(4):
+            assert run(config, only=["inbox"]).exit_code == 0
+    deck = build_potx(tmp_path / "deck.potx")
+    converts = PptxConverter.convert
+    monkeypatch.setattr(PptxConverter, "convert", lambda self, _src, *, name: converts(self, deck, name=name))
+    drive = FakeDrive({"I1": ("Contoso board pack.potx", drop.read_bytes())})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    try:
+        report = run(config, client=client, only=["drive", "inbox"])
+    finally:
+        client.close()
+    assert report.exit_code == 0, report
+    with Manifest(config.state_paths.db) as m:
+        (row,) = m.iter_items("inbox")
+    assert row.state is RowState.QUARANTINED, row
+    assert (row.state_reason or "").startswith("duplicate-of drive"), row.state_reason
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out
+    assert _notes(out) == [
+        f"  note: 1 conversion {_SAID} was tried once more in this sync and is still a stub (1 held by this "
+        "sync; _sync/QUARANTINE.tsv in the docs folder gives its reason), and it is not tried again"
+    ], out
+    record = _run_record(config)
+    assert (record["path_reread"], record["path_reread_failed"], record["path_reread_held"]) == (1, 1, 1)
+    assert "path_reread_unreadable" not in record and "path_reread_refused" not in record, record
+
+
 def test_the_still_a_stub_note_names_each_bucket_it_holds(capsys: pytest.CaptureFixture[str]) -> None:
     """C626: several files read again and still a stub are split in the note's own order, failed,
     unreadable, refused, a bucket holding none left out, plural words for several."""
