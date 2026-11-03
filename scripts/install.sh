@@ -2206,6 +2206,7 @@ FIXED_VALUE_PHRASES+="|lost a purge the audit trail or purge-record.json records
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge refused"
 FIXED_VALUE_PHRASES+="|lost a hold or a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: "
+FIXED_VALUE_PHRASES+="|(the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list)"
 FIXED_VALUE_PHRASES+="|label policy|label unreadable"
 FIXED_VALUE_PHRASES+="|(record) since |(record): lost from the hold list|(record) and # more hold|hold-record.json"
 FIXED_VALUE_PHRASES+="|purge-record.json|governance.hold_record|governance.purge_record|file=hold-record"

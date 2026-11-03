@@ -1389,6 +1389,9 @@ _FIXED_VALUE_PHRASES = (
     "lost a hold or a purge the audit trail records",
     # lane B's C313 gone governance folder (governance.lost_hold_words)
     "with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: ",
+    # lane B's ruling 94 head (C810), which the report's _GOV_GONE_HEADS reads before lane B prints it
+    "(the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression "
+    "list)",
     # the Quarantine part's two label classes (QUARANTINE_CLASSES; B13 round 30 C326 review): a hold reason
     # "Label" cut them and made the report private only
     "label policy",
@@ -13963,6 +13966,22 @@ _GOV_GONE = (
 hold (``<gov>/ is missing, ...``; ``governance.lost_hold_words``, inline there, so a test builds it): it
 keeps the lost hold's anchor ``no longer lists the hold on``, so it is read as the governance folder's, never
 as a hold the hold list lost (B13 round 30, lane B's C313)."""
+_GOV_GONE_HEADS = (
+    _GOV_GONE,
+    "/ is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue and any "
+    "suppression list)",
+)
+"""The missing folder's lead in every form: :data:`_GOV_GONE`, an older doctor's, and lane B's ruling 94 head
+(``governance.GOVERNANCE_GONE_HEAD`` since B13 round 34 C810), which describes the folder without naming what
+was in it; each reader takes both (:func:`_gov_gone_in`)."""
+
+
+def _gov_gone_in(detail: str, gov: object = "") -> bool:
+    """Whether ``detail`` holds the missing governance folder's lead in either form (:data:`_GOV_GONE_HEADS`),
+    after ``gov`` when one is given."""
+    return any(f"{gov}{head}" in detail for head in _GOV_GONE_HEADS)
+
+
 _GOVGONE_WORDS = "from agentsync's governance folder that is missing"
 """The Doctor line's bucket for :data:`_GOV_GONE`'s FAIL, the person's, the folder put back whole first (lane
 B's C313 fix: ``the person puts agentsync's governance folder (<gov>) back whole from the copy kept``)."""
@@ -14012,8 +14031,7 @@ def _governance_gone(r: _Run) -> bool:
     except Exception:
         return False
     return any(
-        t == "FAIL" and m in _GOV_GONE_CHECKS and f"{gov}{_GOV_GONE}" in d
-        for t, m, d in r.facts.doctor_problems
+        t == "FAIL" and m in _GOV_GONE_CHECKS and _gov_gone_in(d, gov) for t, m, d in r.facts.doctor_problems
     )
 
 
@@ -14153,7 +14171,7 @@ def _trail_form(check: str, detail: str) -> bool:
     (ruling 82). Reads ``governance.TRAIL_LOST_HEAD`` by ``getattr``: an older governance has neither
     form."""
     phrases = _TRAIL_LIST_PHRASES.get(check)
-    if phrases is None or _GOV_GONE in detail or not all(w in detail for w in phrases):
+    if phrases is None or _gov_gone_in(detail) or not all(w in detail for w in phrases):
         return False
     try:
         from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
@@ -14489,7 +14507,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     gone_checks = {
         m
         for t, m, d in r.facts.doctor_problems
-        if gone and t == "FAIL" and m in _GOV_GONE_CHECKS and _GOV_GONE in d
+        if gone and t == "FAIL" and m in _GOV_GONE_CHECKS and _gov_gone_in(d)
     }
     held_queue = not notfolder and not govdir and _queue_held(r)
     from_held: list[str] = []
@@ -14612,7 +14630,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             fails.append((name, damaged_words))
             hold_bucket = from_damaged if name == "governance.hold" else hold_bucket
             continue
-        if gone and tag == "FAIL" and name in _GOV_GONE_CHECKS and _GOV_GONE in detail:
+        if gone and tag == "FAIL" and name in _GOV_GONE_CHECKS and _gov_gone_in(detail):
             from_govgone.append(f"{name} FAIL{_PERSONS}")  # lane B's C313: the folder's, never a lost hold
             fails.append((name, _GOVGONE_WORDS))  # nor a lost queue or list (B13 round 32 C618, ruling 63)
             hold_bucket = from_govgone if name == "governance.hold" else hold_bucket
@@ -16414,7 +16432,7 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "after the real governance folder was put back, or, where none was ever kept, it was moved "
                 "aside",
             )
-        trail = None if _GOV_GONE in ln else _GOVERNANCE_TRAIL_LOST_RE.search(ln.strip())  # ruling 82
+        trail = None if _gov_gone_in(ln) else _GOVERNANCE_TRAIL_LOST_RE.search(ln.strip())  # ruling 82
         if trail is not None:
             if trail.group("lead") or trail.group("verb") == "holds":
                 return _trail_lost_cause(["governance.purge_queue"]), (

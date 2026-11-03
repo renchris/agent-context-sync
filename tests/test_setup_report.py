@@ -19757,6 +19757,45 @@ def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
     assert setup_report._outcome_cause(r, runs) != setup_report._GOVGONE_CAUSE
 
 
+@pytest.mark.parametrize("head", setup_report._GOV_GONE_HEADS)
+def test_every_reader_of_the_missing_folders_lead_takes_the_old_and_the_new_head_ruling_94(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, head: str
+) -> None:
+    """B13 round 34 ruling 94 (lane B's C810): GOVERNANCE_GONE_HEAD changes to ``is missing (the folder
+    where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list)``. Every
+    reader of the missing folder's lead (_governance_gone, _trail_form, _sort_doctor's two,
+    _state_open_words) takes it and an older doctor's ``is missing, with the hold list, ...``, or the report
+    loses the folder's bucket."""
+    _governance_only(monkeypatch)
+    cfg = fake_mac["config"]
+    root = expand(load_config(cfg).state_paths.root)
+    assert cli.main(["hold", "all", "--reason", "x", "--owner", "y", "--config", str(cfg)]) == 0
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    [lost] = governance.lost_holds(root)
+    built, _fix = governance.lost_hold_words(root, lost)
+    shipped = next(h for h in setup_report._GOV_GONE_HEADS if f"{gov}{h}" in built)
+    fail = built.replace(f"{gov}{shipped}", f"{gov}{head}", 1)
+    assert f"{gov}{head}" in fail and "no longer lists the hold on all" in fail
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", "governance.hold", fail)]
+    assert setup_report._governance_gone(r)
+    sort = setup_report._sort_doctor(r, [])
+    assert sort.from_govgone == ["governance.hold FAIL (the person's; see Doctor)"], sort
+    assert sort.from_lost_hold == [] and sort.unexpected == [], sort
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report._outcome_cause(r, runs) == setup_report._GOVGONE_CAUSE
+    check, detail, _trail = _TRAIL_FAILS["queue-credit"]
+    assert setup_report._trail_form(check, detail)
+    assert not setup_report._trail_form(check, f"/x{head}{detail}")
+    monkeypatch.setattr(setup_report, "_run_block", lambda *_a: [f"error: state: /x{head}: {detail}"])
+    words = setup_report._state_open_words(r, runs[-1])
+    assert words is None or words[0] != setup_report._trail_lost_cause(["governance.purge_queue"]), words
+
+
 def test_a_microsecond_audit_time_reads_as_a_whole_second_one_ruling_33(tmp_path: Path) -> None:
     """Lane B's ruling 33 seam: purge and purge-summary audit lines now carry microsecond times
     (``governance._iso_fine``), older ones whole seconds. The Purge queue part's trail line reads both alike

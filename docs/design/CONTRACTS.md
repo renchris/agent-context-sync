@@ -37207,6 +37207,13 @@ cut. Tests: `tests/test_report_redaction.py::test_an_organisation_after_another_
 `tests/test_install_oneshot.py::test_an_organisation_spelled_as_the_surname_is_cut_in_both_reports`, which asserts
 the value absent from each, never the two equal (`<name>` beside the shell's `<org-1>`).
 
+**The missing governance folder's lead in either form** (ruling 94, before lane B's C810). Lane B's
+`GOVERNANCE_GONE_HEAD` describes the folder, `is missing (the folder where agentsync keeps any hold list, its audit
+trail, the purge queue and any suppression list)`, where an older doctor printed `is missing, with the hold list,
+...`. `_GOV_GONE_HEADS` holds both and `_gov_gone_in` reads them at every reader (`_governance_gone`, `_trail_form`,
+`_sort_doctor`'s two, `_state_open_words`), so the report keeps the folder's bucket and cause on either build. Test:
+`tests/test_setup_report.py::test_every_reader_of_the_missing_folders_lead_takes_the_old_and_the_new_head_ruling_94`.
+
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
 Reserved for round 34 lane RB of B13.
