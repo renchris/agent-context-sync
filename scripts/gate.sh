@@ -131,6 +131,8 @@ part_stopped() {
 # setup and teardown failures, and the test a lost worker was running), they run once more with -n 0, no workers of
 # our own competing, into a journal of their own. That run green makes the part green; a test that fails alone
 # convicts, and more than 20, another exit code or a failed set that cannot be read leave the part red as before.
+# A re-run a signal stopped convicts nothing: it says so through part_stopped and returns its own status, so the gate
+# exits with it; a re-run status of 1 to 128 stays plain red (B13 round 34 C877).
 rerun_alone() {
   local part=$1 journal=$2 again=$3 out=$4 n rc=0
   local ids=()
@@ -149,6 +151,7 @@ rerun_alone() {
   step env PYTHONUNBUFFERED=1 "GATE_JOURNAL=$again" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal \
     -n 0 "${ids[@]}" 2>&1 | tee -a "$out" || rc=$?
   if [ "$rc" != 0 ]; then
+    [ "$rc" -le 128 ] || { part_stopped "$part" "$rc"; return "$rc"; }
     echo "== $part: the re-run alone is red too (rc $rc)"
     return 1
   fi
@@ -166,7 +169,10 @@ part_once() {
   step env "GATE_JOURNAL=$journal" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal "$@" |
     tee "$out" || rc=$?
   [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
-  if [ "$rc" = 1 ] && rerun_alone "$part" "$journal" "$journal.rerun" "$out"; then rc=0; fi
+  if [ "$rc" = 1 ]; then
+    rc=0
+    rerun_alone "$part" "$journal" "$journal.rerun" "$out" || rc=$?
+  fi
   [ "$rc" = 0 ] || return "$rc"
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
 }
@@ -217,7 +223,10 @@ run_part() {
   [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
   if [ "$rc" = 5 ] && [ -n "$deselect" ]; then rc=0; fi # every test had passed already
-  if [ "$rc" = 1 ] && rerun_alone "$part" "$journal" "$dir/$tree-$salt.$part.rerun.jsonl" "$out"; then rc=0; fi
+  if [ "$rc" = 1 ]; then
+    rc=0
+    rerun_alone "$part" "$journal" "$dir/$tree-$salt.$part.rerun.jsonl" "$out" || rc=$?
+  fi
   [ "$rc" != 0 ] || rm -f "$out"
   return "$rc"
 }

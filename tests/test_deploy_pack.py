@@ -6470,6 +6470,13 @@ _ROUND_33_B_PARAGRAPH_AMENDS = (
 )
 """Round 33 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C744's return and output at the `--accept-lost` paragraph and C606's."""
+_ROUND_34_D_PARAGRAPH_AMENDS = (
+    ("16.223", "a re-run a signal stopped convicts nothing, says so through", "§16.229 C877, C876, C866"),
+)
+"""Round 34 lane D's dated lines at a section its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: the gate's re-run fixes (C877, C876, C866) at §16.223's C800
+paragraphs."""
+
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -6691,6 +6698,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
         *_ROUND_33_B_PARAGRAPH_AMENDS,
+        *_ROUND_34_D_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)

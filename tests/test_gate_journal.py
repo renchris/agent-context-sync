@@ -338,6 +338,96 @@ def test_a_test_that_fails_alone_too_convicts(tmp_path: Path) -> None:
     assert " rc=1 " in verdict and verdict.endswith(" rerun_passed=0"), verdict
 
 
+KILLED_ON_RE_RUN = """
+import os
+import signal
+
+from runs import ran
+
+
+def test_killed():
+    if ran("killed"):
+        os.kill(os.getpid(), signal.{sig})
+    assert False, "the contoso import timed out under load"
+"""
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+@pytest.mark.parametrize(("sig", "rc"), [("SIGKILL", 137), ("SIGTERM", 143)])
+def test_a_re_run_a_signal_stopped_convicts_nothing_and_the_gate_exits_with_its_status(
+    tmp_path: Path, mode: str, sig: str, rc: int
+) -> None:
+    """B13 round 34 C877: a part that failed, then whose re-run alone a signal stopped (pytest killed by
+    memory, or a test killing its own process), printed `the re-run alone is red too (rc 137)` and exited 1,
+    a test verdict. It says which signal stopped it, convicts nothing, and the gate exits with its status."""
+    suite = {"test_s.py": KILLED_ON_RE_RUN.format(sig=sig)}
+    done, runs, verdict = _rerun_part(tmp_path, suite, "-n", "2", ".", mode=mode)
+    assert done.returncode == rc, done.stdout + done.stderr
+    assert runs == ["killed", "killed"], "the failed test ran once more, alone"
+    assert f"== rest stopped by {sig} (rc {rc}) before it reported a verdict" in done.stdout
+    assert "is red too" not in done.stdout and "passed alone" not in done.stdout
+    assert f" rc={rc} " in verdict and verdict.endswith(" rerun_passed=0"), verdict
+
+
+SKIPPED_TEARDOWN = """
+import pytest
+from runs import ran
+
+
+@pytest.fixture
+def skips_after():
+    yield
+    pytest.skip("the contoso share went away")
+
+
+@pytest.fixture
+def breaks(skips_after):
+    ran("setup-red")
+    raise RuntimeError("the contoso fixture broke")
+
+
+def test_always_red(skips_after):
+    ran("red")
+    assert False
+
+
+def test_setup_red(breaks):
+    pass
+"""
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+def test_a_failed_call_or_setup_with_a_skipped_teardown_is_re_run_and_convicts(
+    tmp_path: Path, mode: str
+) -> None:
+    """B13 round 34 C876: the journal kept a teardown skip as a test's last record, so a call or setup that
+    failed before it left the failed set; beside a flake that passed alone, the part went green on a test that
+    fails every run. A teardown skip decides no verdict and is not journaled: both tests run again, alone, and
+    the part is red."""
+    suite = {"test_s.py": FLAKY.format(n=1), "test_t.py": SKIPPED_TEARDOWN}
+    done, runs, verdict = _rerun_part(tmp_path, suite, "-n", "2", ".", mode=mode)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert sorted(runs) == sorted(["flaky0", "red", "setup-red"] * 2), "each failed test ran once more"
+    assert "== rest: 3 failed; re-running them once, alone" in done.stdout
+    assert "== rest: the re-run alone is red too (rc 1)" in done.stdout and "passed alone" not in done.stdout
+    assert " rc=1 " in verdict and verdict.endswith(" rerun_passed=0"), verdict
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+def test_a_collection_error_beside_a_flake_stays_red(tmp_path: Path, mode: str) -> None:
+    """B13 round 34 C866: under xdist a module that cannot be imported ends pytest 1, as a failed test does,
+    but no test names it, so a flake that passed alone turned the part green over it (the --affected path,
+    which runs no collect check). The journal records the collection error and the failed set is then not
+    read: the part stays red and nothing runs again."""
+    suite = {"test_s.py": FLAKY.format(n=1), "test_broken.py": "import contoso_missing_module\n"}
+    done, runs, verdict = _rerun_part(tmp_path, suite, "-n", "2", ".", mode=mode)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert runs == ["flaky0"] and " -n 0 " not in done.stdout
+    assert "== rest: its failed tests cannot be read from its journal; not re-run" in done.stdout
+    assert "a collection error, which no failed test stands for: test_broken.py" in done.stderr
+    assert " rc=1 " in verdict and verdict.endswith(" rerun_passed=0"), verdict
+
+
 def test_more_than_twenty_failures_are_not_re_run(tmp_path: Path) -> None:
     """C800: 21 failed tests are a real break, not load: the part is red with each run once."""
     done, runs, verdict = _rerun_part(tmp_path, {"test_s.py": FLAKY.format(n=21)}, "-n", "2", ".")
@@ -415,3 +505,7 @@ def test_the_failed_verb_reads_a_finished_journal_only(
     capsys.readouterr()
     assert _gate_journal.main(["failed", str(journal)]) == 0
     assert capsys.readouterr().out.split() == ["t.py::a", "t.py::b", "t.py::c"]
+    with journal.open("a", encoding="utf-8") as f:  # C866: a module that could not be collected
+        f.write('{"collect_error": "t_broken.py"}\n')
+    assert _gate_journal.main(["failed", str(journal)]) == 1
+    assert "t_broken.py" in capsys.readouterr().err

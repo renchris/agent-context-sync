@@ -596,6 +596,49 @@ def test_a_real_sigkill_of_the_land_gate_is_named(remote: Path, tmp_path: Path, 
     assert _git(remote, "rev-parse", "main") == before
 
 
+# The real gate's first pytest part ends 1 with one failed test, and its re-run alone is SIGKILLed.
+STUB_UV_RERUN_KILLED = STUB_UV.replace(
+    "  *_gate_journal.py*) exit 1 ;;\n",
+    "  *_gate_journal.py\\ failed*) echo tests/test_contracts.py::a ;;\n"
+    '  *" -n 0 "*) kill -KILL "$$" ;;\n'
+    "  *_gate_journal.py*) exit 1 ;;\n",
+)
+
+
+def test_a_land_gate_whose_re_run_a_signal_stopped_is_named_not_red(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 34 C877: the real gate.sh under ship-land, a part that failed and whose re-run alone a
+    SIGKILL stopped: the gate said `the re-run alone is red too (rc 137)` and exited 1, so ship-land said `the
+    land gate is red`. The gate now exits 137 and ship-land names the signal; nothing is pushed either way."""
+    assert STUB_UV_RERUN_KILLED != STUB_UV
+    clone = _clone(remote, tmp_path / "a", env)
+    shutil.copy(REPO / "scripts" / "gate.sh", clone / "scripts" / "gate.sh")
+    (clone / "uv.lock").write_text("lock\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "one"], cwd=clone, check=True, env=env)
+    bin_dir = tmp_path / "gate-bin"
+    bin_dir.mkdir()
+    exec_stub.write(bin_dir / "uv", STUB_UV_RERUN_KILLED)
+    for tool in ("uvx", "node", "npm", "make"):
+        (bin_dir / tool).write_text(STUB_TOOL, encoding="utf-8")
+        (bin_dir / tool).chmod(0o755)
+    before = _git(remote, "rev-parse", "main")
+    run_env = {
+        **env,
+        "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}",
+        "STUB_TOOL_LOG": str(tmp_path / "tools.log"),
+        "CC_GATE_SLOT_BIN": "/usr/bin/false",
+        "STUB_PYTEST_RC": "1",
+    }
+    cp = _land(clone, run_env, "--no-ci")
+    assert cp.returncode == 5, cp.stdout + cp.stderr
+    assert "== scan stopped by SIGKILL (rc 137) before it reported a verdict" in cp.stdout + cp.stderr
+    assert "was stopped by SIGKILL before it reported" in cp.stderr
+    assert "is red" not in cp.stdout + cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
 @pytest.mark.parametrize("mode", ["land", "lane"])
 @pytest.mark.parametrize(("rc", "name"), [("137", "SIGKILL"), ("143", "SIGTERM")])
 def test_a_pytest_part_a_signal_stopped_says_so_and_the_gate_exits_with_its_status(

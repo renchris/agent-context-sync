@@ -37054,6 +37054,14 @@ Tests: `test_a_part_whose_tests_fail_under_load_and_pass_alone_is_green` (1 and 
 `test_a_lane_parts_re_run_journals_beside_the_parts_and_a_green_one_drops_the_log`,
 `test_the_failed_verb_reads_a_finished_journal_only`.
 
+Amended 2026-11-03, §16.229 C877, C876, C866: a re-run a signal stopped convicts nothing, says so through
+`part_stopped`, and the gate exits with its status; a teardown skip is not journaled, so a call or setup that failed
+stays in the failed set; and a collection error leaves the part red, since the `failed` verb exits 1 on it. Tests:
+`test_a_re_run_a_signal_stopped_convicts_nothing_and_the_gate_exits_with_its_status`,
+`test_a_land_gate_whose_re_run_a_signal_stopped_is_named_not_red`,
+`test_a_failed_call_or_setup_with_a_skipped_teardown_is_re_run_and_convicts`,
+`test_a_collection_error_beside_a_flake_stays_red`.
+
 ### 16.224 Review backtest: the seed's CA folder and TLS backend, the citation lint's stray quote mark, manifest damage in a source's extra work, and an organisation's in-word redaction (2026-11-03)
 
 **A CA folder beside a named bundle reaches the seed's curl** (review backtest er-28#0; amends §16.54 Q79).
@@ -37209,4 +37217,42 @@ verifier). Test: `test_convert_family.py::test_a_re_read_refused_as_an_inbox_dup
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 
-Reserved for round 34 lane D of B13.
+**A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
+`scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
+<part>: the re-run alone is red too (rc N)` and returned 1, and its callers' `if [ "$rc" = 1 ] && rerun_alone ...; then
+rc=0; fi` only ever cleared the first run's 1, so a part that failed and whose re-run alone a SIGKILL or SIGTERM stopped
+exited 1 with no `stopped by` line, and ship-land said `the land gate is red` (reproduced at 4e0e8604 over the real gate
+under ship-land: exit 5, `rc=1` in gate-verdicts.log), against §16.222's stop words and §16.223's rule that only a test
+that fails alone convicts. A re-run status above 128 now goes through `part_stopped`, `== <part> stopped by SIG<name>
+(rc N) before it reported a verdict`, and is returned; the callers take it as `rc=0; rerun_alone ... || rc=$?`, so the
+gate exits with it and the verdict line keeps it. Statuses 1 to 128 stay plain red (`return 1`), and a code no signal
+names returns its own status silently, as a first run's does. `scripts/ship-land.sh` already reads the status and is
+unchanged: it says `the land gate was stopped by SIGKILL before it reported` and still refuses the land, exit 5. A
+signal sent to gate.sh itself was never affected: its traps exit 129, 130 or 143. Tests:
+`test_a_re_run_a_signal_stopped_convicts_nothing_and_the_gate_exits_with_its_status` (SIGKILL and SIGTERM, land and
+lane), `test_a_land_gate_whose_re_run_a_signal_stopped_is_named_not_red` (the real gate under ship-land).
+
+**A teardown skip is not journaled, so a failed call stays in the re-run set** (C876, ruling 100;
+`tests/_gate_journal.py`'s plugin and docstring). The journal wrote a teardown that skipped, and `_last` keeps each
+test's last record, so a call or a setup that failed and was followed by a teardown skip left the failed set; beside a
+flake that passed alone, the part went green on a test that fails every run (reproduced at 4e0e8604 in both modes:
+pytest's `2 failed, 1 skipped`, rc 0, `rerun_passed=1`). A teardown skip decides no verdict, since pytest reports the
+test by its call or setup, so the journal now writes the call, a setup that fails or skips and a teardown that fails.
+`_last` stays last-record-wins, so a resumed run's records still replace a killed run's with no per-invocation state,
+and a passed call with a skipped teardown counts as passed, which a resume deselects as pytest's exit 0 says. No test at
+4e0e8604 skips in a teardown (an AST scan, and none of the 392,019 records the repo's journals held), so it had not
+fired. Test: `test_a_failed_call_or_setup_with_a_skipped_teardown_is_re_run_and_convicts` (land and lane).
+
+**A collection error leaves the part red, whatever passes alone** (C866's steps 1 and 2, built under the operator's
+2026-10-10 ruling, ruling 100; `tests/_gate_journal.py`'s `pytest_collectreport` and `failed` verb). Under xdist a
+module that cannot be imported ends pytest 1, as a failed test does, but the journal held only test reports, so a flake
+beside it re-ran, passed alone and made the part green. Only the `--affected` selected-files path was exposed: the land
+and lane modes' `--collect-only` union check stops on a collection error first. The journal now appends
+`{"collect_error": <nodeid>}` for each module that fails to collect, a line with no nodeid that a resume never reads,
+and the `failed` verb exits 1 on it, printing `a collection error, which no failed test stands for: <nodeids>` to
+stderr, so gate.sh's existing `its failed tests cannot be read from its journal; not re-run` path leaves the part red
+and runs nothing again; gate.sh is unchanged for it. The finding itself needed no fix:
+`<git-common-dir>/gate-verdicts.log` holds 14 verdict lines from C800's land (2026-11-03T07:35:32Z) to the round's
+harvest, not 17, all `rerun_passed=0`, so no re-run has yet passed a test; its step 3 is C876's fix. Tests:
+`test_a_collection_error_beside_a_flake_stays_red` (land and lane),
+`test_the_failed_verb_reads_a_finished_journal_only`, extended.
