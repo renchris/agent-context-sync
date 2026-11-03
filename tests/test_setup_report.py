@@ -10521,6 +10521,36 @@ def test_another_threads_doctor_never_reaches_this_ones_group_holder() -> None:
     assert theirs == [] and mine == ["skill"], (theirs, mine)
 
 
+def test_a_cut_status_call_says_the_loop_line_was_not_read_c801(fake_mac: dict[str, Path]) -> None:
+    """B13 round 34 C801 (ruling 96): when the report's time limit cut the Status call, the Loop line said
+    `unknown (no status loop line)`, as if status had answered without one. A cut call reads `not read (status
+    did not finish in time)`, another failure `not read (status failed: <why>)` with no exception message, and
+    a status that answered without a loop line keeps `unknown`."""
+
+    def cut(config: object) -> list[str]:
+        raise TimeoutError("the report's time budget is used up")
+
+    def broken(config: object) -> list[str]:
+        raise RuntimeError("/Users/jdoe/secret exploded")
+
+    def timed_out_os(config: object) -> list[str]:
+        raise TimeoutError(60, "Operation timed out")  # an errno: a failure, not the time limit
+
+    for status, stage in (
+        (cut, "not read (status did not finish in time)"),
+        (broken, "not read (status failed: "),
+        (timed_out_os, "not read (status failed: "),
+        (lambda c: ["last runs: none"], "unknown (no status loop line)"),
+    ):
+        hooks = setup_report.ReportHooks(status=status)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        line = next(ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: "))
+        assert line.startswith(f"- Loop: {stage}"), line
+        assert "exploded" not in line and "secret" not in line, line
+        if stage.startswith("not read"):
+            assert "no status loop line" not in line, line
+
+
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("loop exploded")

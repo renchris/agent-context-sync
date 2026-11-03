@@ -557,8 +557,9 @@ The outcome judges only the install. How far the loop got after it is the Summar
 `Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
 `baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
 status's loop line (when status cannot read the state, `not read: status says <status's own words>`, or `not read
-(status cannot read the state)` when it gives none; `unknown (no status loop line)` when status printed no loop
-line); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
+(status cannot read the state)` when it gives none; `not read (status did not finish in time)` when the report's
+time limit cut the status call, and `not read (status failed: <why>)` when it failed otherwise (B13 round 34 C801);
+`unknown (no status loop line)` when status answered and printed no loop line); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 except agentsync's own fixed `~/.local/bin/agentsync`, which holds no name, matches doctor's fixes and the status
 lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`,
 the docs repo's AGENTS.md (named by rules 4, 6 and 8) reads `the docs repo's AGENTS.md`, its _sync/STATE.md (named

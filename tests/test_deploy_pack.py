@@ -7868,6 +7868,8 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
         "unknown (no status loop line)",
         "not read: status says",
         "not read (status cannot read the state)",
+        "not read (status did not finish in time)",  # B13 round 34 C801
+        "not read (status failed: ",
     ):
         assert form in source and f"`{form}" in para, form
     # rule 1's three `below` forms, each on Doctor's printing that line, else `below` stays

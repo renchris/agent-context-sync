@@ -4226,6 +4226,10 @@ class _Facts:
     # the runner's note of the first such read: a time-out says its seconds, a spent budget the time limit
     # (B13 round 34 C834, ruling 96)
     install_source_why: str = ""
+    # why the Status call gave no lines (B13 round 34 C801, ruling 96): "did not finish in time" or another
+    # failure's words, for the Loop line's stage; never loop_unread_why (Doctor's sort reads it, ruling 84)
+    # nor loop_unread (status's own words about a state it cannot read)
+    status_failed: str | None = None
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
@@ -11465,7 +11469,15 @@ def _status_section(r: _Run) -> list[str]:
         body = _status(r)
     except Exception as exc:
         body = [f"_This section failed: {type(exc).__name__}: {exc}_"]
+        # B13 round 34 C801 (ruling 96): the Loop line says the call was cut, never "no status loop line";
+        # an operating system's ETIMEDOUT (an errno) is a failure, not the report's time limit
+        timed_out = isinstance(exc, (TimeoutError, CallTimedOutError)) and getattr(exc, "errno", None) is None
+        r.facts.status_failed = _STATUS_NOT_IN_TIME if timed_out else _why_not_read(exc)
     return [*body, *_evidence(r)]
+
+
+_STATUS_NOT_IN_TIME = "did not finish in time"
+"""``facts.status_failed`` for a Status call the report's time limit cut (B13 round 34 C801)."""
 
 
 def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]:
@@ -15740,6 +15752,15 @@ def _loop_line(r: _Run) -> str:
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
+    if r.loop_stage is None and r.facts.loop is None and r.facts.status_failed:  # B13 round 34 C801
+        why = r.facts.status_failed
+        if why == _STATUS_NOT_IN_TIME:
+            stage = "not read (status did not finish in time)"
+        elif why.endswith(")") and " (" in why:  # one bracket, never two in a row (V11, V54)
+            head, tail = why[:-1].rsplit(" (", 1)
+            stage = _one_bracket(f"not read (status failed: {head})", tail)
+        else:
+            stage = f"not read (status failed: {why})"
     if r.loop_stage is None and r.facts.loop is not None:  # B13 round 17 U7: not a false "installed"
         # status's words as it says them, after "status says", in no bracket of the report's own: they can
         # hold one, and two read as a typo (B13 round 18 V11, V54)

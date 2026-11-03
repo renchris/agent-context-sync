@@ -37243,6 +37243,16 @@ with `_IDLE_AGAIN`, which install.sh's grep reads, and none of it joins the evid
 `test_after_the_first_unanswered_git_read_no_more_are_made_c802`, `test_an_unanswered_url_probe_is_no_answer_c873`
 and `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
 
+**A cut Status call says the Loop line was not read** (C801, ruling 96). With the Status call cut by the time limit,
+the Loop line said `unknown (no status loop line)`, as if status had answered without one. `_status_section` records
+why in a new `facts.status_failed` (never `loop_unread_why`, which Doctor's sort reads, nor `loop_unread`, status's
+own words): `did not finish in time` for a TimeoutError with no errno, else `_why_not_read`. `_loop_line` then reads
+`not read (status did not finish in time)` or `not read (status failed: <why>)`, one bracket; `unknown (no status loop
+line)` stays for a status that answered without one, no status hook and no config, and `r.loop_stage` stays None, so
+the issue link is unchanged. The guide's Loop paragraph names both forms. Tests:
+`tests/test_setup_report.py::test_a_cut_status_call_says_the_loop_line_was_not_read_c801`,
+`tests/test_deploy_pack.py::test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`.
+
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
 Reserved for round 34 lane RB of B13.
