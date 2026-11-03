@@ -2620,8 +2620,11 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
 
 
 def queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> GovernanceLostError | None:
-    """:func:`_queue_lost`, once per :func:`read_only_build` (C644)."""
-    found = _built_once("queue_lost", state_dir, lambda: _queue_lost(state_dir, gov))
+    """:func:`_queue_lost`, once per :func:`read_only_build` (C644) and hold state: sources.toml's hold
+    changes its words, so a call with it and one without never share an answer (B13 round 34 C842)."""
+    # gov.hold is the one field of gov that reaches the words (config_holds); another that does grows the key
+    what = "queue_lost, held" if gov is not None and gov.hold else "queue_lost"
+    found = _built_once(what, state_dir, lambda: _queue_lost(state_dir, gov))
     return cast("GovernanceLostError | None", found)
 
 
@@ -2637,12 +2640,17 @@ def governance_or_none(config_path: Path) -> GovernanceConfig | None:
 
 def _lost_queue_holds(
     state_dir: Path, gone: Sequence[Mapping[str, Any]], gov: GovernanceConfig | None
-) -> list[Hold]:
+) -> tuple[list[Hold], list[Hold]]:
     """The holds in force, sources.toml's (``gov``) and the hold record's among them, that refuse a hand run
-    of any lost queued purge of ``gone``: its source's, or every hold for an every-source selector, as
-    :func:`purge` reads them. Each read stands alone: a hold record that cannot be read keeps the hold list's
-    holds and the trail's, as status does, and a hold list that cannot be read names none of its own; its FAIL
-    says why, and the purge's refusal does (B13 round 33 C701; ruling 86)."""
+    of a lost queued purge of ``gone``, as ``(known, conditional)``. ``known`` holds those that refuse it
+    whatever it resolves to: a sourced record's source's, and for a sourceless one the hold on all and
+    sources.toml's. ``conditional`` holds every other hold in force when a record is sourceless: :func:`purge`
+    judges by the sources its plan resolves to (``affected_sources or None``), so such a hold refuses it only
+    if it reaches that hold's source or finds nothing, and is never dropped, or a 0-match purge would meet a
+    refusal no line named (B13 round 34 C874, C840; ruling 92). Each read stands alone: a hold record that
+    cannot be read keeps the hold list's holds and the trail's, as status does, and a hold list that cannot be
+    read names none of its own; its FAIL says why, and the purge's refusal does (B13 round 33 C701; ruling
+    86)."""
     listed: tuple[Hold, ...] = ()
     with contextlib.suppress(AgentSyncError, OSError):
         listed = state_holds(state_dir)
@@ -2653,13 +2661,27 @@ def _lost_queue_holds(
         with contextlib.suppress(AgentSyncError, OSError):
             kept = audit_lost_holds(state_dir, listed)
     holds = (*(config_holds(gov) if gov is not None else ()), *listed, *kept)
-    found: list[Hold] = []
+    known: list[Hold] = []
+    sourceless = False
     for rec in gone:
         sid = rec.get("source_id")
-        for hold in blocking_holds(holds, [sid] if isinstance(sid, str) and sid else None):
-            if hold not in found:
-                found.append(hold)
-    return found
+        if not (isinstance(sid, str) and sid):
+            sourceless = True
+        for hold in blocking_holds(holds, [sid] if isinstance(sid, str) and sid else []):
+            if hold not in known:
+                known.append(hold)
+    conditional: list[Hold] = []
+    if sourceless:
+        for hold in holds:
+            if hold not in known and hold not in conditional:
+                conditional.append(hold)
+    return known, conditional
+
+
+def _hold_count(holds: Iterable[Hold]) -> int:
+    """How many holds :func:`_named_holds` names: one per scope, and one for sources.toml's."""
+    holds = list(holds)
+    return len({h.scope for h in holds if h.origin != "config"}) + any(h.origin == "config" for h in holds)
 
 
 def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> GovernanceLostError | None:
@@ -2668,9 +2690,11 @@ def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governa
     (:func:`lost_queued`), so a queued purge the queue lost is never hidden behind the record's error (B13
     round 31 C539; ruling 46); a sync over that record still stops on the record's own error first
     (:func:`governance_damaged`, :func:`governance_lost`). With no copy the hand purge is the only way past
-    the refusing sync, and a hold refuses it, so a hold covering a lost purge's source puts the records
-    owner's release before it, worded as their decision: setting the hold again keeps every purge refused (B13
-    round 33 C701; ruling 86)."""
+    the refusing sync, and a hold refuses it, so a hold known to cover a lost purge (its source's, the hold
+    on all, sources.toml's) puts the records owner's release before it, worded as their decision: setting the
+    hold again keeps every purge refused (B13 round 33 C701; ruling 86). A sourceless purge's other holds are
+    named with a --dry-run before any release, since one refuses it only if it reaches that hold's source or
+    finds nothing (B13 round 34 C874; ruling 92)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):
@@ -2709,13 +2733,24 @@ def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governa
             # each by its reason and time, the id rebuilt from the manifest by fingerprint (C370, C312)
             redo = zip(gone, _redo_all(state_dir, gone), strict=True)
             ways = "; ".join(f"for the {r.get('reason')} purge at {r.get('at')}: {w}" for r, w in redo)
-            blocked = _lost_queue_holds(state_dir, gone, gov)
+            blocked, maybe = _lost_queue_holds(state_dir, gone, gov)
+            again = "setting it again" if _hold_count(blocked) == 1 else "setting any of them again"  # C841
             release = (
                 f"once the records owner decides to release {_named_holds(blocked)} "
-                f"({_release_how(blocked)}; setting it again keeps every purge it covers refused), "
+                f"({_release_how(blocked)}; {again} keeps every purge it covers refused), "
                 if blocked
                 else ""
             )
+            if maybe:  # a sourceless record: a hold on another source refuses only what reaches it (C874)
+                refuses = (
+                    "refuses only if it reaches that source"
+                    if _hold_count(maybe) == 1
+                    else "each refuse only if it reaches that hold's source"
+                )
+                release += (
+                    f"after a --dry-run of each purge, which {_named_holds(maybe)} {refuses}"
+                    " or finds nothing, and then only the records owner's decision lets it run, "
+                )
             fix = (
                 f"{put_back}; or, with no copy, {release}runs each purge by hand before the next sync, which "
                 f"refuses until then ({ways})"

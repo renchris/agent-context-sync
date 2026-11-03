@@ -36751,7 +36751,14 @@ clause is absent and the branch reads as before. `governance_lost` and `queue_lo
 `[governance]`; install.sh's caller gives none and its queue clause is lane RB's. `once the records owner decides to
 release ` joins both phrase lists (ruling 68). Tests:
 `test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_hand_purge_c701` and
-`test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701`.
+`test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_source_c701`. Amended 2026-11-03, §16.227 C874: not
+every hold for an every-source selector. `_lost_queue_holds` returns `(known, conditional)`: a sourced record's
+source's holds, and for a sourceless one the hold on all and sources.toml's, are known and keep the clause above;
+every other hold in force for a sourceless record is named in `after a --dry-run of each purge, which <holds> refuses
+only if it reaches that source or finds nothing, and then only the records owner's decision lets it run, `, never as a
+release, since `purge` judges by the sources its plan resolves to. Amended 2026-11-03, §16.227 C841: over two holds or
+more the clause reads `setting any of them again keeps every purge it covers refused`; one hold keeps `setting it
+again`.
 
 **C768 (ruling 86; the residual lane RB measured).** `lost_suppressions` reads the purge record's and the trail's lines, or
 the trail's alone when the record cannot be read (`_queue_events`, as `lost_queued` does; `audited_suppressions` keeps
@@ -37161,7 +37168,32 @@ Reserved for round 34 lane RB of B13.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 
-Reserved for round 34 lane B of B13.
+Round 34's ruling 92 and C804, C829, C832, C810, C811, C818, C831, C863, C843 and C875, in lane B's code: what a lost
+queue's fix asks of the records owner, doctor's children under a deadline, a refused governance folder's lines, and
+the words beside a governance stop. Each entry names its test.
+
+**C874 with C840's governance half, C841, C842 (ruling 92; data integrity).** A lost queue's no-copy fix asked the
+records owner to release a hold the hand purge never meets: for a sourceless `docs=` record `_lost_queue_holds` took
+every hold in force, while `purge` refuses only by the sources its plan resolves to (`affected_sources or None`), so a
+legal hold on another source was asked to be released for nothing. `_lost_queue_holds` returns `(known,
+conditional)`. A sourced record's source's holds, and for a sourceless record the hold on all and sources.toml's hold
+(which refuse it whatever it resolves to), are known: `_queue_lost` keeps `once the records owner decides to release
+<holds> (<commands>; setting it again keeps every purge it covers refused), ` for them word for word, the substring
+lane RB's step 1 reads (ruling 93), with `setting any of them again` over two holds or more (C841), since one re-set
+hold refuses what it covers. Every other hold in force for a sourceless record is conditional and still named, never
+dropped, since a sourceless purge that finds nothing is refused by every hold: `after a --dry-run of each purge, which
+<the hold on source 'beta'> refuses only if it reaches that source or finds nothing, and then only the records owner's
+decision lets it run, ` (`each refuse only if it reaches that hold's source` over two). That clause never holds `once
+the records owner decides to release `, and `or finds nothing, and then only the records owner's decision lets it run`
+joins both phrase lists (ruling 68). No held attribute goes on `GovernanceLostError`. `queue_lost`'s per-build cache
+keys on the str `queue_lost, held` when `gov.hold` is set, else `queue_lost`, so inside one read-only build a call with
+sources.toml's hold and one without never share an answer (C842); a later gov field that reaches the words grows the
+key. The C701 paragraph takes two dated lines. Tests:
+`test_a_lost_sourceless_purge_names_a_hold_on_another_source_only_as_one_its_dry_run_may_meet_c874` (two sources, a
+hold on beta, a sourceless record of a page in source: the purge runs with beta held, a 0-match purge is refused),
+`test_a_lost_sourceless_purge_still_needs_the_release_of_a_hold_on_all_c874`,
+`test_a_lost_purge_two_holds_refuse_says_setting_any_of_them_again_c841` and
+`test_queue_lost_in_one_build_answers_each_hold_state_apart_c842`.
 
 ### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
 

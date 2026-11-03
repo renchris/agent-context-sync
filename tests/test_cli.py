@@ -3364,6 +3364,121 @@ def test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_sou
     capsys.readouterr()
 
 
+def test_a_lost_sourceless_purge_names_a_hold_on_another_source_only_as_one_its_dry_run_may_meet_c874(
+    initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """B13 round 34 C874 with C840's governance half (ruling 92): a lost sourceless docs= purge of a page in
+    source, with only beta held, asked for the records owner's release of beta's hold, though the purge runs
+    with it held: a legal hold released for nothing. The hold on beta is named, but only as one a --dry-run
+    may meet, never as a release the purge needs; the page's purge runs with beta held, and a purge that
+    finds nothing is still refused by it, so the hold is never dropped from the words."""
+    beta = tmp_path / "beta"
+    beta.mkdir()
+    (beta / "beta-note.txt").write_text("beta note\n", encoding="utf-8")
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(beta), "--config", cfg]) == cli.EXIT_OK
+    assert "beta" in [s.id for s in load_config(Path(cfg)).sources]
+    _synced(load_config(Path(cfg)))
+    root = expand(initialised.state_paths.root)
+    page = "mirror/source/projects/sample.txt.md"
+    hold = ["hold", "beta", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK
+    dlp = governance.PurgeSelector.parse(f"docs={page}", source_id=None)
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert rc == cli.EXIT_FAILED
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    stop = capsys.readouterr().err
+    maybe = (
+        "after a --dry-run of each purge, which the hold on source 'beta' refuses only if it reaches that "
+        "source or finds nothing, and then only the records owner's decision lets it run, runs each purge "
+        "by hand"
+    )
+    for words in (failed, stop):
+        assert maybe in words, words
+        assert "once the records owner decides to release " not in words, words
+        assert "release the hold on source 'beta'" not in words, words
+    assert cli.main(
+        ["purge", "docs=mirror/zzz/*", "--reason", "dlp-remediation", "--dry-run", "--config", cfg]
+    ) == (cli.EXIT_FAILED)
+    named = ["purge", f"docs={page}", "--reason", "dlp-remediation", "--config", cfg]
+    assert cli.main([*named, "--dry-run"]) == cli.EXIT_OK
+    assert cli.main(named) == cli.EXIT_OK
+    capsys.readouterr()
+    assert governance.lost_queued(root) == []
+    assert [h.scope for h in governance.state_holds(root)] == ["beta"]
+
+
+def test_a_lost_sourceless_purge_still_needs_the_release_of_a_hold_on_all_c874(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C874's split: for a sourceless record the hold on all and sources.toml's refuse it whatever it resolves
+    to, so they stay known; a source's hold is conditional; a sourced record's own source's hold is known."""
+    holds = (
+        governance.Hold("all", "matter 8", "Ada", "", "list"),
+        governance.Hold("beta", "matter 8", "Ada", "", "list"),
+        governance.Hold("all", "hold = true", "sources.toml", "", "config"),
+    )
+    monkeypatch.setattr(governance, "state_holds", lambda _root: holds[:2])
+    monkeypatch.setattr(governance, "lost_holds", lambda _root, _listed: ())
+    gov = governance.GovernanceConfig(hold=True)
+    known, maybe = governance._lost_queue_holds(Path("/x"), [{"source_id": None}], gov)
+    assert known == [holds[2], holds[0]] and maybe == [holds[1]]
+    known, maybe = governance._lost_queue_holds(Path("/x"), [{"source_id": "beta"}], None)
+    assert known == [holds[0], holds[1]] and maybe == []
+    known, maybe = governance._lost_queue_holds(Path("/x"), [{"source_id": "alpha"}], None)
+    assert known == [holds[0]] and maybe == []
+
+
+def test_a_lost_purge_two_holds_refuse_says_setting_any_of_them_again_c841(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 34 C841: with the hold on all and the hold on source both refusing a lost purge, the clause
+    said `setting it again` of two holds. It says `setting any of them again`, as one re-set hold refuses it;
+    one hold keeps the singular (the C701 test)."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    for scope in ("all", "source"):
+        argv = ["hold", scope, "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+        assert cli.main(argv) == cli.EXIT_OK
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    capsys.readouterr()
+    lost = governance.queue_lost(root)
+    assert lost is not None
+    assert "decides to release the hold on all and the hold on source 'source' (" in lost.fix, lost.fix
+    assert "; setting any of them again keeps every purge it covers refused), " in lost.fix, lost.fix
+    assert "setting it again" not in lost.fix, lost.fix
+
+
+def test_queue_lost_in_one_build_answers_each_hold_state_apart_c842(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 34 C842: queue_lost's per-build cache keyed on the state folder alone, so inside one
+    read-only build a call with sources.toml's hold got the gov-less call's words (no release clause), and
+    the reverse order gave the gov-less call the clause. Each hold state has its own entry."""
+    _cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    gov = governance.GovernanceConfig(hold=True, hold_reason="matter 9", hold_owner="Ada")
+    clause = "the hold set in sources.toml's [governance]"
+    for first, second in ((None, gov), (gov, None)):
+        with governance.read_only_build():
+            one = governance.queue_lost(root, first)
+            two = governance.queue_lost(root, second)
+            again = governance.queue_lost(root, first)
+        assert one is not None and two is not None and again is one
+        assert (clause in one.fix) is (first is gov), one.fix
+        assert (clause in two.fix) is (second is gov), two.fix
+
+
 def test_statuss_next_leads_with_a_damaged_governance_file_the_sync_stops_on(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
