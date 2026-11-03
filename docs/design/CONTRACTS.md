@@ -37163,6 +37163,11 @@ library (`contoso.sharepoint.com:/sites/Contoso` beside OneDrive-Contoso) or as 
 printed in clear in the Python report while the shell's, which reads no sites, cut them out. `add` now appends the
 organisation's `org` literal beside the first one, on its placeholder. Test:
 `tests/test_report_redaction.py::test_an_organisation_registered_after_another_kind_is_still_cut_out_of_a_longer_word`.
+Amended 2026-11-03, §16.225 C870, C835: the literal takes the mode and the lookup entry the organisation would have
+had registered first, `context`, `joined` or `org`, each in its own table under the first placeholder, so every
+spelling it matches maps back (an exact or folded first registrant's table missed `contoso2026`, `mc_contoso` and
+`contoso-group`, which printed in clear); a joined value stays joined, so `network` in the report's own words stays
+whole while `net-work` is cut, and a context value is cut only after an app's name or before a domain.
 
 **A capitals run beside an organisation is a CamelCase boundary** (review backtest er-32#2; amends §16.93 M50). The
 trail rule refused any capital that no small letter follows, so that `CONTOSOX` stays whole, without looking at the
@@ -37189,6 +37194,18 @@ uncounted, the form a `--source-local` argument already gets; never a `/Users/<u
 unquoted path with a space keeps its tail after the first space. install.sh's `redact_stream` makes the same cut (lane
 RB). Test: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole`; the `/Users/jdoe2/b` boundary case
 of `test_redactor_is_consistent_and_bounded` now reads `/Users/<path>`.
+
+**An organisation after another kind keeps its own mode and lookup** (C870 with C835, ruling 91; data integrity; amends
+§16.224 er-32#0). With a surname or a host spelled as the organisation and registered first, exactly or folded, the
+organisation's in-word literal found no entry in the first registrant's table for its other spellings, so
+`contoso2026`, `mc_contoso` and `contoso-group` printed in clear in the Python report while the shell's cut them.
+`Redactor.add`'s known branch registers the literal in the mode and table the organisation would have had first,
+`context`, `joined` or `org`, under the first placeholder (`setdefault(_norm(value), known)`), never a bare fuzzy
+entry: `network`, `home` and `link` in the report's own words stay whole, `net-work` and `link.sharepoint.com` are
+cut. Tests: `tests/test_report_redaction.py::test_an_organisation_after_another_kind_keeps_its_own_mode_and_lookup`
+(C870's five cases, C835's three), and, both readers through `_fuzzy_report`,
+`tests/test_install_oneshot.py::test_an_organisation_spelled_as_the_surname_is_cut_in_both_reports`, which asserts
+the value absent from each, never the two equal (`<name>` beside the shell's `<org-1>`).
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

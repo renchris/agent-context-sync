@@ -1832,17 +1832,24 @@ class Redactor:
             if named:
                 self._word_named.add(known)
             # An organisation a library, folder or name registered first is still cut out of a longer word
-            # (review backtest er-32#0): its "org" literal is added beside the first one, on its placeholder.
-            if (
-                kind == "org"
-                and fuzzy
-                and not context
-                and len(_norm(value)) >= 3
-                and _tokens(value)
-                and (value, "org") not in self._literals
-            ):
-                self._literals.append((value, "org"))
-                self._regex = None
+            # (review backtest er-32#0): its literal is added beside the first one, on its placeholder. B13
+            # round 34 C870, C835 (ruling 91): in the mode and lookup table it would have had registered
+            # first, so every spelling the literal matches maps back to the placeholder (an exact or folded
+            # first registrant's table misses "contoso2026", "mc_contoso", "contoso-group"), a context value
+            # stays after an app's name or before a domain, and a joined one stays joined ("network" in the
+            # report's own text is never cut, "net-work" is), as install.sh's flags j and o keep them
+            if kind == "org" and fuzzy and len(_norm(value)) >= 3 and _tokens(value):
+                mode, table = (
+                    ("context", self._context)
+                    if context
+                    else ("joined", self._joined)
+                    if joined
+                    else ("org", self._fuzzy)
+                )
+                if (value, mode) not in self._literals:
+                    table.setdefault(_norm(value), known)
+                    self._literals.append((value, mode))
+                    self._regex = None
             return
         if url and _bare(value).lower() in self._url_hosts:
             return

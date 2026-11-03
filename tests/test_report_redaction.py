@@ -999,3 +999,60 @@ def test_an_organisation_registered_after_another_kind_is_still_cut_out_of_a_lon
     red.add(first, value, fuzzy=True)
     red.add("org", value, fuzzy=True)
     assert red.redact(said) == want
+
+
+@pytest.mark.parametrize(
+    ("first", "value", "said", "want"),
+    [
+        (  # an exact surname first, in two cases (C870's case 1, C835's surname case)
+            [("name", "Contoso", {}), ("name", "CONTOSO", {})],
+            "Contoso",
+            "contoso ran, contoso2026, contoso.sharepoint.com, contoso-docs, contosoHQ, AcmeContoso",
+            "<name> ran, <name>2026, <name>.sharepoint.com, <name>-docs, <name>HQ, Acme<name>",
+        ),
+        (
+            [("name", "McContoso", {})],
+            "McContoso",
+            "Mc-Contoso, mc_contoso, mc contoso",
+            "<name>, <name>, <name>",
+        ),
+        (  # a folded first registrant (C835's host case)
+            [("host", "Contoso Group", {"ignore_case": True})],
+            "Contoso Group",
+            "contoso-group, Contoso_Group, ContosoGroup",
+            "<host>, <host>, <host>",
+        ),
+        (  # joined: the report's own word stays whole
+            [("name", "NetWork", {})],
+            "NetWork",
+            "the network is up, Net Work, net-work",
+            "the network is up, <name>, <name>",
+        ),
+        (  # joined after a fold (C835's joined case)
+            [("host", "Ho Me", {"ignore_case": True})],
+            "Ho Me",
+            "the home folder, Home, ho-me, Ho Me, HoMe",
+            "the home folder, Home, <host>, <host>, <host>",
+        ),
+        (  # context: after an app's name or before a domain only
+            [("name", "Link", {})],
+            "Link",
+            "the link broke, link.sharepoint.com, link-my.sharepoint.com, OneDrive-Link",
+            "the link broke, <name>.sharepoint.com, <name>-my.sharepoint.com, OneDrive-<name>",
+        ),
+    ],
+)
+def test_an_organisation_after_another_kind_keeps_its_own_mode_and_lookup(
+    first: list[tuple[str, str, dict[str, bool]]], value: str, said: str, want: str
+) -> None:
+    """B13 round 34 C870, C835 (ruling 91): an organisation spelled as a value an exact or folded kind
+    registered first got its in-word literal (review backtest er-32#0) but no entry in the fuzzy table, so
+    every spelling the literal matched that the first table missed (``contoso2026``, ``mc_contoso``,
+    ``contoso-group``) printed in clear in the Python report while the shell's cut it. The literal takes the
+    mode and the table the organisation would have had registered first: context, joined or org, so plain
+    ``network``, ``home`` and ``link`` in the report's own words stay whole."""
+    red = setup_report.Redactor()
+    for kind, name, flags in first:
+        red.add(kind, name, **flags)
+    red.add("org", value, fuzzy=True)
+    assert red.redact(said) == want
