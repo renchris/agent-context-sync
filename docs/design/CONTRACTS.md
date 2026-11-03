@@ -429,7 +429,7 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    cannot be read: a `sqlite3.DatabaseError` that `doctor.unreadable_code` names (SQLITE_CORRUPT or SQLITE_NOTADB;
    `cycle._manifest_unreadable`) re-raises out of `_run_source`, `run()` discards pending, writes the run's end best
    effort and re-raises, and the CLI prints `state: <db> cannot be read: ... (fix: <MANIFEST_FIX>)` and exits 65.
-   **Amended 2026-11-03, §16.223 (review backtest er-30#0):** the catches inside a source's work re-raise it too:
+   **Amended 2026-11-03, §16.224 (review backtest er-30#0):** the catches inside a source's work re-raise it too:
    the re-read of unchanged files, both recording-pass catches and the dry run's.
 6. Work queue = `pending_work(source)` (sorted by stable_id): `arm.fetch` under `ByteBudget(max_materialise_bytes,
    max_files)` → `canonical_hash` → `set_content` → `classify_content` → `convert_file` → `classify_output` →
@@ -19713,6 +19713,9 @@ Folders, libraries, generic pairs, context organisations and joined (`j`) pairs 
 `test_an_organisation_is_redacted_inside_a_longer_word` (both readers: Contoso, Storage, Box),
 `test_both_readers_hold_the_same_identifiers_whole`, and L66's tests.
 Amended 2026-10-19, §16.134 V1: an organisation that spells a report word is cut out of a longer word too; only joined names and context organisations stay whole-word.
+Amended 2026-11-03, §16.224 (review backtest er-32#0, er-32#2): a capitals run beside it is a boundary too
+(`ContosoHQ`, `ITContoso`; `CONTOSOX` and `XCONTOSO` stay whole), and an organisation a library, folder or name
+registered first is still cut out of a longer word, on that first placeholder.
 
 **A proxy host an earlier line names stays redacted once the proxy is unset** (M29; amends §16.75 J78). Both readers
 registered only the proxies in force when the report ran, so a friction line from an attempt whose git stop named a
@@ -37039,7 +37042,7 @@ Tests: `test_a_part_whose_tests_fail_under_load_and_pass_alone_is_green` (1 and 
 `test_a_lane_parts_re_run_journals_beside_the_parts_and_a_green_one_drops_the_log`,
 `test_the_failed_verb_reads_a_finished_journal_only`.
 
-### 16.224 Review backtest: the seed's CA folder and TLS backend, and the citation lint's stray quote mark (2026-11-03)
+### 16.224 Review backtest: the seed's CA folder and TLS backend, the citation lint's stray quote mark, manifest damage in a source's extra work, and an organisation's in-word redaction (2026-11-03)
 
 **A CA folder beside a named bundle reaches the seed's curl** (review backtest er-28#0; amends §16.54 Q79).
 `/usr/bin/curl` 8.7.1 reads `SSL_CERT_DIR` and `SSL_CERT_FILE` only when `CURL_CA_BUNDLE` is unset: measured
@@ -37080,3 +37083,21 @@ same damage a failed recording, and the dry run's made it a failed source (exit 
 catch: a count never fails the report, and they run after the cycle's own writes. Tests:
 `tests/test_cli.py::test_manifest_damage_a_files_read_again_meets_stops_the_sync` and
 `test_manifest_damage_a_dry_run_meets_is_raised_not_a_failed_source`.
+
+**An organisation registered after another kind is still cut out of a longer word** (review backtest er-32#0;
+amends §16.93 M50). `_build_redactor` registers the full name and each SharePoint site's library before the
+organisations, and `Redactor.add` returned on a value already registered, so an organisation spelled as the site's
+library (`contoso.sharepoint.com:/sites/Contoso` beside OneDrive-Contoso) or as the full name (a CloudStorage folder
+`Box-Jane Doe`) kept the first registrant's whole-word literal: `ContosoGroup`, `Contoso2026` and `AcmeContoso`
+printed in clear in the Python report while the shell's, which reads no sites, cut them out. `add` now appends the
+organisation's `org` literal beside the first one, on its placeholder. Test:
+`tests/test_report_redaction.py::test_an_organisation_registered_after_another_kind_is_still_cut_out_of_a_longer_word`.
+
+**A capitals run beside an organisation is a CamelCase boundary** (review backtest er-32#2; amends §16.93 M50). The
+trail rule refused any capital that no small letter follows, so that `CONTOSOX` stays whole, without looking at the
+match's own last letter, and the lead rule refused any capital before the match: both readers printed the name in
+`ContosoHQ`, `ContosoLLC`, `ITContoso` and `HRContoso`, each a boundary as `_tokens` splits one ("a capital after a
+small letter", `HTTPServer`). The match may now end before any capital when its last letter is small, and start
+after a capital when it starts with a capital and a small letter, in `setup_report._org_edges` and install.sh's
+`org_lead` and `org_trail` alike; `CONTOSOX`, `XCONTOSO` and `CONTOSOHQ` stay whole. Test:
+`tests/test_install_oneshot.py::test_an_organisation_is_redacted_inside_a_longer_word` (both readers).

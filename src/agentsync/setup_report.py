@@ -858,8 +858,10 @@ _URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
 @functools.cache
 def _org_edges(form: str, lead: str, trail: str) -> tuple[str, str]:
     """The lookarounds of an organisation matched inside a longer word (mode ``org``, B13 round 11 M50):
-    after a small letter or a digit when the match starts with a capital ("AcmeContoso"), and before a capital
-    that a small letter follows ("ContosoGroup") or a digit ("Contoso2026"), as install.sh's pair flag o.
+    after a small letter or a digit when the match starts with a capital ("AcmeContoso"), or after a capital
+    when it starts with a capital and a small letter ("ITContoso"); before a capital that a small letter
+    follows ("ContosoGroup"), a digit ("Contoso2026"), or any capital when the match ends in a small letter
+    ("ContosoHQ"): each a CamelCase boundary as :func:`_tokens` splits one, as install.sh's pair flag o.
     Never where the organisation and the CamelCase word beside it spell one of :data:`_HELD_IDENTIFIERS`
     ("One" in OneDrive).  Case-sensitive, inside the literal's ``(?i:...)``."""
     key = _norm(form)
@@ -869,14 +871,18 @@ def _org_edges(form: str, lead: str, trail: str) -> tuple[str, str]:
             for h in sorted(_HELD_IDENTIFIERS)
             if len(h) > len(key) and h.lower().endswith(key)
         )
-        lead = f"(?-i:(?<![A-Z])(?:(?<![a-z0-9])|(?=[A-Z]){before}))"
+        # a capital it starts with after a small letter or a digit ("AcmeContoso"), or a capital and a small
+        # letter after a capitals run ("ITContoso", as _tokens splits "HTTPServer"); never inside "XCONTOSO"
+        lead = f"(?-i:(?:(?<![A-Za-z0-9])|(?<=[a-z0-9])(?=[A-Z]){before}|(?<=[A-Z])(?=[A-Z][a-z]){before}))"
     if trail:
         after = "".join(
             f"(?!{re.escape(h[len(key) :])}(?![a-z]))"
             for h in sorted(_HELD_IDENTIFIERS)
             if len(h) > len(key) and h.lower().startswith(key)
         )
-        trail = f"(?-i:(?![a-z])(?![A-Z](?![a-z])){after})"
+        # any capital after a match that ends in a small letter ("ContosoHQ"), else only a capital and a small
+        # letter ("CONTOSOGroup"), so "CONTOSOX" stays whole
+        trail = f"(?-i:(?![a-z])(?:(?<=[a-z])|(?![A-Z](?![a-z]))){after})"
     return lead, trail
 
 
@@ -1800,6 +1806,18 @@ class Redactor:
             # took first is still one, never generic: the report goes private only, as install.sh's does
             if named:
                 self._word_named.add(known)
+            # An organisation a library, folder or name registered first is still cut out of a longer word
+            # (review backtest er-32#0): its "org" literal is added beside the first one, on its placeholder.
+            if (
+                kind == "org"
+                and fuzzy
+                and not context
+                and len(_norm(value)) >= 3
+                and _tokens(value)
+                and (value, "org") not in self._literals
+            ):
+                self._literals.append((value, "org"))
+                self._regex = None
             return
         if url and _bare(value).lower() in self._url_hosts:
             return

@@ -972,3 +972,29 @@ def test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted(
         "~/Library/Caches/agentsync; the state file"
     )
     assert red.redact(clear) == clear
+
+
+@pytest.mark.parametrize(
+    ("first", "value", "said", "want"),
+    [
+        (
+            "library",
+            "Contoso",
+            "ContosoGroup, Contoso2026, AcmeContoso",
+            "<library-1>Group, <library-1>2026, Acme<library-1>",
+        ),
+        ("name", "Jane Doe", "JaneDoeGroup, Jane Doe", "<name>Group, <name>"),
+    ],
+)
+def test_an_organisation_registered_after_another_kind_is_still_cut_out_of_a_longer_word(
+    first: str, value: str, said: str, want: str
+) -> None:
+    """Review backtest er-32#0: _build_redactor registers a SharePoint site's library and the full name before
+    the organisations, and add() returned on the known value, so its literal kept the first registrant's
+    whole-word mode and "ContosoGroup" printed in clear. The organisation's in-word literal is added
+    beside it,
+    on the first placeholder."""
+    red = setup_report.Redactor()
+    red.add(first, value, fuzzy=True)
+    red.add("org", value, fuzzy=True)
+    assert red.redact(said) == want

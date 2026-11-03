@@ -20552,6 +20552,12 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
             "ContosoGroup, Contoso2026, ContosoCorp.com, AcmeContoso, Contosoft, contosogroup, CONTOSOX",
             "<org-1>Group, <org-1>2026, <org-1>Corp.com, Acme<org-1>, Contosoft, contosogroup, CONTOSOX",
         ),
+        # a capitals run beside it is a CamelCase boundary too, as _tokens splits one (backtest er-32#2)
+        (
+            "Contoso",
+            "ContosoHQ, ContosoLLC, ITContoso, HRContoso, CONTOSOHQ, XCONTOSO",
+            "<org-1>HQ, <org-1>LLC, IT<org-1>, HR<org-1>, CONTOSOHQ, XCONTOSO",
+        ),
         # an organisation that begins or ends one of agentsync's own identifiers leaves that one whole
         ("Storage", "CloudStorage, StorageGroup, AcmeStorage", "CloudStorage, <org-1>Group, Acme<org-1>"),
         # one that is such an identifier is still cut where the word beside it completes none (reviewer)

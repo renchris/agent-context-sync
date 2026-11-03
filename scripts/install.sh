@@ -3788,11 +3788,14 @@ redact_stream() {
 	}
 	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
 	# Flag o (B13 round 11 M50): an organisation is cut out of a longer word where a small letter or a digit comes
-	# before a capital it starts with (AcmeContoso), and where a capital and a small letter (ContosoGroup) or a
-	# digit (Contoso2026) follow it; never where the text before or after it, as written, completes one of the
-	# identifiers hw (an organisation Drive after One, or One before Drive): setup_report._org_edges, case for case.
-	function org_lead(k, before, hit,    i, h, p, n) {
-		if (!og[k] || substr(before, length(before), 1) !~ /[a-z0-9]/ || substr(hit, 1, 1) !~ /[A-Z]/) return 0
+	# before a capital it starts with (AcmeContoso), or a capital before a capital and a small letter it starts
+	# with (ITContoso), and where a capital and a small letter (ContosoGroup) or a digit (Contoso2026) follow it,
+	# or any capital when it ends in a small letter (ContosoHQ); never where the text before or after it, as
+	# written, completes one of the identifiers hw (an organisation Drive after One, or One before Drive):
+	# setup_report._org_edges, case for case.
+	function org_lead(k, before, hit,    i, h, p, n, b) {
+		b = substr(before, length(before), 1)
+		if (!og[k] || !((b ~ /[a-z0-9]/ && substr(hit, 1, 1) ~ /[A-Z]/) || (b ~ /[A-Z]/ && substr(hit, 1, 2) ~ /^[A-Z][a-z]/))) return 0
 		n = length(okey[k])
 		for (i = 1; i <= nw; i++) {
 			h = hw[i]
@@ -3803,7 +3806,7 @@ redact_stream() {
 		return 1
 	}
 	function org_trail(k, hit, after,    i, h, r, n) {
-		if (!og[k] || (substr(after, 1, 1) !~ /[0-9]/ && substr(after, 1, 2) !~ /^[A-Z][a-z]/)) return 0
+		if (!og[k] || (substr(after, 1, 1) !~ /[0-9]/ && substr(after, 1, 2) !~ /^[A-Z][a-z]/ && !(substr(hit, length(hit), 1) ~ /[a-z]/ && substr(after, 1, 1) ~ /[A-Z]/))) return 0
 		n = length(okey[k])
 		for (i = 1; i <= nw; i++) {
 			h = hw[i]
