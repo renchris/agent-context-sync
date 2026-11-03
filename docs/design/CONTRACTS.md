@@ -37101,3 +37101,23 @@ small letter", `HTTPServer`). The match may now end before any capital when its 
 after a capital when it starts with a capital and a small letter, in `setup_report._org_edges` and install.sh's
 `org_lead` and `org_trail` alike; `CONTOSOX`, `XCONTOSO` and `CONTOSOHQ` stay whole. Test:
 `tests/test_install_oneshot.py::test_an_organisation_is_redacted_inside_a_longer_word` (both readers).
+
+### 16.225 Round 34: the report: another home cut whole, organisation spellings, a read cut in time and the credit rule (2026-11-03, wave B13 round 34 lane RA)
+
+Reserved for round 34 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 34").
+
+### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
+
+Reserved for round 34 lane RB of B13.
+
+### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
+
+Reserved for round 34 lane B of B13.
+
+### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
+
+Reserved for round 34 lane E of B13.
+
+### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
+
+Reserved for round 34 lane D of B13.

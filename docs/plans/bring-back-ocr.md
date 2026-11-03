@@ -2346,6 +2346,41 @@ Round 34: the round 33 workflow (`round33/round33-workflow.js` through `round34/
 to §16.228, outputs `round34/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since
 no lane changed the prompt.
 
+### B13 round 34: v33 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-03)
+
+Run `wf_66f6625b-56d` on `4e0e8604` (BASE `807bcdba`; 96 agents, 0 errors, 1 hour 25 minutes, resumed once after an
+account's weekly limit stopped 65 verifier slots; the finders' results replayed from the journal): 79 findings, 76
+confirmed (0 turns, 17 wrongs, 59 small), 3 refuted (C846, C853, C861). First round with no turn since the stop rule
+was set; the stop rule is not met (17 wrongs). All six rehearsal scenarios passed on the role's path. Six items are data
+integrity: two are privacy, on real output, and build first: an `install.log` line under another home prints that old
+login in the report and `bring-back.md`, and in the shell fallback an org and folder too (C822), and organisation
+aliases that match but stay in clear in the Python report (C870, with C835). The others are hold words that send the
+person to a hand purge a hold refuses (C840, C879) and C874. One item needs prompt text, C823: the Finish's cut-off
+clause drops the new remedy. Lead ruling: it builds now, not in the final batch as its spec suggests, so the prompt
+goes to v34 this round and the next round rehearses the prompt the operator will paste. Codex's five finders ran and
+its second opinion gave 17 opinions, none disputed. Gemini did not run: the allow rule for
+`round33/tools/agy-review.sh` is still the operator's (backlog `4526ae50d07e`), so this round's non-Anthropic half is
+Codex-only. A triage workflow (`wf_13f01471-dea`) placed every item once.
+
+Lead rulings for round 34 (in `lanes/COMMON33.md`, mirrored in `docs/lanes/COMMON.md`): (91) a path in another home is
+cut whole and an organisation's spellings are cut whichever name registered first, one rule for both reports; (92) a
+lost queue's fix asks only for a release the hand purge needs; (93) step 1 reads status's own judgment of the hold;
+(94) with governance/ gone the words describe the folder and say which line each act fixes; (95) one credit rule in
+every reader, correcting ruling 82 (decision `95eb0d8ccf94`, conviction 80, veto window to 2026-11-05); (96) a read the
+report did not get says what cut it, git's fixed caps stay (decision `09d8977d71be`, conviction 85, same window); (97)
+the NEXT names only a remedy that can work, and the prompt relays it; (98) the records page and setup guide say what
+the code does, each with its condition; (99) ruling 74 holds for passages edited in place; (100) a gate re-run clears
+only what it ran and convicts nothing a signal stopped; (101) the lead's calls: duplicates built once, the phrase
+lists, and the kit items.
+
+Convergence: confirmed as before, then 76; turns as before, then 0; wrongs as before, then 17.
+
+Lanes (`--account auto`, CONTRACTS §16.225 to §16.229, §16.224 being the review backtest's, land lock
+`/tmp/b13-r34-land.lock`, scratch under `round34/`, back-channel pane 3 or its successor): RA 18 (C822, C870 and C835
+first: privacy), RB 11 (ruling 91's shell half, then C840 and C879), B 13 (C874 first), E 6, D 17 (the v34 commit
+waits on lane RB's NEXT). The lead holds 11 kit items (C845, C807, C814, C815, C816, C824, C825, C828, C865, C867,
+C868) for round 35's script.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
