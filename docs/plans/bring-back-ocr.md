@@ -2305,6 +2305,47 @@ C778 first: data integrity; then rulings 79 and 80, whose words lanes RA, RB and
 installer half first), E 8 (C719 first, which lane RA waits on), D 12 (C770 first: every fresh worktree's gate
 needs it). The lead holds 4 kit items (C715, C713, C724, C725) for round 34's script.
 
+### B13 round 33 landed (2026-11-03)
+
+All five lanes landed, plus a sixth the lead added for the gate (lane G); the prompt is still v33. Notes
+`lanes/r33-<lane>.md`, lead notes `round29/lead-notes.md`. All 77 confirmed items are built or carry a measured
+not-built reason, in the lanes' commits `807bcdba..cb6cf84a` (every landed tip CI green), and the lead's kit halves
+(C713, C724, C725, C774's brief half, and C715's helper source) are in round 34's script (`round34/tools/edit.py`:
+kitcheck's case pattern in the leading-paren form `/bin/bash` 3.2 parses inside `$( )`; a restored copy's file-time
+`not repeated` form and emptied `.sent` are expected, and a held-form probe runs last on the original home or remaps
+`.sent` to the copy's inodes first; whole-home restores are named beside the six helper-copy conditions; the folder
+check also runs at each act's end and the `shasum` rerun names the manifest's folder; scenario B copies helpers only
+from `helpers-4a42af9/` after its manifest check). Not built, each with a measured reason: C711's `, with ... missing`
+(ruling 81 builds only C722's `that`; lane B); C755's `audit_trail_short` lead (ruling 79 keeps `audit_trail_lost`
+alone for the lead and the gates; lane B); a held, not lost, hold beside a lost queue keeps step 1's plain words, since
+step 1 does not read active holds and status's FAIL names the release (lane RB); the verifier's "skip the read when a
+-wal exists" fallback for C727 (it brings back round 16 T6 under a running sync; lane RB).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `807bcdba..7b23a0a7` (with the lead commit), and `6b1b8e79..cb6cf84a`, 13 commits |
+| G | `f811ebcb`, 1 commit (C800) |
+| RB + RA | `2191a79a..b948dfa7`, 20 commits (one joint land; RA's 7 rebased under RB's) |
+| E | `6ab55dfe..85e10e36`, 5 commits |
+| B | `494ef030..9f82edd0`, 18 commits |
+
+Learnings: the fire (2026-11-01 07:4x) to the last land took 49 hours (round 32: 16.5). From 2026-11-01 18:00 to 2026-11-03 01:4x no
+land passed: at load 600 to 1000 on 10 cores every land gate (seven of them, each 2 to 7 hours) went red on 1 to 9
+tests that passed alone (install.sh and pandoc timeouts, OCR and step-1 probe tests, a SIGKILLed sync, one xdist
+worker lost to memory), a different set each run, none in a diff. The recycled lead fired lane G (C800, §16.223):
+a pytest part that ends 1 with 1 to 20 failed tests re-runs exactly those once with `-n 0`, and only a second failure
+convicts (operator ruling 2026-10-20: load never falls, and a timeout we impose is "unknown, retry"); the verdict
+line counts them (`rerun_passed=`). The lanes held their lands until it was on trunk, and every land after it passed
+on its first gate. Lanes RA and RB landed jointly (one 3 to 7 hour gate instead of two). The machine gate-slot pool
+also held lane RB's and lane G's land tickets for an hour or more behind other projects' test runs (design D10: no
+maximum wait). Gemini stayed refused (backlog `4526ae50d07e`, the allow rule for `round33/tools/agy-review.sh`).
+
+Round 34: the round 33 workflow (`round33/round33-workflow.js` through `round34/tools/edit.py` and
+`edit-xvendor.py`, codex-only unless the Gemini allow rule appears) with the harvest list in
+`round34/tools/harvest-lead.txt`, on this section's landed tip, BASE `807bcdba` (round 33's lead commit, where the lanes started), ids C801 and up, CONTRACTS §16.224
+to §16.228, outputs `round34/`; scenario C keeps the v32 block at `c93fcd96` and the v31 block at `ed901cd3`, since
+no lane changed the prompt.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
