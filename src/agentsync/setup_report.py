@@ -11784,7 +11784,10 @@ def _background(r: _Run) -> list[str]:
                 else "the report's time limit was used up before launchctl print ran"
             )
             state = "present" if has_plist else "absent"
-            out.append(f"- {label}: not measured ({why}; plist {state}): {_idle_again(r)}")
+            # B13 round 34 C819 (ruling 96): no advice here; install.sh's grep never reads these lines, and
+            # the Summary's background sync line carries it once (under simulated launchd those jobs are not
+            # this setup's, so none is lost)
+            out.append(f"- {label}: not measured ({why}; plist {state})")
             r.facts.background.append(f"{suffix} not measured")
             continue
         if rc != 0:
@@ -17225,13 +17228,17 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append(_installer_output_line(r, runs, scoped=scoped, late=alone))
     out.append(_first_sync_line(r, runs, scoped=scoped, late=alone))
     out.append(_doctor_line(r, runs))
+    evidence = _evidence_line(r)  # built once, before the background line reads it (C819)
     if run_type == "simulated launchd" or r.facts.launchd_simulated:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")
     elif r.facts.background:
         cut = any(said.endswith(" not measured") for said in r.facts.background)  # the advice once (C720)
-        out.append(
-            "- background sync: " + " · ".join(r.facts.background) + (f": {_idle_again(r)}" if cut else "")
-        )
+        # B13 round 34 C819 (ruling 96): beside an evidence line that already gives it, a pointer instead,
+        # so two adjacent lines do not repeat it
+        tail = ""
+        if cut:
+            tail = " (see the evidence line)" if _idle_again(r) in evidence else f": {_idle_again(r)}"
+        out.append("- background sync: " + " · ".join(r.facts.background) + tail)
     layout = att.layout if att is not None else prompt_layout(None)  # no friction log: the newest prompt
     if layout.version < 7 or expand(IT_DRAFT).exists():  # since v7 there is no IT request step
         out.append(_it_draft_line(4 if layout.version == 5 else REPORT_STEP))
@@ -17241,7 +17248,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- PATH: SHADOW: the first agentsync on PATH is {r.facts.shadow}, not ~/.local/bin/agentsync"
             f"{expected}"
         )
-    out.append(_evidence_line(r))
+    out.append(evidence)
     out.append(f"- redaction: {_REDACTION_MARK}")
     title = (
         f"Items that were not one command (attempt {att.number}):"

@@ -16857,8 +16857,7 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_idle_again":
                 writers.add(fn.name)
     assert names == {"_cut_off_words", "_idle_again"}, names
-    assert writers == {
-        "_background",  # a Background runs line; the Summary's own, which install.sh reads, is below
+    assert writers == {  # not _background since B13 round 34 C819: the Summary's background line gives it
         "_cut_off_words",
         "_doctor",
         "_doctor_line",
@@ -22296,7 +22295,7 @@ def test_a_launchctl_print_that_did_not_answer_is_not_measured_c720(
     lines = setup_report._background(r)
     for job in ("poll", "reconcile"):
         assert (
-            f"- com.agentsync.{job}: not measured ({why}; plist {state}): {setup_report._IDLE_AGAIN}" in lines
+            f"- com.agentsync.{job}: not measured ({why}; plist {state})" in lines  # no advice (C819)
         ), lines
     assert not any("not installed" in ln or "NOT loaded" in ln or "install-agent" in ln for ln in lines)
     assert r.facts.background == ["poll not measured", "reconcile not measured"]
@@ -22346,6 +22345,52 @@ def test_the_budget_used_up_says_not_measured_in_every_part_c716_c720(
         text, "Summary"
     )
     assert "commit and origin not read: the report's time limit" in text
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_cut_background_read_gives_the_advice_once_where_install_sh_reads_it_c819(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C819 (ruling 96): a cut sendable report gave the re-run advice five times, two of them on
+    adjacent Summary lines. Background's job lines, which install.sh's grep never reads, give none; the
+    Summary's background line keeps it when the evidence line does not, else ends `(see the evidence line)`;
+    a doctor-only cut and a background-only cut each still give it on a line install.sh's grep reads."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    found = re.search(
+        r"grep -qE '(\^- [^']*?)(write the report again when this Mac is idle)' \"\$REPORT_PATH\"", script
+    )
+    assert found is not None, "install.sh's cut-off test"
+    grep = re.compile(found.group(1) + re.escape(found.group(2)), re.M)
+    idle = setup_report._IDLE_AGAIN
+    note = "timed out after 5.0s"
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda _run, _label: (124, note))
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    summary = section(text, "Summary")
+    assert idle not in section(text, "Background runs"), section(text, "Background runs")
+    assert f"- background sync: poll not measured · reconcile not measured: {idle}\n" in summary, summary
+    assert grep.search(text), "a background-only cut still reaches install.sh's NEXT"
+    with monkeypatch.context() as m:  # the evidence line cut too: one copy, and a pointer beside it
+        m.setattr(setup_report, "EVIDENCE_BUDGET_S", 0.0)
+        seed_ocr(fake_mac)
+        text = status_parts(fake_mac)[0]
+    summary = section(text, "Summary")
+    evidence = next(ln for ln in summary.splitlines() if ln.startswith("- evidence: "))
+    assert idle in evidence, evidence
+    assert (
+        "- background sync: poll not measured · reconcile not measured (see the evidence line)\n" in summary
+    )
+    assert summary.count(idle) == 1, summary
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda _run, _label: (0, "state = running"))
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+
+    def hung(_config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung), budget_s=5.0
+    )
+    assert grep.search(text), "a doctor-only cut still reaches install.sh's NEXT"
 
 
 @pytest.mark.parametrize(

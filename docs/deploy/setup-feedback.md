@@ -1311,11 +1311,11 @@ up before is said as the time limit's: `origin: not read (git did not answer wit
 origin/main: not read (time limit)` and `(uncommitted changes: not read, time limit)`. After the first git read that
 did not answer the install source reads no more, so each part after it repeats that read's words, and a URL rewrite
 read that did not answer beside a known origin keeps the origin with `URL rewrites: not read` (B13 round 34 C802,
-C834, C873; ruling 96). A Background runs line's `not measured (<why>;
-plist present|absent)` and the Command Line Tools' `not measured (xcode-select -p ...)`; each such line, and the
-Summary's background sync line, ends with the same advice, `write the report again when this Mac is idle (...)
-before sending it`, which a stopped copy gives as `this copy is not for sending` (B13 round 33 C702, C716, C718,
-C720; ruling 83; lane RA's 864c4673a). When the Loop line was not read, the Summary's doctor line files a listing,
+C834, C873; ruling 96). The Command Line Tools say `not measured (xcode-select -p ...)`; each such line ends with
+the same advice, `write the report again when this Mac is idle (...) before sending it`, which a stopped copy gives as
+`this copy is not for sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). A Background
+runs line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it
+once, or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line was not read, the Summary's doctor line files a listing,
 purge-queue or hold warn under `not judged (the Loop line was not read: <why>)`, before `unexpected`, adding `; a
 report written when this Mac is idle sorts it` only for a time-out or a busy state file (B13 round 33 ruling 84,
 C721; lane RA's 541fe447a). A run of a build older than these parts did not record what it

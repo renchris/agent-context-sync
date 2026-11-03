@@ -36474,6 +36474,8 @@ unanswered empty-url probe or rewrite read is no answer, never a definite origin
 Amended 2026-11-03, §16.225 C820: sw_vers, `profiles`, uv and pandoc's last branch say a cut as the Command Line
 Tools do, `not measured (<cmd> exited 124: <note>)`, and a Status call the time limit cut reads Doctor's sibling
 `Not run: ...` or `Cut off: ...`, never `This section failed`.
+Amended 2026-11-03, §16.225 C819: Background's job lines end at `not measured (<why>; plist present|absent)`, with no
+advice, and the Summary's background line ends ` (see the evidence line)` where the evidence line gives the advice.
 
 **A stopped copy gives no advice to send it** (C718, ruling 83). `_IDLE_AGAIN` stays byte-identical; every site reads
 it through `_idle_again(r)`, `this copy is not for sending` in a stopped copy: `_evidence_line`, the Summary's doctor
@@ -37267,6 +37269,16 @@ failed: ..._`. No idle advice there: the evidence line carries it, and `not meas
 parts, which `_RETRY_WHYS` keys on, is unchanged. Tests:
 `tests/test_setup_report.py::test_every_environment_probe_says_a_cut_as_not_measured_c820`,
 `test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820`.
+
+**The re-run advice once where install.sh reads it** (C819, ruling 96; amends §16.218 C720). A cut sendable report
+gave the advice five times, two on adjacent Summary lines. `_background`'s job lines, which install.sh's grep never
+reads, end at `not measured (<why>; plist present|absent)`, under simulated launchd too (those jobs are not this
+setup's); `_summary` builds the evidence line once, before the background line, which ends ` (see the evidence line)`
+when that line gives the advice and keeps it otherwise. `_install_source`'s and the doctor line's stay. install.sh's
+grep is unchanged, and a doctor-only and a background-only cut each still reach it. Tests:
+`tests/test_setup_report.py::test_a_cut_background_read_gives_the_advice_once_where_install_sh_reads_it_c819`,
+`test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads` (`_background` no longer a writer),
+`test_a_launchctl_print_that_did_not_answer_is_not_measured_c720`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

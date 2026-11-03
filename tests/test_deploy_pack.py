@@ -7932,7 +7932,8 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
         assert f"`{said}`" in page, said
     assert 'f" · origin: not read (git did not answer within {within})"' in source
     assert 'f" (uncommitted changes: not read, git did not answer within {within})"' in source
-    assert "not measured ({why}; plist {state}): {_idle_again(r)}" in source
+    assert 'out.append(f"- {label}: not measured ({why}; plist {state})")' in source  # no advice (C819)
+    assert '" (see the evidence line)"' in source and "`(see the evidence line)`" in page
     assert "`not measured (<why>; plist present|absent)`" in page
     assert 'f"not measured (xcode-select -p {_exited(rc, text)})"' in source
     assert "`not measured (xcode-select -p ...)`" in page
