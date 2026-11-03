@@ -6481,6 +6481,42 @@ C632's conditional losses at §16.205's C381 paragraph and §16.210's C530 parag
 at §16.119's S32 paragraph and §16.210's C520 paragraph, and C633's stopped heartbeat at §16.51's Q14/Q35, and
 C649's third preview form at §16.205's C370 paragraph, and C642's [info] read note at §16.210's C560, and
 C609's label data clause at §16.210's C525."""
+
+
+_REVIEW_BACKTEST_PARAGRAPH_AMENDS = (
+    (
+        "9",
+        "1. `materialise.fail_closed()` (process materialisation policy OFF, in",
+        "§16.224 (review backtest er-30#0)",
+    ),
+    (
+        "16.42",
+        "Amended 2026-10-11 by §16.48 (R84): the build passes `GIT_SSL_CAINFO`,",
+        "§16.224 (by §16.54 Q52)",
+    ),
+    ("16.48", "Behind a proxy set only in the environment the speech build seeds", "§16.224 (by §16.54 Q52)"),
+    (
+        "16.48",
+        "A shell that trusts the inspecting CA through git alone, `GIT_SSL_CAINFO`",
+        "§16.224 (by §16.54 Q79)",
+    ),
+    (
+        "16.54",
+        "**The seed's curl trusts and routes as git does, from git's config too",
+        "§16.224 (review backtest er-28#0, er-28#1)",
+    ),
+    (
+        "16.93",
+        "**An organisation is redacted inside a longer word** (M50;",
+        "§16.224 (review backtest er-32#0, er-32#2)",
+    ),
+)
+"""The 2026-11-03 review backtest's dated lines (§16.224), which name a finding, not an item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: er-30#0's at §9's per-source isolation, Q52's at §16.42's and §16.48's
+seed paragraphs and Q79's at §16.48's CA paragraph, er-28#0 and #1's at §16.54's Q52 paragraph, and er-32#0
+and #2's at §16.93's M50 paragraph."""
+
+
 _ROUND_31_B_READ_ONLY_AMENDS = (
     ("16.203", "C394 (2026-10-26): **writing the report never writes the manifest**", "§16.210 C560"),
     ("16.205", "C394 (ruling 36): writing the setup report never writes the manifest.", "§16.210 C560"),
@@ -6594,6 +6630,11 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_24_RA_PARAGRAPH_AMENDS)) == len(_ROUND_24_RA_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_26_D_PARAGRAPH_AMENDS)) == len(_ROUND_26_D_PARAGRAPH_AMENDS) == 1
+    assert (
+        len(_pinned_dated_lines(_REVIEW_BACKTEST_PARAGRAPH_AMENDS))
+        == len(_REVIEW_BACKTEST_PARAGRAPH_AMENDS)
+        == 6
+    )
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -6643,6 +6684,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
         *_ROUND_33_B_PARAGRAPH_AMENDS,
+        *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
