@@ -20630,6 +20630,28 @@ def test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_py
     assert "Private only:" not in text and "issues/new" in text, text[-800:]
 
 
+@pytest.mark.parametrize(
+    ("org", "said"),
+    [
+        ("Contoso", "contoso ran, contoso2026, contoso.sharepoint.com, contoso-docs"),
+        ("McContoso", "Mc-Contoso, mc_contoso, mc contoso, McContoso2026"),
+    ],
+)
+def test_an_organisation_spelled_as_the_surname_is_cut_in_both_reports(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, org: str, said: str
+) -> None:
+    """B13 round 34 C870 (ruling 91): with a full name whose surname is the organisation, the Python report
+    registered the surname first, exactly, and the organisation's in-word literal found no entry for its
+    other spellings, so ``contoso2026`` and ``mc_contoso`` printed in clear where the shell's report cut them.
+    The value is absent from both; the two differ only in the placeholder (``<name>`` and ``<org-1>``)."""
+    _stub_id(env, f"Jane {org}")
+    monkeypatch.setattr(setup_report, "_full_name", lambda: f"Jane {org}")
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, org=org)
+    for text in (shell, python):
+        assert "contoso" not in text.lower(), (shell, python)
+    assert python.count("<name>") == said.count(",") + 1, python
+
+
 def _shell_report_words() -> set[str]:
     """The shell's report words: report_word's scan of install.sh."""
     script = INSTALL_SH.read_text(encoding="utf-8")
