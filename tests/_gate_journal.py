@@ -14,10 +14,13 @@ resume never reads it. The whole output of a lane part that fails or is killed, 
 its journal as ``<tree>-<salt>.<part>.out`` (appended on a resume, removed when the part is green; B13 round
 17 U106), where these tails are cut.
 
-CLI: ``passed <journal>`` prints the nodeids that passed, ``skipped-timing <journal>`` counts the tests the
-load skip of ``conftest.pytest_runtest_setup`` decided, ``finished <journal>`` exits 0 when the journal
-holds a summary line, and ``affected`` reads changed repo paths on stdin and prints the test files they can
-turn red, or ``FULL <reason>``.
+CLI: ``passed <journal>`` prints the nodeids that passed, ``failed <journal>`` the nodeids whose last
+record failed (a call, setup or teardown failure, an error, and the test a lost worker was running, which
+xdist reports as failed ``when: "???"``) and exits 1 when the journal holds no summary line, so its failed
+set is unknown (gate.sh re-runs those alone once, B13 round 33 C800), ``skipped-timing <journal>`` counts
+the tests the load skip of ``conftest.pytest_runtest_setup`` decided, ``finished <journal>`` exits 0 when the
+journal holds a summary line, and ``affected`` reads changed repo paths on stdin and prints the test files
+they can turn red, or ``FULL <reason>``.
 """
 
 from __future__ import annotations
@@ -202,12 +205,20 @@ def main(argv: list[str]) -> int:
         result = affected([line for line in sys.stdin.read().splitlines() if line])
         print(f"FULL {result}" if isinstance(result, str) else "\n".join(result))
         return 0
-    if len(argv) != 2 or verb not in ("passed", "skipped-timing", "finished"):
-        print("usage: _gate_journal.py passed|skipped-timing|finished <journal> | affected", file=sys.stderr)
+    if len(argv) != 2 or verb not in ("passed", "failed", "skipped-timing", "finished"):
+        print(
+            "usage: _gate_journal.py passed|failed|skipped-timing|finished <journal> | affected",
+            file=sys.stderr,
+        )
         return 2
     last, summary = _last(Path(argv[1]))
     if verb == "finished":
         return 0 if summary else 1
+    if verb == "failed":
+        if not summary:
+            return 1
+        print("\n".join(n for n, r in last.items() if r["outcome"] == "failed"))
+        return 0
     if verb == "passed":
         print("\n".join(n for n, r in last.items() if r["when"] == "call" and r["outcome"] == "passed"))
     else:

@@ -4,7 +4,10 @@
 #   scripts/gate.sh --lane      a lane's full run; resumes a killed run of the same tree from its journal
 #   scripts/gate.sh --affected  a lane pre-gate: every static step, then the tests the change can turn red
 # Each run appends one line to <git-common-dir>/gate-verdicts.log. Nothing is skipped because a tree passed
-# before: the journal only resumes a run that was killed part way.
+# before: the journal only resumes a run that was killed part way. In every mode a pytest part that ends 1 with 1 to
+# 20 failed tests re-runs exactly those once, alone (-n 0), and is red only when the re-run is: the machine's load is
+# by design and a failure under it is "unknown, retry" (operator ruling 2026-10-20; B13 round 33 C800). The land gate
+# reads only the journal it wrote in this run, and the verdict line counts the tests so passed (rerun_passed=).
 set -euo pipefail
 
 mode=land
@@ -18,12 +21,12 @@ esac
 cd "$(git rev-parse --show-toplevel)"
 common=$(cd "$(git rev-parse --git-common-dir)" && pwd)
 tmp=$(mktemp -d)
-tree='?' salt='?' skipped_timing=0 resumed=0
+tree='?' salt='?' skipped_timing=0 resumed=0 rerun_passed=0
 
 finish() {
   local rc=$?
-  printf '%s mode=%s tree=%s salt=%s rc=%s skipped_timing=%s resumed=%s\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$tree" "$salt" "$rc" "$skipped_timing" "$resumed" \
+  printf '%s mode=%s tree=%s salt=%s rc=%s skipped_timing=%s resumed=%s rerun_passed=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$tree" "$salt" "$rc" "$skipped_timing" "$resumed" "${rerun_passed:-0}" \
     >>"$common/gate-verdicts.log"
   # A still-queued acquire leaves the queue; a slot is released only when this gate owns it, never a parent's
   [ -z "${gate_slot_pid:-}" ] || kill -TERM "$gate_slot_pid" 2>/dev/null || true
@@ -73,13 +76,6 @@ step make -C probes check
 
 pytest_q() { uv run --locked pytest -q -p no:cacheprovider "$@"; }
 
-# The land gate's count: the -ra summary's "SKIPPED [n] <where>: load N per core: ..." lines.
-count_timing_skips() {
-  local n
-  n=$(sed -n 's/^SKIPPED \[\([0-9]*\)\] .*: load [0-9]* per core: a time bound cannot be judged$/\1/p' "$1" |
-    awk '{ s += $1 } END { print s + 0 }')
-  skipped_timing=$((skipped_timing + n))
-}
 journal_cli() { uv run --locked python tests/_gate_journal.py "$@"; }
 
 # The whole-tree scanners that run first, so a red one stops the land gate in seconds, before the 20-odd
@@ -127,19 +123,66 @@ part_stopped() {
   echo "== $1 stopped by SIG${name#SIG} (rc $2) before it reported a verdict"
 }
 
+# A part's failed tests, re-run once, alone, on the same tree (B13 round 33 C800). The machine runs at load 600 to
+# 1000 on 10 cores by design (operator ruling 2026-10-20: load never falls, no gate may wait for it, and a timeout
+# we impose is "unknown, retry", never a negative verdict). From 2026-11-01 every land gate went red on 1 to 9 tests
+# that each passed alone, a different set each run, none in the diff: subprocess timeouts and lost workers, which
+# conftest's load skip does not cover. When pytest ends a part 1 and its journal names 1 to 20 failed tests (call,
+# setup and teardown failures, and the test a lost worker was running), they run once more with -n 0, no workers of
+# our own competing, into a journal of their own. That run green makes the part green; a test that fails alone
+# convicts, and more than 20, another exit code or a failed set that cannot be read leave the part red as before.
+rerun_alone() {
+  local part=$1 journal=$2 again=$3 out=$4 n rc=0
+  local ids=()
+  if ! journal_cli failed "$journal" >"$tmp/$part.failed"; then
+    echo "== $part: its failed tests cannot be read from its journal; not re-run"
+    return 1
+  fi
+  n=$(LC_ALL=C grep -c . "$tmp/$part.failed" || true)
+  if [ "$n" -lt 1 ] || [ "$n" -gt 20 ]; then
+    echo "== $part: $n failed; only 1 to 20 are re-run"
+    return 1
+  fi
+  IFS=$'\n' read -r -d '' -a ids <"$tmp/$part.failed" || true
+  : >"$again"
+  echo "== $part: $n failed; re-running them once, alone"
+  step env PYTHONUNBUFFERED=1 "GATE_JOURNAL=$again" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal \
+    -n 0 "${ids[@]}" 2>&1 | tee -a "$out" || rc=$?
+  if [ "$rc" != 0 ]; then
+    echo "== $part: the re-run alone is red too (rc $rc)"
+    return 1
+  fi
+  skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$again")))
+  rerun_passed=$((rerun_passed + n))
+  echo "== $part: $n failed under load and passed alone: $(tr '\n' ' ' <"$tmp/$part.failed" | sed 's/ $//')"
+}
+
+# One pytest part, run into a journal: the land gate's in $tmp, so it never reads one from an earlier run and never
+# resumes. A part pytest ends 1 re-runs its failed tests alone (rerun_alone). Its output goes to $out.
+part_once() {
+  local part=$1 journal=$2 out=$3 rc=0
+  shift 3
+  : >"$journal"
+  step env "GATE_JOURNAL=$journal" uv run --locked pytest -q -p no:cacheprovider -p _gate_journal "$@" |
+    tee "$out" || rc=$?
+  [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
+  if [ "$rc" = 1 ] && rerun_alone "$part" "$journal" "$journal.rerun" "$out"; then rc=0; fi
+  [ "$rc" = 0 ] || return "$rc"
+  skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
+}
+
 # One pytest part. In the lane modes it journals to <tree>-<salt>.<part>.jsonl; a journal with no summary
 # line whose holder (the gate.sh that wrote it) is gone was killed, and its passed tests are deselected.
 # Its output, stderr too, goes to <tree>-<salt>.<part>.out beside the journal, appended on a resume so a
 # killed run's text stays; a green part removes it, so a failed or killed part keeps its whole log, which
-# the journal's cut tails do not (B13 round 17 U106). Journals are never removed.
+# the journal's cut tails do not (B13 round 17 U106). Journals are never removed. A re-run of the part's failed
+# tests (rerun_alone) journals to <tree>-<salt>.<part>.rerun.jsonl, never into the part's, so a resume stays exact,
+# and appends to the .out; a green re-run removes the .out as a green part does.
 run_part() {
   local part=$1 rc=0
   shift
   if [ "$mode" = land ]; then
-    step pytest_q "$@" | tee "$tmp/$part.out" || rc=$?
-    [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
-    [ "$rc" = 0 ] || return "$rc"
-    count_timing_skips "$tmp/$part.out"
+    part_once "$part" "$tmp/$part.jsonl" "$tmp/$part.out" "$@"
     return
   fi
   local dir="$common/gate-journal" journal out
@@ -150,11 +193,8 @@ run_part() {
   local pid
   pid=$(cat "$holder" 2>/dev/null || true)
   if [ -n "$pid" ] && [ "$pid" != "$$" ] && ps -o pid= -p "$pid" >/dev/null; then
-    echo "== gate $pid is running this tree: no journal for this run"
-    step pytest_q "$@" | tee "$tmp/$part.out" || rc=$?
-    [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
-    [ "$rc" = 0 ] || return "$rc"
-    count_timing_skips "$tmp/$part.out"
+    echo "== gate $pid is running this tree: no shared journal for this run"
+    part_once "$part" "$tmp/$part.jsonl" "$tmp/$part.out" "$@"
     return
   fi
   echo "$$" >"$holder"
@@ -177,6 +217,7 @@ run_part() {
   [ "$rc" -le 128 ] || part_stopped "$part" "$rc"
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
   if [ "$rc" = 5 ] && [ -n "$deselect" ]; then rc=0; fi # every test had passed already
+  if [ "$rc" = 1 ] && rerun_alone "$part" "$journal" "$dir/$tree-$salt.$part.rerun.jsonl" "$out"; then rc=0; fi
   [ "$rc" != 0 ] || rm -f "$out"
   return "$rc"
 }

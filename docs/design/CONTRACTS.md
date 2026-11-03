@@ -36420,3 +36420,34 @@ one home added a made-up folder under an allowance of its own. The words outside
 made-up folder is named in its report, its lines the only extras the check allows; the backticked commands stay. The
 brief's half is the lead's (ruling 90). Test: `test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder` and
 `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it` carry an assert for each.
+
+### 16.223 Round 33: the land gate re-runs a failed part's tests alone once (2026-11-02, wave B13 round 33 lane G)
+
+**A pytest part's failed tests run once more, alone, and only a second failure convicts** (C800; `scripts/gate.sh`'s
+`run_part`, `part_once` and `rerun_alone`, `tests/_gate_journal.py`'s `failed` verb, CLAUDE.md's Gate paragraph). The
+machine runs at a load of 600 to 1000 on 10 cores by design, and the operator's ruling of 2026-10-20 says the load
+never falls, no gate may wait for it, and a timeout we impose is "unknown, retry", never a negative verdict. From lane
+D's land at 2026-11-01T18:07Z no land of this repo passed: `<git-common-dir>/gate-verdicts.log` holds seven `mode=land`
+lines after it, six `rc=1` and one `rc=3` (2026-11-02T00:04Z to 2026-11-03T00:27Z), on four trees, tree b98db75d
+gated red three times and tree 67c7009a twice. Each went red on 1 to 9 tests that passed when re-run alone: install_sh's
+120 s timeouts, pandoc timeouts, OCR and step-1 probe tests, and once an xdist worker lost to memory. None was in the
+landing diff and the red set changed from run to run, while each land gate took 2 to 7 hours, so four lanes' 40-odd
+commits waited. Conftest's load skip covers time-bound tests only, not a subprocess timeout or a lost worker.
+
+Every part now journals its tests: the lane modes to `<git-common-dir>/gate-journal/` as before, the land gate to a
+journal in its own temporary folder, so it still never reads a journal from an earlier run and never resumes. When
+pytest ends a part 1 and the journal's failed set (call, setup and teardown failures, errors, and the test a lost
+worker was running, which xdist reports as failed `when: "???"`) has 1 to 20 tests, exactly those node ids run once
+more with `-n 0` on the same tree, no workers of the gate's own competing. A green re-run makes the part green; the
+gate prints `== <part>: N failed under load and passed alone: <ids>` and the verdict line gains `rerun_passed=N`, the
+total across parts. A test that fails alone convicts, and more than 20 failures, any exit code but 1 and a failed set
+that cannot be read (a journal with no summary line) leave the part red as before. In the lane modes the re-run
+journals to `<tree>-<salt>.<part>.rerun.jsonl`, never into the part's journal, so a resume reads only the part's own
+records, and appends to the part's `.out`, which a green re-run removes as a green part's is. `scripts/ship-land.sh`
+reads only the gate's exit status, so it is unchanged, and `GATE GREEN at <sha>` stays the gate's last line. Example:
+a part whose Contoso import test hits its 120 s bound under load and passes alone is green, with `rerun_passed=1`.
+Tests: `test_a_part_whose_tests_fail_under_load_and_pass_alone_is_green` (1 and 20 failures),
+`test_a_test_that_fails_alone_too_convicts`, `test_more_than_twenty_failures_are_not_re_run`,
+`test_a_part_that_ends_other_than_1_is_not_re_run` (exit 2 and 3), `test_a_lost_workers_test_is_re_run`,
+`test_a_lane_parts_re_run_journals_beside_the_parts_and_a_green_one_drops_the_log`,
+`test_the_failed_verb_reads_a_finished_journal_only`.

@@ -30,7 +30,11 @@ weekly, so the network, not a commit, decides its result.
 (the whole-tree scanners `tests/test_contracts.py` and `tests/test_lints.py` first, so a red one stops it in seconds,
 then `tests/test_deploy_pack.py`, then the rest, after a check that the three parts collect the full set, each test
 once), ending
-`GATE GREEN at <sha>`. It never reads the journal below. Lanes pre-gate with `scripts/gate.sh --affected`: every
+`GATE GREEN at <sha>`. It never reads the journal below. In every mode a pytest part that ends with 1 to 20 failed
+tests runs exactly those once more, alone (`-n 0`), and is red only when the re-run is; the land gate reads them from
+a journal of that same run in its own temporary folder. The machine runs at a load of 600 to 1000 on 10 cores by
+design, no gate may wait for it to fall, and a failure under that load is "unknown, retry", not a verdict (operator
+ruling 2026-10-20). Lanes pre-gate with `scripts/gate.sh --affected`: every
 static step, then the test files the diff from `origin/main` can turn red (the files it touches, their direct
 importers, the readers of a touched doc, and the whole-tree scanners); a change to `tests/conftest.py`,
 `pyproject.toml`, `uv.lock` or an unmapped path runs the full set. `scripts/gate.sh --lane` is a lane's full run.
