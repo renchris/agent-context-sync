@@ -26304,6 +26304,9 @@ sent words: lane B's changed words (X74's `the person runs sudo chown ...`, the 
   and that if this Mac was busy I may run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is
   idle, before I copy the file back; do not run it again yourself;`. After the patch case, not inside it (X3's
   verifier), and advice only, as W3 built it.
+  Amended 2026-11-03, §16.229 C823: since v34 the clause goes on `once it is idle, or, if that line names
+  AGENTSYNC_REPORT_TIME_LIMIT=60 and this Mac stays busy, with that in front of the command, before I copy the file
+  back;`, so the finish relays the NEXT's second remedy only where that line names it.
 Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_is_one_command` (X24),
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`CONFIG_STOP_TOLD`, `FAIL_IS_MINE`),
 `test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
@@ -37216,6 +37219,22 @@ verifier). Test: `test_convert_family.py::test_a_re_read_refused_as_an_inbox_dup
 `path_reread_held` 1 each, no unreadable or refused key; red with the `duplicate-of` clause removed).
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
+
+**Setup prompt v34: the finish relays the cut-off NEXT's second remedy where it is named** (C823, ruling 97; amends
+§16.148 X3). install.sh's `--report-only` NEXT for a report part of which was cut off or not measured gives two
+remedies, running it again once this Mac is idle, or with `AGENTSYNC_REPORT_TIME_LIMIT=60` in front of the command if it
+stays busy, but the finish relayed only the first, and the report itself never names the variable (`_IDLE_AGAIN`, C726),
+so under sustained load the person heard of no remedy that works. Lane RB's C834 makes the NEXT name the variable only
+where it can help (a doctor, evidence or Loop line cut, or the report's budget spent), so the finish relays it on that
+condition: `... --report-only again once it is idle, or, if that line names AGENTSYNC_REPORT_TIME_LIMIT=60 and this Mac
+stays busy, with that in front of the command, before I copy the file back; do not run it again yourself;`. It keeps
+X3's `if this Mac was busy`, `I may` (advice only, W3) and `do not run it again yourself`, and names the variable, not a
+cause the NEXT leaves out. No step moves, so no layout changes. Version 34 everywhere the bump list names it (README
+block and its digest in `PROMPT`, `SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, the form's placeholder, the
+version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback.md's version lines and
+K58). Tests: `test_the_prompt_text_changes_only_with_its_version`,
+`test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
+`test_readme_prompt_compat_matches_the_installer`.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==

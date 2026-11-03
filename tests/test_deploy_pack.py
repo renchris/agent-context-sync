@@ -967,7 +967,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (33, "6ce03efb3aed3701142cb994f5ce675a5a464c4074c2dab1e1d4fe53f5f36256")
+PROMPT = (34, "84b338ecce0179e0b4e160df7333c85e186f091fcfd63ac28c1c67f5941c7955")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3387,8 +3387,9 @@ V17, V32, V79)."""
 CUT_OFF_TOLD = (
     "whenever the report's NEXT: line says part of the report was cut off or not measured, tell me so in that"
     " line's words (its Summary says which, and why), and that if this Mac was busy I may run"
-    " ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle, before I copy the file"
-    " back; do not run it again yourself;"
+    " ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle, or, if that line names"
+    " AGENTSYNC_REPORT_TIME_LIMIT=60 and this Mac stays busy, with that in front of the command, before I"
+    " copy the file back; do not run it again yourself;"
 )
 """The finish's words, since v29, for a report part of which was cut off or not measured (B13 round 20 X3):
 round 19's W3 put that advice into the report's NEXT, but the finish relayed the report's NEXT only for the
@@ -3396,7 +3397,10 @@ could-not-write and unreadable-patch cases, and the report is the last command t
 after the patch case's "do not ... run the report again yourself", so it is not read as part of that case;
 advice only, since a doctor that is always slow must not hold the bring-back or loop the agent (W3's reason).
 The words it keys on are lane RB's X37 opening of the --report-only NEXT, which says "cut off or not measured"
-since a busy state file also triggers it."""
+since a busy state file also triggers it. Since v34 it relays the NEXT's second remedy only where that line
+names it (B13 round 34 C823, ruling 97): the variable lengthens the report's own budget, so it helps only
+where a doctor, evidence or Loop line was cut or the budget was spent, and the NEXT names it only then (lane
+RB's C834); "if this Mac was busy", "I may" and "do not run it again yourself" stay."""
 
 MIRRORED_NO_BLOCK = (
     "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
@@ -7224,7 +7228,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v33, <agent> and a colon")], "the prompt stays v33"
+    assert "Swift" not in prompt[: prompt.index("prompt v34, <agent> and a colon")], "the prompt stays v34"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
