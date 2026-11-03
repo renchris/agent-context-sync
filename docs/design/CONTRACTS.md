@@ -429,6 +429,8 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    cannot be read: a `sqlite3.DatabaseError` that `doctor.unreadable_code` names (SQLITE_CORRUPT or SQLITE_NOTADB;
    `cycle._manifest_unreadable`) re-raises out of `_run_source`, `run()` discards pending, writes the run's end best
    effort and re-raises, and the CLI prints `state: <db> cannot be read: ... (fix: <MANIFEST_FIX>)` and exits 65.
+   **Amended 2026-11-03, §16.223 (review backtest er-30#0):** the catches inside a source's work re-raise it too:
+   the re-read of unchanged files, both recording-pass catches and the dry run's.
 6. Work queue = `pending_work(source)` (sorted by stable_id): `arm.fetch` under `ByteBudget(max_materialise_bytes,
    max_files)` → `canonical_hash` → `set_content` → `classify_content` → `convert_file` → `classify_output` →
    `Publisher.plan_pages`/`write_pages` → `set_verdict`. Budget exhaustion → remaining rows `DEFERRED`.
@@ -37067,3 +37069,14 @@ quoted: a Decisions row's evidence cell merged into its description, `_CELL_TOKE
 evidence's quote, and the lint gave a false CITE-MISSING and checked no citation. A quote mark now opens a quote
 only after a character that is not a letter, digit or `_`, in `_cells` and `_CELL_TOKEN` alike, and one still open
 at the row's end is text. Test: `tests/test_curate.py::test_a_stray_quote_mark_in_a_cell_is_text`.
+
+**Manifest damage inside a source's extra work stops the sync** (review backtest er-30#0; amends §16.143 W41 and
+§16.151 X56). W41 re-raised SQLITE_NOTADB and SQLITE_CORRUPT from `_run_source`'s and `run()`'s catches only, but
+`_sync_source` wraps `_reread_source` in a catch of its own that logged the error as `reading files again stopped`
+and never failed the source: damage first met by a re-read's cache write left the sync at exit 0 with no state line
+and no `manifest-unreadable.json`. The recording pass's two catches (a recording's read and its pages) made the
+same damage a failed recording, and the dry run's made it a failed source (exit 1). Each now re-raises an error
+`cycle._manifest_unreadable` names, so the CLI says its one line and exits 65. The report's count reads keep their
+catch: a count never fails the report, and they run after the cycle's own writes. Tests:
+`tests/test_cli.py::test_manifest_damage_a_files_read_again_meets_stops_the_sync` and
+`test_manifest_damage_a_dry_run_meets_is_raised_not_a_failed_source`.

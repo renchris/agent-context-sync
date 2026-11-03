@@ -4118,6 +4118,8 @@ class _Cycle:
                 acc.errors.append(f"auth: {exc}")
                 continue
             except Exception as exc:
+                if _manifest_unreadable(exc):  # no source's failure: the CLI's state line and exit 65
+                    raise
                 acc.failed = True
                 acc.errors.append(_one_line(f"{type(exc).__name__}: {exc}"))
                 continue
@@ -4475,7 +4477,10 @@ class _Cycle:
                 self._reread_source(src, arm, acc, queued)
             except Exception as exc:
                 # Reading files again is extra work on a source that has synced: what stops it is reported
-                # and never fails the source, whose renames and removals are still to come.
+                # and never fails the source, whose renames and removals are still to come.  A damaged
+                # manifest is no such stop: _run_source's catch re-raises it for the CLI's exit 65.
+                if _manifest_unreadable(exc):
+                    raise
                 log.exception("%s: reading files again stopped", src.id)
                 acc.errors.append(f"reading files again stopped: {type(exc).__name__}")
         acc.materialised_bytes = budget.used
@@ -5105,6 +5110,8 @@ class _Cycle:
                     try:
                         self._read_recording(src, arm, row, stub=stub, online=online, allowance=allowance)
                     except Exception as exc:  # one recording's trouble: reported, never the source's failure
+                        if _manifest_unreadable(exc):  # the manifest's damage is no recording's
+                            raise
                         log.exception("%s: reading a recording stopped", src.id)
                         self._acc(src).errors.append(f"reading a recording stopped: {type(exc).__name__}")
         finally:
@@ -5290,6 +5297,8 @@ class _Cycle:
                 if self.pieces.progress(h1.sha256) is None:
                     record.staged.pop(stable, None)  # nothing was stored under it
             except Exception as exc:  # its pages may be half written: as pending work they are checked again
+                if _manifest_unreadable(exc):  # the manifest's damage is no recording's
+                    raise
                 log.warning("%s: a recording's read failed (%s)", sid, type(exc).__name__)
                 acc.errors.append(_one_line(f"{row.rel_path}: {type(exc).__name__}: {exc}"))
                 self.manifest.set_verdict(sid, stable, Verdict.MAYBE_CHANGED)

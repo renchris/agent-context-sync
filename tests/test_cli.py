@@ -4588,6 +4588,53 @@ def _damage_table_leaf(db: Path, table: str, *, last: bool = False) -> int:
     return page
 
 
+def _notadb(tmp: Path) -> sqlite3.DatabaseError:
+    """A real SQLITE_NOTADB, as a read of a damaged manifest raises it."""
+    junk = tmp / "junk.db"
+    junk.write_bytes(os.urandom(4096))
+    try:
+        sqlite3.connect(junk).execute("SELECT 1 FROM sqlite_master").fetchall()
+    except sqlite3.DatabaseError as exc:
+        assert doctor.unreadable_code(exc)
+        return exc
+    raise AssertionError("random bytes read as a database")
+
+
+def test_manifest_damage_a_files_read_again_meets_stops_the_sync(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review backtest er-30#0: _sync_source's own catch around _reread_source logged the manifest's
+    SQLITE_NOTADB as "reading files again stopped", and the sync exited 0 with no state line and no
+    manifest-unreadable.json. It re-raises now, as _run_source's catch does, so the sync exits 65."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    damage = _notadb(tmp_path)
+
+    def reread(*_a: object, **_k: object) -> None:
+        raise damage
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_reread_source", reread)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+    assert "cannot be read" in capsys.readouterr().err
+    assert doctor.recorded_unreadable(initialised.state_paths.db) is not None
+
+
+def test_manifest_damage_a_dry_run_meets_is_raised_not_a_failed_source(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review backtest er-30#0: the dry run's catch made the manifest's damage a failed source (exit 1)."""
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    damage = _notadb(tmp_path)
+
+    def scan(*_a: object, **_k: object) -> None:
+        raise damage
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_scan_and_classify", scan)
+    with pytest.raises(sqlite3.DatabaseError):
+        run_cycle(initialised, mode=CycleMode.DRY_RUN)
+
+
 @pytest.mark.parametrize("where", ["root", "leaf", "last leaf"])
 def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], where: str
