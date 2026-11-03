@@ -107,13 +107,17 @@ _FAMILY_NOUN = {
 def _ooxml_family(src: Path) -> str | None:
     """The Office family of an OOXML package's main part, read from ``[Content_Types].xml``: ``word``,
     ``spreadsheet`` or ``presentation`` (macro, template and slideshow types included).  None when it cannot
-    be told: no such part, one too large, a damaged package, no main type, or main types of two families."""
+    be told: no such part, one too large, a damaged package, no main type, or main types of two families.  A
+    part that opens with a UTF-16 byte order mark is decoded first and read as its UTF-8 twin is (B13 round 34
+    C827), and one that does not decode is None; a UTF-16 part with no mark, or UTF-32, cannot be told."""
     try:
         with zipfile.ZipFile(src) as zf:
             info = zf.getinfo("[Content_Types].xml")
             if info.file_size > _CONTENT_TYPES_MAX:
                 return None
             types = zf.read(info)
+            if types.startswith(_UTF16_BOMS):
+                types = types.decode("utf-16").encode("utf-8")
     except Exception:  # KeyError, BadZipFile, OSError, an encrypted member, a compression zipfile lacks
         return None
     families = {_FAMILY_OF[m[1] or m[2]] for m in _MAIN_TYPE_RE.finditer(types)}

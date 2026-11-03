@@ -32235,6 +32235,10 @@ text before its whitespace is collapsed.
 Amended 2026-10-26, §16.201 C181: CORRECTED: the `outdated` re-read above never ran, as only a FAILED stub held a
 path and its retries came first, which an older build had used up. The cycle's one-shot re-read past the retries
 gives it (`Cycle._retries`, `Cycle._queue_path_stubs`), and the three converters' `outdated` reason arms are gone.
+Amended 2026-11-03, §16.228 C827: `_ooxml_family` decodes a `[Content_Types].xml` that opens with a UTF-16 byte
+order mark and reads it as its UTF-8 twin, so a UTF-16 Word package named `.potx` is the same one stub. Only a
+marked part: one with no mark, and UTF-32, stay "cannot be told". No emitter bump, and a stub already given up is
+not read again.
 
 **A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
 nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
@@ -37116,7 +37120,26 @@ Reserved for round 34 lane B of B13.
 
 ### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
 
-Reserved for round 34 lane E of B13.
+Round 34's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 34"; specs `round34/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 91 to 101 settle it). A dated line this round writes reads
+`Amended 2026-11-03, §16.228 C<n>`.
+
+**A UTF-16 `[Content_Types].xml` tells its family (C827; `agentsync.convert`; amends §16.196 I39).** C781 read a
+UTF-16 template's type, but `_common._ooxml_family` matched its main types as UTF-8 bytes only, so a Word package
+saved with UTF-16 content types and named `.potx`, `.pptx` or `.xlsx` (or a deck named `.docx` or `.xlsx`) was no
+family, went on to python-pptx, openpyxl or pandoc, and became a failed conversion tried 3 times (the first and
+`_CONVERT_RETRIES`), while its UTF-8 twin was one not-ooxml stub. Inside the read's try, after the size cap, a part
+that opens with a UTF-16 byte order mark is decoded and encoded as UTF-8, never ASCII with the rest dropped (a
+zero-width character inside a main type would vanish there and make a type no reader takes another family's); a
+part that does not decode is None, as before. Only a marked part: one with no mark, and UTF-32, stay "cannot be
+told", as `_deck_types`' are. No emitter bump, as I39 rejected one, and a stub an older build already gave up on is
+not read again. Tests: `test_convert_family.py::test_a_word_package_whose_content_types_are_utf_16_is_not_the_type_its_name_says`,
+`test_convert_family.py::test_a_deck_whose_content_types_are_utf_16_is_not_the_type_its_name_says`,
+`test_convert_family.py::test_a_package_whose_content_types_are_utf_16_still_converts_under_its_own_name`,
+`test_convert_family.py::test_a_utf_16_content_types_part_that_does_not_decode_is_no_family`,
+`test_convert_family.py::test_a_utf_16_content_types_part_reads_as_its_utf_8_twin` and
+`test_convert_family.py::test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once` (little and big
+endian each; a sync of three runs converts the file once).
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 

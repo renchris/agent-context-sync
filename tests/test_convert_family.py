@@ -7,6 +7,7 @@ import dataclasses
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from agentsync import convert as convert_pkg
 from agentsync import cycle as cycle_mod
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file
+from agentsync.convert import _common as common_mod
 from agentsync.convert import pptx as pptx_mod
 from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.pptx import PptxConverter
@@ -32,6 +34,7 @@ _TYPES = "http://schemas.openxmlformats.org/package/2006/content-types"
 _RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
 _WORD_MAIN = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+_PRES_ZW = "application/vnd.openxmlformats-officedocument.presentation\u200bml.presentation.main+xml"
 
 
 def word_package(path: Path) -> Path:
@@ -108,6 +111,116 @@ def test_a_deck_named_docx_is_not_the_type_its_name_says(tmp_path: Path) -> None
     deck.write_bytes(build_pptx_rich(tmp_path / "rich.pptx").read_bytes())
     with pytest.raises(UnreadableSourceError, match=r"^not-ooxml: a PowerPoint deck, not a Word document"):
         PandocConverter(CFG).convert(deck, name=deck.name)
+
+
+_BOMS = {"utf-16-le": b"\xff\xfe", "utf-16-be": b"\xfe\xff"}
+
+
+def _types_in(src: Path, codec: str, edit: Callable[[str], str] = lambda t: t) -> Path:
+    """``src`` with its ``[Content_Types].xml`` rewritten in ``codec`` behind its byte order mark (``utf-8``:
+    no mark), after ``edit``; every other part kept byte for byte."""
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    text = edit(parts["[Content_Types].xml"].decode("utf-8"))
+    parts["[Content_Types].xml"] = _BOMS.get(codec, b"") + text.encode(codec)
+    return make_zip(src, parts)
+
+
+@pytest.mark.parametrize("codec", list(_BOMS))
+@pytest.mark.parametrize(
+    ("name", "converter", "noun"),
+    [
+        ("Contoso doc.potx", PptxConverter, "a deck"),
+        ("Contoso doc.pptx", PptxConverter, "a deck"),
+        ("Contoso doc.xlsx", XlsxConverter, "a workbook"),
+    ],
+)
+def test_a_word_package_whose_content_types_are_utf_16_is_not_the_type_its_name_says(
+    tmp_path: Path, name: str, converter: type[PptxConverter] | type[XlsxConverter], noun: str, codec: str
+) -> None:
+    """B13 round 34 C827: a ``[Content_Types].xml`` with a UTF-16 byte order mark was no family, so the Word
+    package went on to python-pptx or openpyxl, a failed conversion tried 3 times, while its UTF-8 twin was
+    one not-ooxml stub."""
+    src = _types_in(word_package(tmp_path / name), codec)
+    with pytest.raises(UnreadableSourceError) as caught:
+        converter(CFG).convert(src, name=name)
+    assert str(caught.value) == f"not-ooxml: a Word document, not {noun} (not the type its name says)"
+
+
+@pytest.mark.parametrize("codec", list(_BOMS))
+@pytest.mark.parametrize(
+    ("name", "converter"), [("Contoso deck.docx", PandocConverter), ("Contoso deck.xlsx", XlsxConverter)]
+)
+def test_a_deck_whose_content_types_are_utf_16_is_not_the_type_its_name_says(
+    tmp_path: Path, name: str, converter: type[PandocConverter] | type[XlsxConverter], codec: str
+) -> None:
+    src = tmp_path / name
+    src.write_bytes(build_pptx_rich(tmp_path / "rich.pptx").read_bytes())
+    _types_in(src, codec)
+    with pytest.raises(UnreadableSourceError, match=r"^not-ooxml: a PowerPoint deck, not "):
+        converter(CFG).convert(src, name=name)
+
+
+@pytest.mark.parametrize("codec", list(_BOMS))
+def test_a_package_whose_content_types_are_utf_16_still_converts_under_its_own_name(
+    tmp_path: Path, codec: str
+) -> None:
+    """C827's decode reclassifies only another family: a UTF-16 Word ``.docx``, deck ``.pptx`` and template
+    ``.potx`` convert as their UTF-8 twins do."""
+    doc = _types_in(word_package(tmp_path / "Contoso notes.docx"), codec)
+    assert "Contoso notes" in PandocConverter(CFG).convert(doc, name=doc.name)[0].body
+    deck = _types_in(build_pptx_rich(tmp_path / "Contoso deck.pptx"), codec)
+    assert PptxConverter(CFG).convert(deck, name=deck.name)[0].body
+    template = _types_in(build_potx(tmp_path / "Contoso template.potx"), codec)
+    assert "Contoso Quarterly Template" in PptxConverter(CFG).convert(template, name=template.name)[0].body
+
+
+@pytest.mark.parametrize("codec", list(_BOMS))
+def test_a_utf_16_content_types_part_that_does_not_decode_is_no_family(tmp_path: Path, codec: str) -> None:
+    """The decode stays inside the read's try: an odd-length part behind the mark cannot be told."""
+    src = word_package(tmp_path / "Contoso doc.potx")
+    with zipfile.ZipFile(src) as zin:
+        parts = {i.filename: zin.read(i) for i in zin.infolist()}
+    parts["[Content_Types].xml"] = _BOMS[codec] + parts["[Content_Types].xml"].decode().encode(codec) + b"<"
+    make_zip(src, parts)
+    assert common_mod._ooxml_family(src) is None
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda t: t.replace("wordprocessingml.document", "presentation\u200bml.presentation"),
+        lambda t: t.replace("wordprocessingml.document", "wordprocessing\u200bml.document"),
+        lambda t: t.replace("/></Types>", f' /><Override PartName="/x" ContentType="{_PRES_ZW}"/></Types>'),
+    ],
+    ids=["zero-width-other", "zero-width-own", "zero-width-beside"],
+)
+def test_a_utf_16_content_types_part_reads_as_its_utf_8_twin(
+    tmp_path: Path, edit: Callable[[str], str]
+) -> None:
+    """C827 decodes to UTF-8, never to ASCII with the rest dropped: a zero-width character inside a main type
+    would vanish there and turn a type no reader takes into another family's."""
+    found = {
+        codec: common_mod._ooxml_family(_types_in(word_package(tmp_path / f"{codec}.docx"), codec, edit))
+        for codec in ("utf-8", *_BOMS)
+    }
+    assert len(set(found.values())) == 1, found
+
+
+@pytest.mark.parametrize("codec", list(_BOMS))
+def test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, codec: str
+) -> None:
+    """C827's sync: three runs convert the UTF-16 twin once, as the UTF-8 one (the test above)."""
+    config, src = make_env(tmp_path)
+    _types_in(word_package(src / "Contoso renamed doc.potx"), codec)
+    tries = _counted(monkeypatch)
+    for _ in range(3):
+        assert run(config).exit_code == 0
+    assert tries == ["Contoso renamed doc.potx"]
+    row = _row(config, "Contoso renamed doc.potx")
+    assert row.state is RowState.QUARANTINED
+    assert quarantine_class(row.state_reason) == "not the type its name says"
 
 
 def test_every_presentation_main_type_stays_on_python_pptx(tmp_path: Path) -> None:
