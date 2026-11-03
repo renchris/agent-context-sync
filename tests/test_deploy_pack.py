@@ -6456,6 +6456,7 @@ _ROUND_33_B_PARAGRAPH_AMENDS = (
     ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C722"),
     ("16.210", "C537 with C577 (2026-10-28): **accepting a lost suppression says", "§16.220 C745"),
     ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.220 C746"),
+    ("16.215", "C609 (2026-10-28):", "§16.220 C728"),
     ("16.210", "C539 (2026-10-28): **a purge record that cannot be read never hides", "§16.220 C733"),
     ("16.215", "C632 (2026-10-28): **the governance folder fix's hold half", "§16.220 C730"),
     ("16.215", "C633 (2026-10-28): **beside a FAIL that stops every sync", "§16.220 C746"),
@@ -7704,12 +7705,12 @@ def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
     share, and the report's Summary re-renders it after K's clause. The guide's Summary row gives it after
     K, with its plural, in the sync line's words, read here. Round 32 C609 (lane B; lane RA's regex and
     re-render): the clause reads ", L of them because a label rule could not read its label data", since a
-    name rule's refusals in R are under a label rule too."""
+    name rule's refusals in R are under a label rule too. Round 33 C728: `could not parse or open`."""
     from agentsync import cli, setup_report  # noqa: PLC0415
 
     source = inspect.getsource(cli)
     assert 'whose = "its label data" if label_unreadable == 1 else "their label data"' in source
-    split = 'split += f", {label_unreadable} of them because a label rule could not read {whose}"'
+    split = 'split += f", {label_unreadable} of them because a label rule could not parse or open {whose}"'
     assert split in source
     report = inspect.getsource(setup_report)
     assert '"because a label rule could not read their label data"' in report
@@ -7721,7 +7722,7 @@ def test_the_summary_row_gives_the_label_data_clause_after_k() -> None:
         " that count"
     )
     clause = (
-        "`, L of them because a label rule could not read its label data` (`their label data` for"
+        "`, L of them because a label rule could not parse or open its label data` (`their label data` for"
         " more than one) after it"
     )
     assert k in row and clause in row and row.index(k) < row.index(clause)

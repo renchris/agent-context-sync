@@ -738,10 +738,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # label it cannot read is no "withheld" stub (B13 round 30 C326). Its own cause and no second
         # "refused", since every one of them is already counted in R (B13 round 31 C525, C522), and no
         # "under a label rule" that reads as if R's other refusals were not: a name rule's are too (B13 round
-        # 32 C609)
+        # 32 C609). "parse or open", apart from K's "cannot be read": a header that does not parse, or a read
+        # error under refuse_unlabelled (B13 round 33 C728)
         if label_unreadable := sum(s.label_unreadable for s in report.sources):
             whose = "its label data" if label_unreadable == 1 else "their label data"
-            split += f", {label_unreadable} of them because a label rule could not read {whose}"
+            split += f", {label_unreadable} of them because a label rule could not parse or open {whose}"
         # after every clause the readers key on, and no bare "converted" (B13 round 29 C145)
         if stubbed := sum(s.credential_stubbed for s in report.sources):
             whose = "its page" if stubbed == 1 else "their pages"  # B13 round 30 C353

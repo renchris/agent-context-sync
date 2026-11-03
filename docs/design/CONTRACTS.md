@@ -36176,7 +36176,8 @@ Summary row gives the new words. Dated line at §16.210 C525. Tests: `test_cycle
 `test_a_label_rules_refusal_by_name_and_one_it_cannot_read_share_the_rule_c609` (one mail refused for its excluded
 label and one whose header does not parse: `2 refused, 1 of them because a label rule could not read its label
 data`, `_SPLIT_RE` R=2 and no K), with the C525 test's line; `test_deploy_pack.py`
-`test_the_summary_row_gives_the_label_data_clause_after_k`.
+`test_the_summary_row_gives_the_label_data_clause_after_k`. Amended 2026-11-01, §16.220 C728: the clause reads `could not
+parse or open its label data` (`their`), and the report reads all three forms.
 
 ### 16.216 Round 32: every staging form folded at every cut length, and the converters' counts (2026-10-28, wave B13 round 32 lane E)
 
@@ -36785,6 +36786,15 @@ after the first `--folder-lost`), its phrase in both lists; else the audit trail
 `_LISTING_GOVERNANCE_RE` read the old and both new forms first, in the commit before this one on trunk, so a heartbeat warn beside the FAIL stays `not
 judged`. Tests: `test_cli.py` `test_the_listing_note_beside_a_lost_list_says_what_its_fail_says_c722_c747` and
 `test_the_listing_note_keeps_the_audit_trails_words_where_the_fail_does_c747`.
+
+**C728 (ruling 90, in C609's order).** C609's `could not read their label data` beside K's `cannot be read` read alike again,
+the defect C525 removed, though K counts binary .msg files whose label is never read, and L a header that does not parse
+or a read error under `refuse_unlabelled`. L's clause reads `, L of them because a label rule could not parse or open its
+label data` (`their label data` for more than one); K's words, which `_SPLIT_RE` and install.sh read, stay. Lane RA's
+`_LABEL_UNPARSED_RE`, re-render and phrases landed first, and the older forms stay read, an older
+install.out keeping them. The guide's Summary row moves here. Tests: `test_cycle.py`'s three label tests and
+`test_the_two_label_clauses_differ_in_more_than_a_verbs_form_c728`; `test_deploy_pack.py`
+`test_the_summary_row_gives_the_label_data_clause_after_k`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 
