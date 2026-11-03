@@ -13107,12 +13107,17 @@ _LISTING_GOVERNANCE_RE = re.compile(
     r"audit trail records|has lost a purge (?:that )?purge-record\.json records: agentsync's governance "
     r"folder is missing|has lost a purge that purge-record\.json records: agentsync's audit trail no longer "
     r"holds it); no sync lists it again until the person fixes it; the "  # the folder's (lane B, C618)
-    r"(?P<check>governance\.[a-z_]+) \[FAIL\] line says what to do first\)$"
+    # B13 round 34 ruling 94 (lane B's C811): with a hold lost too, the note names both lines, plural; the
+    # check is still the note's own, the second
+    r"(?:governance\.hold and )?(?P<check>governance\.[a-z_]+) \[FAIL\] (?:line says|lines say) what to do "
+    r"first\)$"
 )
 """``doctor.listing_state_governance_note`` in the brackets that end the incomplete-listing warn: lane B's
 note beside a governance file the sync's own guard stops on, by its role (B13 round 30 C321). Since B13 round
 33 ruling 81 it reads ``that`` in the folder's form (C722) and, where the FAIL credits purge-record.json with
-the folder there, the trail's form (C747); an older doctor's words still read."""
+the folder there, the trail's form (C747); an older doctor's words still read. Since B13 round 34 ruling 94
+(C811) the folder's form with a hold lost too ends ``the governance.hold and governance.purge_queue [FAIL]
+lines say what to do first``, its check the purge queue's."""
 _LISTING_GOV_GONE_END = "agentsync's governance folder is missing"
 """How the listing note's folder form ends (C618, C722), which the folder's bucket takes (C734, ruling 81)."""
 _LISTING_GOVDIR_NOTE = (

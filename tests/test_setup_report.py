@@ -360,6 +360,15 @@ def test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c32
             note = doctor.listing_state_governance_note(err, "governance.purge_queue")
             found = setup_report._LISTING_GOVERNANCE_RE.search(f"... deletions held ({note})")
             assert found is not None and found.group("role") == role, note
+            # B13 round 34 ruling 94 (lane B's C811): the plural form with a hold lost too, one check
+            both = re.sub(
+                r"the (governance\.purge_queue) \[FAIL\] line says",
+                r"the governance.hold and \1 [FAIL] lines say",
+                note,
+            )
+            found = setup_report._LISTING_GOVERNANCE_RE.search(f"... deletions held ({both})")
+            assert found is not None and found.group("role") == role, both
+            assert found.group("check") == "governance.purge_queue" and "lines say" in both, both
     _governance_checks_only(monkeypatch)
     cfg, root = _held_and_queued(fake_mac, monkeypatch)
     holds = governance._holds_file(root)

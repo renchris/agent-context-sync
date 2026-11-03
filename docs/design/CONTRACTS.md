@@ -37214,6 +37214,11 @@ trail, the purge queue and any suppression list)`, where an older doctor printed
 `_sort_doctor`'s two, `_state_open_words`), so the report keeps the folder's bucket and cause on either build. Test:
 `tests/test_setup_report.py::test_every_reader_of_the_missing_folders_lead_takes_the_old_and_the_new_head_ruling_94`.
 
+**The listing note's plural pointer** (ruling 94, before lane B's C811 note). With governance/ gone and a hold lost
+too, doctor's listing note ends `the governance.hold and governance.purge_queue [FAIL] lines say what to do first`.
+`_LISTING_GOVERNANCE_RE` reads that form beside the singular, its one `check` group the note's own, the purge
+queue's. Test: `tests/test_setup_report.py::test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c321_c322`.
+
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
 Reserved for round 34 lane RB of B13.
