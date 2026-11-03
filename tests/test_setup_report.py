@@ -10945,6 +10945,70 @@ def test_a_trail_lost_fail_has_its_own_bucket_and_cause_per_list_and_both_ruling
     assert not sort.from_trail_lost and len(sort.unexpected) == len(fails), sort
 
 
+_HOLD_LOST_FAIL = "/x/holds.json no longer lists the hold on all (set by (owner not shown)): z"
+
+
+@pytest.mark.parametrize(
+    ("hold", "fails", "names"),
+    [
+        (True, [("governance.purge_queue", "queue-credit")], ("hold list", "purge queue")),
+        (True, [("governance.suppressed", "suppressed-credit")], ("hold list", "suppression list")),
+        (
+            True,
+            [("governance.suppressed", "suppressed-credit"), ("governance.purge_queue", "queue-lead")],
+            ("hold list", "suppression list and purge queue"),
+        ),
+        (
+            False,
+            [("governance.suppressed", "suppressed-credit"), ("governance.purge_queue", "queue-trail")],
+            ("purge queue", "suppression list"),
+        ),
+        (
+            False,
+            [("governance.suppressed", "suppressed-trail"), ("governance.purge_queue", "queue-credit")],
+            ("suppression list", "purge queue"),
+        ),
+    ],
+    ids=[
+        "hold-queue",
+        "hold-suppressed",
+        "hold-both",
+        "suppressed-trail-queue-audit",
+        "suppressed-audit-queue",
+    ],
+)
+def test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833(
+    fake_mac: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    hold: bool,
+    fails: list[tuple[str, str]],
+    names: tuple[str, str],
+) -> None:
+    """B13 round 34 C833 (ruling 95): _outcome_cause returned the trail-lost cause first, so a lost hold, or
+    a list in the audit trail's form, beside a list whose purge only purge-record.json keeps was dropped from
+    the status step's outcome. Both are read before either is named, in the Doctor line's order, the cause
+    has no bracket and compute_outcome knows it."""
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    governance.governance_dir(root).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(setup_report, "_lost_lists", lambda _c: [c for c, _f in fails])
+    monkeypatch.setattr(setup_report, "_hold_lost", lambda _c: hold)
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True), encoding="utf-8"
+    )
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    r.facts.doctor_problems = [("FAIL", check, _TRAIL_FAILS[form][1]) for check, form in fails]
+    if hold:
+        r.facts.doctor_problems.insert(0, ("FAIL", "governance.hold", _HOLD_LOST_FAIL))
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    cause = setup_report._outcome_cause(r, runs)
+    assert cause is not None and cause in setup_report._LOST_CAUSES, cause
+    first, second = names
+    assert cause.index(f"agentsync's {first}, ") < cause.index(f"agentsync's {second}, "), cause
+    assert "(" not in cause and cause.endswith(": the person's to fix"), cause
+    outcome = setup_report.compute_outcome(None, runs, config_cause=cause)
+    assert outcome.why[0] == f"install.sh exited 1 at its status step{cause}", outcome
+
+
 def test_a_sync_stop_on_a_trail_lost_list_reads_as_purge_records_ruling_82() -> None:
     """Ruling 82: the sync's own error line, in each of lane B's words, is read apart from the audit trail's
     and from the folder's."""

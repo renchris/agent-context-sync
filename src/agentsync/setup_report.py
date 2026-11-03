@@ -14354,6 +14354,15 @@ def _trail_lost_cause(checks: Sequence[str]) -> str:
     )
 
 
+def _both_lost_cause(lost: Sequence[str], trail: Sequence[str]) -> str:
+    """The outcome's cause when the lists of ``lost`` lost what the audit trail or the hold record keeps and
+    those of ``trail`` what only purge-record.json keeps, in the Doctor line's order, each in its own words
+    (B13 round 34 C833, ruling 95): the purge queue's credit to purge-record.json dropped a lost hold
+    beside it."""
+    tail = ": the person's to fix"
+    return f"{_lost_cause(lost).removesuffix(tail)}, and {_trail_lost_cause(trail).removeprefix(' on ')}"
+
+
 _LOST_CAUSES = frozenset(
     {_GOVGONE_CAUSE}
     | {
@@ -14364,6 +14373,14 @@ _LOST_CAUSES = frozenset(
         _lost_cause(combo)
         for n in range(1, len(_LOST_NOUNS) + 1)
         for combo in itertools.combinations(_LOST_NOUNS, n)
+    }
+    | {  # B13 round 34 C833: every disjoint pair, or compute_outcome falls back to the generic words
+        _both_lost_cause(lost, trail)
+        for n in range(1, len(_LOST_NOUNS))
+        for lost in itertools.combinations(_LOST_NOUNS, n)
+        for m in range(1, len(_TRAIL_LIST_PHRASES) + 1)
+        for trail in itertools.combinations(_TRAIL_LIST_PHRASES, m)
+        if not set(lost) & set(trail)
     }
 )
 """Every :func:`_lost_cause`, which :func:`compute_outcome` names at the status step as it names a side
@@ -16821,9 +16838,11 @@ def _outcome_cause(r: _Run, runs: Sequence[InstallRun], *, latest: bool = True) 
             if _governance_gone(r):  # lane B's C313: the folder's, before any list it held
                 return _GOVGONE_CAUSE
             trail = _trail_lost_named(r)  # B13 round 33 ruling 82: never crediting the trail that lost it
+            lost = _lost_named(r)  # B13 round 34 C833 (ruling 95): both read before either is named
+            if trail and lost:
+                return _both_lost_cause(lost, trail)
             if trail:
                 return _trail_lost_cause(trail)
-            lost = _lost_named(r)
             if lost:
                 return _lost_cause(lost)
     except Exception:  # a cause the report cannot read leaves the step's own words

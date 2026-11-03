@@ -36536,6 +36536,9 @@ unexpected. Tests: `test_a_re_created_folders_lost_list_credits_purge_record_c73
 `test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82`,
 `test_a_trail_lost_fail_has_its_own_bucket_and_cause_per_list_and_both_ruling_82`,
 `test_a_sync_stop_on_a_trail_lost_list_reads_as_purge_records_ruling_82`.
+Amended 2026-11-03, §16.225 C833: beside another lost list the outcome is `_both_lost_cause`, the lost hold or the
+audit trail's form first, then the trail-lost lists, both read before either is named; every disjoint pair is in
+`_LOST_CAUSES`.
 
 **The Purge queue part in status's words with governance/ gone** (C765, C771's F2, ruling 64). `_queue_gone_said` takes
 `governance.queue_gone_words` under status's condition (`recorded_purges` reads and `folder_lost_case` holds), by
@@ -37279,6 +37282,16 @@ grep is unchanged, and a doctor-only and a background-only cut each still reach 
 `tests/test_setup_report.py::test_a_cut_background_read_gives_the_advice_once_where_install_sh_reads_it_c819`,
 `test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads` (`_background` no longer a writer),
 `test_a_launchctl_print_that_did_not_answer_is_not_measured_c720`.
+
+**The outcome names every lost list** (C833, ruling 95; amends §16.218's ruling 82 passage). `_outcome_cause` returned
+the trail-lost cause first, so a lost hold, or a list in the audit trail's form, beside a list whose purge only
+purge-record.json keeps was dropped from the status step's outcome. It reads `_trail_lost_named` and `_lost_named`
+before it returns, and `_both_lost_cause(lost, trail)` joins `_lost_cause` and `_trail_lost_cause` in the Doctor line's
+order: ` on agentsync's hold list, which no longer lists a hold the audit trail or the hold record keeps, and
+agentsync's purge queue, which lost a purge purge-record.json keeps: the person's to fix`. Every disjoint pair joins
+`_LOST_CAUSES`, or `compute_outcome` would fall back to its generic words. Test:
+`tests/test_setup_report.py::test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833`, over the five
+real states.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
