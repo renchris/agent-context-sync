@@ -36940,6 +36940,14 @@ out. Each form is named with its condition: without Doctor's [FAIL] line `below`
 bracket is added. Test: `test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`, which
 reads every form from the report's source.
 
+**Step 1's C607 sentence gives the folder form of the second stop** (C762, ruling 89; `docs/deploy/setup-feedback.md`;
+after lane RB's 8637295e4 and 19de61c3f). With governance/ gone, `install.sh` prints the folder's second stop at
+step 1 and step 2's `NEXT:` names it, while the guide's C607 sentence quoted only the lists' words, which never print
+then (`-govgone` matches none of the lists' arms). The sentence gives both in the folder tail's placeholders
+(`<what>`, `<fixes>`, `<check>`), the queued-purge-alone log, and that neither shows when governance/ that is not a
+folder stops first. Test: `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, which derives each quote
+from the script's own literal.
+
 **The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
 `docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
 or unreadable, but `cycle._tally_converted` always adds to `converted` and then to its failed or unreadable share, the

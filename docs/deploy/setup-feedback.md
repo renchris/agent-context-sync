@@ -1028,8 +1028,18 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   next run is: ...` (`once both are settled` after a remote the policy refuses; beside a damaged purge record, whose
   own FAIL is on governance.suppressed too, `and, on that same governance.suppressed line, a second FAIL that follows:
   ...`, ruling 86, C768), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
-  with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). Never when the file that stops
-  first is that list itself (B13 round 32 C607: a damaged purge record named alone led to a second stop).
+  with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). With governance/ gone, the
+  folder's words take the lists' place, once, `<what>`, `<fixes>` and `<check>` as in the folder tail above: step 1
+  adds `; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, which is
+  missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it, while <what>
+  (not damage, not a mode): fixing that is the person's (they put agentsync's governance folder back whole from the
+  copy kept<fixes>), and ~/.local/bin/agentsync status prints it on its <check> line`, logged after the config step's
+  (`config_err=state-file-notfile,state-queue-lost,state-governance-lost` for a queued purge alone), and step 2's
+  `NEXT:` adds `and, on its <check> line, a second stop that follows: agentsync's governance folder is missing while
+  <what>, also the person's to fix: they put agentsync's governance folder back whole from the copy kept<fixes>`
+  (B13 round 33 ruling 89, C762; lane RB's 8637295e4 and 19de61c3f). Never when the file that stops first is that
+  list itself, or governance/ that is not a folder (B13 round 32 C607: a damaged purge record named alone led to a
+  second stop).
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

@@ -8789,6 +8789,40 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     assert "$LIST_TAIL; $lead agentsync's purge queue" in script and 'lead="the same stop names"' in script
     assert "the purge queue's first when both lost one" not in section
     assert '[ -z "$clog" ] || clog=" config_err=${clog#,}"' in script
+    # B13 round 33 C762 (ruling 89): with governance/ gone, step 1's second stop and step 2's NEXT in the
+    # folder's words, each quote derived from the script's own literal in the guide's placeholders
+    after = (
+        "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder,"
+        " which is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression"
+        " list in it, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and"
+        " ~/.local/bin/agentsync status prints it on its $GONE_CHECK line"
+    )
+    second = (
+        "and, on its $GONE_CHECK line, a second stop that follows: agentsync's governance folder is missing"
+        " $GONE_WHAT, also the person's to fix: $GONE_FIX"
+    )
+    assert f'ctail="$ctail{after}"' in script and f'SECOND=" {second}"' in script
+    put_back = "they put agentsync's governance folder back whole from the copy kept"
+    assert f'GONE_FIX="{put_back}"' in script
+    whats = [w for w in re.findall(r'GONE_WHAT="([^"]*)"', script) if w]
+    assert whats and all(w.startswith(("while ", "${GONE_WHAT:-while}")) for w in whats), whats
+
+    def placeholders(text: str) -> str:
+        return (
+            text.replace("$GONE_WHAT", "while <what>")
+            .replace("$GONE_FIX", f"{put_back}<fixes>")
+            .replace("$GONE_CHECK", "<check>")
+        )
+
+    assert f"step 1 adds `{placeholders(after)}`" in section
+    assert f"`NEXT:` adds `{placeholders(second)}`" in section
+    alone = (
+        "(`config_err=state-file-notfile,state-queue-lost,state-governance-lost` for a queued purge alone)"
+    )
+    assert alone in section
+    assert '[ "$crole" != role-governance ] && folder_gone_words' in script
+    assert 'if [ "$1" != governance ] && folder_gone_words' in script
+    assert "that list itself, or governance/ that is not a folder" in section
     # every state- word install.sh can log after config_err= is one the guide names
     logged = set(
         re.findall(r'(?:clog|GONE_LOG|LIST_LOG)="(?:\$clog|\$GONE_LOG|\$LIST_LOG)?,(state-[a-z-]+)"', script)
