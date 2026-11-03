@@ -12927,6 +12927,9 @@ build the helper" is replaced by the curl fetch that seeds SwiftPM's cache with 
 Amended 2026-10-11 by §16.48 (R84, R83): "stays dropped ... would claim a trust they do not give" no longer holds
 for curl: the seed's `/usr/bin/curl` reads `CURL_CA_BUNDLE`, `SSL_CERT_FILE` and `SSL_CERT_DIR` (measured) and
 gets them; the fetch's trigger is `HTTPS_PROXY` or `ALL_PROXY`, no longer `HTTP_PROXY`.
+Amended 2026-11-03, §16.224 (by §16.54 Q52): the trigger is also git's `http.proxy` (an empty one turns the
+proxy off), and the seed's curl runs in `speech._curl_env`, which adds git's bundle, CA folder, TLS backend and
+proxy, from the environment and git's config files, to the shell's CA variables; §16.54 Q52 gives the mapping.
 
 #### A cited commit is on the trunk (`tests/test_deploy_pack.py`) (N38)
 
@@ -13993,6 +13996,8 @@ verifier's fix put `--cache-path` at `<agentsync cache>/speech/swiftpm`; the bui
 `test_without_a_proxy_the_build_fetches_nothing_itself` and
 `test_the_seeded_artifact_is_the_one_the_pinned_fluidaudio_names` (a new `FLUIDAUDIO_PIN` is a KeyError there
 until its manifest is read again).
+Amended 2026-11-03, §16.224 (by §16.54 Q52): git's `http.proxy` triggers the fetch too, and curl runs under
+`speech._curl_env`, not `_build_env` plus the shell's CA bundle alone.
 
 The seed's curl trusts what the shell's curl trusts, fetches only behind an https proxy, and leaves no partial
 file behind (R84, R83, review of both). `/usr/bin/curl` 8.7.1 reads `CURL_CA_BUNDLE`, `SSL_CERT_FILE` and
@@ -14023,6 +14028,8 @@ when the shell sets neither `CURL_CA_BUNDLE` nor `SSL_CERT_FILE`, so the seed tr
 `/etc/ssl/cert.pem` it fetches). `GIT_SSL_CAPATH` is not mapped: `SSL_CERT_DIR` beside an unusable bundle still
 exited 77 in the same measurement. `swift` and `git` never get `CURL_CA_BUNDLE`. Pinned by
 `tests/test_speech.py::test_a_ca_only_git_trusts_is_the_seeds_curl_bundle_unless_curl_has_its_own`.
+Amended 2026-11-03, §16.224 (by §16.54 Q79): `GIT_SSL_CAPATH` is mapped, to `SSL_CERT_DIR`, and beside a
+folder the bundle is `SSL_CERT_FILE`, not `CURL_CA_BUNDLE`.
 
 A Ctrl-C while Popen starts a build tool still stops the tool (R89). `ocr._run_build`'s `finally` treated "no
 Popen object" as "the tool ended", so a KeyboardInterrupt that landed after the fork but before `proc` was set
@@ -14903,6 +14910,8 @@ beside an unusable bundle. Pinned by `tests/test_speech.py::test_the_seed_trusts
 <NEMO_URL>`, the url curl fetches, so a proxy scoped to that path counts as well as a host-wide one. An empty
 `http.proxy` is git's way to turn the environment's proxy off: the seed then fetches nothing, even when the shell
 sets a proxy, and `_curl_env` drops every proxy variable.
+Amended 2026-11-03, §16.224 (review backtest er-28#0, er-28#1): beside a CA folder the bundle goes to
+`SSL_CERT_FILE`, not `CURL_CA_BUNDLE`, and `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -37027,3 +37036,34 @@ Tests: `test_a_part_whose_tests_fail_under_load_and_pass_alone_is_green` (1 and 
 `test_a_part_that_ends_other_than_1_is_not_re_run` (exit 2 and 3), `test_a_lost_workers_test_is_re_run`,
 `test_a_lane_parts_re_run_journals_beside_the_parts_and_a_green_one_drops_the_log`,
 `test_the_failed_verb_reads_a_finished_journal_only`.
+
+### 16.224 Review backtest: the seed's CA folder and TLS backend, and the citation lint's stray quote mark (2026-11-03)
+
+**A CA folder beside a named bundle reaches the seed's curl** (review backtest er-28#0; amends §16.54 Q79).
+`/usr/bin/curl` 8.7.1 reads `SSL_CERT_DIR` and `SSL_CERT_FILE` only when `CURL_CA_BUNDLE` is unset: measured
+2026-11-03 against a local server signed by a CA held only in a hashed folder, `CURL_CA_BUNDLE=/etc/ssl/cert.pem`
+beside `SSL_CERT_DIR` at that folder printed `CApath: none` and exited 60, and `SSL_CERT_FILE` at the same bundle
+beside it fetched. Git uses its bundle and its folder together, so with `GIT_SSL_CAINFO` or `http.sslCAInfo` (or the
+shell's `CURL_CA_BUNDLE`) beside `GIT_SSL_CAPATH` or `http.sslCAPath` the seed dropped the folder git trusts and
+SwiftPM's direct download failed after it. `_curl_env` now moves the bundle to `SSL_CERT_FILE` whenever a folder is
+set. Test: `tests/test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file`.
+
+**git's `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`** (review backtest er-28#1; amends §16.54 Q52).
+Git selects the config's backend with `curl_global_sslset`, and libcurl reads `CURL_SSL_BACKEND` only when none was
+selected: measured 2026-11-03 with Xcode's git 2.50.1 and `GIT_SSL_CAPATH` at the folder above,
+`CURL_SSL_BACKEND=secure-transport` beside `http.sslBackend=openssl` reached the server, and the reverse failed
+verification. The
+seed's curl gave the shell's backend precedence; it now takes the config's. Test:
+`tests/test_speech.py::test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the_configs`.
+
+**The seed's older paragraphs point at §16.54** (review backtest er-28#3; docs only). The speech build's proxy
+paragraph and §16.48's R83 and R84 paragraphs still gave the fetch's trigger as the environment's proxy alone and
+curl's trust as the shell's CA variables, with no dated line for §16.54 Q52, which added git's `http.proxy` and
+git's CA settings. Each now carries one.
+
+**A stray quote mark in a meeting table row opens no quote** (review backtest cc-11#1; amends the meeting citation
+lint's cell split). An inch mark (`27"`) toggled `curate._cells`' quote state, so every pipe after it was read as
+quoted: a Decisions row's evidence cell merged into its description, `_CELL_TOKEN` paired the stray mark with the
+evidence's quote, and the lint gave a false CITE-MISSING and checked no citation. A quote mark now opens a quote
+only after a character that is not a letter, digit or `_`, in `_cells` and `_CELL_TOKEN` alike, and one still open
+at the row's end is text. Test: `tests/test_curate.py::test_a_stray_quote_mark_in_a_cell_is_text`.

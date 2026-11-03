@@ -1126,6 +1126,36 @@ def test_a_ca_folder_only_git_trusts_is_the_seeds_curl_folder_unless_curl_has_it
         assert "SSL_CERT_DIR" not in tool_seen, tool
 
 
+@pytest.mark.parametrize(
+    ("shell", "bundle"),
+    [
+        ({"GIT_SSL_CAINFO": "/Users/contoso/git.pem"}, "/Users/contoso/git.pem"),
+        ({"CURL_CA_BUNDLE": "/Users/contoso/curl.pem"}, "/Users/contoso/curl.pem"),
+        (
+            {"CURL_CA_BUNDLE": "/Users/contoso/curl.pem", "SSL_CERT_FILE": "/Users/contoso/ssl.pem"},
+            "/Users/contoso/curl.pem",
+        ),
+    ],
+)
+def test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file(
+    monkeypatch: pytest.MonkeyPatch, shell: dict[str, str], bundle: str
+) -> None:
+    """Review backtest er-28#0: curl reads SSL_CERT_DIR only when CURL_CA_BUNDLE is unset (measured with
+    /usr/bin/curl 8.7.1: exit 60 against a server signed by the folder's CA), so a bundle named beside git's
+    CA folder made the seed drop the folder git trusts.  The bundle the seed would use goes in SSL_CERT_FILE
+    instead, which curl reads beside SSL_CERT_DIR (measured: it fetched)."""
+    for key in ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", *speech._CURL_CA_VARS):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GIT_SSL_CAPATH", "/Users/contoso/certs")
+    for key, value in shell.items():
+        monkeypatch.setenv(key, value)
+    env = speech._curl_env({})
+    assert "CURL_CA_BUNDLE" not in env
+    assert (env.get("SSL_CERT_FILE"), env.get("SSL_CERT_DIR")) == (bundle, "/Users/contoso/certs")
+    env = speech._curl_env({"http.sslcapath": "/Users/contoso/config-certs"})
+    assert env.get("SSL_CERT_DIR") == "/Users/contoso/certs", "the environment's folder wins, as in git"
+
+
 def real_git_config(tools: Path, real: str | None = None) -> None:
     """The stub git answers ``config`` as the real git does, from HOME's .gitconfig: never from the machine's
     system gitconfig, which ``_build_env`` lets git read (B13 round 5 F79: conftest's GIT_CONFIG_NOSYSTEM
@@ -1157,7 +1187,8 @@ def test_the_seed_trusts_and_routes_as_gits_own_config_does(
     seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
     proxy = "http://seed:secret@proxy.contoso.example:3128"
     assert (seen.get("HTTPS_PROXY"), seen.get("https_proxy")) == (proxy, proxy), "git's config wins"
-    assert seen.get("CURL_CA_BUNDLE") == f"{home}/contoso-ca.pem"
+    assert "CURL_CA_BUNDLE" not in seen, "curl would drop the folder beside it"
+    assert seen.get("SSL_CERT_FILE") == f"{home}/contoso-ca.pem"
     assert seen.get("SSL_CERT_DIR") == f"{home}/contoso-certs"
     assert seen.get("CURL_SSL_BACKEND") == "openssl"
     [call] = lines_of(curl.with_name("curl.calls"))
@@ -1171,7 +1202,7 @@ def test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the
 ) -> None:
     """B13 Q52: with no proxy in the environment the seed used to fetch nothing; a proxy url-scoped to
     github.com in git's config is enough now.  The shell's GIT_SSL_CAINFO wins over http.sslCAInfo and the
-    shell's CURL_SSL_BACKEND over http.sslBackend, as in git."""
+    config's http.sslBackend over the shell's CURL_SSL_BACKEND, as in git (Xcode's git 2.50.1, measured)."""
     (Path.home() / ".gitconfig").write_text(
         "[http]\n\tsslCAInfo = ~/contoso-ca.pem\n\tsslBackend = openssl\n"
         '[http "https://github.com"]\n\tproxy = proxy.contoso.example:3128\n'
@@ -1183,7 +1214,7 @@ def test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the
     seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
     assert seen.get("HTTPS_PROXY") == "proxy.contoso.example:3128"
     assert seen.get("CURL_CA_BUNDLE") == SHELL_CA["GIT_SSL_CAINFO"]
-    assert seen.get("CURL_SSL_BACKEND") == "secure-transport"
+    assert seen.get("CURL_SSL_BACKEND") == "openssl"
     assert "SSL_CERT_DIR" not in seen
 
 

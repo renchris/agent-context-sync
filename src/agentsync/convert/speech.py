@@ -579,8 +579,14 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
       server signed by a CA in a hashed folder fetched with SSL_CERT_DIR at that folder beside
       /etc/ssl/cert.pem, and exited 60 with GIT_SSL_CAPATH alone; github.com still fetched with SSL_CERT_DIR
       at that folder or at one that does not exist).  Under CURL_SSL_BACKEND=secure-transport curl ignores
-      it, as before.
-    * http.sslBackend becomes CURL_SSL_BACKEND unless the shell sets it.
+      it, as before.  curl reads SSL_CERT_DIR (and SSL_CERT_FILE) only when CURL_CA_BUNDLE is unset (measured
+      with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE=/etc/ssl/cert.pem beside SSL_CERT_DIR at the folder showed
+      "CApath: none" and exited 60; SSL_CERT_FILE at the same bundle beside it fetched), while git uses both
+      its bundle and its folder.  So with a folder the bundle goes in SSL_CERT_FILE, and both count.
+    * http.sslBackend becomes CURL_SSL_BACKEND, over the shell's: git selects the config's backend with
+      curl_global_sslset, and libcurl reads CURL_SSL_BACKEND only when none was selected (measured with
+      Xcode's git 2.50.1: CURL_SSL_BACKEND=secure-transport beside http.sslBackend=openssl used openssl, and
+      the reverse used secure-transport).
     * git's http.proxy wins over the environment's proxy, as it does in git, so it becomes HTTPS_PROXY and
       https_proxy (curl reads the lower-case one first); in the environment, not on argv, where ``ps`` would
       show a proxy's credentials.  An empty one turns the environment's proxy off, as it does for git."""
@@ -591,8 +597,10 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
     capath = env.get("GIT_SSL_CAPATH") or git_config.get("http.sslcapath")
     if capath and "SSL_CERT_DIR" not in env:
         env["SSL_CERT_DIR"] = capath
+    if "SSL_CERT_DIR" in env and "CURL_CA_BUNDLE" in env:  # else curl drops the folder
+        env["SSL_CERT_FILE"] = env.pop("CURL_CA_BUNDLE")
     backend = git_config.get("http.sslbackend")
-    if backend and "CURL_SSL_BACKEND" not in env:
+    if backend:
         env["CURL_SSL_BACKEND"] = backend
     proxy = git_config.get("http.proxy")
     if proxy:
