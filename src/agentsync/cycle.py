@@ -2927,7 +2927,9 @@ class _Cycle:
         loses the folder; for a Graph source that folder is the staging folder itself, which also holds a
         converter's temp folders (B13 round 32 C645). Only a text that ends cut (``…``) loses a cut staging
         path at its end, a staged file cut inside its 16 hex or its suffix included, to ``…`` (B13 round 33
-        C751; ``…`` is no suffix character, so the cut mark stays)."""
+        C751; ``…`` is no suffix character, so the cut mark stays), and one cut exactly at the end of its
+        whole 16 hex and the staged suffix the row's name ends with (lower case, ``.teams.json`` whole) to
+        ``<name>…`` (B13 round 34 C860)."""
         end, goes_on = convert_common._PATH_END, convert_common._PATH_GOES_ON
         names = [n for n in convert_common._spellings(Path(name)) if "/" not in n] or [name]
         for root in self._staging_roots():
@@ -2937,8 +2939,15 @@ class _Cycle:
             if text.endswith("…"):
                 # a staged file the cut ended inside: its 16 hex or its Graph suffix, which the root drop
                 # below would leave (``0123…``, ``0123456789abcdef.pp…``) or the suffix's lazy match took
-                # with the cut mark; the cut path goes as a cut inside the root does (B13 round 33 C751)
-                text = re.sub(re.escape(root) + r"[0-9a-f]{0,16}(?:\.[^\s'\":,;)\]>/\\…]*)?…$", "…", text)
+                # with the cut mark; the cut path goes as a cut inside the root does (B13 round 33 C751).
+                # Cut right after its whole suffix, it is the row's name and the mark (B13 round 34 C860):
+                # 16 hex, a suffix, and the name ending with it, as SourceItem.suffix stages it (lower case,
+                # ``.teams.json`` whole); a callable, so the name is never read as a template
+                text = re.sub(
+                    re.escape(root) + r"([0-9a-f]{0,16})(\.[^\s'\":,;)\]>/\\…]*)?…$",
+                    lambda m: name + "…" if len(m[1]) == 16 and m[2] and name.lower().endswith(m[2]) else "…",
+                    text,
+                )
             for spelt in sorted(names, key=len, reverse=True):
                 text = re.sub(folder + "/" + re.escape(spelt) + goes_on, lambda _m: name, text)
             # the shortest suffix that ends a path (``_PATH_GOES_ON``), so a sentence's ``.``, a ``>`` or an

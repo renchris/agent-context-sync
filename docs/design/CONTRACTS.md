@@ -36854,6 +36854,9 @@ suffix's excluded class. The digits hold no path (`sha256(source, stable id)[:16
 (`<root><hex>.pptx…`) also reads `…`. Test:
 `test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text` (`0123…`, 15 and
 16 hex, `.…` and `.pp…` each fold to the head and `…`; the same tails uncut stay; a local name cut keeps its letters).
+Amended 2026-11-03, §16.228 C860: CORRECTED: a suffix cut exactly at its end (`<root><16 hex>.pptx…`) reads the
+row's name and the mark, `Plan.pptx…`, when the cut suffix is one the name ends with in lower case; any other cut
+still reads `…`.
 
 **The page-fold test cuts inside the root whatever tmp's length (C750, ruling 71; a test; after §16.216 C660).**
 `test_a_page_whose_path_starts_past_the_stored_cut_is_folded_too` held only under a tmp of 54 characters or more: the
@@ -37180,6 +37183,17 @@ drop it (the verifier's shell D). Tests:
 folder keep `CURL_CA_BUNDLE`; the shell's bundle beside git's folder from the environment or the config, one folder in
 both `SSL_CERT_DIR` and `GIT_SSL_CAPATH`, and git's bundle beside the shell's folder each move it, the folder kept),
 with `test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file` unchanged.
+
+**A Graph file cut right after its suffix folds to its name (C860; `agentsync.cycle`; amends §16.221 C751).** C751
+folded every cut staged path at a text's end to `…`, so `<root><16 hex>.pptx…` lost the name `Plan.pptx` that its
+uncut form and a local `<root><hex>/Plan.pptx…` keep. `_fold_staging`'s cut rule is now a callable over two groups:
+exactly 16 hex and a non-empty suffix that `name.lower()` ends with give `<name>…`, anything else `…`. The staged
+suffix is `SourceItem.suffix`, lower case and `.teams.json` whole, so the test is the name's ending in lower case,
+never `Path(name).suffix`, which misses `Plan.PPTX` and a Teams file; and a callable, as the other folds use, so a
+name holding `\q` or `\1` is never read as a template. No new fold key: no re-fold is needed, and a row already
+folded to `…` stays. Test: `test_convert_family.py::test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text`
+(`.pptx…` under `Plan.pptx` and `Plan.PPTX`, `.teams.json…`, names with `\q` and `\1` kept literally; `.docx…` under
+`Plan.pptx`, `0123.pptx…`, and a suffix-less row's `…`, `0123…` and 16 hex each still `…`).
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 

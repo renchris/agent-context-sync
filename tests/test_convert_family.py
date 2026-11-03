@@ -1107,6 +1107,17 @@ def test_the_escaped_fold_takes_a_graph_staged_file_and_cuts_only_a_cut_text() -
         assert fold(f"{head}{staging}/{cut}…", "Plan.pptx") == head + "…", cut
         assert fold(f"{head}{staging}/{cut}", "Plan.pptx") != head, f"not cut: {cut} is no cut path"
     assert fold(f"{head}{root}/Pl…", "Plan.pptx") == head + "Pl…", "a local name cut keeps its letters"
+    # B13 round 34 C860: a Graph file cut exactly after its whole staged suffix (SourceItem.suffix: lower
+    # case, ``.teams.json`` whole) is the row's name and the mark; any other cut still reads ``…``
+    assert fold(f"{head}{root}.pptx…", "Plan.pptx") == head + "Plan.pptx…"
+    assert fold(f"{head}{root}.pptx…", "Plan.PPTX") == head + "Plan.PPTX…"
+    assert fold(f"{head}{root}.teams.json…", "2026-10.teams.json") == head + "2026-10.teams.json…"
+    assert fold(f"{head}{root}.pptx…", "A\\qPlan.pptx") == head + "A\\qPlan.pptx…", "the name is no template"
+    assert fold(f"{head}{root}.pptx…", "A\\1Plan.pptx") == head + "A\\1Plan.pptx…", "the name is no template"
+    assert fold(f"{head}{root}.docx…", "Plan.pptx") == head + "…", "another suffix"
+    assert fold(f"{head}{staging}/0123.pptx…", "Plan.pptx") == head + "…", "not 16 hex: no staged file"
+    for cut in ("", "0123", "0123456789abcdef"):
+        assert fold(f"{head}{staging}/{cut}…", "README") == head + "…", f"no suffix: {cut!r}"
 
 
 @pytest.mark.parametrize("home", ["/Users/contosoquill", "/Volumes/Contoso Disk/Users/contosoquill"])
