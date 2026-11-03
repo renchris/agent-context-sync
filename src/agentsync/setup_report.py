@@ -4388,6 +4388,15 @@ def _exited(rc: int, text: str | None = None) -> str:
     return f"was {ocr._ended(rc, (text or '').encode())}"
 
 
+def _probe_ended(cmd: str, rc: int, text: str) -> str:
+    """``<cmd> exited <rc>: <text>`` for a probe that did not exit 0, as ``not measured (...)`` when the
+    runner gave no answer (a time-out or a spent budget, :func:`_not_answered`), the form C716 gives the
+    Command Line Tools: one cut said one way across Environment (B13 round 34 C820, ruling 96). A real exit
+    keeps its words."""
+    said = f"{cmd} {_exited(rc, text)}"
+    return f"not measured ({said})" if _not_answered(rc, text) else said
+
+
 class _Run:
     """One report: the deadline, the loaded config (or why not), and the facts sections share."""
 
@@ -6196,7 +6205,7 @@ def _environment(r: _Run) -> list[str]:
     def sw_vers() -> str:
         rc, text = r.run(["/usr/bin/sw_vers"], 3.0)
         if rc != 0:
-            return f"sw_vers {_exited(rc, text)}"
+            return _probe_ended("sw_vers", rc, text)
         # the version and build only, as the shell report prints them: the label already is the product's
         # name, so "macOS: macOS 15.5" repeated it (B13 round 12 N26)
         kv = {k.strip(): v.strip() for k, v in (ln.split(":", 1) for ln in text.splitlines() if ":" in ln)}
@@ -6217,7 +6226,7 @@ def _environment(r: _Run) -> list[str]:
                 host = urlsplit(url.rstrip(";")).hostname or ""
                 if "." in host:  # a bare word would redact the report's own words
                     r.red.add("mdmhost", host, ignore_case=True)
-        return joined if rc == 0 else f"`profiles` {_exited(rc, joined)}"
+        return joined if rc == 0 else _probe_ended("`profiles`", rc, joined)
 
     def clt() -> str:
         rc, text = r.run(["/usr/bin/xcode-select", "-p"], 3.0)
@@ -6243,7 +6252,7 @@ def _environment(r: _Run) -> list[str]:
         if not os.access(exe, os.X_OK):
             return "not found"
         rc, text = r.run([exe, "--version"], 3.0)
-        return f"{text} ({exe})" if rc == 0 else f"{exe} --version {_exited(rc, text)}"
+        return f"{text} ({exe})" if rc == 0 else _probe_ended(f"{exe} --version", rc, text)
 
     def secret_scan() -> str:
         """What the secret scan can use, the way doctor's gitleaks check looks (B13 round 4 Q81): the builtin
@@ -6295,7 +6304,11 @@ def _environment(r: _Run) -> list[str]:
         if rc == 124 and text.startswith("timed out after "):  # a slow start, not an exit code (U48)
             secs = text.removeprefix("timed out after ")
             return f"{exe}{which} did not answer within {secs} ({_slow_start(kind)})"
-        return text.splitlines()[0] + which if rc == 0 and text else f"{exe}{which} {_exited(rc, text[:200])}"
+        return (
+            text.splitlines()[0] + which
+            if rc == 0 and text
+            else _probe_ended(f"{exe}{which}", rc, text[:200])
+        )
 
     def app(name: str) -> Callable[[], str]:
         def version() -> str:
@@ -11468,11 +11481,21 @@ def _status_section(r: _Run) -> list[str]:
     try:
         body = _status(r)
     except Exception as exc:
-        body = [f"_This section failed: {type(exc).__name__}: {exc}_"]
         # B13 round 34 C801 (ruling 96): the Loop line says the call was cut, never "no status loop line";
         # an operating system's ETIMEDOUT (an errno) is a failure, not the report's time limit
         timed_out = isinstance(exc, (TimeoutError, CallTimedOutError)) and getattr(exc, "errno", None) is None
         r.facts.status_failed = _STATUS_NOT_IN_TIME if timed_out else _why_not_read(exc)
+        # B13 round 34 C820 (ruling 96): a cut is Doctor's sibling words, never "failed"; the evidence line
+        # already carries the idle advice
+        limit = r.last_call_limit
+        if timed_out and limit is not None and limit <= 0.2:
+            body = ["Not run: the report's time budget was used up before status started."]
+        elif timed_out and limit is not None:
+            body = [
+                f"Cut off: the status call did not finish within {limit:.1f}s, the limit the report gives it."
+            ]
+        else:
+            body = [f"_This section failed: {type(exc).__name__}: {exc}_"]
     return [*body, *_evidence(r)]
 
 

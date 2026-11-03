@@ -22178,6 +22178,67 @@ def test_the_command_line_tools_time_out_is_not_measured_c716(
     assert ("not installed" in line) is (answer[0] == 2), line
 
 
+@pytest.mark.parametrize(
+    "note", ["timed out after 3.0s", "skipped: the report's time budget is used up"], ids=["timeout", "spent"]
+)
+def test_every_environment_probe_says_a_cut_as_not_measured_c820(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, note: str
+) -> None:
+    """B13 round 34 C820 (ruling 96): one cut report worded the same skip three ways; sw_vers, profiles, uv
+    and pandoc's last branch now read C716's `not measured (<cmd> exited 124: <note>)`, and a real non-zero
+    exit keeps its words."""
+    uv = Path.home() / ".local" / "bin" / "uv"
+    uv.parent.mkdir(parents=True, exist_ok=True)
+    uv.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    uv.chmod(0o755)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    for answer, cut in (((124, note), True), ((3, "refused"), False)):
+        monkeypatch.setattr(setup_report._Run, "run", lambda _self, _argv, _t=5.0, a=answer: a)
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+        lines = setup_report._environment(r)
+        for label, cmd in (
+            ("macOS", "sw_vers"),
+            ("MDM enrollment", "`profiles`"),
+            ("uv", f"{uv} --version"),
+            ("pandoc", ""),
+        ):
+            line = next((ln for ln in lines if ln.startswith(f"- {label}: ")), None)
+            if line is None or (label == "pandoc" and answer[0] == 124 and note.startswith("timed out")):
+                continue  # pandoc's own time-out branch keeps its words; a Mac with no line has none
+            said = f"{cmd} exited {answer[0]}: {answer[1]}" if cmd else f"exited {answer[0]}: {answer[1]}"
+            if cut:
+                assert "not measured (" in line and said in line and line.endswith(")"), line
+            else:
+                assert "not measured" not in line and said in line, line
+
+
+def test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C820 (ruling 96): the Status section the time limit cut read `_This section failed:
+    TimeoutError: ..._`. It takes Doctor's sibling words, told apart by the wait the call was given, and an
+    operating system's ETIMEDOUT (an errno) or any other exception stays `failed`."""
+
+    def cut(config: object) -> list[str]:
+        raise TimeoutError("timed out")
+
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(status=cut), 60.0)
+    r.last_call_limit = 0.1
+    monkeypatch.setattr(setup_report, "_status", lambda run: (_ for _ in ()).throw(TimeoutError("x")))
+    monkeypatch.setattr(setup_report, "_evidence", lambda run: [])
+    assert setup_report._status_section(r) == [
+        "Not run: the report's time budget was used up before status started."
+    ]
+    r.last_call_limit = 7.5
+    assert setup_report._status_section(r) == [
+        "Cut off: the status call did not finish within 7.5s, the limit the report gives it."
+    ]
+    for exc in (TimeoutError(60, "Operation timed out"), RuntimeError("boom")):
+        monkeypatch.setattr(setup_report, "_status", lambda run, e=exc: (_ for _ in ()).throw(e))
+        [line] = setup_report._status_section(r)
+        assert line.startswith("_This section failed: "), line
+
+
 def test_the_install_source_says_a_devtools_read_that_did_not_answer_c716(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

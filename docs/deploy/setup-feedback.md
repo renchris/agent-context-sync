@@ -30,7 +30,10 @@ back`), still inside install.sh's 120 s bound on it. On a Mac too busy for that 
 git and `xcode-select -p` read keeps its 3 s and `launchctl print` its 5 s, and Run metadata names it. The docs repo's
 remote check (a local `git remote` read, made only when doctor printed a `governance.remote` FAIL) is not counted
 against the budget. Each section records its own failure
-("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.
+("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one;
+a Status call the time limit cut says `Not run: the report's time budget was used up before status started.` or `Cut
+off: the status call did not finish within <n>s, the limit the report gives it.`, as Doctor does, and an Environment
+probe that did not answer says `not measured (<command> exited 124: <why>)` (B13 round 34 C820).
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
 reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs,
 Installer and Configuration carry a few more lines; section 4 says how to read them. Apart from the three helper

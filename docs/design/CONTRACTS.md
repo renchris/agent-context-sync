@@ -36471,6 +36471,9 @@ time limit variable does not scale, so a time-out says its seconds (`origin: not
 3.0s)`, ` (commit and origin not read: xcode-select did not answer within 3.0s)`) and only a budget used up before
 the read keeps `the report's time limit`; after the first unanswered read the install source reads no more, and an
 unanswered empty-url probe or rewrite read is no answer, never a definite origin.
+Amended 2026-11-03, §16.225 C820: sw_vers, `profiles`, uv and pandoc's last branch say a cut as the Command Line
+Tools do, `not measured (<cmd> exited 124: <note>)`, and a Status call the time limit cut reads Doctor's sibling
+`Not run: ...` or `Cut off: ...`, never `This section failed`.
 
 **A stopped copy gives no advice to send it** (C718, ruling 83). `_IDLE_AGAIN` stays byte-identical; every site reads
 it through `_idle_again(r)`, `this copy is not for sending` in a stopped copy: `_evidence_line`, the Summary's doctor
@@ -37252,6 +37255,18 @@ line)` stays for a status that answered without one, no status hook and no confi
 the issue link is unchanged. The guide's Loop paragraph names both forms. Tests:
 `tests/test_setup_report.py::test_a_cut_status_call_says_the_loop_line_was_not_read_c801`,
 `tests/test_deploy_pack.py::test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`.
+
+**One cut said one way in Environment and Status** (C820, ruling 96; amends §16.218 C716). One cut report worded the
+same time-limit skip three ways and called the cut Status section failed. `_probe_ended(cmd, rc, text)`, beside
+`_exited`, gives sw_vers, `profiles`, uv and pandoc's last branch C716's `not measured (<cmd> exited 124: <note>)`
+for a time-out or a spent budget; pandoc's own `did not answer within` branch and a real non-zero exit keep their
+words. `_status_section` takes Doctor's sibling words, told apart by `r.last_call_limit`: `Not run: the report's time
+budget was used up before status started.` at 0.2 s or less, `Cut off: the status call did not finish within <n>s, the
+limit the report gives it.` above it; an errno (the system's ETIMEDOUT) or any other exception keeps `_This section
+failed: ..._`. No idle advice there: the evidence line carries it, and `not measured (time limit)` in the evidence
+parts, which `_RETRY_WHYS` keys on, is unchanged. Tests:
+`tests/test_setup_report.py::test_every_environment_probe_says_a_cut_as_not_measured_c820`,
+`test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
