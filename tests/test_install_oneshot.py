@@ -18250,6 +18250,19 @@ def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_firs
     ), text
     text = _stopped_copy_of(env, tmp_path, "\n".join([*head, sync.format("install.log"), ""]))
     assert sync.format("install.log") + "\n" in text, "an attempt that ran install.sh keeps its words"
+    # Two runs in that second: the clause gains the run's label, as the renderer's _run_named gives it.
+    log = setup / "install.log"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-10-18T09:00:10Z run=20261018T090010Z-42 start install.sh compat=24 commit=0123456789ab "
+        "kind=- source=- args=--list-folders\n",
+        encoding="utf-8",
+    )
+    text = _stopped_copy_of(env, tmp_path, "\n".join([*head, norun, sync.format("install.log"), ""]))
+    assert (
+        "(install.log: the install run of 2026-10-18T09:00:10Z, run 20261018T090010Z, before this attempt; "
+        "this attempt ran none)" in text
+    ), text
 
 
 @pytest.mark.parametrize("state", ["an install run after the list", "no install.commit warn"])

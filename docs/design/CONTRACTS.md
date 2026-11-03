@@ -23701,8 +23701,9 @@ that ran no install.sh (its own `- install.sh: no run during this attempt` line)
 done in 4s (install.log) · converted 7, ... (install.log)` as this attempt's. In copy mode it reads `(install.log:
 the install run of <start>, before this attempt; this attempt ran none)`, the start from install.log's last run with
 a first-sync step (`an earlier install run` with none), and the counts' tag `(install.log: that earlier run)` or
-`(install.out: an earlier run's; this attempt ran none)`; a line already saying `before this attempt` stays. The
-`, run <label>` of two runs in one second (`_run_named`) is not added. Test:
+`(install.out: an earlier run's; this attempt ran none)`; a line already saying `before this attempt` stays. When
+another run started in that second, `stopped_run_labels`' `named()` adds `, run <label>` after the start, as the
+renderer's `_run_named` does. Test:
 `test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
 
 **One expected warn ends in its fix** (U31; dated line at §16.116 S26). Both the renderer and the stopped copy's
