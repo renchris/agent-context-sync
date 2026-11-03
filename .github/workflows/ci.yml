@@ -47,7 +47,9 @@ name: ci
 # (ef12f28f) and 49:42 (357f6d5b), still not counted against timeout-minutes (B13 round 32 C662). Round 32's fourteen
 # jobs (62b8a943 to 7a3be9af) took 41:28 to 58:25, all green on attempt 1 (the slowest 9cb86828, pytest's step 57:51
 # at 6706 tests), so 80 stays 21:35 above them; runner waits reached 18:03 (55808777), not counted against
-# timeout-minutes (B13 round 33 C772).
+# timeout-minutes (B13 round 33 C772). Round 33's eight jobs (7b23a0a7 to 4e0e8604) took 43:16 to 57:17, all green
+# on attempt 1 (the slowest b948dfa7, pytest's step 56:47 at 7133 tests), so 80 stays 22:43 above them; runner waits
+# reached 13:58 (4e0e8604), not counted against timeout-minutes (B13 round 34 C864).
 on:
   workflow_dispatch:
   push:

@@ -37236,6 +37236,14 @@ K58). Tests: `test_the_prompt_text_changes_only_with_its_version`,
 `test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
 `test_readme_prompt_compat_matches_the_installer`.
 
+**Round 33's eight CI jobs are in CLAUDE.md and ci.yml's note** (C864; docs only). Jobs 7b23a0a7 to 4e0e8604 took 43:16
+to 57:17, all green on attempt 1, the slowest on b948dfa7 (7133 tests, pytest's step 56:47), 22:43 under the limit of
+80; runner waits reached 13:58 on 4e0e8604. They ran November 1 to 3, the first outside October, so CLAUDE.md's
+`(measured October 2026;` reads `(measured October and November 2026;`. As for C772, the headline of 18 to 60, the wait
+list and the limit stay, the wait goes in ci.yml's note only, and `test_claude_md_gives_cis_time_and_its_limit`, which
+pins CLAUDE.md's whole sentence, moves in the same commit: the item's fix as first written, CLAUDE.md and ci.yml alone,
+turned that test red, its measured reason a build makes things worse.
+
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
 <part>: the re-run alone is red too (rc N)` and returned 1, and its callers' `if [ "$rc" = 1 ] && rerun_alone ...; then

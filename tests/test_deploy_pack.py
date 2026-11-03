@@ -238,7 +238,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     most: they add the twelve and the wait, and the limit stays 80, about 23 minutes above the slowest. B13
     round 33 C772: round 32's fourteen jobs (62b8a943 to 7a3be9af) took 41:28 to 58:25, all green on attempt
     1, inside the range, 21:35 under the limit: the guides add the fourteen, and the headline and the 80
-    stay."""
+    stay. B13 round 34 C864: round 33's eight jobs (7b23a0a7 to 4e0e8604) took 43:16 to 57:17, all green on
+    attempt 1, 22:43 under the limit, and ran November 1 to 3, so the guide's "measured October 2026" reads
+    "October and November": the guides add the eight, the note alone gives the 13:58 runner wait, and the
+    headline and the 80 stay."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -251,23 +254,25 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 52 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 60 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
-        " the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs from eaed1034 to"
-        " fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to 31:21; the thirteen"
-        " from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to 3ec66a92 took 30:06 to"
-        " 36:24, 5685 tests on the slowest and pytest's step 35:46; the nine from f04c61db to d1f72d6f took"
-        " 26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests and pytest's step 49:26;"
-        " the seven after it, from 71388552 to b2724d9c, took 30:19 to 44:27, the slowest on 3f1dee54, 6191"
-        " tests and pytest's step 43:58; the nine after those, from 673a72a0 to fa32c452, took 35:36"
-        " to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step 50:28; the sixteen"
-        " after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the slowest on 2919a7b9,"
-        " 6468 tests and pytest's step 59:08, and one attempt lost its runner and its rerun was green; the"
-        " twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green on attempt 1, the"
-        " slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen after those, from 62b8a943"
-        " to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest on 9cb86828, 6706 tests and"
-        " pytest's step 57:51; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS"
-        " runner, counted from the run appearing to its job starting"
-        " (one waited 63 minutes, on ef12f28f, another 50, and earlier ones 48 and 46); the job's limit is"
+        "`ci` takes about 18 to 60 minutes once its job starts (measured October and November 2026; 24 at"
+        " 5120 tests, and the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs"
+        " from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to"
+        " 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to"
+        " 3ec66a92 took 30:06 to 36:24, 5685 tests on the slowest and pytest's step 35:46; the nine from"
+        " f04c61db to d1f72d6f took 26:53 to 40:01 but one, 49:59 on d1f72d6f, a docs-only commit, 6050 tests"
+        " and pytest's step 49:26; the seven after it, from 71388552 to b2724d9c, took 30:19 to 44:27, the"
+        " slowest on 3f1dee54, 6191 tests and pytest's step 43:58; the nine after those, from 673a72a0 to"
+        " fa32c452, took 35:36 to 51:10, six past 45, the slowest on b2b88e5d, 6345 tests and pytest's step"
+        " 50:28; the sixteen after those, from ccf696b7 to c8a4298b, took 37:56 to 59:43, four past 50, the"
+        " slowest on 2919a7b9, 6468 tests and pytest's step 59:08, and one attempt lost its runner and its"
+        " rerun was green; the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all green"
+        " on attempt 1, the slowest on 76dc4e8f, 6631 tests and pytest's step 56:38; the fourteen after"
+        " those, from 62b8a943 to 7a3be9af, took 41:28 to 58:25, all green on attempt 1, the slowest on"
+        " 9cb86828, 6706 tests and pytest's step 57:51; the eight after those, from 7b23a0a7 to 4e0e8604,"
+        " took 43:16 to 57:17, all green on attempt 1, the slowest on b948dfa7, 7133 tests and pytest's step"
+        " 56:47; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner,"
+        " counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50,"
+        " and earlier ones 48 and 46); the job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
     assert int(limit) - 60 >= 10 and int(limit) == 80  # 10 minutes above the slowest job seen, 59:43
@@ -318,6 +323,12 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " slowest 9cb86828, pytest's step 57:51 at 6706 tests), so 80 stays 21:35 above them; runner waits"
         " reached 18:03 (55808777), not counted against timeout-minutes (B13 round 33 C772)."
     ) in note
+    assert (
+        "Round 33's eight jobs (7b23a0a7 to 4e0e8604) took 43:16 to 57:17, all green on attempt 1 (the"
+        " slowest b948dfa7, pytest's step 56:47 at 7133 tests), so 80 stays 22:43 above them; runner waits"
+        " reached 13:58 (4e0e8604), not counted against timeout-minutes (B13 round 34 C864)."
+    ) in note
+    assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
     assert "which left 45 only 8:36 above them" in note
     assert "so it is 50: 13 minutes above them (B13 round 25 D83)" in note
