@@ -441,8 +441,11 @@ CITE_CODES: tuple[str, ...] = tuple(
 _HMS = r"(\d\d):(\d\d):(\d\d)"
 _CITE_TAG = re.compile(rf"(seen\+frame|seen|heard)(?: r(\d+))? {_HMS}")
 _FREE_TAG = re.compile(r"chat ~\d\d:\d\d|file|recap")
-_CELL_TOKEN = re.compile(r'"([^"]*)"|`([^`\n]*)`')  # a quote first, so a backtick inside a quote is text
-_CELL_BREAK = re.compile(r'\\\||"|\|')  # an escaped \|, a quote mark, a cell break
+# A quote first, so a backtick inside a quote is text.  A quote mark straight after a letter or digit (an inch
+# mark, ``27"``) opens no quote, here and in ``_cells``.
+_CELL_TOKEN = re.compile(r'(?<!\w)"([^"]*)"|`([^`\n]*)`')
+# An escaped \|, a quote mark that may open a quote, one that may only close one, a cell break.
+_CELL_BREAK = re.compile(r'\\\||(?<!\w)(")|"|\|')
 _TABLE_SEPARATOR = re.compile(r":?-+:?")
 _BULLET = re.compile(r"\s*(?:[-*+]|\d+\.)\s")
 _EVIDENCE_LINE = re.compile(rf"\[{_HMS}\] (SAID[^:\n]*|SCREEN|SCREEN\+|SCREEN-|TILE|SPEAKING|KEYFRAME): (.*)")
@@ -581,14 +584,23 @@ def _sentences(line: str) -> list[str]:
 
 def _cells(inner: str) -> list[str]:
     """A table row's cells, split in one linear pass at each ``|`` that is neither escaped (``\\|``) nor in
-    a double-quoted string (the template quotes a spreadsheet row, ``"Q3 | B | 118 | 1,310,000"``)."""
-    cells, start, quoted = [], 0, False
+    a double-quoted string (the template quotes a spreadsheet row, ``"Q3 | B | 118 | 1,310,000"``).  A quote
+    mark after a letter or digit (``27"``) opens no quote, and one still open at the row's end is text: no
+    quote mark follows it, so the pipes after it are split again with quotes ignored."""
+    cells, start, opened = [], 0, -1
     for m in _CELL_BREAK.finditer(inner):
-        if m[0] == '"':
-            quoted = not quoted
-        elif m[0] == "|" and not quoted:
+        if m[0] == '"' and opened >= 0:
+            opened = -1
+        elif m[1]:
+            opened = m.start()
+        elif m[0] == "|" and opened < 0:
             cells.append(inner[start : m.start()].strip())
             start = m.end()
+    if opened >= 0:
+        for m in _CELL_BREAK.finditer(inner, opened):
+            if m[0] == "|":
+                cells.append(inner[start : m.start()].strip())
+                start = m.end()
     return [*cells, inner[start:].strip()]
 
 

@@ -1507,6 +1507,21 @@ def test_rule_5_decision_action_and_number_rows_need_a_quoted_tag(layout: DocsLa
     assert cite_codes(layout, PAGE.replace("`chat ~00:41`", "`file`"), entries) == []
 
 
+def test_a_stray_quote_mark_in_a_cell_is_text(layout: DocsLayout) -> None:
+    """An inch mark (``27"``) opens no quote: the row still splits at its pipes and its tag is checked."""
+    entries = recording(layout)
+    inch = PAGE.replace("Q3 budget becomes 1,310,000 USD.", 'Buy the 27" monitor.')
+    assert cite_codes(layout, inch, entries) == []
+    assert curate._cells('D2 | Buy the 27" monitor | `heard 00:01:14` "let us start"') == [
+        "D2",
+        'Buy the 27" monitor',
+        '`heard 00:01:14` "let us start"',
+    ]
+    assert curate._cells('a | "unclosed | b') == ["a", '"unclosed', "b"]
+    failing = inch.replace("one point three one, I can live with that", "one point three two")
+    assert cite_codes(layout, failing, entries) == ["CITE-QUOTE"]
+
+
 def test_rule_6_a_figure_needs_an_opened_keyframe(layout: DocsLayout) -> None:
     """The passing page's 00:05:02 state began in window 1: its keyframe t000412 is found there."""
     entries = recording(layout)

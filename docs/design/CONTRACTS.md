@@ -9943,7 +9943,9 @@ def lint_meeting_citations(layout: DocsLayout) -> list[LintFinding]: ...
   and an Action items row whose only evidence is `inferred` plus an existing Decisions row `D<n>` (the
   rubric's "action that follows from a decision") needs no quote. Rule 6 takes the state's last keyframe at
   or before the cited time, following the continuation NOTE into the earlier window. A `|` inside a quoted
-  string does not split a cell (the spec's own Decisions example quotes a spreadsheet row). The lint reads
+  string does not split a cell (the spec's own Decisions example quotes a spreadsheet row); a quote mark
+  straight after a letter or digit (an inch mark, `27"`) opens no quote, and one still open at the row's end
+  is text, so a stray mark neither merges cells nor hides a tag. The lint reads
   only regular files that are not symlinks, parses each unit once per page, and skips a unit it cannot
   parse.
 
