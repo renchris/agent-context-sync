@@ -35951,7 +35951,8 @@ own lead since C313), credits purge-record.json (`... suppressed, kept by purge-
 <at>; ...>)`, `purge-record.json keeps N purge(s) as queued and not done (...)`), and each fix leads with `the
 person puts agentsync's governance folder (<shell path>) back whole from the copy kept`, every `<at>` and redo kept;
 the sync's stop prints the same words, and its listing note says `<role> has lost a purge purge-record.json
-records: agentsync's governance folder is missing` (the report's `_LISTING_GOVERNANCE_RE` reads it). Status's NEXT, which led with the sync's guard (the queue or the list), names governance.hold first when
+records: agentsync's governance folder is missing` (the report's `_LISTING_GOVERNANCE_RE` reads it; Amended 2026-11-01,
+§16.220 C722: `a purge that purge-record.json records`, and C747's form beside it). Status's NEXT, which led with the sync's guard (the queue or the list), names governance.hold first when
 its lost hold's FAIL opens with the folder (`cli._state_stop_first`). `--accept-lost` refuses while governance/ is
 missing (`<gov>/ is missing, ..., so nothing is accepted: <the put-back>; only with no copy left, ...`) unless
 given `--folder-lost`, the person's word that no copy is left, which first writes `{"action": "audit-trail-lost",
@@ -36773,6 +36774,17 @@ so a shut hold record never drops the hold list's release clause. Tests:
 `test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701`,
 `test_a_hold_record_that_cannot_be_read_keeps_the_hold_lists_release_clause_c701` and
 `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
+
+**C722, C747 (ruling 81), C711 (not built).** The heartbeat listing note says what its FAIL says.
+`doctor.listing_state_governance_note` reads `has lost a purge that purge-record.json records: agentsync's governance
+folder is missing` with governance/ gone (C722's `that` only, so the ending and its phrase stay; C711's `, with ... missing`
+is not built, by ruling 81: it would change the phrase entry and the words after the colon for no reader's gain); `has lost
+a purge that purge-record.json records: agentsync's audit trail no longer holds it` where the FAIL credits purge-record.json
+with the folder there (C747; `GovernanceLostError.record_only`, set from ruling 79's `split_by_trail`, so the note stays true
+after the first `--folder-lost`), its phrase in both lists; else the audit trail's words. Lane RA's
+`_LISTING_GOVERNANCE_RE` read the old and both new forms first, in the commit before this one on trunk, so a heartbeat warn beside the FAIL stays `not
+judged`. Tests: `test_cli.py` `test_the_listing_note_beside_a_lost_list_says_what_its_fail_says_c722_c747` and
+`test_the_listing_note_keeps_the_audit_trails_words_where_the_fail_does_c747`.
 
 ### 16.221 Round 33: one bracket in the converters' lines, the held bucket and a warm pandoc in the test harness (2026-11-01, wave B13 round 33 lane E)
 

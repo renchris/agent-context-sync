@@ -272,7 +272,10 @@ def listing_state_governance_note(err: GovernanceUnreadError, check: str) -> str
         said = "is not a file"
     elif isinstance(err, governance.GovernanceLostError) and not os.path.lexists(err.path.parent):
         # the folder gone, the audit trail with it: never a trail that is not there (B13 round 32 C618)
-        said = "has lost a purge purge-record.json records: agentsync's governance folder is missing"
+        said = "has lost a purge that purge-record.json records: agentsync's governance folder is missing"
+    elif isinstance(err, governance.GovernanceLostError) and err.record_only:
+        # the folder there with a new trail: its FAIL credits purge-record.json (B13 round 33 C747)
+        said = "has lost a purge that purge-record.json records: agentsync's audit trail no longer holds it"
     elif isinstance(err, governance.GovernanceLostError):
         said = "has lost a purge the audit trail records"
     else:

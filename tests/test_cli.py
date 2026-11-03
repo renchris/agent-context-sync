@@ -2917,6 +2917,82 @@ def _ok_line(out: Sequence[str], name: str) -> str:
     return line.split(" — ", 1)[1]
 
 
+def _queued_and_recorded(initialised: Config, capsys: pytest.CaptureFixture[str]) -> tuple[str, Path]:
+    """A synced setup with a DLP purge of the sample page queued, in the trail and in purge-record.json."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    dlp = governance.PurgeSelector.parse("docs=mirror/source/projects/sample.txt.md", source_id=None)
+    assert governance.enqueue_purge(root, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    governance.record_purges(root)
+    capsys.readouterr()
+    return cfg, root
+
+
+@pytest.mark.parametrize("which", ["governance.suppressed", "governance.purge_queue"])
+def test_the_listing_note_beside_a_lost_list_says_what_its_fail_says_c722_c747(
+    initialised: Config, capsys: pytest.CaptureFixture[str], which: str
+) -> None:
+    """B13 round 33 C722, C747 (ruling 81): the note read `has lost a purge purge-record.json records`, a
+    stutter, with governance/ gone; and with the folder re-created it credited the audit trail beside a FAIL
+    saying the trail no longer holds that purge, on either list. Each form says what its FAIL says, and the
+    folder's stays first; after the first --folder-lost the credit stays the record's."""
+    if which == "governance.suppressed":
+        cfg, root, _page = _erased(initialised, capsys)
+        _second_lost_purge(root)
+    else:
+        cfg, root = _queued_and_recorded(initialised, capsys)
+    role = "the suppression list" if which == "governance.suppressed" else "the purge queue"
+    tail = (
+        f"; no sync lists it again until the person fixes it; the {which} [FAIL] line says what to do first"
+    )
+    gov = governance.governance_dir(root)
+    gov.rename(root / "governance.kept")
+    gone = (
+        f"as of its last walk: {role} has lost a purge that purge-record.json records: agentsync's "
+        f"governance folder is missing{tail}"
+    )
+    assert cli._governance_listing_note(initialised) == gone
+    hold = ["hold", "contoso-matter", "--reason", "matter 8", "--owner", "Ada", "--config", cfg]
+    assert cli.main(hold) == cli.EXIT_OK and gov.is_dir()
+    capsys.readouterr()
+    assert governance.audit_trail_lost(root)
+    kept = (
+        f"as of its last walk: {role} has lost a purge that purge-record.json records: agentsync's audit "
+        f"trail no longer holds it{tail}"
+    )
+    assert cli._governance_listing_note(initialised) == kept
+    for note in (gone, kept):  # the setup report's not-judged bucket reads both (lane RA's regex, ruling 81)
+        assert setup_report._LISTING_GOVERNANCE_RE.search(f"(… ({note})"), note
+    _rc, out = _status(cfg, capsys)
+    (failed,) = [ln for ln in out if ln.startswith(f"[FAIL] {which} ")]
+    assert governance.TRAIL_LOST_HEAD in failed and "the audit trail records" not in failed, failed
+    if which == "governance.suppressed":
+        lost = sorted(r["at"] for r in governance.lost_suppressions(root))
+        assert cli.main(["purge", "--accept-lost", lost[0], "--folder-lost", "--config", cfg]) == cli.EXIT_OK
+        capsys.readouterr()
+        assert not governance.audit_trail_lost(root)
+        assert cli._governance_listing_note(initialised) == kept
+    # the folder put back whole: the audit trail holds it again, and its words are back
+    gov.rename(root / "governance.new")
+    (root / "governance.kept").rename(gov)
+    assert governance.queue_lost(root) is None or which == "governance.suppressed"
+
+
+def test_the_listing_note_keeps_the_audit_trails_words_where_the_fail_does_c747(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C747's other side: the suppression list moved aside with the trail whole: the FAIL credits the
+    trail."""
+    _cfg, root, _page = _erased(initialised, capsys)
+    path = governance._suppress_file(root)
+    path.rename(path.with_suffix(".kept"))
+    note = cli._governance_listing_note(initialised)
+    assert note is not None and "the suppression list has lost a purge the audit trail records; " in note, (
+        note
+    )
+    assert "purge-record.json" not in note, note
+
+
 def test_the_ok_lines_name_no_record_that_is_not_there_c749(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

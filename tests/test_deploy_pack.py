@@ -6453,6 +6453,7 @@ lost record at its C370 paragraph's known residual, and C511's purge name at tha
 _ROUND_33_B_PARAGRAPH_AMENDS = (
     ("16.205", "C383 with C403, C402, C401, C344 (ruling 33): a suppression list that lost", "§16.220 C744"),
     ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C744"),
+    ("16.215", "C606 with C601, C618 (2026-10-28): **with governance/ gone", "§16.220 C722"),
     ("16.210", "C537 with C577 (2026-10-28): **accepting a lost suppression says", "§16.220 C745"),
     ("16.51", "**Q14, Q35: an ok heartbeat names an incomplete listing", "§16.220 C746"),
     ("16.210", "C539 (2026-10-28): **a purge record that cannot be read never hides", "§16.220 C733"),

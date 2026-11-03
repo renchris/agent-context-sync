@@ -194,7 +194,13 @@ class GovernanceLostError(GovernanceUnreadError):
     """Purges the audit trail records that the suppression list or the purge queue no longer holds (a file
     moved aside, put back from an older copy or rewritten): the person's, in the words status prints; the
     sync refuses until the list is put back or each purge is run again (B13 round 29 C172: a list moved aside
-    as its fix said read as no suppressions, and erased content was published again)."""
+    as its fix said read as no suppressions, and erased content was published again). ``record_only``: its
+    FAIL credits purge-record.json alone, as the listing note beside it must (B13 round 33 C747; ruling
+    81)."""
+
+    def __init__(self, path: Path, role: str, detail: str, fix: str, *, record_only: bool = False) -> None:
+        self.record_only = record_only
+        super().__init__(path, role, detail, fix)
 
 
 class HoldActiveError(GovernanceError):
@@ -2607,7 +2613,9 @@ def suppressions_lost(state_dir: Path) -> GovernanceLostError | None:
                 f"{put_back}; or, with no copy, {words}; a purge run again by hand clears its record only "
                 "when it finds the content again, and the next sync refuses until then"
             )
-            return GovernanceLostError(path, "the suppression list", detail, fix)
+            return GovernanceLostError(
+                path, "the suppression list", detail, fix, record_only=bool(only) and not in_trail
+            )
     return None
 
 
@@ -2712,7 +2720,9 @@ def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governa
                 f"{put_back}; or, with no copy, {release}runs each purge by hand before the next sync, which "
                 f"refuses until then ({ways})"
             )
-            return GovernanceLostError(path, "the purge queue", detail, fix)
+            return GovernanceLostError(
+                path, "the purge queue", detail, fix, record_only=bool(only) and not held
+            )
     return None
 
 
