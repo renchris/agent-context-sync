@@ -27,6 +27,14 @@ TOKEN = "/pool|000000000001|{pid}|Thu Oct 29 11:00:00 2026"
 INHERITED = "/pool|000000000007|1|Thu Oct 29 10:00:00 2026"
 CEILING_S = 300
 SEP = "\x1f"
+# The inner pytest takes SIGINT's default before it starts (B13 round 34 C869): a runner started with
+# ``cmd &`` passes SIGINT ignored on, and the interrupt test then waited out CEILING_S. A -c stub that execs
+# pytest keeps the pid (so proc.pid and the session stay valid) and needs no preexec_fn, which xdist's
+# threads make unsafe (PLW1509).
+DEFAULT_SIGINT = (
+    "import os, signal, sys\nsignal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+    "os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
+)
 
 SUITE = """
 import time
@@ -87,7 +95,7 @@ class Inner:
 
     def start(self, *args: str) -> subprocess.Popen[str]:
         return subprocess.Popen(
-            [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-v", *args],
+            [sys.executable, "-c", DEFAULT_SIGINT, "-m", "pytest", "-p", "no:cacheprovider", "-v", *args],
             cwd=self.suite,
             env=self.env,
             stdout=subprocess.PIPE,

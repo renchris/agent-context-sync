@@ -37130,6 +37130,17 @@ Round 34's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 34"; specs `
 verifier's corrected fix built, as the lead's rulings 91 to 101 settle it). A dated line this round writes reads
 `Amended 2026-11-03, §16.228 C<n>`.
 
+**Two signal tests pass under `nohup` and `&` (C869, makes worse True; tests only).** A pytest started with `cmd &`
+passes SIGINT ignored to its children and one started under `nohup` passes SIGHUP ignored, and a nested bash cannot
+reset a signal ignored at entry (measured). So `test_gate_slot_plugin.py::test_an_interrupt_while_queued_terminates_the_helper`
+waited out its 300 s and the SIGHUP case of `test_ocr.py::test_a_stop_of_the_whole_process_group_leaves_no_compiler_running`
+its 120 s (both measured red under `nohup` plus `&` on the old files, green on the new, 187 passed clean and under
+`nohup` plus `&`). Each test resets only the signal it sends: test_ocr's child takes SIGHUP's default beside its SIGINT
+handler, and the gate-slot suite's inner pytest starts through a `-c` stub that takes SIGINT's default and execs
+pytest, so its pid and session stay, never a `preexec_fn`, which xdist's threads make unsafe (PLW1509). `gate.sh` is
+unchanged, and no advice to reset these signals before a land is written: that would take `nohup`'s hangup
+protection off the whole land.
+
 **A UTF-16 `[Content_Types].xml` tells its family (C827; `agentsync.convert`; amends §16.196 I39).** C781 read a
 UTF-16 template's type, but `_common._ooxml_family` matched its main types as UTF-8 bytes only, so a Word package
 saved with UTF-16 content types and named `.potx`, `.pptx` or `.xlsx` (or a deck named `.docx` or `.xlsx`) was no
