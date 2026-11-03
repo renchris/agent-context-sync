@@ -1156,6 +1156,65 @@ def test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file(
     assert env.get("SSL_CERT_DIR") == "/Users/contoso/certs", "the environment's folder wins, as in git"
 
 
+@pytest.mark.parametrize(
+    ("shell", "config", "seen"),
+    [
+        (  # A: the shell's bundle and the shell's folder, none from git: as the shell's curl, CApath none
+            {"CURL_CA_BUNDLE": "/Users/contoso/curl.pem", "SSL_CERT_DIR": "/Users/contoso/shell-certs"},
+            {},
+            ("/Users/contoso/curl.pem", None, "/Users/contoso/shell-certs"),
+        ),
+        (  # B: the shell's bundle beside git's folder: moved, the folder git trusts kept (er-28#0)
+            {"CURL_CA_BUNDLE": "/Users/contoso/curl.pem", "GIT_SSL_CAPATH": "/Users/contoso/certs"},
+            {},
+            (None, "/Users/contoso/curl.pem", "/Users/contoso/certs"),
+        ),
+        (  # B, git's folder from its config files
+            {"CURL_CA_BUNDLE": "/Users/contoso/curl.pem"},
+            {"http.sslcapath": "/Users/contoso/certs"},
+            (None, "/Users/contoso/curl.pem", "/Users/contoso/certs"),
+        ),
+        (  # C: one folder in both SSL_CERT_DIR and GIT_SSL_CAPATH: git trusts it, so it is kept
+            {
+                "CURL_CA_BUNDLE": "/Users/contoso/curl.pem",
+                "SSL_CERT_DIR": "/Users/contoso/certs",
+                "GIT_SSL_CAPATH": "/Users/contoso/certs",
+            },
+            {},
+            (None, "/Users/contoso/curl.pem", "/Users/contoso/certs"),
+        ),
+        (  # D: git's bundle and the shell's folder: the shell's curl names no bundle and loads that folder
+            {"GIT_SSL_CAINFO": "/Users/contoso/git.pem", "SSL_CERT_DIR": "/Users/contoso/shell-certs"},
+            {},
+            (None, "/Users/contoso/git.pem", "/Users/contoso/shell-certs"),
+        ),
+    ],
+    ids=[
+        "shell-bundle-shell-folder",
+        "shell-bundle-git-folder",
+        "shell-bundle-config-folder",
+        "same-folder",
+        "git-bundle-shell-folder",
+    ],
+)
+def test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847(
+    monkeypatch: pytest.MonkeyPatch,
+    shell: dict[str, str],
+    config: dict[str, str],
+    seen: tuple[str | None, str | None, str | None],
+) -> None:
+    """B13 round 34 C847: er-28#0 moved the bundle to SSL_CERT_FILE whenever a folder was set, so beside a
+    CURL_CA_BUNDLE and an SSL_CERT_DIR the shell set, with no folder from git, the seed's curl loaded a folder
+    neither the shell's curl (CApath none, measured with /usr/bin/curl 8.7.1) nor Xcode's git reads.  The
+    bundle stays CURL_CA_BUNDLE only there: a folder git trusts, or a bundle from git, still moves it."""
+    for key in ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", *speech._CURL_CA_VARS):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in shell.items():
+        monkeypatch.setenv(key, value)
+    env = speech._curl_env(config)
+    assert (env.get("CURL_CA_BUNDLE"), env.get("SSL_CERT_FILE"), env.get("SSL_CERT_DIR")) == seen
+
+
 def real_git_config(tools: Path, real: str | None = None) -> None:
     """The stub git answers ``config`` as the real git does, from HOME's .gitconfig: never from the machine's
     system gitconfig, which ``_build_env`` lets git read (B13 round 5 F79: conftest's GIT_CONFIG_NOSYSTEM

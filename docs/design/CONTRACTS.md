@@ -37059,6 +37059,9 @@ beside it fetched. Git uses its bundle and its folder together, so with `GIT_SSL
 shell's `CURL_CA_BUNDLE`) beside `GIT_SSL_CAPATH` or `http.sslCAPath` the seed dropped the folder git trusts and
 SwiftPM's direct download failed after it. `_curl_env` now moves the bundle to `SSL_CERT_FILE` whenever a folder is
 set. Test: `tests/test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file`.
+Amended 2026-11-03, §16.228 C847: CORRECTED: not whenever a folder is set. A `CURL_CA_BUNDLE` the shell set itself
+beside the shell's own `SSL_CERT_DIR`, with no folder from git, stays `CURL_CA_BUNDLE`, so the seed's curl drops that
+folder as the shell's curl does; a folder git trusts, or a bundle from git, still moves the bundle.
 
 **git's `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`** (review backtest er-28#1; amends §16.54 Q52).
 Git selects the config's backend with `curl_global_sslset`, and libcurl reads `CURL_SSL_BACKEND` only when none was
@@ -37153,6 +37156,19 @@ read without speech` and `<name>: the recording could not be read on this Mac: <
 file-name prefix and both arguments kept, `_ended`'s phrase unchanged. Tests:
 `test_convert_file.py::test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_in_the_log_lines_c849` (signals
 1 to 31, both lines, by bracket depth, never deeper than 1), with the two line pins in `test_convert_file.py` moved.
+
+**The seed's curl drops a CA folder where the shell's curl does (C847, makes worse True; `agentsync.convert.speech`;
+amends §16.224).** er-28#0 moved the bundle to `SSL_CERT_FILE` whenever a folder was set, so in a shell that sets
+`CURL_CA_BUNDLE` and `SSL_CERT_DIR` and no git CA folder the seed's curl loaded a folder that neither the shell's curl
+(`CApath: none`, measured by the verifier with `/usr/bin/curl` 8.7.1) nor Xcode's git reads. `_curl_env` notes
+`curls_own` (the shell set `CURL_CA_BUNDLE`) before git's bundle can take that name, and moves the bundle only when
+git names a folder or the shell's curl names no bundle of its own. The finder's fix (move only when git names the
+folder) is not built: with git's bundle and the shell's folder the shell's curl loads that folder, and that fix would
+drop it (the verifier's shell D). Tests:
+`test_speech.py::test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847` (the shell's bundle and
+folder keep `CURL_CA_BUNDLE`; the shell's bundle beside git's folder from the environment or the config, one folder in
+both `SSL_CERT_DIR` and `GIT_SSL_CAPATH`, and git's bundle beside the shell's folder each move it, the folder kept),
+with `test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file` unchanged.
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 
