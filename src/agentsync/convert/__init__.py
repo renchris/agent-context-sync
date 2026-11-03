@@ -250,7 +250,7 @@ def convert_file(
             raise
         deaf = registry.without_speech if isinstance(exc, SpeechError) else None
         if deaf is not None:  # an OcrError too, but the screens stand: read again without speech
-            log.info("%s: the speech engine failed (%s); read without speech", name, exc)
+            log.info("%s: the speech engine failed: %s; read without speech", name, exc)
             return convert_file(
                 src,
                 name=name,
@@ -264,7 +264,7 @@ def convert_file(
         if plain is not None and (twin is None or twin.converter_id == conv.converter_id):
             if twin is None and isinstance(exc, MediaError):
                 log.info(
-                    "%s: the recording could not be read on this Mac (%s); left for a later read", name, exc
+                    "%s: the recording could not be read on this Mac: %s; left for a later read", name, exc
                 )
             elif twin is None:
                 log.info("%s: on-device OCR failed; nothing else converts it", name)

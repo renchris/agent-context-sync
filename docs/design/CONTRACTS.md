@@ -36841,6 +36841,9 @@ X57 line. Tests: `test_ocr.py::test_a_helper_a_signal_stopped_holds_its_signal_i
 speech, signals 1 to 31, empty stderr, both build heads: `_entry`'s not-built and failed lines and doctor's rendered
 warn, by bracket depth, never deeper than 1), with the line pins in `test_ocr.py`, `test_media.py`,
 `test_ops_doctor.py`, `test_voice_naming.py` and `test_setup_report.py` moved to the colon form.
+Amended 2026-11-03, §16.228 C849: the two `-v` log lines in `convert_file` that hold a runtime helper's error, `the
+speech engine failed` and `the recording could not be read on this Mac`, take the colon form too, `_ended`'s phrase
+unchanged.
 
 **A cut inside a staged file's 16 hex or its suffix folds to the cut mark (C751, ruling 71; `agentsync.cycle`;
 after §16.216 C645).** `_fold_staging` folded a text cut just past the staging root to `0123…` (the root dropped,
@@ -37140,6 +37143,16 @@ not read again. Tests: `test_convert_family.py::test_a_word_package_whose_conten
 `test_convert_family.py::test_a_utf_16_content_types_part_reads_as_its_utf_8_twin` and
 `test_convert_family.py::test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once` (little and big
 endian each; a sync of three runs converts the file once).
+
+**The two `-v` log lines hold a helper's signal in no bracket (C849, rulings 58, 66 and 85; `agentsync.convert`;
+amends §16.221 C719).** C719 gave `_entry`, doctor and the report the colon form, but `convert_file`'s two INFO
+lines, printed only under `sync -v`, still put a runtime helper's error in a bracket: `<name>: the speech engine
+failed (the speech helper was stopped by SIGKILL (signal 9)); read without speech`, and the same for `the recording
+could not be read on this Mac (...); left for a later read`. Both now read `<name>: the speech engine failed: <error>;
+read without speech` and `<name>: the recording could not be read on this Mac: <error>; left for a later read`, the
+file-name prefix and both arguments kept, `_ended`'s phrase unchanged. Tests:
+`test_convert_file.py::test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_in_the_log_lines_c849` (signals
+1 to 31, both lines, by bracket depth, never deeper than 1), with the two line pins in `test_convert_file.py` moved.
 
 ### 16.229 Round 34: the prompt to v34, the records page and the setup guide, and the gate re-run on a signal (2026-11-03, wave B13 round 34 lane D)
 

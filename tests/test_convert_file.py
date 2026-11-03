@@ -372,7 +372,7 @@ def test_a_media_error_gives_the_no_converter_refusal_and_caches_nothing(
         False,
     )
     assert caplog.messages == [
-        "Contoso review.mp4: the recording could not be read on this Mac (the media helper failed); "
+        "Contoso review.mp4: the recording could not be read on this Mac: the media helper failed; "
         "left for a later read"
     ]
     assert not any(cache.root.rglob("*.json"))
@@ -421,10 +421,66 @@ def test_a_speech_failure_keeps_the_screens_under_a_version_without_speech(
         "the screens\n",
     )
     assert caplog.messages == [
-        "Contoso review.mp4: the speech engine failed (the speech helper exited 3); read without speech"
+        "Contoso review.mp4: the speech engine failed: the speech helper exited 3; read without speech"
     ]
     assert _run(src, reg, cache, name="Contoso review.mp4").from_cache and heard.calls == 2
     reg._without_speech = None
     assert _run(src, reg, cache, name="Contoso review.mp4").reason == "no converter for .mp4", (
         "without a twin a SpeechError is an OcrError"
     )
+
+
+@pytest.mark.parametrize("number", range(1, 32))
+def test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_in_the_log_lines_c849(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, number: int
+) -> None:
+    """B13 round 34 C849 (rulings 58, 66 and 85): the two ``-v`` lines put a runtime helper's error in a
+    bracket, so a signal's own bracket sat inside it: ``the speech engine failed (the speech helper was
+    stopped by SIGKILL (signal 9)); read without speech``. They take the colon form, with ``_ended``'s
+    phrase, the helpers' own wording at ``ocr._run_helper``, unchanged."""
+    from agentsync.convert import ocr  # noqa: PLC0415
+
+    ended = ocr._ended(-number)
+    assert f"signal {number}" in ended
+    deaf_error = SpeechError(f"the speech helper was {ended}")
+    blind_error = MediaError(f"the media helper was {ended}")
+
+    def deaf(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise deaf_error
+
+    def blind(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise blind_error
+
+    heard = Fake(deaf, exts=(".mp4",), version=lambda: "1.0.0+media-h1+cue-r1+asr-parakeet-x-f1-d1-n1")
+    reg = _reading(heard, None)
+    reg._without_speech = Registry(
+        [
+            Fake(
+                lambda s, n: (_unit("the screens\n"),),
+                exts=(".mp4",),
+                version=lambda: "1.0.0+media-h1+cue-r1",
+            )
+        ]
+    )
+    src = tmp_path / "staged.bin"
+    src.write_bytes(b"bytes")
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        _run(src, reg, ConverterCache(tmp_path / "cache"), name="Contoso review.mp4")
+        _run(
+            src,
+            _reading(Fake(blind, exts=(".mp4",), version=lambda: WITH_OCR), None),
+            ConverterCache(tmp_path / "c2"),
+            name="Contoso review.mp4",
+        )
+    assert caplog.messages == [
+        f"Contoso review.mp4: the speech engine failed: the speech helper was {ended}; read without speech",
+        f"Contoso review.mp4: the recording could not be read on this Mac: the media helper was {ended}; "
+        "left for a later read",
+    ]
+    for line in caplog.messages:
+        depth = 0
+        deepest = 0
+        for ch in line:
+            depth += (ch == "(") - (ch == ")")
+            deepest = max(deepest, depth)
+        assert deepest <= 1, line
