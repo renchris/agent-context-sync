@@ -26,7 +26,8 @@ moves to make room, so on a busy Mac the report can take about 35 s (the Summary
 e.g. `time limit 12s, moved to 26.2s for a slow doctor`, and a cut-off call that came back late adds to it, said apart
 (e.g. `time limit 12s, moved to 29.0s for a slow doctor; 47.3s more while the cut-off doctor call and its reads came
 back`), still inside install.sh's 120 s bound on it. On a Mac too busy for that budget, `AGENTSYNC_REPORT_TIME_LIMIT`
-(seconds, 12 to 60) gives the report and its per-call limits more time, and Run metadata names it. The docs repo's
+(seconds, 12 to 60) gives the report, and its Status, Loop, listing, proxy and evidence waits, more time, while each
+git and `xcode-select -p` read keeps its 3 s and `launchctl print` its 5 s, and Run metadata names it. The docs repo's
 remote check (a local `git remote` read, made only when doctor printed a `governance.remote` FAIL) is not counted
 against the budget. Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.
@@ -1298,8 +1299,15 @@ says otherwise.
 A part that prints "not measured (time limit)" ran out of its share of the report's time. The Summary's
 `evidence:` line says so first, so the person who ran the setup can write the report again on an idle Mac
 (`install.sh --report-only`) before sending it. Every other read the report did not get is said as such, never as a
-fact: the checkout's `origin: not read (git did not answer within the report's time limit)`, `on origin/main: not
-read (time limit)` and `(uncommitted changes: not read, time limit)`, a Background runs line's `not measured (<why>;
+fact. A git or `xcode-select -p` read that timed out says its seconds, which the time limit variable does not
+lengthen: the checkout's `origin: not read (git did not answer within 3.0s)`, `on origin/main: not read (git did not
+answer within 3.0s)`, `(uncommitted changes: not read, git did not answer within 3.0s)`, `(git did not answer within
+3.0s)` and `(commit and origin not read: xcode-select did not answer within 3.0s)`; one the report's budget was used
+up before is said as the time limit's: `origin: not read (git did not answer within the report's time limit)`, `on
+origin/main: not read (time limit)` and `(uncommitted changes: not read, time limit)`. After the first git read that
+did not answer the install source reads no more, so each part after it repeats that read's words, and a URL rewrite
+read that did not answer beside a known origin keeps the origin with `URL rewrites: not read` (B13 round 34 C802,
+C834, C873; ruling 96). A Background runs line's `not measured (<why>;
 plist present|absent)` and the Command Line Tools' `not measured (xcode-select -p ...)`; each such line, and the
 Summary's background sync line, ends with the same advice, `write the report again when this Mac is idle (...)
 before sending it`, which a stopped copy gives as `this copy is not for sending` (B13 round 33 C702, C716, C718,

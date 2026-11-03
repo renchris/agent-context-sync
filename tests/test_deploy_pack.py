@@ -7917,8 +7917,19 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
         "on origin/main: not read (time limit)",
         "(uncommitted changes: not read, time limit)",
         "not judged (the Loop line was not read: ",
+        # B13 round 34 C834, C873 (ruling 96): a time-out says its seconds
+        "(commit and origin not read: xcode-select did not answer within ",
+        "URL rewrites: not read",
     ):
         assert said in source and f"`{said}" in page, said
+    for said in (  # built from a template in the source: the guide quotes the 3.0s a time-out prints
+        "origin: not read (git did not answer within 3.0s)",
+        "on origin/main: not read (git did not answer within 3.0s)",
+        "(uncommitted changes: not read, git did not answer within 3.0s)",
+    ):
+        assert f"`{said}`" in page, said
+    assert 'f" · origin: not read (git did not answer within {within})"' in source
+    assert 'f" (uncommitted changes: not read, git did not answer within {within})"' in source
     assert "not measured ({why}; plist {state}): {_idle_again(r)}" in source
     assert "`not measured (<why>; plist present|absent)`" in page
     assert 'f"not measured (xcode-select -p {_exited(rc, text)})"' in source

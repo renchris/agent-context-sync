@@ -4223,6 +4223,9 @@ class _Facts:
     )  # (tag, name, detail)
     copy_stopped: bool = False  # the installer stopped the latest attempt's copy (_stopped_before_the_list)
     install_source_cut: bool = False  # a read of the install source did not answer in time (C702, ruling 83)
+    # the runner's note of the first such read: a time-out says its seconds, a spent budget the time limit
+    # (B13 round 34 C834, ruling 96)
+    install_source_why: str = ""
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
@@ -4441,6 +4444,7 @@ class _Run:
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
         self.last_call_limit: float | None = None  # the wait :meth:`call` last gave its function (V3, V49)
+        self.devtools_note = ""  # the runner's note when xcode-select -p did not answer (C834, ruling 96)
         self.doctor_grace = 0.0  # the seconds the deadline moved for a slow doctor (_DOCTOR_GRACE_S, V4)
         # the part of doctor_grace past the planned move: a cut-off call and its reads came back late (C708)
         self.doctor_overrun = 0.0
@@ -4494,6 +4498,7 @@ class _Run:
         """Whether the developer tools are there; None when ``xcode-select`` did not answer (C716)."""
         rc, out = self.run(["/usr/bin/xcode-select", "-p"], 3.0)
         if _not_answered(rc, out):
+            self.devtools_note = out
             return None
         return rc == 0 and Path(out.splitlines()[0] if out else "").is_dir()
 
@@ -5790,9 +5795,10 @@ def _install_source(r: _Run) -> str:
         facts = _checkout_facts(r, directory)
         if not facts:
             rc, _out, err = _git_ro_err(r, directory, "rev-parse", "HEAD")
-            if _not_answered(rc, err.decode("utf-8", "replace")):  # the second read's turn to be cut
+            if _not_answered(rc, note := err.decode("utf-8", "replace")):  # the second read's turn to be cut
                 r.facts.install_source_cut = True
-                facts = _GIT_NOT_ANSWERED
+                r.facts.install_source_why = note
+                facts = _git_not_answered(r)
             elif b"dubious ownership" in err:
                 facts = " (git refuses its .git: the folder belongs to another user account)"
             else:
@@ -5800,7 +5806,13 @@ def _install_source(r: _Run) -> str:
         where += facts
     elif directory is not None and tools is None:
         r.facts.install_source_cut = True
-        where += " (commit and origin not read: the report's time limit)"
+        # B13 round 34 C834 (ruling 96): a time-out says its seconds, a spent budget the time limit
+        within = _within(r.devtools_note)
+        where += (
+            f" (commit and origin not read: xcode-select did not answer within {within})"
+            if within
+            else " (commit and origin not read: the report's time limit)"
+        )
     with contextlib.suppress(Exception):
         # The last run that reached an install step: a --list-folders run and a run a usage error stopped log
         # ``commit=-`` before reading their source's commit, so they say nothing about the installed copy.
@@ -5825,18 +5837,13 @@ def _install_source(r: _Run) -> str:
     return where
 
 
-def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes]:
-    """``git -C directory args`` read-only (``GIT_OPTIONAL_LOCKS=0``: not even the index's stat cache is
-    rewritten), bounded by ``timeout`` and the report's budget: (exit status, stdout bytes); 124/127 on a
-    timeout or a missing git."""
-    rc, out, _err = _git_ro_err(r, directory, *args, timeout=timeout)
-    return rc, out
-
-
 def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
-    """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones).  Every
-    caller reads a checkout: git looks no higher than ``directory`` (its resolved parent is the ceiling), so a
-    .git it cannot read is not read past into a repository around it (B13 round 11 M51).  git is what
+    """``git -C directory args`` read-only (``GIT_OPTIONAL_LOCKS=0``: not even the index's stat cache is
+    rewritten), bounded by ``timeout`` and the report's budget: (exit status, stdout bytes, stderr bytes in
+    the C locale, so its messages are git's English ones); 124/127 on a timeout or a missing git (B13 round
+    34 C802: every install-source read goes through :func:`_git_read`). Every caller reads a checkout: git
+    looks no higher than ``directory`` (its resolved parent is the ceiling), so a .git it cannot read is not
+    read past into a repository around it (B13 round 11 M51).  git is what
     ``/usr/bin/git`` runs (:func:`gitops.usr_bin_git`, looked up after the budget is read and inside the
     budget, once per report: a failed lookup falls back to ``/usr/bin/git``, which is kept too, so a slow
     or hanging xcrun is asked once, within the budget, never once per call; B13 round 14 Q53)."""
@@ -5892,16 +5899,39 @@ def tree_fingerprint(diff: bytes) -> str:
 
 
 _GIT_NOT_ANSWERED = " (git did not answer within the report's time limit)"
-"""A checkout whose first git read was cut (B13 round 33 C702): never ``(git cannot read its .git)``."""
+"""A checkout whose first git read was cut (B13 round 33 C702): never ``(git cannot read its .git)``. Since
+B13 round 34 C834 (ruling 96) only a spent budget's words: a time-out says its seconds
+(:func:`_git_not_answered`)."""
+
+
+def _within(note: str) -> str | None:
+    """The seconds a runner's time-out note gives (``3.0s`` of ``timed out after 3.0s``); None for a spent
+    budget or any other note (B13 round 34 C834, ruling 96): the git, xcode-select and launchctl reads keep
+    their fixed caps, so a time-out is said in its seconds and only a spent budget names the time limit."""
+    head = "timed out after "
+    return note.removeprefix(head) if note.startswith(head) else None
+
+
+def _git_not_answered(r: _Run) -> str:
+    """Why the install source's first unanswered git read was not answered: `` (git did not answer within
+    3.0s)`` for a time-out, :data:`_GIT_NOT_ANSWERED` for a spent budget (B13 round 34 C834, ruling 96)."""
+    within = _within(r.facts.install_source_why)
+    return f" (git did not answer within {within})" if within else _GIT_NOT_ANSWERED
 
 
 def _git_read(r: _Run, directory: Path, *args: str) -> tuple[int, bytes, bool]:
-    """:func:`_git_ro` and whether the read went unanswered (:func:`_not_answered`), which it records for the
-    install-source line's advice (B13 round 33 C702, ruling 83)."""
+    """:func:`_git_ro_err` and whether the read went unanswered (:func:`_not_answered`), which it records for
+    the install-source line's advice (B13 round 33 C702, ruling 83), with its note (C834). After the first
+    unanswered read it reads no more and says so (B13 round 34 C802's early stop, ruling 96): a slow or hung
+    git costs one capped read, never Status's, Loop's or Doctor's share."""
+    if r.facts.install_source_cut:
+        return 124, b"", True
     rc, out, err = _git_ro_err(r, directory, *args)
-    cut = _not_answered(rc, err.decode("utf-8", "replace"))
+    note = err.decode("utf-8", "replace")
+    cut = _not_answered(rc, note)
     if cut:
         r.facts.install_source_cut = True
+        r.facts.install_source_why = note
     return rc, out, cut
 
 
@@ -5912,16 +5942,21 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     mean from git (B13 round 33 C702): no origin, no origin/main, a clean tree or a .git it cannot read."""
     rc, out, cut = _git_read(r, directory, "rev-parse", "--short=12", "HEAD")
     if cut:
-        return _GIT_NOT_ANSWERED
+        return _git_not_answered(r)
     if rc != 0:
         return ""
     sha = out.decode("ascii", "replace").strip()
     text = f" @ {sha}"
     dirty, _, cut = _git_read(r, directory, "diff", "--quiet", "HEAD", "--")
-    if cut:
-        text += " (uncommitted changes: not read, time limit)"
+    if cut:  # C834: a spent budget keeps ", time limit"
+        within = _within(r.facts.install_source_why)
+        text += (
+            f" (uncommitted changes: not read, git did not answer within {within})"
+            if within
+            else " (uncommitted changes: not read, time limit)"
+        )
     if dirty == 1:
-        rc, diff = _git_ro(r, directory, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
+        rc, diff, _cut = _git_read(r, directory, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
         text += " (uncommitted changes" + (f", tree={tree_fingerprint(diff)})" if rc == 0 else ")")
     # The configured URL: `remote get-url` applies a URL rewrite (insteadOf, CONTRACTS §16.72 H21), so a
     # rewrite alone read "other"; the rewrite is said beside it, by label, never the host (B13 round 18 V70).
@@ -5929,32 +5964,47 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     # list): ``config --get`` gives the last key, which differs from get-url's with no rewrite anywhere
     # (B13 round 23 A24, A50, A90)
     rc, out, cut = _git_read(r, directory, "config", "--get-all", "remote.origin.url")
-    keys = out.decode("utf-8", "replace").split("\n")[:-1] if rc == 0 else []
+    keys = out.decode("utf-8", "replace").split("\n")[:-1] if rc == 0 and not cut else []
     # B13 round 24 B101: an older git (CI's macos-15 /usr/bin/git) keeps an empty url as a key and fetches
-    # from the first: the report's own git says which, by a probe that needs no repository
-    if "" in keys and _git_keeps_empty_url(r, directory):
+    # from the first: the report's own git says which, by a probe that needs no repository. B13 round 34
+    # C873: a probe that did not answer (None) is no answer, never a git that clears the list
+    keeps = _git_keeps_empty_url(r, directory) if "" in keys else False
+    cut = cut or keeps is None
+    if keeps:
         urls = [key for key in keys if key]
     else:
         urls = keys[len(keys) - keys[::-1].index("") :] if "" in keys else keys
     label = origin_label(urls[0]) if urls else "none"
-    text += (
-        " · origin: not read (git did not answer within the report's time limit)"
-        if cut
-        else f" · origin: {label}"
-    )
-    notes = [f"{len(urls)} url keys, git fetches from the first"] if len(urls) > 1 else []
-    # a rewrite only when an insteadOf changes that first URL (B13 round 24 B101): ``remote get-url`` gives
-    # an older git's first key, before an empty one, which no rewrite sent anywhere
-    rewritten = _rewritten_url(r, directory, urls[0]) if urls else None
-    if rewritten is not None and label != "none" and origin_label(rewritten) != label:
-        notes.append("a URL rewrite sends it elsewhere")
+    notes: list[str] = []
+    if cut:  # no url-key note and no rewrite read beside an origin not read (C873)
+        within = _within(r.facts.install_source_why)
+        text += (
+            f" · origin: not read (git did not answer within {within})"
+            if within
+            else " · origin: not read (git did not answer within the report's time limit)"
+        )
+    else:
+        text += f" · origin: {label}"
+        notes = [f"{len(urls)} url keys, git fetches from the first"] if len(urls) > 1 else []
+        # a rewrite only when an insteadOf changes that first URL (B13 round 24 B101): ``remote get-url``
+        # gives an older git's first key, before an empty one, which no rewrite sent anywhere
+        rewritten, rewrite_cut = _rewritten_url(r, directory, urls[0]) if urls else (None, False)
+        if rewrite_cut:  # C873: the label git's config gave stays; only the rewrite is not known
+            notes.append("URL rewrites: not read")
+        elif rewritten is not None and label != "none" and origin_label(rewritten) != label:
+            notes.append("a URL rewrite sends it elsewhere")
     text += f" ({'; '.join(notes)})" if notes else ""
     rc, _, cut = _git_read(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
     if cut:  # no fetch's date beside it: a read that did not answer has no origin/main to date
-        return text + " · on origin/main: not read (time limit)"
+        within = _within(r.facts.install_source_why)
+        return text + (
+            f" · on origin/main: not read (git did not answer within {within})"
+            if within
+            else " · on origin/main: not read (time limit)"
+        )
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
     if rc in (0, 1):  # "yes" is any ancestor: say how far behind it is, and a "no" how far ahead (H22)
-        crc, out = _git_ro(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
+        crc, out, _cut = _git_read(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
         parts = out.decode("ascii", "replace").split() if crc == 0 else []
         if len(parts) == 2 and all(p.isdigit() for p in parts):
             ahead, behind = int(parts[0]), int(parts[1])
@@ -5964,14 +6014,15 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     return text + f" · on origin/main: {on_main} ({_last_fetch(r, directory)})"
 
 
-def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
+def _git_keeps_empty_url(r: _Run, directory: Path) -> bool | None:
     """Whether the report's git keeps an empty ``url =`` as a key, as one older than the reset does, and so
     fetches from the first non-empty key: ``ls-remote --get-url`` of a remote given on the command line as
     ``probe-a``, an empty url and ``probe-b`` prints ``probe-a`` there and ``probe-b`` on a git that clears
-    the list (B13 round 24 B101). Needs no repository; False when git cannot say. Compared after the
-    checkout's own rewrites (B13 round 25 D32): an insteadOf, an empty one above all, rewrites the probe's url
-    too, and an older git then read as a newer one."""
-    rc, out = _git_ro(
+    the list (B13 round 24 B101). Needs no repository; False when git cannot say, None when the probe or the
+    rewrite read did not answer (B13 round 34 C873): no answer is never a git that clears the list. Compared
+    after the checkout's own rewrites (B13 round 25 D32): an insteadOf, an empty one above all, rewrites the
+    probe's url too, and an older git then read as a newer one."""
+    rc, out, cut = _git_read(
         r,
         directory,
         "-c",
@@ -5984,27 +6035,31 @@ def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
         "--get-url",
         "zprobe",
     )
-    return rc == 0 and out.decode("utf-8", "replace").strip() == (
-        _rewritten_url(r, directory, "probe-a:x") or "probe-a:x"
-    )
+    if cut:
+        return None
+    if rc != 0:
+        return False
+    rewritten, rewrite_cut = _rewritten_url(r, directory, "probe-a:x")
+    return None if rewrite_cut else out.decode("utf-8", "replace").strip() == (rewritten or "probe-a:x")
 
 
-def _rewritten_url(r: _Run, directory: Path, url: str) -> str | None:
+def _rewritten_url(r: _Run, directory: Path, url: str) -> tuple[str | None, bool]:
     """``url`` as git's URL rewrites send it (``url.<base>.insteadOf``, the longest value that prefixes it, as
     git picks), None when none does or git's config cannot be read (B13 round 24 B101). An empty value
     prefixes every url, as git's ``alias_url`` takes a match of length 0 when nothing longer matches (B13
     round 25 D32: B101 skipped it, and the shell report did not); a key with no value (no newline after it
-    under ``-z``), a config git refuses, is no rewrite, as the shell's awk skips it."""
-    rc, out = _git_ro(r, directory, "config", "-z", "--get-regexp", r"^url\..*\.insteadof$")
-    if rc != 0:
-        return None
+    under ``-z``), a config git refuses, is no rewrite, as the shell's awk skips it. With whether the read
+    went unanswered, which None alone cannot say (B13 round 34 C873)."""
+    rc, out, cut = _git_read(r, directory, "config", "-z", "--get-regexp", r"^url\..*\.insteadof$")
+    if cut or rc != 0:
+        return None, cut
     best: tuple[str, str] | None = None
     for entry in out.decode("utf-8", "replace").split("\0"):
         key, sep, value = entry.partition("\n")  # -z: a base may hold a space; no newline: a valueless key
         base = key[len("url.") : -len(".insteadof")] if key.lower().endswith(".insteadof") else ""
         if base and sep and url.startswith(value) and (best is None or len(value) > len(best[1])):
             best = (base, value)
-    return None if best is None else best[0] + url[len(best[1]) :]
+    return (None if best is None else best[0] + url[len(best[1]) :]), False
 
 
 def _last_fetch(r: _Run, directory: Path) -> str:
@@ -6019,7 +6074,7 @@ def _last_fetch(r: _Run, directory: Path) -> str:
         # the common one, so the newer of the two dates origin/main
         paths = []
         for args in (("--git-path", "FETCH_HEAD"), ("--git-common-dir",)):
-            rc, out = _git_ro(r, directory, "rev-parse", *args)
+            rc, out, _cut = _git_read(r, directory, "rev-parse", *args)  # C802: none after a cut
             if rc != 0:
                 return undated
             found = Path(os.fsdecode(out.strip()))

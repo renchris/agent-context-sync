@@ -36466,6 +36466,11 @@ ends with the advice (`facts.install_source_cut`), which lane RB's install.sh gr
 `test_a_launchctl_print_that_did_not_answer_is_not_measured_c720`,
 `test_a_real_launchctl_exit_still_says_not_installed_c720`,
 `test_the_budget_used_up_says_not_measured_in_every_part_c716_c720`.
+Amended 2026-11-03, §16.225 C834, C802, C873: the git and `xcode-select -p` reads keep their fixed 3 s caps, which the
+time limit variable does not scale, so a time-out says its seconds (`origin: not read (git did not answer within
+3.0s)`, ` (commit and origin not read: xcode-select did not answer within 3.0s)`) and only a budget used up before
+the read keeps `the report's time limit`; after the first unanswered read the install source reads no more, and an
+unanswered empty-url probe or rewrite read is no answer, never a definite origin.
 
 **A stopped copy gives no advice to send it** (C718, ruling 83). `_IDLE_AGAIN` stays byte-identical; every site reads
 it through `_idle_again(r)`, `this copy is not for sending` in a stopped copy: `_evidence_line`, the Summary's doctor
@@ -37218,6 +37223,25 @@ trail, the purge queue and any suppression list)`, where an older doctor printed
 too, doctor's listing note ends `the governance.hold and governance.purge_queue [FAIL] lines say what to do first`.
 `_LISTING_GOVERNANCE_RE` reads that form beside the singular, its one `check` group the note's own, the purge
 queue's. Test: `tests/test_setup_report.py::test_a_listing_warn_beside_a_governance_or_side_file_fail_is_the_persons_c321_c322`.
+
+**A git read cut by its own cap says its seconds, and no more are read after it** (C834, C802's early stop, C873;
+ruling 96; amends §16.218 C702, C716). Scaling the git, `xcode-select -p` and `launchctl print` caps with
+`AGENTSYNC_REPORT_TIME_LIMIT` cost Status and Loop on a hung Mac (65.0 s against 32.9 s), so they stay 3 s and 5 s,
+and the install source's words stop naming a time limit the variable cannot lengthen: `_within(note)` reads the
+runner's `timed out after 3.0s`, and a time-out reads ` (git did not answer within 3.0s)`, `origin: not read (git did
+not answer within 3.0s)`, ` (uncommitted changes: not read, git did not answer within 3.0s)`, `on origin/main: not
+read (git did not answer within 3.0s)` and ` (commit and origin not read: xcode-select did not answer within 3.0s)`
+(`_Run.devtools_note`), while a spent budget keeps §16.218's words. `_git_read` keeps the first cut's note
+(`facts.install_source_why`) and, after it, reads nothing more (C802's step 3 only; its scaled shared allowance
+still re-cut a 6 s git and is not built): `_checkout_facts`, `_rewritten_url`, `_git_keeps_empty_url`, rev-list and
+`_last_fetch` all read through it. `_git_keeps_empty_url` returns `bool | None` and `_rewritten_url` `(url, cut)`:
+an unanswered probe or rewrite read prints `origin: not read (...)` with no url-key note, never a label git did not
+give, and a cut rewrite read on a known first URL keeps the label with `URL rewrites: not read`. The line still ends
+with `_IDLE_AGAIN`, which install.sh's grep reads, and none of it joins the evidence count. Tests:
+`tests/test_setup_report.py::test_a_git_read_the_time_limit_cut_is_not_read_never_a_fact_c702` (its time-out words),
+`test_a_spent_budget_keeps_the_time_limit_words_c834`, `test_the_git_and_xcode_select_caps_stay_fixed_at_any_limit_c834`,
+`test_after_the_first_unanswered_git_read_no_more_are_made_c802`, `test_an_unanswered_url_probe_is_no_answer_c873`
+and `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

@@ -13808,7 +13808,7 @@ def test_an_empty_insteadof_rewrites_every_url_as_git_does(tmp_path: Path) -> No
     git("update-ref", "refs/remotes/origin/main", "HEAD")
     plain = setup_report._git_keeps_empty_url(run, repo)
     git("config", "url.https://mirror.contoso.example/.insteadOf", "")
-    assert setup_report._rewritten_url(run, repo, github) == f"https://mirror.contoso.example/{github}"
+    assert setup_report._rewritten_url(run, repo, github)[0] == f"https://mirror.contoso.example/{github}"
     facts = setup_report._checkout_facts(run, repo)
     assert " · origin: github.com/renchris/agent-context-sync (a URL rewrite sends it elsewhere) · " in facts
     assert "contoso" not in facts, facts
@@ -13820,7 +13820,7 @@ def test_an_empty_insteadof_rewrites_every_url_as_git_does(tmp_path: Path) -> No
         config.read_text(encoding="utf-8") + '[url "https://nul.contoso.example/"]\n\tinsteadOf\n',
         encoding="utf-8",
     )
-    assert setup_report._rewritten_url(run, repo, github) is None
+    assert setup_report._rewritten_url(run, repo, github)[0] is None
 
 
 def test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_claims_no_rewrite(
@@ -13883,7 +13883,8 @@ def test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_clai
         "config", "url.https://git.contoso.example/a b/.insteadOf", "https://git.contoso.example/mirror/agent"
     )
     assert (
-        setup_report._rewritten_url(run, repo, mirror) == "https://git.contoso.example/a b/-context-sync.git"
+        setup_report._rewritten_url(run, repo, mirror)[0]
+        == "https://git.contoso.example/a b/-context-sync.git"
     )
 
 
@@ -21870,11 +21871,13 @@ def test_a_stopped_copys_cut_off_doctor_keeps_its_facts_c718(
 
 
 def _git_cut(monkeypatch: pytest.MonkeyPatch, *subcommands: str) -> None:
-    """The report's git hits its limit on each subcommand named, as on a Mac under load (C702)."""
+    """The report's git hits its limit on each subcommand named, as on a Mac under load (C702): any word of
+    the whole argv, so ``ls-remote`` after three ``-c`` pairs and ``--get-regexp`` apart from ``--get-all``
+    are reached (B13 round 34 C873)."""
     real = subprocess.run
 
     def run(argv: Any, *args: Any, **kwargs: Any) -> Any:
-        if any(word in subcommands for word in argv[:5] if isinstance(word, str)):
+        if "-C" in argv and any(word in subcommands for word in argv if isinstance(word, str)):
             raise subprocess.TimeoutExpired(argv, 3.0)
         return real(argv, *args, **kwargs)
 
@@ -21899,14 +21902,14 @@ def _checkout_with_origin(tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     ("cut", "says", "never"),
     [
+        (("config",), "origin: not read (git did not answer within 3.0s)", ("origin: none",)),
         (
-            ("config",),
-            "origin: not read (git did not answer within the report's time limit)",
-            ("origin: none",),
+            ("merge-base",),
+            "on origin/main: not read (git did not answer within 3.0s)",
+            ("no origin/main in this checkout",),
         ),
-        (("merge-base",), "on origin/main: not read (time limit)", ("no origin/main in this checkout",)),
-        (("diff",), " (uncommitted changes: not read, time limit)", ()),
-        (("rev-parse",), " (git did not answer within the report's time limit)", ("cannot read its .git",)),
+        (("diff",), " (uncommitted changes: not read, git did not answer within 3.0s)", ()),
+        (("rev-parse",), " (git did not answer within 3.0s)", ("cannot read its .git",)),
     ],
     ids=["origin", "on-main", "dirty", "rev-parse"],
 )
@@ -21919,7 +21922,9 @@ def test_a_git_read_the_time_limit_cut_is_not_read_never_a_fact_c702(
     never: tuple[str, ...],
 ) -> None:
     """B13 round 33 C702 (ruling 83): on a loaded Mac git's rc 124 read as `origin: none`, `no origin/main in
-    this checkout`, a clean tree or `(git cannot read its .git)` about a checkout that has them all."""
+    this checkout`, a clean tree or `(git cannot read its .git)` about a checkout that has them all. B13 round
+    34 C834 (ruling 96): a time-out says its seconds, never the time limit, which the variable cannot lengthen
+    for git."""
     repo = _checkout_with_origin(tmp_path)
     run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
     monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
@@ -21933,6 +21938,163 @@ def test_a_git_read_the_time_limit_cut_is_not_read_never_a_fact_c702(
     assert line.endswith(f" · {setup_report._IDLE_AGAIN}"), line
     assert run.facts.install_source_cut is True
     assert run.facts.evidence is None, "no count of the evidence line"
+
+
+@pytest.mark.parametrize(
+    ("cut", "says"),
+    [
+        (("--get-all",), "origin: not read (git did not answer within the report's time limit)"),
+        (("merge-base",), "on origin/main: not read (time limit)"),
+        (("diff",), " (uncommitted changes: not read, time limit)"),
+        (("rev-parse",), " (git did not answer within the report's time limit)"),
+    ],
+    ids=["origin", "on-main", "dirty", "rev-parse"],
+)
+def test_a_spent_budget_keeps_the_time_limit_words_c834(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cut: tuple[str, ...],
+    says: str,
+) -> None:
+    """B13 round 34 C834 (ruling 96): only a budget that was used up before git ran names the report's time
+    limit, which AGENTSYNC_REPORT_TIME_LIMIT can lengthen; a time-out says its seconds (C702's test)."""
+    repo = _checkout_with_origin(tmp_path)
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    real = setup_report._git_ro_err
+
+    def spent(r: Any, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
+        if any(a in cut for a in args):
+            return 124, b"", b"skipped: the report's time budget is used up"
+        return real(r, directory, *args, timeout=timeout)
+
+    monkeypatch.setattr(setup_report, "_git_ro_err", spent)
+    line = setup_report._install_source(run)
+    assert says in line and "did not answer within 3.0s" not in line, line
+    assert line.endswith(f" · {setup_report._IDLE_AGAIN}") and run.facts.install_source_cut is True, line
+
+
+def test_after_the_first_unanswered_git_read_no_more_are_made_c802(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C802 (ruling 96, its early stop only): each read the install source makes had its own
+    3 s cap, so a hung git took one cap per read from Status's, Loop's and Doctor's share. After the first
+    unanswered read, _checkout_facts, the rewrite and empty-url probes, rev-list and _last_fetch read no
+    more: one cut, and every part after it says it was not read."""
+    repo = _checkout_with_origin(tmp_path)
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    asked: list[tuple[str, ...]] = []
+    real = setup_report._git_ro_err
+
+    def counted(r: Any, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
+        asked.append(args)
+        if args[0] == "diff":
+            return 124, b"", b"timed out after 3.0s"
+        return real(r, directory, *args, timeout=timeout)
+
+    monkeypatch.setattr(setup_report, "_git_ro_err", counted)
+    line = setup_report._install_source(run)
+    assert [a[0] for a in asked] == ["rev-parse", "diff"], asked
+    assert (
+        " (uncommitted changes: not read, git did not answer within 3.0s) · origin: not read (git did not "
+        "answer within 3.0s) · on origin/main: not read (git did not answer within 3.0s)"
+    ) in line, line
+    assert line.endswith(f" · {setup_report._IDLE_AGAIN}"), line
+
+
+@pytest.mark.parametrize(
+    ("keys", "cut", "says", "never"),
+    [
+        (  # the empty-url probe cut, three keys: never "2 url keys", never a label git did not give
+            ["https://github.com/contoso/a.git", "", "https://github.com/contoso/b.git"],
+            ("ls-remote",),
+            " · origin: not read (git did not answer within 3.0s)",
+            ("url keys", "origin: other"),
+        ),
+        (  # the probe cut, an empty key last: never "none"
+            ["https://github.com/contoso/a.git", ""],
+            ("ls-remote",),
+            " · origin: not read (git did not answer within 3.0s)",
+            ("origin: none",),
+        ),
+        (  # the rewrite read inside the probe cut: no answer either
+            ["https://github.com/contoso/a.git", "", "https://github.com/contoso/b.git"],
+            ("--get-regexp",),
+            " · origin: not read (git did not answer within 3.0s)",
+            ("url keys", "origin: other"),
+        ),
+        (  # the rewrite read alone cut, on a known URL: the label stays, the rewrite is not known
+            ["https://github.com/contoso/a.git"],
+            ("--get-regexp",),
+            " · origin: other (redacted) (URL rewrites: not read)",
+            ("a URL rewrite sends it elsewhere",),
+        ),
+    ],
+    ids=["probe-three-keys", "probe-empty-last", "nested-rewrite", "rewrite-alone"],
+)
+def test_an_unanswered_url_probe_is_no_answer_c873(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    keys: list[str],
+    cut: tuple[str, ...],
+    says: str,
+    never: tuple[str, ...],
+) -> None:
+    """B13 round 34 C873: _git_keeps_empty_url read an unanswered probe as a git that clears the list and
+    _rewritten_url an unanswered rewrite read as no rewrite, so the origin was a definite label git never
+    gave. The probe is three-state, the rewrite read says it was cut, and either cut says the origin was not
+    read; a cut rewrite on a known first URL keeps the label with a note."""
+    repo = _checkout_with_origin(tmp_path)
+    subprocess.run(["git", "-C", str(repo), "remote", "remove", "origin"], check=True, capture_output=True)
+    for key in keys:
+        subprocess.run(
+            ["git", "-C", str(repo), "config", "--add", "remote.origin.url", key],
+            check=True,
+            capture_output=True,
+        )
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    with monkeypatch.context() as m:
+        _git_cut(m, *cut)
+        line = setup_report._install_source(run)
+    assert says in line, line
+    for words in never:
+        assert words not in line, line
+    assert line.endswith(f" · {setup_report._IDLE_AGAIN}") and run.facts.install_source_cut is True, line
+    assert run.facts.evidence is None, "no count of the evidence line"
+
+
+def test_the_git_and_xcode_select_caps_stay_fixed_at_any_limit_c834(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C834 (ruling 96): scaling the git, xcode-select and launchctl print caps with the time
+    limit variable cost Status and Loop on a hung Mac, so they stay 3 s and 5 s at any limit: a 6 s git under
+    AGENTSYNC_REPORT_TIME_LIMIT=60 still says `within 3.0s` (launchctl print's 5 s is a literal no scale
+    reaches, :func:`_launchctl_print`)."""
+    repo = _checkout_with_origin(tmp_path)
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    run.time_scale = 5.0
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    caps: list[float] = []
+    real = subprocess.run
+
+    def slow(argv: Any, *args: Any, **kwargs: Any) -> Any:
+        if argv and str(argv[0]).endswith(("git", "xcode-select", "launchctl")) and "timeout" in kwargs:
+            caps.append(kwargs["timeout"])
+            if str(argv[0]).endswith("git"):
+                raise subprocess.TimeoutExpired(argv, kwargs["timeout"])  # a 6 s git
+        return real(argv, *args, **kwargs)
+
+    monkeypatch.setattr(setup_report.subprocess, "run", slow)
+    line = setup_report._install_source(run)
+    assert len(caps) == 2 and set(caps) == {3.0}, caps  # xcode-select -p, then the first git read
+    assert f"{repo} (git did not answer within 3.0s);" in line, line
 
 
 def test_a_git_answer_still_says_what_it_says_c702(
@@ -22002,7 +22164,11 @@ def test_the_install_source_says_a_devtools_read_that_did_not_answer_c716(
         r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
         assert r.devtools() is tools
         line = setup_report._install_source(r)
-        cut = " (commit and origin not read: the report's time limit)"
+        cut = (  # B13 round 34 C834: a time-out says its seconds, a spent budget the time limit
+            " (commit and origin not read: xcode-select did not answer within 3.0s)"
+            if answer[1].startswith("timed out")
+            else " (commit and origin not read: the report's time limit)"
+        )
         if tools is None:
             assert f"checkout {repo}{cut}" in line and line.endswith(setup_report._IDLE_AGAIN), line
         else:
