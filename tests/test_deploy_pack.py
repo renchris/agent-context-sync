@@ -6442,6 +6442,24 @@ _ROUND_33_RA_PARAGRAPH_AMENDS = (
 """Round 33 lane RA's dated lines at sections its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C709's at K16b and C620's paragraph, C708's at A28, C764's at C617's."""
 
+_ROUND_34_RA_PARAGRAPH_AMENDS = (
+    ("16.198", "**The OCR part names a kind's stub pages** (C111; amends §16.86 L5).", "§16.225 C826"),
+    (
+        "16.218",
+        "**A read the report did not get says so** (C702, C716, C720, ruling 83",
+        "§16.225 C834, C802, C873",
+    ),
+    ("16.218", "**A read the report did not get says so** (C702, C716, C720, ruling 83", "§16.225 C820"),
+    ("16.218", "**A read the report did not get says so** (C702, C716, C720, ruling 83", "§16.225 C819"),
+    ("16.218", "**A time limit variable for a busy Mac** (C726, ruling 83).", "§16.225 C839"),
+    ("16.218", "**A list that lost what only purge-record.json keeps, with governance/", "§16.225 C833"),
+    ("16.218", "**A list that lost what only purge-record.json keeps, with governance/", "§16.225 C836"),
+    ("16.218", "**A list that lost what only purge-record.json keeps, with governance/", "§16.225 C809"),
+    ("16.218", "**The Purge queue part in status's words with governance/ gone** (C765", "§16.225 C838"),
+    ("16.224", "**An organisation registered after another kind is still cut out of a", "§16.225 C870, C835"),
+)
+"""Round 34 lane RA's dated lines at the paragraphs its items amend, each pinned by its marker."""
+
 _ROUND_30_B_PARAGRAPH_AMENDS = (
     (
         "16.200",
@@ -6750,6 +6768,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_34_E_PARAGRAPH_AMENDS,
         *_ROUND_32_RA_PARAGRAPH_AMENDS,
         *_ROUND_33_RA_PARAGRAPH_AMENDS,
+        *_ROUND_34_RA_PARAGRAPH_AMENDS,
         *_ROUND_31_B_PARAGRAPH_AMENDS,
         *_ROUND_31_B_READ_ONLY_AMENDS,
         *_ROUND_32_B_PARAGRAPH_AMENDS,
