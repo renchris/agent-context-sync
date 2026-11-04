@@ -2381,6 +2381,43 @@ first: privacy), RB 11 (ruling 91's shell half, then C840 and C879), B 13 (C874 
 waits on lane RB's NEXT). The lead holds 11 kit items (C845, C807, C814, C815, C816, C824, C825, C828, C865, C867,
 C868) for round 35's script.
 
+### B13 round 34 landed (2026-11-04)
+
+All five lanes landed; the prompt is now v34 (`a6b3a0d2`). Notes `lanes/r34-<lane>.md`, lead notes
+`round29/lead-notes.md`. All 76 confirmed items are built: 65 in the lanes' 55 commits (`e64c96aa..36b2b16c`, every
+landed tip CI green) and the lead's 11 kit items in round 35's script (`round35/tools/edit.py`, with C845 and C868 as
+notes rather than text; C865's note and neardup halves are in its harvest list). Nothing frozen was recorded as not
+built; C852's code change stays unbuilt by its own verifier (docs only), and C874's optional step 3 was left out (the
+conditional words cover it).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `e64c96aa..dacdf5ba`, 6 commits |
+| D | land 1 to `efc67689`, land 2 to `b028de91`, C855 `36b2b16c` |
+| B | `f3c127f5..52d316f9`, 9 commits in two lands |
+| RA | to `647040b7` (18 commits), `10794935` (C804's report half), `7472c94a` (C817) |
+| RB | `105efec1..37f7fe75`, 9 commits |
+
+Learnings: from the fire (2026-11-03 17:4x) to the last land took about 12 hours, against 49 for round 33. Load fell
+to 25 to 90 on 10 cores and no land needed C800's re-run (`rerun_passed=0` on every land line), so that gate went
+unexercised by load this round; two reds were real and were stopped as they should be: lane RB's first land after
+rebasing over lane RA's words (7 tests) and lane B's second. A background ship-land can end while its lane still
+believes it is queued: lane RB's stopped on a rebase conflict (exit 4) and it waited on nothing for two hours until
+lane D noticed; a lane checks with ps while it waits. One ci run went red once on a speech timing test outside the
+diff and passed on rerun (`75b0ff8d`, in round 35's harvest). GitHub Actions degraded once: a push started no run in
+15 minutes, ship-land exited 9, and lane RA dispatched ci on the same sha (run `41814880382`, green). C869 made the two
+signal tests pass under nohup and `&`, so a detached land no longer needs the lead's reset. An account's weekly limit
+stopped the round's verifiers once; the same run resumed on another account from its journal. The Gemini wrapper is
+tracked and live (claude-infrastructure `694f71f6`, rulings out of C868): it refuses any repo but this one and any
+prompt outside the b13 cache, and takes a bare call a rule can match; the allow rule is the operator's (backlog
+`8ed9dae0fbc0`).
+
+Round 35: the round 34 workflow (`round34/round34-workflow.js` through `round35/tools/edit.py` and `edit-xvendor.py`,
+gemini mode only if the allow rule is in settings) with the harvest list in `round35/tools/harvest-lead.txt`, on this
+section's landed tip, BASE `4288dd6a`, ids C901 and up, prompt v34, outputs `round35/`; scenario C keeps the v33 block
+at `4e0e8604`, the v32 block at `c93fcd96` and the v31 block at `ed901cd3`. The stop rule names Codex and Gemini: a
+clean round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
