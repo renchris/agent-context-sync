@@ -3488,7 +3488,7 @@ def test_failure_before_the_installer_is_the_errors_step(fake_mac: dict[str, Pat
     )
     _text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
+        "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)"
     )
     assert (
         '- WARNING: attempt 1 has no "end | finished" line (the agent\'s end line), so this report may be '
@@ -6620,7 +6620,9 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
     text, summary = summary_of(fake_mac)
     assert "no run of this attempt" in summary
     installer = section(text, "Installer")
-    assert saw + "earlier attempts' install.sh output: this attempt ran no install.sh)</summary>" in installer
+    assert (
+        saw + "earlier attempts' install.sh output: this attempt made no install run)</summary>" in installer
+    )
     assert "(what the agent saw)" not in installer
     out.write_text("\n".join([*block(old, 2), *block(new, 1)]) + "\n", encoding="utf-8")
     write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
@@ -8808,7 +8810,7 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         assert rc == 0 and line.startswith(f"- prompt: {shown} · run: "), line
         assert "Fabrikam" not in line, "the line's own words are free text: only the version is shown"
         assert summary.strip().splitlines()[0] == (
-            "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
+            "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)"
         )
         link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
         assert link["outcome"] == ["Failed at step 1 (preflight)"]
@@ -8964,19 +8966,19 @@ NO_TURN = (
 
 def test_the_first_sync_line_cites_no_install_log_when_there_is_none(fake_mac: dict[str, Path]) -> None:
     """B13 round 12 N24: on a Mac with no install.log the Summary read ``- install.sh: no install log`` and on
-    the next line ``- first sync: no install.sh run during this attempt (install.log)``: the tag names the log
+    the next line ``- first sync: no install run during this attempt (install.log)``: the tag names the log
     only when there is one, as the install.sh line's check does."""
     (fake_mac["setup"] / "install.log").unlink(missing_ok=True)
     write_friction(fake_mac, STOPPED_V8)  # an attempt: the scoped branch
     _text, summary = summary_of(fake_mac)
     assert "- install.sh: no install log" in summary, summary
     [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
-    assert line.startswith("- first sync: no install.sh run during this attempt (no install log)"), line
+    assert line.startswith("- first sync: no install run during this attempt (no install log)"), line
     assert "(install.log" not in line, line
     (fake_mac["setup"] / "friction.md").unlink()  # no attempt: the unscoped branch
     _text, summary = summary_of(fake_mac)
     [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
-    assert line.startswith("- first sync: no install.sh run (no install log)"), line
+    assert line.startswith("- first sync: no install run (no install log)"), line
     assert "(install.log" not in line, line
 
 
@@ -9008,7 +9010,7 @@ def test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_re
     )
     write_friction(fake_mac, STOPPED_V8)
     _text, summary = summary_of(fake_mac)
-    assert "- first sync: no install.sh run during this attempt (install.log)" in summary, summary
+    assert "- first sync: no install run during this attempt (install.log)" in summary, summary
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -9158,9 +9160,7 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     def turns() -> tuple[str, str, str]:
         rc, text, _ = report(tmp_path, fake_mac["config"])
         lines = section(text, "Summary").strip().splitlines()
-        assert rc == 0 and lines[0].startswith(
-            "- **outcome: failed at step 1** (computed: no install.sh run; "
-        )
+        assert rc == 0 and lines[0].startswith("- **outcome: failed at step 1** (computed: no install run; ")
         [human] = [ln for ln in lines if ln.startswith("- human turns: ")]
         [expected] = [ln for ln in lines if ln.startswith("- expected turns: ")]
         [runs] = [ln for ln in lines if ln.startswith("- install.sh: ")]
@@ -9170,7 +9170,7 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     human, expected, runs = turns()
     assert human == "- human turns: 0 (0 questions; clicks: none possible; approvals: not observable)"
     assert expected == NO_TURN
-    assert runs == "- install.sh: no run during this attempt (1 earlier in the install log)"
+    assert runs == "- install.sh: no install run during this attempt (1 earlier in the install log)"
 
     # What the agent logged still counts: here it asked the person something before it stopped.
     asked = "2026-09-29T11:00:20Z | step 1 | question | asked whether to go on with the old copy | -\n"
@@ -11230,25 +11230,55 @@ def test_the_loop_lines_next_says_whose_reading_it_is_with_only_a_list_run_c709(
     assert kept
 
 
+@pytest.mark.parametrize(
+    "events",
+    [
+        "2026-09-29T10:00:30Z | step 1 | error | the installer stopped before --log-start | -\n",
+        "2026-09-29T10:00:30Z | step 1 | error | git could not fetch the checkout | -\n",
+        "2026-09-29T10:00:30Z | step 2 | error | install.sh exited 1 | -\n",
+    ],
+    ids=["installer-stop", "git-stop", "step-2"],
+)
+def test_an_attempt_with_no_install_run_says_one_phrase_in_one_bracket_c817(
+    fake_mac: dict[str, Path], events: str
+) -> None:
+    """B13 round 34 C817 (ruling 101): a stopped copy said `this attempt ran no install.sh` while the same
+    report showed that attempt's `install.sh --log-start` error. One unconditional phrase, `made no install
+    run` and `no install run`, with no cause claim and one bracket, whether the installer, git or step 2
+    stopped it; the count of earlier runs stays."""
+    write_install_log(fake_mac, start="2026-09-28T10:00:00Z", run="20260928T100000Z-7")
+    write_friction(fake_mac, "Attempt: 2026-09-29T10:00:00Z\nPrompt: v33\nAgent: Contoso Bot\n" + events)
+    text, summary = summary_of(fake_mac)
+    assert "- install.sh: no install run during this attempt (1 earlier in the install log)" in summary, (
+        summary
+    )
+    assert "ran no install.sh" not in text and "no install.sh run" not in text, text
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    r.friction = setup_report.read_friction(r.friction_path)
+    assert setup_report._no_install_words(r) == "this attempt made no install run"
+    for line in summary.splitlines():
+        assert "((" not in line and ") (" not in line.split(" · ")[0], line
+
+
 def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     fake_mac: dict[str, Path],
 ) -> None:
     """B13 round 32 C620 (ruling 67): under ``failed at step 1`` with no install.sh run in the attempt, the
     Loop line quoted status's ``...; session done`` with no word of its source, while the Summary's
     install.sh and sync lines named theirs. The NEXT then carries one bracket, ``(status when this report was
-    written; this attempt ran no install.sh)``, merged with the damage clause so the line never has two in a
+    written; this attempt made no install run)``, merged with the damage clause so the line never has two in a
     row."""
     step = "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
     step += "session done"
     wait = "WAITING ON YOU: answer the baseline questions"
-    said = "(status when this report was written; this attempt ran no install.sh)"
+    said = "(status when this report was written; this attempt made no install run)"
     hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     assert said not in _line(section(text, "Summary"), "- Loop: "), "no attempt: no bracket"
     write_friction(fake_mac, STOPPED_V8)
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     summary = section(text, "Summary")
-    assert "- install.sh: no run during this attempt" in summary, summary
+    assert "- install.sh: no install run during this attempt" in summary, summary
     line = _line(summary, "- Loop: ")
     assert f"; session done {said}; WAITING ON YOU: " in line, line
     r = setup_report._Run(fake_mac["config"], hooks, 5.0)
@@ -11256,7 +11286,7 @@ def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     r.facts.evidence_damage_failed = True
     line = setup_report._loop_line(r)
     assert (
-        "; session done (the loop's own read when this report was written; this attempt ran no install.sh; "
+        "; session done (the loop's own read when this report was written; this attempt made no install run; "
         f"{setup_report._DAMAGE_SEEN}); WAITING ON YOU: " in line
     ), line
     after = line.split("; session done", 1)[1].split("; WAITING ON YOU: ", 1)[0]
@@ -11267,13 +11297,13 @@ def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     r.hooks = setup_report.ReportHooks(loop_next=lambda _config: [queue, wait])
     line = setup_report._loop_line(r)
     assert (
-        "; session done; the loop's own read when this report was written; this attempt ran no install.sh; "
+        "; session done; the loop's own read when this report was written; this attempt made no install run; "
         f"{setup_report._DAMAGE_SEEN}); WAITING ON YOU: " in line
     ), line
     r.facts.evidence_damage_failed = False
     line = setup_report._loop_line(r)
     assert (
-        "; session done; status when this report was written; this attempt ran no install.sh); "
+        "; session done; status when this report was written; this attempt made no install run); "
         "WAITING ON YOU: " in line
     ), line
     assert ") (" not in line, "one bracket after the NEXT"
@@ -11753,7 +11783,7 @@ def test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0(
     assert (
         summary_of(fake_mac)[1]
         .strip()
-        .startswith("- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)")
+        .startswith("- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)")
     )
 
 
@@ -11818,7 +11848,7 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
     text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
+        "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)"
     )
     assert "- attempt: 2 of 2; earlier: attempt 1 fully one command" in summary
     assert (
@@ -22931,14 +22961,14 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     assert (
         "- attempt: 2 of 2; earlier: attempt 1 stopped at step 1 (waiting for the folder answer)" in summary
     )
-    assert summary.strip().startswith("- **outcome: failed at step 1** (computed: no install.sh run; step 1 ")
+    assert summary.strip().startswith("- **outcome: failed at step 1** (computed: no install run; step 1 ")
     fr = section(text, "Agent friction log")
     assert "): stopped at step 1 (waiting for the folder answer); 1 event line: 1 deviation;" in fr, fr
 
     [only] = setup_report.parse_friction(head + wait).attempts
     stopped = setup_report.compute_outcome(only, ())
     assert (stopped.kind, stopped.step) == ("stopped", 1)
-    assert stopped.why == ("no install.sh run and no error; step 1 logged only a deviation (F4)",)
+    assert stopped.why == ("no install run and no error; step 1 logged only a deviation (F4)",)
     assert stopped.form_label == "Failed at step 1 (preflight)", "the form has no stopped option"
     # the title says what the Summary says (B13 round 7 H42); a v5 attempt's step 1 has v5's name
     assert stopped.title_label == "Stopped at step 1 (preflight)"
@@ -22990,11 +23020,11 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
         stopped = setup_report.compute_outcome(only, ())
         assert stopped.text == "stopped at step 1 (waiting for the folder answer)", (kind, stopped)
         assert stopped.why == (
-            f"no install.sh run and no error; step 1 logged a deviation (F5), 1 {kind} and nothing else",
+            f"no install run and no error; step 1 logged a deviation (F5), 1 {kind} and nothing else",
         ), stopped.why
     [only] = setup_report.parse_friction(head + line + wait + wait).attempts
     assert setup_report.compute_outcome(only, ()).why == (
-        "no install.sh run and no error; step 1 logged 2 deviations (F5, F6), 1 question and nothing else",
+        "no install run and no error; step 1 logged 2 deviations (F5, F6), 1 question and nothing else",
     )
     # the wait is read from the deviations alone: an approval's "wait" is not the folder answer
     line = "2026-10-13T00:51:25Z | step 1 | approval | allowed the wait for the clone | -\n"
@@ -25275,7 +25305,7 @@ def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tm
         assert "no later install.sh run of that step ended rc 0" not in outcome.why[1], outcome
         # B13 round 25 D15: B20's words, as for any other late exit; the attempt ran no install.sh
         assert outcome.why == (
-            "no install.sh run during this attempt, and step 1 logged an error (F4)",
+            "no install run during this attempt, and step 1 logged an error (F4)",
             "the installer stopped this copy at step 1, and the install.sh run after its end line is a "
             "stand-alone run that does not change it (that run ended rc 0)",
         ), outcome
@@ -25357,7 +25387,7 @@ def test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome(tmp_path
         outcome = setup_report.compute_outcome(fr.attempts[0], runs)
         assert (outcome.kind, outcome.step) == ("failed", 1), (rc, outcome)
         assert outcome.why == (
-            "no install.sh run during this attempt, and step 1 logged an error (F4)",
+            "no install run during this attempt, and step 1 logged an error (F4)",
             "the installer stopped this copy at step 1, and the install.sh run after its end line is a "
             f"stand-alone run that does not change it ({ended})",
         ), (rc, outcome)
@@ -25565,13 +25595,13 @@ def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_e
         assert (
             head
             + "earlier attempts' install.sh output, then the install.sh run after this attempt's end line, "
-            "a stand-alone run: this attempt ran no install.sh)</summary>" in installer
+            "a stand-alone run: this attempt made no install run)</summary>" in installer
         ), installer
         out.write_text("\n".join(block(late)) + "\n", encoding="utf-8")
         installer = section(summary_of(fake_mac)[0], "Installer")
         assert (
             "install.out (the install.sh run after this attempt's end line, a stand-alone run: this attempt "
-            "ran no install.sh)</summary>" in installer
+            "made no install run)</summary>" in installer
         ), installer
     # B13 round 27 P13: a stopped copy with a run of its own and one after its end line names the Installer
     # section's count for the earlier run too
@@ -25623,7 +25653,7 @@ def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_e
         ), sync
         (fake_mac["setup"] / "install.log").write_text(run, encoding="utf-8")  # no earlier run to borrow
         sync = _line(summary_of(fake_mac)[1], "- first sync: ")
-        assert sync == f"- first sync: no install.sh run during this attempt; {said} (install.log)", sync
+        assert sync == f"- first sync: no install run during this attempt; {said} (install.log)", sync
 
 
 def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:

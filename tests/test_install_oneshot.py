@@ -6230,14 +6230,14 @@ def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[s
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
     assert _summary(text)[2] == (
-        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v15 "
+        "- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: v15 "
         "(from the step 1 error line) · run: Sandbox (computed: HOME is under a temporary folder) · agent: "
         "Northwind Agent 2.1 (<folder-1>)"
     )
     # what the agentsync report computes from the same friction log, and the link it builds
     attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
     outcome = setup_report.compute_outcome(attempt, [])
-    assert (outcome.text, outcome.why) == ("failed at step 1", ("no install.sh run; step 1 logged an error",))
+    assert (outcome.text, outcome.why) == ("failed at step 1", ("no install run; step 1 logged an error",))
     assert setup_report._prompt_version(attempt) == "v15"
     assert attempt is not None and attempt.said("Agent") == "Northwind Agent 2.1 (Fabrikam Bridge)"
     link = setup_report.build_issue_url(
@@ -6355,7 +6355,7 @@ def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
     note = f"; newer than this installer, which is for prompt v{COMPAT}"  # no cause (B13 round 9 K26)
     outcome = next(ln for ln in _summary(text) if ln.startswith("- outcome: "))
     assert outcome.startswith(
-        f"- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: "
+        f"- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: "
         f"v{COMPAT + ahead} (from the step 1 error line{note if ahead > 0 else ''}) · "
     ), outcome
     assert outcome.endswith(" · agent: Contoso Agent")
@@ -6437,7 +6437,7 @@ def test_the_shell_report_computes_a_stopped_copys_failure(
         assert outcome == NOT_COMPUTED, outcome
         return
     assert outcome.startswith(
-        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · "
+        "- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · "
         + want.format(c=COMPAT)
     ), outcome
     assert outcome.endswith(" · agent: Contoso Agent 1"), outcome
@@ -7520,7 +7520,7 @@ def test_the_shell_report_computes_a_step_1_failure_past_its_first_line(
     assert len(attempt.events) == 1 + len(later)
     assert setup_report._prompt_version(attempt) == "v15" and attempt.said("Agent") == "Contoso Agent"
     assert outcome.startswith(
-        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v15 "
+        "- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: v15 "
         "(from the step 1 error line) · "
     ), outcome
     assert outcome.endswith(" · agent: Contoso Agent"), outcome
@@ -7616,7 +7616,7 @@ def test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers(
     text = report_path(env).read_text()
     outcome = _summary(text)[2]
     assert outcome.startswith(
-        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v18 "
+        "- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: v18 "
         "(from the step 1 error line) · "
     ), outcome
     assert outcome.endswith(" · agent: Contoso Agent"), outcome

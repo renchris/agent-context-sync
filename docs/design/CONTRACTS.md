@@ -35680,6 +35680,8 @@ attempt: no bracket; the stopped v8 attempt; and the same with the damage flag s
 and without the damage flag, one bracket).
 Amended 2026-11-01, §16.218 C709: `_ran_no_install` is now `_no_install_words`, which returns the words, and an
 attempt whose only install.sh run listed folders reads `this attempt ran only install.sh --list-folders`.
+Amended 2026-11-03, §16.225 C817: the bracket reads `(status when this report was written; this attempt made no
+install run)` and the Summary `install.sh: no install run during this attempt (N earlier in the install log)`.
 
 **A Loop stage left unread by status's read note says its words** (C638, ruling 67; `src/agentsync/setup_report.py`).
 Under read-only reads a manifest one schema ahead (or one a sync is writing) makes status print `last runs:
@@ -36583,6 +36585,9 @@ folders carries `(status when this report was written; this attempt ran only ins
 with a short deny-list, `_INSTALL_NOT_PRINTED`. Tests:
 `test_the_loop_lines_next_says_whose_reading_it_is_with_only_a_list_run_c709`,
 `test_the_install_scan_reads_every_assignment_by_default_c738`.
+Amended 2026-11-03, §16.225 C817: `ran no install.sh` above reads `this attempt made no install run`, one
+unconditional phrase, and every `no install.sh run` the report prints reads `no install run`, the count of earlier
+runs kept.
 
 Not built: C771's F3 and F4 are ruling 80's and ruling 86's, lanes B and RB. C726's automatic version, raising the
 budget from the load, is optional and left out: the variable is the supported way.
@@ -37398,6 +37403,16 @@ half). `_Run.call` abandons a cut-off call's thread, and a doctor git child ran 
 `finally` (`_end_doctor_children`), which kills each program still running with its process group. Both are read by
 `getattr`, so a build without them reads as before. Test:
 `tests/test_setup_report.py::test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804`.
+
+**`made no install run`, one phrase for an attempt with no install run** (C817, ruling 101's cluster; makes worse
+True as the finder gave it). A stopped copy said `this attempt ran no install.sh` while the same report showed that
+attempt's `install.sh --log-start` error. One unconditional phrase with no cause claim and no inner bracket, since the
+F line and the expected-turns line already give the cause: `this attempt made no install run` in `_no_install_words`
+and the Installer heading, `- install.sh: no install run during this attempt (N earlier in the install log)`, and
+`no install run` at every other site that printed `no install.sh run` (the outcome's reasons, the first-sync line).
+An older build's words stay in install.sh's readers (lane RB). Tests:
+`tests/test_setup_report.py::test_an_attempt_with_no_install_run_says_one_phrase_in_one_bracket_c817` (an installer
+stop, a git stop and a step 2 failure) and the moved pins.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

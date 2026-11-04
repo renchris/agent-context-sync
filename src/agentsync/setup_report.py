@@ -3619,7 +3619,7 @@ def compute_outcome(
                 "failed",
                 copy_stop.step,
                 (
-                    f"no install.sh run during this attempt, and step {copy_stop.step} logged an error "
+                    f"no install run during this attempt, and step {copy_stop.step} logged an error "
                     f"(F{copy_stop.line})",
                     f"the installer stopped this copy at step 1, and {n} after its end line is a stand-alone "
                     f"run that does not change it ({ended})",
@@ -3791,10 +3791,10 @@ def compute_outcome(
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
     if attempt is None:
-        return Outcome("unknown", None, ("no friction log and no install.sh run in install.log",), version)
+        return Outcome("unknown", None, ("no friction log and no install run in install.log",), version)
     error = _unresolved_error(attempt) or next(iter(attempt.of_kind("error")[::-1]), None)
     if error is not None:
-        why_error = f"no install.sh run; step {error.step} logged an error"
+        why_error = f"no install run; step {error.step} logged an error"
         return Outcome("failed", error.step, (why_error,), version)
     steps = [e.step for e in attempt.events if e.step is not None]
     events = list(attempt.events)
@@ -3813,12 +3813,12 @@ def compute_outcome(
         return Outcome(
             "stopped",
             FOLDER_QUESTION_STEP,
-            (f"no install.sh run and no error; step {FOLDER_QUESTION_STEP} logged {what}",),
+            (f"no install run and no error; step {FOLDER_QUESTION_STEP} logged {what}",),
             version,
             "waiting for the folder answer" if waiting else "a deviation, no install run and no error",
         )
     if steps:
-        why_step = f"no install.sh run and no error; the last step logged is {steps[-1]}"
+        why_step = f"no install run and no error; the last step logged is {steps[-1]}"
         return Outcome("failed", steps[-1], (why_step,), version)
     if runs and not layout.logs_steps:  # v6: only --list-folders ran (step 1), and nothing was logged
         # and why its list stopped, when it stopped with nothing listed (B13 round 12 N31)
@@ -3828,7 +3828,7 @@ def compute_outcome(
         return Outcome(
             "failed", 1, (f"no install run: only install.sh --list-folders ran, in step 1{said}",), version
         )
-    return Outcome("unknown", None, ("no install.sh run in this attempt and no step logged",), version)
+    return Outcome("unknown", None, ("no install run in this attempt and no step logged",), version)
 
 
 def _status_fail_words(run: InstallRun) -> str:
@@ -7154,7 +7154,7 @@ def _installer_output(r: _Run) -> list[str]:
         run_s = "run after this attempt's end line, a stand-alone run"
         if len(alone) > 1:
             run_s = "runs after this attempt's end line, stand-alone runs"
-        none = "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
+        none = "none of this attempt's runs is in it" if mine else "this attempt made no install run"
         saw = (
             f"the install.sh {run_s}: {none}"
             if owners <= alone
@@ -7162,7 +7162,7 @@ def _installer_output(r: _Run) -> list[str]:
         )
     elif scoped and _attempt_out_start(r, mine, scoped) is None:
         saw = "earlier attempts' install.sh output: " + (
-            "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
+            "none of this attempt's runs is in it" if mine else "this attempt made no install run"
         )
     # B13 round 26 E29: D16's clause, as the Summary's line has it
     unended = _open_runs(r, r.facts.out_counted, r.facts.instructions[4])
@@ -15312,7 +15312,7 @@ def _first_sync_line(
     elif scoped and not runs:
         # the tag names install.log only when there is one, as the install.sh line does (B13 round 12 N24)
         parts.append(
-            "no install.sh run during this attempt" + (" (no install log)" if missing else " (install.log)")
+            "no install run during this attempt" + (" (no install log)" if missing else " (install.log)")
         )
     elif scoped and not install_runs_only(runs):
         # a list-only attempt never reaches a first-sync step (B13 round 11 M22)
@@ -15327,9 +15327,9 @@ def _first_sync_line(
         parts.append(f"no install run of this attempt reached its first sync (install.log{where})")
     else:
         parts.append(
-            "no install.sh run (no install log)"
+            "no install run (no install log)"
             if missing
-            else "no install.sh run with a first-sync step (install.log)"
+            else "no install run with a first-sync step (install.log)"
         )
     source = (
         "install.log: that earlier run"
@@ -15803,7 +15803,7 @@ def _no_install_words(r: _Run) -> str | None:
         return None
     runs = _latest_runs(r)
     if not runs:
-        return "this attempt ran no install.sh"
+        return "this attempt made no install run"
     return None if install_runs_only(runs) else "this attempt ran only install.sh --list-folders"
 
 
@@ -15956,7 +15956,8 @@ def _install_line(
             return "- install.sh: no install log"
         return "- install.sh: no run in the install log"
     if scoped and not runs:
-        return f"- install.sh: no run during this attempt ({len(r.install_runs)} earlier in the install log)"
+        earlier = len(r.install_runs)
+        return f"- install.sh: no install run during this attempt ({earlier} earlier in the install log)"
     pool = list(runs) if scoped else r.install_runs
     installs = install_runs_only(pool)
     after = _after_end(pool, end, stopped=stopped) if scoped else []

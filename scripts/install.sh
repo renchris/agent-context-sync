@@ -4736,7 +4736,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 # case the line says that it is not, so "copy the five values from the Summary" (setup-feedback.md) finds a
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
 # redaction, for the link.
-OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v"
+OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install run; step 1 logged an error) · prompt: v"
 # Where macOS keeps throwaway files: paths.TEMPORARY_ROOTS (a test keeps them equal).
 TEMPORARY_ROOTS="/tmp /private/tmp /var/folders /private/var/folders"
 # The run type the agentsync report computes when no install run says launchd=simulated (compute_run_type, by

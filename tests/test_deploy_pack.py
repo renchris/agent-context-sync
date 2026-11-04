@@ -6457,6 +6457,8 @@ _ROUND_34_RA_PARAGRAPH_AMENDS = (
     ("16.218", "**A list that lost what only purge-record.json keeps, with governance/", "§16.225 C809"),
     ("16.218", "**The Purge queue part in status's words with governance/ gone** (C765", "§16.225 C838"),
     ("16.224", "**An organisation registered after another kind is still cut out of a", "§16.225 C870, C835"),
+    ("16.213", "**The Loop line says whose reading its NEXT is when the attempt", "§16.225 C817"),
+    ("16.218", "**The list-only attempt's Loop line and the install scan** (C709, C738).", "§16.225 C817"),
 )
 """Round 34 lane RA's dated lines at the paragraphs its items amend, each pinned by its marker."""
 
@@ -7931,15 +7933,15 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
     for _below, said in setup_report._FAIL_BELOW:
         assert f"`{said.format(pointer)}`" in para, said
     # the no-install bracket, its --list-folders variant (lane RA's C709), the damage form, the join
-    no_run = "status when this report was written; this attempt ran no install.sh"
+    no_run = "status when this report was written; this attempt made no install run"
     only = "status when this report was written; this attempt ran only install.sh --list-folders"
     # the report joins the bracket's head to the run words: `f"status when this report was written; {ran}"`
     assert 'f"status when this report was written; {ran}"' in source
     assert f'"{no_run.split("; ", 1)[1]}"' in source and f'"{only.split("; ", 1)[1]}"' in source
     assert f"the NEXT ends `({no_run})`" in para
     assert f"`({only})` (B13 round 33 C709, lane RA's cb1ce5195)" in para
-    assert "When the attempt ran no install.sh (the Summary says `install.sh: no run during this" in para
-    assert "no run during this attempt" in source
+    assert "When the attempt made no install run (the Summary says `install.sh: no install run during" in para
+    assert "no install run during this attempt" in source
     assert "(the loop's own read when this report was written; ...`" in para
     assert "it joins any bracket the NEXT already ends in (B13 round 32 C620)" in para
     # the lost-hold wait's pointer, on its condition
