@@ -10674,7 +10674,7 @@ def test_a_queue_lost_with_the_governance_folder_reads_the_folders_kind_c618(
     queue = section(text, "Status").split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
     assert "recorded in the audit trail" not in queue, queue
     assert (
-        "- 1 purge purge-record.json keeps as queued and not done is lost with agentsync's governance "
+        "- 1 purge that purge-record.json keeps as queued and not done is lost with agentsync's governance "
         "folder, which is missing (see Doctor's governance.purge_queue line)"
     ) in queue, queue
     assert "<value>" not in text
@@ -10793,17 +10793,17 @@ def _trail_lost_state(fake_mac: dict[str, Path], which: str) -> Path:
         (
             "queue",
             ["governance.purge_queue"],
-            "from a purge queue that lost a purge purge-record.json keeps",
+            "from a purge queue that lost a purge that purge-record.json keeps",
         ),
         (
             "suppressed",
             ["governance.suppressed"],
-            "from a suppression list that lost a purge purge-record.json keeps",
+            "from a suppression list that lost a purge that purge-record.json keeps",
         ),
         (
             "queue suppressed",
             ["governance.suppressed", "governance.purge_queue"],
-            "from a suppression list and a purge queue that lost a purge purge-record.json keeps",
+            "from a suppression list and a purge queue that lost a purge that purge-record.json keeps",
         ),
     ],
     ids=["queue", "suppressed", "both"],
@@ -10828,7 +10828,7 @@ def test_a_re_created_folders_lost_list_credits_purge_record_c735_c740_c756(
     assert "recorded in the audit trail" not in queue, queue
     if "queue" in which:
         assert (
-            "- 1 purge purge-record.json keeps as queued and not done is not in the queue file, and "
+            "- 1 purge that purge-record.json keeps as queued and not done is not in the queue file, and "
             "agentsync's audit trail no longer holds its line (see Doctor's governance.purge_queue line)"
         ) in queue, queue
 
@@ -10910,22 +10910,23 @@ def test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82(form: str) ->
         (
             [("governance.suppressed", "suppressed-lead")],
             ["governance.suppressed"],
-            "from a suppression list that lost a purge purge-record.json keeps",
-            " on agentsync's suppression list, which lost a purge purge-record.json keeps: the person's to "
-            "fix",
+            "from a suppression list that lost a purge that purge-record.json keeps",
+            " on agentsync's suppression list, which lost a purge that purge-record.json keeps: the person's "
+            "to fix",
         ),
         (
             [("governance.purge_queue", "queue-credit")],
             ["governance.purge_queue"],
-            "from a purge queue that lost a purge purge-record.json keeps",
-            " on agentsync's purge queue, which lost a purge purge-record.json keeps: the person's to fix",
+            "from a purge queue that lost a purge that purge-record.json keeps",
+            " on agentsync's purge queue, which lost a purge that purge-record.json keeps: the person's to "
+            "fix",
         ),
         (
             [("governance.suppressed", "suppressed-credit"), ("governance.purge_queue", "queue-lead")],
             ["governance.suppressed", "governance.purge_queue"],
-            "from a suppression list and a purge queue that lost a purge purge-record.json keeps",
-            " on agentsync's suppression list and purge queue, which each lost a purge purge-record.json "
-            "keeps: the person's to fix",
+            "from a suppression list and a purge queue that lost a purge that purge-record.json keeps",
+            " on agentsync's suppression list and purge queue, which each lost a purge that "
+            "purge-record.json keeps: the person's to fix",
         ),
     ],
     ids=["suppressed", "queue", "both"],

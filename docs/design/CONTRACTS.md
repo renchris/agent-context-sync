@@ -36542,6 +36542,9 @@ audit trail's form first, then the trail-lost lists, both read before either is 
 Amended 2026-11-03, §16.225 C836: CORRECTED: `a mixed form with no lead keeps the audit trail's bucket` above reads
 `any mixed form, lead or not`: a list is trail-lost only when every lost record is credited to purge-record.json alone
 (lane B's `record_only`), so `_trail_form` no longer reads `TRAIL_LOST_HEAD`.
+Amended 2026-11-03, §16.225 C809: the Doctor line's words, the outcome's and the Purge queue part's now read `a purge
+that purge-record.json keeps` and `N purge(s) that purge-record.json keeps as queued and not done`, the two nouns no
+longer in a row; `TRAIL_LOST_HEAD`, `_TRAIL_LIST_PHRASES` and the listing note's older form stay.
 
 **The Purge queue part in status's words with governance/ gone** (C765, C771's F2, ruling 64). `_queue_gone_said` takes
 `governance.queue_gone_words` under status's condition (`recorded_purges` reads and `folder_lost_case` holds), by
@@ -37291,7 +37294,7 @@ the trail-lost cause first, so a lost hold, or a list in the audit trail's form,
 purge-record.json keeps was dropped from the status step's outcome. It reads `_trail_lost_named` and `_lost_named`
 before it returns, and `_both_lost_cause(lost, trail)` joins `_lost_cause` and `_trail_lost_cause` in the Doctor line's
 order: ` on agentsync's hold list, which no longer lists a hold the audit trail or the hold record keeps, and
-agentsync's purge queue, which lost a purge purge-record.json keeps: the person's to fix`. Every disjoint pair joins
+agentsync's purge queue, which lost a purge that purge-record.json keeps: the person's to fix`. Every disjoint pair joins
 `_LOST_CAUSES`, or `compute_outcome` would fall back to its generic words. Test:
 `tests/test_setup_report.py::test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833`, over the five
 real states.
@@ -37306,6 +37309,15 @@ built. Landed after C833, whose `_both_lost_cause` names a mixed list beside a t
 `list_word` is lane RB's. Tests: `test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82` (`queue-mixed-lead`
 now False, with `suppressed-mixed-lead` and `queue-lead-all-in-trail`), and the sixth case of
 `test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833`.
+
+**`that` where two nouns meet** (C809, ruling 101; amends §16.218's ruling 82 passage). The report printed `a purge
+purge-record.json keeps`, the construction C722 fixed in doctor's note. The four report sites read `that`: the Doctor
+line's trail-lost buckets (`from a purge queue that lost a purge that purge-record.json keeps`), `_trail_lost_cause`
+(` on agentsync's purge queue, which lost a purge that purge-record.json keeps: the person's to fix`) and the Purge
+queue part's two lines (`N purge(s) that purge-record.json keeps as queued and not done`). `TRAIL_LOST_HEAD`,
+cli.py's `--folder-lost` help, `_TRAIL_LIST_PHRASES` and governance's matcher words stay, grammatical as written, so
+the older sections' quotes of them stand; `purge-record.json` is in both phrase lists already. Tests:
+the ruling 82 and C735 pins in `tests/test_setup_report.py`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

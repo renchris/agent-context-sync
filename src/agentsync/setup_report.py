@@ -10114,7 +10114,7 @@ def _lost_queue_line(config: Config) -> str:
     verb = "is" if n == 1 else "are"
     if folder:  # B13 round 32 C618 (ruling 63): no audit trail to credit, and no queue file to be in
         return (
-            f"- {_plural(n, 'purge')} purge-record.json keeps as queued and not done {verb} lost with "
+            f"- {_plural(n, 'purge')} that purge-record.json keeps as queued and not done {verb} lost with "
             "agentsync's governance folder, which is missing (see Doctor's governance.purge_queue line)"
         )
     if all(w in detail for w in _TRAIL_LIST_PHRASES["governance.purge_queue"]):
@@ -10125,9 +10125,9 @@ def _lost_queue_line(config: Config) -> str:
             )
         its = "its line" if n == 1 else "their lines"
         return (
-            f"- {_plural(n, 'purge')} purge-record.json keeps as queued and not done {verb} not in the queue "
-            f"file, and agentsync's audit trail no longer holds {its} (see Doctor's governance.purge_queue "
-            "line)"
+            f"- {_plural(n, 'purge')} that purge-record.json keeps as queued and not done {verb} not in the "
+            f"queue file, and agentsync's audit trail no longer holds {its} (see Doctor's "
+            "governance.purge_queue line)"
         )
     return (
         f"- {_plural(n, 'purge')} recorded in the audit trail {verb} not in the queue file "
@@ -14209,10 +14209,10 @@ there: under ``governance.TRAIL_LOST_HEAD``, or lane B's credit after the first 
 33 ruling 82, C735, C740, C756; ruling 79). An alternative to :data:`_LOST_LIST_PHRASES`, never appended to
 its tuples, which are all required. A FAIL of either check with neither stays unexpected."""
 _TRAIL_LIST_WORDS = {
-    ("governance.suppressed",): "from a suppression list that lost a purge purge-record.json keeps",
-    ("governance.purge_queue",): "from a purge queue that lost a purge purge-record.json keeps",
+    ("governance.suppressed",): "from a suppression list that lost a purge that purge-record.json keeps",
+    ("governance.purge_queue",): "from a purge queue that lost a purge that purge-record.json keeps",
     ("governance.suppressed", "governance.purge_queue"): (
-        "from a suppression list and a purge queue that lost a purge purge-record.json keeps"
+        "from a suppression list and a purge queue that lost a purge that purge-record.json keeps"
     ),
 }
 """The Doctor line's bucket for :data:`_TRAIL_LIST_PHRASES`' FAILs, the person's (ruling 82): never crediting
@@ -14341,7 +14341,7 @@ def _trail_lost_cause(checks: Sequence[str]) -> str:
     nouns = [_LOST_NOUNS[c] for c in _LOST_NOUNS if c in checks]
     each = "each " if len(nouns) > 1 else ""
     return (
-        f" on agentsync's {' and '.join(nouns)}, which {each}lost a purge purge-record.json keeps: the "
+        f" on agentsync's {' and '.join(nouns)}, which {each}lost a purge that purge-record.json keeps: the "
         "person's to fix"
     )
 
