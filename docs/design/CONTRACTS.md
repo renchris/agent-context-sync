@@ -37376,6 +37376,14 @@ never twice. `retried_runs`, `compute_outcome` and the outcome are unchanged. Te
 `tests/test_setup_report.py::test_an_earlier_failed_run_of_a_failed_attempt_is_an_item_with_its_mode_fix_c813`, with
 the same FAIL set on both runs as its negative.
 
+**A doctor program the time limit cut off does not outlive the report** (C804's report half, on lane B's doctor
+half). `_Run.call` abandons a cut-off call's thread, and a doctor git child ran on past the report, past doctor's own
+120 s. `_Run.call` sets `doctor.RUN_DEADLINE` to the call's own deadline inside the context it copies, so each
+`doctor._run` program times out inside doctor by then, and `build_report` calls `doctor.end_children()` in a
+`finally` (`_end_doctor_children`), which kills each program still running with its process group. Both are read by
+`getattr`, so a build without them reads as before. Test:
+`tests/test_setup_report.py::test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804`.
+
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
 Reserved for round 34 lane RB of B13.

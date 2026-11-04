@@ -4501,6 +4501,14 @@ class _Run:
         # the thread runs in the caller's context, so the manifest's read_only_reads() reaches every hook and
         # probe (a bare thread starts with an empty one; B13 round 31 C560, ruling 52)
         context = contextvars.copy_context()
+        # B13 round 34 C804: and with the call's own deadline, so each doctor program the hook starts times
+        # out inside doctor by then, never outliving the call that gave up on it
+        with contextlib.suppress(Exception):
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if broken
+
+            deadline = getattr(doctor, "RUN_DEADLINE", None)
+            if deadline is not None:
+                context.run(deadline.set, time.monotonic() + limit)
         try:
             return call_with_timeout(lambda: context.run(fn), limit, name="setup-report")
         except CallTimedOutError as exc:  # the report names it TimeoutError, as it always has
@@ -18077,10 +18085,25 @@ def build_report(
         reads: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
     else:
         reads = read_only_reads()
-    with reads:
-        return _build_report(
-            config_path, hooks=hooks, friction_path=friction_path, now=now, budget_s=budget_s
-        )
+    try:
+        with reads:
+            return _build_report(
+                config_path, hooks=hooks, friction_path=friction_path, now=now, budget_s=budget_s
+            )
+    finally:
+        _end_doctor_children()
+
+
+def _end_doctor_children() -> None:
+    """End every doctor program a call the report's time limit abandoned left running, with its process group
+    (``doctor.end_children``, lane B's half of B13 round 34 C804): a cut-off doctor's git otherwise outlived
+    the report, past doctor's own limit. Nothing from a build without it, and never a raise."""
+    with contextlib.suppress(Exception):
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        end = getattr(doctor, "end_children", None)
+        if end is not None:
+            end()
 
 
 def _build_report(
