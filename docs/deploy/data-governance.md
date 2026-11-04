@@ -151,10 +151,11 @@ is a copy that no purge reaches, so exclude it too.
   (B13 round 29 C172; B13 round 30 C383, C402, C401, C344). When the FAIL opens `agentsync's audit trail no longer
   holds purge lines purge-record.json keeps`, accepting takes `--folder-lost`, as the next bullet says (B13 round 33
   C759).
-- **Over a missing governance folder:** while the governance folder itself is gone, and with it the hold list,
-  agentsync's audit trail, the purge queue and the suppression list, and purge-record.json still records a purge or
+- **Over a missing governance folder:** while the governance folder itself is gone, and with it any hold list,
+  agentsync's audit trail, the purge queue and any suppression list, and purge-record.json still records a purge or
   hold-record.json names a hold, `agentsync status` still FAILs each lost file, its detail opening `<governance
-  folder>/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`.
+  folder>/ is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue and any
+  suppression list)`.
   The sync refuses while purge-record.json keeps a purge the suppression list or the purge queue lost, its FAIL
   naming purge-record.json as what keeps the purges, and runs while only hold-record.json keeps a hold, with purge
   and compaction suspended for that hold's scope and status FAILing governance.hold; every fix, and the sync's stop

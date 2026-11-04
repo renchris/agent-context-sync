@@ -4522,6 +4522,35 @@ def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
     capsys.readouterr()
 
 
+@pytest.mark.parametrize("held", [True, False])
+def test_the_listing_note_beside_a_lost_hold_and_queue_names_both_lines_c811(
+    initialised: Config, capsys: pytest.CaptureFixture[str], held: bool
+) -> None:
+    """B13 round 34 C811 (ruling 94): with the hold on all and a queued purge, governance/ moved aside,
+    status's NEXT led with governance.hold while the heartbeat's note said only `the governance.purge_queue
+    [FAIL] line says what to do first`. The note names both lines then; the stop stays the guard's,
+    governance.purge_queue, the one whose fix lets a sync run. With the queue lost alone, all is singular."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    if not held:
+        assert cli.main(["hold", "all", "--release", "--owner", "Ada", "--config", cfg]) == cli.EXIT_OK
+    sid = initialised.sources[0].id
+    _three_incomplete_passes(initialised, sid)
+    governance.governance_dir(root).rename(root / "governance.kept")
+    capsys.readouterr()
+    assert loop._sync_stopped_on(initialised) == "governance.purge_queue"
+    status = cli._build_status(initialised)
+    (warn,) = [c for c in status.checks if c.name == f"heartbeat.{sid}"]
+    assert warn.note is not None and "no sync lists it again until the person fixes it; " in warn.note
+    both = "the governance.hold and governance.purge_queue [FAIL] lines say what to do first"
+    one = "the governance.purge_queue [FAIL] line says what to do first"
+    assert warn.note.endswith(both if held else one), warn.note
+    rc, out = _status(cfg, capsys)
+    lead = (
+        "NEXT: the governance.hold check failed" if held else "NEXT: the governance.purge_queue check failed"
+    )
+    assert rc == cli.EXIT_FAILED and out[0].startswith(lead), out[:2]
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729(
     initialised: Config, capsys: pytest.CaptureFixture[str]
@@ -7442,7 +7471,7 @@ def test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole(
     assert any(ln.startswith("HOLD: hold all (record): lost from the hold list") for ln in out), out
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
     head = (
-        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression"
+        f"{gov}/ is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue"
     )
     assert rc == cli.EXIT_FAILED and head in failed, failed
     assert "no longer lists the hold on all set by the records owner (kept by hold-record.json)" in failed

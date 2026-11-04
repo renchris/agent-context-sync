@@ -1329,10 +1329,14 @@ def audit_lost_holds(state_dir: Path, listed: Iterable[Hold] | None = None) -> l
 
 
 GOVERNANCE_GONE_HEAD = (
-    "is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in it"
+    "is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue and any "
+    "suppression list)"
 )
 """What follows ``<gov>/`` when the governance folder is gone and a record outside it still names what it
-kept: the lead of every lost-file FAIL then (B13 round 30 C313; B13 round 32 C601, C606, C618; ruling 63)."""
+kept: the lead of every lost-file FAIL then (B13 round 30 C313; B13 round 32 C601, C606, C618; ruling 63). It
+describes the folder and what it is for, never what it held: hold-record.json and purge-record.json are best
+effort, so no branch on them may drop a hold list or a suppression list that existed (B13 round 34 C810;
+ruling 94; round 33's head stays in both phrase lists for an older build)."""
 
 
 def governance_gone(state_dir: Path) -> bool:

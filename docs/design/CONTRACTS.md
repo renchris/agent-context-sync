@@ -36020,6 +36020,8 @@ Amended 2026-11-03, §16.229 C858: the CORRECTED line above read "`--accept-lost
 while `audit_trail_lost` holds ... or after the `audit-trail-lost` line was written", as if plain `--accept-lost`
 refused after that line; the after-the-line clause is `--folder-lost`'s alone, as §16.220 C742 says and
 `governance.accept_lost_suppression` does.
+Amended 2026-11-03, §16.227 C810: the head reads `is missing (the folder where agentsync keeps any hold list, its audit
+trail, the purge queue and any suppression list)`, describing the folder, never what it held.
 
 C624 with C618's item 6 (2026-10-28): **the ok lines say what is on disk (ruling 64).** governance.hold's ok line
 said `no hold set (hold list read)` with no holds.json. `governance.no_hold_words` says `no hold set (no hold list
@@ -37519,7 +37521,32 @@ until then no sync runs)`, and `exclude-empty`'s head (cli.py) reads the same fu
 row of `test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729` (the note in both hint modes, the
 sync's exit 1, and None once the mode is back).
 
+**C810 (makes worse True as found; ruling 94).** With governance/ gone, every lost-file FAIL said the folder was
+missing `with the hold list, agentsync's audit trail, the purge queue and the suppression list in it`, though no hold
+list or suppression list had ever existed (the rehearsal's GQ home moved a folder holding only audit.jsonl and
+purge-queue.json). `GOVERNANCE_GONE_HEAD` reads `is missing (the folder where agentsync keeps any hold list, its audit
+trail, the purge queue and any suppression list)`: it describes the folder and what it is for and never branches on
+hold-record.json or purge-record.json, which are best effort and would under-report a legal hold. Lane RA's
+`_GOV_GONE` reads the new head and the old at every reader and landed first; install.sh's two tails and
+`GONE_CHECK` are lane RB's. `(the folder where agentsync keeps any hold list, its audit trail, the purge queue and
+any suppression list)` is in both phrase lists (lane RA's readers commit adds it, the constant's own literal, no
+trailing `: `) and round 33's entry stays for an older build (ruling 68).
+data-governance.md's missing-folder bullet quotes the new head (`test_deploy_pack.py` reads the constant), and
+§16.215's C606 paragraph takes a dated line. Tests: the head's pins in
+`test_cli.py::test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole`,
+`test_governance.py::test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is_named`, the C313
+report test, and install.sh's `hold_cut` pairs (`_LOST_HOLD_LINES`), each with the new head.
 
+**C811 (makes worse True as found; ruling 94).** With a hold and a queued purge both lost (governance/ moved aside
+under the hold on all), status's NEXT led with governance.hold while the heartbeat's listing note pointed only at
+governance.purge_queue. Only the where-to-read pointer changes: `doctor.listing_state_governance_note` takes
+`hold_lost`, set by `cli._governance_listing_note` when the guard's error is a lost list and
+`governance.lost_holds` returns a hold, and then ends `the governance.hold and governance.purge_queue [FAIL] lines
+say what to do first` (or the lost list's own check in place of the queue's). The stop's own clause, `no sync lists
+it again until the person fixes it`, the wait's `once the governance.purge_queue [FAIL] line is fixed` and
+`_sync_stopped_on` keep the guard's check alone, the one whose fix lets a sync run; a queue lost alone stays
+singular. Lane RA's `_LISTING_GOVERNANCE_RE` reads the plural and landed first. Test:
+`test_the_listing_note_beside_a_lost_hold_and_queue_names_both_lines_c811` (held and not).
 
 ### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
 

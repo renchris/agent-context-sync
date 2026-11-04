@@ -2028,7 +2028,7 @@ def test_the_folders_records_owner_line_has_one_bracket_c710(tmp_path: Path) -> 
     red = setup_report.Redactor()
     said = red.redact(governance.lost_hold_words(tmp_path, gone)[0])
     assert "on all (owner not shown; kept by hold-record.json), and no release is recorded" in said, said
-    assert ") (" not in said and " is missing, with the hold list" in said, said
+    assert ") (" not in said and f" {governance.GOVERNANCE_GONE_HEAD}: " in said, said  # C810's head
 
 
 def test_a_lost_holds_owner_is_cut_and_its_fixed_reason_stays() -> None:
@@ -19973,8 +19973,9 @@ def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Lane B's C313 (ruling 42; its FAIL built by its own ``governance.lost_hold_words``): with governance/
-    gone whole while the hold record keeps a hold, governance.hold FAILs ``<gov>/ is missing, with the hold
-    list, agentsync's audit trail, the purge queue and the suppression list in it: ``, keeping the lost
+    gone whole while the hold record keeps a hold, governance.hold FAILs ``<gov>/ is missing (the folder where
+    agentsync keeps any hold list, its audit trail, the purge queue and any suppression list): `` (B13 round
+    34 C810; round 33's head ``is missing, with the hold list, ... in it: `` before it), keeping the lost
     hold's anchor ``no longer lists the hold on``. The report reads it as the governance folder's, the
     person's (the folder put back whole first), in the Doctor line and the status step's outcome, never as a
     hold the hold list lost; with the folder there, the same words are not read so."""
@@ -19990,7 +19991,11 @@ def test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313(
     )
     [lost] = governance.lost_holds(root)
     fail, fix = governance.lost_hold_words(root, lost)  # lane B's own words, built on disk
-    assert fail.startswith(f"{gov}{setup_report._GOV_GONE}") and "no longer lists the hold on all" in fail
+    # lane B's head since B13 round 34 C810, which the report reads among _GOV_GONE_HEADS
+    assert (
+        fail.startswith(f"{gov}{setup_report._GOV_GONE_HEADS[1]}")
+        and "no longer lists the hold on all" in fail
+    )
     assert fix.startswith("the person puts agentsync's governance folder ("), fix
     r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
     r.facts.doctor_problems = [("FAIL", "governance.hold", fail)]

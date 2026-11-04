@@ -2839,12 +2839,12 @@ _LOST_HOLD_LINES = {
         "[FAIL] governance.hold — /x/holds.json no longer lists the hold on all (owner not shown)"
     ),
     # the folder's records-owner line (lane B's C313 words), no time between: one bracket (C710, ruling 85)
-    "[FAIL] governance.hold — /x/governance/ is missing, with the hold list, agentsync's audit trail, the "
-    "purge queue and the suppression list in it: /x/governance/holds.json no longer lists the hold on all "
-    "set by the records owner (kept by hold-record.json), and no release is recorded": (
-        "[FAIL] governance.hold — /x/governance/ is missing, with the hold list, agentsync's audit trail, "
-        "the purge queue and the suppression list in it: /x/governance/holds.json no longer lists the hold "
-        "on all (owner not shown; kept by hold-record.json), and no release is recorded"
+    "[FAIL] governance.hold — /x/governance/ is missing (the folder where agentsync keeps any hold list, "
+    "its audit trail, the purge queue and any suppression list): /x/governance/holds.json no longer lists "
+    "the hold on all set by the records owner (kept by hold-record.json), and no release is recorded": (
+        "[FAIL] governance.hold — /x/governance/ is missing (the folder where agentsync keeps any hold list, "
+        "its audit trail, the purge queue and any suppression list): /x/governance/holds.json no longer "
+        "lists the hold on all (owner not shown; kept by hold-record.json), and no release is recorded"
     ),
 }
 

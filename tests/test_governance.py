@@ -2617,7 +2617,7 @@ def test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is
     assert "hold all (record): lost from the hold list" in hold.describe()
     detail, fix = gv.lost_hold_words(state, hold)
     assert detail.startswith(
-        f"{gov}/ is missing, with the hold list, agentsync's audit trail, the purge queue"
+        f"{gov}/ is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue"
     ), detail
     assert "no longer lists the hold on all set by the records owner (kept by hold-record.json)" in detail
     assert fix.startswith("the person puts agentsync's governance folder (") and " back whole " in fix, fix

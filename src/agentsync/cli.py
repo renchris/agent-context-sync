@@ -2295,7 +2295,11 @@ def _governance_listing_note(config: Config | None) -> str | None:
         return None
     if err is None or err.path != where:
         return None
-    return doctor.listing_state_governance_note(err, result.name)
+    hold_lost = False
+    if isinstance(err, governance.GovernanceLostError):  # a lost hold's FAIL leads status's NEXT (C811)
+        with contextlib.suppress(Exception):
+            hold_lost = bool(governance.lost_holds(root))
+    return doctor.listing_state_governance_note(err, result.name, hold_lost=hold_lost)
 
 
 def _stopped_listing_note(config: Config | None) -> str | None:

@@ -266,13 +266,15 @@ def stopped_listing_clause(check: str) -> str:
     return f"no sync lists it again until the {check} [FAIL] line is fixed"
 
 
-def listing_state_governance_note(err: GovernanceUnreadError, check: str) -> str:
+def listing_state_governance_note(err: GovernanceUnreadError, check: str, *, hold_lost: bool = False) -> str:
     """The listing note beside a governance file the sync's guard stops on (``state_not_a_file`` with
     ``damaged`` and ``lost``: the hold list, the purge queue, the suppression list, the audit trail, the hold
     record or the purge record), named by ``err``'s own role, never a WAITING ON YOU line: no sync runs until
     the person fixes it, and an empty-folder exclude, which that line asks for, clears nothing (B13 round 30
     C321). ``check`` is the FAIL that says what to do (``governance_check``). Each clause ends ``; ``, so the
-    audit trail's reads as the report's fixed phrase. Never for a hold the hold list lost: the sync runs."""
+    audit trail's reads as the report's fixed phrase. Never for a hold the hold list lost: the sync runs.
+    ``hold_lost``: a hold is lost too, whose governance.hold FAIL status's NEXT leads with, so the pointer to
+    where to read names both lines; the stop's own clause keeps the guard's (B13 round 34 C811; ruling 94)."""
     from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
 
     if isinstance(err, governance.GovernanceNotAFileError):
@@ -287,9 +289,13 @@ def listing_state_governance_note(err: GovernanceUnreadError, check: str) -> str
         said = "has lost a purge the audit trail records"
     else:
         said = "cannot be read"
+    first = (
+        f"the governance.hold and {check} [FAIL] lines say what to do first"
+        if hold_lost and check != "governance.hold"
+        else f"the {check} [FAIL] line says what to do first"
+    )
     return (
-        f"as of its last walk: {err.role} {said}; no sync lists it again until the person fixes it; the "
-        f"{check} [FAIL] line says what to do first"
+        f"as of its last walk: {err.role} {said}; no sync lists it again until the person fixes it; " + first
     )
 
 
