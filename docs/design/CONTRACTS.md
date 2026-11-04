@@ -36650,6 +36650,7 @@ again keeps every purge refused`, in fixed words with no bracket, a scope or an 
 before. Lane B's FAIL and the sync's stop name the hold and its release command; step 1 and step 2 do not, as they
 print no scope. Test: the `hold-queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`
 and `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict`.
+Amended 2026-11-03, §16.226 C879: CORRECTED: the words key on status's judgment, not on a lost-hold word, and read `every purge it covers refused`; without a hold that refuses the purge they are as before, and a hold still listed or in sources.toml takes `the hold that covers it, as its status line says` (B13 round 34 ruling 93).
 
 **The person's kinds credit purge-record.json too** (C712; ruling 82; `scripts/install.sh`,
 `src/agentsync/ops/doctor.py`, `src/agentsync/setup_report.py`). With governance/ gone the only record of a queued
@@ -36682,6 +36683,7 @@ gone the fix follows a colon, `also the person's to fix: <fixes>`, since the NEX
 Tests: `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict`,
 `test_every_config_failed_next_that_waits_for_a_fix_names_the_stop_that_follows`,
 `test_a_config_step_stop_beside_a_lost_queue_names_the_stop_that_follows`.
+Amended 2026-11-03, §16.226 C859: CORRECTED: a hold still in the hold list or in sources.toml beside a lost queue is said at step 1 now, and the clause is narrowed: step 1 reads status's own judgment of the hold (B13 round 34 ruling 93).
 
 **Both lists lost a purge: every tail names both** (ruling 86: C776 with C767; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). `governance.governance_lost` returns the suppression list's loss first and alone,
@@ -36797,6 +36799,7 @@ only if it reaches that source or finds nothing, and then only the records owner
 release, since `purge` judges by the sources its plan resolves to. Amended 2026-11-03, §16.227 C841: over two holds or
 more the clause reads `setting any of them again keeps every purge it covers refused`; one hold keeps `setting it
 again`.
+Amended 2026-11-03, §16.226 C840: CORRECTED: install.sh's caller now gives `gov` too, read in its own try (B13 round 34 ruling 93), and appends status's judgment as `,queue-held` or `,queue-free`.
 
 **C768 (ruling 86; the residual lane RB measured).** `lost_suppressions` reads the purge record's and the trail's lines, or
 the trail's alone when the record cannot be read (`_queue_events`, as `lost_queued` does; `audited_suppressions` keeps
@@ -37398,6 +37401,27 @@ runs to the same mark's next one; else one component, a `\` taking the byte afte
 tail, each up to a blank, a quote, a backtick, a bracket, `,` or `;`. Byte-wise under LC_ALL=C, with no lookahead.
 An unquoted path with a blank keeps its tail after the first blank, as the legend's `<path>` item says. Test:
 `test_the_shell_report_cuts_a_path_in_another_home_whole`.
+
+**Step 1 reads status's own judgment of the hold** (C840, C879, C871, C859, C803, C812, C865 and C863; ruling 93;
+amends §16.219 C701 and C737, §16.220 C701; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). The queue's
+by-hand clause keyed on the lost-hold word, so a lost hold on another source asked the records owner for a release the
+purge never needs, and a hold still in the hold list or in sources.toml, which refuses the purge, got the plain run.
+LOST_HOLD_PY reads `governance_or_none(<config>)` in its own try, passes it to `governance_lost` and `queue_lost`,
+keeps the queue's error whichever returned it, and, only when the build has `governance_or_none` and a queue error
+exists, appends last, as its own comma word, `,queue-held` when that fix holds `once the records owner decides to
+release `, else `,queue-free`: never a suffix on `lost-queue`, so every arm, adjacency and second-stop word still
+matches. `queue_hand_words` is the one three-state rule for `lost_list_tail` and `folder_gone_words`: `queue-free`
+the plain run, `queue-held` the release, no marker with a lost-hold word an older build's release as before; a hold
+lost reads `once the records owner releases the hold, since setting it again keeps every purge it covers refused`,
+one still listed or in sources.toml `once the records owner releases the hold that covers it, as its status line
+says`, the folder's joiner chosen by the suppression list's clause apart from the release. Fixed words only. The two
+new phrases join both lists (ruling 68), the old one kept while an older install.out holds it. A build before
+`governance_or_none` has one-argument readers: the bare call would raise inside the readers' try and drop the queue's
+word (C865's measure), so it keeps its verdict and no marker. Tests:
+`test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840` (a hold on all and on the source, a
+sources.toml hold with the folder there and gone, a hold on another source listed and lost in both forms, both
+lists lost, no hold; the purge's own hold test agrees with the words) and
+`test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865`.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

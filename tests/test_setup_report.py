@@ -2736,11 +2736,14 @@ _OLDER_PRINTED = (
     "3 refused, 2 of them because a label rule could not read their label data",
     "as of its last walk: the purge queue has lost a purge that purge-record.json records: agentsync's audit "
     "trail no longer holds it",
+    "(they put the purge queue back from a copy they trust, or run each such purge by hand once the records "
+    "owner releases the hold, since setting it again keeps every purge refused)",
 )
 """Lines an older agentsync printed and no literal under src/agentsync holds any more, which an older
 install.out still keeps and the report quotes, so their phrases stay in both lists: round 31's label data
 clause (B13 round 32 C609) and round 32's (B13 round 33 C728, ruling 90). Ruling 81's trail form of the
-listing note is here too: lane RA's phrase lands before lane B's doctor.py prints it."""
+listing note is here too: lane RA's phrase lands before lane B's doctor.py prints it. So is round 33's step 1
+hand run under a lost hold, which an older install.sh printed (B13 round 34 ruling 93, lane RB)."""
 
 
 @functools.cache

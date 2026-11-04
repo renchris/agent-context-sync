@@ -4066,6 +4066,7 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     [fixed] = re.findall(r"(?m)^\tTYPED_FIXED='(.*)' \\$", script)
     assert set(fixed.split("|")) == set(setup_report._PATH_COMPONENTS)
 
+
 def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str]) -> None:
     """B13 round 34 ruling 91, C822's shell half: a moved home's install.log (source=, a %q args= naming
     another account's OneDrive folder), a free-text line and a bare ``/Users/<old>`` printed the old login,
@@ -13129,7 +13130,7 @@ GOVGONE_TAILS = {
         "queued and not done (not damage, not a mode): fixing that is the person's (they put "
         "agentsync's governance folder back whole from the copy kept, or the records owner sets the "
         "hold again or releases it; with no copy, they run each such purge by hand once the records owner "
-        "releases the hold, since setting it again keeps every purge refused), and "
+        "releases the hold, since setting it again keeps every purge it covers refused), and "
         "~/.local/bin/agentsync status prints it on its governance.hold line"
     ),
     "suppressed-queue": (
@@ -13166,7 +13167,7 @@ def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix
     assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
     gov = state / "governance"
     gov.rename(state / "governance.kept")
-    assert _lost_hold_probe(cfg, src) == "none,lost-queue-govgone"
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue-govgone,queue-free"
     older = tmp_path / "older"  # a build whose lost-file fix names the queue alone
     shutil.copytree(src / "agentsync", older / "agentsync")
     gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
@@ -13178,10 +13179,10 @@ def test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own_fix
         ),
         encoding="utf-8",
     )
-    assert _lost_hold_probe(cfg, older) == "none,lost-queue-trail"
+    assert _lost_hold_probe(cfg, older) == "none,lost-queue-trail,queue-free"
     (state / "governance.kept").rename(gov)
     (gov / "purge-queue.json").rename(state / "purge-queue.json.kept")
-    assert _lost_hold_probe(cfg, src) == "none,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue,queue-free"
 
 
 def _both_lists_lost_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
@@ -13221,7 +13222,7 @@ def test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_
     gov = state / "governance"
     gov.rename(state / "governance.kept")
     assert governance.suppressions_lost(state) and governance.queue_lost(state)
-    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-govgone,lost-queue-govgone"
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-govgone,lost-queue-govgone,queue-free"
     older = tmp_path / "older"  # an installed build with no queue_lost: the first word alone
     shutil.copytree(src / "agentsync", older / "agentsync")
     gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
@@ -13236,7 +13237,7 @@ def test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_
     (state / "governance.kept").rename(gov)
     for name in ("suppressed.json", "purge-queue.json"):
         (gov / name).rename(state / f"{name}.kept")
-    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue,queue-free"
     record = state / "purge-record.json"
     record.chmod(0o000)
     try:
@@ -13247,7 +13248,137 @@ def test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_
         record.chmod(0o600)
     # a damaged suppression list is that file's own FAIL: only the queue is lost, and its one word says so
     (gov / "suppressed.json").write_bytes(b"\xff\xfe not json")
-    assert _lost_hold_probe(cfg, src) == "none,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue,queue-free"
+
+
+def _queue_tails(verdict: str) -> tuple[str, str]:
+    """install.sh's lost_list_tail and folder_gone_words under bash 3.2 for ``verdict``:
+    (LIST_TAIL, GONE_FIX)."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(
+        re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", text, re.M | re.S).group(0)  # type: ignore[union-attr]
+        for name in ("queue_hand_words", "folder_gone_words", "lost_list_tail")
+    )
+    v = shlex.quote(verdict)
+    script = f'{fns}\nlost_list_tail {v} "" "step 2 stops at its status step on" ""\nfolder_gone_words {v}\n'
+    script += 'printf "%s\\n%s\\n" "$LIST_TAIL" "$GONE_FIX"\n'
+    cp = subprocess.run([BASH32, "-c", script], capture_output=True, text=True, check=True, timeout=60)
+    tail, fix = cp.stdout.splitlines()
+    return tail, fix
+
+
+HAND_LOST = (
+    "once the records owner releases the hold, since setting it again keeps every purge it covers refused"
+)
+HAND_LISTED = "once the records owner releases the hold that covers it, as its status line says"
+
+
+@pytest.mark.parametrize(
+    ("hold", "form", "verdict", "hand"),
+    [
+        ("all", "files", "none,lost-queue,queue-held", HAND_LISTED),
+        ("alpha", "files", "none,lost-queue,queue-held", HAND_LISTED),
+        ("config", "files", "none,lost-queue,queue-held", HAND_LISTED),
+        ("config", "folder", "none,lost-queue-govgone,queue-held", HAND_LISTED),
+        ("beta", "files", "none,lost-queue,queue-free", ""),
+        ("lost-beta", "files", "lost-hold,lost-queue,queue-free", ""),
+        ("lost-beta", "folder", "lost-hold-govgone,lost-queue-govgone,queue-free", ""),
+        ("lost-alpha", "files", "lost-hold,lost-queue,queue-held", HAND_LOST),
+        ("lost-all", "folder", "lost-hold-govgone,lost-queue-govgone,queue-held", HAND_LOST),
+        ("none", "files", "none,lost-queue,queue-free", ""),
+        ("all", "both", "none,lost-suppressed,lost-queue,queue-held", HAND_LISTED),
+    ],
+)
+def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hold: str, form: str, verdict: str, hand: str
+) -> None:
+    """B13 round 34 ruling 93 (C840 with C879, C871 with C859, C803 with C812, C865, C863's items 1 to 4):
+    step 1 keyed the queue's hand run on a lost-hold word, so a lost hold on another source asked the records
+    owner for a release the purge never needs, and a hold still listed or in sources.toml, which refuses the
+    purge, got the plain hand run. The probe reads sources.toml's [governance] and adds, last, status's own
+    judgment: `,queue-held` when the queue's fix names the release, else `,queue-free`; the tails follow it,
+    and the purge's own hold test agrees, refused exactly when the words name a release."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    gov = state / "governance"
+    gov.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    held = '[governance]\nhold = true\nhold_reason = "matter 8"\n'
+    cfg.write_text(held if hold == "config" else "", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    if form == "both":
+        cfg, state = _both_lists_lost_state(tmp_path / "both", monkeypatch)
+        gov = state / "governance"
+    else:
+        sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+        assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    scope = hold.removeprefix("lost-")
+    if scope in ("all", "alpha", "beta"):
+        governance.set_hold(state, scope, reason="matter 8", owner="Quinn Avery")
+    if form == "folder":
+        gov.rename(state / "governance.kept")
+    else:
+        for name in ("purge-queue.json", *(("suppressed.json",) if form == "both" else ())):
+            (gov / name).rename(state / f"{name}.kept")
+        if hold.startswith("lost-"):
+            (gov / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    assert _lost_hold_probe(cfg, src) == verdict
+    # the purge's own test, as purge reads them: the holds in force on its source refuse it
+    in_force = governance.active_holds(state, governance.load_governance(cfg))
+    assert bool(governance.blocking_holds(in_force, ["alpha"])) is bool(hand), in_force
+    tail, fix = _queue_tails(verdict)
+    shown = fix if form == "folder" else tail
+    assert ("run each such purge by hand " + hand if hand else "run each such purge by hand") in shown, shown
+    assert "keeps every purge refused" not in tail + fix, "the hold covers only its own source's purges"
+    if not hand:
+        assert "releases the hold" not in shown.split("by hand", 1)[1], shown
+    assert "Quinn" not in tail + fix and "matter" not in tail + fix and "alpha" not in tail + fix
+
+
+def test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 ruling 93 (C865's older-build guard, C879's three states): a build before
+    governance_or_none has one-argument readers. The probe reads gov in its own try, so such a build still
+    says `,lost-queue` (a bare call would raise inside the readers' try and drop it) and adds no hold word,
+    and the tails keep that build's words: the release under a lost hold, the plain run without one."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    (state / "governance").mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    governance.set_hold(state, "all", reason="matter 8", owner="Quinn Avery")
+    (state / "governance" / "purge-queue.json").rename(state / "purge-queue.json.kept")
+    (state / "governance" / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    older = tmp_path / "older"  # before C701: no governance_or_none, one-argument readers
+    shutil.copytree(src / "agentsync", older / "agentsync")
+    gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")
+    for old, new in (
+        ("def governance_or_none(", "def _no_governance_or_none("),
+        # a second positional argument raises TypeError, as on a one-argument build, the bodies untouched
+        ("def governance_lost(state_dir: Path, gov:", "def governance_lost(state_dir: Path, *, gov:"),
+        ("def queue_lost(state_dir: Path, gov:", "def queue_lost(state_dir: Path, *, gov:"),
+        (
+            "suppressions_lost(state_dir) or queue_lost(state_dir, gov)",
+            "suppressions_lost(state_dir) or queue_lost(state_dir, gov=gov)",
+        ),
+    ):
+        assert gtext.count(old) == 1, old
+        gtext = gtext.replace(old, new)
+    (older / "agentsync" / "governance.py").write_text(gtext, encoding="utf-8")
+    assert _lost_hold_probe(cfg, src) == "lost-hold,lost-queue,queue-held"
+    assert _lost_hold_probe(cfg, older) == "lost-hold,lost-queue"
+    assert f"run each such purge by hand {HAND_LOST}" in _queue_tails("lost-hold,lost-queue")[0]
+    assert "or run each such purge by hand), and " in _queue_tails("none,lost-queue")[0]
+    folder = _queue_tails("lost-hold-govgone,lost-queue-govgone")[1]
+    assert f"run each such purge by hand {HAND_LOST}" in folder, folder
 
 
 @pytest.mark.parametrize("lost", ["queue", "suppressed", "hold-queue", "suppressed-queue"])
@@ -13509,10 +13640,10 @@ def test_the_lost_list_probe_credits_purge_record_json_when_the_trail_lost_the_l
     gov.rename(state / "governance.kept")
     governance.set_hold(state, "all", reason="matter 8", owner="Quinn Avery")
     assert gov.is_dir()
-    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-trail,lost-queue-trail"
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed-trail,lost-queue-trail,queue-held"
     (gov / "audit.jsonl").unlink()
     shutil.copy(state / "governance.kept" / "audit.jsonl", gov / "audit.jsonl")  # the trail back: its credit
-    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue,queue-held"
 
 
 def test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_step_2(
@@ -13552,7 +13683,8 @@ def test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_ste
     assert tail.endswith(
         "; step 2 stops at its status step on agentsync's purge queue, which no longer holds a purge that "
         "purge-record.json keeps as queued and not done (not damage, not a mode): fixing that is the "
-        "person's (they put the purge queue back from a copy they trust, or run each such purge by hand), "
+        "person's (they put the purge queue back from a copy they trust, or run each such purge by hand "
+        "once the records owner releases the hold that covers it, as its status line says), "
         "and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
     ), tail
     assert "the audit trail records" not in tail, tail
@@ -13576,7 +13708,7 @@ def _second_stop(verdict: str, exclude: str = "") -> tuple[str, str]:
     text = INSTALL_SH.read_text(encoding="utf-8")
     fns = "".join(
         re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", text, re.M | re.S).group(0)  # type: ignore[union-attr]
-        for name in ("folder_gone_words", "second_stop_words")
+        for name in ("queue_hand_words", "folder_gone_words", "second_stop_words")
     )
     script = (
         f"{fns}\n"
@@ -13650,9 +13782,9 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
     hand = (
         "run each such purge by hand once the records owner releases the hold, since setting it again keeps"
     )
-    assert gone.endswith(f"as its status line says, and {hand} every purge refused"), gone
+    assert gone.endswith(f"as its status line says, and {hand} every purge it covers refused"), gone
     gone, _ = _second_stop("lost-hold-govgone,lost-queue-govgone")
-    assert gone.endswith(f"; with no copy, they {hand} every purge refused"), gone
+    assert gone.endswith(f"; with no copy, they {hand} every purge it covers refused"), gone
     gone, _ = _second_stop("none,lost-queue-govgone")
     assert gone.endswith("; with no copy, they run each such purge by hand before the next sync"), gone
 
@@ -13747,7 +13879,8 @@ def test_a_config_step_stop_beside_a_lost_hold_names_the_hold_and_its_release(
     tail = last_line(install_sh(env, "--list-folders"))
     assert tail.endswith(
         "or, once the first is fixed, run each such purge by hand once the records owner releases the hold, "
-        "since setting it again keeps every purge refused), and ~/.local/bin/agentsync status prints it on "
+        "since setting it again keeps every purge it covers refused), and ~/.local/bin/agentsync status "
+        "prints it on "
         "its governance.purge_queue line; the same stop names agentsync's hold list, which no longer lists a "
         "hold its records keep as set and not released (not damage, not a mode): fixing that is the "
         "person's (they put the hold list back from the copy kept, or the records owner sets the hold again "
@@ -13880,11 +14013,11 @@ def test_the_lost_list_probe_rides_the_lost_hold_probe_and_is_silent_on_a_build_
     assert _lost_hold_probe(cfg, src) == "none"
     (gov / "purge-queue.json").rename(gov / "purge-queue.json.kept")
     assert governance.queue_lost(state) is not None
-    assert _lost_hold_probe(cfg, src) == "none,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue,queue-free"
     audit = {"action": "hold-set", "scope": "all", "owner": "Quinn Avery", "at": "2026-10-26T01:00:00Z"}
     with (gov / "audit.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(audit) + "\n")
-    assert _lost_hold_probe(cfg, src) == "lost-hold,lost-queue"
+    assert _lost_hold_probe(cfg, src) == "lost-hold,lost-queue,queue-held"
     older = tmp_path / "older"  # an installed build with no governance_lost: the hold verdict alone
     shutil.copytree(src / "agentsync", older / "agentsync")
     gtext = (older / "agentsync" / "governance.py").read_text(encoding="utf-8")

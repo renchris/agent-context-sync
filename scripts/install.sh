@@ -1193,7 +1193,12 @@ misplaced_reader() { # PYTHON [SRC]
 # (B13 round 33 ruling 86: C776, C767). With the folder there and the audit trail without the purge line (a later
 # write re-created governance/, whose detail leads with governance.TRAIL_LOST_HEAD, or a first --folder-lost has
 # recorded that loss, whose detail credits purge-record.json), "-trail" goes on the word, after the -govgone test;
-# an older build never credits so (ruling 82: C735, lane B's ruling 79 words).
+# an older build never credits so (ruling 82: C735, lane B's ruling 79 words). Last, as its own comma word, whether
+# a hold in force refuses the queue's hand run, read from status's own judgment, never from a lost-hold word (a hold
+# on another source refuses nothing, and one still listed or in sources.toml refuses it too): with the build's
+# governance_or_none read in its own try and passed to both readers, ",queue-held" when the queue's fix holds
+# "once the records owner decides to release ", else ",queue-free"; no word on a build without it or with no
+# queue error, which keeps its verdict as before (B13 round 34 ruling 93: C840, C879, C871, C859, C803, C812, C865).
 LOST_HOLD_PY='
 import os, sys
 from pathlib import Path
@@ -1235,20 +1240,43 @@ def list_word(odd):
         if "purge-record.json keeps" in detail or "kept by purge-record.json" in detail:
             word += "-trail"
     return word
-odd = None
+gov = ()
+try:  # the [governance] of sources.toml, whose hold status counts; none on a build before governance_or_none
+    gov = (governance.governance_or_none(Path(sys.argv[1])),)
+except BaseException:
+    pass
+odd = queue = None
 try:
-    odd = governance.governance_lost(expand(root))
+    odd = governance.governance_lost(expand(root), *gov)
     said += list_word(odd)
+    if odd is not None and odd.path.name == "purge-queue.json":
+        queue = odd
 except BaseException:
     pass
 if odd is not None and odd.path.name == "suppressed.json":
     try:
-        said += list_word(governance.queue_lost(expand(root)))
+        queue = governance.queue_lost(expand(root), *gov)
+        said += list_word(queue)
     except BaseException:
         pass
+if gov and queue is not None:  # whether a hold in force refuses the hand run, as the fix status prints words it
+    said += ",queue-held" if "once the records owner decides to release " in str(getattr(queue, "fix", "")) else ",queue-free"
 print(said)'
 lost_hold_reader() { # PYTHON [SRC]
 	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
+}
+# The words for the queue's hand run under a hold, one three-state rule for both tails (B13 round 34 ruling 93):
+# ",queue-held" takes the release, ",queue-free" the plain run, and no such word with a lost-hold word an older
+# build's release as before. A hold the hold list lost is set again or released; one still listed or in
+# sources.toml covers the run as its status line says. Sets HAND (empty: the plain run). Fixed words only.
+queue_hand_words() { # VERDICT
+	HAND=""
+	case ",$1," in
+	*,queue-free,*) ;;
+	*,lost-hold,*,queue-held,* | *,lost-hold-govgone,*,queue-held,*) HAND="once the records owner releases the hold, since setting it again keeps every purge it covers refused" ;;
+	*,queue-held,*) HAND="once the records owner releases the hold that covers it, as its status line says" ;;
+	*,lost-hold,* | *,lost-hold-govgone,*) HAND="once the records owner releases the hold, since setting it again keeps every purge it covers refused" ;;
+	esac
 }
 # With governance/ itself gone, every lost file is the folder's, named once in one tail (B13 round 32 ruling 63,
 # lane B's words): what the records outside it keep, each with its own fix after the whole-folder put-back, the
@@ -1277,13 +1305,12 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG 
 	case ",$1," in
 	*,lost-queue-govgone,*)
 		GONE_WHAT="${GONE_WHAT:-while}${GONE_WHAT:+, and} purge-record.json keeps a purge as queued and not done"
-		# a lost hold covers the queue's run: setting it again keeps the purge refused, so only its release lets
-		# the purge run, the records owner's decision (B13 round 33 ruling 86: C701, lane B's act and order)
+		# a hold that covers the queue's run refuses it until the records owner's release (B13 round 33 ruling 86:
+		# C701), as status judges it (round 34 ruling 93); the joiner by the suppression list's clause alone
+		queue_hand_words "$1"
 		case ",$1," in
-		*,lost-hold-govgone,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;;
-		*,lost-hold-govgone,*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;;
-		*,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand before the next sync" ;;
-		*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand before the next sync" ;;
+		*,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand ${HAND:-before the next sync}" ;;
+		*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand ${HAND:-before the next sync}" ;;
 		esac
 		GONE_CHECK="${GONE_CHECK:-governance.purge_queue}"
 		GONE_LOG="$GONE_LOG,state-queue-lost"
@@ -1297,8 +1324,9 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LOG 
 # never the list that CROLE says stops first. LEAD opens the first clause; BYHAND goes before the queue's by-hand run.
 lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
 	local lead="$3" hand="run each such purge by hand"
-	# a lost hold refuses that purge until its release, as under the folder's words (ruling 86: C701)
-	case ",$1," in *,lost-hold,*) hand="run each such purge by hand once the records owner releases the hold, since setting it again keeps every purge refused" ;; esac
+	# a hold that refuses that purge until its release, as under the folder's words (ruling 86: C701; ruling 93)
+	queue_hand_words "$1"
+	hand="$hand${HAND:+ }$HAND"
 	LIST_TAIL="" LIST_LOG=""
 	case ",$1,:$2" in
 	*:role-suppressed) ;;
@@ -2204,6 +2232,8 @@ FIXED_VALUE_PHRASES+="|recorded in the audit trail|with an audit line|purge audi
 FIXED_VALUE_PHRASES+="|lost a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|lost a purge the audit trail or purge-record.json records"
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge refused"
+FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge it covers refused"
+FIXED_VALUE_PHRASES+="|once the records owner releases the hold that covers it, as its status line says"
 FIXED_VALUE_PHRASES+="|lost a hold or a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: "
 FIXED_VALUE_PHRASES+="|(the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list)"

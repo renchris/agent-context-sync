@@ -970,7 +970,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   queued and not done gives `; step 2 stops at its status step on agentsync's purge queue, which no longer holds a
   purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the person's (they put
   the purge queue back from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status
-  prints it on its governance.purge_queue line`, logged `state-queue-lost`. When both lost one, the suppression list
+  prints it on its governance.purge_queue line`, logged `state-queue-lost`. That by-hand run is plain only when no
+  hold in force refuses it: step 1 reads status's own judgment, the queue's fix naming the records owner's release
+  (the reader's last word, `queue-held`, else `queue-free`), so a hold on another source keeps it plain and a hold on
+  the purge's source, on all or in sources.toml adds the release, in the words below; an older build that says
+  neither keeps the release only under a lost hold (B13 round 34 ruling 93, C840, C879, C871, C803). When both lost one, the suppression list
   comes first, as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first,
   and the queue's clause follows it opening `; the same stop names agentsync's purge queue`, logged
   `config_err=state-suppressed-lost,state-queue-lost` (B13 round 30 ruling 40, lane RB's dc266be78, C311; B13 round 31
@@ -1004,8 +1008,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   purge-record.json keeps a purge as queued and not done`, the fix ending `; with no copy, they accept each loss with
   --folder-lost, as its status line says, and run each such purge by hand before the next sync`, its `<check>`
   `governance.suppressed`, logged `config_err=state-suppressed-lost,state-queue-lost,state-governance-lost` (B13 round
-  33 ruling 86, C776, C767); under a lost hold the queue's clause ends `by hand once the records owner releases the
-  hold, since setting it again keeps every purge refused` (ruling 86, C701); for a queued purge alone: `; step 2 stops at its status step on
+  33 ruling 86, C776, C767); under a hold that refuses the hand run the queue's clause ends `by hand once the records
+  owner releases the hold, since setting it again keeps every purge it covers refused` for a hold the records keep
+  and the hold list lost, and `by hand once the records owner releases the hold that covers it, as its status line
+  says` for one still in the hold list or in sources.toml (ruling 86, C701; B13 round 34 ruling 93, C840); for a queued purge alone: `; step 2 stops at its status step on
   agentsync's governance folder, which is missing, with the hold list, agentsync's audit trail, the purge queue and
   the suppression list in it, while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
   fixing that is the person's (they put agentsync's governance folder back whole from the copy kept; with no copy,
@@ -1028,8 +1034,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
   governance.suppressed line; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
   the purge queue lost a purge the audit trail records, also the person's to fix`; a hold the hold list lost likewise on
-  governance.hold, logged `state-hold-lost`, and under it the queue's by-hand run ends `once the records owner releases
-  the hold, since setting it again keeps every purge refused`) and ends `once both are fixed, the
+  governance.hold, logged `state-hold-lost`, and under a hold that refuses it the queue's by-hand run ends `once the
+  records owner releases the hold, since setting it again keeps every purge it covers refused`, or `once the records
+  owner releases the hold that covers it, as its status line says` for a hold still listed) and ends `once both are fixed, the
   next run is: ...` (`once both are settled` after a remote the policy refuses; beside a damaged purge record, whose
   own FAIL is on governance.suppressed too, `and, on that same governance.suppressed line, a second FAIL that follows:
   ...`, ruling 86, C768), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
