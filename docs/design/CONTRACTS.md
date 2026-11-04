@@ -36762,6 +36762,11 @@ runs lists <id> without that folder|those folders`, its pointer giving the no-sy
 `test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729` and
 `test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729`, `test_exclude_empty.py`
 `test_beside_a_fail_the_syncs_guard_stops_on_the_left_folders_pointer_waits_on_it_c520`.
+Amended 2026-11-03, §16.229 C830: `names no actor` holds for the shared clause, `doctor.stopped_listing_clause` in
+C746's [ok] heartbeat tail and C729's note, whose owner varies by stop (a chmod's is the agent's). A note for a kind
+that is always the person's keeps its true owner, as the NEXT and the FAIL's fix beside it say: C321's `[warn]` after
+three incomplete passes, `until the person fixes it; the <check> [FAIL] line says what to do first`, and
+`LISTING_STATE_GOVDIR_NOTE` for a governance folder that is a file (ruling 101, C863's item 6 too).
 
 **C730.** The governance folder's fix asked the records owner `whether one was` of a hold, and `_purges_rewritten`'s tails
 `whether one ran` of a purge, but `_record_keeps`' purge half asked nothing. It reads `the person checks with the records
@@ -36907,6 +36912,11 @@ own `encoding='UTF-16'` declaration stays true and nothing else is re-serialized
 before. Test: `test_convert_formats.py::test_a_potx_whose_content_types_are_utf_16_is_read_as_a_deck_c781` (little
 and big endian: the slide title read, the staged file untouched, one mark, the declaration kept, the UTF-8 part's
 bytes as before).
+Amended 2026-11-03, §16.229 C850: this reaches conversions from here on. A template an earlier build stubbed and
+settled, with its `_CONVERT_RETRIES` used up and no path in its reason, stays a `cannot read the deck` stub until its
+bytes change or its page is gone: `_retries` gives it no further try, and `PptxConverter.outdated` is False for any
+stub, so a bump of `_EMITTER_VERSION` would read nothing again and is not made. A stub with retries left is converted by
+the next sync, and one on a manifest that has yet to run `_queue_path_stubs` by its one-shot re-read.
 
 **The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
 `real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
@@ -37261,6 +37271,21 @@ between a test and its skipif and parametrize decorators (bb9286d52 moved them b
 Neither could reach trunk, since the land gate runs ruff, but each cost a fix commit. The paragraph says both after its
 node_modules sentence. Test:
 `test_the_lane_brief_guards_a_commit_with_an_unpiped_lint_and_a_helper_above_the_decorators`.
+
+**`names no actor` is scoped to the shared clause** (C830 with C863's item 6, ruling 101; amends §16.220 C746; docs
+only). Round 34's rehearsal read holds.json as a folder in two words, `no sync lists it again until the governance.hold
+[FAIL] line is fixed` on the [ok] heartbeat line after one incomplete pass and `until the person fixes it; the
+governance.hold [FAIL] line says what to do first` on the [warn] after three, against the C746 paragraph's `names no
+actor`. Both are true: every case tried prints the person's NEXT and a fix that opens `the person`, and C746 dropped the
+actor for a chmod's stop, which takes `cli._stopped_listing_note`, not these notes. The code stays (the lead's harvest:
+each note names its true owner); one dated line at the C746 paragraph scopes the words to the shared clause.
+
+**A template an older build stubbed stays a stub until its bytes change** (C850; amends §16.221 C781; docs only). C781
+reads a UTF-16 `[Content_Types].xml`, but only for conversions from then on: a `.potx` stubbed and settled before it,
+its retries used up and no path in its reason, is never tried again (`_retries`), and `PptxConverter.outdated` is False
+for any stub, so a bump of `_EMITTER_VERSION`, measured, converted nothing again (3 syncs, 0 conversions) and is not
+made. The dated line at C781's paragraph says so, with the cases that do heal (retries left, the one-shot path-stub
+re-read, a page gone); the finding's reason for not bumping, that it would convert every deck again, is not used.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
