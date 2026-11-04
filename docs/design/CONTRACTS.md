@@ -37150,7 +37150,10 @@ same damage a failed recording, and the dry run's made it a failed source (exit 
 `cycle._manifest_unreadable` names, so the CLI says its one line and exits 65. The report's count reads keep their
 catch: a count never fails the report, and they run after the cycle's own writes. Tests:
 `tests/test_cli.py::test_manifest_damage_a_files_read_again_meets_stops_the_sync` and
-`test_manifest_damage_a_dry_run_meets_is_raised_not_a_failed_source`.
+`test_manifest_damage_a_dry_run_meets_is_raised_not_a_failed_source`. Amended 2026-11-03, §16.227 C843: the recording pass's two
+re-raises have their tests, each failing with its own re-raise removed:
+`tests/test_cycle.py::test_manifest_damage_while_reading_a_recording_stops_the_sync_c843` (the per-recording catch)
+and `test_manifest_damage_inside_a_recordings_read_stops_the_sync_c843` (the catch around a recording's pages).
 
 **An organisation registered after another kind is still cut out of a longer word** (review backtest er-32#0;
 amends §16.93 M50). `_build_redactor` registers the full name and each SharePoint site's library before the
@@ -37281,7 +37284,21 @@ purge the queue lost`. `_TRAIL_ALONE` stays. No phrase-list change: every phrase
 §16.210's C539 paragraph, §16.220's C733 paragraph and its review paragraph take dated lines. Test:
 `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge` (both forms, the record's clause first).
 
+**C843.** 49051bc3a re-raised manifest damage at four catches and tested two: dropping either of the recording pass's
+re-raises passed the suite. Two tests run `sync --mode poll` (an explicit mode reads recordings) over a stub recording
+with a real SQLITE_NOTADB (`_notadb`, imported from test_cli.py, since conftest.py is lane E's): one from
+`_Cycle._read_recording` (the per-recording catch), one from `_after_fetch` only while `_in_recording_pass` (the
+catch around a recording's pages; notes.md goes through `_after_fetch` in the source pass). Each asserts the call
+happened, exit 65 and `doctor.recorded_unreadable` set. Removing the outer re-raise fails both, the inner one the
+second alone. §16.224's paragraph takes a dated line. Tests:
+`test_cycle.py::test_manifest_damage_while_reading_a_recording_stops_the_sync_c843` and
+`test_manifest_damage_inside_a_recordings_read_stops_the_sync_c843`.
 
+**C875.** `test_heartbeat_states`' mode-000 purge-record case expected the sync's stop, which root never meets (it
+opens the file). The case is wrapped in `if os.geteuid() != 0:`, its own guard as at test_ops_doctor.py's other
+mode-000 cases; the last assert, `, a warn after 3`, stays outside it, since it is C633's only check that the warn
+returns once the hold list is back. Measured under a simulated root (geteuid 0, chmod 0 a no-op): fails before,
+passes after. No contract text changes. Test: `test_ops_doctor.py::test_heartbeat_states`.
 
 
 

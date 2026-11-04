@@ -86,6 +86,7 @@ from agentsync.policy import UNTRUSTED_BANNER
 from agentsync.publish import Publisher, sidecar_rel
 from agentsync.text import plural
 from conftest import config_text
+from test_cli import _notadb
 from test_convert_builders import (
     build_annotated_pdf,
     build_drawio,
@@ -6790,6 +6791,52 @@ def _recording_page(config: Config, rel: str, sid: str = SID) -> tuple[dict[str,
 
 def _pieces_of(config: Config, path: Path) -> Path:
     return config.cache_dir / "recordings" / hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.usefixtures("rec")
+def test_manifest_damage_while_reading_a_recording_stops_the_sync_c843(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C843: 49051bc3a re-raises manifest damage in the recording pass's per-recording catch, and
+    no test put a DatabaseError into a recording read, so dropping it passed the suite. A real SQLITE_NOTADB
+    from _read_recording stops the sync on the state, never "reading a recording stopped". ``--mode poll``,
+    since an explicit mode reads recordings."""
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 10)
+    damage = _notadb(tmp_path)
+    called: list[str] = []
+
+    def read_recording(self: Any, *args: Any, **kwargs: Any) -> None:
+        called.append("read")
+        raise damage
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_read_recording", read_recording)
+    assert cli.main(["sync", "--mode", "poll", "--config", str(config.config_path)]) == cli.EXIT_STATE
+    assert called and doctor.recorded_unreadable(config.state_paths.db) is not None
+
+
+@pytest.mark.usefixtures("rec")
+def test_manifest_damage_inside_a_recordings_read_stops_the_sync_c843(
+    tmp_path: Path, meetings: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C843: the inner catch in _read_recording (a recording's pages half written) re-raises manifest damage
+    too: a real SQLITE_NOTADB from _after_fetch during the recording pass stops the sync on the state. Only
+    the recording pass's call raises, since notes.md goes through _after_fetch in the source pass."""
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 10)
+    damage = _notadb(tmp_path)
+    real = cycle_mod._Cycle._after_fetch
+    called: list[str] = []
+
+    def after_fetch(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if self._in_recording_pass:
+            called.append("recording")
+            raise damage
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_after_fetch", after_fetch)
+    assert cli.main(["sync", "--mode", "poll", "--config", str(config.config_path)]) == cli.EXIT_STATE
+    assert called and doctor.recorded_unreadable(config.state_paths.db) is not None
 
 
 def test_an_interactive_sync_starts_no_recording_and_prints_the_count(
