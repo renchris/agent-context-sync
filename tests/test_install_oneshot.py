@@ -13022,8 +13022,8 @@ def test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_w
 
 
 GOVERNANCE_GONE_TAIL = (
-    "; step 2 stops at its status step on agentsync's governance folder, which is missing, with the hold "
-    "list, agentsync's audit trail, the purge queue and the suppression list in it, while its records keep a "
+    "; step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, its "
+    "audit trail, the purge queue and any suppression list, is missing, while its records keep a "
     "hold as set and not released (not damage, not a mode): fixing that is the person's (they put "
     "agentsync's governance folder back whole from the copy kept, or the records owner sets the hold again "
     "or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
@@ -13106,8 +13106,8 @@ def test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_
 
 
 GOVGONE_LEAD = (
-    "step 2 stops at its status step on agentsync's governance folder, which is missing, with the hold list, "
-    "agentsync's audit trail, the purge queue and the suppression list in it, while "
+    "step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, its "
+    "audit trail, the purge queue and any suppression list, is missing, while "
 )
 GOVGONE_TAILS = {
     "queue": (
@@ -13128,10 +13128,11 @@ GOVGONE_TAILS = {
         f"; {GOVGONE_LEAD}"
         "its records keep a hold as set and not released, and purge-record.json keeps a purge as "
         "queued and not done (not damage, not a mode): fixing that is the person's (they put "
-        "agentsync's governance folder back whole from the copy kept, or the records owner sets the "
-        "hold again or releases it; with no copy, they run each such purge by hand once the records owner "
-        "releases the hold, since setting it again keeps every purge it covers refused), and "
-        "~/.local/bin/agentsync status prints it on its governance.hold line"
+        "agentsync's governance folder back whole from the copy kept; with no copy, the records owner sets "
+        "the hold again or releases it, which fixes the hold line only, since setting it again keeps every "
+        "purge it covers refused and the stop with it, and once the records owner releases the hold they "
+        "run each such purge by hand), and ~/.local/bin/agentsync status prints it on its governance.hold "
+        "and governance.purge_queue lines"
     ),
     "suppressed-queue": (
         f"; {GOVGONE_LEAD}"
@@ -13271,6 +13272,13 @@ HAND_LOST = (
     "once the records owner releases the hold, since setting it again keeps every purge it covers refused"
 )
 HAND_LISTED = "once the records owner releases the hold that covers it, as its status line says"
+REBUILT_RUN = (
+    "the records owner sets the hold again or releases it, which fixes the hold line only, since setting it "
+    "again keeps every purge it covers refused and the stop with it, and once the records owner releases the "
+    "hold they run each such purge by hand"
+)
+"""With governance/ gone, a lost hold beside a lost queue under the release: each act says which line it fixes
+(B13 round 34 ruling 94, C805)."""
 
 
 @pytest.mark.parametrize(
@@ -13330,7 +13338,12 @@ def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
     assert bool(governance.blocking_holds(in_force, ["alpha"])) is bool(hand), in_force
     tail, fix = _queue_tails(verdict)
     shown = fix if form == "folder" else tail
-    assert ("run each such purge by hand " + hand if hand else "run each such purge by hand") in shown, shown
+    if form == "folder" and hand == HAND_LOST:  # ruling 94 (C805): the run follows the release, rebuilt
+        assert fix.endswith(f"; with no copy, {REBUILT_RUN}"), fix
+    else:
+        assert ("run each such purge by hand " + hand if hand else "run each such purge by hand") in shown, (
+            shown
+        )
     assert "keeps every purge refused" not in tail + fix, "the hold covers only its own source's purges"
     if not hand:
         assert "releases the hold" not in shown.split("by hand", 1)[1], shown
@@ -13378,7 +13391,7 @@ def test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865(
     assert f"run each such purge by hand {HAND_LOST}" in _queue_tails("lost-hold,lost-queue")[0]
     assert "or run each such purge by hand), and " in _queue_tails("none,lost-queue")[0]
     folder = _queue_tails("lost-hold-govgone,lost-queue-govgone")[1]
-    assert f"run each such purge by hand {HAND_LOST}" in folder, folder
+    assert folder.endswith(REBUILT_RUN), folder
 
 
 @pytest.mark.parametrize("lost", ["queue", "suppressed", "hold-queue", "suppressed-queue"])
@@ -13429,7 +13442,7 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     gov.rename(kept)
     listed = install_sh(env, "--list-folders")
     assert last_line(listed).endswith(GOVGONE_TAILS[lost]), last_line(listed)
-    assert last_line(listed).count("agentsync's governance folder, which is missing") == 1
+    assert last_line(listed).count("agentsync's governance folder, where it keeps any hold list") == 1
     assert "the audit trail records" not in last_line(listed), last_line(listed)
     log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
     word = {
@@ -13467,8 +13480,8 @@ def test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_aft
     tail = last_line(install_sh(env, "--list-folders"))
     after = (
         "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, "
-        "which is missing, with the hold list, agentsync's audit trail, the purge queue and the "
-        "suppression list in it, while purge-record.json keeps a purge as queued and not done (not "
+        "where it keeps any hold list, its audit trail, the purge queue and any suppression list, is "
+        "missing, while purge-record.json keeps a purge as queued and not done (not "
         "damage, not a mode): fixing that is the person's (they put agentsync's governance folder back "
         "whole from the copy kept; with no copy, they run each such purge by hand before the next sync), "
         "and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
@@ -13774,17 +13787,27 @@ def test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verd
     assert _second_stop("none,lost-queue-govgone", "governance") == ("", "once it is fixed")
     gone, once = _second_stop("lost-hold-govgone,lost-suppressed-govgone,lost-queue-govgone")
     assert once == "once both are fixed" and "(" not in gone and ")" not in gone, gone
-    assert gone.startswith(
-        " and, on its governance.hold line, a second stop that follows: agentsync's governance"
+    assert gone.startswith(  # both lines where a hold is lost too (B13 round 34 ruling 94, C811)
+        " and, on its governance.hold and governance.suppressed lines, a second stop that follows: "
     )
     assert "also the person's to fix: they put agentsync's governance folder back whole" in gone, gone
-    # B13 round 33 ruling 86 (C701): under a lost hold the hand purge waits for the records owner's release
-    hand = (
-        "run each such purge by hand once the records owner releases the hold, since setting it again keeps"
-    )
-    assert gone.endswith(f"as its status line says, and {hand} every purge it covers refused"), gone
+    # B13 round 33 ruling 86 (C701): under a lost hold the hand purge waits for the records owner's release;
+    # setting the hold again fixes the hold line only (B13 round 34 ruling 94, C805)
+    assert gone.endswith(f"as its status line says, {REBUILT_RUN}"), gone
     gone, _ = _second_stop("lost-hold-govgone,lost-queue-govgone")
-    assert gone.endswith(f"; with no copy, they {hand} every purge it covers refused"), gone
+    assert gone.endswith(f"from the copy kept; with no copy, {REBUILT_RUN}"), gone
+    assert gone.startswith(" and, on its governance.hold and governance.purge_queue lines, a second stop"), (
+        gone
+    )
+    gone, _ = _second_stop("lost-hold-govgone,lost-queue-govgone,queue-free")  # a hold on another source
+    assert gone.endswith(
+        ", or the records owner sets the hold again or releases it; with no copy, they run each such purge "
+        "by hand before the next sync"
+    ), gone
+    gone, _ = _second_stop("lost-hold-govgone")  # the hold-only arm stays, its one line
+    assert gone.startswith(" and, on its governance.hold line, a second stop") and gone.endswith(
+        "from the copy kept, or the records owner sets the hold again or releases it"
+    ), gone
     gone, _ = _second_stop("none,lost-queue-govgone")
     assert gone.endswith("; with no copy, they run each such purge by hand before the next sync"), gone
 

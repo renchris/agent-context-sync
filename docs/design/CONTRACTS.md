@@ -34922,6 +34922,9 @@ governance_lost reads it (for lane D's C532). Tests:
 `test_the_lost_hold_probe_tells_a_governance_folder_gone_by_the_builds_own_words` (the checkout, the folder there,
 two older builds), `test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole` (the real
 agentsync) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, whose word map takes the new word.
+Amended 2026-11-03, §16.226 C810: the tail now opens `on agentsync's governance folder, where it keeps any hold list,
+its audit trail, the purge queue and any suppression list, is missing, while ...`, describing the folder, never what
+best-effort records say it held (B13 round 34 ruling 94); the rest stands.
 
 **The shell's late block dedupes on one snapshot of sync-stops.log** (C536; `scripts/install.sh`).
 `fallback_sync_stops late` took the end-second stops the attempt claimed as line numbers from one `tail -n 200` of
@@ -37422,6 +37425,27 @@ word (C865's measure), so it keeps its verdict and no marker. Tests:
 sources.toml hold with the folder there and gone, a hold on another source listed and lost in both forms, both
 lists lost, no hold; the purge's own hold test agrees with the words) and
 `test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865`.
+
+**With governance/ gone the folder tails describe the folder and say which line each act fixes** (C810, C805 and
+C811; ruling 94; amends §16.209 C507; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). Both of step 1's
+folder tails said the folder was lost `with the hold list, agentsync's audit trail, the purge queue and the
+suppression list in it` when no hold list or suppression list need ever have existed; they read `agentsync's
+governance folder, where it keeps any hold list, its audit trail, the purge queue and any suppression list, is
+missing, $GONE_WHAT`, never branching on hold-record.json or purge-record.json, which are best effort (lane B's
+GOVERNANCE_GONE_HEAD words). Where lost-queue-govgone joins lost-hold-govgone under the release (ruling 93's
+`queue_hand_words`), `folder_gone_words` rebuilds GONE_FIX instead of appending to the hold arm's `or the records
+owner sets the hold again or releases it`, which offered setting the hold again as a fix for a stop it keeps: `they
+put agentsync's governance folder back whole from the copy kept; with no copy, the records owner sets the hold again
+or releases it, which fixes the hold line only, since setting it again keeps every purge it covers refused and the
+stop with it, and once the records owner releases the hold they run each such purge by hand`, `they accept each loss
+with --folder-lost, as its status line says, ` before the records owner when the suppression list lost one too. The
+hold-only arm and a hold on another source (`queue-free`) keep their words. Only the where-to-read pointer names both
+lines when a hold is lost too (C811's installer half): GONE_CHECK `governance.hold and governance.purge_queue` (or
+`governance.suppressed`, the guard's check, as doctor's note names it) with GONE_LINE `lines` in both tails and the
+second stop; a list lost alone stays one line. The new clauses join both phrase lists (ruling 68). Tests: the
+`hold-queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`,
+`test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict` (the rebuilt fix, both lines, the
+hold-only arm, a hold on another source) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

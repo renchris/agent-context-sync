@@ -8994,11 +8994,12 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     # B13 round 32 ruling 63: the governance folder's tail is one template, its parts from folder_gone_words
     folder = tails.pop("governance folder")
     assert folder == (
-        "; step 2 stops at its status step on agentsync's governance folder, which is missing, with the "
-        "hold list, agentsync's audit trail, the purge queue and the suppression list in it, "
+        "; step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, "
+        "its audit trail, the purge queue and any suppression list, is missing, "
         "$GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and "
-        "~/.local/bin/agentsync status prints it on its $GONE_CHECK line"
+        "~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
     )
+    folder = folder.replace("$GONE_LINE", "line")  # "lines" only where a lost hold joins a lost list (C811)
     held = folder.replace("$GONE_WHAT", "while its records keep a hold as set and not released").replace(
         "$GONE_FIX",
         "they put agentsync's governance folder back whole from the copy kept, or the records owner sets the "
@@ -9059,13 +9060,13 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     # folder's words, each quote derived from the script's own literal in the guide's placeholders
     after = (
         "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder,"
-        " which is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression"
-        " list in it, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and"
-        " ~/.local/bin/agentsync status prints it on its $GONE_CHECK line"
+        " where it keeps any hold list, its audit trail, the purge queue and any suppression list, is"
+        " missing, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and"
+        " ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
     )
     second = (
-        "and, on its $GONE_CHECK line, a second stop that follows: agentsync's governance folder is missing"
-        " $GONE_WHAT, also the person's to fix: $GONE_FIX"
+        "and, on its $GONE_CHECK $GONE_LINE, a second stop that follows: agentsync's governance folder is"
+        " missing $GONE_WHAT, also the person's to fix: $GONE_FIX"
     )
     assert f'ctail="$ctail{after}"' in script and f'SECOND=" {second}"' in script
     put_back = "they put agentsync's governance folder back whole from the copy kept"
@@ -9078,6 +9079,7 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
             text.replace("$GONE_WHAT", "while <what>")
             .replace("$GONE_FIX", f"{put_back}<fixes>")
             .replace("$GONE_CHECK", "<check>")
+            .replace("$GONE_LINE", "line")
         )
 
     assert f"step 1 adds `{placeholders(after)}`" in section
