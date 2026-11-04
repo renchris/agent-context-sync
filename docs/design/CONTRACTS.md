@@ -34978,7 +34978,8 @@ holds `; "agentsync's audit trail" and "the purge record cannot be read" are fix
 screen); with kept entries only, their line is `[info]`, never `[ok  ]`, the same clause after it when nothing is
 lost. Amended 2026-11-01, §16.220 C733: with no audit.jsonl on disk that clause reads `agentsync's audit trail is not on
 disk either, so nothing shows a queued purge the queue lost: the purge record cannot be read, and the
-governance.suppressed line says why`. A damaged record still stops the sync first on its own error (`governance_damaged` runs before
+governance.suppressed line says why`. Amended 2026-11-03, §16.227 C831: the record's clause comes first, so that clause
+reads `the purge record cannot be read, and the governance.suppressed line says why; agentsync's audit trail is not on disk, so nothing shows a queued purge the queue lost`. A damaged record still stops the sync first on its own error (`governance_damaged` runs before
 `governance_lost`), and a record this account cannot open, which `governance_damaged` passes, makes
 `governance_lost` (the commands' guard) return None, so the sync stops on it in its own kind (`file=purge-record
 owner=agent kind=refused`, the chmod on stderr) and, after the chmod, beside a lost queue as the lost list
@@ -36812,7 +36813,8 @@ governance.suppressed, governance.hold, governance.purge_queue, heartbeat and lo
 trail alone`, a trail that does not exist. `cli._trail_alone_words(config)`, keyed on the file, gives `_TRAIL_ALONE` over a
 trail there and `agentsync's audit trail is not on disk either, so nothing shows a queued purge the queue lost: the purge
 record cannot be read, and the governance.suppressed line says why` otherwise, at both call sites. It holds only fixed
-phrases already in both lists, so no new phrase. Test: `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
+phrases already in both lists, so no new phrase. Test: `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`. Amended 2026-11-03,
+§16.227 C831: it reads `the purge record cannot be read, and the governance.suppressed line says why; agentsync's audit trail is not on disk, so nothing shows a queued purge the queue lost`, the record's clause first.
 
 **C748.** `TRAIL_LOST_HEAD` had landed between `FOLDER_LOST_SAID` and its attribute docstring, which documented nothing. The
 docstring moves back under its constant, no text changed, and `test_governance.py`
@@ -36827,7 +36829,9 @@ status path: `test_the_ok_lines_name_no_record_that_is_not_there_c749` and
 trail: `_audit_read` calls a link to nothing not read, and `audit_unread` gives its not-a-file words. An unread trail's
 error that is no refused state path is governance.audit's own line (`doctor.stopped`), never the group's crash. Over a
 trail there that cannot be read, `_trail_alone_words` says `agentsync's audit trail cannot be read either, so nothing shows
-a queued purge the queue lost: ...`. `governance_or_none` takes any error, a remote prefix's ValueError too, so C701's new
+a queued purge the queue lost: ...`. Amended 2026-11-03, §16.227 C831: it says `the purge record cannot be read, and the
+governance.suppressed line says why; agentsync's audit trail cannot be read either, so nothing shows a queued purge the
+queue lost`, the record's clause first, so `either` follows the negative it pairs with. `governance_or_none` takes any error, a remote prefix's ValueError too, so C701's new
 read never lifts the guard around it. `_lost_queue_holds` reads each hold source alone, falling back to `audit_lost_holds`,
 so a shut hold record never drops the hold list's release clause. Tests:
 `test_an_audit_trail_that_is_a_link_to_nothing_is_never_a_lost_trail_c741`,
@@ -37268,6 +37272,14 @@ a cut Loop) and the `report` and `report-before-C818` cases of
 `test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected` (test_setup_report.py), and
 `test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing` (test_install_oneshot.py).
 
+**C831.** C733's `[info] governance.purge_queue` line said `agentsync's audit trail is not on disk either, so nothing
+shows ...: the purge record cannot be read, ...`: the reader met `either` before the negative it pairs with, which
+came after the colon. Both constants put the record's clause and its pointer first: `_NO_TRAIL_ALONE` reads `the purge record cannot be read, and the governance.suppressed line says why; agentsync's audit trail is not on disk, so nothing shows a queued purge the queue lost`
+(no `either`, since nothing before it is a like negative), and `_UNREAD_TRAIL_ALONE` `the purge record cannot be read,
+and the governance.suppressed line says why; agentsync's audit trail cannot be read either, so nothing shows a queued
+purge the queue lost`. `_TRAIL_ALONE` stays. No phrase-list change: every phrase that holds a hold word is unchanged.
+§16.210's C539 paragraph, §16.220's C733 paragraph and its review paragraph take dated lines. Test:
+`test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge` (both forms, the record's clause first).
 
 
 

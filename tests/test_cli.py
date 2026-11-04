@@ -7999,7 +7999,11 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     (only,) = [ln for ln in out if " governance.purge_queue " in ln]
     # no audit trail on disk: nothing is judged from one that is not there (B13 round 33 C733)
     assert not governance.audit_path(root).exists()
-    assert only.startswith("[info] ") and "agentsync's audit trail is not on disk either" in only, only
+    assert only.startswith("[info] ") and "agentsync's audit trail is not on disk, so nothing shows" in only
+    # the record's clause first, so no `either` comes before the negative it would pair with (C831)
+    record_first = "the purge record cannot be read, and the governance.suppressed line says why; "
+    assert only.split(" — ", 1)[1].startswith(record_first), only
+    assert "either" not in only, only
     assert " alone" not in only and "which shows" not in only and " no longer holds " not in only, only
     # one line in the trail: the words that read it
     governance.append_audit(root, {"action": "note", "at": "2026-10-01T00:00:00Z"})
@@ -8014,6 +8018,7 @@ def test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge(
     _rc, out = _status(cfg, capsys)
     (only,) = [ln for ln in out if " governance.purge_queue " in ln]
     assert only.startswith("[info] ") and "agentsync's audit trail cannot be read either" in only, only
+    assert only.split(" — ", 1)[1].startswith(record_first), only
     assert " alone" not in only and "which shows" not in only, only
     audit.write_bytes(keep_trail)
     sid = _stable_id(initialised, "projects/sample.txt")

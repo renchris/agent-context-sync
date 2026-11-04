@@ -2448,16 +2448,17 @@ _TRAIL_ALONE = (
     "cannot be read, and the governance.suppressed line says why"
 )
 _NO_TRAIL_ALONE = (
-    "agentsync's audit trail is not on disk either, so nothing shows a queued purge the queue lost: the "
-    "purge record cannot be read, and the governance.suppressed line says why"
+    "the purge record cannot be read, and the governance.suppressed line says why; agentsync's audit trail "
+    "is not on disk, so nothing shows a queued purge the queue lost"
 )
 _UNREAD_TRAIL_ALONE = (
-    "agentsync's audit trail cannot be read either, so nothing shows a queued purge the queue lost: the "
-    "purge record cannot be read, and the governance.suppressed line says why"
+    "the purge record cannot be read, and the governance.suppressed line says why; agentsync's audit trail "
+    "cannot be read either, so nothing shows a queued purge the queue lost"
 )
 """governance.purge_queue's clause over a purge record that cannot be read and a queue that lost nothing
 (B13 round 31 C539 and its review): its own [info] line with nothing queued, after the kept entries' line.
-:func:`_trail_alone_words` picks by the file."""
+:func:`_trail_alone_words` picks by the file. The record's clause comes first, so ``either`` follows the
+negative it pairs with, and is said only of an unread trail (B13 round 34 C831)."""
 
 
 def _trail_alone_words(config: Config) -> str:

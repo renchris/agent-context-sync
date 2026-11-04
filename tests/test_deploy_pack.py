@@ -6523,6 +6523,9 @@ _ROUND_34_B_PARAGRAPH_AMENDS = (
     ("16.155", "**Y43: a lock or heartbeat this account cannot open names its own fix", "§16.227 C832"),
     ("16.158", "`error: state:` line keeps the path the system refused", "§16.227 C832"),
     ("16.218", "**A warn the Loop line could have named is not judged when the Loop line", "§16.227 C818"),
+    ("16.210", "C539 (2026-10-28): **a purge record that cannot be read never hides", "§16.227 C831"),
+    ("16.220", "**C733.** With purge-record.json unread and no audit.jsonl on disk", "§16.227 C831"),
+    ("16.220", "**The lane's review of C741, C701 and C733.**", "§16.227 C831"),
 )
 """Round 34 lane B's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C874's split and C841's plural at §16.220's C701 paragraph, C832's folder
