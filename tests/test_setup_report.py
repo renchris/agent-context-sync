@@ -11083,10 +11083,41 @@ def test_the_purge_queue_part_says_status_words_with_the_folder_gone_c765(
     assert f"`{governance.QUEUE_GONE_OK}` (or `{governance.QUEUE_GONE_UNRECORDED}` when no" in guide
 
 
+@pytest.mark.parametrize("trail", ["none", "present", "unread"])
+def test_the_purge_queue_part_says_status_words_over_an_unread_purge_record_c838(
+    fake_mac: dict[str, Path], trail: str
+) -> None:
+    """B13 round 34 C838: with nothing queued and a purge record the report cannot read, the Purge queue part
+    said `no purge is queued` where status says the queue was judged from the audit trail alone. It takes
+    status's own function, cli._trail_alone_words, over no trail, a trail and a trail it cannot read."""
+    config = load_config(fake_mac["config"])
+    root = expand(config.state_paths.root)
+    governance.governance_dir(root).mkdir(parents=True, exist_ok=True)
+    governance.purge_record_file(root).write_text("not json\n", encoding="utf-8")
+    audit = governance.audit_path(root)
+    if trail != "none":
+        audit.write_text("", encoding="utf-8")
+    if trail == "unread":
+        audit.chmod(0)
+    try:
+        said = setup_report._record_unread_said(config)
+        assert said == cli._trail_alone_words(config) and said, said
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks())
+        queue = section(text, "Status").split("\n### Purge queue\n", 1)[1].split("\n### ", 1)[0]
+        assert "no purge is queued" not in queue, queue
+        status = [c.detail for c in cli._status_checks(config) if c.name == "governance.purge_queue"]
+        assert status == [said], status
+        assert f"- {said}\n" in f"{setup_report.Redactor().redact(queue)}\n" or said in queue, queue
+    finally:
+        if audit.exists():
+            audit.chmod(0o600)
+
+
 def test_the_purge_queue_part_keeps_its_line_over_an_unread_record_c765(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """C765's guard: never `keeps no purge` over a purge record it cannot read; and QUEUE_GONE_OK where the
+    """C765's guard: _queue_gone_said never says `keeps no purge` over a purge record it cannot read (since
+    B13 round 34 C838 the part says status's _trail_alone_words there instead); and QUEUE_GONE_OK where the
     record reads and holds no queued purge."""
     config = load_config(fake_mac["config"])
     monkeypatch.setattr(governance, "folder_lost_case", lambda _root: True)

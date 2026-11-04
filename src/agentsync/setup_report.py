@@ -9997,7 +9997,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         raise
     lost = _lost_queue_line(config)
     if not queue:
-        return [lost] if lost else [f"- {_queue_gone_said(config) or 'no purge is queued'}"]
+        said = _record_unread_said(config) or _queue_gone_said(config) or "no purge is queued"  # C838
+        return [lost] if lost else [f"- {said}"]
     reasons = {reason.value for reason in governance.PurgeReason}
     grouped: dict[tuple[str, str, str, str], Counter[str]] = {}
     lookups = 0
@@ -10133,6 +10134,27 @@ def _lost_queue_line(config: Config) -> str:
         f"- {_plural(n, 'purge')} recorded in the audit trail {verb} not in the queue file "
         "(see Doctor's governance.purge_queue line)"
     )
+
+
+def _record_unread_said(config: Config) -> str:
+    """Status's own words for an empty queue over a purge record it cannot read, ``cli._trail_alone_words``
+    under status's own except (with or without governance/, and over a trail that is there, missing or
+    unread): never ``no purge is queued``; "" when the record reads or cli does not import (B13 round 34
+    C838). Status's function, never a copy of its three constants, so the forms stay in step."""
+    try:
+        from agentsync import (  # noqa: PLC0415 - lazy: the report must import even if it is broken
+            cli,
+            governance,
+        )
+        from agentsync.errors import AgentSyncError  # noqa: PLC0415
+
+        try:
+            governance.recorded_purges(expand(config.state_paths.root))
+        except (AgentSyncError, OSError):  # status's except
+            return str(cli._trail_alone_words(config))
+    except Exception:
+        return ""
+    return ""
 
 
 def _queue_gone_said(config: Config) -> str:

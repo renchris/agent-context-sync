@@ -36552,6 +36552,9 @@ longer in a row; `TRAIL_LOST_HEAD`, `_TRAIL_LIST_PHRASES` and the listing note's
 record it cannot read and never `no purge is queued`. Tests:
 `test_the_purge_queue_part_says_status_words_with_the_folder_gone_c765`,
 `test_the_purge_queue_part_keeps_its_line_over_an_unread_record_c765`.
+Amended 2026-11-03, §16.225 C838: over a purge record it cannot read, with nothing queued, the part says status's
+`cli._trail_alone_words` (`_record_unread_said`, first), with or without the folder, never `no purge is queued`; the
+second test now guards `_queue_gone_said` alone, which still never reads over that record.
 
 **One bracket in the hold cut, the no-end-line line and the helper lines** (C710, C764, C771's F1, C719, ruling 85).
 The redacted lost-hold FAIL reads `(owner not shown; kept by <file>)` when no time stands between, `lost()` and
@@ -37318,6 +37321,15 @@ queue part's two lines (`N purge(s) that purge-record.json keeps as queued and n
 cli.py's `--folder-lost` help, `_TRAIL_LIST_PHRASES` and governance's matcher words stay, grammatical as written, so
 the older sections' quotes of them stand; `purge-record.json` is in both phrase lists already. Tests:
 the ruling 82 and C735 pins in `tests/test_setup_report.py`.
+
+**The Purge queue part in status's words over a purge record it cannot read** (C838; amends §16.218 C765). With
+nothing queued and a purge record the report cannot read, the part said `no purge is queued` where status says the
+queue was judged from the audit trail alone. `_record_unread_said(config)`, first in the `not queue and not lost`
+branch, reads `governance.recorded_purges` under status's own except (`AgentSyncError`, `OSError`) and returns
+status's `cli._trail_alone_words(config)`, never a copy of its three constants, with or without governance/;
+`_queue_gone_said` stays as it is. The phrases are in both lists already (`the purge record cannot be read`). Test:
+`tests/test_setup_report.py::test_the_purge_queue_part_says_status_words_over_an_unread_purge_record_c838`, over no
+trail, a trail and a trail it cannot read.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
