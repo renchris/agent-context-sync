@@ -23715,10 +23715,11 @@ that ran no install.sh (its own `- install.sh: no run during this attempt` line)
 done in 4s (install.log) · converted 7, ... (install.log)` as this attempt's. In copy mode it reads `(install.log:
 the install run of <start>, before this attempt; this attempt ran none)`, the start from install.log's last run with
 a first-sync step (`an earlier install run` with none), and the counts' tag `(install.log: that earlier run)` or
-`(install.out: an earlier run's; this attempt ran none)`; a line already saying `before this attempt` stays. When
-another run started in that second, `stopped_run_labels`' `named()` adds `, run <label>` after the start, as the
-renderer's `_run_named` does. Test:
+`(install.out: an earlier run's; this attempt ran none)`; a line already saying `before this attempt` stays. The
+`, run <label>` of two runs in one second (`_run_named`) is not added. Test:
 `test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
+Amended 2026-11-03, §16.229 C856 (by review backtest pilot-s1/er-13#6): the sentence above was never so;
+`stopped_run_labels`' `named()` adds `, run <label>` after the start, as the renderer's `_run_named` does.
 
 **One expected warn ends in its fix** (U31; dated line at §16.116 S26). Both the renderer and the stopped copy's
 header wrote `1 expected warn ends in (expected: <why>) instead of their fix`. It reads `its fix` for one; the copy's
@@ -35947,7 +35948,7 @@ suppressed`, `; with no copy, they accept each loss with --folder-lost, as its s
 is C507's, byte for byte. It is logged with the list's own word beside the folder's
 (`config_err=state-queue-lost,state-governance-lost`). Beside a config-step stop, C607's second stop and step 2's
 NEXT use the same words (`a second stop that follows: agentsync's governance folder is missing while <what>, also the
-person's to fix: <fixes>`). Step 2's status-step NEXT keeps the person's-kinds list, which lane B left unchanged.
+person's to fix (<fixes>)`). Step 2's status-step NEXT keeps the person's-kinds list, which lane B left unchanged.
 The tail's parts are printed literals with hold words, so lane RA's C634 scan reads `GONE_WHAT` and `GONE_FIX` too
 (`tests/test_setup_report.py`, `_INSTALL_PRINTED`), and the hold's part keeps the listed phrase `while its records
 keep a hold as set and not released` whole (ruling 68).
@@ -35956,6 +35957,8 @@ Tests: `test_the_lost_list_probe_says_a_governance_folder_gone_by_the_builds_own
 list, a hold and a queued purge; the real agentsync),
 `test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_after_it` and the guide's quotes in
 `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+Amended 2026-11-03, §16.229 C856 (by §16.219 C736): with governance/ gone step 2's NEXT gives the fix after a colon,
+`also the person's to fix: <fixes>`, since its own bracket holds it.
 
 ### 16.215 Round 32: a lost governance folder named as the folder, every governance line true of the disk, a lost purge closed only on a real read, and purge's help (2026-10-28, wave B13 round 32 lane B)
 
@@ -37286,6 +37289,16 @@ its retries used up and no path in its reason, is never tried again (`_retries`)
 for any stub, so a bump of `_EMITTER_VERSION`, measured, converted nothing again (3 syncs, 0 conversions) and is not
 made. The dated line at C781's paragraph says so, with the cases that do heal (retries left, the one-shot path-stub
 re-read, a page gone); the finding's reason for not bumping, that it would convert every deck again, is not used.
+
+**Two passages rewritten in place carry their text and a dated line again** (C856, ruling 74 and 99; docs only). Round
+33's C736 changed §16.214's quote of round 32's NEXT, `also the person's to fix (<fixes>)`, to the colon form in place,
+and the review backtest's er-13#6 replaced §16.129 U28's `is not added` in place, neither with a dated line, while
+ruling 74 keeps another round's text and dates the change. Both quotes are back as written, each followed by a dated
+line in this round's form, its own item with `(by §16.219 C736)` at the C736 paragraph and with `(by review backtest
+pilot-s1/er-13#6)` at U28's, which was wrong from its birth (`named()` already ran then), so it says so. No C712 line:
+the paragraph quotes none of the list C712 changed. The C736 line also matches §16.219's (C737, C736) claim on C607, so
+the C737 line is pinned beside the two new ones in `_ROUND_34_D_PARAGRAPH_AMENDS`; the item's fix as first written,
+stamping `§16.219 C736` on a round 34 line and dated the next day, turned two dated-line tests red.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==

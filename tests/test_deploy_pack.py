@@ -6487,10 +6487,26 @@ _ROUND_33_B_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C744's return and output at the `--accept-lost` paragraph and C606's."""
 _ROUND_34_D_PARAGRAPH_AMENDS = (
     ("16.223", "a re-run a signal stopped convicts nothing, says so through", "§16.229 C877, C876, C866"),
+    (
+        "16.129",
+        "**A stopped copy names the earlier run its first sync reads** (U28;",
+        "§16.229 C856 (by review backtest pilot-s1/er-13#6)",
+    ),
+    (
+        "16.214",
+        "**Step 1 names a missing governance folder once, for every list it kept**",
+        "§16.229 C856 (by §16.219 C736)",
+    ),
+    (
+        "16.214",
+        "**A damaged purge record beside a lost queued purge names both stops** (C607;",
+        "§16.219 C737",
+    ),
 )
 """Round 34 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: the gate's re-run fixes (C877, C876, C866) at §16.223's C800
-paragraphs."""
+paragraphs, and C856's two lines at passages rewritten in place, with §16.219's C737 line, which the C736
+line's claim now shares (ruling 99)."""
 
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
