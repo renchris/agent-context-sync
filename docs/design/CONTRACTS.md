@@ -36489,6 +36489,9 @@ was used, or why not, never quoting the value. `_Run.cap` scales `_STATUS_S`, `_
 and `EVIDENCE_BUDGET_S` with it, or a slow Status build still cuts the Loop read. A variable, not a flag: an older
 installed build ignores it. Lane RB's re-run NEXT names it; `_IDLE_AGAIN` never does. Tests:
 `test_the_report_time_limit_variable_is_clamped_and_said_c726`, `test_the_time_limit_variable_scales_each_per_call_cap_c726`.
+Amended 2026-11-03, §16.225 C839: the second test now tells each cap's own site by a value of its own and records the
+waits each site is given, and `test_the_time_limit_variable_scales_the_sign_in_folder_read_c726` and
+`test_the_late_listing_line_says_the_scaled_wait_c726` cover the listing cap's two other uses.
 
 **The took line's moved figure is the planned move** (C708). `_doctor` keeps the deadline arithmetic and splits only
 the words: `moved to` is the budget plus the wait the doctor was given less its first share, and `doctor_overrun`, what
@@ -37330,6 +37333,14 @@ status's `cli._trail_alone_words(config)`, never a copy of its three constants, 
 `_queue_gone_said` stays as it is. The phrases are in both lists already (`the purge record cannot be read`). Test:
 `tests/test_setup_report.py::test_the_purge_queue_part_says_status_words_over_an_unread_purge_record_c838`, over no
 trail, a trail and a trail it cannot read.
+
+**The C726 cap test sees each cap** (C839; tests only; amends §16.218 C726). The test passed with one of the five
+named caps removed: it read `self.cap(1.0)` and grepped the source. It now sets the five caps to values of their own,
+records the wait each `_Run.call` and `_Mirror` is given with `remaining` held high and the Status, Loop and proxy
+hooks run, and asserts every doubled value given and no unscaled one, the reverse under a passed budget. Tests:
+`test_the_time_limit_variable_scales_each_per_call_cap_c726`,
+`test_the_time_limit_variable_scales_the_sign_in_folder_read_c726`,
+`test_the_late_listing_line_says_the_scaled_wait_c726`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

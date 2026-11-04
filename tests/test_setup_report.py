@@ -10,7 +10,6 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
-import inspect
 import itertools
 import json
 import logging
@@ -22570,33 +22569,106 @@ def test_the_time_limit_variable_scales_each_per_call_cap_c726(
 ) -> None:
     """B13 round 33 C726: a raised limit raises Status's, the Loop hook's, the listing's, the proxy read's and
     the evidence parts' caps with it, or a slow Status build cuts the Loop read however large the limit; a
-    budget passed in is taken as it stands, with no variable read and no cap moved; Run metadata names it."""
+    budget passed in is taken as it stands, with no variable read and no cap moved; Run metadata names it.
+    Each cap is the seconds its own site is given, told apart by a value of its own: three of them are 4.0
+    (B13 round 34 C839: the source scan passed with one of the five removed)."""
+    caps = {
+        "_LISTING_S": 3.1,
+        "_PROXY_S": 4.1,
+        "_STATUS_S": 4.2,
+        "_LOOP_NEXT_S": 4.3,
+        "EVIDENCE_BUDGET_S": 3.3,
+    }
+    for name, seconds in caps.items():
+        monkeypatch.setattr(setup_report, name, seconds)
     monkeypatch.setenv(setup_report._TIME_LIMIT_ENV, "24")
     r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 24.0)
     assert r.cap(setup_report._STATUS_S) == setup_report._STATUS_S
-    seen: list[float] = []
-    real = setup_report._Run.call
+    given: list[float] = []
+    real_call, real_mirror = setup_report._Run.call, setup_report._Mirror
 
     def call(self: setup_report._Run, fn: Any, timeout: float) -> Any:
-        seen.append(self.cap(1.0))
-        return real(self, fn, timeout)
+        given.append(timeout)
+        return real_call(self, fn, timeout)
+
+    def mirror(db: Path, budget_s: float, **kwargs: Any) -> setup_report._Mirror:
+        given.append(budget_s)
+        return real_mirror(db, budget_s, **kwargs)
 
     monkeypatch.setattr(setup_report._Run, "call", call)
-    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
-    assert seen and set(seen) == {2.0}, seen
+    monkeypatch.setattr(setup_report, "_Mirror", mirror)
+    monkeypatch.setattr(
+        setup_report._Run, "remaining", lambda _self: 600.0
+    )  # a slow Mac's clock moves no cap
+    hooks = setup_report.ReportHooks(status=lambda _c: [], loop_next=lambda _c: [], job_proxy=lambda _c: [])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert {2 * seconds for seconds in caps.values()} <= set(given), given
+    assert not set(caps.values()) & set(given), given
     metadata = section(text, "Summary")
     assert "- time limit: 24s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)\n" in metadata, metadata
     assert "(time limit 24s" in metadata, metadata
-    seen.clear()
-    text, _red = setup_report.build_report(
-        fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=40.0
-    )
+    given.clear()
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=40.0)
     assert "(time limit 40s" in text and "- time limit:" not in text
-    assert set(seen) == {1.0}, seen
-    source = inspect.getsource(setup_report)
-    for name in ("_LISTING_S", "_PROXY_S", "_STATUS_S", "_LOOP_NEXT_S", "EVIDENCE_BUDGET_S"):
-        assert f"r.cap({name})" in source, name
+    assert set(caps.values()) <= set(given), given
+    assert not {2 * seconds for seconds in caps.values()} & set(given), given
     assert setup_report._TIME_LIMIT_ENV not in setup_report._IDLE_AGAIN  # ruling 83: install.sh keys on it
+
+
+def test_the_time_limit_variable_scales_the_sign_in_folder_read_c726(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C726, round 34 C839: the listing's cap also bounds the sign-in stop's provider folder
+    read, which is doctor.provider_state's timeout, never a _Run.call."""
+    monkeypatch.setattr(setup_report, "_LISTING_S", 3.1)
+    monkeypatch.setenv(setup_report._TIME_LIMIT_ENV, "24")
+    monkeypatch.setattr(setup_report._Run, "remaining", lambda _self: 600.0)
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
+    provider = Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    shutil.rmtree(provider)
+    provider.mkdir()
+    (provider / ".849C9593-D756-4E56-8D6E-42412F2A707B").write_text("", encoding="utf-8")
+    read: list[float] = []
+    real_state = doctor.provider_state
+
+    def state(folder: Path, *, timeout: float | None = None) -> doctor.ProviderState:
+        if folder == provider and timeout is not None:
+            read.append(timeout)
+        return real_state(folder, timeout=timeout)
+
+    monkeypatch.setattr(doctor, "provider_state", state)
+    set_up_log(fake_mac, listed=" synced=2", list_step="failed note=not-signed-in apps=onedrive missing=1")
+    report(tmp_path, fake_mac["config"])
+    assert 6.2 in read, read
+
+
+def test_the_late_listing_line_says_the_scaled_wait_c726(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 33 C726, round 34 C839: the wait the late listing's line names is the one the call was
+    given."""
+    real = setup_report.cloud_folder_names
+    finish = threading.Event()
+
+    def late(*args: Any, **kwargs: Any) -> list[tuple[str, int, str]]:
+        finish.wait(60)
+        return real(*args, **kwargs)
+
+    def doctor_hook(_config: object) -> list[str]:
+        finish.set()
+        return ["[ok  ] python — fine"]
+
+    monkeypatch.setenv(setup_report._TIME_LIMIT_ENV, "24")
+    monkeypatch.setattr(setup_report, "_LISTING_S", 0.3)
+    monkeypatch.setattr(setup_report, "_LATE_LISTING_S", 5.0)
+    monkeypatch.setattr(setup_report, "cloud_folder_names", late)
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(doctor=doctor_hook))[
+        0
+    ]
+    assert (
+        "- redaction: the CloudStorage listing finished after 0.6s and was used for redaction\n"
+        in section(text, "Environment")
+    )
 
 
 @pytest.mark.parametrize("late", [3.0, 0.0], ids=["came-back-late", "on-time"])
