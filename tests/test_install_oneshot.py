@@ -1040,8 +1040,10 @@ def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> Non
     build). The two are one list,
     and they agree on every person's fix doctor writes and on the fixes the agent makes."""
     text = INSTALL_SH.read_text(encoding="utf-8")
-    m = re.search(r"grep -Ev ' \\\(fix: (\(.*\))' >/dev/null", text)
+    # its own variable since B13 round 34 C808, which mixed_chmods reads too
+    m = re.search(r"(?m)^PERSON_FIX_RE=' \\\(fix: (\(.*\))'$", text)
     assert m, "persons_fails's pattern"
+    assert 'grep -Ev "$PERSON_FIX_RE" >/dev/null' in text
     assert m.group(1) == doctor.PERSONS_FIX_RE.pattern
     for case, fails in _persons_fail_lines(sample_config).items():
         for line in fails:
@@ -12143,6 +12145,19 @@ STATE_CHMODS_NEXT = (
 """Step 2's NEXT when every [FAIL] that stops its status step is a chmod of this account's own state (B13
 round 22 Z8, Z36, Z59): the lock, the heartbeat, a governance file or a -wal or -shm stop it there, past the
 config step, and got "fix the [FAIL] lines above"."""
+_SAME_CHMOD = (
+    "; if the re-run names the same chmod again, show the person those lines, log it as a step 2 error"
+)
+MIXED_CHMODS_NEXT = (
+    STATE_CHMODS_NEXT.removesuffix(f"{_SAME_CHMOD} and go on to the report")
+    + "; the other [FAIL] lines above are the person's to fix (each names its fix): if the re-run stops on "
+    "them alone, its NEXT says so"
+    + _SAME_CHMOD.replace("if the re-run names", "if it names")
+    + " and go on to the report"
+)
+"""Step 2's NEXT when its stopping [FAIL] lines are the agent's chmod and the person's, each group whole: the
+chmod first, then the person's lines, never the prompt's `not a step for the agent`, which ends the step at
+the report and would skip the chmod's re-run (B13 round 34 C808)."""
 
 
 @pytest.mark.parametrize(
@@ -12153,10 +12168,12 @@ config step, and got "fix the [FAIL] lines above"."""
         "governance",
         "acl",
         "mixed",
+        "mixed-other",
         "outside",
         "source",
         "older",
         "closing",
+        "closing-mixed",
         "read-only",
         "loose",
     ],
@@ -12171,7 +12188,9 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
     path outside the state folder or of a source folder (chmod u+rx), and an installed build without doctor's
     _shell_path keep "fix the [FAIL] lines above". The closing status names the chmod too, then the re-run
     (the lane's review: the prompt's grant says the re-run), and so does a mode too open (state_dir at 0755),
-    in words that fit it; a path on a volume mounted read-only gets no chmod."""
+    in words that fit it; a path on a volume mounted read-only gets no chmod. B13 round 34 C808: a mix of the
+    agent's chmod and the person's lines, each group whole, names the chmod first and the person's lines after
+    it; a line in neither group (here a source folder's chmod u+rx) keeps the generic NEXT."""
     env = {**env, "AGENTSYNC_OCR": "0"}  # no helper build under the real interpreter
     _write_config(env, _inbox(env))
     root = _state_db(env).parent
@@ -12207,6 +12226,11 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
             fail("heartbeat", hb, chmod("600", hb)),
             fail("source.alpha.root", Path("/x"), "fix path in [[source]] alpha, or sync it in OneDrive"),
         ],
+        "mixed-other": [
+            fail("heartbeat", hb, chmod("600", hb)),
+            fail("source.alpha.root", Path("/x"), "fix path in [[source]] alpha, or sync it in OneDrive"),
+            fail("source.beta.listable", Path("/y"), "chmod u+rx /y"),
+        ],
         "outside": [fail("heartbeat", hb, chmod("600", Path(env["HOME"]) / "elsewhere.json"))],
         "source": [fail("source.alpha.listable", Path("/x"), "chmod u+rx /x")],
         "older": [fail("heartbeat", hb, chmod("600", hb))],
@@ -12214,16 +12238,17 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
         "loose": [fail("state_dir", root, chmod("700", root))],
     }
     rerun = f"{INSTALL_SH} {wheel}"
-    if case == "closing":
+    if case.startswith("closing"):
         out = "NEXT: the lock check failed: do what the fix on its [FAIL] line below says\n" + fail(
             "lock", lock, chmod("600", lock)
         )
+        if case == "closing-mixed":
+            out += "\n" + lines["mixed"][1]
         cp = install_sh({**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel))
         assert cp.returncode == 1, cp.stdout + cp.stderr
         # the lane's review: the closing status re-runs install.sh too, as the prompt's grant says
-        assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=chmod("600", lock), rerun=rerun)), (
-            last_line(cp)
-        )
+        want = MIXED_CHMODS_NEXT if case == "closing-mixed" else STATE_CHMODS_NEXT
+        assert last_line(cp).startswith(want.format(fix=chmod("600", lock), rerun=rerun)), last_line(cp)
         return
     cp = install_sh({**env, "STUB_DOCTOR_OUT": "\n".join(lines[case]), "STUB_DOCTOR_RC": "1"}, str(wheel))
     assert cp.returncode == 1, cp.stdout + cp.stderr
@@ -12236,12 +12261,62 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
     }.get(case)
     if fix:
         assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    elif case == "mixed":
+        assert last_line(cp).startswith(MIXED_CHMODS_NEXT.format(fix=chmod("600", hb), rerun=rerun)), (
+            last_line(cp)
+        )
     elif case == "acl":
         assert last_line(cp).startswith(f"{PERSONS_NEXT}the next run is: {rerun}"), last_line(cp)
     else:
         assert last_line(cp).startswith(
             f"NEXT: fix the [FAIL] lines above (each names its fix), then re-run: {rerun}"
         )
+
+
+def test_a_chmod_beside_a_persons_fail_names_the_chmod_first_with_the_real_agentsync_c808(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 34 C808 (rehearsal state TRAIL0), with the real agentsync: a run purge's suppression list
+    moved aside and the audit trail at mode 0000. Status FAILs governance.audit with the agent's chmod 600 and
+    governance.suppressed with the person's put-back, and the NEXT was the generic `fix the [FAIL] lines
+    above`, naming neither. It names the chmod first, then says the other lines are the person's; that chmod
+    as written leaves the person's NEXT."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("made-up notes\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    purged = subprocess.run(
+        [agentsync, "purge", "path=notes.txt", "--reason", "erasure-request"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert purged.returncode == 0, purged.stdout + purged.stderr
+    gov = _state_db(env).parent / "governance"
+    (gov / "suppressed.json").rename(gov / "suppressed.json.kept")
+    audit = gov / "audit.jsonl"
+    audit.chmod(0o000)
+    try:
+        if os.access(audit, os.R_OK):
+            pytest.skip("this account opens a 0000 file")
+        cp = install_sh(env, str(wheel))
+    finally:
+        audit.chmod(0o600)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    out = cp.stdout + cp.stderr
+    assert "[FAIL] governance.audit " in out and "[FAIL] governance.suppressed " in out, out
+    with patch.dict(os.environ, {"HOME": env["HOME"]}):
+        fix = f"chmod 600 {doctor._shell_path(audit)}"
+    want = MIXED_CHMODS_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")
+    assert last_line(cp).startswith(want), last_line(cp)
+    again = install_sh(env, str(wheel))  # the chmod as written (done above): the person's lines alone
+    assert again.returncode == 1, again.stdout + again.stderr
+    assert last_line(again).startswith(PERSONS_NEXT), last_line(again)
 
 
 @pytest.mark.parametrize("shut", ["lock", "heartbeat"])

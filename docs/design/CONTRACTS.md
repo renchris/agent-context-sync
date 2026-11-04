@@ -27702,6 +27702,7 @@ chmod as written, then a pass) and `test_a_side_file_this_account_cannot_write_i
 a -shm in use and a -wal with frames), and
 `test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (the
 agent's label, the heartbeat's, an ACL's the person's).
+Amended 2026-11-03, §16.226 C808: a mix whose lines are all the agent's chmod or the person's, each group holding one at least, names the chmod first and the person's lines after it; any other line in the mix still keeps `fix the [FAIL] lines above` (B13 round 34).
 
 Amended 2026-10-22, §16.166 A26: the status step's chmod NEXT ends `if the re-run names the same chmod again, show the person
 those lines, log it as a step 2 error and go on to the report`.
@@ -37494,6 +37495,26 @@ idle and names no variable. An older build names no seconds and keeps the clause
 `test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834` (each Loop form, the capped
 time-outs, the spent budget, and `no loop hook`, a crash and `status failed` as negatives) and
 `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
+
+**A chmod beside the person's lines is named first** (C808; amends §16.160 Z8; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`). A status step that stopped on one [FAIL] whose fix is this account's chmod of its
+own state and another whose fix is the person's matched neither `persons_fails` nor `state_chmods`, so its NEXT was the
+generic `fix the [FAIL] lines above`, while step 1's state-access tail promised the chmods `as step 2's NEXT names
+them`. `persons_fails`' prefix pattern is one variable, `PERSON_FIX_RE`, and `mixed_chmods` sorts every blocking line
+into the person's group or the chmod group (`state_chmods_of`, its reader given only those lines, so it still prints
+nothing on a line it does not take): only when both are non-empty and together cover every blocking line, the status
+step's and the closing status's NEXT read `<STATE_CHMODS> <chmods> once, then re-run: <install.sh ...>; the other
+[FAIL] lines above are the person's to fix (each names its fix): if the re-run stops on them alone, its NEXT says so;
+if it names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report`. It
+never says the prompt's `not a step for the agent`, which ends step 2 at the report and would skip the chmod's re-run
+(the verifier's wording had it; test_deploy_pack's prompt test keeps that phrase to the NEXTs that end there); the
+prompt already gives each person's [FAIL] line to the person. A line in neither group (a check that
+ran out of time, a listing held for an Allow click, the bundled pandoc's re-run, a source folder's chmod) keeps the
+generic NEXT. The report counts the chmod as the NEXT's command (`_AGENT_FIX_RE`) and the person's fixes as hints, as for any
+mixed run; test_setup_report.py's mixed-run hint test is unchanged. Tests: the
+`mixed`, `mixed-other` and `closing-mixed` cases of
+`test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state` and
+`test_a_chmod_beside_a_persons_fail_names_the_chmod_first_with_the_real_agentsync_c808` (rehearsal state TRAIL0).
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

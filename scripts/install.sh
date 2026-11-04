@@ -10307,10 +10307,11 @@ blocking_fails() {
 # choose a folder for them, so the NEXT names the owner, as the config error's does (B13 round 13 O11, O30). Any
 # other [FAIL] keeps "fix the [FAIL] lines": a check that ran out of time is fixed by the re-run its fix names,
 # and a listing held for an Allow click by that click.
+PERSON_FIX_RE=' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path |check or replace the pandoc at \[convert\] pandoc_path )'
 persons_fails() {
 	local b
 	b="$(blocking_fails "$1")"
-	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path |check or replace the pandoc at \[convert\] pandoc_path )' >/dev/null
+	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev "$PERSON_FIX_RE" >/dev/null
 }
 # Whether the one [FAIL] line of status output $1 that stops the run is the check of the lock, heartbeat or
 # governance file that is not a file state_misplaced finds (its words set, as config_failed sets them): on the
@@ -10342,8 +10343,10 @@ misplaced_status_next() { # TAIL: the status step's NEXT for it, ending on TAIL
 # by the agentsync step 2 installed (-I), each path resolved against its config's state folder; the lines are
 # its argument, since with_timeout's background job reads no stdin.
 state_chmods() { # STATUS_OUTPUT
-	local b
-	b="$(blocking_fails "$1")"
+	state_chmods_of "$(blocking_fails "$1")"
+}
+state_chmods_of() { # LINES: the blocking [FAIL] lines to read
+	local b="$1"
 	[ -n "$b" ] && [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ] || return 0
 	with_timeout 10 "$TOOL_PY" -I -c '
 import os, re, shlex, sys
@@ -10383,6 +10386,20 @@ for text in sys.argv[2].splitlines():
 runs = ["chmod %s %s" % (mode, " ".join(_shell_path(p) for p in want[mode])) for mode in ("700", "600") if want[mode]]
 print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
+}
+# The chmods of a mix (B13 round 34 C808): every blocking [FAIL] line of status output $1 is either the person's
+# (persons_fails' own pattern, PERSON_FIX_RE) or one state_chmods takes, each group holding one at least, so the
+# NEXT names the chmod first and the person's lines after it; empty when any line is in neither group (a check that
+# ran out of time, a listing held for an Allow click, the bundled pandoc's re-run, an unknown fix), which keeps
+# "fix the [FAIL] lines above". Only the chmod group goes to state_chmods' reader, which still prints nothing on a
+# line it does not take.
+mixed_chmods() { # STATUS_OUTPUT
+	local b rest
+	b="$(blocking_fails "$1")"
+	[ -n "$b" ] && printf '%s\n' "$b" | LC_ALL=C grep -Eq "$PERSON_FIX_RE" || return 0
+	rest="$(printf '%s\n' "$b" | LC_ALL=C grep -Ev "$PERSON_FIX_RE" || true)"
+	[ -n "$rest" ] || return 0
+	state_chmods_of "$rest"
 }
 STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, missing after earlier syncs, another account's or not a file, a hold the hold list lost, a purge queue or suppression list that lost a purge the audit trail or purge-record.json records, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
@@ -10944,6 +10961,8 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 		next="$PERSONS_FAILS, run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$blocking" ] && chmods="$(state_chmods "$LOOP_OUT")" && [ -n "$chmods" ]; then
 		next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report"
+	elif [ -n "$blocking" ] && chmods="$(mixed_chmods "$LOOP_OUT")" && [ -n "$chmods" ]; then # the chmod first (C808)
+		next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; the other [FAIL] lines above are the person's to fix (each names its fix): if the re-run stops on them alone, its NEXT says so; if it names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report"
 	elif [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
 		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$held" ]; then # the held listing is the NEXT, so its WAITING line is not printed twice
@@ -10973,6 +10992,9 @@ elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && chmods="$(state_chmods "$DOCTOR_LOG")" && [ -n "$chmods" ]; then
 	EXIT_RC=1 # this account's own state at a mode that refuses it: the agent's chmod, as config_failed names it
 	next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ] && chmods="$(mixed_chmods "$DOCTOR_LOG")" && [ -n "$chmods" ]; then
+	EXIT_RC=1 # the agent's chmod and the person's lines, each group whole: the chmod first (B13 round 34 C808)
+	next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; the other [FAIL] lines above are the person's to fix (each names its fix): if the re-run stops on them alone, its NEXT says so; if it names the same chmod again, show the person those lines, log it as a step 2 error and go on to the report"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null; then
 	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
 	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)

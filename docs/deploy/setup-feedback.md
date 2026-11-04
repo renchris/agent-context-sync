@@ -792,7 +792,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has
   a mode that is wrong for it, ...: the fix is the agent's: run <the chmods> once, then re-run: ...; if the re-run
   names the same chmod again, ...`; round 22 Z8, Z36, Z59);
-  a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. A folder (or a socket or a fifo) where
+  a mix whose other lines are all the person's names the chmod first and then `the other [FAIL] lines above are the
+  person's to fix (each names its fix): if the re-run stops on them alone, its NEXT says so; ...`, never the
+  prompt's `not a step for the agent`, which would skip the chmod's re-run (B13 round 34 C808), and a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. A folder (or a socket or a fifo) where
   `manifest.sqlite` belongs passes every probe above, and every build's init stops on it: `state-notfile`, `; step 2
   stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is
   not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back, or
