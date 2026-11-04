@@ -7954,10 +7954,11 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
 
 def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> None:
     """B13 round 33 rulings 83, 84 and 85 (lane RA's C702, C716, C718, C720, C721, C764): the report says
-    `not read` or `not measured` for a runner that did not answer, ends each such line with the idle advice
-    (`this copy is not for sending` in a stopped copy), files a warn the Loop line could have named as not
-    judged when that line was not read, and keeps one bracket on a run with no end line. The guide named none
-    of it; each quote is read from the report's source."""
+    `not read` or `not measured` for a runner that did not answer, ends the install source's line with the
+    idle advice (`this copy is not for sending` in a stopped copy), files a warn the Loop line could have
+    named as not judged when that line was not read, and keeps one bracket on a run with no end line. The
+    guide named none of it; each quote is read from the report's source. B13 round 34 C852, C878: the
+    Command Line Tools line carries no advice of its own, and the guide says so."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -7985,6 +7986,14 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     assert "`not measured (<why>; plist present|absent)`" in page
     assert 'f"not measured (xcode-select -p {_exited(rc, text)})"' in source
     assert "`not measured (xcode-select -p ...)`" in page
+    # B13 round 34 C852, C878: the Command Line Tools line carries no advice, and no Summary line names it
+    assert (
+        "The Environment section's Command Line Tools line says `not measured (xcode-select -p ...)` with no"
+        " advice of its own, and that read alone asks for no re-run: no Summary line names it, so"
+        " install.sh's NEXT does not either (B13 round 34 C852, C878)."
+    ) in page
+    assert 'return f"not measured (xcode-select -p {_exited(rc, text)})"\n' in inspect.getsource(setup_report)
+    assert "Tools say `not measured (xcode-select -p ...)`; each such line ends with" not in page
     assert setup_report._IDLE_AGAIN.startswith("write the report again when this Mac is idle (")
     assert setup_report._IDLE_AGAIN.endswith(") before sending it")
     assert "`write the report again when this Mac is idle (...) before sending it`" in page

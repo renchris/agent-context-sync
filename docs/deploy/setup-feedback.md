@@ -1300,26 +1300,28 @@ says otherwise.
 | Installer: every run | Was a run cut short? | One line per run, and each run with no end line with its start time, whether its process is gone (killed) or still exists, and the last step it logged (the step under way has no line). The Summary's `install.sh:` line keeps one bracket for the last run with no end line: `has no end line (<steps>)`, then `, its closing status <n>` when a signal stopped its report step, then its state last (`its process is gone: ...`, `its process id is in use: ...` or `interrupted, or still running`; B13 round 33 C764, lane RA's cb1ce5195). |
 | Configuration: agent-named folders | Is a folder named like the coding agent only listed, or also a source? | Two counts. A listed one keeps its name in the report. A configured one is a placeholder, except as a word of the agent's name, which keeps it as written (the Summary, the attempt lines, the friction log's `Agent:` line, a step 1 line that states it (`prompt vN, <agent>:`), and the issue link; the line then says so; B13 round 19 W17, round 20 X38). |
 
-A part that prints "not measured (time limit)" ran out of its share of the report's time. The Summary's
-`evidence:` line says so first, so the person who ran the setup can write the report again on an idle Mac
-(`install.sh --report-only`) before sending it. Every other read the report did not get is said as such, never as a
-fact. A git or `xcode-select -p` read that timed out says its seconds, which the time limit variable does not
-lengthen: the checkout's `origin: not read (git did not answer within 3.0s)`, `on origin/main: not read (git did not
-answer within 3.0s)`, `(uncommitted changes: not read, git did not answer within 3.0s)`, `(git did not answer within
-3.0s)` and `(commit and origin not read: xcode-select did not answer within 3.0s)`; one the report's budget was used
-up before is said as the time limit's: `origin: not read (git did not answer within the report's time limit)`, `on
+A part that prints "not measured (time limit)" ran out of its share of the report's time. The Summary's `evidence:`
+line says so first, so the person who ran the setup can write the report again on an idle Mac (`install.sh
+--report-only`) before sending it. Every other read the report did not get is said as such, never as a fact. A git
+or `xcode-select -p` read that timed out says its seconds, which the time limit variable does not lengthen: the
+checkout's `origin: not read (git did not answer within 3.0s)`, `on origin/main: not read (git did not answer within
+3.0s)`, `(uncommitted changes: not read, git did not answer within 3.0s)`, `(git did not answer within 3.0s)` and
+`(commit and origin not read: xcode-select did not answer within 3.0s)`; one the report's budget was used up before
+is said as the time limit's: `origin: not read (git did not answer within the report's time limit)`, `on
 origin/main: not read (time limit)` and `(uncommitted changes: not read, time limit)`. After the first git read that
 did not answer the install source reads no more, so each part after it repeats that read's words, and a URL rewrite
 read that did not answer beside a known origin keeps the origin with `URL rewrites: not read` (B13 round 34 C802,
-C834, C873; ruling 96). The Command Line Tools say `not measured (xcode-select -p ...)`; each such line ends with
-the same advice, `write the report again when this Mac is idle (...) before sending it`, which a stopped copy gives as
-`this copy is not for sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). A Background
-runs line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it
-once, or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line was not read, the Summary's doctor line files a listing,
-purge-queue or hold warn under `not judged (the Loop line was not read: <why>)`, before `unexpected`, adding `; a
-report written when this Mac is idle sorts it` only for a time-out or a busy state file (B13 round 33 ruling 84,
-C721; lane RA's 541fe447a). A run of a build older than these parts did not record what it
-converted or OCR's time: its row says "not recorded" or "-".
+C834, C873; ruling 96). The install source's line, whenever a read in it was cut, ends with the same advice, `write
+the report again when this Mac is idle (...) before sending it`, which a stopped copy gives as `this copy is not for
+sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). The Environment section's Command
+Line Tools line says `not measured (xcode-select -p ...)` with no advice of its own, and that read alone asks for no
+re-run: no Summary line names it, so install.sh's NEXT does not either (B13 round 34 C852, C878). A Background runs
+line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it once,
+or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line
+was not read, the Summary's doctor line files a listing, purge-queue or hold warn under `not judged (the Loop line
+was not read: <why>)`, before `unexpected`, adding `; a report written when this Mac is idle sorts it` only for a
+time-out or a busy state file (B13 round 33 ruling 84, C721; lane RA's 541fe447a). A run of a build older than these
+parts did not record what it converted or OCR's time: its row says "not recorded" or "-".
 
 The report shows the Mac at the moment it is written. After an upgrade to a build with OCR, the files from
 before it are read again over several syncs (two minutes of re-reads and three minutes of OCR per sync), so a

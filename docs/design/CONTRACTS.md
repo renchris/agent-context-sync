@@ -37058,6 +37058,9 @@ bucket for a warn the Loop line could have named, its idle clause only for a tim
 Installer row gives the `install.sh:` line's one bracket for a run with no end line, its closing status and its state
 last. Test: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, which reads each quote from the
 report's source.
+Amended 2026-11-03, §16.229 C852, C878: the Command Line Tools' `not measured (...)` ends with no idle advice, and that
+read alone asks for no re-run; the advice ends the checkout's `not read` lines on the install source's line, and a
+Background runs line carries none since §16.225 C819.
 
 **The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
 `docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
@@ -37693,6 +37696,17 @@ bullet said the lost FAILs' fix leads with `putting that one file back`, after a
 read as the trail; the fix puts back the list's own file. It reads `putting the list's own file (suppressed.json or
 purge-queue.json) back from a copy you trust`, its pin moved in the same commit; the FAIL and refusal texts were right
 and stay. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`.
+
+**The guide says the Command Line Tools line carries no advice** (C852 with C878, one edit, ruling 98; amends §16.222
+C720; docs only). setup-feedback.md and §16.222 said each `not measured` line, the Command Line Tools' among them, ends
+with the idle advice, but `clt()` returns `not measured (xcode-select -p ...)` alone, and no Summary line names that
+read (the evidence line counts Status's parts), so a cut of it alone reaches no re-run NEXT. The guide, on lane RA's
+C819 and C834 words (2cc228937, 46b44a1ff), gives the advice to the install source's line when a read in it was cut and
+says the Command Line Tools line has none and asks for no re-run; the `not measured (xcode-select -p ...)` quote stays,
+the code is unchanged, and making a CLT-only cut reach the NEXT would need a Summary line of its own, which is not
+built. C852 makes worse True for a code change; this is docs only. Test:
+`test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its docstring narrowed and the new sentence
+pinned with the clause the code returns.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
