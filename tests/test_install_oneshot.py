@@ -14004,6 +14004,57 @@ def test_a_config_step_stop_beside_a_lost_queue_names_the_stop_that_follows(
     assert "[FAIL] governance.purge_queue " in again.stdout + again.stderr, again.stdout + again.stderr
 
 
+@pytest.mark.parametrize("lists", ["queue", "suppressed-queue"])
+def test_a_lost_hold_beside_a_lost_list_is_named_in_the_same_status_stop_c837(
+    real_env: dict[str, str], wheel: Path, lists: str
+) -> None:
+    """B13 round 34 C837, with the real agentsync: a hold moved out of holds.json beside a purge queue (and a
+    suppression list) that lost a purge, and no config-step stop. Step 1 said `step 2 stops at its status
+    step` twice for the one stop; the hold's clause now opens `; the same stop names agentsync's hold list`,
+    as the config-step form does, its log word unchanged; the hold alone keeps its own lead
+    (LOST_HOLD_TAIL)."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    (folder / "notes.txt").write_text("made-up notes\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    root = _state_db(env).parent
+    agentsync = f"{env['HOME']}/.local/bin/agentsync"
+    moved = ["holds.json", "purge-queue.json"]
+    if lists == "suppressed-queue":
+        purged = subprocess.run(
+            [agentsync, "purge", "path=notes.txt", "--reason", "erasure-request"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert purged.returncode == 0, purged.stdout + purged.stderr
+        moved.append("suppressed.json")
+    sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
+    assert governance.enqueue_purge(root, sel, governance.PurgeReason.ERASURE_REQUEST)
+    governance.set_hold(root, "all", reason="matter 8", owner="Quinn Avery")
+    gov = root / "governance"
+    for name in moved:
+        (gov / name).rename(gov / f"{name}.kept")
+    tail = last_line(install_sh(env, "--list-folders"))
+    assert tail.count("step 2 stops at its status step") == 1, tail
+    assert tail.endswith(
+        "; the same stop names" + LOST_HOLD_TAIL.removeprefix("; step 2 stops at its status step on")
+    )
+    log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
+    word = "state-suppressed-lost,state-queue-lost" if lists == "suppressed-queue" else "state-queue-lost"
+    assert f"config_err={word},state-hold-lost" in log, log
+    (gov / "purge-queue.json.kept").replace(gov / "purge-queue.json")
+    if lists == "suppressed-queue":
+        (gov / "suppressed.json.kept").replace(gov / "suppressed.json")
+    assert last_line(install_sh(env, "--list-folders")).endswith(LOST_HOLD_TAIL), (
+        "the hold alone, its own lead"
+    )
+
+
 def test_a_config_step_stop_beside_a_lost_hold_names_the_hold_and_its_release(
     real_env: dict[str, str], wheel: Path
 ) -> None:

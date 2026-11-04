@@ -8967,10 +8967,14 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         noun: tail
         for tail, noun in re.findall(
             r'ctail="(?:\$ctail)?(; step 2 stops at its status step on agentsync\'s'
-            r' (hold list|governance folder)[^"]*)"',
+            r' (governance folder)[^"]*)"',
             script,
         )
     }
+    # B13 round 34 C837: the hold clause opens with $hlead, `the same stop names` beside a lost list's clause
+    hold = re.search(r'ctail="\$ctail; \$hlead (agentsync\'s hold list[^"]*)"', script)
+    assert hold is not None
+    tails["hold list"] = f"; step 2 stops at its status step on {hold.group(1)}"
     # B13 round 33 ruling 86 (C776): each list's clause is one template in lost_list_tail, $lead opening it
     lists = {
         noun: clause
@@ -9026,7 +9030,7 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         else:
             assert f'LIST_LOG="{"$LIST_LOG" if noun == "purge queue" else ""},{word}"' in script, word
         assert f"gives `{tails[noun]}`, logged `{word}`" in section, noun
-    assert "ctail=\"$ctail; step 2 stops at its status step on agentsync's hold list" in script
+    assert 'local hlead="step 2 stops at its status step on"' in script
     assert "after either when both (`config_err=state-queue-lost,state-hold-lost`)" in section
     from agentsync import governance  # noqa: PLC0415
 

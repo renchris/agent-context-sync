@@ -989,7 +989,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
   person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),
   and ~/.local/bin/agentsync status prints it on its governance.hold line`, logged `state-hold-lost` (B13 round 29
-  ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`). With agentsync's governance
+  ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`), its clause then opening `; the same stop
+  names agentsync's hold list`, since one status step names both (B13 round 34 C837). With agentsync's governance
   folder itself gone, the audit trail with it, a hold its records keep gives `; step 2 stops at its status step on
   agentsync's governance folder, where it keeps any hold list, its audit trail,
   the purge queue and any suppression list, is missing, while its records keep a hold as set and not released (not damage, not a mode): fixing

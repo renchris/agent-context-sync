@@ -36709,6 +36709,7 @@ each loss with --folder-lost, as its status line says, and run each such purge b
 stop, ...`. Tests: `test_the_lost_list_probe_names_both_lists_suppression_first_with_governance_lost_the_gate`,
 `test_both_lists_that_lost_a_purge_are_named_in_one_stop_beside_the_folder`, the `suppressed-queue` case of
 `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`.
+Amended 2026-11-03, §16.226 C837: with no config-step stop, a hold the hold list lost beside a lost list's clause opens `; the same stop names agentsync's hold list`, as the config-step form does: one status step, said once (B13 round 34).
 
 ### 16.220 Round 33: an unread audit trail never lost, a hold on every forget branch, the store each lost record credits, and purge's --folder-lost help (2026-11-01, wave B13 round 33 lane B)
 
@@ -37465,6 +37466,14 @@ suppressed, kept by the audit trail or purge-record.json` and `the purge queue l
 purge-record.json records`, no bracket in SECOND; the new clauses join both phrase lists (ruling 68). The report's
 mixed Doctor bucket words are not built (ruling 95). Tests: `test_the_lost_list_word_follows_record_only_on_every_form_c872`
 and `test_a_queue_lost_with_its_records_in_both_stores_reads_mixed_at_step_1_c872`.
+
+**A lost hold beside a lost list is named in the same stop** (C837; amends §16.219 C776; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`, `tests/test_deploy_pack.py`). With no config-step stop, step 1's tail named a lost
+list with `step 2 stops at its status step on` and then the hold list with the same words, twice for one stop. The
+`*,lost-hold,*` arm takes `hlead` as the config-step form does: `step 2 stops at its status step on` alone, `the same
+stop names` after a list's clause; `state-hold-lost` is unchanged, and the hold alone keeps LOST_HOLD_TAIL. The
+guide test reads the hold clause through `$hlead`. Test:
+`test_a_lost_hold_beside_a_lost_list_is_named_in_the_same_status_stop_c837` (the queue, and both lists).
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

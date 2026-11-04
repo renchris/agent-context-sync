@@ -8828,7 +8828,11 @@ list_folders() {
 			clog="$clog$GONE_LOG"
 			;;
 		*,lost-hold,*)
-			ctail="$ctail; step 2 stops at its status step on agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+			# the one status stop that names a lost list names the hold too, as the config-step form does (B13 round
+			# 34 C837: "step 2 stops at its status step" said twice for one stop); alone, its own lead
+			local hlead="step 2 stops at its status step on"
+			[ -z "$LIST_TAIL" ] || hlead="the same stop names"
+			ctail="$ctail; $hlead agentsync's hold list, which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
 			clog="$clog,state-hold-lost"
 			;;
 		esac
