@@ -36000,13 +36000,17 @@ fix's `records in the new audit trail and in purge-record.json that the old audi
 the one new option the ruling names (ruling 76). Tests: `test_cli.py`
 `test_a_governance_folder_gone_with_a_purge_recorded_names_the_folder_in_every_lost_file_c606`,
 `test_a_governance_folder_gone_with_a_purge_queued_names_the_folder_c601_c618` (with and without a hold).
-CORRECTED (2026-11-01, §16.220 C758): `--accept-lost` refuses, and `--folder-lost` goes, while `audit_trail_lost` holds
-(governance/ missing, or re-created with a new trail that lacks a purge line purge-record.json keeps) or after the
-`audit-trail-lost` line was written, folder there or not, as C606's review below says; `--folder-lost` without
-`--accept-lost`, or over a trail that lost nothing and records no such loss, is refused. Amended
+CORRECTED (2026-11-01, §16.220 C758): `--accept-lost` without `--folder-lost` refuses while `audit_trail_lost` holds
+(governance/ missing, or re-created with a new trail that lacks a purge line purge-record.json keeps); `--folder-lost`
+goes then or after the `audit-trail-lost` line was written, folder there or not, as C606's review below says;
+`--folder-lost` without `--accept-lost`, or over a trail that lost nothing and records no such loss, is refused. Amended
 2026-11-01, §16.220 C744: the act's output opens with that clause only when it writes the line, `would be written
 first` on `--dry-run` and `the old audit trail's loss was already recorded` on a later `--folder-lost`; what stays out
 credits purge-record.json where it holds the record's line.
+Amended 2026-11-03, §16.229 C858: the CORRECTED line above read "`--accept-lost` refuses, and `--folder-lost` goes,
+while `audit_trail_lost` holds ... or after the `audit-trail-lost` line was written", as if plain `--accept-lost`
+refused after that line; the after-the-line clause is `--folder-lost`'s alone, as §16.220 C742 says and
+`governance.accept_lost_suppression` does.
 
 C624 with C618's item 6 (2026-10-28): **the ok lines say what is on disk (ruling 64).** governance.hold's ok line
 said `no hold set (hold list read)` with no holds.json. `governance.no_hold_words` says `no hold set (no hold list
@@ -37316,6 +37320,15 @@ line in this round's form, the table's inside the `failed` row's cell, since a l
 read 4 rows of 5). The X37 lines are claimed here; the three at §16.34 and §16.35 are pinned in
 `_ROUND_34_D_PARAGRAPH_AMENDS`. The item's fix as first written, stamping §16.219 C726 and §16.221 C719 as its own and
 putting a line under the row, turned `test_every_dated_line_from_round_11_on_is_held_by_a_test` red.
+
+**C758's CORRECTED line gives `--folder-lost` alone its after-the-line clause** (C858; docs only). The line §16.220's
+C758 wrote in §16.215 said `--accept-lost` refuses, and `--folder-lost` goes, while `audit_trail_lost` holds or after
+the `audit-trail-lost` line was written, one condition for both verbs, so plain `--accept-lost` read as refused after
+the line; governance refuses it only while `audit_trail_lost` holds, and reads the line only in the `--folder-lost`
+gate, as §16.220 C742, §16.222 and data-governance.md say (measured with two lost purges: refused while it holds, rc 0
+for a plain `--accept-lost` and its `--dry-run` after the first `--folder-lost`, refused again when governance/ goes
+again). The line is reworded in place, its parenthetical, its tail and C744's sentence kept, and, as I73 did, one dated
+line says what it read; it is pinned in `_ROUND_34_D_PARAGRAPH_AMENDS`.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
