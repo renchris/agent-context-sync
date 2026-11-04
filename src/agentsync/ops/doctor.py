@@ -1440,8 +1440,27 @@ def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult |
     if exc.filename is None or not state_unopenable(exc, root):
         return None
     given = Path(os.fsdecode(exc.filename))
-    detail = f"{given} cannot be opened: {exc.strerror or exc}"
-    return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(given))))
+    fix = state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(given)))
+    # governance/ itself refuses a look inside: the folder, never a file under it that may not exist, and the
+    # fix still judged from the file (B13 round 34 C832)
+    shown = given.parent if governance_refuser(root, given) is not None else given
+    return _bad(name, f"{shown} cannot be opened: {exc.strerror or exc}", fix=fix)
+
+
+def governance_refuser(root: Path, path: object) -> Path | None:
+    """agentsync's governance folder under the state folder ``root`` when it, not the file ``path`` in it,
+    refuses this account: ``path``'s folder is that folder and this account cannot search it (governance/ at
+    0000 or 0600), else None. Every line of that one refusal then names the folder: status's governance.hold
+    FAIL, the sync's ``error: state:`` line and the "cannot read the state" pointer named holds.json,
+    purge-queue.json and suppressed.json, none of which need exist (B13 round 34 C832)."""
+    from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
+
+    if not isinstance(path, str | bytes | os.PathLike):
+        return None
+    gov = governance.governance_dir(expand(root))
+    if Path(os.path.realpath(os.fsdecode(path))).parent != Path(os.path.realpath(gov)):
+        return None
+    return None if os.access(gov, os.X_OK) else gov
 
 
 def refused_state_files(config: Config) -> list[Path]:

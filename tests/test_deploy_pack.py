@@ -6520,9 +6520,14 @@ item, and C858's at C758's CORRECTED line in §16.215."""
 _ROUND_34_B_PARAGRAPH_AMENDS = (
     ("16.220", "**C701 (ruling 86's governance half).** With no copy", "§16.227 C874"),
     ("16.220", "**C701 (ruling 86's governance half).** With no copy", "§16.227 C841"),
+    ("16.155", "**Y43: a lock or heartbeat this account cannot open names its own fix", "§16.227 C832"),
+    ("16.158", "`error: state:` line keeps the path the system refused", "§16.227 C832"),
 )
 """Round 34 lane B's dated lines at a section its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: C874's split and C841's plural at §16.220's C701 paragraph."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C874's split and C841's plural at §16.220's C701 paragraph, C832's folder
+at §16.155's Y43 paragraph and §16.158's Z15 paragraph, C818's note at §16.218's ruling 84 paragraph, and
+C831's clause order at §16.210's C539 paragraph and §16.220's C733 and review paragraphs, C843's tests at
+§16.224's manifest-damage paragraph, and C810's head at §16.215's C606 paragraph."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),

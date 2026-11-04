@@ -27121,7 +27121,10 @@ path in the state folder, `<path> cannot be opened: <reason>` with `state_path_f
 folder and state_dir.files' set, else the lock, heartbeat, governance.hold or governance.purge_queue [FAIL] line,
 else nothing. Status's read of the heartbeat logs at DEBUG (`cycle.source_statuses(quiet=True)`). `state_dir.files`
 is not widened to every entry (the verifier's). Test:
-`test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's).
+`test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's). Amended
+2026-11-03, §16.227 C832: a path in governance/ while that folder refuses this account a look inside
+(`doctor.governance_refuser`) points at the governance.hold [FAIL] line, the folder's one FAIL, and the line names
+`agentsync's governance folder`, never holds.json or purge-queue.json, which need not exist.
 
 **Y44: a config hold shows over a state folder status cannot open (`agentsync.governance`, `agentsync.cli`; amends
 §16.149 X73).** With the state folder shut, status printed only governance.hold's not-checked line and hid a legal
@@ -27458,6 +27461,9 @@ above it refuses this account a search` before a folder's fix, and its NEXT says
 `test_cli.py::test_the_syncs_state_error_says_a_folder_refused_when_a_folder_did`.
 Amended 2026-10-26, §16.198 C167: `_STATE_FOLDER_SHUT` is gone, never read since `_state_folder_shut_words` named
 the one Doctor line (round 28 I19); its words and their reason live in that function, as I74 removed a dead copy.
+Amended 2026-11-03, §16.227 C832: when agentsync's governance folder refuses this account a look inside (governance/
+at 0000 or 0600), the line names that folder, `<state>/governance cannot be opened: Permission denied (fix: chmod 700
+...)`, with no cause clause since the fix names it, never suppressed.json, which need not exist.
 
 Amended 2026-10-22, §16.164 A4, A16: the outcome's folder-above words read `on agentsync's state folder, behind a
 folder above it that refuses this account a search: the person's to fix`.
@@ -37207,6 +37213,49 @@ live children under a lock, each removed once its wait returns. Lane RA's report
 `_Run.call` copies and calls `end_children()` in a finally. Tests:
 `test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804` and
 `test_end_children_kills_a_program_a_caller_abandoned_c804` (test_ops_doctor.py).
+
+**C829 (makes worse True as found; the verifier's fix).** With governance/ at 0000 (or 0600) the purge queue's refused
+open raised a plain `GovernanceError` caused by a `PermissionError`, not `GovernanceUnreadError`, so `loop.next_step`
+dropped every wait (the empty-folder wait among them, which the report then filed as unexpected) and status's
+`_status_lines` collapsed to one `cannot read the state` line, its HOLD, last runs and source lines gone. Both
+excepts (loop.py's around `partition_queue`, cli.py's around `partition_purges`) also take a refused open, as the
+hold read above them does, so the waits are worked out with no queue, in the form beside the sync's stop (`once the
+governance.hold [FAIL] line is fixed, ...; until then no sync runs`). Widening alone made a sync that runs over
+purge-queue.json at 0000 say nothing of the queue in its output or STATE.md, the only record a background job keeps,
+so when no guard stops the sync (`stopped` is None) next_step adds `loop.QUEUE_REFUSED_NOTE`: `the purge queue cannot
+be opened, so its queued purges are not counted: `~/.local/bin/agentsync status`'s governance.purge_queue line says
+why`. The report then reads status's lines (the Summary's `yours 1: heartbeat.<folder-1>` and `unexpected 0`) with
+no change of its own. Tests:
+`test_loop.py::test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statuss_lines_c829` (0000 and
+0600, with sources.toml's hold) and
+`test_loop.py::test_a_purge_queue_this_account_cannot_open_is_still_named_by_a_sync_that_runs_c829`.
+
+**C832 (makes worse True as found; render sites only).** With an empty governance/ at 0000, status FAILed
+governance.hold on holds.json and governance.purge_queue on purge-queue.json, the sync named suppressed.json and the
+`cannot read the state` line purge-queue.json: three files, none there, for one folder's refusal. Only the lines
+change, never the exceptions, so `_stop_role` and the sync-stop log still read the real path.
+`doctor.governance_refuser(root, path)` returns the governance folder when `path`'s folder is it and this account
+cannot search it (`os.access(..., X_OK)`), else None. `doctor.refused_state_path` and `cli._state_refused` judge the
+fix from the file as before and print the folder in its place (`<state>/governance cannot be opened: Permission
+denied (fix: chmod 700 ...)`; `_folder_refuses` then adds no cause, since the fix names that folder);
+`cli._says_why` answers `the governance.hold [FAIL] line says why` for it, and `_unread_words` names `agentsync's
+governance folder`, so the hold and queue reads give one identical line, deduplicated (I89). `_governance_checks`
+turns the queue's refusal into `[info] governance.purge_queue — not checked: <state>/governance cannot be opened:
+Permission denied; the governance.hold line says why` only when a governance.hold FAIL with the equal detail is
+already there, so the pointer never names a FAIL status did not print; otherwise its own FAIL stays. The setup
+report's Doctor count in that state drops from 2 FAILs to 1. Two files refused in a searchable folder stay two FAILs
+naming the files, and purge-record.json, outside the folder, keeps its own governance.suppressed FAIL. §16.155's Y43
+paragraph and §16.158's Z15 paragraph take dated lines. Tests:
+`test_a_governance_folder_this_account_cannot_search_is_one_fail_naming_the_folder_c832` (0000 and 0600),
+`test_two_governance_files_this_account_cannot_open_keep_two_fails_naming_them_c832` and
+`test_a_purge_record_refused_beside_a_refused_governance_folder_keeps_its_own_line_c832` (test_cli.py).
+
+
+
+
+
+
+
 
 ### 16.228 Round 34: the converters: fixes and their stored words (2026-11-03, wave B13 round 34 lane E)
 

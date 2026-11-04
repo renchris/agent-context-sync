@@ -3890,6 +3890,97 @@ def _status(cfg: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, list[str
     return rc, capsys.readouterr().out.splitlines()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+@pytest.mark.parametrize("mode", [0o000, 0o600])
+def test_a_governance_folder_this_account_cannot_search_is_one_fail_naming_the_folder_c832(
+    initialised: Config, capsys: pytest.CaptureFixture[str], mode: int
+) -> None:
+    """B13 round 34 C832: with an empty governance/ at 0000 (or 0600), status FAILed governance.hold on
+    holds.json and governance.purge_queue on purge-queue.json, the sync's line named suppressed.json, and the
+    "cannot read the state" line named purge-queue.json: three files for one folder's refusal, none of them
+    there. One FAIL names the folder with its chmod 700; the queue's line is an [info] pointing at it; the
+    sync and the pointer name the folder; no line names a file under it."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    gov.mkdir(exist_ok=True)
+    assert not list(gov.iterdir())
+    gov.chmod(mode)
+    try:
+        rc, out = _status(cfg, capsys)
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+    finally:
+        gov.chmod(0o700)
+    fix = f"chmod 700 {doctor._shell_path(os.path.realpath(gov))}"
+    fails = [" ".join(ln.split()) for ln in out if ln.startswith("[FAIL] governance.")]
+    assert rc == cli.EXIT_FAILED and fails == [
+        " ".join(f"[FAIL] governance.hold — {gov} cannot be opened: Permission denied (fix: {fix})".split())
+    ], out
+    (queue,) = [ln for ln in out if " governance.purge_queue " in ln]
+    assert queue.endswith(
+        f"not checked: {gov} cannot be opened: Permission denied; the governance.hold line says why"
+    )
+    (unread,) = [ln for ln in out if ln.startswith("status: cannot read the state: ")]
+    assert unread == (
+        "status: cannot read the state: agentsync's governance folder cannot be opened: Permission denied; "
+        "the governance.hold [FAIL] line says why"
+    ), unread
+    assert f"error: state: {gov} cannot be opened: Permission denied (fix: {fix})" in err.splitlines(), err
+    for name in ("holds.json", "purge-queue.json", "suppressed.json", "audit.jsonl"):
+        assert name not in "\n".join(out) + err, name
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_two_governance_files_this_account_cannot_open_keep_two_fails_naming_them_c832(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C832's limit: holds.json and purge-queue.json at 0000 in a folder at 0700 are two files, two chmod 600
+    fixes: they stay two FAILs, each naming its file."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    governance._write_queue(root, [])
+    holds = governance._holds_file(root)
+    holds.write_text('{"holds": []}\n', encoding="utf-8")
+    files = (holds, governance._queue_file(root))
+    for f in files:
+        f.chmod(0o000)
+    try:
+        rc, out = _status(cfg, capsys)
+    finally:
+        for f in files:
+            f.chmod(0o600)
+    fails = [" ".join(ln.split()) for ln in out if ln.startswith("[FAIL] governance.")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 2, fails
+    for check, path, line in zip(("hold", "purge_queue"), files, fails, strict=True):
+        said = f"[FAIL] governance.{check} — {path} cannot be opened: Permission denied (fix: chmod 600 "
+        assert line.startswith(" ".join(said.split()) + " "), fails
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_purge_record_refused_beside_a_refused_governance_folder_keeps_its_own_line_c832(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C832's limit: purge-record.json at 0000 beside governance/ at 0000 keeps its own governance.suppressed
+    FAIL and its own chmod 600: it lies outside the folder."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    record = governance.purge_record_file(root)
+    record.write_text('{"purges": []}\n', encoding="utf-8")
+    gov = governance.governance_dir(root)
+    gov.mkdir(exist_ok=True)
+    record.chmod(0o000)
+    gov.chmod(0o000)
+    try:
+        _rc, out = _status(cfg, capsys)
+    finally:
+        gov.chmod(0o700)
+        record.chmod(0o600)
+    (sup,) = [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")]
+    assert f"{record} cannot be opened: Permission denied" in sup and "(fix: chmod 600 " in sup, sup
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+
+
 def test_status_starts_with_next_then_the_loop_line_then_the_checks(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -271,6 +271,15 @@ def _named_since(
     )
 
 
+QUEUE_REFUSED_NOTE = (
+    "the purge queue cannot be opened, so its queued purges are not counted: "
+    f"`{BIN} status`'s governance.purge_queue line says why"
+)
+"""The note beside a sync that runs while this account cannot open the purge queue (purge-queue.json at
+0000 in a folder it can search): the waits are still worked out with no queue, and the note keeps the refusal
+in the sync's output and STATE.md (B13 round 34 C829)."""
+
+
 def _sync_stopped_on(config: Config) -> str | None:
     """The status check whose [FAIL] the sync's own guard stops on before it runs, by that guard itself
     (``doctor.state_not_a_file`` with the sync's flags, as ``cli`` calls it: a governance file or governance/
@@ -940,11 +949,19 @@ def next_step(
     # published again, and running it would erase that page (B13 round 6 G30)
     try:
         split = governance.partition_queue(config.state_paths, config=config)
-    except (
-        governance.GovernanceUnreadError
-    ):  # a queue, or governance/, that cannot be read: no queue, and its
-        # FAIL comes first; the listing waits below are still worked out (B13 round 29 C152)
+    except governance.GovernanceError as exc:
+        # a queue, or governance/, that cannot be read: no queue, and its FAIL comes first; the listing waits
+        # below are still worked out (B13 round 29 C152), a refused open too: governance/ at 0000 dropped the
+        # empty-folder wait (B13 round 34 C829)
+        if not isinstance(exc, governance.GovernanceUnreadError) and not isinstance(
+            exc.__cause__, PermissionError
+        ):
+            raise
         split = governance.QueueSplit([], [])
+        if not isinstance(exc, governance.GovernanceUnreadError) and stopped is None:
+            # a sync that runs over a refused queue still says so, in its output and STATE.md, the only
+            # record a background job keeps (C829's verifier: purge-queue.json alone at 0000)
+            notes.append(QUEUE_REFUSED_NOTE)
     queued, kept = split.runnable, split.kept
     hold_state = governance.hold_list_state(config.state_paths.root)
     if queued and hold_state is not None:

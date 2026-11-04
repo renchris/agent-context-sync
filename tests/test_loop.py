@@ -563,6 +563,75 @@ def test_a_governance_folder_this_account_cannot_search_names_the_line_status_pr
         gov.chmod(0o700)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+@pytest.mark.parametrize("mode", [0o000, 0o600])
+def test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statuss_lines_c829(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], mode: int
+) -> None:
+    """B13 round 34 C829: with governance/ at 0000 (or 0600) the purge queue's refused open was a plain
+    GovernanceError, not GovernanceUnreadError, so next_step dropped every wait (the empty-folder wait among
+    them, which the report then filed as unexpected) and status collapsed to one "cannot read the state"
+    line, its HOLD, last runs and source lines gone. The wait stays in the form beside the sync's stop, and
+    status keeps its lines."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    held = '\n[governance]\nhold = true\nhold_reason = "Contoso matter 7"\nhold_owner = "Contoso legal"\n'
+    config.config_path.write_text(config.config_path.read_text(encoding="utf-8") + held, encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    gov = governance.governance_dir(expand(config.state_paths.root))
+    gov.mkdir(exist_ok=True)
+    gov.chmod(mode)
+    try:
+        assert loop._sync_stopped_on(config) == "governance.hold"
+        (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        assert wait.endswith(
+            f"which names the folder (once the governance.hold [FAIL] line is fixed, a plain `{BIN} sync` "
+            "prints it too; until then no sync runs)"
+        ), wait
+        capsys.readouterr()
+        cli.main(["status", "--config", cfg])
+        out = capsys.readouterr().out.splitlines()
+    finally:
+        gov.chmod(0o700)
+    assert any(ln.startswith("last runs:") for ln in out), out
+    assert any(ln.startswith("HOLD: ") and "(config)" in ln for ln in out), out
+    assert any(ln.startswith("WAITING ON YOU") and "empty cloud" in ln for ln in out), out
+    assert loop.QUEUE_REFUSED_NOTE not in "\n".join(out), "the stopped sync's FAIL speaks, no note"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_purge_queue_this_account_cannot_open_is_still_named_by_a_sync_that_runs_c829(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C829's verifier: widening the except alone made a sync over purge-queue.json at 0000 (which runs) say
+    nothing of the queue in its output or STATE.md, the only record a background job keeps. A note says the
+    queue cannot be opened and points at status's governance.purge_queue line."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state = expand(config.state_paths.root)
+    with Manifest(config.state_paths.db) as m:
+        sid = next(r.stable_id for r in m.iter_items("work"))
+    selector = governance.PurgeSelector(stable_id=sid, source_id="work")
+    assert governance.enqueue_purge(state, selector, governance.PurgeReason.ERASURE_REQUEST)
+    queue = governance._queue_file(state)
+    queue.chmod(0o000)
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+        said = capsys.readouterr()
+        state_md = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    finally:
+        queue.chmod(0o600)
+    assert loop.QUEUE_REFUSED_NOTE in said.out + said.err, said
+    assert loop.QUEUE_REFUSED_NOTE in state_md, state_md
+
+
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

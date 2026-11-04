@@ -1621,7 +1621,13 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
                 holds = (*holds, *listed, *governance.audit_lost_holds(config.state_paths.root, listed))
     try:
         queued, kept = governance.partition_purges(config.state_paths, config=config)
-    except governance.GovernanceUnreadError as exc:
+    except governance.GovernanceError as exc:
+        # a refused open keeps the lines below too, as the hold read above does (B13 round 34 C829:
+        # governance/ at 0000 left one "cannot read the state" line where HOLD, last runs and sources belong)
+        if not isinstance(exc, governance.GovernanceUnreadError) and not isinstance(
+            exc.__cause__, PermissionError
+        ):
+            raise
         line = f"status: cannot read the state: {_unread_words(exc, config=config)}"
         if line not in out:  # governance/ itself: one line, not one per file under it (I89)
             out.append(line)
@@ -1869,6 +1875,8 @@ def _says_why(config: Config | None, filename: object) -> str | None:
         return doctor.state_folder_says_why(config)
     if path == root or path in files | {real(sp.token_cache_fallback)}:
         return "the state_dir lines say why"
+    if doctor.governance_refuser(root, path) is not None:  # the folder's one FAIL (B13 round 34 C832)
+        return "the governance.hold [FAIL] line says why"
     checks = {
         real(sp.lock): "lock",
         real(sp.heartbeat): "heartbeat",
@@ -1976,17 +1984,27 @@ def _unread_words(
         if why and exc.filename is not None:
             # a state file a check names (the lock, the heartbeat) by its name, as a governance file's is
             # below (Y45): "a file cannot be opened" beside a state file that reads (B13 round 25 D12)
-            said = f"{Path(os.fsdecode(exc.filename)).name} cannot be opened: {exc.strerror or exc}"
+            said = f"{_refused_name(config, exc.filename)} cannot be opened: {exc.strerror or exc}"
         return f"{said}; {why}" if why else said
     cause = exc.__cause__
     if isinstance(exc, AgentSyncError) and isinstance(cause, PermissionError):
         # a governance file this account cannot open (holds.json, the purge queue): its name and the system's
         # words, never "GovernanceError:", and the check whose line FAILs (B13 round 21 Y45)
-        name = Path(os.fsdecode(cause.filename)).name if cause.filename is not None else "a file"
+        name = _refused_name(config, cause.filename) if cause.filename is not None else "a file"
         said = f"{name} cannot be opened: {cause.strerror or cause}"
         why = _says_why(config, cause.filename)
         return f"{said}; {why}" if why else said
     return f"{type(exc).__name__}: {exc}"
+
+
+def _refused_name(config: Config | None, filename: Any) -> str:
+    """A refused state file by its name, or ``agentsync's governance folder`` when that folder refuses this
+    account a look inside, so holds.json's and purge-queue.json's lines read as the one folder's, one line
+    (I89), never a file that may not exist (B13 round 34 C832)."""
+    root = expand(config.state_paths.root) if config is not None else None
+    if root is not None and doctor.governance_refuser(root, filename) is not None:
+        return "agentsync's governance folder"
+    return Path(os.fsdecode(filename)).name
 
 
 def _guarded(
@@ -2902,7 +2920,14 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     try:
         split = governance.partition_queue(config.state_paths, config=config)
     except AgentSyncError as exc:
-        out.append(_refused_check(config, "governance.purge_queue", exc))
+        refused = _refused_check(config, "governance.purge_queue", exc)
+        if any(r.name == "governance.hold" and not r.ok and r.detail == refused.detail for r in out):
+            # one refusal, the folder's, one FAIL: governance.hold's says it (B13 round 34 C832), keyed on
+            # that line's equal detail, so this never points at a FAIL status did not print
+            not_checked = f"not checked: {refused.detail}; the governance.hold line says why"
+            out.append(_check("governance.purge_queue", False, not_checked, doctor.Severity.INFO))
+        else:
+            out.append(refused)
         return out
     queued, kept = split.runnable, split.kept
     # the purge record read apart: one that cannot be read never reads as "no purge queued", and the queue's
@@ -3996,6 +4021,8 @@ def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None
     if where is None:
         return None
     fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
+    if doctor.governance_refuser(root, where) is not None:  # the folder, as status names it (C832)
+        where = where.parent
     why = _folder_refuses(where, fix)
     return f"error: state: {where} cannot be opened: {exc.strerror or exc}{why} (fix: {fix})"
 
