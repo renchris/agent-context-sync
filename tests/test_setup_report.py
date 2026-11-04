@@ -2640,6 +2640,9 @@ def test_an_audit_hold_value_leaves_every_audit_line_whole_c302(tmp_path: Path) 
     assert set(built) <= literals, set(built) - literals
     texts = [t for lit in literals for t in built.get(lit, [lit])]
     texts += [line for line in _OLDER_PRINTED if "audit" in line]  # B13 round 33 ruling 81's listing note
+    # install.sh's own printed literals too, as the C502 scan reads them (B13 round 34 ruling 95: step 1's
+    # -mixed tails credit `the audit trail or purge-record.json`, install.out keeps them)
+    texts += _install_hold_word_texts("audit")
     assert len(texts) > 25, texts
     red = setup_report.Redactor()
     red.add("value", "Audit", ignore_case=True)

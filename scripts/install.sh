@@ -2265,7 +2265,7 @@ FIXED_VALUE_PHRASES+="|lost a purge the audit trail or purge-record.json records
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge refused"
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold, since setting it again keeps every purge it covers refused"
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold that covers it, as its status line says"
-FIXED_VALUE_PHRASES+="|where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing"
+FIXED_VALUE_PHRASES+="|any hold list, its audit trail, the purge queue and any suppression list"
 FIXED_VALUE_PHRASES+="|the records owner sets the hold again or releases it, which fixes the hold line only"
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold they run each such purge by hand"
 FIXED_VALUE_PHRASES+="|kept by the audit trail or purge-record.json"
@@ -5638,10 +5638,10 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
 		say "  there or as an added source's typed folder, cut at its first part that is not a fixed macOS folder or one"
-		say "  every home or drive has; and every word bash wrote in its dollar-quote form (\$'...'), which install.log uses"
-		say "  for a name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the C"
-		say "  locale, any character outside ASCII); and a path in another home (/Users/ and any folder but Shared or this"
-		say "  login's), cut whole, an unquoted one with a blank keeping its tail after the first blank"
+		say "  every home or drive has; a path in another home (/Users/ and any folder but Shared or this login's), cut"
+		say "  whole, an unquoted one with a blank keeping its tail after the first blank; and every word bash wrote in its"
+		say "  dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control character, a"
+		say "  curly apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
@@ -10406,7 +10406,7 @@ mixed_chmods() { # STATUS_OUTPUT
 	local b rest
 	b="$(blocking_fails "$1")"
 	[ -n "$b" ] && printf '%s\n' "$b" | LC_ALL=C grep -Eq "$PERSON_FIX_RE" || return 0
-	rest="$(printf '%s\n' "$b" | LC_ALL=C grep -Ev "$PERSON_FIX_RE" || true)"
+	rest=$(printf '%s\n' "$b" | LC_ALL=C grep -Ev "$PERSON_FIX_RE" || true) # an assignment: no outer quotes needed
 	[ -n "$rest" ] || return 0
 	state_chmods_of "$rest"
 }

@@ -1388,7 +1388,7 @@ _FIXED_VALUE_PHRASES = (
     "once the records owner releases the hold, since setting it again keeps every purge it covers refused",
     "once the records owner releases the hold that covers it, as its status line says",
     # step 1's governance-gone tails (B13 round 34 ruling 94, lane RB: C810's tails, C805's rebuilt fix)
-    "where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing",
+    "any hold list, its audit trail, the purge queue and any suppression list",
     "the records owner sets the hold again or releases it, which fixes the hold line only",
     "once the records owner releases the hold they run each such purge by hand",
     # step 1's -mixed tails, both stores credited (B13 round 34 ruling 95, lane RB: C872)

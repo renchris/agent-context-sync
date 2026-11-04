@@ -3775,9 +3775,10 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         "a relative --source-local argument in install.log (which records no working directory) whose first "
         "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
         "configured folder, there or as an added source's typed folder, cut at its first part that is not a "
-        "fixed macOS folder or one every home or drive has; and every word bash wrote in its dollar-quote "
-        "form ($'...'),"
-    ), item  # B13 round 31 ruling 49 (C529): an added source's typed folder named
+        "fixed macOS folder or one every home or drive has; a path in another home (/Users/ and any "
+        "folder but Shared or this login's), cut whole, an unquoted one with a blank keeping its tail after "
+        "the first blank; and every word bash wrote in its dollar-quote form ($'...'),"
+    ), item  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
