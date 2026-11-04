@@ -12882,6 +12882,64 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v11"]
 
 
+_C813_HEAD = "- install.sh · step 2 · run "
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_earlier_failed_run_of_a_failed_attempt_is_an_item_with_its_mode_fix_c813(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 34 C813: a step 2 run stopped on the agent's chmod FAIL and the re-run stopped on the
+    person's FAIL; Items named only the last stop, as no run ended 0, so the first stop and the chmod were in
+    no line. A line names the earlier run's [FAIL] checks and the next run's, adding `after the file's mode
+    was fixed` only when every [FAIL] the next run dropped had the agent's chmod; the outcome is unchanged."""
+    log = fake_mac["setup"] / "install.log"
+    out = fake_mac["setup"] / "install.out"
+    state = "~/'Library/Application Support/agentsync"
+    audit = (
+        "[FAIL] governance.audit — x cannot be opened: Permission denied (fix: chmod 600 "
+        f"{state}/governance/audit.jsonl')"
+    )
+    supp = "[FAIL] governance.suppressed — x (fix: the person puts it back from a copy they trust)"
+    write_friction(fake_mac, retry_friction())
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1, status_failed=True)
+        + install_run("2026-09-29T10:20:00Z", 1, status_failed=True).replace("100000Z", "102000Z"),
+        encoding="utf-8",
+    )
+
+    def items(first: list[str], second: list[str]) -> tuple[str, str]:
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            + "".join(f"{ln}\n" for ln in first)
+            + "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n"
+            + "".join(f"{ln}\n" for ln in second),
+            encoding="utf-8",
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        head = summary.strip().splitlines()[0]
+        return head, summary.split("Items that were not one command (attempt 1):", 1)[1]
+
+    first, got = items([audit, supp], [supp])
+    assert first.startswith("- **outcome: failed at step 2**"), first
+    line = next(
+        ln for ln in got.splitlines() if ln.startswith("- install.sh · step 2 · run 20260929T100000Z")
+    )
+    assert line == (
+        "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step ([FAIL] governance.audit; "
+        "governance.suppressed); the next run exited 1 at its status step ([FAIL] governance.suppressed) "
+        "after the file's mode was fixed"
+    ), line
+    assert "| step 2 | error" not in got and "- F" in got, got  # the agent's error line is still its own item
+    _first, got = items([supp], [supp])  # nothing dropped: no mode clause
+    line = next(
+        ln for ln in got.splitlines() if ln.startswith("- install.sh · step 2 · run 20260929T100000Z")
+    )
+    assert line.endswith("the next run exited 1 at its status step ([FAIL] governance.suppressed)"), line
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     fake_mac: dict[str, Path], tmp_path: Path

@@ -16775,7 +16775,7 @@ every ``governance.`` check (holds.json and the purge queue, read as lock and he
 _FIX_RE = re.compile(r"\(fix: (?P<fix>.*)\)$")
 
 
-def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
+def _state_mode_fixed(r: _Run, run: InstallRun, only: Collection[str] | None = None) -> str | None:
     """For a run that stopped at its status (or doctor) step, what the run that ended 0 came after, when
     every ``[FAIL]`` of its block is a state-folder check (:data:`_STATE_MODE_CHECKS`) whose fix is a chmod by
     the agent (no ``doctor.is_persons_fix``) of the state folder or paths in it: "after the folder's mode was
@@ -16787,7 +16787,8 @@ def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
     Each fix is read as install.sh's ``state_chmods`` reads it, so the words cover the chmods its NEXT hands
     the agent: split as the shell would and each path resolved, which also reads a state folder whose name
     holds an apostrophe (doctor's ``~/"Contoso's state"``) and a fix that names several paths (B13 round 23
-    A12, A45)."""
+    A12, A45). ``only``: judge only the [FAIL] lines of these checks, the ones a later run no longer printed
+    (B13 round 34 C813)."""
     if r.config is None:
         return None
     block = _run_block(r, run)
@@ -16805,6 +16806,8 @@ def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
             found = _FIX_RE.search(ln.strip())
             fix = found.group("fix") if found is not None else ""
             name = m.group(2)
+            if only is not None and name not in only:
+                continue
             if name not in _STATE_MODE_CHECKS and not name.startswith("governance."):
                 return None
             words = shlex.split(fix) if fix.startswith("chmod ") else []
@@ -16920,6 +16923,23 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
     that did not end rc 0 (a step name is printed only when it is one of install.sh's own words), a status
     step's [FAIL] checks (:func:`_status_fail_names`), and how the run that ended 0 (``ok``) repeated it
     (:func:`_again_words`)."""
+    failing, at = _failed_at(r, run)
+    again = _again_words(run, ok)
+    if failing is not None:
+        state = _state_open_words(r, run) if failing == "config" else None
+        if state is not None:  # Y5: the cause, and what the run that ended 0 came after
+            at += state[0]
+            again = again.removesuffix(" and ended 0") + f" and ended 0 {state[1]}"
+        mode = _state_mode_fixed(r, run) if failing in ("status", "doctor") else None
+        if mode is not None:  # B13 round 22 Z19: the agent's chmod between the two runs
+            again = again.removesuffix(" and ended 0") + f" and ended 0 {mode}"
+    return f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; " + again
+
+
+def _failed_at(r: _Run, run: InstallRun) -> tuple[str | None, str]:
+    """``run``'s first step that did not end rc 0 and its words: `` at its <step> step``, a status step's
+    [FAIL] checks (:func:`_status_fail_names`) and a signal's words; (None, "") when every step ended 0.
+    :func:`_retry_line`'s, with no run that ended 0 needed (B13 round 34 C813)."""
     failing = next(
         (
             (name, f" at its {_step_word(name)} step", fields.get("rc", ""))
@@ -16929,25 +16949,56 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
         ),
         None,
     )
-    at = ""
-    again = _again_words(run, ok)
-    if failing is not None:
-        at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
-        # B13 round 32 C612 (ruling 66): a step a signal stopped is named by its signal, in the step row's
-        # words; "from outside install.sh" only for the first sync, the one step install.sh's NEXT says it of
-        words = _rc_words(failing[2])
-        if words.startswith("stopped by "):
-            outside = ", from outside install.sh" if failing[0] == "first-sync" else ""
-            # inside a status step's [FAIL] bracket when it has one: never two in a row (C617, ruling 66)
-            at = _one_bracket(at, f"{words}{outside}")
-        state = _state_open_words(r, run) if failing[0] == "config" else None
-        if state is not None:  # Y5: the cause, and what the run that ended 0 came after
-            at += state[0]
-            again = again.removesuffix(" and ended 0") + f" and ended 0 {state[1]}"
-        mode = _state_mode_fixed(r, run) if failing[0] in ("status", "doctor") else None
-        if mode is not None:  # B13 round 22 Z19: the agent's chmod between the two runs
-            again = again.removesuffix(" and ended 0") + f" and ended 0 {mode}"
-    return f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; " + again
+    if failing is None:
+        return None, ""
+    at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
+    # B13 round 32 C612 (ruling 66): a step a signal stopped is named by its signal, in the step row's
+    # words; "from outside install.sh" only for the first sync, the one step install.sh's NEXT says it of
+    words = _rc_words(failing[2])
+    if words.startswith("stopped by "):
+        outside = ", from outside install.sh" if failing[0] == "first-sync" else ""
+        # inside a status step's [FAIL] bracket when it has one: never two in a row (C617, ruling 66)
+        at = _one_bracket(at, f"{words}{outside}")
+    return failing[0], at
+
+
+def _block_fail_checks(r: _Run, run: InstallRun) -> set[str] | None:
+    """The checks ``run``'s install.out block printed a [FAIL] line for; None when the block is not read."""
+    block = _run_block(r, run)
+    if block is None:
+        return None
+    found = (_DOCTOR_TAG_RE.match(ln.strip()) for ln in block)
+    return {m.group(2) for m in found if m is not None and m.group(1) == "FAIL"}
+
+
+def _failed_before_lines(r: _Run, att: Attempt, runs: Sequence[InstallRun], outcome: Outcome) -> list[str]:
+    """Items' line for each install run of a failed attempt that ended non-zero before its last one, which the
+    retry lines never name, as no run ended 0 (B13 round 34 C813: a step 2 run that stopped on the agent's
+    chmod, then a re-run that stopped on the person's FAIL, said nothing of the first stop or the chmod).
+    Each names its step and [FAIL] checks and the next run's; ``after the file's mode was fixed`` (or the
+    folder's) only when every [FAIL] the next run no longer printed had the agent's chmod for its fix, never
+    who ran it. A run an agent error line names by its id is said there, never twice. The outcome is
+    unchanged."""
+    if outcome.kind != "failed" or att.begin is None or att.layout.version < 7:
+        return []
+    installs = [x for x in install_runs_only(runs) if x.rc is not None and x.rc not in STOPPED_EXITS]
+    told = " ".join(f"{e.what} {e.fix}" for e in att.of_kind("error"))
+    out: list[str] = []
+    for run, nxt in itertools.pairwise(installs):
+        if run.rc == 0 or run.display_id in told:
+            continue
+        failing, at = _failed_at(r, run)
+        _next_failing, next_at = _failed_at(r, nxt)
+        line = (
+            f"- install.sh · step {att.layout.install_step} · run {run.display_id} exited {run.rc}{at}; the "
+            f"next run exited {nxt.rc}{next_at}"
+        )
+        before, after = _block_fail_checks(r, run), _block_fail_checks(r, nxt)
+        if failing in ("status", "doctor") and before and after is not None and before - after:
+            mode = _state_mode_fixed(r, run, only=before - after)
+            line += f" {mode}" if mode is not None else ""
+        out.append(line)
+    return out[:INSTALL_RUNS_SHOWN]
 
 
 def _latest_runs(r: _Run) -> list[InstallRun]:
@@ -17327,7 +17378,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
             "(not logged: the agent logged no line for this stop)"
         )
-    if att is not None and (items or retried or unread or signed_out or install_stop or stops or told):
+    failed_before = _failed_before_lines(r, att, runs, outcome) if att is not None and not retried else []
+    if att is not None and (
+        items or retried or unread or signed_out or install_stop or stops or told or failed_before
+    ):
         if signed_out:
             out.append(signed_out)
         if install_stop:
@@ -17340,6 +17394,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 + (" (install.out has its warning)" if warned else "")
                 + "; the folder question was a turn agentsync caused"
             )
+        out += failed_before  # B13 round 34 C813: ahead of the stop and F-line items
         if retried:  # retried_runs stops at the attempt's first install run that ended 0
             ok = next(run for run in install_runs_only(runs) if run.rc == 0)
             out += [_retry_line(r, run, ok, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]

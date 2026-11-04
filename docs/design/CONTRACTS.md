@@ -37354,6 +37354,19 @@ still without a page` leaves both phrase lists (install.sh's FIXED_VALUE_PHRASES
 `tests/test_setup_report.py::test_a_failed_conversions_stub_is_counted_as_a_stub_page_c826`, seeded, never on a file
 another lane's fix stops failing.
 
+**An earlier failed run of a failed attempt is an item** (C813). A step 2 run that stopped on the agent's chmod and a
+re-run that stopped on the person's FAIL left Items naming only the last stop: `retried_runs` names a failed run only
+once a later one ends 0. `_failed_before_lines` adds, for a failed outcome on prompt v7 or later with a begin time
+and two or more install runs with an end line (no stopped exit), one line per run that ended non-zero before the
+last, capped at `INSTALL_RUNS_SHOWN`, ahead of the stop and F-line items: `- install.sh · step 2 · run <id> exited 1
+at its status step ([FAIL] governance.audit; governance.suppressed); the next run exited 1 at its status step ([FAIL]
+governance.suppressed)`, built by `_failed_at`, which `_retry_line` now shares. ` after the file's mode was fixed`
+(or the folder's) follows only when every [FAIL] the next run dropped had the agent's chmod for its fix
+(`_state_mode_fixed(..., only=...)`), never who ran it; a run an agent error line names by its id is said there,
+never twice. `retried_runs`, `compute_outcome` and the outcome are unchanged. Test:
+`tests/test_setup_report.py::test_an_earlier_failed_run_of_a_failed_attempt_is_an_item_with_its_mode_fix_c813`, with
+the same FAIL set on both runs as its negative.
+
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
 Reserved for round 34 lane RB of B13.
