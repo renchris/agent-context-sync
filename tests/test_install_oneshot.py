@@ -4974,6 +4974,118 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     assert "cut off or not measured" not in last_line(cp), "a quoted note fakes no cut-off"
 
 
+_SOURCE_AT = "- install source: ~/src/agent-context-sync @ a73e4ea74b2c"
+_JOB = "- com.agentsync.poll: not measured"
+
+
+@pytest.mark.parametrize(
+    ("lines", "limit"),
+    [
+        ([f"- Loop: installed; NEXT: not read ({setup_report._NOT_IN_TIME})"], True),
+        (
+            [f"- Loop: installed; NEXT: not read ({setup_report._NOT_IN_TIME}: a sync held the state file)"],
+            True,
+        ),
+        ([f"- Loop: installed; NEXT: not read ({setup_report._BUSY_WHY})"], True),
+        (["- Loop: not read (status did not finish in time); NEXT: not read (no loop hook)"], True),
+        ([f"{_SOURCE_AT} (git did not answer within 3.0s) · {setup_report._IDLE_AGAIN}"], False),
+        (
+            [
+                f"{_SOURCE_AT} (commit and origin not read: xcode-select did not answer within 3.0s) · "
+                f"{setup_report._IDLE_AGAIN}"
+            ],
+            False,
+        ),
+        (
+            [
+                f"{_SOURCE_AT} · origin: not read (git did not answer within the report's time limit) · "
+                f"{setup_report._IDLE_AGAIN}"
+            ],
+            True,
+        ),
+        (
+            [
+                f"- background sync: poll not measured: {setup_report._IDLE_AGAIN}",
+                f"{_JOB} (launchctl print did not answer within 5.0s; plist present)",
+            ],
+            False,
+        ),
+        (
+            [
+                f"- background sync: poll not measured: {setup_report._IDLE_AGAIN}",
+                f"{_JOB} (the report's time limit was used up before launchctl print ran; plist present)",
+            ],
+            True,
+        ),
+        (["- Loop: installed; NEXT: not read (no loop hook)"], None),
+        (["- Loop: not read (ValueError)"], None),
+        (["- Loop: not read (status failed: OSError)"], None),
+    ],
+    ids=[
+        "loop-timeout",
+        "loop-timeout-held",
+        "loop-busy",
+        "status-cut",
+        "git-timeout",
+        "xcode-timeout",
+        "git-spent",
+        "launchctl-timeout",
+        "launchctl-spent",
+        "no-loop-hook",
+        "crash",
+        "status-failed",
+    ],
+)
+def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834(
+    env: dict[str, str], tmp_path: Path, lines: list[str], limit: bool | None
+) -> None:
+    """B13 round 34 ruling 97. C821: a Loop read the report cut writes no `_IDLE_AGAIN` marker, so the NEXT
+    never said part of the report was cut; a second grep in the same `if` reads the cut Loop line's own words
+    (the hook's time-out, a state file a sync held, a Status call that did not finish), never `no loop hook`,
+    a crash or `status failed`. C834: git, xcode-select and launchctl print keep their fixed caps, so when
+    only those timed out (their seconds named) the NEXT says to run again once idle and names no variable; a
+    doctor, evidence or Loop cut, or a line saying the report's budget was spent, keeps
+    AGENTSYNC_REPORT_TIME_LIMIT=60, as an older build's words (no seconds) do."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    old = tmp_path / "report.md"
+    old.write_text(
+        "# agentsync setup report\n\n## Summary\n\n" + "\n".join(lines) + "\n\n## Redaction\n\n"
+        "Private only: one of your folder, library or organization names is ...\n"
+    )
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n")
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    back = report_path(env).parent / "bring-back.md"
+    if limit is None:
+        assert last_line(cp).startswith(f"NEXT: review {back} and copy that one file back"), last_line(cp)
+        return
+    again = (
+        "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
+        "was busy, run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle"
+    )
+    variable = ", or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy"
+    head = again + (variable if limit else "") + f"; either way, review {back} and copy that one file back"
+    assert last_line(cp).startswith(head), last_line(cp)
+    assert ("AGENTSYNC_REPORT_TIME_LIMIT" in last_line(cp)) is limit, last_line(cp)
+
+
+def test_the_cut_loop_grep_holds_the_reports_own_words_c821() -> None:
+    """B13 round 34 ruling 97 (C821): install.sh's REPORT_LOOP_CUT names setup_report's time-out and busy
+    words, and the marker grep beside it is unchanged, so the report and the NEXT read one set of words."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [cut] = re.findall(r"(?m)^REPORT_LOOP_CUT='(.*)'$", text)
+    assert setup_report._NOT_IN_TIME in cut and setup_report._BUSY_WHY in cut, cut
+    assert "status did not finish in time" in cut
+    assert (
+        "{ LC_ALL=C grep -qE '^- (doctor|evidence|install source|background sync): .*write the report again "
+        'when this Mac is idle\' "$REPORT_PATH" ||' in text
+    )
+    assert 'LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$REPORT_PATH"; }; then' in text
+
+
 @pytest.mark.parametrize("link", [True, False])
 @pytest.mark.parametrize("count", [1, 2])
 def test_local_work_branches_with_no_patch_are_named_in_the_next_line(

@@ -36597,6 +36597,7 @@ flag would have exited 2), and with_timeout's 120 s stays above it. install.sh p
 as it is, and a test proves the report sees it. `time limit` stays out of the NEXT, as round 20's X37 pinned; the
 variable's name is not those words. Tests: `test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review`
 (its `install source` case), `test_the_report_runs_with_the_time_limit_the_person_gave_it`.
+Amended 2026-11-03, §16.226 C834: the clause is now named only where more time can help: a doctor, evidence or Loop cut or a spent budget, not reads that timed out on their fixed caps (B13 round 34 ruling 97).
 
 **install_sh waits as long as install.sh may** (C769's install_sh half, ruling 90; `tests/test_install_oneshot.py`).
 A test's 120 s bound on a real agentsync run went red at loads of 200 to 650, never on a diff, and install.sh itself may
@@ -37474,6 +37475,25 @@ list with `step 2 stops at its status step on` and then the hold list with the s
 stop names` after a list's clause; `state-hold-lost` is unchanged, and the hold alone keeps LOST_HOLD_TAIL. The
 guide test reads the hold clause through `$hlead`. Test:
 `test_a_lost_hold_beside_a_lost_list_is_named_in_the_same_status_stop_c837` (the queue, and both lists).
+
+**The NEXT says a cut Loop read and names the time limit only where it helps** (C821 and C834; ruling 97; amends
+§16.219 C726; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). A Loop read the report cut writes no
+`_IDLE_AGAIN` marker, so `--report-only`'s NEXT never said part of the report was cut off. The marker grep stays byte
+for byte, and a second grep in the same `if` reads `REPORT_LOOP_CUT`, `^- Loop: (.*; NEXT: )?not read \((it did not
+finish in time|the state file is busy: a sync holds it|status did not finish in time)`: setup_report's
+`_NOT_IN_TIME` (with or without its held-state tail), `_BUSY_WHY` and ruling 96's cut Status; never `no loop hook`, a
+crash or `status failed`. The comment that said every cut part writes the marker is corrected. Ruling 96 keeps
+git's and xcode-select's 3 s and launchctl print's 5 s caps, so `report_time_helps` keeps `, or put
+AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy` only when a doctor or evidence line carries
+the marker, the Loop read was cut, or a line says the report's own budget was spent (the install-source line's `the
+report's time limit`, `, time limit)` or `(time limit)`, a Background job's `the report's time limit was used up
+before launchctl print ran`, Status's `Not run: the report's time budget was used up before status started`); when
+only the capped reads timed out, by their seconds (`did not answer within <n>s`), the NEXT says to run again once
+idle and names no variable. An older build names no seconds and keeps the clause. Both are defined before
+`on_exit`, which `--report-only` reaches before the script's later definitions. Tests:
+`test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834` (each Loop form, the capped
+time-outs, the spent budget, and `no loop hook`, a crash and `status failed` as negatives) and
+`test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

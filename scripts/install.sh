@@ -7400,8 +7400,26 @@ unanswered_listings() {
 		say "heartbeat.$id: this run ended before its closing status, so it does not say whether its sync cleared it: $AGENTSYNC status does"
 	done
 }
+# A Loop line whose read the report cut (B13 round 34 ruling 97, C821): the loop hook's time-out
+# (setup_report._NOT_IN_TIME, with or without its `: a sync held the state file` tail), a state file a sync held
+# (_BUSY_WHY), or a Status call that did not finish (ruling 96's `status did not finish in time`), behind the stage
+# or as the stage; never `no loop hook`, a crash or `status failed`, which more time does not change. A test keeps
+# the words equal to setup_report's.
+REPORT_LOOP_CUT='^- Loop: (.*; NEXT: )?not read \((it did not finish in time|the state file is busy: a sync holds it|status did not finish in time)'
+# Whether AGENTSYNC_REPORT_TIME_LIMIT can help the cut a report says (B13 round 34 ruling 97, C834): a doctor or
+# evidence line cut, a cut Loop read, or a line saying the report's own budget was spent (Run metadata's install
+# source, a Background job line, Status's `Not run:`) scale with it; git, xcode-select and launchctl print keep their
+# fixed 3 s and 5 s caps, so when only those timed out, by their seconds, it names no variable. An older build's
+# words name no seconds and keep the clause.
+report_time_helps() { # REPORT
+	LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$1" && return 0
+	LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$1" && return 0
+	LC_ALL=C grep -qE "^- install source: .*(the report's time limit|, time limit\)|\(time limit\))|^- [^ ]+\.(poll|reconcile): not measured \(the report's time limit was used up before launchctl print ran|^Not run: the report's time budget was used up before status started" "$1" && return 0
+	! LC_ALL=C grep -qE '^- install source: .*did not answer within [0-9]|^- [^ ]+\.(poll|reconcile): not measured \(launchctl print did not answer within [0-9]' "$1"
+}
 on_exit() {
 	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote up uthem
+	local limit
 	trap - EXIT
 	# A signal from here on (a coding tool's timeout during the report) is recorded, and the run finishes:
 	# on_signal's exit came with the EXIT trap gone, so no report step line, bring-back.md, issue link or NEXT
@@ -7511,22 +7529,27 @@ on_exit() {
 				# B13 round 19 W3: a part the report's time limit cut off (its doctor on a busy Mac) asked for the
 				# report again only inside the report. The NEXT the agent relays says so too, as advice beside the
 				# review, never a step before it: a doctor that is always slow would hold the bring-back or loop an
-				# agent. The marker is setup_report._IDLE_AGAIN, which every cut-off part writes, and so does an
-				# evidence line whose only gap is a state file a sync held (B13 round 20 X37): the words name no
-				# cause, the Summary does. An older installed agentsync without it adds nothing. Before the remedy
-				# for an unreadable patch, which keeps its words. Read only at the start of the report's doctor,
-				# evidence, install source and background sync lines, the four that write it (lane RA's round 33
-				# ruling 83, C702 and C720: a git or a launchctl the report could not ask): the Summary and the friction log both repeat an agent's notes word
-				# for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66). A Mac that stays
-				# busy gets more time, which the report's own AGENTSYNC_REPORT_TIME_LIMIT clamps and an older build
-				# ignores, and which this run's environment passes on (ruling 83: C726).
+				# agent. The marker is setup_report._IDLE_AGAIN, which the doctor, evidence, install source and
+				# background sync lines write when cut, and so does an evidence line whose only gap is a state file a
+				# sync held (B13 round 20 X37): the words name no cause, the Summary does. An older installed
+				# agentsync without it adds nothing. Before the remedy for an unreadable patch, which keeps its words.
+				# Read only at the start of those four lines (lane RA's round 33 ruling 83, C702 and C720: a git or a
+				# launchctl the report could not ask): the Summary and the friction log both repeat an agent's notes
+				# word for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66). The Loop line
+				# writes no marker when its read is cut, so the second grep reads its own words (REPORT_LOOP_CUT,
+				# B13 round 34 ruling 97, C821). A Mac that stays busy gets more time, which the report's own
+				# AGENTSYNC_REPORT_TIME_LIMIT clamps and an older build ignores, and which this run's environment
+				# passes on (ruling 83: C726); named only where it can help (report_time_helps, C834).
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ -f "$REPORT_PATH" ] &&
-					LC_ALL=C grep -qE '^- (doctor|evidence|install source|background sync): .*write the report again when this Mac is idle' "$REPORT_PATH"; then
+					{ LC_ALL=C grep -qE '^- (doctor|evidence|install source|background sync): .*write the report again when this Mac is idle' "$REPORT_PATH" ||
+						LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$REPORT_PATH"; }; then
 					# Y23's branch NEXT already owns the one "either way" before the review: "also" then joins the
 					# two pieces of advice (B13 round 22 Z44: the line said "either way" twice)
 					join="; either way, "
 					case "$NEXT_MSG" in *"; either way, "*) join="; also, " ;; esac
-					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle, or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy$join$NEXT_MSG"
+					limit=""
+					! report_time_helps "$REPORT_PATH" || limit=", or put AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy"
+					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle$limit$join$NEXT_MSG"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier
