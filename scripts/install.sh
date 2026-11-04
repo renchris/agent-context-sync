@@ -4002,7 +4002,42 @@ redact_stream() {
 		print line
 	}
 	END { if (hn && ENVIRON["HOLD_WORD_FILE"] != "") print hn > ENVIRON["HOLD_WORD_FILE"] } # the words cut, each once' |
-		typed_note_cut
+		typed_note_cut | foreign_home_cut
+}
+# A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
+# cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
+# cuts it (B13 round 34 ruling 91, C822): after the pairs pass, so this home is already ~ and the login <user>.
+# `/Users/` not right after a letter, a digit, `_`, `.` or `-`, and its next component neither `Shared` whole nor
+# one that starts with `<` (a placeholder, the login's <user>). Right after a quote or a backtick the path runs to
+# the same mark's next one on the line; else one component, a `\` taking the byte after it (printf %q), and an
+# optional `/` tail, each up to a blank, a quote, a backtick, a bracket ((), [] or {}), `,` or `;`. An unquoted
+# path with a blank keeps its tail after the blank. Byte-wise, no regex lookahead (BSD has none).
+foreign_home_cut() {
+	LC_ALL=C awk '
+	function upto(s, k, slash,    ch) { # the first byte at or after k that ends the path (slash: "/" ends it too)
+		while (k <= length(s)) {
+			ch = substr(s, k, 1)
+			if (ch == "\\" && k < length(s)) { k += 2; continue }
+			if (index(STOP, ch) || (slash && ch == "/")) break
+			k++
+		}
+		return k
+	}
+	BEGIN { STOP = " \t\r\f\v\"\047`()[]{},;" }
+	{
+		s = $0; out = ""
+		while ((i = index(s, "/Users/")) > 0) {
+			pre = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
+			k = upto(s, i + 7, 1); comp = substr(s, i + 7, k - i - 7)
+			if (comp == "" || comp == "Shared" || pre ~ /[A-Za-z0-9_.-]/ || substr(comp, 1, 1) == "<") {
+				out = out substr(s, 1, i + 6); s = substr(s, i + 7); continue
+			}
+			out = out substr(s, 1, i - 1) "/Users/<path>"
+			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, i + 7), pre))) s = substr(s, i + 6 + q)
+			else s = substr(s, upto(s, k, 0))
+		}
+		print out s
+	}'
 }
 # add-source's and init's note, `added source '<id>' to <file> (<typed>, stored as <stored>):` and its inbox twin
 # `added inbox source '<id>' (<typed>, stored as <stored>):`, read by its structure after every pair has run, as
@@ -5532,13 +5567,15 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <path> "*)
 		# a configured ~/ or absolute argument is matched by its configured folders, as the body shows it (B13 round
 		# 21 Y8); any other is cut to <path>, as the Python report cuts it (round 22 Z2, Z13, Z29, Z42, Z77)
-		# and an added source's typed folder, cut as the argument is (B13 round 31 ruling 49: C529, lane RA's words)
+		# and an added source's typed folder, cut as the argument is (B13 round 31 ruling 49: C529, lane RA's words);
+		# a path in another home, foreign_home_cut's (B13 round 34 ruling 91, C822)
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
 		say "  there or as an added source's typed folder, cut at its first part that is not a fixed macOS folder or one"
 		say "  every home or drive has; and every word bash wrote in its dollar-quote form (\$'...'), which install.log uses"
 		say "  for a name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the C"
-		say "  locale, any character outside ASCII)"
+		say "  locale, any character outside ASCII); and a path in another home (/Users/ and any folder but Shared or this"
+		say "  login's), cut whole, an unquoted one with a blank keeping its tail after the first blank"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)

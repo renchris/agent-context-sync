@@ -4066,6 +4066,38 @@ def test_the_typed_cuts_word_lists_are_the_shells_and_the_reports() -> None:
     [fixed] = re.findall(r"(?m)^\tTYPED_FIXED='(.*)' \\$", script)
     assert set(fixed.split("|")) == set(setup_report._PATH_COMPONENTS)
 
+def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str]) -> None:
+    """B13 round 34 ruling 91, C822's shell half: a moved home's install.log (source=, a %q args= naming
+    another account's OneDrive folder), a free-text line and a bare ``/Users/<old>`` printed the old login,
+    its org and a folder in clear in setup-report.md and bring-back.md. Each is cut whole to /Users/<path>,
+    uncounted; /Users/Shared and this login's /Users/<user>/ stay."""
+    login = subprocess.run(["id", "-un"], capture_output=True, text=True, check=True).stdout.strip()
+    old = "/Users/dana.fabrikam"
+    local = f"{old}/Library/CloudStorage/OneDrive-Fabrikam/Client\\ Alpha"
+    log = install_log_path(env)
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        f"2026-11-03T09:00:00Z run=20261103T090000Z-77 start install.sh compat=33 commit=0123456789ab "
+        f"kind=checkout source={old}/src/agent-context-sync args=--source-local {local}\n"
+        "2026-11-03T09:00:00Z run=20261103T090000Z-77 step=config seconds=1 rc=0 result=done note=created\n"
+        "2026-11-03T09:00:01Z run=20261103T090000Z-77 end rc=0 seconds=1\n"
+        f"error: cannot read {old}/Library/CloudStorage/OneDrive-Fabrikam/Client Alpha/plan.docx\n"
+        f"moved from {old}, kept /Users/Shared/drop and (/Users/Shared) and /Users/{login}/sandbox\n"
+        "quoted '/Users/dana fabrikam/Client Alpha/plan.docx' ok, `/Users/SharedFabrikam/y`\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        text = path.read_text()
+        for word in ("dana", "fabrikam", "Fabrikam", "Client"):
+            assert word not in text, (path.name, word)
+        assert "source=/Users/<path> args=--source-local /Users/<path>\n" in text, path.name
+        assert "error: cannot read /Users/<path> Alpha/plan.docx" in text, "a blank ends an unquoted path"
+        assert (
+            "moved from /Users/<path>, kept /Users/Shared/drop and (/Users/Shared) and /Users/<user>/" in text
+        )
+        assert "quoted '/Users/<path>' ok, `/Users/<path>`\n" in text, "a quoted path runs to its quote"
+
 
 @pytest.mark.parametrize("same_run", [True, False])
 def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
@@ -19723,7 +19755,8 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
 SHELL_REDACTION_FNS = re.compile(
-    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|typed_note_cut|hold_cut)\(\) \{\n.*?^\}$"
+    r"(?ms)^(?:hold_values|hold_scopes|redaction_pairs|redact_stream|typed_note_cut|foreign_home_cut|hold_cut)"
+    r"\(\) \{\n.*?^\}$"
 )
 
 

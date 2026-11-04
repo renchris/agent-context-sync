@@ -37388,7 +37388,16 @@ half). `_Run.call` abandons a cut-off call's thread, and a doctor git child ran 
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
-Reserved for round 34 lane RB of B13.
+**The shell report cuts a path in another home whole** (C822's shell half, ruling 91; `scripts/install.sh`). A
+moved home's install.log `source=` and `--source-local` argument printed another account's login, its OneDrive
+organisation and a folder in clear in setup-report.md and bring-back.md. `foreign_home_cut`, the last stage of
+`redact_stream`, after the pairs pass (so this home is `~` and the login `<user>`), cuts `/Users/` (not right after a
+letter, digit, `_`, `.` or `-`) and the path after it to `/Users/<path>`, uncounted, as setup_report.Redactor does:
+`Shared` as the whole component and one that starts with `<` are kept; right after a quote or a backtick the path
+runs to the same mark's next one; else one component, a `\` taking the byte after it (printf %q), and an optional `/`
+tail, each up to a blank, a quote, a backtick, a bracket, `,` or `;`. Byte-wise under LC_ALL=C, with no lookahead.
+An unquoted path with a blank keeps its tail after the first blank, as the legend's `<path>` item says. Test:
+`test_the_shell_report_cuts_a_path_in_another_home_whole`.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 
