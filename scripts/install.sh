@@ -6931,6 +6931,14 @@ older_report_rewrite() { # MODE
 			return out (put ? "" : " \302\267 from the sign-in stop (" pl(nm, "check") "): " moved)
 		}
 		function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
+		# where the no-first-sync words start in a Summary sync line, an older build\047s or lane RA\047s round 34 C817
+		# form ("no install run"); NOFS their length
+		function nofs_at(line,    j) {
+			NOFS = 54
+			if ((j = index(line, "no install.sh run with a first-sync step (install.log)"))) return j
+			NOFS = 51
+			return index(line, "no install run with a first-sync step (install.log)")
+		}
 		# An older renderer writes "(s)" beside a known count in the lines the current one words by the count (B13
 		# round 14 Q39, Q42, Q43, Q81 and Q41, renderer only; round 15 S20): each keyed on the number in its
 		# own line, and never inside a <details> block, which holds history (the install.out tail).
@@ -7022,7 +7030,8 @@ older_report_rewrite() { # MODE
 			if (s1note != "" && sec == "## Doctor" && stopped_fail($0)) mv[stopped_fail($0)] = ++nmv
 			if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
 			if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
-			if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
+			# an older build\047s words and lane RA\047s (B13 round 34 C817: "no install run during this attempt")
+			if (index($0, "- install.sh: no run during this attempt") == 1 || index($0, "- install.sh: no install run during this attempt") == 1) norun = 1
 			if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
 			if (inside && $0 == "</details>") inside = 0
 			if (inside && left($0)) k++
@@ -7031,7 +7040,7 @@ older_report_rewrite() { # MODE
 			# F<n> under "Agent friction (...; it does not change the outcome by itself)" beside "failed at step
 			# 1"; read here whether that is the whole block and the friction line names F<n> alone
 			if (s1cmd && sec == "## Summary") {
-				if (index($0, "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)") == 1) s1out = 1
+				if (index($0, "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)") == 1 || index($0, "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)") == 1) s1out = 1
 				if (index($0, "- agent friction: ") == 1 && ends($0, " (F" s1fline "); none of these changes the outcome by itself")) s1fr = 1
 				if ($0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/) { af = 1; s1att = substr($0, 25, index($0, ";") - 25) }
 				else if (af && index($0, "- F" s1fline " ") == 1) mvline = $0
@@ -7045,7 +7054,7 @@ older_report_rewrite() { # MODE
 		cp && FNR == at {
 			n = length($0) - length(saw)
 			if (noout && n > 0 && substr($0, n + 1) == saw)
-				$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
+				$0 = substr($0, 1, n) was (norun ? "this attempt made no install run" : "none of this attempt\047s runs is in it") ")</summary>"
 			if (k > 0 && $0 ~ /^<details><summary>the last ([0-9]+ )?line(s|\(s\))? of .* \(.*\)<\/summary>$/)
 				$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 		}
@@ -7120,19 +7129,19 @@ older_report_rewrite() { # MODE
 		# a step 1 list stop: an older build says no run has a first-sync step, while install.log holds an
 		# earlier one; the renderer words a list-only attempt (setup_report M22) and tags the install.out counts
 		# as that earlier run\047s (B13 round 18 V16)
-		s1note != "" && sec == "## Summary" && $0 ~ /^- (first )?sync: no install\.sh run with a first-sync step \(install\.log\)/ {
-			j = index($0, "no install.sh run with a first-sync step (install.log)")
-			$0 = substr($0, 1, j - 1) "this attempt ran only install.sh --list-folders, no first sync (install.log)" substr($0, j + 54)
+		s1note != "" && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ {
+			j = nofs_at($0)
+			$0 = substr($0, 1, j - 1) "this attempt ran only install.sh --list-folders, no first sync (install.log)" substr($0, j + NOFS)
 			if ((j = index($0, " (install.out")) && !index($0, "before this attempt")) $0 = substr($0, 1, j - 1) " (install.out: " (ENVIRON["OR_FSSTART"] != "" ? "the install run of " ENVIRON["OR_FSSTART"] : "an earlier run\047s") ", before this attempt" substr($0, j + 13)
 		}
 		# a git stop (step1_cmd_stop_facts) after an install run with a first-sync step: the older build reads only
 		# this attempt\047s runs (none, or a --list-folders one) and words it as if install.log had none; only when
 		# install.log holds one (OR_FSSTART), whose start is before the error, which no install run follows (B13
 		# round 19 W21). Not "ran no install.sh": the attempt can hold a --list-folders run.
-		s1cmd && sec == "## Summary" && ENVIRON["OR_FSSTART"] != "" && $0 ~ /^- (first )?sync: no install\.sh run with a first-sync step \(install\.log\)/ {
+		s1cmd && sec == "## Summary" && ENVIRON["OR_FSSTART"] != "" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ {
 			tagged = index($0, "before this attempt")
-			j = index($0, "no install.sh run with a first-sync step (install.log)")
-			$0 = substr($0, 1, j - 1) "this attempt ran no first sync (install.log: the install run of " ENVIRON["OR_FSSTART"] ", before this attempt)" substr($0, j + 54)
+			j = nofs_at($0)
+			$0 = substr($0, 1, j - 1) "this attempt ran no first sync (install.log: the install run of " ENVIRON["OR_FSSTART"] ", before this attempt)" substr($0, j + NOFS)
 			if (!tagged && (j = index($0, " (install.out"))) $0 = substr($0, 1, j - 1) " (install.out: the install run of " ENVIRON["OR_FSSTART"] ", before this attempt" substr($0, j + 13)
 		}
 		# a git stop (step1_cmd_stop_facts; B13 round 18 V30): the older build warns that an attempt with no end

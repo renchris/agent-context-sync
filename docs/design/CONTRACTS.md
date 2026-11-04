@@ -37516,6 +37516,19 @@ mixed run; test_setup_report.py's mixed-run hint test is unchanged. Tests: the
 `test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state` and
 `test_a_chmod_beside_a_persons_fail_names_the_chmod_first_with_the_real_agentsync_c808` (rehearsal state TRAIL0).
 
+**The stopped copy's rewrites read lane RA's `no install run` words** (C817's installer half; `scripts/install.sh`).
+Lane RA's report says `no install run` where it said `no install.sh run`, and `this attempt made no install run` where
+it said `this attempt ran no install.sh`, one unconditional phrase. The stopped copy's rewrite of an older build's
+report reads both forms: the Summary's `- install.sh: no run during this attempt` or `no install run during this
+attempt`, the outcome's `(computed: no install.sh run; ...)` or `(computed: no install run; ...)`, and the first sync's
+`no install.sh run with a first-sync step (install.log)` or `no install run ...` (`nofs_at`, with each form's length);
+the embed's label it writes reads `this attempt made no install run`. OUTCOME_LINE_HEAD, the shell report's own copy of
+the report's words, moves in lane RA's C817 commit with the Python words, so no push holds one form beside the
+other. Tests: the new-words cases of
+`test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes`,
+`test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync` and
+`test_a_git_stop_of_the_older_build_names_the_earlier_first_sync`.
+
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 
 Round 34's ruling 92 and C804, C829, C832, C810, C811, C818, C831, C863, C843 and C875, in lane B's code: what a lost
