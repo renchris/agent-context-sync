@@ -1042,18 +1042,36 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   longer holds a purge the audit trail records as queued and not done (not damage, not a mode): fixing that is the
   person's (they put the purge queue back from a copy they trust, or, once the first is fixed, run each such
   purge by hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line`, its word logged
-  after the config step's (`config_err=state-file-notfile,state-queue-lost`); step 2's config-step `NEXT:` for any
+  after the config step's (`config_err=state-file-notfile,state-queue-lost`); under a hold that refuses the hand run,
+  that run there ends as in the tails above, `once the records owner releases the hold, since setting it again keeps
+  every purge it covers refused` for a hold the records keep and the hold list lost, and `once the records owner
+  releases the hold that covers it, as its status line says` for one still listed. A hold the hold list lost is named
+  after them in the hold list's clause above, opening `; once that is fixed, step 2 stops again at its status step on
+  agentsync's hold list` alone, or `; the same stop names agentsync's hold list` after a list's clause, its word
+  logged after theirs (`config_err=state-file-notfile,state-queue-lost,state-hold-lost`); never when the file that
+  stops first is the hold list, the hold record or governance/ (B13 round 34 C855). Step 2's config-step `NEXT:` for any
   config-step stop (other than the list itself) adds `and, on its governance.purge_queue line, a second stop that follows: the purge queue
-  lost a purge the audit trail records, also the person's to fix` (the suppression list's on its
-  governance.suppressed line; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
-  the purge queue lost a purge the audit trail records, also the person's to fix`; a hold the hold list lost likewise on
-  governance.hold, logged `state-hold-lost`, and under a hold that refuses it the queue's by-hand run ends `once the
-  records owner releases the hold, since setting it again keeps every purge it covers refused`, or `once the records
-  owner releases the hold that covers it, as its status line says` for a hold still listed) and ends `once both are fixed, the
+  lost a purge the audit trail records, also the person's to fix` (the suppression list's `and, on its
+  governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records,
+  also the person's to fix`; both, the queue's joined `, and, on its governance.purge_queue line in that same stop,
+  the purge queue lost a purge the audit trail records, also the person's to fix`; crediting purge-record.json alone,
+  `the suppression list lost what a purge suppressed, kept by purge-record.json, also the person's to fix` and `the
+  purge queue lost a purge that purge-record.json keeps, also the person's to fix`, and both stores, `the suppression
+  list lost what a purge suppressed, kept by the audit trail or purge-record.json, also the person's to fix` and `the
+  purge queue lost a purge the audit trail or purge-record.json records, also the person's to fix`; a hold the hold
+  list lost `and, on its governance.hold line, a second stop that follows: the hold list lost a hold its records keep
+  as set and not released, also the person's to fix`, after a list's joined `, and, on its governance.hold line in
+  that same stop, the hold list lost ...`, never when the hold list, the hold record or governance/ stops first; no log
+  word and no by-hand run, which are step 1's) and ends `once both are fixed, the
   next run is: ...` (`once both are settled` after a remote the policy refuses; beside a damaged purge record, whose
   own FAIL is on governance.suppressed too, `and, on that same governance.suppressed line, a second FAIL that follows:
   ...`, ruling 86, C768), or `once it is fixed` from an older build that prints no such word (B13 round 33 ruling 86, C737;
-  with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). With governance/ gone, the
+  with governance/ gone, `... also the person's to fix: <fixes>`, ruling 85, C736). Three config-step `NEXT:`s add no
+  second stop: the two whose fix is the agent's `chmod 700` or `chmod 600`, since the agent's re-run reaches the status
+  step, whose own `NEXT:` names the list, and the one for a config this agentsync does not load, which ends `once it
+  loads, the next run is: ...`. heartbeat.json's chmod form gives the second stop in its status bracket and ends on
+  its re-run, with no `once`; the side files' `NEXT:` naming more than one ends `once they are fixed`, or `once all
+  are fixed` with a second stop (B13 round 34 C855). With governance/ gone, the
   folder's words take the lists' place, once, `<what>`, `<fixes>` and `<check>` as in the folder tail above: step 1
   adds `; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, where it keeps any hold list, its audit trail,
   the purge queue and any suppression list, is missing, while <what>

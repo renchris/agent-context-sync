@@ -37897,6 +37897,21 @@ built. C852 makes worse True for a code change; this is docs only. Test:
 `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its docstring narrowed and the new sentence
 pinned with the clause the code returns.
 
+**The guide gives each step its own words for the stop that follows a config-step stop** (C855, ruling 98; docs
+only; `docs/deploy/setup-feedback.md`). The guide put a hold's log word, `state-hold-lost`, and the queue's by-hand
+release clause on step 2's config-step `NEXT:`, but `second_stop_words` writes neither: both are step 1's
+(`lost_list_tail`, through `queue_hand_words`, and the config tail's hold arm). It quoted neither of step 1's leads for
+that hold, `once that is fixed, step 2 stops again at its status step on` alone and `the same stop names` after a
+list's clause, nor step 2's own hold, `-trail` and `-mixed` words, and its `any config-step stop` held for three NEXTs
+that add no second stop: the agent's `chmod 700` and `chmod 600` and `once it loads`. The guide, on lane RB's ruling 93
+to 95 words (c4e582c76, c102dc12d, d010e01bf, 687bf1b7c), moves the release quotes and the log word to step 1 with its two hold leads and the hold's
+exclusion (the hold list, the hold record or governance/ stopping first), gives step 2 its hold, `-trail` and `-mixed`
+second stops, and names the exceptions after the `any config-step stop` sentence, with heartbeat.json's chmod form (the
+second stop in its bracket, no `once`) and the side files' `once they are fixed` and `once all are fixed`; the strings
+`test_the_guide_gives_step_1s_lost_list_tails_and_their_words` pins stay as written. Installer output is unchanged.
+Test: `test_the_guide_gives_each_steps_own_words_for_the_stop_that_follows_a_config_step_stop`, which reads each quote
+from install.sh's own literal.
+
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
 <part>: the re-run alone is red too (rc N)` and returned 1, and its callers' `if [ "$rc" = 1 ] && rerun_alone ...; then

@@ -9106,6 +9106,83 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
         assert f"`{word}`" in section, word
 
 
+def test_the_guide_gives_each_steps_own_words_for_the_stop_that_follows_a_config_step_stop() -> None:
+    """B13 round 34 C855 (ruling 98): the guide gave step 2's config-step NEXT a hold's log word,
+    `state-hold-lost`, and the queue's by-hand release clause, which only step 1 prints (lost_list_tail and
+    the config tail's hold arm); it quoted neither step 1's leads for a hold beside a config-step stop nor
+    step 2's real hold, -trail and -mixed words, and said `any config-step stop` where three NEXTs carry no
+    second stop. Each quote here is read from install.sh's own literal."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    section = " ".join(_feedback_page().split())
+    # step 2: second_stop_words, which writes no log word and no by-hand run
+    second = script[script.index("second_stop_words() { # EXCLUDE") : script.index("\nconfig_failed() {")]
+    assert "state-hold-lost" not in second and "by hand" not in second
+    assert "governance.hold, logged `state-hold-lost`" not in section
+    assert "no log word and no by-hand run, which are step 1's" in section
+    supp = dict(
+        re.findall(
+            r'\*,lost-suppressed(-mixed|-trail|),\*\) SECOND=" and, on its governance\.suppressed line,'
+            r' a second stop that follows: ([^"]*)"',
+            second,
+        )
+    )
+    queue = dict(re.findall(r'\*,lost-queue(-mixed|-trail|),\*\) SECOND="\$lead ([^"]*)"', second))
+    assert set(supp) == set(queue) == {"", "-mixed", "-trail"}
+    assert f"`and, on its governance.suppressed line, a second stop that follows: {supp['']}`" in section
+    assert 'local lead=" and, on its governance.purge_queue line, a second stop that follows:"' in second
+    assert 'lead="$SECOND, and, on its governance.purge_queue line in that same stop,"' in second
+    assert f"`and, on its governance.purge_queue line, a second stop that follows: {queue['']}`" in section
+    assert f"`, and, on its governance.purge_queue line in that same stop, {queue['']}`" in section
+    for form in ("-mixed", "-trail"):
+        assert f"`{supp[form]}`" in section, form
+        assert f"`{queue[form]}`" in section, form
+    [hold] = re.findall(r'\*,lost-hold,\*\) SECOND="\$lead ([^"]*)"', second)
+    assert 'lead=" and, on its governance.hold line, a second stop that follows:"' in second
+    assert 'lead="$SECOND, and, on its governance.hold line in that same stop,"' in second
+    assert f"`and, on its governance.hold line, a second stop that follows: {hold}`" in section
+    assert (
+        f"`, and, on its governance.hold line in that same stop, {hold.split(' a hold ')[0]} ...`" in section
+    )
+    assert "*:holds | *:record | *:governance) ;;" in second
+    assert "never when the hold list, the hold record or governance/ stops first" in section
+    # step 1: the config tail's hold arm, its two leads and its log word after the lists'
+    config = script[
+        script.index('lost_list_tail "$chold" "$crole"') : script.index(
+            'elif [ -n "$chold" ] && [ "$chold" != none ]'
+        )
+    ]
+    leads = re.findall(r'hlead="([^"]*)"', config)
+    assert leads == ["once that is fixed, step 2 stops again at its status step on", "the same stop names"]
+    assert re.search(r'ctail="\$ctail; \$hlead agentsync\'s hold list', config)
+    for lead in leads:
+        assert f"`; {lead} agentsync's hold list`" in section, lead
+    assert 'clog="$clog$LIST_LOG"' in config and config.index("$LIST_LOG") < config.index("state-hold-lost")
+    assert "(`config_err=state-file-notfile,state-queue-lost,state-hold-lost`)" in section
+    assert "*:role-holds | *:role-record | *:role-governance) ;;" in config
+    assert "is the hold list, the hold record or governance/ (B13 round 34 C855)" in section
+    # step 1's by-hand run, under a hold that refuses it, ends with queue_hand_words' release
+    hand = script[script.index("queue_hand_words() { # VERDICT") : script.index("\nfolder_gone_words() {")]
+    releases = set(re.findall(r'HAND="([^"]+)"', hand))
+    assert len(releases) == 2
+    assert 'queue_hand_words "$1"' in script and 'hand="$hand${HAND:+ }$HAND"' in script
+    for release in releases:
+        assert f"`{release}`" in section, release
+    # the config-step NEXTs that add no second stop, and the forms that end otherwise
+    failed = script[script.index("\nconfig_failed() {") : script.index("\nKEPT=0")]
+    for mode in ("700", "600"):
+        arm = re.search(rf'"chmod {mode} "\*\)(.*?);;', failed, re.S)
+        assert arm is not None and "$SECOND" not in arm.group(1), mode
+    [loads] = [ln for ln in failed.splitlines() if "once it loads, the next run is:" in ln]
+    assert "$SECOND" not in loads
+    assert "`once it loads, the next run is: ...`" in section
+    [hbfix] = [ln for ln in failed.splitlines() if "run $STATE_LOST_HBFIX once, then re-run" in ln]
+    assert "$SECOND" in hbfix and "$ONCE" not in hbfix
+    assert "heartbeat.json's chmod form gives the second stop in its status bracket" in section
+    for once in ("once they are fixed", "once all are fixed"):
+        assert f'once="{once}"' in failed and f"`{once}`" in section, once
+    assert "Three config-step `NEXT:`s add no second stop" in section
+
+
 def test_the_guides_placeholder_rows_follow_round_17s_redaction() -> None:
     """B13 round 18 V76: round 17 changed three placeholders and the guide's rows kept the old reach: U61's
     `<link-N>` is in the shell fallback report too, U8, U23 and U44 name a vanished source id
