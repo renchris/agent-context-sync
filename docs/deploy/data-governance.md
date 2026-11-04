@@ -108,26 +108,27 @@ is a copy that no purge reaches, so exclude it too.
 - **Over a lost purge queue:** while `agentsync status` FAILs `governance.purge_queue` because purge-queue.json
   `no longer holds` a purge the audit trail records `as queued and not done`, each named
   `the <reason> purge at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back
-  from a copy you trust. With no copy, run each purge by hand with what the FAIL names for it: for a purge by id the
-  manifest still names, the exact `agentsync purge id=<id> --source <source> --reason <reason>`, its id rebuilt
-  from the manifest (the audit trail keeps only the selector's hash, never its text); for one it cannot rebuild,
-  the id is the `stable_id:` line of the page's front matter in the docs repo's history
-  (`git log --all -p -- mirror/<source>/`) while no purge has erased the page, and a `path=` or `docs=` purge
-  clears it only when it erases that id; for a glob, the glob comes from your own records, and only a purge of
-  the same kind and source clears it. Preview first: `agentsync purge <selector> --dry-run` says of each lost
-  purge `this purge clears it`, `this purge clears it only while the item stays gone` (an `upstream-deleted`
-  purge of the item a lost purge of another reason named) or `this purge does not clear it`, and
-  `agentsync purge --queue --dry-run` names each one after its summary.
-  A verified hand purge of any reason that erases the item a lost purge by id named
-  clears a lost purge this build queued while the item stays gone: that is judged on each read of the manifest
-  and never recorded, a manifest that cannot be read clears nothing, and if the source still lists the file, the
-  next sync publishes the page again, the lost purge comes back in the FAIL with its `purge id=<id>` command, and
-  the sync after that refuses. The hand purge records the lost purge as done for good only when its own reason is
-  not `upstream-deleted`, or the lost purge's is `upstream-deleted` too; else it clears it only while the item
-  stays gone, and on a lost purge an older build queued (its audit line keeps no hash of the id) it clears
-  nothing. To keep the page out, run the FAIL's own command, with the lost purge's own `--reason <its reason>`
-  (B13 round 29 C172;
-  B13 round 30 C370, C312, C350, C389; B13 round 31 C561; B13 round 32 C649, C671).
+  from a copy you trust. With no copy, run each purge by hand with what the FAIL names for it (a hold in force on
+  its source, the hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for the
+  records owner's decision to release the hold; a hold on another source does not refuse it, unless a run with no
+  `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling 92)): for a purge by id the manifest
+  still names, the exact `agentsync purge id=<id> --source <source> --reason <reason>`, its id rebuilt from the
+  manifest (the audit trail keeps only the selector's hash, never its text); for one it cannot rebuild, the id is
+  the `stable_id:` line of the page's front matter in the docs repo's history (`git log --all -p --
+  mirror/<source>/`) while no purge has erased the page, and a `path=` or `docs=` purge clears it only when it
+  erases that id; for a glob, the glob comes from your own records, and only a purge of the same kind and source
+  clears it. Preview first: `agentsync purge <selector> --dry-run` says of each lost purge `this purge clears it`,
+  `this purge clears it only while the item stays gone` (an `upstream-deleted` purge of the item a lost purge of
+  another reason named) or `this purge does not clear it`, and `agentsync purge --queue --dry-run` names each one
+  after its summary. A verified hand purge of any reason that erases the item a lost purge by id named clears a lost
+  purge this build queued while the item stays gone: that is judged on each read of the manifest and never recorded,
+  a manifest that cannot be read clears nothing, and if the source still lists the file, the next sync publishes the
+  page again, the lost purge comes back in the FAIL with its `purge id=<id>` command, and the sync after that
+  refuses. The hand purge records the lost purge as done for good only when its own reason is not
+  `upstream-deleted`, or the lost purge's is `upstream-deleted` too; else it clears it only while the item stays
+  gone, and on a lost purge an older build queued (its audit line keeps no hash of the id) it clears nothing. To
+  keep the page out, run the FAIL's own command, with the lost purge's own `--reason <its reason>` (B13 round 29
+  C172; B13 round 30 C370, C312, C350, C389; B13 round 31 C561; B13 round 32 C649, C671).
 - **Over a lost suppression list:** while `agentsync status` FAILs `governance.suppressed` because suppressed.json
   `no longer lists what` a purge the audit trail records suppressed (an item, its source-path glob or a content
   hash), the sync refuses. The erased items stay out by their id and by the one source path agentsync's audit trail
@@ -160,20 +161,24 @@ is a copy that no purge reaches, so exclude it too.
   when it refuses, leads with putting agentsync's governance folder back whole from the copy kept (B13 round 33 C757,
   C783; ruling 88). For a lost hold with no copy, the records owner sets it again with `agentsync hold <scope>
   --reason <why> --owner <name>`, or releases it with `agentsync hold <scope> --release --owner <name>`. With no copy,
-  run each lost queued purge by hand as its FAIL names it, and accept each lost suppression with `agentsync purge --accept-lost <at>
-  --folder-lost` (preview it with `--dry-run` first): `--folder-lost` is your word that no copy of the folder is
-  left, and the act first records in the new audit trail and in purge-record.json that the old audit trail was lost
-  (an `audit-trail-lost` line), so a new trail never reads as the whole history. Without `--folder-lost`,
-  `--accept-lost` refuses while the audit trail has lost what purge-record.json keeps; with it, the act refuses
-  when the trail has lost nothing and holds no `audit-trail-lost` line. The accepted purges' items stay out by their id and by the one source path
-  purge-record.json keeps for each item still listed when it was purged, and a copy under another name of content
-  purge-record.json fingerprints stays out (B13 round 32 C601, C606, C618; ruling 63). A later `hold` or hand purge
-  re-creates the governance folder with a new audit trail that lacks the old purge lines. Until an `audit-trail-lost`
-  line is written, the suppression list's and the purge queue's lost FAILs then open `agentsync's audit trail no longer
-  holds purge lines purge-record.json keeps`, and their fix leads with putting that one file back from a copy you
-  trust. With no copy, plain `--accept-lost` and its `--dry-run` are refused until the first `agentsync purge
-  --accept-lost <at> --folder-lost` writes that line, after which plain `--accept-lost` accepts the rest (B13 round
-  33 C759; ruling 88).
+  run each lost queued purge by hand as its FAIL names it; a hold in force on the page's source, the hold on all
+  included, lost or set again, refuses that run and its `--dry-run`, so it waits for the records owner's decision to
+  release the hold; a hold on another source does not refuse it, unless a run with no `--source` finds nothing,
+  which every hold refuses (B13 round 34 C851; ruling 92). Accept each lost suppression, under a hold too, with
+  `agentsync purge --accept-lost <at> --folder-lost` (preview it with `--dry-run` first): `--folder-lost` is your
+  word that no copy of the folder is left, and the act first records in the new audit trail and in purge-record.json
+  that the old audit trail was lost (an `audit-trail-lost` line), so a new trail never reads as the whole history.
+  Without `--folder-lost`, `--accept-lost` refuses while the audit trail has lost what purge-record.json keeps; with
+  it, the act refuses when the trail has lost nothing and holds no `audit-trail-lost` line. The accepted purges'
+  items stay out by their id and by the one source path purge-record.json keeps for each item still listed when it
+  was purged, and a copy under another name of content purge-record.json fingerprints stays out (B13 round 32 C601,
+  C606, C618; ruling 63). A later `hold` or hand purge re-creates the governance folder with a new audit trail that
+  lacks the old purge lines. Until an `audit-trail-lost` line is written, the suppression list's and the purge
+  queue's lost FAILs then open `agentsync's audit trail no longer holds purge lines purge-record.json keeps`, and
+  their fix leads with putting the list's own file (suppressed.json or purge-queue.json) back from a copy you trust
+  (B13 round 34 C854). With no copy, plain `--accept-lost` and its `--dry-run` are refused until the first
+  `agentsync purge --accept-lost <at> --folder-lost` writes that line, after which plain `--accept-lost` accepts the
+  rest (B13 round 33 C759; ruling 88).
 
 ## Legal and records hold
 

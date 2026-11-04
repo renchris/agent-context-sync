@@ -7459,13 +7459,42 @@ def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> 
     assert "keeps a hold, so purge and compaction stay suspended" in governance.LOST_HOLD_WAIT_GOVGONE
     assert "`agentsync hold <scope> --reason <why> --owner <name>`" in bullet
     assert "`agentsync hold <scope> --release --owner <name>`" in bullet
-    # nothing here says a lost hold blocks accepting a loss or a hand purge (ruling 88)
-    assert not re.search(r"hold[^.]*\b(?:blocks|stops|refuses)\b[^.]*(?:--accept-lost|hand)", bullet)
+    # nothing here says a hold blocks accepting a loss (ruling 88); B13 round 34 C851 (ruling 98): a hold
+    # in force on the page's source does refuse the hand purge (ruling 92, lane B's _lost_queue_holds), so
+    # the page says so, as the records owner's decision, beside the hand run, and a hold on another source not
+    assert not re.search(r"hold[^.]*\b(?:blocks|stops|refuses)\b[^.]*--accept-lost", bullet)
+    held = (
+        "run each lost queued purge by hand as its FAIL names it; a hold in force on the page's source, the"
+        " hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for the"
+        " records owner's decision to release the hold; a hold on another source does not refuse it, unless a"
+        " run with no `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling 92)."
+        " Accept each lost suppression, under a hold too, with `agentsync purge --accept-lost <at>"
+        " --folder-lost`"
+    )
+    assert held in bullet
+    assert "Release it first" not in bullet and "release the hold first" not in bullet
+    [queue_bullet] = re.findall(r"- \*\*Over a lost purge queue:\*\* (.*?)(?= - \*\*| ## )", page)
+    assert (
+        "With no copy, run each purge by hand with what the FAIL names for it (a hold in force on its source,"
+        " the hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for"
+        " the records owner's decision to release the hold; a hold on another source does not refuse it,"
+        " unless a run with no `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling"
+        " 92)): for a purge by id"
+    ) in queue_bullet
+    # what the page says is what purge does: its source's holds and the hold on all, every hold when a run
+    # with no source resolves to nothing
+    held_by = "blocking_holds(active_holds(sp.root, gov), affected_sources or None)"
+    assert held_by in inspect.getsource(governance)
     # B13 round 33 C759 (ruling 88): the folder a later write re-creates, in the words its FAILs print.
     # test_cli's test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606 runs each one
     recreated = bullet.split("A later `hold` or hand purge re-creates the governance folder", 1)[1]
     assert f"lost FAILs then open `{governance.TRAIL_LOST_HEAD}`" in recreated
-    assert "their fix leads with putting that one file back from a copy you trust" in recreated
+    # B13 round 34 C854: "that one file" read as the audit trail, while the fix puts back the list's own file
+    assert (
+        "their fix leads with putting the list's own file (suppressed.json or purge-queue.json) back from a"
+        " copy you trust (B13 round 34 C854)."
+    ) in recreated
+    assert "that one file back" not in recreated
     assert (
         "plain `--accept-lost` and its `--dry-run` are refused until the first `agentsync purge --accept-lost"
         " <at> --folder-lost` writes that line, after which plain `--accept-lost` accepts the rest"

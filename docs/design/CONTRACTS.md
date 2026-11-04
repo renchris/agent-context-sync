@@ -37077,6 +37077,10 @@ FAILing governance.hold, and every fix, and the sync's stop when it refuses, lea
 hold's own fix with no copy follows, from `lost_hold_words`; the page never says a lost hold blocks `--accept-lost` or
 the hand purge, and the bullet's pinned phrases stay byte for byte. Test:
 `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, extended.
+Amended 2026-11-03, §16.229 C851: the page still never says a hold blocks `--accept-lost`, but a hold in force on the
+page's source, the hold on all included, lost or set again, does refuse the hand purge and its `--dry-run` (ruling 92,
+§16.227 C874), so the bullet says so as the records owner's decision, beside the hand run, and that a hold on another
+source does not refuse it unless a run with no `--source` finds nothing.
 
 **The records page names the re-created folder, where plain `--accept-lost` is refused** (C759, ruling 88;
 `docs/deploy/data-governance.md`). The missing-folder bullet read only while governance/ is gone, while a later `hold`
@@ -37086,6 +37090,8 @@ with `TRAIL_LOST_HEAD`, that their fix leads with the one file, and that the ref
 `--folder-lost` writes `audit-trail-lost`, after which plain `--accept-lost` accepts the rest; the first `--folder-lost`
 is not among the writes that cause this state, since it writes the line that ends it. The lost suppression list's
 bullet points there. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, extended.
+Amended 2026-11-03, §16.229 C854: their fix leads with the list's own file, suppressed.json or purge-queue.json, put
+back from a copy you trust, not "the one file", which read as the audit trail.
 
 **The kit note's folder check runs when its shasum check does, and allows only a named made-up folder** (C774's repo
 half; `docs/lanes/COMMON.md`). The note ran the folder check right before step 2 and before reading a role run's state
@@ -37670,6 +37676,23 @@ gate, as §16.220 C742, §16.222 and data-governance.md say (measured with two l
 for a plain `--accept-lost` and its `--dry-run` after the first `--folder-lost`, refused again when governance/ goes
 again). The line is reworded in place, its parenthetical, its tail and C744's sentence kept, and, as I73 did, one dated
 line says what it read; it is pinned in `_ROUND_34_D_PARAGRAPH_AMENDS`.
+
+**The records page says a hold on the page's source refuses the hand purge, as the records owner's decision** (C851,
+ruling 98; amends §16.222 C757; docs only). The missing-folder bullet said `run each lost queued purge by hand as its
+FAIL names it` with nothing on holds, and its test barred any sentence where a hold refuses a hand purge, while `purge`
+refuses by the sources its plan resolves to (`blocking_holds(..., affected_sources or None)`): a hold on the page's
+source or on all refuses the hand run and its `--dry-run`, lost or set again, and a hold on another source does not,
+unless a run with no `--source` finds nothing, which every hold refuses. Both bullets, the missing folder's and the lost
+queue's, say so on lane B's ruling 92 words (f3c127f51), worded as the records owner's decision, never an instruction to
+release, and never resting on the FAIL for a `docs=` selector. The test's regex narrows to a hold that blocks
+`--accept-lost`, which the page still never says, and pins both sentences, the release beside the hand run, and
+`purge`'s own hold judgment. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`.
+
+**The re-created folder's fix names the list's own file** (C854, built with C851; amends §16.222 C759; docs only). The
+bullet said the lost FAILs' fix leads with `putting that one file back`, after a sentence about the audit trail, so it
+read as the trail; the fix puts back the list's own file. It reads `putting the list's own file (suppressed.json or
+purge-queue.json) back from a copy you trust`, its pin moved in the same commit; the FAIL and refusal texts were right
+and stay. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
