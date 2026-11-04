@@ -14263,22 +14263,14 @@ def _lost_lists(c: Config | None) -> list[str]:
 
 
 def _trail_form(check: str, detail: str) -> bool:
-    """Whether a lost list's FAIL credits purge-record.json with governance/ there
+    """Whether a lost list's FAIL credits purge-record.json alone with governance/ there
     (:data:`_TRAIL_LIST_PHRASES`): the audit trail's own form stays :data:`_LOST_LIST_PHRASES`', and so does
-    a mixed form with no lead, where the trail still records part of it; the folder's form is never this one
-    (ruling 82). Reads ``governance.TRAIL_LOST_HEAD`` by ``getattr``: an older governance has neither
-    form."""
+    any mixed form, where the trail still records part of it, whatever leads the detail; the folder's form is
+    never this one (ruling 82; B13 round 34 C836, ruling 95: one credit rule in every reader, lane B's
+    ``record_only``, so ``TRAIL_LOST_HEAD`` no longer decides it)."""
     phrases = _TRAIL_LIST_PHRASES.get(check)
     if phrases is None or _gov_gone_in(detail) or not all(w in detail for w in phrases):
         return False
-    try:
-        from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
-
-        head = getattr(governance, "TRAIL_LOST_HEAD", None)
-    except Exception:
-        head = None
-    if head is not None and detail.startswith(f"{head}: "):
-        return True
     return not all(w in detail for w in _LOST_LIST_PHRASES[check])
 
 

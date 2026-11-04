@@ -36539,6 +36539,9 @@ unexpected. Tests: `test_a_re_created_folders_lost_list_credits_purge_record_c73
 Amended 2026-11-03, §16.225 C833: beside another lost list the outcome is `_both_lost_cause`, the lost hold or the
 audit trail's form first, then the trail-lost lists, both read before either is named; every disjoint pair is in
 `_LOST_CAUSES`.
+Amended 2026-11-03, §16.225 C836: CORRECTED: `a mixed form with no lead keeps the audit trail's bucket` above reads
+`any mixed form, lead or not`: a list is trail-lost only when every lost record is credited to purge-record.json alone
+(lane B's `record_only`), so `_trail_form` no longer reads `TRAIL_LOST_HEAD`.
 
 **The Purge queue part in status's words with governance/ gone** (C765, C771's F2, ruling 64). `_queue_gone_said` takes
 `governance.queue_gone_words` under status's condition (`recorded_purges` reads and `folder_lost_case` holds), by
@@ -37292,6 +37295,17 @@ agentsync's purge queue, which lost a purge purge-record.json keeps: the person'
 `_LOST_CAUSES`, or `compute_outcome` would fall back to its generic words. Test:
 `tests/test_setup_report.py::test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833`, over the five
 real states.
+
+**One credit rule: a mixed form is the audit trail's, lead or not** (C836, ruling 95, after C833; corrects ruling 82).
+The installer gave `-trail` by `record_only` while the report's `_trail_form` gave the trail-lost bucket to any FAIL
+under `TRAIL_LOST_HEAD`, so a mixed form under the lead read two ways. `_trail_form` drops the governance import and
+the head branch: a list is trail-lost only when its FAIL carries `_TRAIL_LIST_PHRASES` and not every
+`_LOST_LIST_PHRASES` word. `_GOVERNANCE_TRAIL_LOST_RE` and `_GOVERNANCE_LOST_RE`, which already follow the rule, and
+the Purge queue part, which names both stores for a mixed form, stay; the report's mixed Doctor bucket words are not
+built. Landed after C833, whose `_both_lost_cause` names a mixed list beside a trail-lost one. install.sh's
+`list_word` is lane RB's. Tests: `test_the_trail_form_is_read_in_each_of_lane_bs_words_ruling_82` (`queue-mixed-lead`
+now False, with `suppressed-mixed-lead` and `queue-lead-all-in-trail`), and the sixth case of
+`test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833`.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

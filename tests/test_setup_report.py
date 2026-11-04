@@ -10871,7 +10871,19 @@ _TRAIL_FAILS = {
         "governance.purge_queue",
         f"{governance.TRAIL_LOST_HEAD}: /x/purge-queue.json no longer holds 1 purge the audit trail records "
         "as queued and not done (y) and 1 purge that purge-record.json keeps as queued and not done (y)",
-        True,
+        False,  # B13 round 34 C836 (ruling 95): a mixed form, lead or not, is the audit trail's
+    ),
+    "suppressed-mixed-lead": (  # C836
+        "governance.suppressed",
+        f"{governance.TRAIL_LOST_HEAD}: /x/suppressed.json no longer lists what 1 purge the audit trail "
+        "records suppressed (y) and what 1 purge suppressed, kept by purge-record.json (y): z",
+        False,
+    ),
+    "queue-lead-all-in-trail": (  # C836: a lead over records the audit trail keeps every one of
+        "governance.purge_queue",
+        f"{governance.TRAIL_LOST_HEAD}: /x/purge-queue.json no longer holds 1 purge the audit trail records "
+        "as queued and not done (y)",
+        False,
     ),
     "queue-trail": (
         "governance.purge_queue",
@@ -10968,6 +10980,11 @@ _HOLD_LOST_FAIL = "/x/holds.json no longer lists the hold on all (set by (owner 
             [("governance.suppressed", "suppressed-trail"), ("governance.purge_queue", "queue-credit")],
             ("suppression list", "purge queue"),
         ),
+        (  # B13 round 34 C836: a mixed form under the lead is the audit trail's, beside a lead over one only
+            False,
+            [("governance.suppressed", "suppressed-mixed-lead"), ("governance.purge_queue", "queue-lead")],
+            ("suppression list", "purge queue"),
+        ),
     ],
     ids=[
         "hold-queue",
@@ -10975,6 +10992,7 @@ _HOLD_LOST_FAIL = "/x/holds.json no longer lists the hold on all (set by (owner 
         "hold-both",
         "suppressed-trail-queue-audit",
         "suppressed-audit-queue",
+        "suppressed-mixed-lead-queue-lead",
     ],
 )
 def test_the_outcome_names_a_trail_lost_list_and_every_other_lost_list_c833(
