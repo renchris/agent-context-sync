@@ -6502,11 +6502,15 @@ _ROUND_34_D_PARAGRAPH_AMENDS = (
         "**A damaged purge record beside a lost queued purge names both stops** (C607;",
         "§16.219 C737",
     ),
+    ("16.34", "| `failed` | WARN: `media helper: not working (<detail>)`", "§16.229 C857 (by §16.221 C719)"),
+    ("16.34", "Amended 2026-10-20, §16.150 X57: exit 1 also covers", "§16.229 C857 (by §16.221 C719)"),
+    ("16.35", "`failed` WARN `speech: failed (<detail>)`", "§16.229 C857 (by §16.221 C719)"),
 )
 """Round 34 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: the gate's re-run fixes (C877, C876, C866) at §16.223's C800
 paragraphs, and C856's two lines at passages rewritten in place, with §16.219's C737 line, which the C736
-line's claim now shares (ruling 99)."""
+line's claim now shares (ruling 99), and C857's three at §16.34 and §16.35, which its claim names with no
+item."""
 
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),

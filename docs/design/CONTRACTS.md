@@ -10477,6 +10477,7 @@ Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that can
 module and prints that line itself.
 Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and fails its probe (its line then reads
 `media helper: failed (<reason>)`); the module docstring says so now.
+Amended 2026-11-03, §16.229 C857 (by §16.221 C719): that line reads `media helper: failed: <reason>`.
 
 - **Protocol** (pinned by `tests/media_kit.py`). `--version`; `info FILE`; `scan FILE --out DIR [--step-ms]
   [--first-tick K] [--max-ticks N]` writing `grids.bin`, one 320x180 box-averaged luma grid (57,600 bytes) per
@@ -10495,7 +10496,7 @@ Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and 
   |---|---|
   | `ready`, `off` | ok: `media helper: <state> (<detail>)` |
   | `not-built` | not-ok INFO, no fix: `<detail>; scripts/install.sh builds it`, or `<detail>; scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)` |
-  | `failed` | WARN: `media helper: not working (<detail>)`, with the fix `xcode-select --install, then run scripts/install.sh again` only when the developer tools are missing |
+  | `failed` | WARN: `media helper: not working (<detail>)`, with the fix `xcode-select --install, then run scripts/install.sh again` only when the developer tools are missing **Amended 2026-11-03, §16.229 C857 (by §16.221 C719):** the line reads `media helper: not working: <detail>` |
   | the probe raised | WARN: `media helper: could not be checked (<exception type>)` |
 - **Helper down (S0 rule 8).** After a `MediaError` the cycle asks `MediaEngine.alive()` (`--version`, 5 s).
   When that fails the helper is down for the cycle: no further recording is fetched, the failed read is not
@@ -10775,6 +10776,7 @@ build tree, passed to both swift steps, instead of the real `~/Library` ones.
   (<detail>; scripts/install.sh builds it[ once the Command Line Tools are installed (xcode-select --install)])`;
   `failed` WARN `speech: failed (<detail>)`, with the developer-tools fix only when they are missing; a probe that
   raised WARN `speech: could not be checked (<exception type>)`.
+  Amended 2026-11-03, §16.229 C857 (by §16.221 C719): the `failed` WARN reads `speech: failed: <detail>`.
 - **Wiring.** `cycle._cycle_speech(config, media_engine)` asks `speech.engine` once a cycle, only beside a media
   engine, and `cycle._cycle_registry(..., *, speech=None)` passes it to `Registry.default(..., speech=None)`, which
   hands it to `RecordingConverter(..., speech=None)` (stored as `_speech`).
@@ -25221,6 +25223,8 @@ busy, after the check it was in and the load, as install.sh's NEXT does; the evi
 Amended 2026-10-20, §16.147 X37: the clause reads `part of the report was cut off or not measured (its Summary
 says which, and why): if this Mac was busy, run ... again once it is idle; either way, ...`, since a busy state
 file writes the marker too.
+Amended 2026-11-03, §16.229 C857 (by §16.219 C726): the clause now reads `... once it is idle, or put
+AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy; either way, ...`.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
@@ -26071,6 +26075,8 @@ busy-only evidence line from `_evidence_line`, each with and without an unreadab
 limit").
 Amended 2026-10-20, §16.152 Y15, Y37: the Summary now gives the why: the evidence line names a busy state file
 (`because a sync held the state file`) and the time limit apart, never a held file as `ran out of time`.
+Amended 2026-11-03, §16.229 C857 (by §16.219 C726): the clause now reads `... once it is idle, or put
+AGENTSYNC_REPORT_TIME_LIMIT=60 in front of that command if it stays busy; either way, ...`.
 
 **install.sh's first sync shows the upgrade's retry note** (X85; amends §16.144 W18). On exit 0 `show_first_sync`
 printed only the lines that match `SYNC_SUMMARY_RE`, so the sync's `note: N conversion(s) an older build gave up
@@ -37299,6 +37305,17 @@ pilot-s1/er-13#6)` at U28's, which was wrong from its birth (`named()` already r
 the paragraph quotes none of the list C712 changed. The C736 line also matches §16.219's (C737, C736) claim on C607, so
 the C737 line is pinned beside the two new ones in `_ROUND_34_D_PARAGRAPH_AMENDS`; the item's fix as first written,
 stamping `§16.219 C736` on a round 34 line and dated the next day, turned two dated-line tests red.
+
+**Five quotes later rounds made stale get one dated line each** (C857; amends §16.147 X37, §16.140 X37, §16.34 and
+§16.35; docs only). §16.147's X37 paragraph and §16.140's X37 line quote the `--report-only` NEXT's clause as `once it
+is idle; either way, ...`, while §16.219's C726 added the time-limit remedy; §16.34's Doctor table row and §16.35's
+Doctor bullet keep the bracket form `media helper: not working (<detail>)` and `speech: failed (<detail>)`, and §16.34's
+X57 line `media helper: failed (<reason>)`, while §16.221's C719 gave every such line the colon form (the X57 line had
+no cover at all; the other two only from another paragraph). Under ruling 74 no quote is rewritten: each gets a dated
+line in this round's form, the table's inside the `failed` row's cell, since a line under the row cuts the table (pandoc
+read 4 rows of 5). The X37 lines are claimed here; the three at §16.34 and §16.35 are pinned in
+`_ROUND_34_D_PARAGRAPH_AMENDS`. The item's fix as first written, stamping §16.219 C726 and §16.221 C719 as its own and
+putting a line under the row, turned `test_every_dated_line_from_round_11_on_is_held_by_a_test` red.
 
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
