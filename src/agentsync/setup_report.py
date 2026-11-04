@@ -1341,7 +1341,6 @@ _FIXED_VALUE_PHRASES = (
     "kept their page",
     "whose page could not be read",
     "its own page was made from",
-    "files still without a page",
     "file has a converted page",
     "erases its page by hand",
     "files with a converted page",
@@ -9246,12 +9245,13 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
             waiting[str(sid)] += int(files)
             field[str(sid)] += int(files) if int(cls) == 1 else 0
     # a file whose page is a stub (quarantined or refused: a file not the type its name says, a label rule's
-    # withholding), per kind: no converted page, but a page all the same (B13 round 29 C111)
+    # withholding; or a failed conversion's stub: one given up, still being retried or waiting for its
+    # converter, B13 round 34 C826), per kind: no converted page, but a page all the same (B13 round 29 C111)
     stubbed: Counter[str] = Counter()
     for suffix, files in m.rows(
         f"SELECT {ext}, COUNT(DISTINCT i.source_id || '/' || i.stable_id) FROM items i "
         "JOIN outputs o ON o.source_id = i.source_id AND o.stable_id = i.stable_id "
-        "AND o.status IN ('quarantined', 'refused') "
+        "AND o.status IN ('quarantined', 'refused', 'failed') "
         f"WHERE i.is_dir = 0 AND i.state IN ('quarantined', 'refused') AND {ext} IS NOT NULL GROUP BY 1"
     ):
         stubbed[str(suffix)] += int(files)
@@ -10888,7 +10888,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             f"bytes in up to 2 later runs, or, when its converter could not start, once it starts{once}: a "
             "later run with no failure converted it, gave it up, or (its converter still not starting) left "
             "it waiting, which that run counts as waiting for its converter, never as converted or failed, "
-            'and the files still without a page are in Quarantine by reason, class "conversion failed"',
+            "and a file it gave up or left waiting has a stub page and is in Quarantine by reason, class "
+            '"conversion failed"',
         ]
     # B13 round 31 ruling 53 (lane E's rescreened_reader, a share of rescreened): a run whose re-screens were
     # all the new mail label reader's has its own bullet, never "for a rule change"; a mixed run names it

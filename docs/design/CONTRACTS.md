@@ -32606,6 +32606,8 @@ a stub page`, `has a stub page` and `have a stub page`. Tests:
 `test_ocr_part_counts_images_documents_rereads_and_time`.
 Amended 2026-10-26, §16.203 C325: the folded clause's `has` or `have` counts the stubs of the kinds it names, never a
 stub said on another kind's own line.
+Amended 2026-11-03, §16.225 C826: a stub page includes a failed conversion's stub (its output `failed`: given up, still
+being retried or waiting for its converter), counted with the quarantined and refused ones.
 
 **No dead fallback for a name the same build ships** (C167; amends §16.158 Z15). The report and manifest, doctor
 ship in one build, so the getattr fallbacks for `manifest.lost_words`, `LOST_MANIFEST_UNREAD`,
@@ -37341,6 +37343,16 @@ hooks run, and asserts every doubled value given and no unscaled one, the revers
 `test_the_time_limit_variable_scales_each_per_call_cap_c726`,
 `test_the_time_limit_variable_scales_the_sign_in_folder_read_c726`,
 `test_the_late_listing_line_says_the_scaled_wait_c726`.
+
+**A failed conversion's stub is a stub page** (C826; amends §16.198 C111). The per-type OCR line counted only
+quarantined and refused stubs, so a file whose conversion was given up, still being retried or waiting for its
+converter (its output `failed`, a stub page all the same) was in no count, and the Repeat conversions note called such
+files `still without a page`. `_ocr_files`' stub query takes `o.status IN ('quarantined', 'refused', 'failed')`, the
+item filter unchanged, with no separate `given up` count; the note reads `and a file it gave up or left waiting has a
+stub page and is in Quarantine by reason, class "conversion failed"`, reusing the listed `has a stub page`, and `files
+still without a page` leaves both phrase lists (install.sh's FIXED_VALUE_PHRASES too). Test:
+`tests/test_setup_report.py::test_a_failed_conversions_stub_is_counted_as_a_stub_page_c826`, seeded, never on a file
+another lane's fix stops failing.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 

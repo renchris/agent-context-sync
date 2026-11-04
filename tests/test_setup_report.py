@@ -14409,6 +14409,34 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
 
 
 @pytest.mark.usefixtures("roomy_calls")
+def test_a_failed_conversions_stub_is_counted_as_a_stub_page_c826(fake_mac: dict[str, Path]) -> None:
+    """B13 round 34 C826: the per-type OCR line counted only quarantined and refused stubs, so a file whose
+    conversion was given up (its output `failed`, a stub page all the same) was in no count, and the Repeat
+    conversions note called such files `still without a page`. A failed conversion's stub is a stub page."""
+    failed = "conversion failed: the converter exited 1"
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    seed.item(one, "Contoso real.potx")
+    seed.item(
+        one, "Contoso odd.potx", state="quarantined", reason="not the type its name says", page="quarantined"
+    )
+    seed.item(
+        one, "Contoso given up.potx", state="quarantined", reason=failed, verdict="error", page="failed"
+    )
+    seed.item(one, "Contoso deck.pptx", state="quarantined", reason=failed, verdict="error", page="failed")
+    seed.close()
+    _text, parts = status_parts(fake_mac)
+    ocr = parts["OCR"].splitlines()
+    potx = next(ln for ln in ocr if ln.startswith("- deck template (.potx) files with a converted page: "))
+    assert potx.endswith(", 2 with a stub page"), ocr
+    assert [ln for ln in ocr if ln.startswith("- no ")] == [
+        "- no PDF (.pdf), deck (.pptx), Word (.docx) or OpenDocument (.odt) file has a converted page (1 "
+        "deck (.pptx) file has a stub page: Quarantine by reason gives why)"
+    ], ocr
+    assert "files still without a page" not in setup_report._FIXED_VALUE_PHRASES
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_folded_ocr_lines_verb_counts_only_the_kinds_it_names_c325(fake_mac: dict[str, Path]) -> None:
     """B13 round 30 C325 (C340, C398, C405): the folded line's verb summed every kind's stubs, so a stub on a
     deck template with a converted page of its own (said on that kind's line) made one folded deck stub read
