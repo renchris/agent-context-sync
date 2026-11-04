@@ -1391,6 +1391,9 @@ _FIXED_VALUE_PHRASES = (
     "where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing",
     "the records owner sets the hold again or releases it, which fixes the hold line only",
     "once the records owner releases the hold they run each such purge by hand",
+    # step 1's -mixed tails, both stores credited (B13 round 34 ruling 95, lane RB: C872)
+    "kept by the audit trail or purge-record.json",
+    "the audit trail or purge-record.json records as queued and not done",
     # the outcome over two lost governance lists, a hold list among them (B13 round 30 ruling 40)
     "lost a hold or a purge the audit trail records",
     # lane B's C313 gone governance folder (governance.lost_hold_words)

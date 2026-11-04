@@ -13659,6 +13659,136 @@ def test_the_lost_list_probe_credits_purge_record_json_when_the_trail_lost_the_l
     assert _lost_hold_probe(cfg, src) == "none,lost-suppressed,lost-queue,queue-held"
 
 
+def _list_word(head: str | None) -> Callable[[object], str]:
+    """LOST_HOLD_PY's list_word, run on a stand-in governance module whose TRAIL_LOST_HEAD is ``head`` (None:
+    a build without it)."""
+    code = INSTALL_SH.read_text().split("\nLOST_HOLD_PY='", 1)[1].split("'\nlost_hold_reader() {", 1)[0]
+    [fn] = re.findall(r"(?ms)^def list_word\(odd\):\n.*?^    return word\n", code)
+    module = type("Gov", (), {} if head is None else {"TRAIL_LOST_HEAD": head})
+    space: dict[str, object] = {"governance": module}
+    exec(fn, space)  # install.sh's own reader, the code under test
+    return space["list_word"]  # type: ignore[return-value]
+
+
+@pytest.mark.parametrize(
+    ("lead", "credits", "only", "word"),
+    [
+        ("head", "record", True, ",lost-queue-trail"),
+        ("head", "both", False, ",lost-queue-mixed"),
+        ("head", "trail", False, ",lost-queue"),
+        ("none", "record", True, ",lost-queue-trail"),
+        ("none", "both", False, ",lost-queue-mixed"),
+        ("none", "trail", False, ",lost-queue"),
+        ("head", "record", None, ",lost-queue-trail"),  # a build before record_only: its text credit
+        ("head", "both", None, ",lost-queue-mixed"),
+        ("head", "trail", None, ",lost-queue"),
+    ],
+)
+def test_the_lost_list_word_follows_record_only_on_every_form_c872(
+    lead: str, credits: str, only: bool | None, word: str
+) -> None:
+    """B13 round 34 ruling 95 (C872 with C836's installer half): list_word added `-trail` on any
+    purge-record.json credit in the detail, and governance.TRAIL_LOST_HEAD itself holds `purge-record.json
+    keeps`, so a list whose records the audit trail still credited read as kept by purge-record.json alone. It
+    reads the body after the head: purge-record.json's credit alone is `-trail`, both stores `-mixed`, the
+    trail's alone the plain word, held to status's record_only; a build before record_only keeps its text
+    credit."""
+    head = governance.TRAIL_LOST_HEAD
+    parts = {
+        "record": ["1 purge that purge-record.json keeps as queued and not done (x)"],
+        "trail": ["1 purge the audit trail records as queued and not done (x)"],
+        "both": [
+            "1 purge the audit trail records as queued and not done (x)",
+            "1 purge that purge-record.json keeps as queued and not done (y)",
+        ],
+    }[credits]
+    detail = (
+        f"{head + ': ' if lead == 'head' else ''}/s/purge-queue.json no longer holds {' and '.join(parts)}"
+    )
+    odd = type(
+        "Odd", (), {"path": Path("/s/purge-queue.json"), "fix": "the person puts it back", "detail": detail}
+    )()
+    if only is not None:
+        odd.record_only = only  # type: ignore[attr-defined]
+    assert _list_word(head)(odd) == word
+    if only is not None:
+        assert word.endswith("-trail") is only, "the word is status's record_only"
+    supp = type(
+        "Odd",
+        (),
+        {
+            "path": Path("/s/suppressed.json"),
+            "fix": "x",
+            "detail": detail.replace("purge-queue.json", "suppressed.json"),
+        },
+    )()
+    assert _list_word(head)(supp) == word.replace("queue", "suppressed")
+
+
+def test_a_queue_lost_with_its_records_in_both_stores_reads_mixed_at_step_1_c872(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 ruling 95 (C872): two queued purges, one whose enqueue line the audit trail lost, then the
+    queue file gone. Status's detail leads with TRAIL_LOST_HEAD and credits both stores (record_only False);
+    the probe said `-trail`, the purge-record.json credit alone. It says `-mixed`, and the tail and the second
+    stop credit both stores, with the queue's own log word."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    gov = state / "governance"
+    gov.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    for sid in ("x" * 16, "y" * 16):
+        sel = governance.PurgeSelector(stable_id=sid, source_id="alpha")
+        assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    governance.record_purges(state)
+    trail = (gov / "audit.jsonl").read_text(encoding="utf-8").splitlines(keepends=True)
+    enqueued = [n for n, ln in enumerate(trail) if '"purge-enqueued"' in ln]
+    assert len(enqueued) == 2, trail
+    del trail[enqueued[1]]  # the trail lost one enqueue line; purge-record.json keeps it
+    (gov / "audit.jsonl").write_text("".join(trail), encoding="utf-8")
+    (gov / "purge-queue.json").rename(state / "purge-queue.json.kept")
+    lost = governance.queue_lost(state)
+    assert lost is not None and not lost.record_only, lost
+    assert lost.detail.startswith(governance.TRAIL_LOST_HEAD), lost.detail
+    assert _lost_hold_probe(cfg, src) == "none,lost-queue-mixed,queue-free"
+    tail, _fix = _queue_tails("none,lost-queue-mixed,queue-free")
+    assert (
+        "which no longer holds a purge the audit trail or purge-record.json records as queued and not done"
+        in tail
+    )
+    assert tail.endswith("~/.local/bin/agentsync status prints it on its governance.purge_queue line"), tail
+    queue_second = (
+        " and, on its governance.purge_queue line, a second stop that follows: the purge queue lost a purge "
+        "the audit trail or purge-record.json records, also the person's to fix"
+    )
+    second, once = _second_stop("none,lost-queue-mixed")
+    assert second == queue_second and once == "once both are fixed", second
+    both_second = (
+        " and, on its governance.suppressed line, a second stop that follows: the suppression list lost "
+        "what a purge suppressed, kept by the audit trail or purge-record.json, also the person's to fix, "
+        "and, on its governance.purge_queue line in that same stop, the purge queue lost a purge the audit "
+        "trail or"
+    )
+    second, _ = _second_stop("none,lost-suppressed-mixed,lost-queue-mixed")
+    assert second.startswith(both_second) and "(" not in second, second
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    for word in ("lost-suppressed-mixed", "lost-queue-mixed"):  # an arm before the plain one at every site
+        for site in ("lost_list_tail", "second_stop_words"):
+            body = re.search(rf"(?ms)^{site}\(\) \{{.*?^\}}", text).group(0)  # type: ignore[union-attr]
+            plain = word.removesuffix("-mixed")
+            assert body.index(f"*,{word},*)") < body.index(f"*,{plain},*)"), (site, word)
+    both_tail, _ = _queue_tails("none,lost-suppressed-mixed,lost-queue-mixed,queue-free")
+    assert "kept by the audit trail or purge-record.json (not damage, not a mode)" in both_tail
+    assert (
+        "; the same stop names agentsync's purge queue, which no longer holds a purge the audit trail or"
+        in (both_tail)
+    )
+
+
 def test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_step_2(
     real_env: dict[str, str], wheel: Path
 ) -> None:

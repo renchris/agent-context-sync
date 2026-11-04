@@ -36645,6 +36645,10 @@ it. `LOST_HOLD_PY` adds `-trail` after the -govgone test when the build's detail
 log words unchanged, so no word goes unmatched. An older build never credits so. Tests:
 `test_the_lost_list_probe_credits_purge_record_json_when_the_trail_lost_the_line`,
 `test_a_trail_that_lost_the_purge_credits_purge_record_json_at_step_1_and_step_2`.
+Amended 2026-11-03, §16.226 C872: CORRECTED: TRAIL_LOST_HEAD's lead holds `purge-record.json keeps`, so any detail under
+it took `-trail`, a mixed list or one the trail alone credits included. `-trail` now follows status's `record_only`,
+read in the body after the head (the text credit only for a build before it), both stores give `-mixed`, and the
+trail's alone the plain word (B13 round 34 ruling 95).
 
 **Under a lost hold the hand purge waits for the release** (C701's installer half, ruling 86; `scripts/install.sh`).
 The queue's no-copy clause sent the person to a purge the hold refuses, right after saying the records owner could set
@@ -37446,6 +37450,21 @@ second stop; a list lost alone stays one line. The new clauses join both phrase 
 `hold-queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`,
 `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict` (the rebuilt fix, both lines, the
 hold-only arm, a hold on another source) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+
+**One credit rule for the installer's lost-list word** (C872 and C836; ruling 95; amends §16.219 C735;
+`scripts/install.sh`, `docs/deploy/setup-feedback.md`). `list_word` added `-trail` whenever the detail named
+purge-record.json, and governance.TRAIL_LOST_HEAD itself says `purge-record.json keeps`, so under the head a list
+the audit trail still credited, wholly or in part, read as kept by purge-record.json alone, and the installer and the
+report disagreed. It strips TRAIL_LOST_HEAD (read by getattr) and reads the body: a purge-record.json credit alone
+adds `-trail`, both credits `-mixed`, the trail's alone the plain word, held to status's `record_only` where the
+build has it; a build before `record_only` keeps its text credit. Each `-mixed` word has its own arm before the plain
+one in `lost_list_tail` and `second_stop_words`, with its log word and lead: `which no longer lists what a purge
+suppressed, kept by the audit trail or purge-record.json` and `which no longer holds a purge the audit trail or
+purge-record.json records as queued and not done`, the second stop `the suppression list lost what a purge
+suppressed, kept by the audit trail or purge-record.json` and `the purge queue lost a purge the audit trail or
+purge-record.json records`, no bracket in SECOND; the new clauses join both phrase lists (ruling 68). The report's
+mixed Doctor bucket words are not built (ruling 95). Tests: `test_the_lost_list_word_follows_record_only_on_every_form_c872`
+and `test_a_queue_lost_with_its_records_in_both_stores_reads_mixed_at_step_1_c872`.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 

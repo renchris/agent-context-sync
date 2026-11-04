@@ -981,7 +981,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   C532; B13 round 33 ruling 86, C776). When the folder is there but the audit trail no longer holds the purge's line
   (a later write re-created governance/), each tail credits purge-record.json instead, `which no longer lists what a
   purge suppressed, kept by purge-record.json` and `which no longer holds a purge that purge-record.json keeps as
-  queued and not done`, under the same log words (ruling 82, C735). A hold list that no longer lists
+  queued and not done`, under the same log words (ruling 82, C735); one whose lost purges the two stores share
+  credits both, `which no longer lists what a purge suppressed, kept by the audit trail or purge-record.json` and
+  `which no longer holds a purge the audit trail or purge-record.json records as queued and not done`, under the
+  same log words, the credit following status's own (B13 round 34 ruling 95, C872). A hold list that no longer lists
   a hold its records keep as set and not released gives `; step 2 stops at its status step on agentsync's hold list,
   which no longer lists a hold its records keep as set and not released (not damage, not a mode): fixing that is the
   person's (they put the hold list back from the copy kept, or the records owner sets the hold again or releases it),

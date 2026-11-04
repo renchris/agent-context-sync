@@ -1193,7 +1193,10 @@ misplaced_reader() { # PYTHON [SRC]
 # (B13 round 33 ruling 86: C776, C767). With the folder there and the audit trail without the purge line (a later
 # write re-created governance/, whose detail leads with governance.TRAIL_LOST_HEAD, or a first --folder-lost has
 # recorded that loss, whose detail credits purge-record.json), "-trail" goes on the word, after the -govgone test;
-# an older build never credits so (ruling 82: C735, lane B's ruling 79 words). Last, as its own comma word, whether
+# an older build never credits so (ruling 82: C735, lane B's ruling 79 words). One credit rule, as status's
+# record_only reads it (B13 round 34 ruling 95: C872 with C836's installer half): the detail's body, after
+# governance.TRAIL_LOST_HEAD (read by getattr), crediting purge-record.json alone adds "-trail", both stores
+# "-mixed", the audit trail's alone the plain word; a build before record_only keeps its text credit. Last, as its own comma word, whether
 # a hold in force refuses the queue's hand run, read from status's own judgment, never from a lost-hold word (a hold
 # on another source refuses nothing, and one still listed or in sources.toml refuses it too): with the build's
 # governance_or_none read in its own try and passed to both readers, ",queue-held" when the queue's fix holds
@@ -1235,10 +1238,18 @@ def list_word(odd):
     word = {"purge-queue.json": ",lost-queue", "suppressed.json": ",lost-suppressed"}.get(odd.path.name, "") if odd else ""
     if word and str(getattr(odd, "fix", "")).startswith("the person puts agentsync\x27s governance folder ("):
         word += "-govgone"
-    elif word:
+    elif word:  # one credit rule: -trail only when every lost record is credited to purge-record.json alone
         detail = str(getattr(odd, "detail", ""))
-        if "purge-record.json keeps" in detail or "kept by purge-record.json" in detail:
+        head = getattr(governance, "TRAIL_LOST_HEAD", "")
+        body = detail[len(head):] if head and detail.startswith(head) else detail
+        record = "purge-record.json keeps" in body or "kept by purge-record.json" in body
+        only = getattr(odd, "record_only", None)
+        if only is None:  # a build before record_only keeps its credit
+            only = record and " the audit trail records " not in body
+        if only:
             word += "-trail"
+        elif record:
+            word += "-mixed"
     return word
 gov = ()
 try:  # the [governance] of sources.toml, whose hold status counts; none on a build before governance_or_none
@@ -1341,6 +1352,11 @@ lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
 	LIST_TAIL="" LIST_LOG=""
 	case ",$1,:$2" in
 	*:role-suppressed) ;;
+	*,lost-suppressed-mixed,*)
+		LIST_TAIL="; $lead agentsync's suppression list, which no longer lists what a purge suppressed, kept by the audit trail or purge-record.json (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
+		LIST_LOG=",state-suppressed-lost"
+		lead="the same stop names"
+		;;
 	*,lost-suppressed-trail,*)
 		LIST_TAIL="; $lead agentsync's suppression list, which no longer lists what a purge suppressed, kept by purge-record.json (not damage, not a mode): fixing that is the person's (they put the suppression list back from a copy they trust, or follow the fix its status line gives), and ~/.local/bin/agentsync status prints it on its governance.suppressed line"
 		LIST_LOG=",state-suppressed-lost"
@@ -1354,6 +1370,10 @@ lost_list_tail() { # VERDICT CROLE LEAD BYHAND: sets LIST_TAIL and LIST_LOG
 	esac
 	case ",$1,:$2" in
 	*:role-queue) ;;
+	*,lost-queue-mixed,*)
+		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge the audit trail or purge-record.json records as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }$hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
+		LIST_LOG="$LIST_LOG,state-queue-lost"
+		;;
 	*,lost-queue-trail,*)
 		LIST_TAIL="$LIST_TAIL; $lead agentsync's purge queue, which no longer holds a purge that purge-record.json keeps as queued and not done (not damage, not a mode): fixing that is the person's (they put the purge queue back from a copy they trust, or${4:- }$hand), and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"
 		LIST_LOG="$LIST_LOG,state-queue-lost"
@@ -2248,6 +2268,8 @@ FIXED_VALUE_PHRASES+="|once the records owner releases the hold that covers it, 
 FIXED_VALUE_PHRASES+="|where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing"
 FIXED_VALUE_PHRASES+="|the records owner sets the hold again or releases it, which fixes the hold line only"
 FIXED_VALUE_PHRASES+="|once the records owner releases the hold they run each such purge by hand"
+FIXED_VALUE_PHRASES+="|kept by the audit trail or purge-record.json"
+FIXED_VALUE_PHRASES+="|the audit trail or purge-record.json records as queued and not done"
 FIXED_VALUE_PHRASES+="|lost a hold or a purge the audit trail records"
 FIXED_VALUE_PHRASES+="|with the hold list, agentsync's audit trail, the purge queue and the suppression list in it: "
 FIXED_VALUE_PHRASES+="|(the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list)"
@@ -9956,6 +9978,7 @@ second_stop_words() { # EXCLUDE
 	case ",$lost,:$1" in
 	*:suppressed) ;;
 	*,lost-suppressed,*:precord) SECOND=" and, on that same governance.suppressed line, a second FAIL that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
+	*,lost-suppressed-mixed,*) SECOND=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost what a purge suppressed, kept by the audit trail or purge-record.json, also the person's to fix" ;;
 	*,lost-suppressed-trail,*) SECOND=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost what a purge suppressed, kept by purge-record.json, also the person's to fix" ;;
 	*,lost-suppressed,*) SECOND=" and, on its governance.suppressed line, a second stop that follows: the suppression list lost a purge the audit trail records, also the person's to fix" ;;
 	esac
@@ -9963,6 +9986,7 @@ second_stop_words() { # EXCLUDE
 	[ -z "$SECOND" ] || lead="$SECOND, and, on its governance.purge_queue line in that same stop,"
 	case ",$lost,:$1" in
 	*:queue) ;;
+	*,lost-queue-mixed,*) SECOND="$lead the purge queue lost a purge the audit trail or purge-record.json records, also the person's to fix" ;;
 	*,lost-queue-trail,*) SECOND="$lead the purge queue lost a purge that purge-record.json keeps, also the person's to fix" ;;
 	*,lost-queue,*) SECOND="$lead the purge queue lost a purge the audit trail records, also the person's to fix" ;;
 	esac
