@@ -994,12 +994,16 @@ same command with <root>/fixture/tree in place of the home's folder, and stop on
 an upstream deletion deletes a file it made itself (a `cp -p` of a fixture file under a made-up name, synced before
 it goes), never a manifest file; one that must move a manifest file names that one file, and its copy's check passes
 only when that file is the one line missing, its hash checked where it went against its manifest line (round 31 C573,
-C504). A probe that adds a made-up folder (for example `Project Alpha/Contoso Empty 2`) names each one in its report,
-and that home's folder check passes only when those lines are the only extra lines; any other extra or missing line
-stops the run (round 33 C774). Both dirs.txt and manifest.sha256 are the fixture's, under ~/.cache/agentsync-bring-back/fixtures/v1/ (or
-copied beside <root>/fixture/tree), and both checks run from the folder that holds them (round 32 C664). A rehearsal
-that crosses local midnight checks every step after it again: an empty-folder alarm or wait gone
-just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing, not agentsync's.
+C504). shasum reports a moved file on two lines, `shasum: <copy>/<rel>: No such file or directory` (on stderr, which
+the kit reads with 2>&1) and `<copy>/<rel>: FAILED open or read`, then `shasum: WARNING: 1 listed file could not be
+read`, so that copy's check passes only when those three are its only lines not ending `: OK` (round 34 C806). A
+probe that adds a made-up folder (for example `Project Alpha/Contoso Empty 2`) names each one in its report, and that
+home's folder check passes only when those lines are the only extra lines; any other extra or missing line stops the
+run (round 33 C774). Both dirs.txt and manifest.sha256 are the fixture's, under
+~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks run from the
+folder that holds them (round 32 C664). A rehearsal that crosses local midnight checks every step after it again: an
+empty-folder alarm or wait gone just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing,
+not agentsync's.
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)
@@ -1010,7 +1014,9 @@ Gate: the repo's `scripts/gate.sh`, never a hand-copied script. While you build,
 is the full set, resumed where a killed run of the same tree stopped). Before every push run the land gate,
 `scripts/gate.sh`: the full CLAUDE.md list, the full test set (the whole-tree scanners first), and it ends
 `GATE GREEN at <sha>`. A fresh worktree has no node_modules (it is gitignored); scripts/gate.sh runs `npm ci` once when
-it is missing.
+it is missing. Run a lint and the commit it guards as one `&&` chain, never `;`, with no pipe on the lint: `ruff
+check x | tail -3 && git commit` reads tail's exit, not ruff's (round 33). A new def, test or helper, placed before a
+decorated test goes above that test's decorators (round 33, bb9286d52).
 
 Landing (round 34): land with `scripts/ship-land.sh --lock /tmp/b13-r34-land.lock`, typed exactly so (no env prefix,
 no `bash` in front, its own command). It takes the one lock, fetches, reads trunk's CI once without waiting (a run

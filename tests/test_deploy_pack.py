@@ -7689,6 +7689,49 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
     assert check() == 0
     (copy / "Project Beta" / "Meetings" / "Beta retro.txt").unlink()  # a manifest file gone
     assert check() != 0
+    # B13 round 34 C806: round 33's kit allowed only the `<copy>/<rel>:` line for a named moved file, so its
+    # stderr twin stopped the probe; the note gives every line shasum prints for it, and these are all of them
+    for part in (
+        "shasum reports a moved file on two lines, `shasum: <copy>/<rel>: No such file or directory` (on"
+        " stderr, which the kit reads with 2>&1) and `<copy>/<rel>: FAILED open or read`, then `shasum:"
+        " WARNING: 1 listed file could not be read`, so that copy's check passes only when those three are"
+        " its"
+        " only lines not ending `: OK` (round 34 C806).",
+    ):
+        assert part in note, part
+    said = subprocess.run(
+        ["/bin/sh", "-c", f"{run} 2>&1"], cwd=tmp_path, capture_output=True, text=True, check=False
+    ).stdout.splitlines()
+    gone = f"{copy}/Project Beta/Meetings/Beta retro.txt"
+    assert [line for line in said if not line.endswith(": OK")] == [
+        f"shasum: {gone}: No such file or directory",
+        f"{gone}: FAILED open or read",
+        "shasum: WARNING: 1 listed file could not be read",
+    ], said
+
+
+def test_the_lane_brief_guards_a_commit_with_an_unpiped_lint_and_a_helper_above_the_decorators() -> None:
+    """B13 round 34 C862: round 33's lane D ran `ruff check ...; ... git commit`, and the commit went in over
+    an E501; `ruff check x | tail -3 && git commit` commits too, since `&&` reads tail's exit. Lane B put a
+    helper between a test and its skipif and parametrize decorators (bb9286d52 moved them back): a split
+    skipif is silent. The gate paragraph says both, after its node_modules sentence."""
+    lanes = " ".join((ROOT / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8").split())
+    gate = lanes.split(" Gate: the repo's `scripts/gate.sh`", 1)[1].split(" Landing (round 34):", 1)[0]
+    assert gate.endswith(
+        "scripts/gate.sh runs `npm ci` once when it is missing. Run a lint and the commit it guards as one"
+        " `&&` chain, never `;`, with no pipe on the lint: `ruff check x | tail -3 && git commit` reads"
+        " tail's exit, not ruff's (round 33). A new def, test or helper, placed before a decorated test goes"
+        " above that test's decorators (round 33, bb9286d52)."
+    ), gate[-400:]
+
+    def guarded(chain: str) -> bool:
+        return (
+            "committed"
+            in subprocess.run(["/bin/sh", "-c", chain], capture_output=True, text=True, check=False).stdout
+        )
+
+    assert guarded("false | tail -3 && echo committed") and guarded("false; echo committed")
+    assert not guarded("false && echo committed")
 
 
 def test_the_records_page_says_an_update_screens_mail_again_for_a_new_label_reader() -> None:

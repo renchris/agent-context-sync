@@ -37244,6 +37244,24 @@ list and the limit stay, the wait goes in ci.yml's note only, and `test_claude_m
 pins CLAUDE.md's whole sentence, moves in the same commit: the item's fix as first written, CLAUDE.md and ci.yml alone,
 turned that test red, its measured reason a build makes things worse.
 
+**The lane brief says shasum's lines for a moved file** (C806; `docs/lanes/COMMON.md`'s kit paragraph). The note said a
+copy's check passes when the one moved manifest file is the one line missing, and round 33's kit allowed only
+`<copy>/<rel>:` for a named file, while `shasum -c` prints a moved file on two lines, `shasum: <copy>/<rel>: No such
+file or directory` on stderr, which the kit reads with 2>&1, and `<copy>/<rel>: FAILED open or read`, then `shasum:
+WARNING: 1 listed file could not be read`: the stderr line stopped a probe that moved a named file (a false stop; the
+check failed closed, and round 33 moved none). The note gives the three lines, outside the backticked commands, which
+stay; the kit's own case pattern is the lead's. Test:
+`test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, extended to read shasum's own output for a
+moved file.
+
+**The lane brief guards a commit with an unpiped lint, and a helper goes above a test's decorators** (C862;
+`docs/lanes/COMMON.md`'s Gate paragraph). Round 33's lane D ran `ruff check ...; ...; git commit` and the commit went in
+over an E501, and `ruff check x | tail -3 && git commit` commits too, since `&&` reads tail's exit; lane B put a helper
+between a test and its skipif and parametrize decorators (bb9286d52 moved them back), and a split skipif is silent.
+Neither could reach trunk, since the land gate runs ruff, but each cost a fix commit. The paragraph says both after its
+node_modules sentence. Test:
+`test_the_lane_brief_guards_a_commit_with_an_unpiped_lint_and_a_helper_above_the_decorators`.
+
 **A re-run a signal stopped convicts nothing, and the gate exits with its status** (C877, ruling 100;
 `scripts/gate.sh`'s `rerun_alone`, `part_once` and `run_part`). `rerun_alone` mapped every non-zero re-run status to `==
 <part>: the re-run alone is red too (rc N)` and returned 1, and its callers' `if [ "$rc" = 1 ] && rerun_alone ...; then
