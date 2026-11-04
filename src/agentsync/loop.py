@@ -287,7 +287,8 @@ def _sync_stopped_on(config: Config) -> str | None:
     hold list lost, whose sync runs (B13 round 31 C520; ruling 60). Also the purge record or the
     suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
     governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
-    which a sync runs over at 0000 (B13 round 32 C639; ruling 65)."""
+    which a sync runs over at 0000 (B13 round 32 C639; ruling 65). And the lock this account cannot open,
+    whose refusal stops the sync's acquire (B13 round 34 C863)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
     found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
@@ -308,6 +309,16 @@ def _sync_stopped_on(config: Config) -> str | None:
                 return "governance.suppressed"
         except Exception:  # every other error is its own line's, as before
             continue
+    # the open a sync's acquire makes, as doctor's lock check makes it: a lock this account cannot open stops
+    # every sync, so the waits and the heartbeat's note say none runs until the lock [FAIL] line is fixed,
+    # never "another full walk lists it" (B13 round 34 C863, ruling 87's third gap)
+    try:
+        os.close(os.open(expand(config.state_paths.lock), os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW))
+    except FileNotFoundError:  # a sync makes it
+        pass
+    except OSError as exc:
+        if doctor.refused_state_path(config, "lock", exc) is not None:
+            return "lock"
     return None
 
 

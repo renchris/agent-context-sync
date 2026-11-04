@@ -4460,7 +4460,12 @@ def _three_incomplete_passes(config: Config, sid: str) -> None:
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize(
-    ("stop", "check"), [("the lock a folder", "lock"), ("purge-record.json at 0000", "governance.suppressed")]
+    ("stop", "check"),
+    [
+        ("the lock a folder", "lock"),
+        ("purge-record.json at 0000", "governance.suppressed"),
+        ("the lock at 0000", "lock"),  # B13 round 34 C863: its refused open stops every sync too
+    ],
 )
 def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
     initialised: Config,
@@ -4482,6 +4487,11 @@ def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
         lock = expand(initialised.state_paths.lock)
         lock.unlink(missing_ok=True)
         lock.mkdir()
+    elif stop == "the lock at 0000":
+        lock = expand(initialised.state_paths.lock)
+        lock.touch()
+        lock.chmod(0o000)
+        assert loop._sync_stopped_on(initialised) == "lock"
     else:
         record.write_text('{"purges": []}\n', encoding="utf-8")
         record.chmod(0o000)
@@ -4499,6 +4509,16 @@ def test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729(
         monkeypatch.delenv("AGENTSYNC_NO_NEXT_HINT", raising=False)
         if record.exists():
             record.chmod(0o600)
+        if stop == "the lock at 0000":
+            expand(initialised.state_paths.lock).chmod(0o600)
+    if stop == "the lock at 0000":  # the sync stops on it, as the note says
+        lock = expand(initialised.state_paths.lock)
+        lock.chmod(0o000)
+        try:
+            assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_FAILED
+        finally:
+            lock.chmod(0o600)
+        assert loop._sync_stopped_on(initialised) is None
     capsys.readouterr()
 
 

@@ -37300,6 +37300,17 @@ mode-000 cases; the last assert, `, a warn after 3`, stays outside it, since it 
 returns once the hold list is back. Measured under a simulated root (geteuid 0, chmod 0 a no-op): fails before,
 passes after. No contract text changes. Test: `test_ops_doctor.py::test_heartbeat_states`.
 
+**C863, item 5 (makes worse True as found; ruling 87's third gap).** Items 1 to 4 (step 1's held-queue words) are lane
+RB's under ruling 93 and item 6 is lane D's C830. With agentsync.lock at 0000, status FAILed lock with `chmod 600` and
+every sync exited 1, while the heartbeat [warn] still gave `agentsync sync; another full walk lists it`:
+`loop._sync_stopped_on` saw the lock only when it was not a file. After its record reads it now makes the open a
+sync's acquire makes, as `doctor._check_lock` does (`os.open(lock, O_RDWR | O_CLOEXEC | O_NOFOLLOW)`), returns `lock`
+when `doctor.refused_state_path` claims the error, and passes a missing lock (a sync makes it). Its other readers
+follow, measured with the lock at 0000: doctor's [ok] heartbeat form reads `no sync lists it again until the lock
+[FAIL] line is fixed`, the empty-folder wait `(once the lock [FAIL] line is fixed, a plain ... sync prints it too;
+until then no sync runs)`, and `exclude-empty`'s head (cli.py) reads the same function. Test: the `the lock at 0000`
+row of `test_a_listing_warn_beside_a_stop_on_every_sync_says_no_sync_runs_c729` (the note in both hint modes, the
+sync's exit 1, and None once the mode is back).
 
 
 
