@@ -9074,9 +9074,11 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 
 
 def _helper_state(label: str, words: dict[str, str], state: str, detail: str) -> str:
-    """A helper's line: ``(<detail>)`` for a state, the colon form for a failure's reason, as ``ocr._entry``
-    and doctor print it, so a signal's ``stopped by SIG<NAME> (signal N)`` is never inside a bracket (B13
-    round 33 C719, ruling 85)."""
+    """A helper's line: ``(<detail>)`` when ready or off, the colon form when failed or not built, so a
+    signal's ``stopped by SIG<NAME> (signal N)`` is never inside a bracket: a failure's reason, as
+    ``ocr._entry`` and doctor print it (B13 round 33 C719, ruling 85). Doctor's not-built speech line keeps
+    its bracket, which holds no reason: a probe's not-built detail is ``ocr._look``'s fixed words (B13 round
+    34 C848)."""
     shown = _shorten(detail, 200)
     word = words.get(state, "unknown state")
     return (
@@ -9085,9 +9087,10 @@ def _helper_state(label: str, words: dict[str, str], state: str, detail: str) ->
 
 
 def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, str]) -> str:
-    """``- <label>: <state> (<detail>)`` from ``agentsync.convert.<module>.probe``, the call Doctor's check of
-    the same name makes, with a wait of its own (:data:`_PROBE_S`, not counted: ``_Mirror.not_counted``).
-    The detail can be a failed build's reason, its paths removed. Never raises."""
+    """:func:`_helper_state`'s line (``- <label>: <state> (<detail>)``, or ``- <label>: <state>: <detail>``
+    when failed or not built; B13 round 34 C848) from ``agentsync.convert.<module>.probe``, the call Doctor's
+    check of the same name makes, with a wait of its own (:data:`_PROBE_S`, not counted:
+    ``_Mirror.not_counted``). The detail can be a failed build's reason, its paths removed. Never raises."""
     config = cast(Config, r.config)
     room = r.remaining() - _RESERVE_S
     started = time.monotonic()

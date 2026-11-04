@@ -10958,6 +10958,23 @@ def test_a_trail_lost_fail_has_its_own_bucket_and_cause_per_list_and_both_ruling
     assert not sort.from_trail_lost and len(sort.unexpected) == len(fails), sort
 
 
+def test_the_helper_lines_docstrings_give_the_form_each_state_prints_c848() -> None:
+    """B13 round 34 C848: _helper_line's docstring still gave the bracket form that C719 replaced for a
+    failure. Both docstrings give the form the code prints for each state."""
+    words = {"ready": "ready", "failed": "build failed", "not-built": "not built", "off": "off"}
+    for state, line in (
+        ("ready", "- x: ready (d)"),
+        ("off", "- x: off (d)"),
+        ("failed", "- x: build failed: d"),
+        ("not-built", "- x: not built: d"),
+    ):
+        assert setup_report._helper_state("x", words, state, "d") == line
+    for fn in (setup_report._helper_state, setup_report._helper_line):
+        doc = " ".join((fn.__doc__ or "").split())
+        assert "when failed or not built" in doc, fn.__name__
+    assert "``- <label>: <state>: <detail>``" in " ".join((setup_report._helper_line.__doc__ or "").split())
+
+
 _HOLD_LOST_FAIL = "/x/holds.json no longer lists the hold on all (set by (owner not shown)): z"
 
 
