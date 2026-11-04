@@ -16893,6 +16893,11 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
         + "(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
     )
     new_held = held + f"({doctor.LISTING_YOURS_REPORT_NOTE})"
+    # B13 round 34 C818: round 33's note, which pointed at a Loop line that may say only "not read", is
+    # rewritten too, and a line already in the new words (which round 33's is a prefix of) is left alone
+    r33_held = held + (
+        "(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)"
+    )
     report = "\n".join(
         [
             "# agentsync setup report",
@@ -16912,6 +16917,7 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
             "~~~text",
             old_held,
             new_held.replace("fy26-projects", "q3-launch"),
+            r33_held.replace("fy26-projects", "q4-close"),
             "~~~",
             "",
             "## Redaction",
@@ -16932,6 +16938,8 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
     )
     assert new_held in lines and old_held not in lines
     assert new_held.replace("fy26-projects", "q3-launch") in lines
+    assert new_held.replace("fy26-projects", "q4-close") in lines, lines
+    assert r33_held.replace("fy26-projects", "q4-close") not in lines
 
 
 _NOT_BUILT = [

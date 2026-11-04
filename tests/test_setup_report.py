@@ -21153,6 +21153,8 @@ def _yours_step() -> loop.NextStep:
         "another sync does not clear it)",
         f" ({doctor._LISTING_YOURS_NOTE})",
         f" ({doctor._LISTING_SKIPPED_NOTE})",
+        f" ({doctor.LISTING_YOURS_REPORT_NOTE})",
+        # an installed agentsync from before B13 round 34 C818
         " (as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)",
         # an installed agentsync from before B13 round 15 S11, S28
         " (as of its last walk: if this run's sync runs, the end of this run says whether it cleared it)",
@@ -21169,6 +21171,7 @@ def _yours_step() -> loop.NextStep:
         "install.sh",
         "install.sh-fail",
         "report",
+        "report-before-C818",
         "install.sh-before-S11",
         "install.sh-fail-before-S28",
         "install.sh-before-Q35",
@@ -21354,6 +21357,36 @@ def test_no_yours_group_when_the_loop_line_is_not_read(
         "not judged (the Loop line was not read: an unexpected error: ValueError) 1: heartbeat.project-x warn"
         " · unexpected 0" in summary
     ), summary
+
+
+def test_the_held_listing_note_names_status_when_the_loop_line_is_not_read_c818(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 34 C818 (amending ruling 84): with the Loop line cut off, Doctor's heartbeat warn still sent
+    the reader to "the Summary's Loop line", which said only "not read". The report reads the Loop after
+    doctor, so the one note is true in every case: it names status for a Loop line that says not read, and
+    claims nothing of the report's other sections."""
+    held = doctor.CheckResult(
+        "heartbeat.project-x",
+        False,
+        "enumeration incomplete for 4 consecutive passes; deletions held",
+        doctor.Severity.WARN,
+        note=doctor._LISTING_YOURS_NOTE,
+    )
+    monkeypatch.setattr(cli, "_status_checks", lambda config, offline: [held])
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+
+    def cut(config: Config) -> loop.NextStep:
+        raise TimeoutError
+
+    hooks = dataclasses.replace(cli._report_hooks(), loop_next=cut)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert "NEXT: not read" in _line(section(text, "Summary"), "- Loop: "), section(text, "Summary")
+    held_lines = [ln for ln in section(text, "Doctor").splitlines() if "deletions held" in ln]
+    assert len(held_lines) == 1, section(text, "Doctor")
+    line = held_lines[0]
+    assert line.endswith(f"({doctor.LISTING_YOURS_REPORT_NOTE})"), line
+    assert "if that line says not read, ~/.local/bin/agentsync status says)" in line, line
 
 
 def test_a_warn_the_loop_could_not_name_stays_unexpected_ruling_84(fake_mac: dict[str, Path]) -> None:

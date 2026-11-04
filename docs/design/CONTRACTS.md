@@ -36496,7 +36496,9 @@ for a time-out or a busy state file, and not in a stopped copy. Every other warn
 success`), a FAIL never moves, an older CLI's plain-list hook stays unexpected, and doctor's note and the evidence line
 do not change. Tests: `test_no_yours_group_without_the_loops_checks`, `test_no_yours_group_when_the_loop_line_is_not_read`,
 `test_a_warn_the_loop_could_not_name_stays_unexpected_ruling_84`,
-`test_a_stopped_copys_unread_loop_gives_no_idle_advice_ruling_84`.
+`test_a_stopped_copys_unread_loop_gives_no_idle_advice_ruling_84`. Amended 2026-11-03, §16.227 C818: doctor's note
+changes once, to the one form true whether or not the Loop line was read: `LISTING_YOURS_REPORT_NOTE` adds `; if that
+line says not read, ~/.local/bin/agentsync status says`; the evidence line does not change.
 
 **The listing note and the label clause in each build's words** (rulings 81 and 90). `_LISTING_GOVERNANCE_RE` reads the
 old folder form, C722's `that` and C747's `... records: agentsync's audit trail no longer holds it`;
@@ -37250,6 +37252,21 @@ paragraph and §16.158's Z15 paragraph take dated lines. Tests:
 `test_two_governance_files_this_account_cannot_open_keep_two_fails_naming_them_c832` and
 `test_a_purge_record_refused_beside_a_refused_governance_folder_keeps_its_own_line_c832` (test_cli.py).
 
+**C818 (makes worse True as found; amends ruling 84).** With the Loop line not read (cut off, failed), Doctor's
+incomplete-listing warn still sent the reader to `the Summary's Loop line`, which said only `not read`. A swap keyed on
+`facts.loop_unread_why` cannot work, since the report reads the Loop after doctor (doctor's FAILs are its rule 1), and
+a note that the report "does not say" the cause would be false beside the Installer copy of install.out's wait. The
+one constant is true in every case: `doctor.LISTING_YOURS_REPORT_NOTE` reads `as of its last walk: the Summary's Loop
+line says whether a WAITING ON YOU line still names it; if that line says not read, ~/.local/bin/agentsync status says`
+(no bracket, one `held`). install.sh's `STOPPED_HELD_NOW` takes the same text in the same commit (a test keeps them
+equal), and the stopped-copy rewrite that turned round 13's form into it now also turns round 33's
+(`STOPPED_HELD_R33`, the old constant, which the new text never matches, since it goes on past `names it` with `;`),
+so a stopped copy an older agentsync renders gets the true note. The report's yours bucket reads the new tail and
+round 33's. §16.218's ruling 84 paragraph takes a dated line. Tests:
+`test_the_held_listing_note_names_status_when_the_loop_line_is_not_read_c818` (the real hook, NO_NEXT_HINT_ENV=1 and
+a cut Loop) and the `report` and `report-before-C818` cases of
+`test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected` (test_setup_report.py), and
+`test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing` (test_install_oneshot.py).
 
 
 

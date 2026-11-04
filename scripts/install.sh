@@ -6386,7 +6386,8 @@ doctor status-error agentsync status exited with no [FAIL] line" # setup_report.
 STOPPED_NEXT_STEP=" before install.sh's own next step. "
 STOPPED_FIX_LINE="a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so)." # setup_report._installer_section (a test keeps them equal)
 STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
-STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
+STOPPED_HELD_R33="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)"
+STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it; if that line says not read, ~/.local/bin/agentsync status says)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
 # An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
 # strip_run_pids) numbers the later ones <stamp>.2, .3 over install.log in its order (B13 round 12 N21). A stopped
 # copy is rendered by the older installed agentsync, so this gives its report those labels (B13 round 13 O21):
@@ -6620,7 +6621,7 @@ older_report_rewrite() { # MODE
 		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 		-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
 		-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
-		-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
+		-v heldold="$STOPPED_HELD_OLD" -v heldr33="$STOPPED_HELD_R33" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
 		function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
 			m = split(ENVIRON["STEPWORDS"], ws, "\n")
 			for (i = 1; i <= m; i++) {
@@ -7071,6 +7072,7 @@ older_report_rewrite() { # MODE
 			$0 = substr($0, 1, j) ENVIRON["OR_FETCH"] substr($0, j + 32)
 		}
 		cp && sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
+		cp && sec == "## Doctor" && (j = index($0, heldr33)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldr33)) }
 		cp && (index($0, "Send it: ") == 1 || index($0, u) == 1) { next }
 		cp && (index($0, u) > 0 || index($0, "bring back: ") == 1) { if (shown++) next; $0 = gone }
 		cp && (j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }

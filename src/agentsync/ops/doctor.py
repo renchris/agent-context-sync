@@ -157,8 +157,12 @@ _LISTING_SKIPPED_NOTE = (
 # The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
 # prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's
 # doctor calls a local listing yours by the source's kind, not by the loop's waits (B13 round 5 F12, F45).
+# The report reads the Loop after doctor, so the note cannot know whether that line was read: it says where to
+# look when it was not, and claims nothing of the report's other sections, whose Installer copy may hold the
+# wait (B13 round 34 C818, amending ruling 84; install.sh's STOPPED_HELD_NOW is the same text).
 LISTING_YOURS_REPORT_NOTE = (
-    "as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it"
+    "as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it; "
+    f"if that line says not read, {BIN} status says"
 )
 # The note on an incomplete listing when the state file cannot be read (a damaged manifest): no sync lists it
 # again until it can, so the line points at no WAITING ON YOU line and gives no sync as its fix (B13 round 19
