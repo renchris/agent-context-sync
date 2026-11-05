@@ -10999,12 +10999,15 @@ def test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record() -> 
     source = inspect.getsource(cli._stop_role)
     given = set(re.findall(r'\): "([a-z-]+)",', source))
     given |= set(re.findall(r'(?:return|else) "([a-z-]+)"', source))
+    # B13 round 35 C935: the governance folder's own role is given where the stop is recorded
+    given |= set(re.findall(r'role = "([a-z-]+)"', inspect.getsource(cli._record_sync_stop)))
+    assert "governance-folder" in given, given
     assert {"hold-record", "purge-record", "manifest", "lock", "heartbeat", "state-folder"} <= given, given
     page = _feedback_page()
     [row] = [ln for ln in page.splitlines() if ln.startswith("| `~/agent-context/setup/sync-stops.log` |")]
     [listed] = re.findall(r"the state file or folder by its role \(([^;]+), \.\.\.;", row)
     roles = re.findall(r"`([a-z-]+)`", listed)
-    assert {"hold-record", "purge-record"} <= set(roles), roles
+    assert {"hold-record", "purge-record", "governance-folder"} <= set(roles), roles
     assert set(roles) <= given, set(roles) - given
     assert "the hold record and the purge record by their own names, never `state-folder`" in row
     # ruling 40's stop kind: a governance list that lost a purge, recorded on `file=governance`

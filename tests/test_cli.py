@@ -14712,6 +14712,36 @@ def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c9
     assert kept.endswith(f"({cli._PURGE_YOURS_NOTE})"), kept
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+@pytest.mark.parametrize("shut", ["folder-0000", "folder-0600", "suppressed-0000"])
+def test_a_sync_stopped_by_the_governance_folder_records_the_folder_not_a_file_c935(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shut: str
+) -> None:
+    """B13 round 35 C935: a sync stopped by a governance folder this account cannot search recorded
+    `file=governance`, so after the folder's chmod the report said `a governance file`. The writer judges it
+    while the folder is still shut and records `file=governance-folder`; a file in a searchable folder keeps
+    `file=governance`."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    gov.mkdir(mode=0o700, exist_ok=True)
+    listed = gov / "suppressed.json"
+    listed.write_text('{"version": 1, "globs": [], "stable_ids": [], "path_hashes": []}\n', encoding="utf-8")
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    target, mode = (listed, 0o000) if shut == "suppressed-0000" else (gov, int(shut[-4:], 8))
+    capsys.readouterr()
+    target.chmod(mode)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        target.chmod(0o600 if target == listed else 0o700)
+    capsys.readouterr()
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    role = "governance" if shut == "suppressed-0000" else "governance-folder"
+    assert re.fullmatch(rf"\S+ sync-stop file={role} rc=1 owner=agent kind=refused", line), line
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_status_names_the_agents_chmod_before_the_persons_fail_beside_it_c911(
     initialised: Config, capsys: pytest.CaptureFixture[str]

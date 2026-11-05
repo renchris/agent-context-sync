@@ -38575,6 +38575,16 @@ output are unchanged. Test:
 `test_cli.py::test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903` (a real queued purge,
 the real hook, NO_NEXT_HINT_ENV=1; status keeps its note).
 
+**A sync the governance folder stopped records the folder** (C935). A sync stopped by a governance folder this
+account cannot search (0000 or 0600) recorded `file=governance` in sync-stops.log, so once the folder's chmod had
+run the report said `a governance file`. `cli._record_sync_stop` judges it first, while the folder is still shut:
+`kind == "refused"` and `doctor.governance_refuser(<state>, path)` give `file=governance-folder`; a file refused in a
+searchable folder keeps `file=governance`, and a log written before keeps `governance` for both, since nothing on
+disk tells them apart. Lane RA's report (`_SYNC_STOP_FILES["governance-folder"]`, `agentsync's governance folder`,
+fitting a 700) and lane RB's `fallback_sync_stop_line` read the role. setup-feedback.md's sync-stops.log row lists it,
+and `test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record` reads `_record_sync_stop`'s source too.
+Test: `test_cli.py::test_a_sync_stopped_by_the_governance_folder_records_the_folder_not_a_file_c935` (the folder at
+0000 and 0600, suppressed.json at 0000).
 
 **Status names the agent's chmod before the person's FAIL beside it** (C911; amends §16.226 C808). C808's order held
 only in install.sh: with the audit trail at 0000 beside a suppression list moved aside (rehearsal state TRAIL0),

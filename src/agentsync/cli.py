@@ -4223,14 +4223,19 @@ def _record_sync_stop(
     lane RA's reader). A lost manifest's stop (``lost``, its lost words) is followed by ``<at>
     sync-stop-detail lost=<unread|short|short-unread>`` (:data:`SYNC_STOP_DETAIL`), the same stamp, in the
     one write, so a reader pairs them by adjacency and stamp, and the stop line stays what older readers
-    parse: which lost kind stopped the sync (B13 round 29 C210)."""
+    parse: which lost kind stopped the sync (B13 round 29 C210). A refusal by agentsync's governance folder
+    itself, not a file in it (``doctor.governance_refuser``, judged here while the folder is still shut), is
+    ``governance-folder``, so the report names the folder after its chmod, not a governance file (B13 round
+    35 C935); a log written before it keeps ``governance`` for both."""
     try:
         folder = setup_report.default_setup_log().parent
         if not folder.is_dir():
             return
         config = _config(args)
         head = said.rpartition(" (fix: ")[0]
-        if head.endswith(": a folder above it refuses this account a search"):
+        if kind == "refused" and doctor.governance_refuser(config.state_paths.root, path):
+            role = "governance-folder"
+        elif head.endswith(": a folder above it refuses this account a search"):
             role = "state-folder"
         elif head.endswith(": its folder refuses this account") and isinstance(
             path, str | bytes | os.PathLike
@@ -4260,7 +4265,8 @@ def _stop_role(config: Config, path: object) -> str:
     ``lock``, ``heartbeat``, ``holds``, ``hold-record``, ``purge-record``, ``governance`` (another file
     there), else ``state-folder``; with no path, the first state file this account is refused
     (``doctor.refused_state_files``). The hold record and the purge record are named as themselves, never
-    the state folder, which was fine (B13 round 30 C367; ruling 41)."""
+    the state folder, which was fine (B13 round 30 C367; ruling 41). :func:`_record_sync_stop` gives
+    ``governance-folder`` itself (B13 round 35 C935)."""
     sp = config.state_paths
     if not isinstance(path, str | bytes | os.PathLike):
         refused = doctor.refused_state_files(config)
