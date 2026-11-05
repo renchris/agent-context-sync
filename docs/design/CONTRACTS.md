@@ -37590,6 +37590,9 @@ mixed run; test_setup_report.py's mixed-run hint test is unchanged. Tests: the
 `mixed`, `mixed-other` and `closing-mixed` cases of
 `test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state` and
 `test_a_chmod_beside_a_persons_fail_names_the_chmod_first_with_the_real_agentsync_c808` (rehearsal state TRAIL0).
+Amended 2026-11-04, §16.232 C911: `agentsync status`'s NEXT follows the same order, from `_state_stop_first`'s tail:
+`the <chmod check> check failed: do what the fix on its [FAIL] line below says, then show the person the <check>
+[FAIL] line: its fix is theirs`.
 
 **The stopped copy's rewrites read lane RA's `no install run` words** (C817's installer half; `scripts/install.sh`).
 Lane RA's report says `no install run` where it said `no install.sh run`, and `this attempt made no install run` where
@@ -38388,6 +38391,27 @@ report hook's `checks_once` swaps it in beside C818's listing swap. `_PURGE_YOUR
 output are unchanged. Test:
 `test_cli.py::test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903` (a real queued purge,
 the real hook, NO_NEXT_HINT_ENV=1; status keeps its note).
+
+
+**Status names the agent's chmod before the person's FAIL beside it** (C911; amends §16.226 C808). C808's order held
+only in install.sh: with the audit trail at 0000 beside a suppression list moved aside (rehearsal state TRAIL0),
+`agentsync status` led with the person's governance.suppressed line as `not a step for the agent`, so an agent
+following status skipped a chmod of its own. At `_state_stop_first`'s tail, when the FAIL it would lead with is the
+person's (`doctor.is_persons_fix`), `_chmod_beside_persons` checks the FAILs that stop install.sh's sync
+(`_blocks_install`): when every one is the person's or a state chmod (`_is_state_chmod`: state_dir(.x), lock,
+heartbeat or governance.x refusing this account, with a `chmod 600` or `chmod 700` fix; never a loose mode the sync
+reads past, such as a state folder at 0755, whose chmod would lead ahead of the stop C177 has status name first),
+one of each at least, the NEXT reads `the
+<chmod check> check failed: do what the fix on its [FAIL] line below says, then show the person the <check> [FAIL]
+line: its fix is theirs`. It never says `not a step for the agent` (prompt step 3 and `setup_report._PERSONS_STEP`
+read that as the person's stop, the trap C808 met), names the check only, never install.sh's chmod or a path (§16.20),
+and keeps the person's clause, so a chmod that does not clear still leaves their line named; any other kind of FAIL
+keeps today's lead. The prompt needs no change: step 3 already grants the chmod and the sync again. Not built:
+`_manifest_first`'s branch, where a lost manifest beside an audit trail at 0000 has the same shape; its D43 order (no
+other FAIL's fix ahead of the manifest's) stays, recorded here as ruling 111 rules. Tests:
+`test_cli.py::test_status_names_the_agents_chmod_before_the_persons_fail_beside_it_c911` (TRAIL0, then the person's
+NEXT once the chmod is done) and `::test_the_chmod_goes_first_only_beside_the_persons_fails_alone_c911` (the
+heartbeat and purge-queue mixes, and a third kind of FAIL).
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

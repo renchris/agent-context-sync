@@ -14710,3 +14710,70 @@ def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c9
     _rc, out = _status(cfg, capsys)
     (kept,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
     assert kept.endswith(f"({cli._PURGE_YOURS_NOTE})"), kept
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_status_names_the_agents_chmod_before_the_persons_fail_beside_it_c911(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C911 (rehearsal state TRAIL0): a run purge's suppression list moved aside and the audit
+    trail at 0000. install.sh's NEXT named the chmod first (C808), but `agentsync status` led with the
+    person's governance.suppressed line as not a step for the agent, so an agent following status skipped a
+    chmod of its own. Status names the chmod first and the person's line after it, never `not a step for the
+    agent`; after the chmod the person's NEXT comes back."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    purge = ["purge", "path=projects/sample.txt", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main(purge) == cli.EXIT_OK
+    gov = governance.governance_dir(root)
+    (gov / "suppressed.json").rename(gov / "suppressed.json.kept")
+    audit = gov / "audit.jsonl"
+    capsys.readouterr()
+    audit.chmod(0o000)
+    try:
+        rc, out = _status(cfg, capsys)
+    finally:
+        audit.chmod(0o600)
+    assert rc == cli.EXIT_FAILED
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.audit ")], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.suppressed ")], out
+    nxt = out[0]
+    assert nxt == (
+        "NEXT: the governance.audit check failed: do what the fix on its [FAIL] line below says, "
+        "then show the person the governance.suppressed [FAIL] line: its fix is theirs"
+    ), nxt
+    assert "not a step for the agent" not in nxt and "chmod" not in nxt, nxt
+    _rc, after = _status(cfg, capsys)
+    assert after[0].startswith("NEXT: the governance.suppressed check failed: ") and (
+        "not a step for the agent" in after[0]
+    ), after[0]
+
+
+def test_the_chmod_goes_first_only_beside_the_persons_fails_alone_c911() -> None:
+    """C911's rule, as install.sh's mixed_chmods: every blocking FAIL is the person's or a state chmod, one of
+    each; a third kind of FAIL keeps today's lead."""
+    person = doctor.CheckResult(
+        "governance.suppressed", False, "lost", doctor.Severity.ERROR, fix="the person puts it back"
+    )
+    assert doctor.is_persons_fix(person.fix)
+    refused = "cannot be opened: Permission denied"
+    chmod = doctor.CheckResult("heartbeat", False, refused, doctor.Severity.ERROR, fix="chmod 600 ~/x")
+    loose = doctor.CheckResult(
+        "state_dir",
+        False,
+        "~/s has mode 0755; cursors and tokens need 0700",
+        doctor.Severity.ERROR,
+        fix="chmod 700 ~/s",
+    )
+    queue = doctor.CheckResult(
+        "governance.purge_queue", False, refused, doctor.Severity.ERROR, fix="chmod 600 ~/q"
+    )
+    other = doctor.CheckResult(
+        "skill", False, "stale", doctor.Severity.ERROR, fix="~/.local/bin/agentsync sync"
+    )
+    assert cli._chmod_beside_persons([person, chmod]) is chmod
+    assert cli._chmod_beside_persons([queue, person]) is queue
+    assert cli._chmod_beside_persons([person, chmod, other]) is None
+    assert cli._chmod_beside_persons([person]) is None
+    assert cli._chmod_beside_persons([person, loose]) is None  # a loose mode the sync reads past (C177)
+    assert cli._chmod_beside_persons([chmod]) is None

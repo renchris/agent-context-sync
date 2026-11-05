@@ -2099,7 +2099,40 @@ def _state_stop_first(config: Config, checks: Sequence[doctor.CheckResult]) -> s
             (r for r in checks if not r.ok and r.name == "governance.hold" and r.detail.startswith(lead)),
             fail,
         )
+    if doctor.is_persons_fix(fail.fix):
+        agents = _chmod_beside_persons(checks)
+        if agents is not None:  # the agent's chmod first, as install.sh's NEXT gives it (B13 round 35 C911)
+            return (
+                f"the {agents.name} check failed: do what the fix on its [FAIL] line below says, "
+                f"then show the person the {fail.name} [FAIL] line: its fix is theirs"
+            )
     return _fail_step(fail)
+
+
+def _is_state_chmod(result: doctor.CheckResult) -> bool:
+    """Whether a FAIL is a state file's or folder's refusal this account's chmod fixes: state_dir(.x), lock,
+    heartbeat or governance.x, refusing this account, its fix a ``chmod 600`` or ``chmod 700``."""
+    named = result.name in ("state_dir", "lock", "heartbeat") or result.name.startswith(
+        ("state_dir.", "governance.")
+    )
+    # a refusal the sync stops on, never a loose mode it reads past (`has mode 0755`, `readable by others`),
+    # whose chmod would lead ahead of the stop status names (B13 round 29 C177)
+    refused = "Permission denied" in result.detail or "refuses this account" in result.detail
+    return named and refused and (result.fix or "").startswith(("chmod 600 ", "chmod 700 "))
+
+
+def _chmod_beside_persons(checks: Sequence[doctor.CheckResult]) -> doctor.CheckResult | None:
+    """The first state chmod FAIL when every FAIL that stops install.sh's sync is either the person's or a
+    state chmod, with one of each: the agent's chmod comes first, then the person's line, as install.sh's
+    ``mixed_chmods`` NEXT (C808) says; any other kind of FAIL keeps today's lead (B13 round 35 C911). The NEXT
+    never says `not a step for the agent`, which prompt step 3 and the setup report read as the person's stop,
+    and names no path (§16.20)."""
+    blocking = [r for r in checks if _blocks_install(r)]
+    persons = [r for r in blocking if doctor.is_persons_fix(r.fix)]
+    chmods = [r for r in blocking if not doctor.is_persons_fix(r.fix) and _is_state_chmod(r)]
+    if persons and chmods and len(persons) + len(chmods) == len(blocking):
+        return chmods[0]
+    return None
 
 
 def _folder_gone_lead(config: Config) -> str | None:
