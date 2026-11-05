@@ -38178,6 +38178,18 @@ the prompt reads as "go to the report", skipping the chmod's re-run; `_persons_r
 `tests/test_setup_report.py::test_a_mixed_runs_persons_fix_is_not_counted_as_the_agents_c942` (and that install.sh
 gives the words at both mixed NEXTs).
 
+**C813's Items line: its run named whole, and its place** (C948, C949; `src/agentsync/setup_report.py`). C948:
+`_failed_before_lines` hid an earlier failed run when an agent error line held its label as a substring, so `<stamp>`
+inside `<stamp>.2` or another run's `<stamp>-88` hid it, and it read the raw lines, so an id the printed line cut off
+hid it too. `_names_run` matches the label or the run's own `<stamp>-<pid>` whole (`(?<![\w.-])`, `(?![\w-]|\.\d)`; a
+full stop, comma or bracket may follow), over the Items lines as `_item_line` prints them. C949 (makes worse True:
+its proposed reorder was not built): `install_stop` printed before `failed_before`, against C813's `ahead of the stop`,
+and `failed_before`'s `not retried` guard was dead (a failed outcome has no retried runs). Items now reads signed out,
+unread, the earlier failed runs, `the install stopped`, then the retried lines; the comment and C813's paragraph stay
+as written. Tests: `tests/test_setup_report.py::test_an_error_line_names_a_run_by_its_whole_id_c948`,
+`test_an_earlier_failed_run_said_by_the_agent_is_not_said_twice_c948_c949` (the label, the run id, another run, an
+id past the cut, and the order with no error line).
+
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
 **The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling

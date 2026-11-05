@@ -13198,6 +13198,57 @@ def test_an_earlier_failed_run_of_a_failed_attempt_is_an_item_with_its_mode_fix_
     assert line.endswith("the next run exited 1 at its status step ([FAIL] governance.suppressed)"), line
 
 
+def test_an_error_line_names_a_run_by_its_whole_id_c948() -> None:
+    """B13 round 35 C948: C813's `said there, never twice` matched a substring, so `<stamp>` inside
+    `<stamp>.2` or another run's `<stamp>-88` hid a run. The label or the run's own `<stamp>-<pid>`, whole; a
+    full stop, comma or bracket may follow."""
+    first = types.SimpleNamespace(display_id="20260929T100000Z", run_id="20260929T100000Z-77")
+    second = types.SimpleNamespace(display_id="20260929T100000Z.2", run_id="20260929T100000Z-88")
+    names = setup_report._names_run
+    assert names(first, "run 20260929T100000Z exited 1")  # (a)
+    assert names(first, "run 20260929T100000Z.") and names(first, "(run=20260929T100000Z-77)")  # (b)
+    assert not names(first, "run 20260929T100000Z.2 exited 1") and names(second, "run 20260929T100000Z.2,")
+    assert names(second, "run=20260929T100000Z-88") and not names(first, "run=20260929T100000Z-88")  # (d)
+    assert not names(first, "run x20260929T100000Z and 20260929T100000Zb")
+
+
+@pytest.mark.usefixtures("clean_doctor")
+@pytest.mark.parametrize(
+    ("said", "hidden"),
+    [
+        ("install.sh exited 1 in run 20260929T100000Z", True),
+        ("install.sh exited 1 in run=20260929T100000Z-77.", True),
+        ("install.sh exited 1 in run 20260929T102000Z", False),
+        ("install.sh stopped: " + "x " * 150 + "run 20260929T100000Z", False),  # (e) past the 220 cut
+    ],
+    ids=["label", "run-id", "other-run", "past-the-cut"],
+)
+def test_an_earlier_failed_run_said_by_the_agent_is_not_said_twice_c948_c949(
+    fake_mac: dict[str, Path], tmp_path: Path, said: str, hidden: bool
+) -> None:
+    """B13 round 35 C948, C949: an error line that names the earlier run hides its C813 line, never one it
+    names only past the printed cut; with no error line at step 2, Items says the earlier run, then `the
+    install stopped`, as C813's comment says (the dead `not retried` guard is gone)."""
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1, status_failed=True)
+        + install_run("2026-09-29T10:20:00Z", 1, status_failed=True).replace("100000Z", "102000Z"),
+        encoding="utf-8",
+    )
+    error = f"2026-09-29T10:00:30Z | step 2 | error | {said} | -\n"
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", error, V8_HAPPY) + RETRY_LATE)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    got = section(text, "Summary").split("Items that were not one command (attempt 1):", 1)[1]
+    assert (f"{_C813_HEAD}20260929T100000Z exited 1" in got) is not hidden, got
+    # no error line at step 2: the earlier run's line, then the stop it ends in
+    write_friction(fake_mac, V8_HAPPY + RETRY_LATE)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    got = section(text, "Summary").split("Items that were not one command (attempt 1):", 1)[1]
+    run_at = got.index(f"{_C813_HEAD}20260929T100000Z exited 1")
+    assert run_at < got.index("· the install stopped: "), got
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     fake_mac: dict[str, Path], tmp_path: Path

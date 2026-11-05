@@ -17114,10 +17114,11 @@ def _failed_before_lines(r: _Run, att: Attempt, runs: Sequence[InstallRun], outc
     if outcome.kind != "failed" or att.begin is None or att.layout.version < 7:
         return []
     installs = [x for x in install_runs_only(runs) if x.rc is not None and x.rc not in STOPPED_EXITS]
-    told = " ".join(f"{e.what} {e.fix}" for e in att.of_kind("error"))
+    # B13 round 35 C948: from the lines Items prints, so an id cut from a line never hides a run
+    told = " ".join(_item_line(r, att, e) for e in att.of_kind("error"))
     out: list[str] = []
     for run, nxt in itertools.pairwise(installs):
-        if run.rc == 0 or run.display_id in told:
+        if run.rc == 0 or _names_run(run, told):
             continue
         failing, at = _failed_at(r, run)
         _next_failing, next_at = _failed_at(r, nxt)
@@ -17131,6 +17132,14 @@ def _failed_before_lines(r: _Run, att: Attempt, runs: Sequence[InstallRun], outc
             line += f" {mode}" if mode is not None else ""
         out.append(line)
     return out[:INSTALL_RUNS_SHOWN]
+
+
+def _names_run(run: InstallRun, text: str) -> bool:
+    """Whether ``text`` names ``run`` by its label or its own ``<stamp>-<pid>``, as a whole id (B13 round 35
+    C948): a full stop, comma or bracket may follow it, but ``<stamp>`` inside ``<stamp>.2`` or inside another
+    run's ``<stamp>-88`` is not it."""
+    ids = "|".join(re.escape(i) for i in sorted({run.display_id, run.run_id}, key=len, reverse=True))
+    return re.search(rf"(?<![\w.-])(?:{ids})(?![\w-]|\.\d)", text) is not None
 
 
 def _latest_runs(r: _Run) -> list[InstallRun]:
@@ -17510,14 +17519,13 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
             "(not logged: the agent logged no line for this stop)"
         )
-    failed_before = _failed_before_lines(r, att, runs, outcome) if att is not None and not retried else []
+    # B13 round 35 C949: no dead `not retried` guard (a failed outcome has no retried runs)
+    failed_before = _failed_before_lines(r, att, runs, outcome) if att is not None else []
     if att is not None and (
         items or retried or unread or signed_out or install_stop or stops or told or failed_before
     ):
         if signed_out:
             out.append(signed_out)
-        if install_stop:
-            out.append(install_stop)
         if unread:
             warned = any("could not read which folders" in ln for ln in r.facts.out_counted)
             out.append(
@@ -17527,6 +17535,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 + "; the folder question was a turn agentsync caused"
             )
         out += failed_before  # B13 round 34 C813: ahead of the stop and F-line items
+        if install_stop:  # B13 round 35 C949: after the earlier runs it ends, as the comment above says
+            out.append(install_stop)
         if retried:  # retried_runs stops at the attempt's first install run that ended 0
             ok = next(run for run in install_runs_only(runs) if run.rc == 0)
             out += [_retry_line(r, run, ok, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
