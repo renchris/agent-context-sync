@@ -1763,6 +1763,40 @@ def _blank_png() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + head + pixels + chunk(b"IEND", b"")
 
 
+_SOURCE_FOLDER_WORD = "<source folder>"
+"""What a configured source's folder, or the cloud provider folder holding it, becomes in a docs-repo commit
+body (B13 round 35 C934, ruling 103)."""
+
+
+def _source_folder_spellings(sources: Iterable[SourceConfig]) -> list[str]:
+    """Every spelling (``convert._common.spellings``) of each configured source's ``path`` and of the cloud
+    provider folder holding it (``cloud_provider_root``), longest first, so a source's own path is cut before
+    the provider folder it sits in (B13 round 35 C934)."""
+    found: set[str] = set()
+    for src in sources:
+        if src.path is None:
+            continue
+        paths = [src.path]
+        provider = cloud_provider_root(src.path)
+        if provider is not None:
+            paths.append(provider)
+        found.update(sp for path in paths for sp in convert_common.spellings(path) if len(sp) > 1)
+    return sorted(found, key=len, reverse=True)
+
+
+def _committed_alarm(alarm: str, spellings: Sequence[str]) -> str:
+    """``alarm`` as a docs-repo commit body carries it: each source folder spelling as
+    :data:`_SOURCE_FOLDER_WORD`, then the home folder as ``~`` (``_homeless``). An alarm names a source's
+    absolute path (``source root <path> has zero children``, ``sentinel ... missing under <path>``, ``a walk
+    under <provider folder>``), which holds the login and the organisation; the note's ``<id>:`` prefix
+    already names the source. Only the commit body is cut: ``acc.alarms``, the terminal, STATE.md and the
+    carried alarms keep the full path (B13 round 35 C934, ruling 103). Run before ``commit_body`` collapses
+    whitespace, so a path holding two spaces still matches."""
+    for spelling in spellings:
+        alarm = alarm.replace(spelling, _SOURCE_FOLDER_WORD)
+    return convert_common._homeless(alarm)
+
+
 class _CycleOcr(OcrEngine):
     """The OCR engine of one cycle: the engine found on this Mac, adding up the seconds its helper ran. Every
     converter of the cycle reads through it, so ``spent_s`` is all the OCR the cycle did; a conversion the
@@ -2785,7 +2819,7 @@ class _Cycle:
     def _fold_escaped_reasons(self) -> None:
         """Once per manifest (meta ``_ESCAPED_FOLD_META``): fold, in place as ``_fold_unavailable_reasons``
         does, the stored reason of each failed conversion's stub that holds an escaped spelling of this Mac's
-        staging folder or home folder (``_common._spellings``), which a round 29 build wrote before C364 and
+        staging folder or home folder (``_common.spellings``), which a round 29 build wrote before C364 and
         whose one-shot re-read (``_queue_path_stubs``) it had already used, so no conversion ever wrote it
         again (B13 round 31 C546): the staged file's path becomes its name, any other path in its folder
         loses the folder, the folder named alone becomes ``_common._FOLDER_WORD`` (for a Graph source the
@@ -2893,13 +2927,13 @@ class _Cycle:
         return held is None or held[1] <= _CONVERT_RETRIES
 
     def _escaped_spellings(self) -> list[str]:
-        """The spellings of this Mac's staging folder and home folder (``_common._spellings``) that differ
+        """The spellings of this Mac's staging folder and home folder (``_common.spellings``) that differ
         from the plain one: what a round 29 build left in a reason (B13 round 31 C546)."""
         paths = [self.staging]
         with contextlib.suppress(RuntimeError, KeyError, OSError):  # no HOME and no password entry
             paths.append(Path.home())
         plain = {str(form) for path in paths for form in convert_common._forms(path)}
-        spelt = [sp for path in paths for sp in convert_common._spellings(path) if len(sp) > 1]
+        spelt = [sp for path in paths for sp in convert_common.spellings(path) if len(sp) > 1]
         # and each flattened as a stored reason flattens it (``_one_line``): a U+00A0 becomes a space
         return [sp for sp in dict.fromkeys(spelt + [" ".join(sp.split()) for sp in spelt]) if sp not in plain]
 
@@ -2931,7 +2965,7 @@ class _Cycle:
         whole 16 hex and the staged suffix the row's name ends with (lower case, ``.teams.json`` whole) to
         ``<name>…`` (B13 round 34 C860)."""
         end, goes_on = convert_common._PATH_END, convert_common._PATH_GOES_ON
-        names = [n for n in convert_common._spellings(Path(name)) if "/" not in n] or [name]
+        names = [n for n in convert_common.spellings(Path(name)) if "/" not in n] or [name]
         for root in self._staging_roots():
             if len(root) <= 2:
                 continue
@@ -4089,7 +4123,10 @@ class _Cycle:
             return None
         self.publisher.write_state_snapshot(statuses)
         source_ids = self._subject_sources()
-        notes = [f"{a.src.id}: {alarm}" for a in self.accs.values() for alarm in a.alarms]
+        cut = _source_folder_spellings(self.config.sources)
+        notes = [
+            f"{a.src.id}: {_committed_alarm(alarm, cut)}" for a in self.accs.values() for alarm in a.alarms
+        ]
         by_source = Counter(self._page_source(rel) for rel in self._notices_gone)
         notes += [
             f"{sid}: {plural(n, 'deletion notice')} removed ({notice_gone_why(n)})"
@@ -6460,18 +6497,18 @@ class _Cycle:
             home = Path.home()
         except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
             return 12
-        for spelling in convert_common._spellings(home):
+        for spelling in convert_common.spellings(home):
             for form in dict.fromkeys((spelling, " ".join(spelling.split()))):
                 if len(form) > 1 and root.startswith(form + "/"):
                     return min(12, len(form.rpartition("/")[0]) + 2)
         return 12
 
     def _staging_roots(self) -> list[str]:
-        """This Mac's staging folder, each ``_spellings`` form with a ``/`` after it, longest first, and
+        """This Mac's staging folder, each ``spellings`` form with a ``/`` after it, longest first, and
         each again with its whitespace flattened as a stored reason flattens it (``_one_line``): a reason
         holds the escaped spelling ``OSError`` prints, cut or whole (B13 round 31 C547)."""
         roots: list[str] = []
-        for spelling in convert_common._spellings(self.staging):
+        for spelling in convert_common.spellings(self.staging):
             for root in (spelling + "/", " ".join(spelling.split()) + "/"):
                 if root not in roots:
                     roots.append(root)

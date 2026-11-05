@@ -149,9 +149,9 @@ def _pathless(text: str, src: Path, name: str) -> str:
     with a character that is no end (``<folder>.bak``, ``<folder>2``) stays whole, while one that goes on with
     an end (``<folder>,v2``, ``<folder>'s copy``) is cut, and a quoted path never reads ``''`` (C578, B13
     round 32 C646; B13 round 33 C752: the ends are ``_PATH_END``'s, never a list here)."""
-    for spelling in _spellings(src):
+    for spelling in spellings(src):
         text = text.replace(spelling, name)
-    folder = [spelling for spelling in _spellings(src.parent) if len(spelling) > 1]
+    folder = [spelling for spelling in spellings(src.parent) if len(spelling) > 1]
     for spelling in folder:  # the folder alone, a trailing slash or none, before any path in it
         text = re.sub(re.escape(spelling) + "/?" + _PATH_END, _FOLDER_WORD, text)
     for spelling in folder:
@@ -180,13 +180,13 @@ def _homeless(text: str) -> str:
         home = Path.home()
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry: nothing to fold
         return text
-    for spelling in _spellings(home):
+    for spelling in spellings(home):
         if len(spelling) > 1:
             text = text.replace(spelling, "~")
     return text
 
 
-def _spellings(path: Path) -> list[str]:
+def spellings(path: Path) -> list[str]:
     """Each form of ``path`` (``_forms``) as written, as ``repr`` prints it (a tab as ``\\t``, a backslash
     doubled, U+00A0 as ``\\xa0``; B13 round 30 C364) and as ``repr`` prints it inside single quotes, each
     apostrophe as ``\\'``, which it does for a path that also holds a double quote (B13 round 31 C578).
@@ -222,7 +222,7 @@ def _stub_with_a_path(reason: str) -> bool:
     except (RuntimeError, KeyError, OSError):  # no HOME and no password entry, as in _homeless
         return False
     # every spelling, the forced single-quote one too (B13 round 31 C578)
-    return len(home) > 1 and any(spelling in reason for spelling in _spellings(Path(home)))
+    return len(home) > 1 and any(spelling in reason for spelling in spellings(Path(home)))
 
 
 def _check_odf_container(src: Path) -> None:

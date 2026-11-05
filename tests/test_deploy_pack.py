@@ -7606,7 +7606,7 @@ def test_round_32s_stale_quotes_carry_one_dated_line_each() -> None:
         "Amended 2026-10-28, §16.217 C654 (by §16.211 C578): with that third spelling, `both its spellings` "
         "above reads each of its three, an ordinary path's spellings are all one" in flat
     )
-    assert "repr(plain + '\"')[1:-2]" in inspect.getsource(_common._spellings)
+    assert "repr(plain + '\"')[1:-2]" in inspect.getsource(_common.spellings)
     assert (
         "Amended 2026-10-28, §16.217 C673 (by §16.210 C511): each part now reads `for the <reason> purge at "
         "<iso>: <how>`." in flat

@@ -905,7 +905,7 @@ def _round29_build(mp: pytest.MonkeyPatch) -> None:
     from agentsync.convert import _common  # noqa: PLC0415
 
     mp.setattr(
-        _common, "_spellings", lambda path: sorted({str(f) for f in _common._forms(path)}, key=len)[::-1]
+        _common, "spellings", lambda path: sorted({str(f) for f in _common._forms(path)}, key=len)[::-1]
     )
     mp.setattr(cycle_mod._Cycle, "_fold_escaped_reasons", lambda _self: None)
 
@@ -1097,11 +1097,11 @@ def test_a_home_with_an_apostrophe_is_folded_in_every_quote_spelling(
 def test_spellings_go_longest_first_for_a_folder_ending_in_a_backslash(tmp_path: Path) -> None:
     """B13 round 31 C551: the plain spelling of a path ending in a backslash is a prefix of its escaped one,
     so only the longest-first order keeps either replace from spoiling the other."""
-    from agentsync.convert._common import _pathless, _spellings  # noqa: PLC0415
+    from agentsync.convert._common import _pathless, spellings  # noqa: PLC0415
 
-    assert "no substring" not in (_spellings.__doc__ or ""), "the docstring says only: longest first"
+    assert "no substring" not in (spellings.__doc__ or ""), "the docstring says only: longest first"
     staged = tmp_path / "Contoso\\"
-    found = _spellings(staged)
+    found = spellings(staged)
     assert [len(s) for s in found] == sorted({len(s) for s in found}, reverse=True), "longest first"
     src = staged / "notes.docx"
     assert _pathless(f"[Errno 2] No such file: {str(src)!r}", src, "notes.docx") == (

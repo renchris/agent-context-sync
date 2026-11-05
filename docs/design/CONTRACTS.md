@@ -37962,7 +37962,23 @@ Reserved for round 35 lane RB of B13.
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
-Reserved for round 35 lane B of B13.
+Round 35's rulings 103 to 106 and 109 and C934, C952, C953, C978, C921, C925, C954, C917, C955, C906, C956, C980,
+C933, C960, C957, C958, C959, C903, C935, C937, C938 and C911, in lane B's code: a source's path kept out of the docs
+repo's commit bodies, a doctor the report gave up on stopping at its deadline with every child it started, and the
+words beside a stop pointing at a line the reader prints. Each entry names its test.
+
+**C934 (ruling 103; data integrity).** An alarm names a source's absolute path (an empty cloud project's `source root
+<path> has zero children in a cloud tree`, a missing sentinel's `missing under <path>`, `source root missing: <path>`,
+a held walk's and `a walk under <provider folder>`), and `cycle._commit` wrote each alarm into the commit body of
+every commit while it lasted, the login and the organisation with it. `_commit` now passes each alarm through
+`_committed_alarm` as it builds `notes`, before `gitops.commit_body` collapses whitespace: each spelling
+(`spellings` of `agentsync.convert._common`, made public in this commit from `_spellings`) of every configured source's `path` and
+of the cloud provider folder holding it, longest first, becomes `<source folder>`, then `_homeless` folds the home.
+The `<id>:` prefix already names the source. `acc.alarms`, the terminal, STATE.md, the carried alarms and cli's
+`record.getMessage() in s.alarms` keep the full path. Commit bodies already written keep their text: rewriting the
+person's docs history is the operator's call. Test:
+`test_cycle.py::test_a_source_folder_never_enters_the_docs_repos_commit_history` (no body holds the home, the
+provider folder's name or the source folder; STATE.md keeps the full path).
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

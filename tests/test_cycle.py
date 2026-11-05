@@ -8181,3 +8181,50 @@ def test_a_sidecars_secret_hit_is_said_by_its_pages_alarm(
     alarms = [a for s in report.sources for a in s.alarms]
     assert [a for a in alarms if a.endswith("its converted text held one (aws-access-key)")], alarms
     assert not [f for f in report.lint_findings if f.code == "SECRET"], report.lint_findings
+
+
+def test_a_source_folder_never_enters_the_docs_repos_commit_history(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 C934 (ruling 103): an alarm names a source's absolute path (an empty cloud project's
+    `source root <path> has zero children`, a missing sentinel's `missing under <path>`), and _commit wrote it
+    into every commit body while the alarm lasted, the login and the organisation with it. The body names the
+    source folder by a fixed word; the terminal's alarms and STATE.md keep the full path. A home-only pin is
+    too weak (`~/Library/CloudStorage/OneDrive-Contoso/...` would pass it), so the provider folder's name is
+    checked too."""
+    monkeypatch.setattr(al, "file_provider_marker", lambda _p: "contoso-domain")
+    provider = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    empty = provider / "Empty  Project"  # two spaces: the cut runs before commit_body collapses whitespace
+    empty.mkdir(parents=True)
+    sentinel_less = tmp_path / "Contoso Notes"
+    sentinel_less.mkdir()
+    (sentinel_less / "a.md").write_text("# A\n\nfirst\n", encoding="utf-8")
+    extra = (
+        f'\n[[source]]\nid = "empty-project"\nkind = "local"\npath = "{empty}"\n'
+        f'\n[[source]]\nid = "notes"\nkind = "local"\npath = "{sentinel_less}"\nsentinel = "MISSING.txt"\n'
+    )
+    config = config_with(tmp_path, local_source_dir, extra)
+    first = run(config)
+    alarms = [a for s in first.sources for a in s.alarms]
+    assert any("zero children" in a and str(empty) in a for a in alarms), alarms
+    assert any("MISSING.txt" in a and str(sentinel_less) in a for a in alarms), alarms
+    (sentinel_less / "b.md").write_text("# B\n\nsecond\n", encoding="utf-8")  # a source that changes
+    run(config)
+    bodies = subprocess.run(
+        ["git", "-C", str(config.docs_repo), "log", "--format=%B"], capture_output=True, text=True, check=True
+    ).stdout
+    assert bodies.count("zero children") >= 2 and bodies.count("MISSING.txt") >= 2, bodies
+    kept_out_words = (
+        str(Path.home()),
+        str(Path.home().resolve()),
+        "OneDrive-Contoso",
+        "Empty  Project",
+        "Empty Project",
+        str(sentinel_less),
+        "Contoso Notes",
+    )
+    for kept_out in kept_out_words:
+        assert kept_out not in bodies, (kept_out, bodies)
+    assert "empty-project: source root <source folder> has zero children" in bodies, bodies
+    state_md = config.layout.state_md.read_text(encoding="utf-8")
+    assert f"missing under {sentinel_less.resolve()}" in state_md, state_md  # STATE.md keeps the full path
