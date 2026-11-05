@@ -2380,6 +2380,13 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
     pairs = governance.LOST_HOLD_WAITS_STATUS.items()
     lost = {loop.WAIT_PREFIX + w: loop.WAIT_PREFIX + st for w, st in pairs}
     next_lines = [lost.get(ln, ln) for ln in next_lines]
+    # the refused queue's note says "run status"; status points at its own [FAIL] line, or none (C959)
+    printed = any(
+        r.name == "governance.purge_queue" and not r.ok and r.severity is doctor.Severity.ERROR
+        for r in checks
+    )
+    refused = loop.NOTE_PREFIX + (loop.QUEUE_REFUSED_NOTE_STATUS if printed else loop.QUEUE_REFUSED_BARE)
+    next_lines = [refused if ln == loop.NOTE_PREFIX + loop.QUEUE_REFUSED_NOTE else ln for ln in next_lines]
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)

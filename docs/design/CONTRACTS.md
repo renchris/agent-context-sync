@@ -37677,6 +37677,9 @@ no change of its own. Tests:
 `test_loop.py::test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statuss_lines_c829` (0000 and
 0600, with sources.toml's hold) and
 `test_loop.py::test_a_purge_queue_this_account_cannot_open_is_still_named_by_a_sync_that_runs_c829`.
+Amended 2026-11-04, §16.232 C959: status prints the note as `the purge queue cannot be opened, so its queued
+purges are not counted: the governance.purge_queue [FAIL] line below says why` when it prints that line, else the
+clause alone; sync, curate and STATE.md keep `loop.QUEUE_REFUSED_NOTE`.
 
 **C832 (makes worse True as found; render sites only).** With an empty governance/ at 0000, status FAILed
 governance.hold on holds.json and governance.purge_queue on purge-queue.json, the sync named suppressed.json and the
@@ -38360,6 +38363,16 @@ folder's chmod, the agent's fix, ahead of the table's (accepted, ruling 111). Te
 `test_cli.py::test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_pointers_name_c958`, whose
 `_unresolved_fail_pointers` reads every `the <check> [FAIL] line` the output names against the [FAIL] lines it
 prints.
+
+**Status points the refused queue's note at its own line** (C959; ruling 109; amends §16.227 C829). C829's note
+told a reader of status to run `agentsync status`. Status maps it at its render, where the lost-hold waits are
+mapped, after every NEXT branch: to `loop.QUEUE_REFUSED_NOTE_STATUS` (`the purge queue cannot be opened, so its
+queued purges are not counted: the governance.purge_queue [FAIL] line below says why`) when a governance.purge_queue
+[FAIL] line prints, else to `loop.QUEUE_REFUSED_BARE`, the clause alone. Sync, curate and STATE.md keep
+`loop.QUEUE_REFUSED_NOTE`; next_step takes no flag. Since C958 a [governance] that does not load prints that FAIL
+too, so the bare form is for a status with no such line. Tests:
+`test_loop.py::test_status_points_the_refused_queues_note_at_its_own_fail_line_c959` and the stopped sync's no-note
+check, which reads the bare clause too.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

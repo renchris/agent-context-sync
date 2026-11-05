@@ -277,7 +277,14 @@ QUEUE_REFUSED_NOTE = (
 )
 """The note beside a sync that runs while this account cannot open the purge queue (purge-queue.json at
 0000 in a folder it can search): the waits are still worked out with no queue, and the note keeps the refusal
-in the sync's output and STATE.md (B13 round 34 C829)."""
+in the sync's output and STATE.md (B13 round 34 C829). Status maps it to :data:`QUEUE_REFUSED_NOTE_STATUS`, or
+the bare clause, at its render (B13 round 35 C959)."""
+QUEUE_REFUSED_BARE = "the purge queue cannot be opened, so its queued purges are not counted"
+""":data:`QUEUE_REFUSED_NOTE`'s clause alone, as status prints it with no governance.purge_queue [FAIL] line
+(a refused [governance] prints none; B13 round 35 C959)."""
+QUEUE_REFUSED_NOTE_STATUS = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue [FAIL] line below says why"
+""":data:`QUEUE_REFUSED_NOTE` in status's own output, which prints that [FAIL] line: never "run status" to a
+reader of status (B13 round 35 C959, ruling 109)."""
 
 
 def _sync_stopped_on(config: Config) -> str | None:

@@ -600,6 +600,8 @@ def test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statu
     assert any(ln.startswith("HOLD: ") and "(config)" in ln for ln in out), out
     assert any(ln.startswith("WAITING ON YOU") and "empty cloud" in ln for ln in out), out
     assert loop.QUEUE_REFUSED_NOTE not in "\n".join(out), "the stopped sync's FAIL speaks, no note"
+    # status maps the note to its own forms (C959): neither may stand in for the stopped sync's FAIL either
+    assert loop.QUEUE_REFUSED_BARE not in "\n".join(out), "the stopped sync's FAIL speaks, no note"
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
@@ -630,6 +632,52 @@ def test_a_purge_queue_this_account_cannot_open_is_still_named_by_a_sync_that_ru
         queue.chmod(0o600)
     assert loop.QUEUE_REFUSED_NOTE in said.out + said.err, said
     assert loop.QUEUE_REFUSED_NOTE in state_md, state_md
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_status_points_the_refused_queues_note_at_its_own_fail_line_c959(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 C959 (ruling 109): the refused queue's note told a reader of status to run status. Status
+    maps it at its render to `the governance.purge_queue [FAIL] line below says why` when it prints that line
+    (a [governance] that does not load prints it too since C958), else to the bare clause; sync, curate and
+    STATE.md keep the constant."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state = expand(config.state_paths.root)
+    with Manifest(config.state_paths.db) as m:
+        sid = next(r.stable_id for r in m.iter_items("work"))
+    selector = governance.PurgeSelector(stable_id=sid, source_id="work")
+    assert governance.enqueue_purge(state, selector, governance.PurgeReason.ERASURE_REQUEST)
+    queue = governance._queue_file(state)
+    outs: list[str] = []
+    queue.chmod(0o000)
+    try:
+        for table in ("", '\n[governance]\nhold = "yes"\n', "no queue line"):
+            if table == "no queue line":  # a status that prints no governance.purge_queue [FAIL] line
+                real = cli._governance_checks
+                monkeypatch.setattr(
+                    cli,
+                    "_governance_checks",
+                    lambda c, real=real: [r for r in real(c) if r.name != "governance.purge_queue"],
+                )
+            elif table:
+                path = Path(cfg)
+                path.write_text(path.read_text(encoding="utf-8") + table, encoding="utf-8")
+            capsys.readouterr()
+            cli.main(["status", "--config", cfg])
+            outs.append(capsys.readouterr().out)
+    finally:
+        queue.chmod(0o600)
+    for out in outs[:2]:
+        assert loop.NOTE_PREFIX + loop.QUEUE_REFUSED_NOTE_STATUS in out.splitlines(), out
+        assert "[FAIL] governance.purge_queue" in out and loop.QUEUE_REFUSED_NOTE not in out, out
+    bare = outs[2]
+    assert loop.NOTE_PREFIX + loop.QUEUE_REFUSED_BARE in bare.splitlines(), bare
+    assert loop.QUEUE_REFUSED_NOTE_STATUS not in bare and loop.QUEUE_REFUSED_NOTE not in bare, bare
 
 
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
