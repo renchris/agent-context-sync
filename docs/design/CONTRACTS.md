@@ -38202,6 +38202,18 @@ which its stderr read does not; both say what the code does (governance.py's, la
 `tests/test_setup_report.py::test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`,
 `test_three_report_docstrings_say_round_34s_words_c973`.
 
+**A helper that did not answer in time is not judged** (C915's report half, ruling 108; makes worse True for the
+finding's own fix; `src/agentsync/setup_report.py`). A helper's `--version` that ran out of its fixed 5 s read `on-device
+OCR is not working` and landed under `unexpected` in a report that called the helper ready. Lane E's doctor now says
+`the <helper> --version did not answer within 5s: ...` as a warn (§16.233); `_HELPER_LATE_RE` reads those words on
+the `ocr`, `media` and `speech` checks only, and `_sort_doctor` files such a warn under `not judged (the <helper> did
+not answer in time: <the advice whole>; if a report written when it is idle says the same, the helper is slow or hung:
+run install.sh again without --report-only, which builds it again, and send the report as it is)`, before
+`unexpected`; a stopped copy gives `_STOPPED_NOT_SENT` only. `_IDLE_AGAIN` stays whole, so install.sh's grep turns the
+NEXT; its time-limit grep no longer reads a doctor line but its cut forms (lane RB), so the fixed 5 s never names
+`AGENTSYNC_REPORT_TIME_LIMIT`. git's and pandoc's lines stay where they are. Test:
+`tests/test_setup_report.py::test_a_helper_that_did_not_answer_in_time_is_not_judged_c915`.
+
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
 **The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling

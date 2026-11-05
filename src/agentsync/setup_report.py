@@ -13391,6 +13391,31 @@ def _loop_could_name(name: str, detail: str) -> bool:
     return name in ("governance.purge_queue", "governance.hold")
 
 
+_HELPER_CHECKS = ("ocr", "media", "speech")
+_HELPER_LATE_RE = re.compile(
+    r"the (OCR helper|media helper|speech helper) --version did not answer within [0-9]+s: "
+)
+"""B13 round 35 C915: doctor's ocr, media or speech warn for a helper whose ``--version`` ran out of its
+fixed time (lane E's words; a test keeps them equal to doctor's): no verdict on the helper, so the report
+files it as not judged, never unexpected. Only these three checks with these words: git's and pandoc's lines
+stay where they are."""
+
+
+def _helper_late_head(r: _Run, helpers: Sequence[str]) -> str:
+    """The Doctor line's clause for the helper warns :data:`_HELPER_LATE_RE` reads (B13 round 35 C915): which
+    helper did not answer, the advice whole (:func:`_idle_again`, which install.sh keys on), and, as
+    :func:`_cut_off_words` says it, what a second time when idle means: the helper is slow or hung, which
+    install.sh run again without --report-only builds again. A stopped copy gets its own words only."""
+    who = " and the ".join(helpers)
+    if r.facts.copy_stopped:
+        return f"not judged (the {who} did not answer in time: {_idle_again(r)})"
+    return (
+        f"not judged (the {who} did not answer in time: {_idle_again(r)}; if a report written when it is "
+        "idle says the same, the helper is slow or hung: run install.sh again without --report-only, which "
+        "builds it again, and send the report as it is)"
+    )
+
+
 def _loop_unread_head(r: _Run) -> str:
     """The Doctor line's clause for those warns: why the Loop line was not read, and that a report written
     when idle sorts them only when waiting can (a time-out or a busy state file, not a crash or no hook)."""
@@ -13861,6 +13886,8 @@ class _DoctorSort:
     lost_list_words: str = ""
     from_govgone: list[str] = dataclasses.field(default_factory=list)  # lane B's C313
     from_loop_unread: list[str] = dataclasses.field(default_factory=list)  # B13 round 33 ruling 84
+    from_helper_late: list[str] = dataclasses.field(default_factory=list)  # B13 round 35 C915
+    helper_late: list[str] = dataclasses.field(default_factory=list)  # each late helper's name, once
     from_trail_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 33 ruling 82
     trail_lost_words: str = ""
 
@@ -14700,6 +14727,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     loose = set() if r.config is None else _loose_state(r.config)
     from_loose: list[str] = []
     from_loop_unread: list[str] = []
+    from_helper_late: list[str] = []
+    helper_late: list[str] = []
     # B13 round 29 ruling 27: ruling 19's governance states, each by the report's own read
     govdir = not notfolder and _governance_dir_not_folder(r.config)
     from_govdir: list[str] = []
@@ -15062,8 +15091,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             and _signal_lock(r.config, runs)
         ):  # B13 round 32 C616 (ruling 66): a held or silent holder's warn stays unexpected
             why = _SIGNAL_LOCK_WORDS
+        late = _HELPER_LATE_RE.match(detail) if tag == "warn" and name in _HELPER_CHECKS else None
         if why is not None:
             expected.setdefault(why, []).append(name)
+        elif late is not None:  # B13 round 35 C915: a helper's --version out of time, not judged
+            from_helper_late.append(f"{name} {tag}")
+            helper_late += [late.group(1)] if late.group(1) not in helper_late else []
         elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
             yours.append(name)
         elif tag == "warn" and r.facts.loop_unread_why and _loop_could_name(name, detail):
@@ -15112,6 +15145,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         lost_list_words=lost_list_words,
         from_govgone=from_govgone,
         from_loop_unread=from_loop_unread,
+        from_helper_late=from_helper_late,
+        helper_late=helper_late,
         from_trail_lost=from_trail_lost,
         trail_lost_words=trail_lost_words,
     )
@@ -15289,6 +15324,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if sort.from_loop_unread:  # B13 round 33 ruling 84: not judged, before unexpected
         parts.append(
             f"{_loop_unread_head(r)} {len(sort.from_loop_unread)}: " + ", ".join(_fold(sort.from_loop_unread))
+        )
+    if sort.from_helper_late:  # B13 round 35 C915: not judged, before unexpected
+        parts.append(
+            f"{_helper_late_head(r, sort.helper_late)} {len(sort.from_helper_late)}: "
+            + ", ".join(_fold(sort.from_helper_late))
         )
     # B13 round 29 C161: a check named once, its count in words, as every bucket folds
     parts.append(

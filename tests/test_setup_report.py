@@ -3297,6 +3297,44 @@ def summary_of(
     return text, section(text, "Summary")
 
 
+_C915_LATE = (
+    "the {helper} --version did not answer within 5s: the check ran out of time, so it could not say whether "
+    "anything is wrong (fix: run ~/.local/bin/agentsync status again as it is; if this line comes back: "
+    "run ~/src/agent-context-sync/scripts/install.sh again without --report-only, which builds the {helper} "
+    "again)"
+)
+
+
+def test_a_helper_that_did_not_answer_in_time_is_not_judged_c915(fake_mac: dict[str, Path]) -> None:
+    """B13 round 35 C915 (ruling 108): a helper's --version that ran out of its fixed time read `on-device OCR
+    is not working`, an unexpected warn in a report that called the helper ready. Lane E's doctor says it as a
+    time-out; the report files those three checks' warns under `not judged (<helper> did not answer in time:
+    ...)` before `unexpected`, with the advice whole (install.sh keys on it) and what a second time when idle
+    means; a stopped copy gives its own words; any other warn, and these words on another check, stay
+    unexpected."""
+    late = [
+        f"[warn] ocr — {_C915_LATE.format(helper='OCR helper')}",
+        f"[warn] speech — {_C915_LATE.format(helper='speech helper')}",
+        f"[warn] logs — {_C915_LATE.format(helper='OCR helper')}",  # not a helper check: unexpected
+    ]
+    _text, summary = summary_of(fake_mac, doctor=lambda c: ["[ok  ] python — fine", *late])
+    line = _line(summary, "- doctor: ")
+    assert (
+        "not judged (the OCR helper and the speech helper did not answer in time: "
+        f"{setup_report._IDLE_AGAIN}; if a report written when it is idle says the same, the helper is slow "
+        "or hung: run install.sh again without --report-only, which builds it again, and send the report as "
+        "it is) 2: ocr warn, speech warn" in line
+    ), line
+    assert line.index("not judged (the OCR helper") < line.index("unexpected 1: logs warn"), line
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    r.facts.copy_stopped = True
+    assert setup_report._helper_late_head(r, ["media helper"]) == (
+        f"not judged (the media helper did not answer in time: {setup_report._STOPPED_NOT_SENT})"
+    )
+    for helper in ("OCR helper", "media helper", "speech helper"):
+        assert setup_report._HELPER_LATE_RE.match(_C915_LATE.format(helper=helper))
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     write_install_log(fake_mac)
@@ -17402,6 +17440,7 @@ def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
         "_doctor",
         "_doctor_line",
         "_evidence_line",
+        "_helper_late_head",  # B13 round 35 C915: its words are on the doctor line, which the grep reads
         "_install_source",  # Run metadata's line, which install.sh's grep reads
         "_summary",
     }, writers
