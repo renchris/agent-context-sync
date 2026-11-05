@@ -11628,8 +11628,10 @@ def _status_section(r: _Run) -> list[str]:
         # an operating system's ETIMEDOUT (an errno) is a failure, not the report's time limit
         timed_out = isinstance(exc, (TimeoutError, CallTimedOutError)) and getattr(exc, "errno", None) is None
         r.facts.status_failed = _STATUS_NOT_IN_TIME if timed_out else _why_not_read(exc)
-        # B13 round 34 C820 (ruling 96): a cut is Doctor's sibling words, never "failed"; the evidence line
-        # already carries the idle advice
+        # B13 round 34 C820 (ruling 96): a cut is Doctor's sibling words, never "failed"; no idle advice here:
+        # the Loop line's `not read (status did not finish in time)` (or `status not started: ...`) is what
+        # install.sh --report-only's NEXT reads (REPORT_LOOP_CUT), and the evidence line gives the advice only
+        # when its own parts were cut or a sync held the state file (B13 round 35 C969)
         limit = r.last_call_limit
         if timed_out and limit is not None and limit <= 0.2:
             r.facts.status_failed = _NOT_STARTED  # B13 round 35 C904, C919 (ruling 107): never "in time"

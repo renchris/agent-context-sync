@@ -435,6 +435,43 @@ def test_no_reader_says_a_teams_channel_is_read_by_delta() -> None:
     assert "delta" not in line and "read back to the last seen" in line, line
 
 
+def test_the_guide_gives_a_failed_attempts_earlier_install_runs_items_line() -> None:
+    """B13 round 35 C975: round 34's C813 gave a failed attempt an Items line for each install run that exited
+    non-zero before its last one, but the guide's `Failed at step N` bullet never said so. It quotes the line,
+    its place after lane RA's C949 order (after a signed-out or unread-folders line, ahead of `the install
+    stopped` and the rest), which runs count and when the mode clause follows; each piece read from the
+    report's source."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = " ".join(_feedback_page().split())
+    source = re.sub(r'"\s*\n\s*f?"', "", inspect.getsource(setup_report))
+    failed = page.split("- **Failed at step N**", 1)[1].split("- **Stopped at step 1**", 1)[0]
+    assert (
+        "`- install.sh · step 2 · run <id> exited 1 at its status step ([FAIL] <checks>); the next run"
+        " exited 1 at its status step ([FAIL] <checks>)`"
+    ) in failed
+    joined = "run {run.display_id} exited {run.rc}{at}; the next run exited {nxt.rc}{next_at}"
+    assert 'f"- install.sh · step {att.layout.install_step} · ' + joined + '"' in source
+    assert (
+        "They follow a signed-out or unread-folders line and come ahead of `the install stopped` line"
+        in failed
+    )
+    assert source.index("out += failed_before") < source.index("out.append(install_stop)")
+    assert "Only runs with an end line and no signal's exit (129, 130, 143) are counted" in failed
+    assert setup_report.STOPPED_EXITS == (129, 130, 143)
+    assert "return out[:INSTALL_RUNS_SHOWN]" in source and setup_report.INSTALL_RUNS_SHOWN == 3
+    assert "a `--list-folders` run is not an install run." in failed
+    for mode in (
+        "after the file's mode was fixed",
+        "after the folder's mode was fixed",
+        "after a folder's mode",
+    ):
+        assert mode in source, mode
+    assert (
+        "A run an agent `error` line names by its label or its own id, whole, is said there instead" in failed
+    )
+
+
 def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path: Path) -> None:
     """B13 round 29 C149, C150 (one defect): macOS's `com.apple.tmp_cleaner` runs daily at local midnight
     and deletes an empty folder under /tmp whose mtime is over 3 days old; `cp -Rp` keeps the fixture's, so
@@ -6631,9 +6668,27 @@ _ROUND_35_D_PARAGRAPH_AMENDS = (
         "a re-run clears its part only when its journal's passed set holds every failed id",
         "§16.234 C987",
     ),
+    (
+        "16.222",
+        "**The guide says what the report prints for a read it did not get** (rulings 83, 84",
+        "§16.234 C968",
+    ),
+    (
+        "16.229",
+        "**The guide says the Command Line Tools line carries no advice** (C852 with C878",
+        "§16.234 C968",
+    ),
+    (
+        "16.229",
+        "**The guide says the Command Line Tools line carries no advice** (C852 with C878",
+        "§16.234 C923",
+    ),
+    ("16.225", "**One cut said one way in Environment and Status** (C820, ruling 96;", "§16.234 C969"),
 )
 """Round 35 lane D's dated lines at a section its claims name with no item, as
-:data:`_ROUND_34_D_PARAGRAPH_AMENDS`: C987's at §16.223's C800 rule (ruling 111)."""
+:data:`_ROUND_34_D_PARAGRAPH_AMENDS`: C987's at §16.223's C800 rule (ruling 111); ruling 110's at the
+passages a later round made stale: C968's at §16.222's and §16.229's Command Line Tools passages,
+C923's beside it at §16.229, and C969's CORRECTED line at §16.225's C820 paragraph."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
@@ -8062,6 +8117,11 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
         "not read (status not started: the report's time budget was used up)",  # B13 round 35 C904, C919
     ):
         assert form in source and f"`{form}" in para, form
+    # B13 round 35 C970: the no-loop-line stage also stands for a status that was not run
+    assert (
+        "`unknown (no status loop line)` when status answered and printed no loop line, or was not run (no"
+        " sources.toml yet, a config that does not load, no status hook); B13 round 35 C970)"
+    ) in para
     # B13 round 35 C904: the NEXT half of a call the spent budget never started, from its one constant
     assert f"a NEXT half `not read ({setup_report._NOT_STARTED})`" in para
     # rule 1's three `below` forms, each on Doctor's printing that line, else `below` stays
@@ -8102,7 +8162,10 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     idle advice (`this copy is not for sending` in a stopped copy), files a warn the Loop line could have
     named as not judged when that line was not read, and keeps one bracket on a run with no end line. The
     guide named none of it; each quote is read from the report's source. B13 round 34 C852, C878: the
-    Command Line Tools line carries no advice of its own, and the guide says so."""
+    Command Line Tools line carries no advice of its own, and the guide says so. B13 round 35 C968, C923,
+    C971: on a checkout a hung xcode-select is named by the install source's line with the advice; the macOS,
+    MDM, uv and pandoc cuts are ruled the same and ask for no re-run; pandoc's own time-out keeps its
+    words."""
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())
@@ -8148,14 +8211,40 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
         assert f"`{said}`" in page, said
     assert "`not measured (<command> exited 124: <why>)`" not in page
     assert "`not measured (xcode-select -p ...)`" in page
-    # B13 round 34 C852, C878: the Command Line Tools line carries no advice, and no Summary line names it
+    # B13 round 34 C852, C878: the Command Line Tools line carries no advice; round 35 C968: on a checkout the
+    # install source's own xcode-select read names a hang with the advice, so only a cut of the Environment
+    # read alone, or an install with no .git, asks for no re-run
     assert (
         "The Environment section's Command Line Tools line says `not measured (xcode-select -p ...)` (since"
         " B13 round 35 C905, `not measured (xcode-select -p did not answer within 3.0s)` or `not measured"
-        " (the report's time limit was used up before xcode-select -p ran)`) with no advice of its own, and"
-        " that read alone asks for no re-run: no Summary line names it, so"
-        " install.sh's NEXT does not either (B13 round 34 C852, C878)."
+        " (the report's time limit was used up before xcode-select -p ran)`) with no advice of its own. On a"
+        " git checkout, which every prompt install is, the install source's line makes its own `xcode-select`"
+        " read, so an `xcode-select` that hangs is named there with the advice and install.sh's NEXT asks for"
+        " the re-run (a stopped copy says `this copy is not for sending` instead, and its NEXT adds nothing)."
+        " A cut of the Environment read while the install source's read answered, or an install with no .git"
+        " (a copied folder or a wheel, whose install source does not read `xcode-select`), has no Summary"
+        " line naming it, so that cut by itself asks for no re-run (B13 round 34 C852, C878; round 35 C968)."
     ) in page
+    assert "and that read alone asks for no re-run: no Summary line names it" not in page
+    assert "(commit and origin not read: xcode-select did not answer within " in source  # the checkout's read
+    # B13 round 35 C923: the other Environment probes' cuts are ruled the same, on C905's words
+    assert (
+        "The macOS, MDM enrollment and uv lines and pandoc's last branch say a cut the same way (`not"
+        " measured (<command> did not answer within <n>)` or `not measured (the report's time limit was used"
+        " up before <command> ran)`) and are ruled the same: each loses one fact its own line says is"
+        " missing, and asks for no re-run (B13 round 35 C923)."
+    ) in page
+    for probe in ('_probe_ended("sw_vers", rc, text)', '_probe_ended("`profiles`", rc, joined)'):
+        assert probe in source, probe
+    assert '_probe_ended(f"{exe} --version", rc, text)' in source and '_probe_ended(f"{exe}{which}"' in source
+    # B13 round 35 C971: pandoc's own time-out keeps its words, and doctor's check fills the line
+    assert 'return f"{exe}{which} did not answer within {secs} ({_slow_start(kind)})"' in source
+    assert (
+        "The pandoc line is the exception: its own run's time-out keeps `<pandoc> did not answer within <n>s"
+        " (<why a start can be slow>)`, so only a budget spent before it ran takes the `not measured` form,"
+    ) in page
+    assert "`(doctor's pandoc check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when" in page
+    assert "(doctor's pandoc check: [{tag}]; its fix is in Doctor)\"" in source
     assert "Tools say `not measured (xcode-select -p ...)`; each such line ends with" not in page
     assert setup_report._IDLE_AGAIN.startswith("write the report again when this Mac is idle (")
     assert setup_report._IDLE_AGAIN.endswith(") before sending it")

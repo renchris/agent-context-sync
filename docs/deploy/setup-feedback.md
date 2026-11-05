@@ -34,9 +34,12 @@ against the budget. Each section records its own failure
 a Status call the time limit cut says `Not run: the report's time budget was used up before status started.` or `Cut
 off: the status call did not finish within <n>s, the limit the report gives it.`, as Doctor does, and an Environment
 probe that did not answer says `not measured (<command> did not answer within 3.0s)`, or `not measured (the report's
-time limit was used up before <command> ran)` when the budget was spent before it ran, while a real exit 124 keeps
-`<command> exited 124: <its text>`; the secret scan's gitleaks version read says the same (B13 round 34 C820, round 35
-C905 and C918).
+time limit was used up before <command> ran)` when the budget was spent before it ran, while a real exit 124 keeps `<command> exited 124: <its text>`; the secret scan's gitleaks version read says the
+same (B13 round 34 C820, round 35 C905 and C918). The pandoc line is the exception: its own run's time-out keeps
+`<pandoc> did not answer within <n>s (<why a start can be slow>)`, so only a budget spent before it ran takes the
+`not measured` form, and with a doctor the line is doctor's pandoc check's own words (`<pandoc> did not answer
+within <n>s: ...`, `... within the report's time limit: ...` or `<pandoc> was not run: ...`, then `(doctor's pandoc
+check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when the doctor call was cut (B13 round 35 C971).
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
 reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs,
 Installer and Configuration carry a few more lines; section 4 says how to read them. Apart from the three helper
@@ -467,6 +470,17 @@ install.log (a `--list-folders` run is not an install run):
   its move still `moved aside with heartbeat.json`, never heartbeat.json's fix first; only where heartbeat.json is
   this account's own file whose mode alone refuses it does the chmod lead, in the same words as the missing file's
   (B13 round 29 C209; ruling 30).
+
+  From prompt v7 on, with the attempt's `Attempt:` line, each install run of a failed attempt that exited non-zero
+  before the last one is an Items line, up to 3 (B13 round 34 C813):
+  `- install.sh · step 2 · run <id> exited 1 at its status step ([FAIL] <checks>); the next run exited 1 at its status step ([FAIL] <checks>)`.
+  They follow a signed-out or unread-folders line and come ahead of `the install stopped` line, the retried runs,
+  the sync stops and the `F` lines (B13 round 35 C949, C975). Only runs with an end line and no signal's exit (129,
+  130, 143) are counted, so the next run is the next such one, and it may be a run that ended 0 (`the next run
+  exited 0`); a `--list-folders` run is not an install run. ` after the file's mode was fixed` (or `the folder's`,
+  `a folder's`) follows only when every `[FAIL]` the next run no longer printed had the agent's chmod for its fix, whoever ran
+  it. A run an agent `error` line names by its label or its own id, whole, is said there instead (B13 round 35
+  C948), and the outcome does not change.
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
   line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
@@ -568,7 +582,7 @@ time limit cut the status call, and `not read (status failed: <why>)` when it fa
 `not read (status not started: the report's time budget was used up)` when the budget was spent before the status
 call started, and a NEXT half `not read (not started: the report's time budget was used up)` when it was spent before
 the loop's NEXT was read, each keyed on that call's own limit (B13 round 35 C904, C919);
-`unknown (no status loop line)` when status answered and printed no loop line); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
+`unknown (no status loop line)` when status answered and printed no loop line, or was not run (no sources.toml yet, a config that does not load, no status hook); B13 round 35 C970); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 except agentsync's own fixed `~/.local/bin/agentsync`, which holds no name, matches doctor's fixes and the status
 lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`,
 the docs repo's AGENTS.md (named by rules 4, 6 and 8) reads `the docs repo's AGENTS.md`, its _sync/STATE.md (named
@@ -1372,11 +1386,17 @@ did not answer the install source reads no more, so each part after it repeats t
 read that did not answer beside a known origin keeps the origin with `URL rewrites: not read` (B13 round 34 C802,
 C834, C873; ruling 96). The install source's line, whenever a read in it was cut, ends with the same advice, `write
 the report again when this Mac is idle (...) before sending it`, which a stopped copy gives as `this copy is not for
-sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). The Environment section's Command
-Line Tools line says `not measured (xcode-select -p ...)` (since B13 round 35 C905, `not measured (xcode-select -p
-did not answer within 3.0s)` or `not measured (the report's time limit was used up before xcode-select -p ran)`) with
-no advice of its own, and that read alone asks for no
-re-run: no Summary line names it, so install.sh's NEXT does not either (B13 round 34 C852, C878). A Background runs
+sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). The Environment section's Command Line Tools line says `not measured (xcode-select -p ...)` (since B13 round 35
+C905, `not measured (xcode-select -p did not answer within 3.0s)` or `not measured (the report's time limit was used
+up before xcode-select -p ran)`) with no advice of its own. On a git checkout, which every prompt install is, the
+install source's line makes its own `xcode-select` read, so an `xcode-select` that hangs is named there with the
+advice and install.sh's NEXT asks for the re-run (a stopped copy says `this copy is not for sending` instead, and
+its NEXT adds nothing). A cut of the Environment read while the install source's read answered, or an install with
+no .git (a copied folder or a wheel, whose install source does not read `xcode-select`), has no Summary line naming
+it, so that cut by itself asks for no re-run (B13 round 34 C852, C878; round 35 C968). The macOS, MDM enrollment
+and uv lines and pandoc's last branch say a cut the same way (`not measured (<command> did not answer within <n>)`
+or `not measured (the report's time limit was used up before <command> ran)`) and are ruled the same: each loses
+one fact its own line says is missing, and asks for no re-run (B13 round 35 C923). A Background runs
 line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it once,
 or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line
 was not read, the Summary's doctor line files a listing, purge-queue or hold warn under `not judged (the Loop line

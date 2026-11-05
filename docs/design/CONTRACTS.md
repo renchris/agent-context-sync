@@ -37136,6 +37136,9 @@ report's source.
 Amended 2026-11-03, §16.229 C852, C878: the Command Line Tools' `not measured (...)` ends with no idle advice, and that
 read alone asks for no re-run; the advice ends the checkout's `not read` lines on the install source's line, and a
 Background runs line carries none since §16.225 C819.
+Amended 2026-11-04, §16.234 C968: on a git checkout the install source's line makes its own `xcode-select` read, so a
+hung `xcode-select` is named there with the advice and install.sh's NEXT asks for the re-run; only a cut of the
+Environment read while that read answered, or an install with no .git, asks for none.
 
 **The guide's Repeat conversions row says `and also under failed or unreadable`** (C760, ruling 89;
 `docs/deploy/setup-feedback.md`). The row said a later run counts the file under files converted, `or` under failed
@@ -37390,6 +37393,11 @@ Amended 2026-11-04, §16.230 C904, C919: beside `Not run: ... before status star
 Amended 2026-11-04, §16.230 C905: `_probe_ended` no longer says `exited 124` for a program the runner never
 answered for: `not measured (<cmd> did not answer within 3.0s)` or `not measured (the report's time limit was used
 up before <cmd> ran)`; the Command Line Tools read (C716) goes through it, and gitleaks' version read too (C918).
+Amended 2026-11-04, §16.234 C969: CORRECTED: the evidence line gives the advice only when its own parts were cut or
+found the state file held by a sync. A Status call cut with the budget left, whose parts were measured, reads `the 6
+parts at the end of Status were measured`, and no line of the report gives the advice; the Loop line's `not read
+(status did not finish in time)` is what `install.sh --report-only`'s NEXT reads (REPORT_LOOP_CUT, C821), which
+gives it there.
 
 **The re-run advice once where install.sh reads it** (C819, ruling 96; amends §16.218 C720). A cut sendable report
 gave the advice five times, two on adjacent Summary lines. `_background`'s job lines, which install.sh's grep never
@@ -38025,6 +38033,12 @@ the code is unchanged, and making a CLT-only cut reach the NEXT would need a Sum
 built. C852 makes worse True for a code change; this is docs only. Test:
 `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its docstring narrowed and the new sentence
 pinned with the clause the code returns.
+Amended 2026-11-04, §16.234 C968: `a cut of it alone reaches no re-run NEXT` holds only off a checkout or while the
+install source's own `xcode-select` read answered: on a git checkout a hung `xcode-select` is named on the install
+source's line with the advice, and install.sh's NEXT asks for the re-run.
+Amended 2026-11-04, §16.234 C923: the same ruling covers §16.225 C820's other probes (sw_vers, `profiles`, uv and
+pandoc's last branch): each cut loses one fact its own line says is missing and asks for no re-run; the code is
+unchanged.
 
 **The guide gives each step its own words for the stop that follows a config-step stop** (C855, ruling 98; docs
 only; `docs/deploy/setup-feedback.md`). The guide put a hold's log word, `state-hold-lost`, and the queue's by-hand
@@ -38860,3 +38874,48 @@ one-shot re-read`, but `cycle._queue_path_stubs` queues a stub only when its sto
 build stubbed over 4 syncs, a path-free stub on an unrun manifest was converted 0 times in 3 syncs and stayed
 quarantined, a pathed one once, a pathed dataless one 0 times. Rulings 74 and 99 forbid rewriting that line, so one
 dated line under it says the condition. No code moves.
+
+**The guides say what the code prints, on the lanes' round 35 words** (ruling 110; docs, one comment; after lane RA's
+391e4a5f7 (C904), c2428c365 (C905) and 1f93304f9 (C948, C949), lane B's f1f777bb0 (C952 and the doctor deadline) and
+lane E's 2fa5f9d66 (C915), all on origin/main). Six items, each read against the code it quotes:
+
+- C968: `docs/deploy/setup-feedback.md` said a Command Line Tools cut `alone` reaches no Summary line, but on a git
+  checkout, which every prompt install is, the install source's line makes its own `xcode-select` read
+  (`(commit and origin not read: xcode-select did not answer within 3.0s)`), so a hung `xcode-select` is named there
+  with the advice and install.sh's NEXT asks for the re-run (a stopped copy says `this copy is not for sending`). The
+  sentence now names that and keeps `no re-run` for a cut of the Environment read alone or an install with no .git;
+  §16.222's and §16.229's passages keep their words, each with a dated line, pinned. No Summary line or advice is
+  added to `clt()`.
+- C923 (makes worse True: docs only): sw_vers, `profiles`, uv and pandoc's last branch say a cut as the Command Line
+  Tools do since C905 (`not measured (<command> did not answer within <n>)` or `not measured (the report's time limit
+  was used up before <command> ran)`), and the guide says they are ruled the same: each loses one fact its own line
+  says is missing and asks for no re-run. Widening install.sh's NEXT to them is worse, measured by the verifier: it
+  needs a Summary line, the idle-advice writers' set and `report_time_helps` changed, and would re-ask on every run
+  for a uv that is always slow, for one version string; a dated line at §16.229's C852 passage records the ruling.
+- C971: the guide said every Environment probe cut reads `not measured`, but the pandoc line keeps its own words:
+  the report's own run's time-out reads `<pandoc> did not answer within <n>s (<why a start can be slow>)`
+  (`_slow_start`), only a budget spent before it ran goes through `_probe_ended`, and with a doctor the line is
+  doctor's pandoc check's words (`did not answer within <n>s: ...`, `within the report's time limit: ...` or C917's
+  `was not run: ...`, then `(doctor's pandoc check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when the
+  doctor call was cut. The guide says so after lane RA's C905 sentence; the code is unchanged.
+- C969: §16.225's `the evidence line carries it` and setup_report.py's comment beside `_status_section`'s cut said the
+  evidence line gives the idle advice for a cut Status call, but it does so only when its own parts were cut or a
+  sync held the state file; a Status call cut with the budget left, whose parts were measured, gets the advice from
+  install.sh's NEXT, which reads the Loop line's `not read (status did not finish in time)` (or C904's `status not
+  started`) through `REPORT_LOOP_CUT`. The comment says so and §16.225's sentence gets a CORRECTED dated line,
+  pinned; no `_idle_again` is added to `_status_section` or `_loop_line`.
+- C970: the guide's Loop paragraph gave `unknown (no status loop line)` only `when status answered and printed no
+  loop line`, but `_loop_line` prints it too when status was not run (no sources.toml yet, a config that does not
+  load, no status hook: `r.facts.loop` None and no `status_failed`); the clause names those conditions, never the
+  Status section's `Not run:` line, which a spent budget also prints (and then reads `not read (status did not finish
+  in time)` or C904's `not started`).
+- C975: round 34's C813 Items line for each install run of a failed attempt that exited non-zero before its last one
+  was in no guide. The `Failed at step N` bullet gives it, its place in lane RA's C949 order (after a signed-out or
+  unread-folders line, ahead of `the install stopped`, the retried runs, the sync stops and the `F` lines), the runs
+  counted (an end line and no 129, 130 or 143; a `--list-folders` run not an install run; up to 3), the three
+  mode-fixed clauses and C948's whole-id rule; no code change.
+
+Tests: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get` (C968's sentence moved, C923's and
+C971's pinned, each against the source), `test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`
+(C970's clause), `test_the_guide_gives_a_failed_attempts_earlier_install_runs_items_line` (C975), and the dated-line
+pins in `_ROUND_35_D_PARAGRAPH_AMENDS` (C968 twice, C923, C969).
