@@ -37552,6 +37552,8 @@ idle and names no variable. An older build names no seconds and keeps the clause
 time-outs, the spent budget, and `no loop hook`, a crash and `status failed` as negatives) and
 `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
 
+Amended 2026-11-04, §16.231 C922: an older build's install source words name no seconds and keep the clause (C976); a report that ran at 60 s names no variable, a doctor line counts only cut off or not started (C915), and a call never started is a cut Loop read (C904) (B13 round 35 ruling 108).
+
 **A chmod beside the person's lines is named first** (C808; amends §16.160 Z8; `scripts/install.sh`,
 `docs/deploy/setup-feedback.md`). A status step that stopped on one [FAIL] whose fix is this account's chmod of its
 own state and another whose fix is the person's matched neither `persons_fails` nor `state_chmods`, so its NEXT was the
@@ -38043,6 +38045,24 @@ keeps its tail after the first quote, backtick, bracket, comma or semicolon, and
 holds no `/`, or that is an option, a URL, a path of its own or a number like 3/14. Test:
 `test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks`, lane RA's cases through
 `redact_stream` with HOME=/Users/<login>.
+
+**The NEXT names the time limit only where more time can help, never at 60 s** (C922, C929, C915's install.sh half,
+C904's install.sh half, C976; ruling 108; amends §16.226 C834; `scripts/install.sh`, `docs/deploy/setup-feedback.md`).
+`report_time_helps` opens with `! LC_ALL=C grep -qE '^- time limit: 60s[,:] ' "$1" || return 1`: a report whose Run
+metadata says it ran at 60 s, setup_report._TIME_LIMIT_MAX_S, given (`60s, from ...`) or clamped (`60s: ... so 60 was
+used`), has no more time to give, so the NEXT keeps the idle advice and drops `, or put AGENTSYNC_REPORT_TIME_LIMIT=60
+...`; the clamp stays in setup_report, and 59, a word or an older build's report (no such line) keep the clause. Its
+doctor grep counts only `^- doctor: (cut off|not started)` and the evidence line, and a doctor line holding only lane
+RA's `not judged (<OCR|media|speech> helper did not answer in time: ...)` bucket (lane E's WARN) returns 1, so a hung
+helper never names the variable and never holds the bring-back. `REPORT_LOOP_CUT` keeps every alternate and adds
+`|(status )?not started: the report` (lane RA's `_NOT_STARTED`, no apostrophe), so a Status call or a NEXT read the
+spent budget never started is told as cut. The older-build sentence narrows to `an older build's install source words
+name no seconds and keep the clause` in the comment, the guide and the test's docstring. Tests: the `status-nostart`,
+`next-nostart`, `limit-60`, `limit-above-60`, `limit-59`, `limit-not-a-number`, `doctor-cut-at-60`, `helper-timeout`
+and `helper-timeout-and-doctor-cut` rows of
+`test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`,
+`test_the_time_limit_grep_reads_the_reports_own_line_at_its_maximum_c929` (setup_report._time_limit's line at 60, 75.5
+and 1e2 matches the grep, at 59 and `x` not) and `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
 
 **The shell report reads lane B's governance folder stop** (C935's install.sh half; `scripts/install.sh`). Lane B's
 sync records a stop on the governance folder itself as `file=governance-folder`; `fallback_sync_stop_line` names it

@@ -5115,6 +5115,17 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
 
 _SOURCE_AT = "- install source: ~/src/agent-context-sync @ a73e4ea74b2c"
 _JOB = "- com.agentsync.poll: not measured"
+_NOT_STARTED = "not started: the report's time budget was used up"  # lane RA's setup_report._NOT_STARTED
+_LOOP_CUT = f"- Loop: installed; NEXT: not read ({setup_report._NOT_IN_TIME})"
+_LIMIT_AT = "- time limit: {}s, from AGENTSYNC_REPORT_TIME_LIMIT (12 to 60)"
+_DOCTOR_CUT = (
+    f"- doctor: cut off by the report's time limit after 30.0s (see Doctor) · {setup_report._IDLE_AGAIN}"
+)
+_LIMIT_NAN = "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is not a number of seconds, so it was not used"
+_HELPER_WARN = (
+    f"- doctor: 0 FAIL, 1 warn (54 checks) · not judged (OCR helper did not answer in time: the OCR helper "
+    f"--version did not answer within 5s) 1: ocr warn · {setup_report._IDLE_AGAIN}"
+)
 
 
 @pytest.mark.parametrize(
@@ -5159,6 +5170,27 @@ _JOB = "- com.agentsync.poll: not measured"
         (["- Loop: installed; NEXT: not read (no loop hook)"], None),
         (["- Loop: not read (ValueError)"], None),
         (["- Loop: not read (status failed: OSError)"], None),
+        # B13 round 35 ruling 107 (C904): a call the spent budget never started, lane RA's words
+        ([f"- Loop: not read (status {_NOT_STARTED}); NEXT: not read (no loop hook)"], True),
+        ([f"- Loop: installed; NEXT: not read ({_NOT_STARTED})"], True),
+        # ruling 108 (C922, C929): a report that ran at the 60 s maximum has no more time to give
+        ([_LOOP_CUT, _LIMIT_AT.format(60)], False),
+        ([_LOOP_CUT, "- time limit: 60s: AGENTSYNC_REPORT_TIME_LIMIT is above 60, so 60 was used"], False),
+        ([_LOOP_CUT, _LIMIT_AT.format(59)], True),
+        (
+            [
+                _LOOP_CUT,
+                _LIMIT_NAN,
+            ],
+            True,
+        ),
+        (
+            [_DOCTOR_CUT, _LIMIT_AT.format(60)],
+            False,
+        ),
+        # C915: a helper's --version time-out (lane E's WARN, lane RA's bucket) is no cut doctor line
+        ([_HELPER_WARN], False),
+        ([_HELPER_WARN, _DOCTOR_CUT], True),
     ],
     ids=[
         "loop-timeout",
@@ -5173,6 +5205,15 @@ _JOB = "- com.agentsync.poll: not measured"
         "no-loop-hook",
         "crash",
         "status-failed",
+        "status-nostart",
+        "next-nostart",
+        "limit-60",
+        "limit-above-60",
+        "limit-59",
+        "limit-not-a-number",
+        "doctor-cut-at-60",
+        "helper-timeout",
+        "helper-timeout-and-doctor-cut",
     ],
 )
 def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834(
@@ -5184,7 +5225,9 @@ def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c8
     a crash or `status failed`. C834: git, xcode-select and launchctl print keep their fixed caps, so when
     only those timed out (their seconds named) the NEXT says to run again once idle and names no variable; a
     doctor, evidence or Loop cut, or a line saying the report's budget was spent, keeps
-    AGENTSYNC_REPORT_TIME_LIMIT=60, as an older build's words (no seconds) do."""
+    AGENTSYNC_REPORT_TIME_LIMIT=60, as an older build's install source words (no seconds) do (B13 round 35
+    C976). B13 round 35: a call never started counts as cut (C904); a report that ran at 60 s, the most it can
+    take, names no variable (C922, C929); and a helper's --version time-out is no cut doctor line (C915)."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     exec_stub.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
@@ -5211,6 +5254,23 @@ def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c8
     assert ("AGENTSYNC_REPORT_TIME_LIMIT" in last_line(cp)) is limit, last_line(cp)
 
 
+@pytest.mark.parametrize(
+    ("raw", "at_max"), [("60", True), ("75.5", True), ("1e2", True), ("59", False), ("x", False)]
+)
+def test_the_time_limit_grep_reads_the_reports_own_line_at_its_maximum_c929(
+    monkeypatch: pytest.MonkeyPatch, raw: str, at_max: bool
+) -> None:
+    """B13 round 35 ruling 108 (C922, C929): report_time_helps reads the limit the report says it used, so the
+    clamp stays in setup_report; its line at the maximum, given or clamped, matches the grep, and a lower or
+    unreadable one does not."""
+    [grep] = re.findall(
+        r"(?m)^\t! LC_ALL=C grep -qE '(\^- time limit: [^']*)' \"\$1\" \|\| return 1$", INSTALL_SH.read_text()
+    )
+    monkeypatch.setenv("AGENTSYNC_REPORT_TIME_LIMIT", raw)
+    line = setup_report._time_limit()[1]
+    assert bool(re.search(grep, line)) is at_max, (grep, line)
+
+
 def test_the_cut_loop_grep_holds_the_reports_own_words_c821() -> None:
     """B13 round 34 ruling 97 (C821): install.sh's REPORT_LOOP_CUT names setup_report's time-out and busy
     words, and the marker grep beside it is unchanged, so the report and the NEXT read one set of words."""
@@ -5218,6 +5278,14 @@ def test_the_cut_loop_grep_holds_the_reports_own_words_c821() -> None:
     [cut] = re.findall(r"(?m)^REPORT_LOOP_CUT='(.*)'$", text)
     assert setup_report._NOT_IN_TIME in cut and setup_report._BUSY_WHY in cut, cut
     assert "status did not finish in time" in cut
+    # B13 round 35 ruling 108 (C904): lane RA's never-started words, the stage's and the NEXT half's, with no
+    # apostrophe in the single-quoted regex
+    for form in (f"not read (status {_NOT_STARTED})", f"not read ({_NOT_STARTED})"):
+        assert re.search(cut.replace(r"^- Loop: (.*; NEXT: )?", ""), form), form
+    starts = getattr(setup_report, "_NOT_STARTED", None)
+    assert starts in (None, _NOT_STARTED), starts
+    # C929: the 60 the report's time-limit grep reads is setup_report's maximum, in both of its lines
+    assert f"'^- time limit: {setup_report._TIME_LIMIT_MAX_S:.0f}s[,:] '" in text
     assert (
         "{ LC_ALL=C grep -qE '^- (doctor|evidence|install source|background sync): .*write the report again "
         'when this Mac is idle\' "$REPORT_PATH" ||' in text

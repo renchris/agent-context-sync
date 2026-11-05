@@ -1364,11 +1364,15 @@ was not read: <why>)`, before `unexpected`, adding `; a report written when this
 time-out or a busy state file (B13 round 33 ruling 84, C721; lane RA's 541fe447a). `install.sh --report-only`'s `NEXT:` says part of the report was cut off when a Summary line carries the advice
 or the Loop line says its own read was cut (`not read (it did not finish in time`, with or without its `: a sync held
 the state file` tail, `not read (the state file is busy: a sync holds it)` or `not read (status did not finish in
-time)`; never `no loop hook`, a crash or `status failed`; B13 round 34 C821), and names `AGENTSYNC_REPORT_TIME_LIMIT=60`
-only where more time can help: a doctor, evidence or Loop line cut, or a line saying the report's own budget was
-spent; when only git, xcode-select or launchctl print timed out on their fixed 3 s and 5 s caps (a line that names
-the seconds), it says to run the report again once the Mac is idle and names no variable, while an older build's
-words keep it (B13 round 34 ruling 97, C834). A run of a build older than these
+time)`, or a call the spent budget never started, `not read (status not started: the report's time budget was used
+up)` or `not read (not started: ...)`; never `no loop hook`, a crash or `status failed`; B13 round 34 C821, round 35
+C904), and names `AGENTSYNC_REPORT_TIME_LIMIT=60` only where more time can help: a doctor line cut off or not started,
+an evidence or Loop line cut, or a line saying the report's own budget was spent, and never when the report already
+ran at 60 s, its most (its `- time limit: 60s` line; B13 round 35 C922, C929); a helper whose `--version` did not
+answer (the doctor line's `not judged (<helper> did not answer in time: ...)`) names none either (C915); when only
+git, xcode-select or launchctl print timed out on their fixed 3 s and 5 s caps (a line that names the seconds), it
+says to run the report again once the Mac is idle and names no variable, while an older build's install source words
+keep it (B13 round 34 ruling 97, C834; round 35 C976). A run of a build older than these
 parts did not record what it converted or OCR's time: its row says "not recorded" or "-".
 
 The report shows the Mac at the moment it is written. After an upgrade to a build with OCR, the files from

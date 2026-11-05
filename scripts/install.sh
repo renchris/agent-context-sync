@@ -7473,18 +7473,26 @@ unanswered_listings() {
 # A Loop line whose read the report cut (B13 round 34 ruling 97, C821): the loop hook's time-out
 # (setup_report._NOT_IN_TIME, with or without its `: a sync held the state file` tail), a state file a sync held
 # (_BUSY_WHY), or a Status call that did not finish (ruling 96's `status did not finish in time`), behind the stage
-# or as the stage; never `no loop hook`, a crash or `status failed`, which more time does not change. A test keeps
-# the words equal to setup_report's.
-REPORT_LOOP_CUT='^- Loop: (.*; NEXT: )?not read \((it did not finish in time|the state file is busy: a sync holds it|status did not finish in time)'
+# or as the stage, or a call the spent budget never started (lane RA's _NOT_STARTED, `status not started: the
+# report's time budget was used up` as the stage, `not started: ...` as the NEXT half: B13 round 35 ruling 107, C904);
+# never `no loop hook`, a crash or `status failed`, which more time does not change. Every older alternate stays, for
+# an older installed build's report. A test keeps the words equal to setup_report's.
+REPORT_LOOP_CUT='^- Loop: (.*; NEXT: )?not read \((it did not finish in time|the state file is busy: a sync holds it|status did not finish in time|(status )?not started: the report)'
 # Whether AGENTSYNC_REPORT_TIME_LIMIT can help the cut a report says (B13 round 34 ruling 97, C834): a doctor or
 # evidence line cut, a cut Loop read, or a line saying the report's own budget was spent (Run metadata's install
 # source, a Background job line, Status's `Not run:`) scale with it; git, xcode-select and launchctl print keep their
 # fixed 3 s and 5 s caps, so when only those timed out, by their seconds, it names no variable. An older build's
-# words name no seconds and keep the clause.
+# install source words name no seconds and keep the clause (B13 round 35 C976). A report that already ran at 60 s,
+# setup_report._TIME_LIMIT_MAX_S (its `- time limit: 60s, from ...` or `- time limit: 60s: ... so 60 was used`
+# line; a test keeps the 60 equal), has no more time to give, so it never names the variable (C922, C929). A doctor
+# line counts only cut (`cut off` or `not started`): a helper whose --version did not answer, which lane E makes a
+# WARN and lane RA files under `not judged (<helper> did not answer in time: ...)`, never names it (C915).
 report_time_helps() { # REPORT
-	LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$1" && return 0
+	! LC_ALL=C grep -qE '^- time limit: 60s[,:] ' "$1" || return 1
+	LC_ALL=C grep -qE '^- doctor: (cut off|not started)|^- evidence: .*write the report again when this Mac is idle' "$1" && return 0
 	LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$1" && return 0
 	LC_ALL=C grep -qE "^- install source: .*(the report's time limit|, time limit\)|\(time limit\))|^- [^ ]+\.(poll|reconcile): not measured \(the report's time limit was used up before launchctl print ran|^Not run: the report's time budget was used up before status started" "$1" && return 0
+	LC_ALL=C grep -qE '^- doctor: .*not judged \((OCR|media|speech) helper did not answer in time' "$1" && return 1
 	! LC_ALL=C grep -qE '^- install source: .*did not answer within [0-9]|^- [^ ]+\.(poll|reconcile): not measured \(launchctl print did not answer within [0-9]' "$1"
 }
 on_exit() {
