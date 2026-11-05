@@ -38339,6 +38339,16 @@ governance.load_suppressions` guard kept, so a purge record linked into a shut g
 governance.suppressed. Callers keep the error's own path form, never the helper's (C732). Test:
 `test_ops_doctor.py::test_governance_refuser_answers_yes_or_no_c960`.
 
+**curate beside a sync stop points at status, not at a sync** (C957; ruling 109). curate under a refused governance
+folder printed nothing of it, and its NEXT sent the reader to `agentsync sync`, which refuses. `cli._cmd_curate` now
+asks `loop._sync_stopped_on` before `loop.next_lines` and, when it names a stop, puts `cli.curate_stop_fix(<stop>)`
+first among the fixes, ahead of the blocking-finding fix, since rule 1 prints only the first and that fix ends in a
+sync too: `no sync runs until the <stop> [FAIL] line is fixed: run `~/.local/bin/agentsync status` and do what its
+NEXT says`. curate prints no FAIL lines, so the pointer is to status, never `below`; the ERROR lines and the exit
+code (keyed on blocking findings) stay. loop.py's next_step is untouched (the verifier's makes-worse reason for
+changing it there). Test: `test_cli.py::test_curate_beside_a_sync_stop_points_at_status_not_a_sync_c957`
+(governance/, the lock and suppressed.json at 0000, rc 0).
+
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
 Round 35's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the

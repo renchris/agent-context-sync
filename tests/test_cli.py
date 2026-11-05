@@ -14604,3 +14604,42 @@ def test_the_stop_named_beside_a_sync_is_the_one_it_meets_first_c933(
         record.chmod(0o600)
         lock.chmod(0o600)
     capsys.readouterr()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("shut", ["governance", "lock", "suppressed"])
+def test_curate_beside_a_sync_stop_points_at_status_not_a_sync_c957(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shut: str
+) -> None:
+    """B13 round 35 C957 (ruling 109): curate under a refused governance folder printed nothing of it and its
+    NEXT sent the reader to `agentsync sync`, which refuses. With a stop the sync's guard meets, curate's NEXT
+    names that stop's [FAIL] line and sends the reader to status, whose NEXT gives its fix."""
+    cfg = str(initialised.config_path)
+    _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    gov.mkdir(mode=0o700, exist_ok=True)
+    target = {
+        "governance": gov,
+        "lock": expand(initialised.state_paths.lock),
+        "suppressed": gov / "suppressed.json",
+    }[shut]
+    if shut == "suppressed":
+        target.write_text(
+            '{"version": 1, "globs": [], "stable_ids": [], "path_hashes": []}\n', encoding="utf-8"
+        )
+    elif shut == "lock":
+        target.touch()
+    stop = {"governance": "governance.hold", "lock": "lock", "suppressed": "governance.suppressed"}[shut]
+    capsys.readouterr()
+    target.chmod(0o000)
+    try:
+        assert loop._sync_stopped_on(initialised) == stop
+        rc = cli.main(["curate", "--config", cfg])
+        out = capsys.readouterr().out
+    finally:
+        target.chmod(0o700 if shut == "governance" else 0o600)
+    (nxt,) = [ln for ln in out.splitlines() if ln.startswith("NEXT: ")]
+    assert nxt == f"NEXT: {cli.curate_stop_fix(stop)}", out
+    assert f"the {stop} [FAIL] line is fixed: run `{loop.BIN} status`" in nxt and "sync`" not in nxt, nxt
+    assert rc == cli.EXIT_OK, out

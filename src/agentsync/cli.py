@@ -3552,9 +3552,24 @@ def _cmd_curate(args: argparse.Namespace) -> int:
         if blocking
         else []
     )
+    # a stop the sync's own guard meets first: every fix above ends in a sync that refuses, so the stop's line
+    # goes first (rule 1 prints only fixes[0]); curate prints no FAIL lines, so status's (B13 round 35 C957)
+    stopped = loop._sync_stopped_on(config)
+    if stopped is not None:
+        fixes.insert(0, curate_stop_fix(stopped))
     for line in loop.next_lines(config, fixes=fixes):
         _out(line)
     return EXIT_FAILED if blocking else EXIT_OK
+
+
+def curate_stop_fix(stopped: str) -> str:
+    """curate's rule 1 fix beside a stop the sync's guard meets (``loop._sync_stopped_on``): curate prints no
+    FAIL line, so it sends the reader to status for that line's fix, never to a sync that refuses (B13 round
+    35 C957)."""
+    return (
+        f"no sync runs until the {stopped} [FAIL] line is fixed: run `{loop.BIN} status` "
+        "and do what its NEXT says"
+    )
 
 
 def _cmd_curate_renamed(args: argparse.Namespace) -> int:
