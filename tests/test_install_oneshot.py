@@ -6796,6 +6796,17 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
             ["10:01:05 | step 3 | error | rc 1 | chmod 0600 <g>"],
             ["F4"],
         ),
+        # B13 round 35 C935: lane B's governance folder role takes the folder's 700, never a file's 600
+        (
+            ["10:01:00 governance-folder agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod 700 <g>"],
+            ["F4"],
+        ),
+        (
+            ["10:01:00 governance-folder agent refused"],
+            ["10:01:05 | step 3 | error | rc 1 | chmod 600 <g>"],
+            ["-"],
+        ),
         # a skipped sync writes no stop: its line is never claimed, and a line before the stop is not its
         (
             ["10:01:00 lock agent refused"],
@@ -6938,6 +6949,8 @@ _PAIR_HEAD = "Attempt: 2026-10-14T10:00:00Z\nPrompt: v33\nAgent: Contoso Agent\n
         "lock-700",
         "folder-700",
         "governance-0600",
+        "governance-folder-700",
+        "governance-folder-not-600",
         "skipped-before-step2",
         "stop-after-next",
         "bare-end",
@@ -7023,7 +7036,10 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
             in (outcome)
         ), outcome
     assert "may be the agent's account" not in text, outcome
-    # and the agentsync report pairs the same lines (lane RA's setup_report._stop_pairs)
+    # and the agentsync report pairs the same lines (lane RA's setup_report._stop_pairs), once it knows each
+    # role (B13 round 35 C935: lane RA's governance-folder reader lands beside this one)
+    if not all(stop.split()[1] in setup_report._SYNC_STOP_FILES for stop in stops):
+        return
     attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
     recorded = [
         setup_report._SyncStop(
@@ -7412,6 +7428,7 @@ def test_the_shell_stop_files_are_the_agentsync_reports() -> None:
     table = dict(re.findall(r'^\t([a-z-]+)\) what="([^"]*)" ;;', body, re.MULTILINE))
     assert table["hold-record"] == "agentsync's hold record", table
     assert table["purge-record"] == "agentsync's purge record", table  # lane B's round 30 C381
+    assert table["governance-folder"] == "agentsync's governance folder", table  # lane B's round 35 C935
     shared = table.keys() & setup_report._SYNC_STOP_FILES.keys()
     assert shared >= {"manifest", "lock", "heartbeat", "holds", "governance", "state-folder"}, shared
     assert {k: table[k] for k in shared} == {k: setup_report._SYNC_STOP_FILES[k] for k in shared}

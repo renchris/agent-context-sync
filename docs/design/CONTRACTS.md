@@ -38027,6 +38027,15 @@ login-tailed home, and `/Users/` right after a letter, a digit, `_`, `.` or `-`,
 `test_this_homes_literal_wins_only_where_the_home_ends`, through `redact_stream` with HOME=/Users/<login>, since a
 sandbox home under /tmp never reaches the guard; test_report_redaction.py's shell locator now reads `/Users/<path>`.
 
+**The shell report reads lane B's governance folder stop** (C935's install.sh half; `scripts/install.sh`). Lane B's
+sync records a stop on the governance folder itself as `file=governance-folder`; `fallback_sync_stop_line` names it
+`agentsync's governance folder`, as setup_report._SYNC_STOP_FILES does, and the shell pairing's chmod fit gives it the
+folder's 700, as the state folder's, so the agent's `chmod 700` line is its account and a `chmod 600` line is not.
+This reader lands before lane B writes the role. Tests: `test_the_shell_stop_files_are_the_agentsync_reports` and
+the `governance-folder-700` and `governance-folder-not-600` rows of
+`test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does`, whose comparison
+with the agentsync report's pairing runs once setup_report knows the role.
+
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
 Round 35's rulings 103 to 106 and 109 and C934, C952, C953, C978, C921, C925, C954, C917, C955, C906, C956, C980,

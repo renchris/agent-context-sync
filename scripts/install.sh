@@ -4534,7 +4534,8 @@ fallback_sync_stops() { # [late|claimed]
 			gsub("(^|[^a-z0-9_])chmod[ \t]+(-r[ \t]+)?(-r?n|u[+]rwx)[ \t]+[^ \t]+", " ", t)
 			gsub("(^|[^a-z0-9_])the person runs chmod[ \t]+0?[0-7][0-7][0-7][ \t]+[^ \t]+", " ", t)
 			if (!word(t, "chmod")) return 0
-			fit = file == "state-folder" ? " 700 " : file == "governance" ? " 600 700 " : " 600 "
+			# the governance folder (file=governance-folder of lane B, B13 round 35 C935) takes 700, as the state folder
+			fit = (file == "state-folder" || file == "governance-folder") ? " 700 " : file == "governance" ? " 600 700 " : " 600 "
 			s = t; any = 0; ok = 0
 			while (match(s, "(^|[^a-z0-9_])chmod[ \t]+(-[a-z]+[ \t]+)*0?[0-7][0-7][0-7]([^a-z0-9_]|$)")) {
 				m = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH - 1)
@@ -4709,6 +4710,7 @@ fallback_sync_stop_line() { # RC FILE OWNER KIND[/LOST] [F<n>]
 	purge-record) what="agentsync's purge record" ;; # lane B's file=purge-record (B13 round 30 ruling 34: C381)
 	governance) what="a governance file in the state folder" ;;
 	state-folder) what="agentsync's state folder" ;;
+	governance-folder) what="agentsync's governance folder" ;; # lane B's file=governance-folder (B13 round 35 C935)
 	*) what="a state file" ;;
 	esac
 	case "$4" in
