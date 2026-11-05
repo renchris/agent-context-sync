@@ -14519,3 +14519,47 @@ def test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953(
         words = step.step if isinstance(step, loop.NextStep) else " ".join(step)
         assert "check failed" not in words and "[FAIL]" not in words, (hang_in, words)
     capsys.readouterr()
+
+
+def test_a_lost_sourceless_id_purge_needs_the_release_of_a_hold_on_the_source_its_id_reaches_c980(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C980 (C874's step 3, promotion only): a lost sourceless `id=` purge named a hold on the
+    source its id resolves to only as one a --dry-run may meet, though that hold refuses the purge for
+    certain. The id resolved read-only promotes that hold to the release words; a hold on another source stays
+    conditional and the purge runs past it; a manifest that cannot be read keeps the conditional words."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    assert governance.enqueue_purge(
+        root, governance.PurgeSelector(stable_id=sid), governance.PurgeReason.ERASURE_REQUEST
+    )
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    other = ["hold", "other-source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(other) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None, lost
+    assert "once the records owner decides to release " not in lost.fix, lost.fix
+    assert "which the hold on source 'other-source' refuses only if it reaches that source" in lost.fix, (
+        lost.fix
+    )
+    db = root / "manifest.sqlite"
+    db.chmod(0o000)
+    try:
+        unread = governance.queue_lost(root)
+    finally:
+        db.chmod(0o600)
+    assert unread is not None and "once the records owner decides to release " not in unread.fix, unread.fix
+    mine = ["hold", "source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(mine) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None
+    assert "once the records owner decides to release the hold on source 'source' (" in lost.fix, lost.fix
+    assert "the hold on source 'other-source' refuses only if it reaches that source" in lost.fix, lost.fix
+    named = ["purge", f"id={sid}", "--reason", "erasure-request", "--config", cfg]
+    assert cli.main([*named, "--dry-run"]) == cli.EXIT_FAILED  # the promoted hold really refuses it
+    release = ["hold", "source", "--release", "--owner", "Ada", "--config", cfg]
+    assert cli.main(release) == cli.EXIT_OK
+    assert cli.main([*named, "--dry-run"]) == cli.EXIT_OK  # the hold on another source does not
+    capsys.readouterr()

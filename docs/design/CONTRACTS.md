@@ -37633,6 +37633,8 @@ hold on beta, a sourceless record of a page in source: the purge runs with beta 
 `test_a_lost_sourceless_purge_still_needs_the_release_of_a_hold_on_all_c874`,
 `test_a_lost_purge_two_holds_refuse_says_setting_any_of_them_again_c841` and
 `test_queue_lost_in_one_build_answers_each_hold_state_apart_c842`.
+Amended 2026-11-04, §16.232 C980: a sourceless stable-id record whose id the manifest resolves read-only moves a hold
+on that source to `known`; every other hold stays conditional.
 
 **C804 (doctor's half).** A doctor call the setup report's time limit cut off left its program running past the report's
 end: `doctor._run` was a plain `subprocess.run` whose own limit (120 s for `git ls-files`) only the abandoned thread
@@ -38296,6 +38298,24 @@ and reaps the watcher. Any death of agentsync closes the pipe, `read` meets its 
 group, the program's own children with it. No signal handler, as in ocr's `_run_build`; it costs about 20 ms a run.
 Test: `test_ops_doctor.py::test_a_signal_to_agentsync_leaves_no_doctor_program_running_c956` (SIGTERM, SIGHUP and
 SIGKILL, each to the process and to its group).
+
+**A lost sourceless id purge names the release of a hold on the source its id reaches** (C980, C874's step 3 as
+promotion only; ruling 104; amends §16.227 C874). A lost sourceless `id=` purge named a hold on the source its id
+resolves to only as one a --dry-run may meet, though that hold refuses the purge for certain. `_lost_id_sources`
+takes the sourceless stable-id records, rebuilds their ids (`_rebuilt_ids`) and resolves each through one
+`open_read_only` read (`_resolve_manifest_ro`, never `_resolve_manifest`), the sources `held_purges` reads (live
+rows and aliases), under its own `except (AgentSyncError, sqlite3.Error, OSError)` that returns `{}`, so a failed
+read keeps the conditional words and never lifts the guard. `_lost_queue_holds` passes those sources to
+`blocking_holds`, so a hold on one moves to `known` and the existing `once the records owner decides to release `
+clause carries it (install.sh's `queue-held` marker, no new phrase). Every sourceless record still marks the queue
+sourceless, so every other hold stays conditional. The drop half (a hold on another source left out once the id
+resolves) is not built: it makes things worse, since an id the manifest resolves to one source can also sit in
+another source's docs history (gap I91), where that hold still refuses a purge no line would name. In the same
+commit `_queue_lost`'s docstring says `setting the hold again keeps every purge it covers refused` (C973's
+governance item, for lane RA). Test:
+`test_cli.py::test_a_lost_sourceless_id_purge_needs_the_release_of_a_hold_on_the_source_its_id_reaches_c980` (a
+hold on another source conditional, an unreadable manifest conditional, a hold on the id's source in the release
+words and refusing the dry run, which runs once it is released).
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

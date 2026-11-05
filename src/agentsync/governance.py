@@ -2667,7 +2667,10 @@ def _lost_queue_holds(
     refusal no line named (B13 round 34 C874, C840; ruling 92). Each read stands alone: a hold record that
     cannot be read keeps the hold list's holds and the trail's, as status does, and a hold list that cannot be
     read names none of its own; its FAIL says why, and the purge's refusal does (B13 round 33 C701; ruling
-    86)."""
+    86). A sourceless stable-id record whose id the manifest resolves, read-only, promotes a hold on that
+    source to ``known`` (:func:`_lost_id_sources`, B13 round 35 C980): its purge reaches that source, so the
+    release is really needed. Nothing is dropped: the id can sit in another source's history too (gap I91),
+    so every other hold stays conditional."""
     listed: tuple[Hold, ...] = ()
     with contextlib.suppress(AgentSyncError, OSError):
         listed = state_holds(state_dir)
@@ -2678,13 +2681,15 @@ def _lost_queue_holds(
         with contextlib.suppress(AgentSyncError, OSError):
             kept = audit_lost_holds(state_dir, listed)
     holds = (*(config_holds(gov) if gov is not None else ()), *listed, *kept)
+    resolved = _lost_id_sources(state_dir, gone)
     known: list[Hold] = []
     sourceless = False
-    for rec in gone:
+    for n, rec in enumerate(gone):
         sid = rec.get("source_id")
-        if not (isinstance(sid, str) and sid):
-            sourceless = True
-        for hold in blocking_holds(holds, [sid] if isinstance(sid, str) and sid else []):
+        sourced = isinstance(sid, str) and bool(sid)
+        if not sourced:
+            sourceless = True  # resolved or not: every other hold stays conditional (C980, gap I91)
+        for hold in blocking_holds(holds, [str(sid)] if sourced else resolved.get(n, [])):
             if hold not in known:
                 known.append(hold)
     conditional: list[Hold] = []
@@ -2693,6 +2698,39 @@ def _lost_queue_holds(
             if hold not in known and hold not in conditional:
                 conditional.append(hold)
     return known, conditional
+
+
+def _lost_id_sources(state_dir: Path, gone: Sequence[Mapping[str, Any]]) -> dict[int, list[str]]:
+    """For each sourceless stable-id record of ``gone`` (by index) whose id :func:`_rebuilt_ids` rebuilds,
+    the sources its purge reaches as :func:`held_purges` reads them: the manifest's live rows and aliases for
+    that id, through one read-only open that never migrates (:func:`_resolve_manifest_ro`, ruling 36). Any
+    error gives ``{}``, so the words stay conditional, never a lifted guard (B13 round 35 C980)."""
+    index = [
+        n for n, r in enumerate(gone) if not r.get("source_id") and r.get("selector_kind") == "stable-id"
+    ]
+    if not index:
+        return {}
+    recs = [gone[n] for n in index]
+    db = expand(state_dir) / "manifest.sqlite"
+    out: dict[int, list[str]] = {}
+    conn: sqlite3.Connection | None = None
+    try:
+        ids = _rebuilt_ids(db, recs)
+        if not ids:
+            return {}
+        conn = open_read_only(db, 0.5)
+        if conn is None:
+            return {}
+        conn.row_factory = sqlite3.Row
+        for k, stable in ids.items():
+            mt = _resolve_manifest_ro(conn, PurgeSelector(stable_id=stable), set())
+            out[index[k]] = sorted({s for s, _i, _r, d in mt.items if not d} | {s for s, _ in mt.aliases})
+    except (AgentSyncError, sqlite3.Error, OSError):
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
+    return out
 
 
 def _hold_count(holds: Iterable[Hold]) -> int:
@@ -2709,9 +2747,10 @@ def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governa
     (:func:`governance_damaged`, :func:`governance_lost`). With no copy the hand purge is the only way past
     the refusing sync, and a hold refuses it, so a hold known to cover a lost purge (its source's, the hold
     on all, sources.toml's) puts the records owner's release before it, worded as their decision: setting the
-    hold again keeps every purge refused (B13 round 33 C701; ruling 86). A sourceless purge's other holds are
-    named with a --dry-run before any release, since one refuses it only if it reaches that hold's source or
-    finds nothing (B13 round 34 C874; ruling 92)."""
+    hold again keeps every purge it covers refused (B13 round 33 C701; ruling 86; round 35 C973). A sourceless
+    purge's other holds are named with a --dry-run before any release, since one refuses it only if it
+    reaches that hold's source or finds nothing (B13 round 34 C874; ruling 92), but a hold on the source a
+    sourceless id resolves to is known (B13 round 35 C980)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     with contextlib.suppress(Exception):
