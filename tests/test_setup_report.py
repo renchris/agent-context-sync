@@ -23214,6 +23214,59 @@ def test_the_late_listing_line_says_the_scaled_wait_c726(
     )
 
 
+def test_a_report_that_gave_up_on_doctor_names_the_check_it_was_in_ruling_105(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 ruling 105 (lane B's C952, C953, C978, C921, C925, f1f777bb0), the whole report through
+    the real cli._report_hooks(): the report gave up on a doctor whose git hung, the abandoned doctor ran on
+    to pandoc, and the report called a healthy check slow or hung, said `within 0s` or let the Loop line name
+    a [FAIL] Doctor never printed. A late _read_cut_off makes the race deterministic: Doctor's Cut off line
+    names the git check, pandoc never runs, no `within 0s`, every `the <check> check failed` the Loop line
+    names is a [FAIL] Doctor printed, and the hung program does not outlive the report."""
+    ran: list[str] = []
+    pidfile = tmp_path / "pid"
+
+    def hung(_config: object) -> list[doctor.CheckResult]:
+        ran.append("git")
+        doctor._run(["/bin/sh", "-c", f"echo $$ > {pidfile}; exec sleep 600"], timeout=120)
+        return []
+
+    def healthy(_config: object) -> list[doctor.CheckResult]:
+        ran.append("pandoc")
+        return [doctor.CheckResult("pandoc", doctor.Severity.FAIL, "late", fix="nothing")]
+
+    monkeypatch.setattr(doctor, "_CHECKS", (("git", hung), ("pandoc", healthy)))
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    real = setup_report._read_cut_off
+
+    def late(r: setup_report._Run) -> None:
+        time.sleep(1.0)
+        real(r)
+
+    monkeypatch.setattr(setup_report, "_read_cut_off", late)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=cli._report_hooks(), budget_s=4.0)
+    for _ in range(300):  # every abandoned report call's thread ends (bounded)
+        if not [t for t in threading.enumerate() if t.name == "setup-report"]:
+            break
+        time.sleep(0.1)
+    doc = section(text, "Doctor")
+    cut = _line(doc, "Cut off: ")
+    assert cut.startswith("Cut off: the doctor call did not finish within "), cut
+    assert "it was in the git check" in cut, cut
+    assert ran == ["git"], ran
+    assert "within 0s" not in text and "pandoc check" not in text
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    for check in re.findall(r"the (\S+) check failed", loop):
+        assert f"[FAIL] {check}" in doc, (check, loop)
+    pid = int(pidfile.read_text(encoding="utf-8").strip())
+    with contextlib.suppress(ProcessLookupError):
+        for _ in range(50):
+            os.kill(pid, 0)
+            time.sleep(0.1)
+        os.killpg(pid, 9)  # SIGKILL: a red run leaves no sleep 600 behind
+        pytest.fail(f"doctor's program {pid} outlived the report")
+
+
 @pytest.mark.parametrize("alone", ["deadline", "end_children"])
 def test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alone: str

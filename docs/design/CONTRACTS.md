@@ -38214,6 +38214,13 @@ NEXT; its time-limit grep no longer reads a doctor line but its cut forms (lane 
 `AGENTSYNC_REPORT_TIME_LIMIT`. git's and pandoc's lines stay where they are. Test:
 `tests/test_setup_report.py::test_a_helper_that_did_not_answer_in_time_is_not_judged_c915`.
 
+**A report that gave up on doctor names the check it was in** (ruling 105's report-level case, on lane B's
+f1f777bb0; tests only). Through the real `cli._report_hooks()` and the whole report, a hung git check and a later
+pandoc check, with a late `_read_cut_off` that makes the race deterministic: Doctor's Cut off line names the git check,
+pandoc never runs, no `within 0s`, every `the <check> check failed` the Loop line names is a [FAIL] Doctor printed, and
+the hung program does not outlive the report. Red on main with f1f777bb0's source reverted (the Cut off line said `a
+check`). Test: `tests/test_setup_report.py::test_a_report_that_gave_up_on_doctor_names_the_check_it_was_in_ruling_105`.
+
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
 **The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling
