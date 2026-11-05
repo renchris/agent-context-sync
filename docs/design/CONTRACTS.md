@@ -37693,7 +37693,8 @@ Permission denied; the governance.hold line says why` only when a governance.hol
 already there, so the pointer never names a FAIL status did not print; otherwise its own FAIL stays. The setup
 report's Doctor count in that state drops from 2 FAILs to 1. Two files refused in a searchable folder stay two FAILs
 naming the files, and purge-record.json, outside the folder, keeps its own governance.suppressed FAIL. §16.155's Y43
-paragraph and §16.158's Z15 paragraph take dated lines. Tests:
+paragraph and §16.158's Z15 paragraph take dated lines. Amended 2026-11-04, §16.232 C960: `governance_refuser`
+returns a bool, whether that folder refuses, and no path; every caller tests its truth. Tests:
 `test_a_governance_folder_this_account_cannot_search_is_one_fail_naming_the_folder_c832` (0000 and 0600),
 `test_two_governance_files_this_account_cannot_open_keep_two_fails_naming_them_c832` and
 `test_a_purge_record_refused_beside_a_refused_governance_folder_keeps_its_own_line_c832` (test_cli.py).
@@ -38328,6 +38329,15 @@ is untouched. A wait naming both lines while two stops stand is not built (the v
 `stopped` into a list). Test: `test_cli.py::test_the_stop_named_beside_a_sync_is_the_one_it_meets_first_c933` (the
 lock and the record: lock; the folder and the record: governance.hold and the sync exits 1; after the folder's
 chmod governance.suppressed, the sync exits 1; after the record's, none and the sync exits 0).
+
+**`governance_refuser` answers yes or no** (C960; ruling 109; amends §16.227 C832). Its folder return was never read:
+the four callers tested `is not None`, and `loop._sync_stopped_on` inlined the same `os.access` test. It returns a
+bool now, its early exits False and its last line `not os.access(gov, os.X_OK)`; cli.py's three callers and
+doctor's `_folder_refuses`-side caller are plain truth tests in the same commit, since one left on `is not None`
+would always be true. `_sync_stopped_on` calls it in place of its inline test, the `read is
+governance.load_suppressions` guard kept, so a purge record linked into a shut governance/ stays
+governance.suppressed. Callers keep the error's own path form, never the helper's (C732). Test:
+`test_ops_doctor.py::test_governance_refuser_answers_yes_or_no_c960`.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

@@ -1875,7 +1875,7 @@ def _says_why(config: Config | None, filename: object) -> str | None:
         return doctor.state_folder_says_why(config)
     if path == root or path in files | {real(sp.token_cache_fallback)}:
         return "the state_dir lines say why"
-    if doctor.governance_refuser(root, path) is not None:  # the folder's one FAIL (B13 round 34 C832)
+    if doctor.governance_refuser(root, path):  # the folder's one FAIL (B13 round 34 C832)
         return "the governance.hold [FAIL] line says why"
     checks = {
         real(sp.lock): "lock",
@@ -2002,7 +2002,7 @@ def _refused_name(config: Config | None, filename: Any) -> str:
     account a look inside, so holds.json's and purge-queue.json's lines read as the one folder's, one line
     (I89), never a file that may not exist (B13 round 34 C832)."""
     root = expand(config.state_paths.root) if config is not None else None
-    if root is not None and doctor.governance_refuser(root, filename) is not None:
+    if root is not None and doctor.governance_refuser(root, filename):
         return "agentsync's governance folder"
     return Path(os.fsdecode(filename)).name
 
@@ -4029,7 +4029,7 @@ def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None
     if where is None:
         return None
     fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
-    if doctor.governance_refuser(root, where) is not None:  # the folder, as status names it (C832)
+    if doctor.governance_refuser(root, where):  # the folder, as status names it (C832)
         where = where.parent
     why = _folder_refuses(where, fix)
     return f"error: state: {where} cannot be opened: {exc.strerror or exc}{why} (fix: {fix})"

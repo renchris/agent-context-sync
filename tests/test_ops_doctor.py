@@ -4575,3 +4575,22 @@ def test_a_linked_manifests_side_takes_its_chmod_at_the_targets_folder(
     finally:
         target.chmod(0o600)
         wal.chmod(0o600)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_governance_refuser_answers_yes_or_no_c960(tmp_path: Path) -> None:
+    """B13 round 35 C960 (ruling 109): governance_refuser returned the folder or None, its callers tested
+    `is not None`, and loop.py inlined the same test. It is a bool now, every caller a plain truth test, so
+    one left on `is not None` would be always true."""
+    root = tmp_path / "state"
+    gov = governance.governance_dir(root)
+    gov.mkdir(parents=True)
+    inside = gov / "suppressed.json"
+    assert doctor.governance_refuser(root, inside) is False
+    gov.chmod(0o000)
+    try:
+        assert doctor.governance_refuser(root, inside) is True
+        assert doctor.governance_refuser(root, root / "purge-record.json") is False  # not in the folder
+        assert doctor.governance_refuser(root, None) is False
+    finally:
+        gov.chmod(0o700)

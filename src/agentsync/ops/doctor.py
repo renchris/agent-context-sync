@@ -1529,24 +1529,25 @@ def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult |
     fix = state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(given)))
     # governance/ itself refuses a look inside: the folder, never a file under it that may not exist, and the
     # fix still judged from the file (B13 round 34 C832)
-    shown = given.parent if governance_refuser(root, given) is not None else given
+    shown = given.parent if governance_refuser(root, given) else given
     return _bad(name, f"{shown} cannot be opened: {exc.strerror or exc}", fix=fix)
 
 
-def governance_refuser(root: Path, path: object) -> Path | None:
-    """agentsync's governance folder under the state folder ``root`` when it, not the file ``path`` in it,
+def governance_refuser(root: Path, path: object) -> bool:
+    """Whether agentsync's governance folder under the state folder ``root``, not the file ``path`` in it,
     refuses this account: ``path``'s folder is that folder and this account cannot search it (governance/ at
-    0000 or 0600), else None. Every line of that one refusal then names the folder: status's governance.hold
+    0000 or 0600). It answers yes or no and returns no path, so a caller keeps the error's own path form
+    (B13 round 35 C960). Every line of that one refusal then names the folder: status's governance.hold
     FAIL, the sync's ``error: state:`` line and the "cannot read the state" pointer named holds.json,
     purge-queue.json and suppressed.json, none of which need exist (B13 round 34 C832)."""
     from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
 
     if not isinstance(path, str | bytes | os.PathLike):
-        return None
+        return False
     gov = governance.governance_dir(expand(root))
     if Path(os.path.realpath(os.fsdecode(path))).parent != Path(os.path.realpath(gov)):
-        return None
-    return None if os.access(gov, os.X_OK) else gov
+        return False
+    return not os.access(gov, os.X_OK)
 
 
 def refused_state_files(config: Config) -> list[Path]:
