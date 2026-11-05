@@ -2699,6 +2699,9 @@ redaction_pairs() {
 		u="$(LC_ALL=en_US.UTF-8 && printf '%q' "$1")"
 		[ "$u" = "$1" ] || [ "$u" = "$q" ] || printf '%s\t%s\t%s\n' "$u" "$2" "${3:-}"
 	}
+	home_flag() { # a home's pair flag: u under /Users/, else t (B13 round 35 C941)
+		case "$1" in /Users/*) echo u ;; *) echo t ;; esac
+	}
 	add_pair() { # VALUE PLACEHOLDER [w]: add_forms for a value of 3 or more characters
 		[ "${#1}" -ge 3 ] || return 0
 		add_forms "$@"
@@ -2774,9 +2777,13 @@ redaction_pairs() {
 	fi
 	# the home as pwd -P gives it (/private/tmp/... for a /tmp home) is ~ too, as in the Python report: the $HOME
 	# pair alone matched inside it and left `/private~/` (B13 round 32 C658's (a))
+	# This home's literal wins only where the home ends (flag t, Python's trail: `/Users/dana.old`, `-1` and `_x`
+	# are another home), and a home under /Users/ only where no `\` escape other than `\"` follows (flag u:
+	# `/Users/dana\ 1`, printf %q's form, is another home; a home elsewhere keeps t, so it never prints whole), as
+	# setup_report.Redactor._compile trails it (B13 round 35 ruling 102, C939, C941)
 	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
-	[ -z "$hp" ] || [ "$hp" = "$HOME" ] || add_pair "$hp" "~"
-	add_pair "$HOME" "~"
+	[ -z "$hp" ] || [ "$hp" = "$HOME" ] || add_pair "$hp" "~" "$(home_flag "$hp")"
+	add_pair "$HOME" "~" "$(home_flag "$HOME")"
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
 		v="$(printf '%q' "$w")"
 		printf '%s\t%s\t\n' "--source-local $v" "--source-local <path>"
@@ -4032,8 +4039,9 @@ redact_stream() {
 				continue
 			}
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
+			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t" || f[3] == "u"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
+			esc = (f[3] == "u") # a home under /Users/: never before a `\` escape but `\"` (B13 round 35 C941)
 			hv = (f[3] == "h" || f[3] == "H"); line = ""
 			if (hv) for (j = 1; j <= ns; j++) line = line seg[j] # the line as it stands, for in_fixed
 			at = 0 # the bytes of the line before s
@@ -4043,7 +4051,7 @@ redact_stream() {
 				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
-					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
+					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (esc && post == "\\" && substr(s, i + n + 1, 1) != "\"") || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else if (hv && in_fixed(line, at + i, n)) {
 						acc = acc substr(s, 1, i + n - 1) # a fixed phrase of agentsync, not the value (ruling 39, C338, C397)
@@ -4073,8 +4081,10 @@ redact_stream() {
 # A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
 # cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
 # cuts it (B13 round 34 ruling 91, C822): after the pairs pass, so this home is already ~ and the login <user>.
-# `/Users/` not right after a letter, a digit, `_`, `.` or `-`, and its next component neither `Shared` whole nor
-# one that starts with `<` (a placeholder, the login's <user>). Right after a quote or a backtick the path runs to
+# `/Users/` not right after a letter, a digit, `_`, `.` or `-`, and its next component neither `Shared` nor `<user>`
+# nor an already-cut `<path>`, each whole: any other placeholder an earlier pass made, or one a component opens with
+# (`<value>`, `<org-1>`, `<name>`, `<user>.old`, `<user>\ 1`), is cut, never kept by a prefix test (B13 round 35
+# ruling 102, C901, C992). Right after a quote or a backtick the path runs to
 # the same mark's next one on the line; else one component, a `\` taking the byte after it (printf %q), and an
 # optional `/` tail, each up to a blank, a quote, a backtick, a bracket ((), [] or {}), `,` or `;`. An unquoted
 # path with a blank keeps its tail after the blank. Byte-wise, no regex lookahead (BSD has none).
@@ -4095,7 +4105,7 @@ foreign_home_cut() {
 		while ((i = index(s, "/Users/")) > 0) {
 			pre = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
 			k = upto(s, i + 7, 1); comp = substr(s, i + 7, k - i - 7)
-			if (comp == "" || comp == "Shared" || pre ~ /[A-Za-z0-9_.-]/ || substr(comp, 1, 1) == "<") {
+			if (comp == "" || comp == "Shared" || pre ~ /[A-Za-z0-9_.-]/ || comp == "<user>" || comp == "<path>") {
 				out = out substr(s, 1, i + 6); s = substr(s, i + 7); continue
 			}
 			out = out substr(s, 1, i - 1) "/Users/<path>"

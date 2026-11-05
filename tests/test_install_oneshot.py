@@ -4088,19 +4088,93 @@ def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str])
         f"error: cannot read {old}/Library/CloudStorage/OneDrive-Fabrikam/Client Alpha/plan.docx\n"
         f"moved from {old}, kept /Users/Shared/drop and (/Users/Shared) and /Users/{login}/sandbox\n"
         "quoted '/Users/dana fabrikam/Client Alpha/plan.docx' ok, `/Users/SharedFabrikam/y`\n"
+        # B13 round 35 ruling 102 (C901, C992, C939): a home whose first component an earlier pass made a
+        # placeholder (the hold owner's <value>, the full name's <name>, the login's <user> with a tail)
+        "cannot read /Users/mossgrove/Private/FabrikamPlan.txt, '/Users/mossgrove/x y.txt' and "
+        "/Users/jane/Fabrikam\n"
+        "also /Users/jane.doe/Fabrikam /Users/jane-doe/Fabrikam "
+        f"/Users/{login}.old/Fabrikam /Users/{login}-old/Fabrikam\n"
+        # C950: right after a word character, a dot or a hyphen, `/Users/` is no home
+        "kept x/Users/olga/a 1/Users/olga/a _/Users/olga/a ./Users/olga/a -/Users/olga/a\n"
     )
+    _stub_id(env, "Jane Doe")
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text("[governance]\nhold_owner = 'mossgrove'\n")
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         text = path.read_text()
-        for word in ("dana", "fabrikam", "Fabrikam", "Client"):
+        for word in ("dana", "fabrikam", "Fabrikam", "Client", "mossgrove", "x y.txt", ".old", "-old"):
             assert word not in text, (path.name, word)
+        assert (
+            "cannot read /Users/<path>, '/Users/<path>' and /Users/<path>\n"
+            "also /Users/<path> /Users/<path> /Users/<path> /Users/<path>\n" in text
+        ), path.name
+        assert "kept x/Users/olga/a 1/Users/olga/a _/Users/olga/a ./Users/olga/a -/Users/olga/a\n" in text, (
+            "right after a word character, a dot or a hyphen it is no home"
+        )
         assert "source=/Users/<path> args=--source-local /Users/<path>\n" in text, path.name
         assert "error: cannot read /Users/<path> Alpha/plan.docx" in text, "a blank ends an unquoted path"
         assert (
             "moved from /Users/<path>, kept /Users/Shared/drop and (/Users/Shared) and /Users/<user>/" in text
         )
         assert "quoted '/Users/<path>' ok, `/Users/<path>`\n" in text, "a quoted path runs to its quote"
+
+
+def _shell_cut_at_home(tmp_path: Path, home: str, said: Sequence[str]) -> list[str]:
+    """``said``'s lines through the real redact_stream for HOME ``home`` (it need not exist) and the login
+    ``kxy``: a sandbox home under /tmp never reaches the /Users/ home pair's guard (B13 round 35 C941)."""
+    cfg = tmp_path / "sources.toml"
+    cfg.write_text("")
+    text = INSTALL_SH.read_text()
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    words = re.compile(r"(?ms)^(?:joined_word|report_word|output_word|two_letter_word)\(\) \{\n.*?^\}$")
+    helpers += "\n" + "\n".join(m.group(0) for m in words.finditer(text))
+    said_file = tmp_path / "said.txt"
+    said_file.write_text("".join(f"{ln}\n" for ln in said))
+    harness = "\n".join(
+        [
+            "with_timeout() { return 0; }",
+            "repo_slug() { echo contoso/agentsync; }",
+            'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
+            f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
+            *re.findall(r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES)\+?=.*$", text),
+            helpers,
+            funcs,
+            f"redact_stream <{said_file}",
+        ]
+    )
+    env = {"HOME": home, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()}
+    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, text=True, check=False, env=env)
+    assert cp.returncode == 0, cp.stderr
+    return cp.stdout.splitlines()
+
+
+def test_this_homes_literal_wins_only_where_the_home_ends(tmp_path: Path) -> None:
+    """B13 round 35 ruling 102 (C939, C941): the home pair matched inside a longer home, so
+    `/Users/kxy.old/...` printed `~.old/...` with its organisation and folder, and `/Users/kxy\\ 1/...`
+    (printf %q's form) printed `~\\ 1/...`. The home pair now takes Python's trail, and under /Users/
+    refuses a `\\` escape but `\\"`."""
+    said = [
+        "own /Users/kxy/notes/a.txt and /Users/kxy",
+        "old /Users/kxy.old/OneDrive-Fabrikam/x and /Users/kxy-1/Fabrikam and /Users/kxy_2/Fabrikam",
+        "esc /Users/kxy\\ 1/Fabrikam and /Users/kxy\\(1\\)/Fabrikam",
+        '{\\"home\\":\\"/Users/kxy\\"}',
+        "keep /Users/Shared/x ~/x https://contoso.example/a/b 3/14 /Users/<user>/y",
+    ]
+    out = _shell_cut_at_home(tmp_path, "/Users/kxy", said)
+    assert out == [
+        "own ~/notes/a.txt and ~",
+        "old /Users/<path> and /Users/<path> and /Users/<path>",
+        "esc /Users/<path> and /Users/<path>",
+        '{\\"home\\":\\"~\\"}',
+        "keep /Users/Shared/x ~/x https://contoso.example/a/b 3/14 /Users/<user>/y",
+    ], out
+    # a home outside /Users/ keeps the escape (only the trail): cutting there would print it whole
+    out = _shell_cut_at_home(tmp_path, "/Volumes/Contoso/Users/kxy", ["at /Volumes/Contoso/Users/kxy\\ 1/x"])
+    assert out == ["at ~\\ 1/x"], out
 
 
 @pytest.mark.parametrize("same_run", [True, False])

@@ -118,7 +118,7 @@ def test_the_shell_report_keeps_the_repos_own_locator(env: dict[str, str]) -> No
         assert f"| {line} |" in text, text
     assert f"| https://github.com/<name>/{REPO}-fork |" in text
     assert f"| https://codeberg.org/<name>/{REPO} |" in text
-    assert "| ~/<name>-notes and /Users/<name>/x |" in text
+    assert "| ~/<name>-notes and /Users/<path> |" in text, "B13 round 35 ruling 102 (C901): cut whole"
 
 
 # ---- a second pass over redacted text (R69) ---------------------------------------------------------------

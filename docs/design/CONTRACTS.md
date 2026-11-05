@@ -37466,6 +37466,8 @@ tail, each up to a blank, a quote, a backtick, a bracket, `,` or `;`. Byte-wise 
 An unquoted path with a blank keeps its tail after the first blank, as the legend's `<path>` item says. Test:
 `test_the_shell_report_cuts_a_path_in_another_home_whole`.
 
+Amended 2026-11-04, §16.231 C901: only `Shared`, `<user>` and an already-cut `<path>`, each the whole component, are kept; any other placeholder, or a component that opens with one (`<value>`, `<org-1>`, `<name>`, `<user>.old`, `<user>\ 1`), is cut, and this home's literal wins only where the home ends (B13 round 35 ruling 102).
+
 **Step 1 reads status's own judgment of the hold** (C840, C879, C871, C859, C803, C812, C865 and C863; ruling 93;
 amends §16.219 C701 and C737, §16.220 C701; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). The queue's
 by-hand clause keyed on the lost-hold word, so a lost hold on another source asked the records owner for a release the
@@ -38010,7 +38012,20 @@ Reserved for round 35 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
-Reserved for round 35 lane RB of B13.
+**The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling
+102; amends §16.226 C822; `scripts/install.sh`). `foreign_home_cut` kept any component that started with `<`, so a home
+whose first part an earlier pass had made a placeholder kept its tail in clear: the hold owner's `/Users/<value>/...`,
+an organisation's `<org-1>`, the full name's `<name>`, and the login's `<user>.old/...` and `<user>-old/...`. It now
+keeps only `Shared`, `<user>` and an already-cut `<path>`, each the whole component (`comp == "<user>" || comp ==
+"<path>"`, never a prefix test and never a `^<[a-z]+...>$` pattern, which keeps `<value>`). This home's literal wins
+only where the home ends: the `$HOME` and `pwd -P` home pairs take flag t, Python's trail (no letter, digit, `_`, `.`
+or `-` after it), and under `/Users/` flag u, which also refuses a `\` escape other than `\"` after it (printf %q's
+`/Users/dana\ 1`), so `/Users/dana.old`, `/Users/dana-1` and `/Users/dana\ 1` are another home and are cut, while a
+JSON-escaped `"/Users/dana\"` stays `~`. A home outside `/Users/` keeps t only: cutting there would print the home
+whole. Tests: `test_the_shell_report_cuts_a_path_in_another_home_whole` (a hold owner's, a full name's and a
+login-tailed home, and `/Users/` right after a letter, a digit, `_`, `.` or `-`, C950's five byte classes, kept), and
+`test_this_homes_literal_wins_only_where_the_home_ends`, through `redact_stream` with HOME=/Users/<login>, since a
+sandbox home under /tmp never reaches the guard; test_report_redaction.py's shell locator now reads `/Users/<path>`.
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
