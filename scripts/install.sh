@@ -7123,13 +7123,18 @@ older_report_rewrite() { # MODE
 		# "before sending it", and some forms then to send it as it is: the advice and its lead-in that weighs a
 		# busy Mac give way to the copy\047s own words, and what follows it goes, a final full stop kept, as the
 		# renderer words a stopped copy since C718 (B13 round 35 C916)
-		function last_at(s, t,    j, k) { k = 0; while ((j = index(substr(s, k + 1), t))) k += j; return k }
+		# the load lead-in, by a regex: its word for the cores is no printed text of this installer (a report word)
+		function last_load(s,    k, at) {
+			k = 0; at = 0
+			while (match(substr(s, at + 1), /that is (not )?above its core count/)) { k = at + RSTART; at += RSTART }
+			return k
+		}
 		function idle_off(line,    i, pre, k) {
 			if (!(i = index(line, idlehead)) || !index(substr(line, i), idletail)) return line
 			pre = substr(line, 1, i - 1)
 			if (ends(pre, "if this Mac was busy, ")) pre = substr(pre, 1, length(pre) - length("if this Mac was busy, "))
 			else if (ends(pre, "if the Mac was busy, ")) pre = substr(pre, 1, length(pre) - length("if the Mac was busy, "))
-			else if ((k = last_at(pre, "that is above its core count")) || (k = last_at(pre, "that is not above its core count"))) pre = substr(pre, 1, k - 1)
+			else if ((k = last_load(pre))) pre = substr(pre, 1, k - 1)
 			return pre notsent (ends(line, ".") ? "." : "")
 		}
 		# a launchd job line an older renderer wrote at exit 124, a read that did not finish, as "not installed" or
@@ -7527,7 +7532,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	# C916). Its words blame no cause and name no line: that renderer gives the advice for the report's time
 	# limit, a state file a sync held and the doctor's own wait alike. Never keyed on the time limit alone: a
 	# newer renderer's cut copy is right as it is.
-	! LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$REPORT_PATH" ||
+	! LC_ALL=C grep -qE "^- (doctor|evidence): .*write the report again when this Mac is idle" "$REPORT_PATH" ||
 		note="$note An agentsync older than this installer wrote it, and its Summary says part of it was cut off before it finished: a line in that part may be a read that did not finish, not a fact about this Mac."
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
 	if {

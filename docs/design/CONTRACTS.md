@@ -30080,6 +30080,8 @@ Amended 2026-10-24, §16.189 P138: thirty-three cases, not thirty: three chmod l
 Amended 2026-10-25, §16.194 I106: thirty-five cases, not thirty-three: P138's seed 34, an agent's lock stop that
 turns a chmod 700 line down by its mode and a person's -wal stop after it that takes it, with a no-break space and
 with a plain one.
+Amended 2026-11-04, §16.231 C935: thirty-seven cases, not thirty-five: lane B's governance folder stop takes the
+folder's chmod 700 line and turns a chmod 600 line down.
 
 **Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
 governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
@@ -37497,7 +37499,6 @@ lists lost, no hold; the purge's own hold test agrees with the words) and
 `test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865`.
 
 Amended 2026-11-04, §16.231 C967: CORRECTED: a lost hold beside a hold still in force (sources.toml's or a listed one) read as lost and took the release rebuild; status's GovernanceLostError.kept_hold, read by getattr, now gives `,queue-held-kept` in place of `,queue-held`, whose words are the listed hold's `once the records owner releases the hold that covers it, as its status line says`, and the folder's rebuilt arms key on the lost form of HAND (B13 round 35 ruling 104, C967).
-
 Amended 2026-11-04, §16.231 C993: the rule has a fourth state: the release marker is read first, then status's conditional clause for a sourceless lost purge (`or finds nothing, and then only the records owner's decision lets it run`) gives `,queue-maybe`, whose hand run is `after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds nothing, and then only the records owner's decision lets it run`, never a release, ahead of the folder's rebuilt arms (B13 round 35 ruling 104, C993 with C951).
 
 **With governance/ gone the folder tails describe the folder and say which line each act fixes** (C810, C805 and
@@ -38113,7 +38114,8 @@ and `helper-timeout-and-doctor-cut` rows of
 `test_the_time_limit_grep_reads_the_reports_own_line_at_its_maximum_c929` (setup_report._time_limit's line at 60, 75.5
 and 1e2 matches the grep, at 59 and `x` not) and `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
 
-**The shell report reads lane B's governance folder stop** (C935's install.sh half; `scripts/install.sh`). Lane B's
+**The shell report reads lane B's governance folder stop** (C935's install.sh half; dated line at §16.179 D79;
+`scripts/install.sh`). Lane B's
 sync records a stop on the governance folder itself as `file=governance-folder`; `fallback_sync_stop_line` names it
 `agentsync's governance folder`, as setup_report._SYNC_STOP_FILES does, and the shell pairing's chmod fit gives it the
 folder's 700, as the state folder's, so the agent's `chmod 700` line is its account and a `chmod 600` line is not.

@@ -6635,6 +6635,12 @@ _ROUND_35_D_PARAGRAPH_AMENDS = (
 """Round 35 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_34_D_PARAGRAPH_AMENDS`: C987's at §16.223's C800 rule (ruling 111)."""
 
+_ROUND_35_RB_PARAGRAPH_AMENDS = (
+    ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
+)
+"""Round 35 lane RB's dated line at a bullet its claim names by its words, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C926's SIGTERM sentence beside R125's in §16.41's reinstall residuals."""
+
 _ROUND_34_B_PARAGRAPH_AMENDS = (
     ("16.220", "**C701 (ruling 86's governance half).** With no copy", "§16.227 C874"),
     ("16.220", "**C701 (ruling 86's governance half).** With no copy", "§16.227 C841"),
@@ -6885,6 +6891,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_35_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
+        *_ROUND_35_RB_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
@@ -7058,6 +7065,8 @@ def test_the_shell_pairing_records_case_count_is_the_tests() -> None:
         "thirty-three",
         "thirty-four",
         "thirty-five",
+        "thirty-six",
+        "thirty-seven",
     )
     stated = re.findall(rf"\b({'|'.join(words)}) cases\b", record)
     assert stated[:1] == ["eleven"] and count >= 13, (stated, count)
@@ -9273,7 +9282,7 @@ def test_the_guide_gives_each_steps_own_words_for_the_stop_that_follows_a_config
     # step 1's by-hand run, under a hold that refuses it, ends with queue_hand_words' release
     hand = script[script.index("queue_hand_words() { # VERDICT") : script.index("\nfolder_gone_words() {")]
     releases = set(re.findall(r'HAND="([^"]+)"', hand))
-    assert len(releases) == 2
+    assert len(releases) == 3  # B13 round 35 C993: the dry run of a sourceless lost purge
     assert 'queue_hand_words "$1"' in script and 'hand="$hand${HAND:+ }$HAND"' in script
     for release in releases:
         assert f"`{release}`" in section, release
