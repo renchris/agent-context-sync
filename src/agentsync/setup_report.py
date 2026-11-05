@@ -3200,6 +3200,9 @@ _SYNC_STOP_FILES = {
     "hold-record": "agentsync's hold record",
     "purge-record": "agentsync's purge record",
     "governance": "a governance file in the state folder",
+    # B13 round 35 C935: lane B's writer names a refused governance folder apart from a file in it (an older
+    # log's ``governance`` stays the file noun: nothing on disk tells the two apart)
+    "governance-folder": "agentsync's governance folder",
     "state-folder": "agentsync's state folder",
 }
 """The words for each ``file=`` role of :data:`_SYNC_STOPS_NAME`'s lines; an unknown role reads as a state
@@ -3480,7 +3483,11 @@ def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
         return False
     modes = set(_CHMOD_MODE_RE.findall(text))
     fits = (
-        {"700"} if stop.file == "state-folder" else {"600", "700"} if stop.file == "governance" else {"600"}
+        {"700"}
+        if stop.file in ("state-folder", "governance-folder")  # B13 round 35 C935: a folder takes 700
+        else {"600", "700"}
+        if stop.file == "governance"
+        else {"600"}
     )
     return not modes or bool(modes & fits)
 
@@ -8021,11 +8028,15 @@ ordinary one, which ends in a sync that stops on the damage (B13 round 20 X80; t
 
 
 _STATUS_UNREAD = "status: cannot read the state:"
-"""How status's detail part starts when it cannot read the state. Two places write it: ``cli._guarded``,
-when the whole of status raises (a manifest it cannot read), and then no ``last runs:`` line follows, so the
-report cannot say whether a sync ran; and ``cli._status_lines``, when only [governance] is refused (B13 round
-18 V10), and then the manifest's ``last runs:`` line (or ``manifest: none yet``) still follows, so the report
-reads whether a sync ran from that line (round 19 W45)."""
+"""How status's detail part starts when it cannot read the state: ``cli._guarded``, when the whole of status
+raises (a lock, heartbeat or manifest it cannot read), and then no ``last runs:`` line follows, so the report
+cannot say whether a sync ran. An older build's ``cli._status_lines`` wrote it for a partial read too."""
+_STATUS_PART_UNREAD = "status: some of the state could not be read:"
+"""B13 round 35 C937 (lane B's one constant): how ``cli._status_lines`` starts a partial read, a refused
+[governance] (B13 round 18 V10), a hold list or purge queue not read, or a refused open. The manifest's ``last
+runs:`` line (or ``manifest: none yet``) still follows, so the report reads whether a sync ran from that line
+(round 19 W45)."""
+_STATUS_UNREAD_HEADS = (_STATUS_UNREAD, _STATUS_PART_UNREAD)  # the reader takes the old head and the new
 
 
 def _status(r: _Run) -> list[str]:
@@ -8042,9 +8053,10 @@ def _status(r: _Run) -> list[str]:
     if baselines:
         r.facts.baseline = (baselines.count("complete"), len(baselines))
     loop_line = next((ln for ln in lines if ln.startswith("loop: ")), None)
-    unread = next((ln for ln in lines if ln.startswith(_STATUS_UNREAD)), None)
+    unread = next((ln for ln in lines if ln.startswith(_STATUS_UNREAD_HEADS)), None)
     if unread is not None:
-        r.facts.loop_unread = unread.removeprefix(_STATUS_UNREAD).strip() or None
+        head = next(h for h in _STATUS_UNREAD_HEADS if unread.startswith(h))
+        r.facts.loop_unread = unread.removeprefix(head).strip() or None
     if loop_line is not None:
         baseline = _LOOP_BASELINE_RE.search(loop_line)
         topics = _LOOP_TOPICS_RE.search(loop_line)
@@ -12408,9 +12420,10 @@ def _stop_shape(r: _Run, stop: _SyncStop) -> str:
         "hold-record": [sp.root / "hold-record.json"],  # B13 round 30 ruling 41 (C347)
         "purge-record": [sp.root / "purge-record.json"],
         "governance": [gov / "purge-queue.json", gov / "suppressed.json", gov / "audit.jsonl"],
+        "governance-folder": [gov],  # B13 round 35 C935
         "state-folder": [sp.root],
     }.get(stop.file, [])
-    what = "a folder" if stop.file == "state-folder" else "(?:a file|the state file)"
+    what = "a folder" if stop.file in ("state-folder", "governance-folder") else "(?:a file|the state file)"
     kinds = {
         m.group("kind")
         for p in files
@@ -12627,8 +12640,10 @@ def _stop_unread_why(stop: _SyncStop) -> str:
         return f"{stop.what} is not a file"
     if stop.file in ("hold-record", "purge-record"):  # B13 round 30 C347: the record, whatever the kind
         return f"{stop.what} cannot be read"
-    if stop.kind == "misplaced" and stop.file != "state-folder":  # a folder where the file belongs
+    if stop.kind == "misplaced" and stop.file not in ("state-folder", "governance-folder"):  # a folder there
         return "the state file is not a file"
+    if stop.file == "governance-folder":  # B13 round 35 C935: lane B's writer names the folder
+        return "the governance folder cannot be opened"
     if stop.file == "state-folder":
         return (
             "the state folder is not a folder"
@@ -13317,10 +13332,13 @@ def _yours_warn(name: str, detail: str, checks: Collection[str]) -> bool:
 
 def _loop_could_name(name: str, detail: str) -> bool:
     """Whether a doctor warn is one the loop's waits can name (``loop.NextStep.checks``): the incomplete
-    listing's, the purge queue's and the hold's. A Loop line that was not read leaves such a warn unjudged;
+    listing's, the purge queue's, the hold's and a source's ``listable`` (the empty-root wait, B13 round 35
+    C938). A Loop line that was not read leaves such a warn unjudged;
     every other warn is unexpected whatever the loop said (B13 round 33 C721, C703, C706; ruling 84)."""
     if name.startswith("heartbeat."):
         return detail.startswith(_LISTING_INCOMPLETE)
+    if name.startswith("source.") and name.endswith(".listable"):  # B13 round 35 C938: an empty root's wait
+        return True
     return name in ("governance.purge_queue", "governance.hold")
 
 

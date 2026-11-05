@@ -38079,6 +38079,16 @@ Tests: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole_how
 value absent through `build_report`, C950's five byte classes, `/Users/Shared`, `/Users/<user>/`, `~/x`, a URL and
 `3/14` kept), `tests/test_deploy_pack.py::test_the_guide_says_both_reports_cut_a_path_in_another_home`.
 
+**The report reads lane B's round 35 words, old and new** (C935, C937, C938, the report's halves;
+`src/agentsync/setup_report.py`). Each reader lands before lane B writes its words (§16.232). C935: a sync stopped
+by a governance folder that refuses this account is recorded `file=governance-folder`; `_SYNC_STOP_FILES` says
+`agentsync's governance folder`, `_claims` fits it as the state folder (`chmod 700`), the not-measured cause is `the
+governance folder cannot be opened`, and an older log's `file=governance` stays `a governance file in the state
+folder`. C937: status's partial read opens `status: some of the state could not be read:`
+(`_STATUS_PART_UNREAD`); `_status` takes it or the whole read's `status: cannot read the state:` and strips the one
+it found. C938: `_loop_could_name` names a source's `listable` warn, the empty-root wait's, so an unread Loop line
+leaves it not judged. Test: `tests/test_setup_report.py::test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938`.
+
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 

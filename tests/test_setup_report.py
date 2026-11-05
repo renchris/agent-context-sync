@@ -4787,6 +4787,38 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
     assert "the fix is the person's fix" not in summary and "; the fix is the person's\n" in summary, summary
 
 
+def test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938(fake_mac: dict[str, Path]) -> None:
+    """B13 round 35, the readers lane B's writers wait on, each reading the old words and the new. C935: a
+    sync stopped by its governance folder is recorded ``file=governance-folder`` and said as the folder,
+    its chmod 700, never "a governance file"; an older log's ``file=governance`` stays the file noun. C937:
+    status's partial read opens ``status: some of the state could not be read:``, read as the whole read's
+    head is. C938: a source's ``listable`` warn, the empty-root wait's, is one the Loop line can name."""
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    folder = setup_report._SyncStop(at, "governance-folder", "agent", None, False)
+    assert setup_report._sync_stop_line(folder) == (
+        "- agentsync sync · step 3 · exited 1 on agentsync's governance folder, which this account could not "
+        "open; whether a later sync ended 0: not measured (the governance folder cannot be opened); the fix "
+        "is the agent's chmod"
+    )
+    old = setup_report._SyncStop(at, "governance", "agent", None, False)
+    assert "exited 1 on a governance file in the state folder" in setup_report._sync_stop_line(old)
+
+    def said(chmod: str) -> setup_report.FrictionEvent:
+        return setup_report.FrictionEvent(9, at, 3, "error", f"sync exited 1; ran {chmod}", "-")
+
+    assert setup_report._claims(folder, said("chmod 700 ~/Library/x/governance"))
+    assert not setup_report._claims(folder, said("chmod 600 ~/Library/x/governance"))
+    assert setup_report._claims(old, said("chmod 600 ~/Library/x/governance/holds.json"))
+    for head in ("status: cannot read the state:", "status: some of the state could not be read:"):
+        lines = ["loop: skill current · baseline missing", f"{head} the hold list cannot be read"]
+        hooks = setup_report.ReportHooks(status=lambda c, ln=lines: ln)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        loop = _line(section(text, "Summary"), "- Loop: ")
+        assert loop.startswith("- Loop: not read: status says the hold list cannot be read"), (head, loop)
+    assert setup_report._loop_could_name("source.client-alpha.listable", "0 entries")
+    assert not setup_report._loop_could_name("source.client-alpha.path", "0 entries")
+
+
 def test_a_step_3_stop_names_the_folder_it_stopped_on_and_its_kind(tmp_path: Path) -> None:
     """B13 round 24 B16: a sync stopped by an ACL on the state folder (lane B's writer now records
     ``file=state-folder``) read "exited 1 on agentsync's state file ... not measured (the state file cannot
