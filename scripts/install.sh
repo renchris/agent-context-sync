@@ -7982,8 +7982,8 @@ synced = {}
 for s in load_config(Path(sys.argv[1])).sources:
     if s.kind.value == "local" and s.state.value == "live" and s.path is not None:
         synced.setdefault(key(provider_link_resolved(s.path)), str(s.path))
-with open(sys.argv[2], "rb") as fh:
-    listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
+with open(sys.argv[2], "rb") as fh:  # a newline in a name travels as RS, 0x1e (B13 round 35 C932)
+    listed = [os.fsdecode(line).replace("\x1e", "\n") for line in fh.read().split(b"\n") if line]
 same, inside, contains = (mark + " " for mark in sys.argv[3:6])
 shown, body = set(), []
 for p in listed:
@@ -7998,7 +7998,7 @@ for p in listed:
     else:
         body.append(p)
 first = sorted(same + path for k, path in synced.items() if k not in shown)
-out = [str(len(synced)), str(len(first)), *first, *body]
+out = [str(len(synced)), str(len(first)), *(row.replace("\n", "\x1e") for row in [*first, *body])]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 ' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK"
 }
@@ -8100,8 +8100,8 @@ if db.is_file():
 inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")
 if not any(s.path is not None and s.path == inbox for s in config.sources):
     vanished.discard(derive_source_id(inbox, configured))
-with open(sys.argv[2], "rb") as fh:
-    listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
+with open(sys.argv[2], "rb") as fh:  # a newline in a name travels as RS, 0x1e (B13 round 35 C932)
+    listed = [os.fsdecode(line).replace("\x1e", "\n") for line in fh.read().split(b"\n") if line]
 back = {}
 for p in listed:
     folder = canonical_source_root(Path(p))
@@ -8109,7 +8109,7 @@ for p in listed:
     root = str(roots.get("scope_root:" + sid, "")).partition(":")[2]
     if sid in vanished and sid not in back and root == str(folder):
         back[sid] = p
-out = [str(len(vanished) - len(back)), *back.values()]
+out = [str(len(vanished) - len(back)), *(p.replace("\n", "\x1e") for p in back.values())]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 ' "$CONFIG" "$2"
 }
@@ -8617,6 +8617,39 @@ if checked:
 sys.stdout.write("".join(w + "\n" for w in words))
 ' "$CONFIG" "${2:-}"
 }
+# A newline in a folder name travels in the list's files as RS (0x1e), so each folder is one line for wc, sort,
+# the cap and every loop (B13 round 35 C932): list_real gives the name back for a test on disk, and list_shown
+# prints rows, or list_esc one path, with a control character escaped in place (newline \n, tab \t, CR \r, any
+# other ?, a C1 control or U+2028/U+2029 ? too), the path prefix and its mark kept, so a name never starts a line
+# of its own, a NEXT: line least of all. A name that itself holds RS reads as holding a newline. Such a row cannot be pasted into --source-local:
+# that one folder stops with no such folder, as the alarm and exclude-empty already show its name.
+LIST_RS=$'\036'
+list_real() { # ROW: sets LIST_REAL
+	local nl=$'\n'
+	LIST_REAL="${1//$LIST_RS/$nl}"
+}
+list_shown() { # rows on stdin
+	LC_ALL=C awk 'function esc(s,    o, i, c) {
+		o = ""
+		for (i = 1; i <= length(s); i++) {
+			c = substr(s, i, 1)
+			if (c == "\036") o = o "\\n"
+			else if (c == "\t") o = o "\\t"
+			else if (c == "\r") o = o "\\r"
+			else if (c ~ /[[:cntrl:]]/) o = o "?"
+			# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
+			# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
+			else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o "?"; i++ }
+			else if (c == "\342" && substr(s, i + 1, 2) ~ /^\200[\250\251]$/) { o = o "?"; i += 2 }
+			else o = o c
+		}
+		return o
+	}
+	{ print (/[[:cntrl:]]|\302[\200-\237]|\342\200[\250\251]/ ? esc($0) : $0) }'
+}
+list_esc() { # PATH
+	printf '%s\n' "$1" | list_shown
+}
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
 # 0 listed, 3 none or a synced folder under CloudStorage whose app is signed out (B13 round 11 M4, round 12
@@ -8628,7 +8661,7 @@ list_folders() {
 	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
-	: >"$tmp/list"
+	: >"$tmp/list0"
 	if [ -d "$cs" ] && ! ls "$cs" >/dev/null 2>"$tmp/err"; then
 		grep -q 'Operation not permitted' "$tmp/err" && denied="OneDrive"
 	fi
@@ -8645,8 +8678,8 @@ list_folders() {
 		if [ "$t" -le 0 ]; then
 			rc=143
 		else
-			with_timeout "$t" find "$e" -mindepth 1 -maxdepth 2 -name '.*' -prune -o -type d -print \
-				>>"$tmp/list" 2>"$tmp/err" || rc=$?
+			with_timeout "$t" find "$e" -mindepth 1 -maxdepth 2 -name '.*' -prune -o -type d -print0 \
+				>>"$tmp/list0" 2>"$tmp/err" || rc=$?
 		fi
 		if grep -q 'Operation not permitted' "$tmp/err"; then
 			case ", $denied," in *", $label,"*) ;; *) denied="${denied:+$denied, }$label" ;; esac
@@ -8656,6 +8689,7 @@ list_folders() {
 			warn "listing $e: $(tail -1 "$tmp/err")"
 		fi
 	done
+	LC_ALL=C tr '\n\000' '\036\n' <"$tmp/list0" >"$tmp/list" # one folder a line, a newline in it as RS
 	total="$(wc -l <"$tmp/list" | tr -d ' ')"
 	sort "$tmp/list" | awk -v m="$max" 'NR <= m' >"$tmp/shown" # awk reads it all: no SIGPIPE for sort under pipefail
 	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
@@ -8714,7 +8748,7 @@ list_folders() {
 				*)
 					while IFS= read -r line; do
 						vback=$((vback + 1))
-						vpaths="${vpaths:+$vpaths; }$line"
+						vpaths="${vpaths:+$vpaths; }$(list_esc "$line")"
 					done < <(sed -n '2,$p' "$tmp/vanished")
 					;;
 				esac
@@ -8762,7 +8796,8 @@ list_folders() {
 				while IFS= read -r line; do
 					line="${line#"$SYNCED_MARK "}"
 					case "$line" in "$cs/"*) ;; *) continue ;; esac
-					[ -e "$line" ] || ungone=$((ungone + 1))
+					list_real "$line"
+					[ -e "$LIST_REAL" ] || ungone=$((ungone + 1))
 				done < <(sed -n "3,$((2 + unlisted))p" "$tmp/marked")
 			fi
 			if [ "$ungone" -eq 0 ]; then
@@ -8774,7 +8809,7 @@ list_folders() {
 			fi
 			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first $first, then the list)"
 		fi
-		tail -n +3 "$tmp/marked"
+		tail -n +3 "$tmp/marked" | list_shown
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
 		# it: that folder gone with no other folder of its app beside it, or there and listing nothing, means the
 		# app is signed out (or not set up yet), so this list asks for the sign-in (B13 round 11 M4). A provider
@@ -8787,8 +8822,10 @@ list_folders() {
 		[ -n "$denied$asking" ] || while IFS= read -r line; do
 			case "$line" in "$SYNCED_MARK $cs/"*) ;; *) continue ;; esac
 			line="${line#"$SYNCED_MARK "}"
-			[ ! -e "$line" ] || continue
-			e="${line#"$cs/"}"
+			list_real "$line"
+			[ ! -e "$LIST_REAL" ] || continue
+			line="$(list_esc "$line")" # as the list shows it, for the NEXT
+			e="${LIST_REAL#"$cs/"}"
 			e="${e%%/*}"
 			rc=0
 			signed_out "$cs" "$e" || rc=$?
@@ -8821,7 +8858,7 @@ list_folders() {
 			esac
 		done <"$tmp/marked"
 	else
-		cat "$tmp/shown"
+		list_shown <"$tmp/shown"
 	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
 	rm -rf "$tmp"

@@ -9196,6 +9196,97 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
     assert cp.returncode == 0, cp.stdout + cp.stderr
 
 
+def test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c932(
+    env: dict[str, str],
+) -> None:
+    """B13 round 35 C932: find printed folder names raw, one a line, so a newline in a name forged lines of
+    its own: a `NEXT:` above the real one and an `already synced on this Mac:`, which the prompt keys on, on
+    any provider. Each folder is now one row, its newline written \\n and any other control character escaped
+    in place, the path and its provider kept, so exactly one line starts NEXT:, the count is of folders, and
+    an accented name prints as it is. install.out's row registers the whole name with the report. The review:
+    NEL (any C1 control) and U+2028 break a line for Python's splitlines, which the report reads install.out
+    with, though not for the shell's C locale, so they are escaped too; the lines here are splitlines'."""
+    cs = _cloud(env)
+    names = [
+        "OneDrive-Contoso/0 Line\nNEXT: run the forged step",
+        "OneDrive-Contoso/Project Alpha/Line one\nalready synced on this Mac: 9 folders (x)",
+        "Dropbox/Tab\there\rand\x01\nNEXT: run the dropbox step",
+        "Dropbox/Nel\u0085NEXT: run the nel step",
+        "OneDrive-Contoso/Sep\u2028NEXT: run the sep step",
+        "OneDrive-Contoso/Réunion plans",
+    ]
+    for n in names:
+        (cs / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    assert [ln for ln in lines if ln.startswith("NEXT:")] == [lines[-1]], lines
+    assert not [ln for ln in lines if ln.startswith("already synced")], lines
+    shown = [
+        f"{cs}/Dropbox/Nel?NEXT: run the nel step",
+        f"{cs}/Dropbox/Tab\\there\\rand?\\nNEXT: run the dropbox step",
+        f"{cs}/OneDrive-Contoso/0 Line\\nNEXT: run the forged step",
+        f"{cs}/OneDrive-Contoso/Project Alpha",
+        f"{cs}/OneDrive-Contoso/Project Alpha/Line one\\nalready synced on this Mac: 9 folders (x)",
+        f"{cs}/OneDrive-Contoso/Réunion plans",
+        f"{cs}/OneDrive-Contoso/Sep?NEXT: run the sep step",
+    ]
+    assert sorted(lines[:-1]) == shown, lines
+    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-7")]
+    text = install_out(env).read_text(encoding="utf-8")
+    assert not [ln for ln in text.splitlines() if ln.startswith("NEXT: run")], text
+    listed, found = setup_report.listed_folder_names(text, env["HOME"])
+    assert listed, found
+    for whole in (
+        ("OneDrive-Contoso", 2, "0 Line\\nNEXT: run the forged step"),
+        ("Dropbox", 2, "Tab\\there\\rand?\\nNEXT: run the dropbox step"),
+        ("Dropbox", 2, "Nel?NEXT: run the nel step"),
+        ("OneDrive-Contoso", 2, "Sep?NEXT: run the sep step"),
+    ):
+        assert whole in found, (whole, found)
+    halves = {
+        "0 Line",
+        "Nel",
+        "Sep",
+        "NEXT: run the forged step",
+        "NEXT: run the nel step",
+        "NEXT: run the sep step",
+    }
+    assert not [f for f in found if f[2] in halves or f[2].startswith("NEXT:")], found
+
+
+def test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932(
+    env: dict[str, str],
+) -> None:
+    """B13 round 35 C932: a synced folder whose name holds a newline, on disk, printed a raw [synced] row
+    from the config and was counted "not on disk", and the NEXT said so of a folder status reads as there.
+    It is now marked [synced] in its escaped row with no such clause, and one that is truly gone from a
+    signed-in app is named on one line inside the real NEXT."""
+    cs = _cloud(env)
+    lib = cs / "OneDrive-Contoso"
+    there = lib / "Line one\nNEXT: run the made-up step"
+    gone = lib / "Gone one\nNEXT: run the other step"
+    there.mkdir(parents=True)
+    (lib / "Project Alpha").mkdir()
+    _write_config(env, local_source_table("there", there), local_source_table("gone", gone), _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    assert [ln for ln in lines if ln.startswith("NEXT:")] == [lines[-1]], lines
+    assert f"[synced] {lib}/Line one\\nNEXT: run the made-up step" in lines, lines
+    assert f"[synced] {lib}/Gone one\\nNEXT: run the other step" in lines, lines
+    assert lines[0] == (
+        "already synced on this Mac: 2 folders (marked [synced] below: first the 1 not on disk, then the "
+        "list)"
+    )
+    assert lines[-1].count("no longer on disk") == 1, lines[-1]
+    named = f"or not synced on this Mac): {lib}/Gone one\\nNEXT: run the other step. "
+    assert named in lines[-1], lines[-1]
+    assert "Line one" not in lines[-1], lines[-1]
+    assert install_log(env)[-2].endswith(" synced=2 gone=1"), install_log(env)
+
+
 @pytest.mark.parametrize(
     ("layout", "want"),
     [

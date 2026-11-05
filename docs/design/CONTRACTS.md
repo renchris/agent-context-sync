@@ -38182,6 +38182,28 @@ SIGKILL then no longer stopped it, while ending lockf alone frees the single-wri
 alive with no uv run 3 s after the signal while the lock is held, then rc 143, one `uv tool install`, under the
 lock).
 
+**Step 1's list prints a control character in a folder name escaped in its own row** (C932; `scripts/install.sh`).
+`--list-folders` read `find -print` one folder a line and printed the names raw, so a newline in a name forged a
+line of its own on any provider: a `NEXT:` above the real one, or an `already synced on this Mac:`, which the prompt
+keys on. A synced folder whose name held one printed a raw row from the config, was counted not on disk, and the
+NEXT said so. `find -print0` now goes through `tr` into a file of one folder a line, a newline in a name as RS
+(0x1e), so wc, sort, the 200 cap and every loop count folders; synced_folders and vanished_folders turn RS back into
+a newline on read and every row they print, the config's too, into RS. `list_real` gives the name back before each
+`[ -e ]`, and `list_shown` and `list_esc` print rows, the gone, other-account, library and vanished paths of the
+NEXT among them, with a newline written `\n`, a tab `\t`, a CR `\r` and any other control character `?`, and a C1
+control (NEL among them) or U+2028/U+2029 `?` too, which Python's splitlines, the report's reader, breaks a line on
+though the shell's C locale does not, in place,
+with the path prefix and its mark, so both list readers (setup_report.listed_folder_names, listed_folder_lines)
+register the escaped name whole; a name with none prints byte for byte, an accented one too. Not a `$'...'` row,
+which neither reader decodes, and not %q, which escapes blanks and accents. A name that holds RS itself reads as
+holding a newline, and the escaped row cannot be pasted into --source-local: that one folder stops with no such
+folder, as the alarm and exclude-empty already show it. setup_report's NEXT count is left as it is. Tests:
+`test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c932` (OneDrive and Dropbox, a newline,
+NEL and U+2028, one NEXT: by splitlines, no forged `already synced`, `listed-7`, each whole name registered and no
+half) and
+`test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932` (marked, no false not-on-disk, a gone one
+on one line in the real NEXT).
+
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
 Round 35's rulings 103 to 106 and 109 and C934, C952, C953, C978, C921, C925, C954, C917, C955, C906, C956, C980,
