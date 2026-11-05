@@ -1562,6 +1562,9 @@ _FIXED_VALUE_PHRASES = (
     "once the records owner decides to release ",  # the lost queue's no-copy branch (C701; ruling 86)
     # a hold a sourceless lost purge meets only if it reaches its source (B13 round 34 C874; ruling 92)
     "or finds nothing, and then only the records owner's decision lets it run",
+    # install.sh's step 1 hand run for a sourceless lost purge (B13 round 35 ruling 104, C993 with C951)
+    "after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds "
+    "nothing, and then only the records owner's decision lets it run",
     "refused while the trail has lost nothing and records no such loss",  # purge --help (ruling 80)
     "your word that no copy is left of an audit trail that has lost purge lines",
     # lane B's sync line since B13 round 32 C609 (round 31's above stay: an older install.out keeps them)

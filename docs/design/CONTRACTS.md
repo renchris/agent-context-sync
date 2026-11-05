@@ -37489,6 +37489,8 @@ sources.toml hold with the folder there and gone, a hold on another source liste
 lists lost, no hold; the purge's own hold test agrees with the words) and
 `test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865`.
 
+Amended 2026-11-04, §16.231 C993: the rule has a fourth state: the release marker is read first, then status's conditional clause for a sourceless lost purge (`or finds nothing, and then only the records owner's decision lets it run`) gives `,queue-maybe`, whose hand run is `after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds nothing, and then only the records owner's decision lets it run`, never a release, ahead of the folder's rebuilt arms (B13 round 35 ruling 104, C993 with C951).
+
 **With governance/ gone the folder tails describe the folder and say which line each act fixes** (C810, C805 and
 C811; ruling 94; amends §16.209 C507; `scripts/install.sh`, `docs/deploy/setup-feedback.md`). Both of step 1's
 folder tails said the folder was lost `with the hold list, agentsync's audit trail, the purge queue and the
@@ -38045,6 +38047,23 @@ keeps its tail after the first quote, backtick, bracket, comma or semicolon, and
 holds no `/`, or that is an option, a URL, a path of its own or a number like 3/14. Test:
 `test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks`, lane RA's cases through
 `redact_stream` with HOME=/Users/<login>.
+
+**A sourceless lost purge under a hold on another source gets a dry run first, never a release** (C993 with C951;
+ruling 104; amends §16.226 C840; `scripts/install.sh`, `src/agentsync/setup_report.py`'s phrase list,
+`docs/deploy/setup-feedback.md`). Status's queue fix for a sourceless record (a `docs=` or `path=` glob) under a hold on
+another source says `after a --dry-run of each purge, which <hold> refuses only if it reaches that source or finds
+nothing, and then only the records owner's decision lets it run`; LOST_HOLD_PY read it as `,queue-free`, the plain
+hand run, and a known hold beside it as `,queue-held` only by luck of order. It now tests the release marker first
+(`,queue-held`, so a known hold beside a conditional one stays held), then the conditional clause (`,queue-maybe`), else
+`,queue-free`. `queue_hand_words`' queue-maybe arm, after queue-free and before every lost-hold arm, gives the fixed
+words `after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds
+nothing, and then only the records owner's decision lets it run`, no scope or owner; `folder_gone_words`' two
+queue-maybe arms come before the `:?*` rebuilt arms, so a lost hold on another source never takes the release
+rebuild. The phrase joins both lists (ruling 68), the old entry kept. An older build never prints the clause and
+keeps its word. Test: `test_step_1_gives_a_sourceless_lost_purge_a_dry_run_under_a_hold_on_another_source_c993` (a
+hold on another source listed, lost and with the folder gone, a hold on all, in sources.toml, on all beside one on
+another source, no hold, and the folder's joiner with the suppression list lost too), a sibling of the C840 table,
+whose purge-test assertion does not hold for a conditional hold.
 
 **The NEXT names the time limit only where more time can help, never at 60 s** (C922, C929, C915's install.sh half,
 C904's install.sh half, C976; ruling 108; amends §16.226 C834; `scripts/install.sh`, `docs/deploy/setup-feedback.md`).

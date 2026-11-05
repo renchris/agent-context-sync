@@ -13759,6 +13759,73 @@ def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
     assert "Quinn" not in tail + fix and "matter" not in tail + fix and "alpha" not in tail + fix
 
 
+HAND_MAYBE = (
+    "after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds "
+    "nothing, and then only the records owner's decision lets it run"
+)
+"""A sourceless lost purge under a hold on another source: a dry run first, never a release (B13 round 35
+ruling 104, C993 with C951)."""
+
+
+@pytest.mark.parametrize(
+    ("holds", "form", "verdict"),
+    [
+        (("beta",), "files", "none,lost-queue,queue-maybe"),
+        (("beta",), "folder", "lost-hold-govgone,lost-queue-govgone,queue-maybe"),  # the folder took the list
+        (("lost-beta",), "files", "lost-hold,lost-queue,queue-maybe"),
+        (("lost-beta",), "folder", "lost-hold-govgone,lost-queue-govgone,queue-maybe"),
+        (("all",), "files", "none,lost-queue,queue-held"),
+        (("config",), "files", "none,lost-queue,queue-held"),
+        (("all", "beta"), "files", "none,lost-queue,queue-held"),
+        ((), "files", "none,lost-queue,queue-free"),
+    ],
+)
+def test_step_1_gives_a_sourceless_lost_purge_a_dry_run_under_a_hold_on_another_source_c993(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, holds: tuple[str, ...], form: str, verdict: str
+) -> None:
+    """B13 round 35 ruling 104 (C993 with C951): a lost queue's sourceless record (a docs= glob) under a hold
+    on another source gets status's conditional clause (`... or finds nothing, and then only the records
+    owner's decision lets it run`), which step 1 read as `,queue-free`, the plain hand run, or, beside the
+    release words, as `,queue-held`. The release marker is read first, so a known hold beside a conditional
+    one stays held; the conditional clause alone is `,queue-maybe`, whose words ask for a dry run first and
+    never name a release, with or without the governance folder, a lost hold or a lost suppression list."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    state = home / "Library" / "Application Support" / "agentsync"
+    gov = state / "governance"
+    gov.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    held = '[governance]\nhold = true\nhold_reason = "matter 8"\n'
+    cfg.write_text(held if "config" in holds else "", encoding="utf-8")
+    src = Path(__file__).resolve().parents[1] / "src"
+    sel = governance.PurgeSelector.parse("docs=Board/*", source_id=None)
+    assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
+    for hold in holds:
+        scope = hold.removeprefix("lost-")
+        if scope in ("all", "beta"):
+            governance.set_hold(state, scope, reason="matter 8", owner="Quinn Avery")
+    if form == "folder":
+        gov.rename(state / "governance.kept")
+    else:
+        (gov / "purge-queue.json").rename(state / "purge-queue.json.kept")
+        if any(h.startswith("lost-") for h in holds):
+            (gov / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+    assert _lost_hold_probe(cfg, src) == verdict
+    tail, fix = _queue_tails(verdict)
+    shown = fix if form == "folder" else tail
+    if verdict.endswith(",queue-maybe"):
+        assert f"run each such purge by hand {HAND_MAYBE}" in shown, shown
+    for words in (tail, fix):
+        if verdict.endswith((",queue-maybe", ",queue-free")) and "by hand" in words:
+            assert "releases the hold" not in words.split("by hand", 1)[1], words
+    assert "Quinn" not in tail + fix and "matter" not in tail + fix and "Board" not in tail + fix
+    # with the suppression list lost too, the folder's joiner keeps the dry run and no release rebuild
+    both = _queue_tails("lost-hold-govgone,lost-suppressed-govgone,lost-queue-govgone,queue-maybe")[1]
+    assert both.endswith(f"as its status line says, and run each such purge by hand {HAND_MAYBE}"), both
+    assert "fixes the hold line only" not in both, both
+
+
 def test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -974,9 +974,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the purge queue back from a copy they trust, or run each such purge by hand), and ~/.local/bin/agentsync status
   prints it on its governance.purge_queue line`, logged `state-queue-lost`. That by-hand run is plain only when no
   hold in force refuses it: step 1 reads status's own judgment, the queue's fix naming the records owner's release
-  (the reader's last word, `queue-held`, else `queue-free`), so a hold on another source keeps it plain and a hold on
-  the purge's source, on all or in sources.toml adds the release, in the words below; an older build that says
-  neither keeps the release only under a lost hold (B13 round 34 ruling 93, C840, C879, C871, C803). When both lost one, the suppression list
+  (the reader's last word, `queue-held`, then `queue-maybe` for a purge with no source that a hold on another source
+  refuses only if it reaches that source or finds nothing, else `queue-free`), so a hold on another source keeps it
+  plain, or, for a purge with no source, asks for a dry run first and names no release, and a hold on the purge's
+  source, on all or in sources.toml adds the release, in the words below; an older build that says none of them keeps
+  the release only under a lost hold (B13 round 34 ruling 93, C840, C879, C871, C803; round 35 ruling 104, C993). When both lost one, the suppression list
   comes first, as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first,
   and the queue's clause follows it opening `; the same stop names agentsync's purge queue`, logged
   `config_err=state-suppressed-lost,state-queue-lost` (B13 round 30 ruling 40, lane RB's dc266be78, C311; B13 round 31
@@ -1045,7 +1047,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   after the config step's (`config_err=state-file-notfile,state-queue-lost`); under a hold that refuses the hand run,
   that run there ends as in the tails above, `once the records owner releases the hold, since setting it again keeps
   every purge it covers refused` for a hold the records keep and the hold list lost, and `once the records owner
-  releases the hold that covers it, as its status line says` for one still listed. A hold the hold list lost is named
+  releases the hold that covers it, as its status line says` for one still listed; a purge with no source under a
+  hold on another source ends `after a --dry-run of it, which a hold on another source refuses only if it reaches that
+  source or finds nothing, and then only the records owner's decision lets it run`, here and in the folder's tail
+  (B13 round 35 C993). A hold the hold list lost is named
   after them in the hold list's clause above, opening `; once that is fixed, step 2 stops again at its status step on
   agentsync's hold list` alone, or `; the same stop names agentsync's hold list` after a list's clause, its word
   logged after theirs (`config_err=state-file-notfile,state-queue-lost,state-hold-lost`); never when the file that

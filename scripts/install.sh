@@ -1200,8 +1200,12 @@ misplaced_reader() { # PYTHON [SRC]
 # a hold in force refuses the queue's hand run, read from status's own judgment, never from a lost-hold word (a hold
 # on another source refuses nothing, and one still listed or in sources.toml refuses it too): with the build's
 # governance_or_none read in its own try and passed to both readers, ",queue-held" when the queue's fix holds
-# "once the records owner decides to release ", else ",queue-free"; no word on a build without it or with no
-# queue error, which keeps its verdict as before (B13 round 34 ruling 93: C840, C879, C871, C859, C803, C812, C865).
+# "once the records owner decides to release " (tested first, so a known hold beside a conditional one stays held),
+# else ",queue-maybe" when it holds governance's conditional clause for a sourceless record, "or finds nothing,
+# and then only the records owner's decision lets it run" (a hold on another source refuses that purge only if it
+# reaches that source: B13 round 35 ruling 104, C993 with C951), else ",queue-free"; no word on a build without it
+# or with no queue error, which keeps its verdict as before (B13 round 34 ruling 93: C840, C879, C871, C859, C803,
+# C812, C865).
 LOST_HOLD_PY='
 import os, sys
 from pathlib import Path
@@ -1271,19 +1275,28 @@ if odd is not None and odd.path.name == "suppressed.json":
     except BaseException:
         pass
 if gov and queue is not None:  # whether a hold in force refuses the hand run, as the fix status prints words it
-    said += ",queue-held" if "once the records owner decides to release " in str(getattr(queue, "fix", "")) else ",queue-free"
+    fix = str(getattr(queue, "fix", ""))
+    if "once the records owner decides to release " in fix:
+        said += ",queue-held"
+    elif "or finds nothing, and then only the records owner\x27s decision lets it run" in fix:
+        said += ",queue-maybe"
+    else:
+        said += ",queue-free"
 print(said)'
 lost_hold_reader() { # PYTHON [SRC]
 	with_timeout 10 "$1" -I -c "$LOST_HOLD_PY" "$CONFIG" ${2:+"$2"} 2>/dev/null | head -n 1 || true
 }
-# The words for the queue's hand run under a hold, one three-state rule for both tails (B13 round 34 ruling 93):
-# ",queue-held" takes the release, ",queue-free" the plain run, and no such word with a lost-hold word an older
-# build's release as before. A hold the hold list lost is set again or released; one still listed or in
+# The words for the queue's hand run under a hold, one rule for both tails (B13 round 34 ruling 93):
+# ",queue-held" takes the release, ",queue-free" the plain run, ",queue-maybe" a dry run first, since a hold on
+# another source refuses a sourceless record's purge only if it reaches that source or finds nothing (fixed words, no
+# scope or owner, never a release: B13 round 35 ruling 104, C993 with C951), and no such word with a lost-hold word
+# an older build's release as before. A hold the hold list lost is set again or released; one still listed or in
 # sources.toml covers the run as its status line says. Sets HAND (empty: the plain run). Fixed words only.
 queue_hand_words() { # VERDICT
 	HAND=""
 	case ",$1," in
 	*,queue-free,*) ;;
+	*,queue-maybe,*) HAND="after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds nothing, and then only the records owner's decision lets it run" ;;
 	*,lost-hold,*,queue-held,* | *,lost-hold-govgone,*,queue-held,*) HAND="once the records owner releases the hold, since setting it again keeps every purge it covers refused" ;;
 	*,queue-held,*) HAND="once the records owner releases the hold that covers it, as its status line says" ;;
 	*,lost-hold,* | *,lost-hold-govgone,*) HAND="once the records owner releases the hold, since setting it again keeps every purge it covers refused" ;;
@@ -1324,6 +1337,9 @@ folder_gone_words() { # VERDICT: sets GONE_WHAT, GONE_FIX, GONE_CHECK, GONE_LINE
 		# C701), as status judges it (round 34 ruling 93); the joiner by the suppression list's clause alone
 		queue_hand_words "$1"
 		case ",$1,:$HAND" in
+		# a conditional hold never takes the release rebuild below (B13 round 35 C993 with C951)
+		*,lost-suppressed-govgone,*,queue-maybe,*) GONE_FIX="$GONE_FIX, and run each such purge by hand $HAND" ;;
+		*,queue-maybe,*) GONE_FIX="$GONE_FIX; with no copy, they run each such purge by hand $HAND" ;;
 		*,lost-hold-govgone,lost-suppressed-govgone,*:?*) GONE_FIX="they put agentsync's governance folder back whole from the copy kept; with no copy, they accept each loss with --folder-lost, as its status line says, the records owner sets the hold again or releases it, which fixes the hold line only, since setting it again keeps every purge it covers refused and the stop with it, and once the records owner releases the hold they run each such purge by hand" ;;
 		*,lost-hold-govgone,*:?*) GONE_FIX="they put agentsync's governance folder back whole from the copy kept; with no copy, the records owner sets the hold again or releases it, which fixes the hold line only, since setting it again keeps every purge it covers refused and the stop with it, and once the records owner releases the hold they run each such purge by hand" ;;
 		*,lost-suppressed-govgone,*) GONE_FIX="$GONE_FIX, and run each such purge by hand ${HAND:-before the next sync}" ;;
@@ -2346,6 +2362,7 @@ FIXED_VALUE_PHRASES+="|audit-trail-lost|the old audit trail's loss is written fi
 FIXED_VALUE_PHRASES+="|the old audit trail's loss would be written first, to the new audit trail|the old audit trail's loss was already recorded"
 FIXED_VALUE_PHRASES+="|once the records owner decides to release "
 FIXED_VALUE_PHRASES+="|or finds nothing, and then only the records owner's decision lets it run"
+FIXED_VALUE_PHRASES+="|after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds nothing, and then only the records owner's decision lets it run"
 FIXED_VALUE_PHRASES+="|refused while the trail has lost nothing and records no such loss|your word that no copy is left of an audit trail that has lost purge lines"
 FIXED_VALUE_PHRASES+="|because a label rule could not read its label data|because a label rule could not read their label data"
 FIXED_VALUE_PHRASES+="|purge-record.json records: agentsync's audit trail no longer holds it"
