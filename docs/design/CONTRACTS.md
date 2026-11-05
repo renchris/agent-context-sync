@@ -32274,6 +32274,8 @@ Amended 2026-11-03, §16.228 C827: `_ooxml_family` decodes a `[Content_Types].xm
 order mark and reads it as its UTF-8 twin, so a UTF-16 Word package named `.potx` is the same one stub. Only a
 marked part: one with no mark, and UTF-32, stay "cannot be told". No emitter bump, and a stub already given up is
 not read again.
+Amended 2026-11-04, §16.233 C964: within the size cap, which is on the part's own bytes before any decode (over 1
+MiB uncompressed, in whichever encoding it is stored); near the cap the twins can differ either way.
 
 **A new start continues after the run STATE.md records (I22; `agentsync.cycle`).** Runs that change nothing commit
 nothing and write no CHANGELOG heading, so only `_sync/STATE.md`'s `run:` line records them, and a new start
@@ -37779,6 +37781,9 @@ not read again. Tests: `test_convert_family.py::test_a_word_package_whose_conten
 `test_convert_family.py::test_a_utf_16_content_types_part_reads_as_its_utf_8_twin` and
 `test_convert_family.py::test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once` (little and big
 endian each; a sync of three runs converts the file once).
+Amended 2026-11-04, §16.233 C964: "after the size cap" means a cap on the part's stored bytes, before the
+decode, so a UTF-16 part of 524,288 ASCII characters or more (1,048,578 bytes with its mark) is None where its
+UTF-8 twin is read, and a UTF-16 part of CJK text can be read where its UTF-8 twin is over the cap.
 
 **The two `-v` log lines hold a helper's signal in no bracket (C849, rulings 58, 66 and 85; `agentsync.convert`;
 amends §16.221 C719).** C719 gave `_entry`, doctor and the report the colon form, but `convert_file`'s two INFO
@@ -38179,6 +38184,19 @@ are test-code changes against a failure seen once in 13 runs: no deterministic t
 evidence is the measured loss rates above. Tests: `test_ocr.py::compiling` and
 `test_ocr.py::test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`,
 `test_speech.py::test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`.
+
+**The content-types cap is on stored bytes, and the docstring says so** (C964; `agentsync.convert._common`;
+amends §16.228 C827 and §16.196 I39). `_CONTENT_TYPES_MAX` (1 MiB) compares the part's uncompressed `file_size`
+before C827's UTF-16 decode, so the "read as its UTF-8 twin" sentence holds only within the cap: at 524,288 ASCII
+characters a UTF-16 part is 1,048,578 bytes with its mark and is None, while its UTF-8 twin is read up to 1,048,576
+characters (measured by the verifier in a Word package named `.potx`: the UTF-8 twin one stub, the UTF-16 one three
+failed tries); and the other way, 400,000 CJK characters are 800,498 bytes in UTF-16 (read) and 1,200,248 in UTF-8
+(None). Words only, as the verifier ruled: such a part needs thousands of Overrides in a misnamed package with UTF-16
+content types, and matching the twin exactly would need a second zip open on every package to peek at the mark.
+`_ooxml_family`'s docstring now names the cap on the part's own bytes before any decode and says the twins can differ
+near it, either way; dated lines at C827's paragraph and its summary line under I39. Test:
+`test_convert_family.py::test_the_content_types_cap_is_on_stored_bytes_before_the_utf_16_decode_c964` (both
+endians: 524,287 ASCII characters read, 524,288 None, the UTF-8 twin read at both).
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

@@ -224,6 +224,29 @@ def test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once(
     assert quarantine_class(row.state_reason) == "not the type its name says"
 
 
+@pytest.mark.parametrize("codec", [c for c in _BOMS if c != "utf-8"])
+def test_the_content_types_cap_is_on_stored_bytes_before_the_utf_16_decode_c964(
+    tmp_path: Path, codec: str
+) -> None:
+    """B13 round 35 C964 (words only): ``_CONTENT_TYPES_MAX`` caps the part's stored bytes before C827's
+    decode, so the UTF-16 twin is no longer read as its UTF-8 one at 524,288 ASCII characters (1,048,578
+    bytes with its mark), one character after the last it reads; the UTF-8 twin is still read there."""
+
+    def padded(chars: int) -> Callable[[str], str]:
+        def edit(text: str) -> str:
+            pad = chars - len(text) - len("<!---->")
+            return text.replace("</Types>", f"<!--{'x' * pad}--></Types>")
+
+        return edit
+
+    for chars, utf16 in ((524_287, "word"), (524_288, None)):
+        doc = _types_in(word_package(tmp_path / f"{chars}.potx"), codec, padded(chars))
+        assert common_mod._ooxml_family(doc) == utf16, chars
+        twin = _types_in(word_package(tmp_path / f"{chars}-utf-8.potx"), "utf-8", padded(chars))
+        assert common_mod._ooxml_family(twin) == "word", chars
+    assert "before any decode" in " ".join((common_mod._ooxml_family.__doc__ or "").split())
+
+
 def _tries(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """The names the cycle hands to ``convert_file``, one per conversion it starts (but make_env's
     ``README.txt``)."""
