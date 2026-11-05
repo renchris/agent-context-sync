@@ -7798,7 +7798,9 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
     rerun every copy's check and to stop on a non-zero exit, and that a probe deletes a file it made
     itself, never a manifest file, or names the one it moves and checks it where it went. The command, run
     over a copy made like the fixture's, passes, still passes after a made-up file comes and goes, and
-    fails once a manifest file is gone."""
+    fails once a manifest file is gone. B13 round 35 C983 with C988: the kit removes nothing, so the probe
+    moves its own file to `<root>/trash/<probe>/` (round 34 C828), as the rehearsal brief already said;
+    ruling 61's own words at the brief's ruling list stay as written."""
     raw = (ROOT / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8")
     lanes = " ".join(raw.split())
     head = "Rehearsal kit and macOS's /tmp cleaner (round 29 C149, C150; the kit itself is the lead's):"
@@ -7806,7 +7808,8 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
     for part in (
         "Right after every `cp -Rp`, right before step 2 and at each act's end, rerun every copy's shasum"
         " check,",
-        "and stop on a non-zero exit. A probe that needs an upstream deletion deletes a file it made itself",
+        "and stop on a non-zero exit. A probe that needs an upstream deletion moves to"
+        " `<root>/trash/<probe>/` a file it made itself",
         "never a manifest file; one that must move a manifest file names that one file",
         "its hash checked where it went against its manifest line (round 31 C573, C504)",
     ):

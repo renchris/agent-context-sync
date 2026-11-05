@@ -38103,3 +38103,14 @@ midnight sentence, outside the gate paragraph whose ending is pinned, says to se
 `$?` straight after (`rc=`, since zsh holds `status` read-only), and to quote a word that opens with `=`; the diff and
 shasum checks, whose last stage is the checker, stay as written. agentsync itself has no such pipe (0 PIPESTATUS hits).
 The rehearsal brief's half is the lead's. Test: `test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost`.
+
+**The kit note says a probe moves its own file to the trash** (C983 with C988, makes worse True each; docs only;
+`docs/lanes/COMMON.md`'s rehearsal-kit note). The note said a probe that needs an upstream deletion `deletes a file it
+made itself`, while the rehearsal brief, since round 34 C828, says nothing is removed and the file goes to
+`<root>/trash/<probe>/`. The kit note now reads `moves to `<root>/trash/<probe>/` a file it made itself`. The item's
+fix as written is worse, measured on an export: changing the note alone turned
+`test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it` red, and its `as the brief says` points
+nowhere, since this file is the lane brief; so the pin moves with the word in this commit, no such clause is written,
+and ruling 61's own words in the brief's ruling list and at §16.212 stay as written. The brief's half (C806's shasum
+lines, without backticks, which end the workflow script's template literal) is the lead's. Test:
+`test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, moved.

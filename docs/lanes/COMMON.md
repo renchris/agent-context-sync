@@ -1140,8 +1140,8 @@ same command with <root>/fixture/tree in place of the home's folder, and stop on
 `tree`, `tree/Documents`, ..., so the sed maps find's leading `.` to `tree` (round 30 C329). Right after every `cp
 -Rp`, right before step 2 and at each act's end, rerun every copy's shasum check,
 `(sed 's|  tree/|  <copy>/|' manifest.sha256 | shasum -a 256 -c -)`, and stop on a non-zero exit. A probe that needs
-an upstream deletion deletes a file it made itself (a `cp -p` of a fixture file under a made-up name, synced before
-it goes), never a manifest file; one that must move a manifest file names that one file, and its copy's check passes
+an upstream deletion moves to `<root>/trash/<probe>/` a file it made itself (a `cp -p` of a fixture file under a
+made-up name, synced before it goes; round 35 C983), never a manifest file; one that must move a manifest file names that one file, and its copy's check passes
 only when that file is the one line missing, its hash checked where it went against its manifest line (round 31 C573,
 C504). shasum reports a moved file on two lines, `shasum: <copy>/<rel>: No such file or directory` (on stderr, which
 the kit reads with 2>&1) and `<copy>/<rel>: FAILED open or read`, then `shasum: WARNING: 1 listed file could not be
