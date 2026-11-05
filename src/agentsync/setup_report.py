@@ -16053,8 +16053,13 @@ def _install_line(
             return "- install.sh: no install log"
         return "- install.sh: no run in the install log"
     if scoped and not runs:
-        earlier = len(r.install_runs)
-        return f"- install.sh: no install run during this attempt ({earlier} earlier in the install log)"
+        # B13 round 35 C928: a --list-folders run is no install run; it is counted apart, in the one bracket
+        earlier = len(install_runs_only(r.install_runs))
+        lists = len(r.install_runs) - earlier
+        said = f"{earlier} earlier in the install log" + (f", +{lists} --list-folders" if lists else "")
+        if not earlier:
+            said = f"{lists} --list-folders run{'' if lists == 1 else 's'} earlier in the install log"
+        return f"- install.sh: no install run during this attempt ({said})"
     pool = list(runs) if scoped else r.install_runs
     installs = install_runs_only(pool)
     after = _after_end(pool, end, stopped=stopped) if scoped else []

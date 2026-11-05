@@ -11421,6 +11421,41 @@ def test_an_attempt_with_no_install_run_says_one_phrase_in_one_bracket_c817(
         assert "((" not in line and ") (" not in line.split(" · ")[0], line
 
 
+def test_an_attempt_with_no_install_run_counts_the_list_folders_runs_apart_c928(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 35 C928: `no install run during this attempt (6 earlier in the install log)` counted step 1's
+    --list-folders runs as install runs. Each kind is counted apart inside the one bracket."""
+
+    def listed(n: int) -> str:
+        run = f"run=20260928T0{n}0000Z-{n}"
+        return (
+            f"2026-09-28T0{n}:00:00Z {run} start install.sh compat=25 commit=0123456789ab kind=checkout "
+            f"source=- args=--list-folders\n2026-09-28T0{n}:00:00Z {run} step=list-folders seconds=4 rc=0 "
+            f"result=done note=listed-6\n2026-09-28T0{n}:00:04Z {run} end rc=0 seconds=4\n"
+        )
+
+    later = "Attempt: 2026-09-29T10:00:00Z\nPrompt: v34\nAgent: Contoso Bot\n"
+    write_install_log(fake_mac, start="2026-09-28T01:00:00Z", run="20260928T010000Z-1")
+    write_install_log(fake_mac, start="2026-09-28T02:00:00Z", run="20260928T020000Z-2", append=True)
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(log.read_text(encoding="utf-8") + listed(3), encoding="utf-8")
+    write_friction(fake_mac, later)
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- install.sh: no install run during this attempt (2 earlier in the install log, +1 --list-folders)"
+        in summary
+    ), summary
+    log.write_text(listed(3), encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- install.sh: no install run during this attempt (1 --list-folders run earlier in the install log)"
+        in summary
+    ), summary
+    for line in summary.splitlines():
+        assert "((" not in line and ") (" not in line.split(" · ")[0], line
+
+
 def test_the_loop_lines_next_says_whose_reading_it_is_with_no_install_run_c620(
     fake_mac: dict[str, Path],
 ) -> None:

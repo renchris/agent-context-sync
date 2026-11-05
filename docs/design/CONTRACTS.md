@@ -37480,6 +37480,8 @@ and the Installer heading, `- install.sh: no install run during this attempt (N 
 An older build's words stay in install.sh's readers (lane RB). Tests:
 `tests/test_setup_report.py::test_an_attempt_with_no_install_run_says_one_phrase_in_one_bracket_c817` (an installer
 stop, a git stop and a step 2 failure) and the moved pins.
+Amended 2026-11-04, §16.230 C928: the bracket counts each kind apart, `(2 earlier in the install log, +1
+--list-folders)`, or `(1 --list-folders run earlier in the install log)` with no install run before it.
 
 ### 16.226 Round 34: the installer: step 1's hold words, the governance-gone tails and the time-limit NEXT (2026-11-03, wave B13 round 34 lane RB)
 
@@ -38153,6 +38155,14 @@ call time), `end_children` clears `RUN_DEADLINE` in the hung hook's own copied c
 group before the assert. Measured: removing `_Run.call`'s deadline turns only `[deadline]` red, removing
 `_end_doctor_children`'s call only `[end_children]`. Test:
 `tests/test_setup_report.py::test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804`.
+
+**An attempt with no install run counts the --list-folders runs apart** (C928; amends §16.225 C817;
+`src/agentsync/setup_report.py`). `no install run during this attempt (6 earlier in the install log)` counted step 1's
+`--list-folders` runs as install runs. `_install_line` counts `install_runs_only` and the rest apart, in the one
+bracket C817 rules: `(2 earlier in the install log, +1 --list-folders)`, `(1 --list-folders run earlier in the install
+log)` when no install run came before; installs alone keep `(N earlier in the install log)`, and the `no install run
+during this attempt` prefix install.sh and the guide read is unchanged. Test:
+`tests/test_setup_report.py::test_an_attempt_with_no_install_run_counts_the_list_folders_runs_apart_c928`.
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
