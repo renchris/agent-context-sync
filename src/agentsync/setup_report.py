@@ -673,20 +673,46 @@ _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary f
 # B13 round 34 C822 (ruling 91): a path in another home (a moved home's install.log source= or args=, an
 # install.out line), cut whole to /Users/<path> as a --source-local argument is: never a /Users/<user-N>/
 # prefix, past which _cut_path would walk and print the provider folder's organisation. Not right after a
-# word character, "." or "-"; /Users/Shared, a placeholder and this account's login (registered, so a
-# sandbox HOME's /Users/<user>/ stays) are left alone. Right after a quote or a backtick, to the closing one
-# on the line; else one component, escape-aware (``dana\ fabrikam``), then an optional tail up to
-# whitespace, a quote, a backtick, a bracket ()[]{}, "," or ";": an unquoted path with a space keeps its tail
-# after the first space
+# word character, "." or "-"; /Users/Shared, the whole components <user> and <path> and this account's login
+# (registered, so a sandbox HOME's /Users/<user>/) are left alone, and every other component is cut, one an
+# earlier pass made a placeholder included (<value>, <org-1>, <user>.old). B13 round 35 ruling 102: "Users"
+# in any case, after one or more slashes (C979); behind /System/Volumes/Data, this home's volume, or behind
+# /Volumes/ at any depth, blanks allowed, up to the first /Users/ not after a blank or "/", where no login is
+# left alone and the cut prints /Volumes/<path> (C947, C979). Right after a quote or a backtick, to the
+# closing one on the line; else one component, escape-aware (``dana\ fabrikam``), a registered value
+# holding a blank taken as path characters (C912), then an optional tail up to whitespace, a quote, a
+# backtick, a bracket ()[]{}, "," or ";", where the component after /CloudStorage/ or one opening
+# "OneDrive - " runs to the next "/" (C912), and after an unquoted blank the cut goes on over each word that
+# holds a "/", has no "=" or "://", does not open with "-", "/" or "~" and is not digits and "/" alone
+# (C981). So an unquoted path keeps its tail after the first quote, backtick, bracket, comma or semicolon,
+# and after a blank from the first word that does not go on (C946)
 _PATH_END = r"(?![^/\s\"'`()\[\]{},;])"  # a path component ends here
 _PATH_STOP = r"\s\\\"'`()\[\]{},;"  # a path cut stops at one of these: whitespace, a quote, a bracket
+_OTHER_HOME_HEAD = (  # the /Users part: the case of "Users" and its slashes free (C979)
+    r"(?i:/Users)/+(?!Shared" + _PATH_END + r")(?!<(?:user|path)>" + _PATH_END + ")"
+)
+_VOLUMES_ANY_DEPTH = r"/Volumes/(?:[^\n\"'`\\]|\\.)*?(?<![\s/])"  # up to the first /Users/ not after a blank
 
 
-def _other_home_re(logins: Iterable[str]) -> str:
-    """:data:`_PATH_END`'s comment: the pattern of a path in another home, ``logins`` left alone."""
-    head = rf"/Users/(?!Shared{_PATH_END})(?!<)" + "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
-    quoted = "".join(rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|" for q in ('"', "'", "`"))
-    return rf"{quoted}(?<![\w.-]){head}(?:[^/{_PATH_STOP}]|\\.)+(?:/(?:[^{_PATH_STOP}]|\\.)*)?"
+def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
+    """:data:`_PATH_END`'s comment: the pattern of a path in another home, ``logins`` left alone outside
+    /Volumes/, each of ``spaced`` (registered values holding a blank) taken whole as path characters."""
+    login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
+    home = rf"(?:{_VOLUMES_ANY_DEPTH}{_OTHER_HOME_HEAD}|(?:/System/Volumes/Data)?{_OTHER_HOME_HEAD}{login})"
+    quoted = ""
+    for q in ('"', "'", "`"):
+        volume = rf"/Volumes/(?:[^{q}\n\\]|\\.)*?(?<![\s/])"
+        head = rf"(?:{volume}{_OTHER_HOME_HEAD}|(?:/System/Volumes/Data)?{_OTHER_HOME_HEAD}{login})"
+        quoted += rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|"
+    values = sorted({re.escape(v) for v in spaced}, key=len, reverse=True)
+    char = rf"(?i:{'|'.join(values)})|[^/{_PATH_STOP}]|\\." if values else rf"[^/{_PATH_STOP}]|\\."
+    stuck = r"[^/\n\"'`]*(?=/)"  # a provider folder's own name: to the next "/", never past a quote (C912)
+    tail = rf"(?:/(?:(?<=/CloudStorage/){stuck}|OneDrive - {stuck}|(?:{char})*))*"
+    word = (  # C981: a word after an unquoted blank that holds a "/" goes on with the cut
+        rf"(?:[ \t]+(?![-/~])(?![^={_PATH_STOP}]*://)(?![0-9/]+(?![^{_PATH_STOP}]))"
+        rf"(?:[^/={_PATH_STOP}]|\\[^=])*/(?:[^={_PATH_STOP}]|\\[^=])*(?![^{_PATH_STOP}]))*"
+    )
+    return rf"{quoted}(?<![\w.-]){home}(?:{char})+{tail}{word}"
 
 
 _GENERIC_FOLDERS = frozenset(
@@ -1057,8 +1083,10 @@ _LEGEND = {
     "path": (  # every <path> the body can show, the uncounted ones too (B13 round 27 P38)
         "<path> a link's target outside this home (a state file's or the docs repo's), or an item path or "
         "document name in a log line, a --source-local argument, an added source's typed folder or an "
-        "exclude entry, cut as its section says, or a path in another home, cut whole to /Users/<path> (an "
-        "unquoted path with a space keeps its tail after the first space)"
+        "exclude entry, cut as its section says, or a path in another home, cut whole to /Users/<path> "
+        "(/Volumes/<path> behind a volume; in both reports, an unquoted path keeps its tail after the "
+        "first quote, backtick, bracket, comma or semicolon, and after a blank from the first word that "
+        "holds no /, or that is an option, a URL, a path of its own or a number like 3/14)"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -2009,6 +2037,10 @@ class Redactor:
                     trail = r"(?![A-Za-z0-9])"  # as install.sh's pair flag e allows (B13 round 9 K46)
                 if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
+                if (  # B13 round 35 C941 (ruling 102): a %q sibling (/Users/dana\ 1) is another home,
+                    edge.startswith("/Users/") and self._known(form) == "~"  # cut whole below; \" ends
+                ):  # a JSON-escaped own home. Under /Users only: a home elsewhere would print whole
+                    trail += r'(?!\\[^"\n])'
                 if (
                     mode == "org"
                 ):  # B13 round 11 M50: and inside a longer word at a CamelCase or digit boundary
@@ -2022,7 +2054,8 @@ class Redactor:
             if literals:  # the forms of one value make one pattern now (_word_pattern): once each
                 alts.append("(?P<lit>" + "|".join(dict.fromkeys(literals)) + ")")
             # after the literals, so this home's own literal wins (B13 round 34 C822)
-            alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins))})")
+            spaced = {f for v, _m in self._literals for f in _forms(v) if " " in f or "\t" in f}
+            alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins), spaced)})")
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
             self._regex = re.compile("|".join([f"(?P<hold>{_HELD_RE})", *alts]))
@@ -2042,7 +2075,7 @@ class Redactor:
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
         if groups.get("otherhome") is not None:  # uncounted, as every <path> cut is (B13 round 34 C822)
-            return "/Users/<path>"
+            return "/Volumes/<path>" if text.startswith("/Volumes/") else "/Users/<path>"  # C947
         if groups.get("govremote") is not None:
             groups["remote"] = text
         if any(groups.get(k) is not None for k in ("label", "remote", "value")):

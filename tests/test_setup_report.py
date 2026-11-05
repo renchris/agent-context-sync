@@ -4582,6 +4582,91 @@ def test_a_path_in_another_home_is_cut_whole(fake_mac: dict[str, Path]) -> None:
     assert red.counts == {"user": 1}
 
 
+_RULING_102_LEAKS = (  # B13 round 35 ruling 102: each spelling of a path in another home that kept a value
+    (
+        "source=/System/Volumes/Data/Users/olga/Library/CloudStorage/OneDrive-Fabrikam/x",
+        "source=/Users/<path>",
+    ),
+    ("copied /Volumes/Backup/Users/olga/Fabrikam/x.docx", "copied /Volumes/<path>"),
+    ("'/Volumes/Macintosh HD/Users/olga/Fabrikam/x' and", "'/Volumes/<path>' and"),
+    ("/Volumes/Macintosh HD/Users/olga/Fabrikam/x then", "/Volumes/<path> then"),
+    ("/Volumes/Macintosh\\ HD/Users/olga/Fabrikam/x then", "/Volumes/<path> then"),
+    ("/Volumes/TM/Backups.backupdb/Mac/2026/Macintosh HD/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/Contoso Backup/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/Backup/Users/dana/Fabrikam/x", "/Volumes/<path>"),  # this login on an old disk: another home
+    ("/USERS/olga/Fabrikam /Users//olga/Fabrikam /users/olga/Fabrikam", " ".join(["/Users/<path>"] * 3)),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Big Fabrikam/Client/plan.docx", "/Users/<path>"),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Zeta Fabrikam/Client/plan.docx", "/Users/<path>"),
+    ("/Users/olga/OneDrive - Fabrikam/Board Minutes/q3.docx", "/Users/<path>"),
+    ("error: cannot read /Users/olga/Client Alpha/plan.docx", "error: cannot read /Users/<path>"),
+    ("error: cannot read /Users/olga/Fabrikam Ltd/notes.txt", "error: cannot read /Users/<path>"),
+    ("source=/Users/dana\\ 1/Library/CloudStorage/OneDrive-Fabrikam/x", "source=/Users/<path>"),
+    ("/Users/dana\\(1\\)/Fabrikam /Users/dana\\'s/Fabrikam", "/Users/<path> /Users/<path>"),
+    ("/Users/<value>/Fabrikam /Users/<org-1>/Fabrikam /Users/<user>.old/F", " ".join(["/Users/<path>"] * 3)),
+)
+_RULING_102_KEPT = (  # never cut: this home, Shared, a placeholder kept whole, a word that is no home
+    "kept /Users/olga/a /Users/Shared/drop ~/x https://example.com/a/b 3/14 files",
+    "kept x/Users/olga/a 1/Users/olga/a _/Users/olga/a ./Users/olga/a -/Users/olga/a",  # C950's five classes
+    "copied /Volumes/Backup/a.docx to /Users/olga/b",
+    "cp /Volumes/USB/stuff /tmp/y",  # alone: a later /Users/ on the line would end its volume (an over-cut)
+    "x/Volumes/Backup/Users/olga/y https://graph.microsoft.com/v1.0/users/me/drive",
+    'own ~/x, "/Users/dana", {\\"h\\": \\"/Users/dana\\"} and /Users/dana: no',
+    "/Users/<user>/ok and /Users/<path> Alpha",
+    "/Users/olga/a(b)/Fabrikam",  # C946: a bracket stops the cut, as the legend says
+    "/Users/olga/Zeta Alpha Beta/plan.docx",  # the limit left: a word with no / keeps its tail
+)
+
+
+def test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102(fake_mac: dict[str, Path]) -> None:
+    """B13 round 35 ruling 102 (C912, C947, C979, C981, C941, C946; data integrity): a path in another home
+    kept its tail when spelled behind a volume (C947, C979), with "users" in another case or two slashes
+    (C979), with a blank in its provider folder or a registered value (C912), with a later word holding a /
+    (C981), as a %q sibling of this home (C941) or behind a placeholder an earlier pass wrote (C901, C992).
+    Each is cut whole; this home, /Users/Shared, <user>, ~/x, a URL and 3/14 stay, `GET /users/me/` is an
+    accepted over-cut, and the legend states every stop and the limit left (C946)."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    red.add("org", "Zeta Fabrikam", fuzzy=True)
+    red.add("folder", "Client Alpha")
+    for line, cut in _RULING_102_LEAKS:
+        assert red.redact(line) == cut, line
+    kept = [red.redact(line) for line in _RULING_102_KEPT]
+    assert kept[0] == "kept /Users/<path> /Users/Shared/drop ~/x https://example.com/a/b 3/14 files"
+    assert kept[1:5] == [
+        _RULING_102_KEPT[1],
+        "copied /Volumes/Backup/a.docx to /Users/<path>",
+        _RULING_102_KEPT[3],
+        _RULING_102_KEPT[4],
+    ]
+    assert kept[5] == 'own ~/x, "~", {\\"h\\": \\"~\\"} and ~: no', kept[5]
+    assert kept[6:] == [
+        "/Users/<user>/ok and /Users/<path> Alpha",
+        "/Users/<path>(b)/Fabrikam",
+        "/Users/<path> Alpha Beta/plan.docx",
+    ]
+    assert red.redact("GET /users/me/drive/root failed") == "GET /Users/<path> failed"  # an accepted over-cut
+    assert "home" not in red.counts or set(red.counts) <= {"home", "user"}  # every cut is uncounted
+    # a home outside /Users keeps its own literal: a %q sibling there is no /Users/ path the cut would take
+    elsewhere = setup_report.Redactor()
+    elsewhere.add("home", "/Volumes/Contoso/Users/dana")
+    assert elsewhere.redact("source=/Volumes/Contoso/Users/dana\\ 1/x") == "source=~\\ 1/x"
+    # through the whole report: the Installer section prints none of the values, and the legend says so
+    write_install_log(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        + "".join(f"{line}\n" for line, _cut in _RULING_102_LEAKS[:14]),
+        encoding="utf-8",
+    )
+    write_friction(fake_mac)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    for value in ("olga", "Fabrikam", "Macintosh", "Backup", "Client", "Board", "Ltd"):
+        assert value not in text, value
+    legend = section(text, "Redaction")
+    assert "/Volumes/<path> behind a volume; in both reports, an unquoted path keeps its tail after" in legend
+    assert "quote, backtick, bracket, comma or semicolon, and after a blank from the first word" in legend
+
+
 # ---- K4, K6, K9, K10, K17 -------------------------------------------------------------------------------
 
 
@@ -19172,7 +19257,8 @@ def test_a_state_file_links_target_outside_home_is_redacted_in_the_report_and_wh
     assert f"is a symlink to {target}, whose folder" in capsys.readouterr().out
     _rc, text, _ = report(tmp_path, cfg)
     assert "is a symlink to <path>, whose folder" in text, text
-    assert "Contoso Drive" not in text and "/Volumes/" not in text
+    # the legend names /Volumes/<path>, the form of a home behind a volume (B13 round 35 C947)
+    assert "Contoso Drive" not in text and "/Volumes/" not in text.replace("/Volumes/<path>", "")
     line = _line(section(text, "Summary"), "- doctor: ")
     assert (
         "from a state file that is a link into a folder that does not exist or refuses a write (1 check): "

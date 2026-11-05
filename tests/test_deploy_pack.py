@@ -7178,6 +7178,19 @@ def test_the_guide_says_a_capital_two_letter_hold_value_and_a_lost_hold_are_cut(
     assert "the installer's fallback report since 29eef8c92, §16.199) both reports also cut a hold" in page
 
 
+def test_the_guide_says_both_reports_cut_a_path_in_another_home() -> None:
+    """B13 round 35 C945, C966 (ruling 102): the guide's `<path>` row said the agentsync report only cuts a
+    path in another home, while the shell report has cut it since 105efec15; the row names both reports,
+    every stop and the limit left (C946), and the shell's stage is there to back it."""
+    page = " ".join(_feedback_page().split())
+    assert "in the agentsync report, since B13 round 34 C822" not in page
+    assert "in both reports, since B13 round 34 C822 (the shell report 105efec15" in page
+    limit = "an unquoted path keeps its tail after the first quote, backtick, bracket, comma or semicolon"
+    assert limit in page
+    shell = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "typed_note_cut | foreign_home_cut" in shell
+
+
 def test_the_guides_purge_queue_row_names_the_sections_parts() -> None:
     """B13 round 29 C169: the guide's Purge queue row explained five of the table's six columns, never `not
     looked up` or the no-manifest intro, and said a run takes every `no row` entry off the queue, though since

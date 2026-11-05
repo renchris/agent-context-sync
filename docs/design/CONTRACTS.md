@@ -37294,6 +37294,8 @@ uncounted, the form a `--source-local` argument already gets; never a `/Users/<u
 unquoted path with a space keeps its tail after the first space. install.sh's `redact_stream` makes the same cut (lane
 RB). Test: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole`; the `/Users/jdoe2/b` boundary case
 of `test_redactor_is_consistent_and_bounded` now reads `/Users/<path>`.
+Amended 2026-11-04, §16.230 C912 (ruling 102): the cut also takes a home behind a volume, `Users` in any case, a blank
+in a provider folder or a registered value and a later word holding a `/`, and the limit is narrower; see §16.230.
 
 **An organisation after another kind keeps its own mode and lookup** (C870 with C835, ruling 91; data integrity; amends
 §16.224 er-32#0). With a surname or a host spelled as the organisation and registered first, exactly or folded, the
@@ -38048,7 +38050,35 @@ harvest, not 17, all `rerun_passed=0`, so no re-run has yet passed a test; its s
 
 ### 16.230 Round 35: the report: another home cut whole however spelled, a read cut or never started, and the Items order (2026-11-04, wave B13 round 35 lane RA)
 
-Reserved for round 35 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 35").
+**A path in another home is cut whole however it is spelled** (C912, C947, C979, C981, C941, C946, C945 with C966,
+and the report half of C901 and C992; ruling 102; data integrity; amends §16.225 C822; `src/agentsync/setup_report.py`,
+`docs/deploy/setup-feedback.md`). C822's cut kept another home's login, organisation or folder in clear when the path
+was spelled behind a volume (`/System/Volumes/Data/Users/...`, `/Volumes/Backup/Users/...`: the character before
+`/Users/` was a word character), with `users` in another case or two slashes, with a blank in a CloudStorage provider
+folder or in a registered value (the cut split `OneDrive-Big <org>` and printed its second word), with a later word
+holding a `/` (`/Users/<path> Alpha/plan.docx`), as a printf %q sibling of this home (`/Users/dana\ 1/...` printed
+`~\ 1/...`: the home literal won before a backslash), or after a placeholder an earlier pass wrote (any component
+opening with `<` was kept). `_other_home_re` now takes `Users` in any case after one or more slashes (`/+`, never
+possessive, which gave back a form the cut took); an optional `/System/Volumes/Data`, this home's volume, where the
+login stays exempt, or `/Volumes/` at any depth, blanks allowed, lazily up to the first `/Users/` not after a blank or
+`/`, stopping at a newline or a quote, with no login exempt (a same-login old disk is another home), the word-character
+guard applying to the prefix's start; each registered value holding a blank as path characters, longest first; the
+component after `/CloudStorage/` or one opening `OneDrive - ` running to the next `/`, never past a quote or backtick;
+and after an unquoted blank, each space- or tab-separated word that holds a `/`, has no `=` or `://`, does not open
+with `-`, `/` or `~` and is not digits and `/` alone. Only the whole components `Shared`, `<user>` and `<path>` stay
+(`<value>`, `<org-1>`, `<user>.old` are cut). `_replace` prints `/Volumes/<path>` for a match that opens `/Volumes/`,
+else `/Users/<path>`, uncounted. This home's literal under `/Users/` refuses a backslash escape not followed by `"`
+(`(?!\\[^"\n])`), so a %q sibling reaches the cut while a JSON-escaped own home stays `~`; a home elsewhere keeps its
+literal, which would otherwise print it whole. Still in clear, as the legend says: an unquoted path's tail after the
+first quote, backtick, bracket, comma or semicolon (a tail may never run past `)`: `_ADDED_TYPED_RE` needs `):`), and
+after a blank from the first word with no `/` or that is an option, a URL, a path of its own or a number like `3/14`;
+`/mnt/old/Users/...`. `GET /users/me/...` is an accepted over-cut, as is a volume path whose line holds a later
+`/Users/` not after a blank. The legend's `<path>` item and setup-feedback.md:94 say both reports cut it, every stop
+and the limit left (C946, C945 with C966: the row named the agentsync report only; the shell report is 105efec15).
+Tests: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102` (each
+value absent through `build_report`, C950's five byte classes, `/Users/Shared`, `/Users/<user>/`, `~/x`, a URL and
+`3/14` kept), `tests/test_deploy_pack.py::test_the_guide_says_both_reports_cut_a_path_in_another_home`.
+
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
