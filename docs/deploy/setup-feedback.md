@@ -33,7 +33,10 @@ against the budget. Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one;
 a Status call the time limit cut says `Not run: the report's time budget was used up before status started.` or `Cut
 off: the status call did not finish within <n>s, the limit the report gives it.`, as Doctor does, and an Environment
-probe that did not answer says `not measured (<command> exited 124: <why>)` (B13 round 34 C820).
+probe that did not answer says `not measured (<command> did not answer within 3.0s)`, or `not measured (the report's
+time limit was used up before <command> ran)` when the budget was spent before it ran, while a real exit 124 keeps
+`<command> exited 124: <its text>`; the secret scan's gitleaks version read says the same (B13 round 34 C820, round 35
+C905 and C918).
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
 reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs,
 Installer and Configuration carry a few more lines; section 4 says how to read them. Apart from the three helper
@@ -1370,7 +1373,9 @@ read that did not answer beside a known origin keeps the origin with `URL rewrit
 C834, C873; ruling 96). The install source's line, whenever a read in it was cut, ends with the same advice, `write
 the report again when this Mac is idle (...) before sending it`, which a stopped copy gives as `this copy is not for
 sending` (B13 round 33 C702, C716, C718, C720; ruling 83; lane RA's 864c4673a). The Environment section's Command
-Line Tools line says `not measured (xcode-select -p ...)` with no advice of its own, and that read alone asks for no
+Line Tools line says `not measured (xcode-select -p ...)` (since B13 round 35 C905, `not measured (xcode-select -p
+did not answer within 3.0s)` or `not measured (the report's time limit was used up before xcode-select -p ran)`) with
+no advice of its own, and that read alone asks for no
 re-run: no Summary line names it, so install.sh's NEXT does not either (B13 round 34 C852, C878). A Background runs
 line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it once,
 or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line

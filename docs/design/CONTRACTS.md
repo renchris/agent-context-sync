@@ -14738,6 +14738,9 @@ builtin patterns only | none recorded` from the manifest's `secret_rules` meta: 
 available. The shell report adds `- gitleaks: <path>` or `not found (builtin patterns only)`. Tests:
 `test_environment_says_what_the_secret_scan_can_use`,
 `test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use`.
+Amended 2026-11-04, §16.230 C918: a gitleaks version read the report's time limit cut reads `gitleaks, version not
+measured (gitleaks version did not answer within 3.0s)` (or the spent budget's words); `(version unknown)` stays
+for a gitleaks that answered.
 
 ### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
 
@@ -37370,6 +37373,9 @@ parts, which `_RETRY_WHYS` keys on, is unchanged. Tests:
 `test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820`.
 Amended 2026-11-04, §16.230 C904, C919: beside `Not run: ... before status started.`, `facts.status_failed` is
 `_NOT_STARTED`, so the Loop line no longer says `did not finish in time` for a call that never started.
+Amended 2026-11-04, §16.230 C905: `_probe_ended` no longer says `exited 124` for a program the runner never
+answered for: `not measured (<cmd> did not answer within 3.0s)` or `not measured (the report's time limit was used
+up before <cmd> ran)`; the Command Line Tools read (C716) goes through it, and gitleaks' version read too (C918).
 
 **The re-run advice once where install.sh reads it** (C819, ruling 96; amends §16.218 C720). A cut sendable report
 gave the advice five times, two on adjacent Summary lines. `_background`'s job lines, which install.sh's grep never
@@ -38126,6 +38132,20 @@ earlier read's cut already said it. install.sh is unchanged. Tests:
 form and `no`, each worktree read, the spent date, and a rev-list cut in a worktree), four rows of
 `tests/test_install_oneshot.py::test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`
 (the variable only for the spent forms), `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
+
+**A program the runner never answered for never exited 124** (C905, C918, C943; ruling 107; amends §16.52 Q81 and
+§16.225 C820; `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). Environment printed `not measured
+(<cmd> exited 124: timed out after 3.0s)` for a program that never answered. `_probe_ended` takes `_within`: a
+time-out reads `not measured (<cmd> did not answer within 3.0s)` and a spent budget `not measured (the report's time
+limit was used up before <cmd> ran)`, the Background lines' words; a real exit 124 with other text keeps `<cmd> exited
+124: <text>`, and rc 124 inside `_Run.run` is unchanged (`_not_answered`, `_git_ro_err` and launchctl key on it).
+`clt()` goes through it (`xcode-select -p`), and so does the secret scan's `gitleaks version` read, `gitleaks, version
+not measured (...)`, keeping `(version unknown)` for a gitleaks that answered (C918). C943: C820's test named
+`MDM enrollment` where the line is `MDM enrollment (`profiles status -type enrollment`)` and skipped a missing line, so
+it never read profiles; it uses the real label and skips no label. Tests:
+`tests/test_setup_report.py::test_every_environment_probe_says_a_cut_as_not_measured_c820` (each probe, gitleaks, a
+real 124), `test_the_command_line_tools_time_out_is_not_measured_c716`,
+`tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 

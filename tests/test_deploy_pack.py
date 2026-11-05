@@ -8131,15 +8131,27 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     assert 'out.append(f"- {label}: not measured ({why}; plist {state})")' in source  # no advice (C819)
     assert '" (see the evidence line)"' in source and "`(see the evidence line)`" in page
     assert "`not measured (<why>; plist present|absent)`" in page
-    assert 'f"not measured (xcode-select -p {_exited(rc, text)})"' in source
+    # B13 round 35 C905 (ruling 107): the Command Line Tools read goes through _probe_ended's two forms
+    assert 'return _probe_ended("xcode-select -p", rc, text)' in source
+    assert 'f"not measured ({cmd} did not answer within {within})"' in source
+    assert 'f"not measured (the report\'s time limit was used up before {cmd} ran)"' in source
+    for said in (
+        "not measured (xcode-select -p did not answer within 3.0s)",
+        "not measured (the report's time limit was used up before xcode-select -p ran)",
+        "not measured (<command> did not answer within 3.0s)",
+        "not measured (the report's time limit was used up before <command> ran)",
+    ):
+        assert f"`{said}`" in page, said
+    assert "`not measured (<command> exited 124: <why>)`" not in page
     assert "`not measured (xcode-select -p ...)`" in page
     # B13 round 34 C852, C878: the Command Line Tools line carries no advice, and no Summary line names it
     assert (
-        "The Environment section's Command Line Tools line says `not measured (xcode-select -p ...)` with no"
-        " advice of its own, and that read alone asks for no re-run: no Summary line names it, so"
+        "The Environment section's Command Line Tools line says `not measured (xcode-select -p ...)` (since"
+        " B13 round 35 C905, `not measured (xcode-select -p did not answer within 3.0s)` or `not measured"
+        " (the report's time limit was used up before xcode-select -p ran)`) with no advice of its own, and"
+        " that read alone asks for no re-run: no Summary line names it, so"
         " install.sh's NEXT does not either (B13 round 34 C852, C878)."
     ) in page
-    assert 'return f"not measured (xcode-select -p {_exited(rc, text)})"\n' in inspect.getsource(setup_report)
     assert "Tools say `not measured (xcode-select -p ...)`; each such line ends with" not in page
     assert setup_report._IDLE_AGAIN.startswith("write the report again when this Mac is idle (")
     assert setup_report._IDLE_AGAIN.endswith(") before sending it")

@@ -4443,10 +4443,17 @@ def _exited(rc: int, text: str | None = None) -> str:
 def _probe_ended(cmd: str, rc: int, text: str) -> str:
     """``<cmd> exited <rc>: <text>`` for a probe that did not exit 0, as ``not measured (...)`` when the
     runner gave no answer (a time-out or a spent budget, :func:`_not_answered`), the form C716 gives the
-    Command Line Tools: one cut said one way across Environment (B13 round 34 C820, ruling 96). A real exit
-    keeps its words."""
-    said = f"{cmd} {_exited(rc, text)}"
-    return f"not measured ({said})" if _not_answered(rc, text) else said
+    Command Line Tools: one cut said one way across Environment (B13 round 34 C820, ruling 96). B13 round 35
+    C905 (ruling 107): a program the runner never answered for never exited 124, so a time-out reads ``not
+    measured (<cmd> did not answer within 3.0s)`` and a spent budget ``not measured (the report's time limit
+    was used up before <cmd> ran)``, the words the Background lines use; a real exit 124 with other text
+    keeps ``exited 124: <text>``, and rc 124 inside :class:`_Run` is unchanged."""
+    if not _not_answered(rc, text):
+        return f"{cmd} {_exited(rc, text)}"
+    within = _within(text)
+    if within:
+        return f"not measured ({cmd} did not answer within {within})"
+    return f"not measured (the report's time limit was used up before {cmd} ran)"
 
 
 class _Run:
@@ -6312,7 +6319,7 @@ def _environment(r: _Run) -> list[str]:
         if rc == 0 and text and Path(text.splitlines()[0]).is_dir():
             return f"present ({text.splitlines()[0]})"
         if _not_answered(rc, text):  # no tools exits 2: 124 only says it was not measured (C716, ruling 83)
-            return f"not measured (xcode-select -p {_exited(rc, text)})"
+            return _probe_ended("xcode-select -p", rc, text)  # B13 round 35 C905: the probes' one form
         return f"not installed (xcode-select -p {_exited(rc)})"
 
     def shell() -> str:
@@ -6347,7 +6354,12 @@ def _environment(r: _Run) -> list[str]:
         else:
             rc, out = r.run([str(found), "version"], 3.0)
             first = out.splitlines()[0].strip() if rc == 0 and out.strip() else ""
-            ver = f"gitleaks {first}" if first else "gitleaks (version unknown)"
+            if first:
+                ver = f"gitleaks {first}"
+            elif _not_answered(rc, out):  # B13 round 35 C918: one cut said one way across Environment
+                ver = f"gitleaks, version {_probe_ended('gitleaks version', rc, out)}"
+            else:
+                ver = "gitleaks (version unknown)"
             if shell is not None and bg is not None:
                 where = f"{shell}" + ("" if bg == shell else f", background runs: {bg}")
                 text = f"builtin patterns + {ver} ({where}; shell and background runs)"

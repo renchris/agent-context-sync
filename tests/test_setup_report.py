@@ -22640,10 +22640,10 @@ def test_a_git_answer_still_says_what_it_says_c702(
 @pytest.mark.parametrize(
     ("answer", "says"),
     [
-        ((124, "timed out after 3.0s"), "not measured (xcode-select -p exited 124: timed out after 3.0s)"),
+        ((124, "timed out after 3.0s"), "not measured (xcode-select -p did not answer within 3.0s)"),  # C905
         (
             (124, "skipped: the report's time budget is used up"),
-            "not measured (xcode-select -p exited 124: skipped: the report's time budget is used up)",
+            "not measured (the report's time limit was used up before xcode-select -p ran)",
         ),
         ((2, "xcode-select: error: unable to get active developer directory"), "not installed"),
     ],
@@ -22672,31 +22672,52 @@ def test_every_environment_probe_says_a_cut_as_not_measured_c820(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, note: str
 ) -> None:
     """B13 round 34 C820 (ruling 96): one cut report worded the same skip three ways; sw_vers, profiles, uv
-    and pandoc's last branch now read C716's `not measured (<cmd> exited 124: <note>)`, and a real non-zero
-    exit keeps its words."""
+    and pandoc's last branch now read `not measured (...)`, and a real non-zero exit keeps its words. B13
+    round 35 C905 (ruling 107): a program the runner never answered for never exited 124: a time-out reads
+    `not measured (<cmd> did not answer within 3.0s)`, a spent budget `not measured (the report's time limit
+    was used up before <cmd> ran)`, and a real exit 124 with other text keeps `exited 124: <text>`. C918:
+    gitleaks' version read goes through the same words. C943: every label is the real one and none is
+    skipped, so a lost or renamed line fails."""
     uv = Path.home() / ".local" / "bin" / "uv"
     uv.parent.mkdir(parents=True, exist_ok=True)
     uv.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     uv.chmod(0o755)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    for answer, cut in (((124, note), True), ((3, "refused"), False)):
+    gitleaks = Path.home() / "bin" / "gitleaks"
+    gitleaks.parent.mkdir(parents=True, exist_ok=True)
+    gitleaks.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    gitleaks.chmod(0o755)
+    monkeypatch.setattr("agentsync.lints.gitleaks_lookup", lambda *a, **k: gitleaks)
+    for answer, cut in (((124, note), True), ((3, "refused"), False), ((124, "real 124 text"), False)):
         monkeypatch.setattr(setup_report._Run, "run", lambda _self, _argv, _t=5.0, a=answer: a)
         r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
         lines = setup_report._environment(r)
         for label, cmd in (
             ("macOS", "sw_vers"),
-            ("MDM enrollment", "`profiles`"),
+            ("MDM enrollment (`profiles status -type enrollment`)", "`profiles`"),
             ("uv", f"{uv} --version"),
             ("pandoc", ""),
         ):
-            line = next((ln for ln in lines if ln.startswith(f"- {label}: ")), None)
-            if line is None or (label == "pandoc" and answer[0] == 124 and note.startswith("timed out")):
-                continue  # pandoc's own time-out branch keeps its words; a Mac with no line has none
+            line = next(ln for ln in lines if ln.startswith(f"- {label}: "))
+            if label == "pandoc" and answer[0] == 124 and note.startswith("timed out"):
+                continue  # pandoc's own time-out branch keeps its words
             said = f"{cmd} exited {answer[0]}: {answer[1]}" if cmd else f"exited {answer[0]}: {answer[1]}"
-            if cut:
-                assert "not measured (" in line and said in line and line.endswith(")"), line
-            else:
+            if not cut:
                 assert "not measured" not in line and said in line, line
+                continue
+            assert "exited 124" not in line and line.endswith(")"), line
+            if note.startswith("timed out") and cmd:
+                assert f"not measured ({cmd} did not answer within 3.0s)" in line, line
+            elif cmd:
+                assert f"not measured (the report's time limit was used up before {cmd} ran)" in line, line
+            else:
+                assert "not measured (" in line, line
+        scan = next(ln for ln in lines if ln.startswith("- secret scan: "))
+        if cut:
+            assert "gitleaks, version not measured (" in scan and "version unknown" not in scan, scan
+            assert "exited 124" not in scan, scan
+        else:
+            assert "gitleaks (version unknown)" in scan and "not measured" not in scan, scan
 
 
 def test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820(
