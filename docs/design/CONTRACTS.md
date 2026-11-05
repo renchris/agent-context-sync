@@ -37004,6 +37004,8 @@ settled, with its `_CONVERT_RETRIES` used up and no path in its reason, stays a 
 bytes change or its page is gone: `_retries` gives it no further try, and `PptxConverter.outdated` is False for any
 stub, so a bump of `_EMITTER_VERSION` would read nothing again and is not made. A stub with retries left is converted by
 the next sync, and one on a manifest that has yet to run `_queue_path_stubs` by its one-shot re-read.
+Amended 2026-11-04, §16.234 C995: the one-shot re-read takes only a stub whose stored reason names a path
+(`_names_a_path`), and not a dataless one; a path-free stub with its retries used up gets none on any manifest.
 
 **The test session warms the wheel pandoc once (C769, makes worse True, its lane E part; `tests/conftest.py`).** A
 `real_env` test's agentsync runs this venv's wheel pandoc, an x86_64 binary whose first start under Rosetta took
@@ -38124,3 +38126,11 @@ README.md and it-request.md's `Not requested` list say. The three now say the wa
 seen`; the row `Microsoft Graph Teams channel messages, read back to the newest already seen (one page per month)`).
 tests/test_config.py:191's frozen pre-K15 template, tenant-probes.md's manual probe and CONTRACTS.md:518 under its
 SUPERSEDED note stay. Test: `test_no_reader_says_a_teams_channel_is_read_by_delta`.
+
+**C850's re-read sentence names which stubs the one-shot re-read takes** (C995; docs only; amends §16.221 C781). Round
+34's dated line under C781 said a stub on a manifest that has yet to run `_queue_path_stubs` is converted `by its
+one-shot re-read`, but `cycle._queue_path_stubs` queues a stub only when its stored reason names a path
+(`_names_a_path`) and it is not dataless: measured on an export of 06ee4f6d with a UTF-16 .potx a simulated older
+build stubbed over 4 syncs, a path-free stub on an unrun manifest was converted 0 times in 3 syncs and stayed
+quarantined, a pathed one once, a pathed dataless one 0 times. Rulings 74 and 99 forbid rewriting that line, so one
+dated line under it says the condition. No code moves.
