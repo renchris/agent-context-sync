@@ -16796,6 +16796,8 @@ merge that failed) that invites "current". `_checkout_facts` now runs one more r
 --count HEAD...origin/main` and reads `yes, 5 behind (…)` or `no, 1 ahead, 2 behind (…)`; the token stays first and
 the dated fetch last, and a failed count prints none. The count is against the local origin/main, which the fetch
 clause dates. Test: `tests/test_setup_report.py::test_install_source_names_origin_main_and_the_tree`.
+Amended 2026-11-04, §16.230 C940: a count the report's time limit cut is not a failed count: it prints `how far behind
+not read: <words>; ` (`how far ahead or behind` on `no`) inside the fetch bracket, before the fetch clause.
 
 **A private copy ends with no public issue link** (H75; dated lines at §16.58 F92 and §16.65 G47, G65). With
 `red.word_named_shown`, the agentsync report's `Send it:` line said "not through the link on the last line" and the
@@ -37339,6 +37341,9 @@ with `_IDLE_AGAIN`, which install.sh's grep reads, and none of it joins the evid
 `test_a_spent_budget_keeps_the_time_limit_words_c834`, `test_the_git_and_xcode_select_caps_stay_fixed_at_any_limit_c834`,
 `test_after_the_first_unanswered_git_read_no_more_are_made_c802`, `test_an_unanswered_url_probe_is_no_answer_c873`
 and `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
+Amended 2026-11-04, §16.230 C940: rev-list and `_last_fetch` no longer read as a failed count or the undated
+words when cut: `_cut_words` gives `git did not answer within 3.0s` or `... within the report's time limit` in the
+fetch bracket (`how far behind not read: <words>; `, `date not read: <words>`).
 
 **A cut Status call says the Loop line was not read** (C801, ruling 96). With the Status call cut by the time limit,
 the Loop line said `unknown (no status loop line)`, as if status had answered without one. `_status_section` records
@@ -38107,6 +38112,20 @@ with no `a sync held the state file` tail, since no read waited. `_loop_unread_h
 `tests/test_setup_report.py::test_a_call_the_spent_budget_never_started_says_not_started_c904_c919` (spent before
 Status, a NEXT spent after a Status that answered, the whole report),
 `tests/test_deploy_pack.py::test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`.
+
+**A cut rev-list or fetch-date read says which read was cut** (C940 with C965 and C984, ruling 107; amends §16.69 H22
+and §16.225 C834; `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). A rev-list the report's time limit
+cut left a bare `on origin/main: yes`, and a cut `--git-path` or `--git-common-dir` read in a linked worktree the
+undated fetch words, naming no cut. `_cut_words(r)` gives `git did not answer within 3.0s` for a time-out and `git did
+not answer within the report's time limit` for a spent budget, the form install.sh's `report_time_helps` reads as the
+budget's. A cut count prints inside the one fetch bracket, `on origin/main: yes (how far behind not read: <words>; no
+fetch since the clone)`, `how far ahead or behind` on `no`, never a bracket beside it (round 13 O14); `_last_fetch`
+reads `as of the checkout's last fetch, date not read: <words>` for its own cut, and the undated words when an
+earlier read's cut already said it. install.sh is unchanged. Tests:
+`tests/test_setup_report.py::test_a_cut_rev_list_or_fetch_date_read_says_so_c940_c965_c984` (rev-list, its spent
+form and `no`, each worktree read, the spent date, and a rev-list cut in a worktree), four rows of
+`tests/test_install_oneshot.py::test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`
+(the variable only for the spent forms), `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 

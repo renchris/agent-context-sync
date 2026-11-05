@@ -5992,6 +5992,17 @@ def _git_not_answered(r: _Run) -> str:
     return f" (git did not answer within {within})" if within else _GIT_NOT_ANSWERED
 
 
+def _cut_words(r: _Run) -> str:
+    """B13 round 35 C940 (ruling 107): a cut read's words inside a bracket of its own part, ``git did not
+    answer within 3.0s`` for a time-out, ``git did not answer within the report's time limit`` for a spent
+    budget, the form install.sh's report_time_helps reads as the budget's."""
+    within = _within(r.facts.install_source_why)
+    return f"git did not answer within {within or _THE_REPORTS_TIME_LIMIT}"
+
+
+_THE_REPORTS_TIME_LIMIT = "the report's time limit"
+
+
 def _git_read(r: _Run, directory: Path, *args: str) -> tuple[int, bytes, bool]:
     """:func:`_git_ro_err` and whether the read went unanswered (:func:`_not_answered`), which it records for
     the install-source line's advice (B13 round 33 C702, ruling 83), with its note (C834). After the first
@@ -6076,15 +6087,18 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
             else " · on origin/main: not read (time limit)"
         )
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
+    unread = ""
     if rc in (0, 1):  # "yes" is any ancestor: say how far behind it is, and a "no" how far ahead (H22)
-        crc, out, _cut = _git_read(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
+        crc, out, cut = _git_read(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
+        if cut:  # B13 round 35 C940 (ruling 107): inside the one fetch bracket, never two side by side
+            unread = f"how far {'behind' if rc == 0 else 'ahead or behind'} not read: {_cut_words(r)}; "
         parts = out.decode("ascii", "replace").split() if crc == 0 else []
         if len(parts) == 2 and all(p.isdigit() for p in parts):
             ahead, behind = int(parts[0]), int(parts[1])
             extra = [f"{ahead} ahead"] * (rc == 1 and ahead > 0) + [f"{behind} behind"] * (behind > 0)
             if extra:
                 on_main += ", " + ", ".join(extra)
-    return text + f" · on origin/main: {on_main} ({_last_fetch(r, directory)})"
+    return text + f" · on origin/main: {on_main} ({unread}{_last_fetch(r, directory)})"
 
 
 def _git_keeps_empty_url(r: _Run, directory: Path) -> bool | None:
@@ -6138,16 +6152,21 @@ def _rewritten_url(r: _Run, directory: Path, url: str) -> tuple[str | None, bool
 def _last_fetch(r: _Run, directory: Path) -> str:
     """How old the checkout's origin/main is, from one lstat of its FETCH_HEAD (B13 round 6 G27): git writes
     it on every fetch or pull, and truncates it to 0 bytes when one fails, which keeps origin/main from an
-    earlier fetch; a clone writes none. A worktree's comes from ``git rev-parse --git-path``; anything that
-    cannot be read keeps the undated words."""
+    earlier fetch; a clone writes none. A worktree's comes from ``git rev-parse --git-path``; a read the
+    report's time limit cut says ``as of the checkout's last fetch, date not read: <its words>`` (B13 round 35
+    C940, ruling 107), unless an earlier cut already said it, and anything else that cannot be read keeps the
+    undated words."""
     undated = "as of the checkout's last fetch"
+    said = r.facts.install_source_cut  # an earlier read's cut, named on its own part already
     paths = [directory / ".git" / "FETCH_HEAD"]
     if not (directory / ".git").is_dir():  # a linked worktree or a gitdir file
         # a worktree's FETCH_HEAD is its own, but origin/main is shared: a fetch in the main checkout writes
         # the common one, so the newer of the two dates origin/main
         paths = []
         for args in (("--git-path", "FETCH_HEAD"), ("--git-common-dir",)):
-            rc, out, _cut = _git_read(r, directory, "rev-parse", *args)  # C802: none after a cut
+            rc, out, cut = _git_read(r, directory, "rev-parse", *args)  # C802: none after a cut
+            if cut and not said:
+                return f"{undated}, date not read: {_cut_words(r)}"
             if rc != 0:
                 return undated
             found = Path(os.fsdecode(out.strip()))

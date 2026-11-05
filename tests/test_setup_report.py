@@ -22426,6 +22426,73 @@ def test_a_spent_budget_keeps_the_time_limit_words_c834(
     assert line.endswith(f" · {setup_report._IDLE_AGAIN}") and run.facts.install_source_cut is True, line
 
 
+_C940_YES = "on origin/main: yes (how far behind not read: git did not answer within "
+_C940_DATE = "on origin/main: yes (as of the checkout's last fetch, date not read: git did not answer within "
+
+
+@pytest.mark.parametrize(
+    ("cut", "where", "spent", "says"),
+    [
+        ("rev-list", "repo", False, f"{_C940_YES}3.0s; no fetch since the clone)"),
+        ("rev-list", "repo", True, f"{_C940_YES}the report's time limit; no fetch since the clone)"),
+        (
+            "rev-list",
+            "ahead",
+            False,
+            "on origin/main: no (how far ahead or behind not read: git did not answer within 3.0s; no fetch",
+        ),
+        ("--git-path", "worktree", False, f"{_C940_DATE}3.0s)"),
+        ("--git-common-dir", "worktree", False, f"{_C940_DATE}3.0s)"),
+        ("--git-path", "worktree", True, f"{_C940_DATE}the report's time limit)"),
+        ("rev-list", "worktree", False, f"{_C940_YES}3.0s; as of the checkout's last fetch)"),
+    ],
+    ids=["rev-list", "rev-list-spent", "rev-list-no", "git-path", "common-dir", "git-path-spent", "both"],
+)
+def test_a_cut_rev_list_or_fetch_date_read_says_so_c940_c965_c984(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cut: str,
+    where: str,
+    spent: bool,
+    says: str,
+) -> None:
+    """B13 round 35 C940 with C965 and C984 (ruling 107): a cut rev-list left a bare `on origin/main: yes` and
+    a cut fetch-date read in a linked worktree the undated words, each naming no cut. The rev-list's words
+    print inside the one fetch bracket (`ahead or behind` on `no`), never two brackets side by side (round 13
+    O14); the date's read says `date not read: <words>` unless the rev-list's cut already said it; a time-out
+    names its seconds and only a spent budget the report's time limit."""
+    repo = _checkout_with_origin(tmp_path)
+    checkout = repo
+    if where == "ahead":  # HEAD and origin/main diverged: merge-base says no
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "y"], check=True)
+        side = ["git", "-C", str(repo), "commit-tree", "-p", "HEAD~1", "-m", "w", "HEAD^{tree}"]
+        other = subprocess.run(side, check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", other], check=True)
+    if where == "worktree":
+        checkout = tmp_path / "linked"
+        add = ["git", "-C", str(repo), "worktree", "add", "-q", "-b", "linked", str(checkout)]
+        subprocess.run(add, check=True, capture_output=True)
+        assert (checkout / ".git").is_file()
+    run = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {checkout}", checkout))
+    monkeypatch.setattr(setup_report._Run, "devtools", lambda _self: True)
+    real = setup_report._git_ro_err
+    note = b"skipped: the report's time budget is used up" if spent else b"timed out after 3.0s"
+
+    def cut_one(r: Any, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
+        if cut in args:
+            return 124, b"", note
+        return real(r, directory, *args, timeout=timeout)
+
+    monkeypatch.setattr(setup_report, "_git_ro_err", cut_one)
+    line = setup_report._install_source(run)
+    assert says in line, line
+    assert ") (" not in line.split("on origin/main: ", 1)[1], "one bracket, never two side by side"
+    assert line.count("not read") == 1, "the cut said once"
+    assert line.endswith(f" · {setup_report._IDLE_AGAIN}") and run.facts.install_source_cut is True, line
+
+
 def test_after_the_first_unanswered_git_read_no_more_are_made_c802(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

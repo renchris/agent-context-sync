@@ -8117,8 +8117,15 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
         "origin: not read (git did not answer within 3.0s)",
         "on origin/main: not read (git did not answer within 3.0s)",
         "(uncommitted changes: not read, git did not answer within 3.0s)",
+        # B13 round 35 C940, C965, C984 (ruling 107): a cut count and a cut fetch date, in the one bracket
+        "on origin/main: yes (how far behind not read: git did not answer within 3.0s; no fetch since the "
+        "clone)",
+        "(as of the checkout's last fetch, date not read: git did not answer within 3.0s)",
     ):
         assert f"`{said}`" in page, said
+    behind = "{'behind' if rc == 0 else 'ahead or behind'}"
+    assert f'f"how far {behind} not read: {{_cut_words(r)}}; "' in source
+    assert 'f"{undated}, date not read: {_cut_words(r)}"' in source
     assert 'f" · origin: not read (git did not answer within {within})"' in source
     assert 'f" (uncommitted changes: not read, git did not answer within {within})"' in source
     assert 'out.append(f"- {label}: not measured ({why}; plist {state})")' in source  # no advice (C819)

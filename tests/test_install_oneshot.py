@@ -5126,6 +5126,8 @@ _HELPER_WARN = (
     f"- doctor: 0 FAIL, 1 warn (54 checks) · not judged (OCR helper did not answer in time: the OCR helper "
     f"--version did not answer within 5s) 1: ocr warn · {setup_report._IDLE_AGAIN}"
 )
+_IDLE = setup_report._IDLE_AGAIN
+_GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, before their seconds or limit
 
 
 @pytest.mark.parametrize(
@@ -5152,6 +5154,19 @@ _HELPER_WARN = (
                 f"{setup_report._IDLE_AGAIN}"
             ],
             True,
+        ),
+        *(  # B13 round 35 C940, C965, C984 (ruling 107): a cut count or fetch date names the time limit only
+            # for a spent budget (lane RA's rows; install.sh unchanged)
+            ([f"{_SOURCE_AT} · origin: fork · on origin/main: yes ({said}) · {_IDLE}"], spent)
+            for said, spent in (
+                (f"how far behind not read: {_GIT_WITHIN}3.0s; no fetch since the clone", False),
+                (f"how far behind not read: {_GIT_WITHIN}the report's time limit; no fetch", True),
+                (f"as of the checkout's last fetch, date not read: {_GIT_WITHIN}3.0s", False),
+                (
+                    f"as of the checkout's last fetch, date not read: {_GIT_WITHIN}the report's time limit",
+                    True,
+                ),
+            )
         ),
         (
             [
@@ -5200,6 +5215,10 @@ _HELPER_WARN = (
         "git-timeout",
         "xcode-timeout",
         "git-spent",
+        "rev-list-timeout",
+        "rev-list-spent",
+        "fetch-date-timeout",
+        "fetch-date-spent",
         "launchctl-timeout",
         "launchctl-spent",
         "no-loop-hook",

@@ -1360,7 +1360,11 @@ checkout's `origin: not read (git did not answer within 3.0s)`, `on origin/main:
 3.0s)`, `(uncommitted changes: not read, git did not answer within 3.0s)`, `(git did not answer within 3.0s)` and
 `(commit and origin not read: xcode-select did not answer within 3.0s)`; one the report's budget was used up before
 is said as the time limit's: `origin: not read (git did not answer within the report's time limit)`, `on
-origin/main: not read (time limit)` and `(uncommitted changes: not read, time limit)`. After the first git read that
+origin/main: not read (time limit)` and `(uncommitted changes: not read, time limit)`. A cut count of how far
+behind prints inside the one fetch bracket, `on origin/main: yes (how far behind not read: git did not answer within
+3.0s; no fetch since the clone)` (`how far ahead or behind` on `no`), and a linked worktree's cut fetch-date read
+`(as of the checkout's last fetch, date not read: git did not answer within 3.0s)`, each with `the report's time
+limit` in place of the seconds for a spent budget (B13 round 35 C940, C965, C984). After the first git read that
 did not answer the install source reads no more, so each part after it repeats that read's words, and a URL rewrite
 read that did not answer beside a known origin keeps the origin with `URL rewrites: not read` (B13 round 34 C802,
 C834, C873; ruling 96). The install source's line, whenever a read in it was cut, ends with the same advice, `write
