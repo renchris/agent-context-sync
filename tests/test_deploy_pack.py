@@ -397,6 +397,27 @@ def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> N
     assert "Run ship-land in your own pane" not in lanes and "never under nohup" not in lanes
 
 
+def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() -> None:
+    """B13 round 35 C907: the Bash tool's shell here is zsh, so a rehearsal's `${PIPESTATUS[0]}` printed an
+    empty rc and `echo ======` died with `= not found`, skipping the rest of its command. The kit note says
+    so once, inside the note (after the midnight sentence, before `Tools CI lacks`), with the file-and-`$?`
+    form, and keeps the diff and shasum checks, whose last stage is the checker, as written."""
+    lanes = _page("docs/lanes/COMMON.md")
+    sentence = "The Bash tool's shell here is zsh, while sb and the kit scripts are /bin/bash."
+    assert lanes.count(sentence) == 1
+    note = lanes[
+        lanes.index("is the cleaner's doing, not agentsync's.") : lanes.index("Tools CI lacks (round 18)")
+    ]
+    assert sentence in note
+    assert (
+        "`sb '<cmd>' > logs/x.log 2>&1; rc=$?; echo \"rc=$rc\"` (not `status=`, which zsh holds read-only)"
+        in note
+    )
+    assert "(`echo '====='`, never `echo =====` or `[ a == b ]`)" in note
+    assert "The diff and shasum checks above end in the checker, so their `$?` is right as written" in note
+    assert "manifest.sha256 | shasum -a 256 -c -)" in lanes and "| diff - dirs.txt" in lanes
+
+
 def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path: Path) -> None:
     """B13 round 29 C149, C150 (one defect): macOS's `com.apple.tmp_cleaner` runs daily at local midnight
     and deletes an empty folder under /tmp whose mtime is over 3 days old; `cp -Rp` keeps the fixture's, so

@@ -1152,7 +1152,12 @@ run (round 33 C774). Both dirs.txt and manifest.sha256 are the fixture's, under
 ~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks run from the
 folder that holds them (round 32 C664). A rehearsal that crosses local midnight checks every step after it again: an
 empty-folder alarm or wait gone just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing,
-not agentsync's.
+not agentsync's. The Bash tool's shell here is zsh, while sb and the kit scripts are /bin/bash. Outside sb,
+`${PIPESTATUS[0]}` is empty and a pipe's `$?` is its last stage's, so to keep a command's exit code, send its output
+to a file and read `$?` straight after: `sb '<cmd>' > logs/x.log 2>&1; rc=$?; echo "rc=$rc"` (not `status=`, which
+zsh holds read-only). Quote any word that starts with `=` (`echo '====='`, never `echo =====` or `[ a == b ]`): zsh
+reads it as a command name, stops with `= not found`, and skips the rest of the command. The diff and shasum checks
+above end in the checker, so their `$?` is right as written (round 35 C907).
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)

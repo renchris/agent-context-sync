@@ -38094,3 +38094,12 @@ number failed the scan, the `C<n>` and `<date>` forms passed). C990: since §16.
 round 34 land's own detached tree, gate `rc=0`), so the brief's `Run ship-land in your own pane, ... never under nohup`
 warning was stale; the lead's round 35 brief commit already dropped it from COMMON.md, and the test pins its
 absence. Test: `test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land`.
+
+**The kit note says the Bash tool runs zsh** (C907; docs only; `docs/lanes/COMMON.md`'s rehearsal-kit note). A
+rehearsal's `${PIPESTATUS[0]}` printed an empty rc, and `echo ======` stopped with `(eval):2: ===== not found` and
+skipped the rest of its command: the Bash tool's shell here is zsh 5.9 (`false | true; echo "rc=${PIPESTATUS[0]}"`
+prints `rc=` under it and `rc=1` under /bin/bash), while sb and the kit scripts are /bin/bash. One sentence after the
+midnight sentence, outside the gate paragraph whose ending is pinned, says to send a command's output to a file and read
+`$?` straight after (`rc=`, since zsh holds `status` read-only), and to quote a word that opens with `=`; the diff and
+shasum checks, whose last stage is the checker, stay as written. agentsync itself has no such pipe (0 PIPESTATUS hits).
+The rehearsal brief's half is the lead's. Test: `test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost`.
