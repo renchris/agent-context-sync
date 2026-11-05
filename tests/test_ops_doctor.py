@@ -17,6 +17,7 @@ import plistlib
 import re
 import shlex
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -767,6 +768,40 @@ def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> Non
         doctor._run(["/bin/sleep", "600"], timeout=1.0)
     assert doctor._timed_out("git", caught.value).detail.startswith("sleep did not answer within 1s: ")
     assert doctor._importable(sys.executable) is True
+
+
+_SIGNALLED = """
+import sys
+from agentsync.ops import doctor
+doctor._run(["/bin/sh", "-c", 'printf "%s;" $$ > ' + sys.argv[1] + '; exec /bin/sleep 600'], timeout=600)
+"""
+
+
+@pytest.mark.parametrize("to_group", [False, True], ids=["process", "group"])
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGKILL], ids=lambda s: s.name)
+def test_a_signal_to_agentsync_leaves_no_doctor_program_running_c956(
+    tmp_path: Path, sig: signal.Signals, to_group: bool
+) -> None:
+    """B13 round 35 C906 and C956 (ruling 106): C804 put each doctor program in a process group of its own, so
+    a SIGTERM, SIGHUP or SIGKILL to agentsync, or to its group, left a hung program running with no limit.
+    The program now joins the group of a watcher that kills it when agentsync's end of a pipe closes, by any
+    death, SIGKILL included."""
+    pidfile = tmp_path / "child.pid"
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _SIGNALLED, str(pidfile)], start_new_session=True, stdin=subprocess.DEVNULL
+    )
+    try:
+        child = _pid_from(pidfile, within=30.0)
+        if to_group:
+            os.killpg(proc.pid, sig)
+        else:
+            os.kill(proc.pid, sig)
+        proc.wait(timeout=30)
+        assert _pid_gone(child), f"doctor's program {child} outlived agentsync's {sig.name}"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=30)
 
 
 def test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_group_c955(

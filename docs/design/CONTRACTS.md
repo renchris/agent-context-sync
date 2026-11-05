@@ -37656,6 +37656,9 @@ is killed by `ocr.end_helpers()`, alone, in its caller's process group (§16.233
 Amended 2026-11-04, §16.232 C955: `RUN_DEADLINE`, the registry of running programs and `end_children` live in the
 leaf module `agentsync.ops.deadline` (doctor's names are the same objects), whose `run()` also bounds
 `gitops._run`, `governance._git` and `launchd._run_launchctl` under a caller's deadline.
+Amended 2026-11-04, §16.232 C906, C956: each program no longer leads a group of its own; it joins the group of a
+watcher `_run` starts first, which kills that group when agentsync's end of a pipe closes, so a signal to agentsync
+or to its group, SIGKILL included, leaves no program running.
 
 **C829 (makes worse True as found; the verifier's fix).** With governance/ at 0000 (or 0600) the purge queue's refused
 open raised a plain `GovernanceError` caused by a `PermissionError`, not `GovernanceUnreadError`, so `loop.next_step`
@@ -38281,6 +38284,18 @@ of the three gets `process_group=0`. Not covered, as the verifier found: net.py'
 `launchctl getenv` and governance's `_CatFile`, each short-limited or not seen running under a report. The survivor
 half predates round 34. Test:
 `test_ops_doctor.py::test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_group_c955`.
+
+**A signal to agentsync leaves no doctor program running** (C906 with C956; ruling 106; amends §16.227 C804). C804
+put each `doctor._run` program in a process group of its own, so a SIGTERM, SIGHUP or SIGKILL to agentsync or to its
+group, which used to reach the program, left a hung one running with no limit. `_run` now starts the watcher
+`doctor._WATCH` (`echo; read -r said; [ "$said" = done ] || kill -KILL 0`) in its own group, with its stdin on a
+pipe whose write end only this process holds, waits for its first line, and starts the program with
+`process_group=<the watcher's pid>`; the watcher's group is what `_end_group` and the registry end. In a finally it
+writes `done` (an `OSError` suppressed, since a time-out's group kill has already ended the watcher), closes the pipe
+and reaps the watcher. Any death of agentsync closes the pipe, `read` meets its end, and the watcher kills the
+group, the program's own children with it. No signal handler, as in ocr's `_run_build`; it costs about 20 ms a run.
+Test: `test_ops_doctor.py::test_a_signal_to_agentsync_leaves_no_doctor_program_running_c956` (SIGTERM, SIGHUP and
+SIGKILL, each to the process and to its group).
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

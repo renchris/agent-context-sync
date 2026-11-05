@@ -425,9 +425,17 @@ end_children = deadline_mod.end_children
 past_deadline = deadline_mod.past_deadline
 stop_past_deadline = deadline_mod.stop_past_deadline
 
+_WATCH = 'echo; read -r said; [ "$said" = done ] || kill -KILL 0 2>/dev/null'
+"""The watcher each :func:`_run` program's process group holds (B13 round 35 C906, C956; ruling 106): it says
+it is up, then waits on a pipe only this process writes. ``done`` ends it quietly; an end of file, which any
+death of agentsync gives (a signal to it or to its group, SIGKILL among them), kills the group, so a
+program in its own group never outlives agentsync. No signal handler: nothing to restore, nothing taken
+under a lock in one."""
+
 
 def _end_group(pid: int) -> None:
-    """SIGKILL the process group ``pid`` leads: the program and every child it started (a shim's git)."""
+    """SIGKILL the process group ``pid`` leads: the watcher, the program and every child it started (a shim's
+    git)."""
     deadline_mod.end(pid, group=True)
 
 
@@ -446,9 +454,11 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
     """Run ``argv`` with launchd's PATH, capturing text output; never raises on a non-zero exit. A program
     that does not end within ``timeout``, or by :data:`RUN_DEADLINE` when a caller set an earlier one, raises
     ``subprocess.TimeoutExpired``, which the check that asked turns into :func:`_timed_out` (and
-    :func:`run_checks` does for one that gets past its check). Each program leads a process group of its own,
-    killed whole when it times out or the wait is interrupted, the wait then on the program, never its pipes,
-    and :func:`end_children` can end it while it runs (B13 round 34 C804, round 35 C954, C955)."""
+    :func:`run_checks` does for one that gets past its check). Each program runs in the process group of a
+    watcher (:data:`_WATCH`) started first, which kills the group if agentsync dies any way at all; the group
+    is killed whole when the program times out or the wait is interrupted, the wait is then on the program,
+    never its pipes, and :func:`end_children` can end it while it runs (B13 round 34 C804, round 35 C954,
+    C906, C956)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
     deadline = RUN_DEADLINE.get()
     shortened = False
@@ -458,31 +468,55 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
             raise _NotStarted(list(argv), 0.0)  # C917: never started, never "within 0s"
         shortened = left < timeout
         timeout = min(timeout, left)
-    with subprocess.Popen(  # its exit closes both pipes and reaps the program, an interrupted wait included
-        list(argv),
-        stdin=subprocess.DEVNULL,  # its own group is not the terminal's: a read there would stop it
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        process_group=0,
-    ) as proc:
-        deadline_mod.register(proc.pid, group=True)
+    said, tell = os.pipe()
+    try:
+        watcher = subprocess.Popen(
+            ["/bin/sh", "-c", _WATCH],
+            stdin=said,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            process_group=0,
+        )
+    except BaseException:
+        os.close(tell)
+        raise
+    finally:
+        os.close(said)
+    try:
+        with watcher.stdout or contextlib.nullcontext():
+            if watcher.stdout is not None:
+                watcher.stdout.readline()  # up: its group exists before the program joins it
+        deadline_mod.register(watcher.pid, group=True)
         try:
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired as exc:
-                _end_group(proc.pid)
-                # the program, never its pipes: a helper outside the group can hold them open (C954)
-                proc.wait()
-                if shortened:
-                    exc.add_note(_SHORTENED_NOTE)
-                raise
-            except BaseException:
-                _end_group(proc.pid)
-                raise
+            # its exit closes both pipes and reaps the program, an interrupted wait included
+            with subprocess.Popen(
+                list(argv),
+                stdin=subprocess.DEVNULL,  # its own group is not the terminal's: a read there would stop it
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                process_group=watcher.pid,
+            ) as proc:
+                try:
+                    out, err = proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired as exc:
+                    _end_group(watcher.pid)
+                    # the program, never its pipes: a helper outside the group can hold them open (C954)
+                    proc.wait()
+                    if shortened:
+                        exc.add_note(_SHORTENED_NOTE)
+                    raise
+                except BaseException:
+                    _end_group(watcher.pid)
+                    raise
         finally:
-            deadline_mod.unregister(proc.pid)
+            deadline_mod.unregister(watcher.pid)
+    finally:
+        with contextlib.suppress(OSError):  # a time-out's group kill has already ended the watcher
+            os.write(tell, b"done\n")
+        os.close(tell)
+        watcher.wait()
     return subprocess.CompletedProcess(list(argv), proc.returncode, out, err)
 
 
