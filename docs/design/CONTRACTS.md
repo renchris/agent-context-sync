@@ -36945,6 +36945,9 @@ warn, by bracket depth, never deeper than 1), with the line pins in `test_ocr.py
 Amended 2026-11-03, §16.228 C849: the two `-v` log lines in `convert_file` that hold a runtime helper's error, `the
 speech engine failed` and `the recording could not be read on this Mac`, take the colon form too, `_ended`'s phrase
 unchanged.
+Amended 2026-11-04, §16.233 C909: so do the `engine()` lines of the OCR, media and speech modules, logged under
+`-v` when there is no engine: `on-device OCR: <state>: <detail>`, `media helper: <state>: <detail>` and `speech:
+<state>: <detail>`, for every state (`failed`, `not-built` and `off` alike).
 
 **A cut inside a staged file's 16 hex or its suffix folds to the cut mark (C751, ruling 71; `agentsync.cycle`;
 after §16.216 C645).** `_fold_staging` folded a text cut just past the staging root to `0123…` (the root dropped,
@@ -38122,6 +38125,18 @@ one try), `test_convert_family.py::test_a_drawio_that_is_no_diagram_is_one_stub_
 `test_convert_formats.py::test_a_drawio_that_opens_with_markup_stays_a_failed_conversion_c927` and
 `test_convert_formats.py::test_a_utf_16_drawio_still_converts_c927`, with the wrong-root pin in
 `test_a_diagram_that_cannot_be_read_fails_bounded` moved and the reason in the report's class tables.
+
+**The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
+`convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
+stopped by SIGKILL (signal 9)`, `the media helper is not-built: ...` and `speech is failed: ...` at INFO when it
+had no engine to hand out (measured by the verifier on all three, for `failed` and `not-built`). These were the
+lines' first wording, not something an earlier item left behind. Each now reads `<label>: <state>: <detail>`, the
+form §16.221 C719 gives such lines, with doctor's labels: `on-device OCR`, `media helper` (no "the") and `speech`.
+That fixes every state with no per-state words: `is not working` would be false for `off` and for a speech helper
+that is built while its models are not placed. Speech's digest warning, `speech is off: the <name> model folder
+does not match its pinned digest`, is grammatical and stays. No reader parses these lines. Test:
+`test_ocr.py::test_the_engines_v_log_line_takes_the_colon_form_c909` (the three engines by the three states: a
+helper a signal stopped, none built, switched off; `caplog`'s messages read exactly).
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

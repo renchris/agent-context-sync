@@ -416,7 +416,7 @@ def engine(cfg: ConvertConfig, cache_dir: Path) -> MediaEngine | None:
     goes by when it prunes old helpers."""
     state, detail, found = _resolve(cfg, cache_dir)
     if found is None:
-        log.info("the media helper is %s: %s", state, detail)
+        log.info("media helper: %s: %s", state, detail)
     else:
         with contextlib.suppress(OSError):
             os.utime(found.helper)

@@ -660,7 +660,7 @@ def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None:
     goes by when it removes old helpers (:func:`_prune`).  :func:`probe` only looks and stamps nothing."""
     state, detail, found = _resolve(cfg, cache_dir)
     if found is None:
-        log.info("on-device OCR is %s: %s", state, detail)
+        log.info("on-device OCR: %s: %s", state, detail)
     else:
         with contextlib.suppress(OSError):
             os.utime(found.helper)

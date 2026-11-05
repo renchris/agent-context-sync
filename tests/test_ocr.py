@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import json
+import logging
 import os
 import shlex
 import signal
@@ -2083,6 +2084,40 @@ def _deepest_bracket(line: str) -> int:
         elif ch == ")":
             depth -= 1
     return deepest
+
+
+@pytest.mark.parametrize("state", ["signal", "not-built", "off"])
+@pytest.mark.parametrize("which", ["ocr", "media", "speech"])
+def test_the_engines_v_log_line_takes_the_colon_form_c909(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, which: str, state: str
+) -> None:
+    """B13 round 35 C909: ``engine()``'s ``-v`` line read ``on-device OCR is failed: ...``, ``the media helper
+    is not-built: ...`` and ``speech is failed: ...``. It takes the colon form §16.221 C719 gives such lines,
+    ``<label>: <state>: <detail>``, the label doctor's (``media helper``, no "the"), for every state, never a
+    per-state wording (``is not working`` would be false for ``off`` and ``not-built``)."""
+    from agentsync.convert import speech  # noqa: PLC0415
+
+    module, kind, label = {
+        "ocr": (ocr, ocr._OCR, "on-device OCR"),
+        "media": (media, media.MEDIA, "media helper"),
+        "speech": (speech, speech.SPEECH, "speech"),
+    }[which]
+    cfg = replace(CFG, ocr=False) if state == "off" else CFG
+    if state == "signal":
+        write_fake(
+            ocr._helper_path(tmp_path, kind), hook="import signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
+        )
+    caplog.set_level(logging.INFO, logger=module.__name__)
+    assert module.engine(cfg, tmp_path) is None
+    detail = {
+        "signal": f"the {kind.name} was stopped by SIGKILL (signal 9)",
+        "not-built": f"the {kind.name} is not built",
+        "off": "[convert] ocr = false",
+    }[state]
+    said = {"signal": "failed", "not-built": "not-built", "off": "off"}[state]
+    assert [r.getMessage() for r in caplog.records if r.name == module.__name__] == [
+        f"{label}: {said}: {detail}"
+    ]
 
 
 @pytest.mark.parametrize("number", range(1, 32))

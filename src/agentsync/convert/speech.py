@@ -457,7 +457,7 @@ def engine(cfg: ConvertConfig, cache_dir: Path) -> SpeechEngine | None:
     The helper it hands out gets a new modification time, its last use, as the media helper's does."""
     state, detail, found = _resolve(cfg, cache_dir)
     if found is None:
-        log.info("speech is %s: %s", state, detail)
+        log.info("speech: %s: %s", state, detail)
         return None
     models = found.helper.parent
     for name, files in MODEL_FILES.items():
