@@ -288,14 +288,30 @@ def _sync_stopped_on(config: Config) -> str | None:
     suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
     governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
     which a sync runs over at 0000 (B13 round 32 C639; ruling 65). And the lock this account cannot open,
-    whose refusal stops the sync's acquire (B13 round 34 C863)."""
+    whose refusal stops the sync's acquire (B13 round 34 C863). In the order the sync meets them: the lock,
+    then the suppression list (a refused governance/ names governance.hold there), then the purge record; the
+    folder's X_OK test runs only after a refused read, so a missing governance/ is no stop (B13 round 35
+    C933)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
     found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
     if found is not None:
         return found[1].name
+    # the open a sync's acquire makes, as doctor's lock check makes it: a lock this account cannot open stops
+    # every sync, so the waits and the heartbeat's note say none runs until the lock [FAIL] line is fixed,
+    # never "another full walk lists it" (B13 round 34 C863, ruling 87's third gap). First, as the sync meets
+    # it first: a lock and a refused governance read name the lock (B13 round 35 C933)
+    try:
+        os.close(os.open(expand(config.state_paths.lock), os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW))
+    except FileNotFoundError:  # a sync makes it
+        pass
+    except OSError as exc:
+        if doctor.refused_state_path(config, "lock", exc) is not None:
+            return "lock"
     root = config.state_paths.root
-    for read in (governance.recorded_purges, governance.load_suppressions):
+    # the suppression list first: a refused governance/ is met there, so it names governance.hold, whose fix
+    # is the folder's chmod, before a purge record refused inside it (B13 round 35 C933)
+    for read in (governance.load_suppressions, governance.recorded_purges):
         try:
             read(root)
         except governance.GovernanceError as exc:
@@ -309,16 +325,6 @@ def _sync_stopped_on(config: Config) -> str | None:
                 return "governance.suppressed"
         except Exception:  # every other error is its own line's, as before
             continue
-    # the open a sync's acquire makes, as doctor's lock check makes it: a lock this account cannot open stops
-    # every sync, so the waits and the heartbeat's note say none runs until the lock [FAIL] line is fixed,
-    # never "another full walk lists it" (B13 round 34 C863, ruling 87's third gap)
-    try:
-        os.close(os.open(expand(config.state_paths.lock), os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW))
-    except FileNotFoundError:  # a sync makes it
-        pass
-    except OSError as exc:
-        if doctor.refused_state_path(config, "lock", exc) is not None:
-            return "lock"
     return None
 
 

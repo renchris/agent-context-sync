@@ -38317,6 +38317,18 @@ governance item, for lane RA). Test:
 hold on another source conditional, an unreadable manifest conditional, a hold on the id's source in the release
 words and refusing the dry run, which runs once it is released).
 
+**The stop named beside a sync is the one it meets first** (C933; ruling 109). With governance/ and
+purge-record.json both refused, the waits and the heartbeat's note named governance.suppressed, the record's,
+while the sync stopped on the folder first, so the fix they pointed at left the sync stopped; with the lock and
+the record both refused, they named the record, not the lock the acquire meets first. `loop._sync_stopped_on` now
+opens the lock first, then reads the suppression list before the purge record, so a refused governance/ is met
+there and names governance.hold, whose fix is the folder's chmod; the folder's `X_OK` test still runs only after a
+refused read, never as an `os.access` ahead of the reads, so a missing governance/ is no stop and a plain install
+is untouched. A wait naming both lines while two stops stand is not built (the verifier's open point: it would turn
+`stopped` into a list). Test: `test_cli.py::test_the_stop_named_beside_a_sync_is_the_one_it_meets_first_c933` (the
+lock and the record: lock; the folder and the record: governance.hold and the sync exits 1; after the folder's
+chmod governance.suppressed, the sync exits 1; after the record's, none and the sync exits 0).
+
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
 Round 35's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the

@@ -14563,3 +14563,44 @@ def test_a_lost_sourceless_id_purge_needs_the_release_of_a_hold_on_the_source_it
     assert cli.main(release) == cli.EXIT_OK
     assert cli.main([*named, "--dry-run"]) == cli.EXIT_OK  # the hold on another source does not
     capsys.readouterr()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_the_stop_named_beside_a_sync_is_the_one_it_meets_first_c933(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C933 (ruling 109): with governance/ and purge-record.json both refused, the wait and the
+    heartbeat named governance.suppressed, the record's, while the sync stopped on the folder first, so the
+    fix they pointed at left the sync stopped. _sync_stopped_on reads in the sync's order: the lock, then the
+    suppression list (a refused governance/ names governance.hold there), then the record; a missing
+    governance/ is no stop."""
+    cfg = str(initialised.config_path)
+    _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    if not gov.exists():
+        assert loop._sync_stopped_on(initialised) is None  # a plain install: no governance/ is no stop
+        gov.mkdir(mode=0o700)
+    record = governance.purge_record_file(root)
+    record.write_text('{"purges": []}\n', encoding="utf-8")
+    lock = expand(initialised.state_paths.lock)
+    lock.touch()
+    record.chmod(0o000)
+    lock.chmod(0o000)
+    try:
+        assert loop._sync_stopped_on(initialised) == "lock"  # the lock first, as the acquire meets it
+        lock.chmod(0o600)
+        gov.chmod(0o000)
+        assert loop._sync_stopped_on(initialised) == "governance.hold"
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        gov.chmod(0o700)
+        assert loop._sync_stopped_on(initialised) == "governance.suppressed"
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        record.chmod(0o600)
+        assert loop._sync_stopped_on(initialised) is None
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    finally:
+        gov.chmod(0o700)
+        record.chmod(0o600)
+        lock.chmod(0o600)
+    capsys.readouterr()
