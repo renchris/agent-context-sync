@@ -14643,3 +14643,44 @@ def test_curate_beside_a_sync_stop_points_at_status_not_a_sync_c957(
     assert nxt == f"NEXT: {cli.curate_stop_fix(stop)}", out
     assert f"the {stop} [FAIL] line is fixed: run `{loop.BIN} status`" in nxt and "sync`" not in nxt, nxt
     assert rc == cli.EXIT_OK, out
+
+
+def _unresolved_fail_pointers(lines: list[str]) -> list[str]:
+    """Each `the <check> [FAIL] line` (or `lines`) a reader's output names with no `[FAIL] <check>` line of
+    its own (B13 round 35 ruling 109: a pointer names only a line its reader prints)."""
+    printed = {m.group(1) for ln in lines if (m := re.match(r"\[FAIL\] (\S+)", ln))}
+    named: set[str] = set()
+    for ln in lines:
+        for m in re.finditer(r"the ((?:[\w.<>-]+(?:, | and )?)+) \[FAIL\] lines?", ln):
+            named.update(n for n in re.split(r", | and ", m.group(1)) if n)
+    return sorted(named - printed)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_pointers_name_c958(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C958 (ruling 109): a [governance] that did not load printed governance.config's FAIL
+    alone, so beside a shut governance folder status's NEXT and lines pointed at a governance.hold [FAIL] line
+    it never printed. It prints the state's own not-ok governance lines over a default table too, never
+    remote, compaction or time_machine, which judge the table; the NEXT goes to the folder's chmod first."""
+    cfg = _synced(initialised)
+    path = Path(cfg)
+    path.write_text(path.read_text(encoding="utf-8") + '\n[governance]\nhold = "yes"\n', encoding="utf-8")
+    root = expand(initialised.state_paths.root)
+    gov = governance.governance_dir(root)
+    gov.mkdir(mode=0o700, exist_ok=True)
+    capsys.readouterr()
+    gov.chmod(0o000)
+    try:
+        rc, out = _status(cfg, capsys)
+    finally:
+        gov.chmod(0o700)
+    assert rc == cli.EXIT_FAILED
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+    for judged in ("governance.remote", "governance.compaction", "governance.time_machine"):
+        assert not [ln for ln in out if judged in ln.split(" — ")[0]], (judged, out)
+    assert _unresolved_fail_pointers(out) == [], out
+    (nxt,) = [ln for ln in out if ln.startswith("NEXT: ")]
+    assert "chmod 700" in nxt or "governance.hold" in nxt, nxt

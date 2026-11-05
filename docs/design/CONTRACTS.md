@@ -38349,6 +38349,18 @@ code (keyed on blocking findings) stay. loop.py's next_step is untouched (the ve
 changing it there). Test: `test_cli.py::test_curate_beside_a_sync_stop_points_at_status_not_a_sync_c957`
 (governance/, the lock and suppressed.json at 0000, rc 0).
 
+**A [governance] that does not load prints the governance lines its pointers name** (C958; ruling 109). A refused
+[governance] printed governance.config's FAIL alone, so beside a shut governance folder status's NEXT and the
+`cannot read the state` pointer named a governance.hold [FAIL] line status never printed. `_governance_checks`
+keeps its body in `_governance_lines(config, gov)`; on a `ConfigError` it returns governance.config's FAIL, then the
+not-ok rows of `_governance_lines` over a default `GovernanceConfig()`, never governance.remote,
+governance.compaction or governance.time_machine (`cli._JUDGE_THE_TABLE`), which judge the table that did not
+load, and never an [ok] row, which would speak for a hold setting nobody could read. The NEXT then leads with the
+folder's chmod, the agent's fix, ahead of the table's (accepted, ruling 111). Test:
+`test_cli.py::test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_pointers_name_c958`, whose
+`_unresolved_fail_pointers` reads every `the <check> [FAIL] line` the output names against the [FAIL] lines it
+prints.
+
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
 Round 35's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the

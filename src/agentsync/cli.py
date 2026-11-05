@@ -2843,11 +2843,27 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
     return out
 
 
+_JUDGE_THE_TABLE = ("governance.remote", "governance.compaction", "governance.time_machine")
+"""The governance lines that judge sources.toml's [governance] itself, which a table that does not load leaves
+nothing to judge (B13 round 35 C958)."""
+
+
 def _governance_checks(config: Config) -> list[doctor.CheckResult]:
+    """The governance lines. A [governance] that does not load is governance.config's FAIL, then the not-ok
+    lines of the state's own files read over a default table, never one that judges the table, so a pointer
+    to `the governance.hold [FAIL] line` (a shut governance folder) names a line status prints; an [ok] line
+    would speak for a hold setting nobody could read (B13 round 35 C958)."""
     try:
         gov = governance.load_governance(config.config_path)
     except ConfigError as exc:
-        return [_check("governance.config", False, str(exc), doctor.Severity.ERROR, fix=GOVERNANCE_FIX)]
+        failed = _check("governance.config", False, str(exc), doctor.Severity.ERROR, fix=GOVERNANCE_FIX)
+        rows = _governance_lines(config, governance.GovernanceConfig())
+        return [failed, *[r for r in rows if not r.ok and r.name not in _JUDGE_THE_TABLE]]
+    return _governance_lines(config, gov)
+
+
+def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[doctor.CheckResult]:
+    """:func:`_governance_checks` over a loaded (or default) [governance] ``gov``."""
     out: list[doctor.CheckResult] = []
     findings = _refuse_remotes(config, gov)
     if findings:
