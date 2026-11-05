@@ -11581,6 +11581,7 @@ def _status_section(r: _Run) -> list[str]:
         # already carries the idle advice
         limit = r.last_call_limit
         if timed_out and limit is not None and limit <= 0.2:
+            r.facts.status_failed = _NOT_STARTED  # B13 round 35 C904, C919 (ruling 107): never "in time"
             body = ["Not run: the report's time budget was used up before status started."]
         elif timed_out and limit is not None:
             body = [
@@ -11593,6 +11594,11 @@ def _status_section(r: _Run) -> list[str]:
 
 _STATUS_NOT_IN_TIME = "did not finish in time"
 """``facts.status_failed`` for a Status call the report's time limit cut (B13 round 34 C801)."""
+_NOT_STARTED = "not started: the report's time budget was used up"
+"""B13 round 35 C904 with C919 (ruling 107): ``facts.status_failed``, and the Loop line's NEXT half, for a
+call the spent budget never started (its own limit 0.2s or less), Doctor's sibling words: the Loop line reads
+``not read (status not started: ...)`` and its NEXT ``not read (not started: ...)``, never "did not finish in
+time", which a call that ran and was cut keeps."""
 
 
 def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]:
@@ -13346,7 +13352,7 @@ def _loop_unread_head(r: _Run) -> str:
     """The Doctor line's clause for those warns: why the Loop line was not read, and that a report written
     when idle sorts them only when waiting can (a time-out or a busy state file, not a crash or no hook)."""
     why = r.facts.loop_unread_why
-    idle = why.startswith(_NOT_IN_TIME) and not r.facts.copy_stopped
+    idle = why.startswith((_NOT_IN_TIME, _NOT_STARTED)) and not r.facts.copy_stopped  # C904: both
     return f"not judged (the Loop line was not read: {why}{_IDLE_SORTS if idle else ''})"
 
 
@@ -15889,6 +15895,8 @@ def _loop_line(r: _Run) -> str:
         why = r.facts.status_failed
         if why == _STATUS_NOT_IN_TIME:
             stage = "not read (status did not finish in time)"
+        elif why == _NOT_STARTED:  # B13 round 35 C904 (ruling 107): never started, never "failed"
+            stage = "not read (status not started: the report's time budget was used up)"
         elif why.endswith(")") and " (" in why:  # one bracket, never two in a row (V11, V54)
             head, tail = why[:-1].rsplit(" (", 1)
             stage = _one_bracket(f"not read (status failed: {head})", tail)
@@ -15915,9 +15923,13 @@ def _loop_line(r: _Run) -> str:
         lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
         said = _why_not_read(exc)
+        timed_out = isinstance(exc, (TimeoutError, CallTimedOutError)) and getattr(exc, "errno", None) is None
+        limit = r.last_call_limit  # this call's own: :meth:`_Run.call` sets it on entry
+        if timed_out and limit is not None and limit <= 0.2:  # B13 round 35 C904: never started, no wait
+            said = _NOT_STARTED
         # B13 round 21 Y15: a loop that reads a state file a sync holds waits on it past the hook's limit;
         # when the evidence read found it held, the cut-off says so (the hook's own error is the time-out)
-        if isinstance(exc, (TimeoutError, CallTimedOutError)) and r.facts.evidence_why.get(_BUSY_WHY):
+        elif isinstance(exc, (TimeoutError, CallTimedOutError)) and r.facts.evidence_why.get(_BUSY_WHY):
             said += ": a sync held the state file"
         r.facts.loop_unread_why = said
         return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"

@@ -8055,8 +8055,11 @@ def test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_co
         "not read (status cannot read the state)",
         "not read (status did not finish in time)",  # B13 round 34 C801
         "not read (status failed: ",
+        "not read (status not started: the report's time budget was used up)",  # B13 round 35 C904, C919
     ):
         assert form in source and f"`{form}" in para, form
+    # B13 round 35 C904: the NEXT half of a call the spent budget never started, from its one constant
+    assert f"a NEXT half `not read ({setup_report._NOT_STARTED})`" in para
     # rule 1's three `below` forms, each on Doctor's printing that line, else `below` stays
     head = (
         "When the NEXT is rule 1's `the <check> check failed: ...` and the report's Doctor section prints"

@@ -37349,6 +37349,8 @@ line)` stays for a status that answered without one, no status hook and no confi
 the issue link is unchanged. The guide's Loop paragraph names both forms. Tests:
 `tests/test_setup_report.py::test_a_cut_status_call_says_the_loop_line_was_not_read_c801`,
 `tests/test_deploy_pack.py::test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`.
+Amended 2026-11-04, §16.230 C904: a Status call the spent budget never started reads `not read (status not started:
+the report's time budget was used up)`, and a loop NEXT call never started `NEXT: not read (not started: ...)`.
 
 **One cut said one way in Environment and Status** (C820, ruling 96; amends §16.218 C716). One cut report worded the
 same time-limit skip three ways and called the cut Status section failed. `_probe_ended(cmd, rc, text)`, beside
@@ -37361,6 +37363,8 @@ failed: ..._`. No idle advice there: the evidence line carries it, and `not meas
 parts, which `_RETRY_WHYS` keys on, is unchanged. Tests:
 `tests/test_setup_report.py::test_every_environment_probe_says_a_cut_as_not_measured_c820`,
 `test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820`.
+Amended 2026-11-04, §16.230 C904, C919: beside `Not run: ... before status started.`, `facts.status_failed` is
+`_NOT_STARTED`, so the Loop line no longer says `did not finish in time` for a call that never started.
 
 **The re-run advice once where install.sh reads it** (C819, ruling 96; amends §16.218 C720). A cut sendable report
 gave the advice five times, two on adjacent Summary lines. `_background`'s job lines, which install.sh's grep never
@@ -37570,6 +37574,8 @@ idle and names no variable. An older build names no seconds and keeps the clause
 `test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834` (each Loop form, the capped
 time-outs, the spent budget, and `no loop hook`, a crash and `status failed` as negatives) and
 `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
+Amended 2026-11-04, §16.230 C904: the report also prints `not read (status not started: ...` and `not read (not
+started: ...` for a call the spent budget never started, which `REPORT_LOOP_CUT` reads as a cut (lane RB, §16.231).
 
 Amended 2026-11-04, §16.231 C922: an older build's install source words name no seconds and keep the clause (C976); a report that ran at 60 s names no variable, a doctor line counts only cut off or not started (C915), and a call never started is a cut Loop read (C904) (B13 round 35 ruling 108).
 
@@ -38089,6 +38095,18 @@ folder`. C937: status's partial read opens `status: some of the state could not 
 it found. C938: `_loop_could_name` names a source's `listable` warn, the empty-root wait's, so an unread Loop line
 leaves it not judged. Test: `tests/test_setup_report.py::test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938`.
 
+**A call the spent budget never started says so** (C904 with C919, ruling 107; amends §16.225 C801, C820 and §16.226
+C821; `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). A Status call the spent budget never
+started printed `Not run: ... before status started.` in Status and `Loop: not read (status did not finish in time)`
+beside it. `_NOT_STARTED` is `not started: the report's time budget was used up`, Doctor's sibling words; each half
+is keyed on its own call's limit (`r.last_call_limit`, which `_Run.call` sets on entry): `_status_section` sets
+`facts.status_failed` to it at 0.2 s or less, and `_loop_line` reads `not read (status not started: the report's
+time budget was used up)`; the loop NEXT call's own time-out at that limit reads `NEXT: not read (not started: ...)`,
+with no `a sync held the state file` tail, since no read waited. `_loop_unread_head` keeps the idle advice for both.
+`did not finish in time` stays for a call that ran and was cut, which older builds print too. Tests:
+`tests/test_setup_report.py::test_a_call_the_spent_budget_never_started_says_not_started_c904_c919` (spent before
+Status, a NEXT spent after a Status that answered, the whole report),
+`tests/test_deploy_pack.py::test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`.
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 

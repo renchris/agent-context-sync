@@ -10673,6 +10673,50 @@ def test_a_cut_status_call_says_the_loop_line_was_not_read_c801(fake_mac: dict[s
             assert "no status loop line" not in line, line
 
 
+def test_a_call_the_spent_budget_never_started_says_not_started_c904_c919(fake_mac: dict[str, Path]) -> None:
+    """B13 round 35 C904 with C919 (ruling 107): a Status call the spent budget never started printed
+    `Not run: ... before status started` in Status and `Loop: not read (status did not finish in time)` beside
+    it. Each half is keyed on its own call's limit: the Loop line says `not read (status not started: the
+    report's time budget was used up)`, its NEXT half `not read (not started: ...)`, a NEXT spent after a
+    Status that answered says only that, and the Doctor line's not-judged clause keeps the idle advice."""
+    calls: list[str] = []
+
+    def status(config: object) -> list[str]:
+        calls.append("status")
+        return ["loop: skill current · baseline draft · topics 0"]
+
+    def loop_next(config: object) -> list[str]:
+        calls.append("loop_next")
+        return ["NEXT: none"]
+
+    hooks = setup_report.ReportHooks(status=status, loop_next=loop_next)
+    spent = setup_report._Run(fake_mac["config"], hooks, 0.5)  # every call's own limit is 0.2s or less
+    assert setup_report._status_section(spent)[0] == (
+        "Not run: the report's time budget was used up before status started."
+    )
+    line = setup_report._loop_line(spent)
+    assert line == (
+        "- Loop: not read (status not started: the report's time budget was used up); NEXT: not read (not "
+        "started: the report's time budget was used up)"
+    ), line
+    assert "did not finish" not in line and calls == []
+    assert setup_report._loop_unread_head(spent).endswith(f"{setup_report._IDLE_SORTS})")
+    # Status answered, then the budget ran out before the NEXT's call: only the NEXT half says not started
+    answered = setup_report._Run(fake_mac["config"], hooks, 600.0)
+    setup_report._status_section(answered)
+    answered.remaining = lambda: 0.0  # type: ignore[method-assign]
+    line = setup_report._loop_line(answered)
+    assert line == (
+        "- Loop: baseline drafted; NEXT: not read (not started: the report's time budget was used up)"
+    ), line
+    assert calls == ["status"]
+    # through the whole report, with a budget spent before Status: no "did not finish" on the Loop line
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=0.5)
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    assert loop.startswith("- Loop: not read (status not started: the report's time budget was used up)")
+    assert "did not finish" not in loop, loop
+
+
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("loop exploded")

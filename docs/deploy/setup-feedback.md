@@ -562,6 +562,9 @@ The outcome judges only the install. How far the loop got after it is the Summar
 status's loop line (when status cannot read the state, `not read: status says <status's own words>`, or `not read
 (status cannot read the state)` when it gives none; `not read (status did not finish in time)` when the report's
 time limit cut the status call, and `not read (status failed: <why>)` when it failed otherwise (B13 round 34 C801);
+`not read (status not started: the report's time budget was used up)` when the budget was spent before the status
+call started, and a NEXT half `not read (not started: the report's time budget was used up)` when it was spent before
+the loop's NEXT was read, each keyed on that call's own limit (B13 round 35 C904, C919);
 `unknown (no status loop line)` when status answered and printed no loop line); the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 except agentsync's own fixed `~/.local/bin/agentsync`, which holds no name, matches doctor's fixes and the status
 lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`,
