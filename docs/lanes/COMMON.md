@@ -1110,7 +1110,10 @@ including possessive "§A's X" targets, and fails unless the target paragraph ha
 
 Dated-line completeness (round 12 lane D): every dated line from §16.92 on must be claimed in its section or
 pinned by a test; after a rebase, claim or pin each one you added. The pin tables in tests/test_deploy_pack.py take
-round 35's rows the same way.
+round 35's rows the same way. A quote in a §16 paragraph counts as a dated line only with a real date, a numeric home
+of §16.92 or later and no `C<n>` template, and test_every_dated_line_from_round_11_on_is_held_by_a_test then calls it
+loose unless it is claimed or pinned: quote the form with `C<n>` or `<date>`, as each section's "A dated line this
+round writes reads" sentence does, or pin it (round 35 C982).
 
 Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round35/
 scratch-<lane>/`, not in /tmp. Only the land lock stays in /tmp. To damage a manifest for a test or probe, write the
@@ -1173,6 +1176,10 @@ the operator's ask rule. Every other full test run also takes the same lock: `lo
 scripts/gate.sh --lane`; `--affected` runs need no lock. If ship-land exits 5 with workers lost ("cannot send", exit
 137), that is memory, not your diff: wait for the 1-minute load to fall under about 400 and run it again. Exit 9 is
 CI it could not read: `nothing pushed` before the push (retry), `LANDED` after it (read the runs back by hand).
+If its line says `no CI run for <sha>`, CLAUDE.md's "CI is part of the gate" says when to dispatch `ci` and when
+never to (round 35 C982). A land run in the background can end while you think it is queued (round 34: exit 4, two
+hours lost): while you wait, read its log, and check that your own worktree's path shows in `ps -ax -o command | grep
+'<worktree>/scripts/ship-land'`, since other lanes' lands look the same otherwise.
 
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6); since round 27 P140 it
 also reads trunk's runs once before the gate, so a trunk already red stops the land before a 35-minute gate. If trunk is red, do not

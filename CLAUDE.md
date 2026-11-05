@@ -62,7 +62,7 @@ gated again), then reads the push's CI back as below. The user-level allow rule 
 it with no prompt; a bare `git push` still stops at the operator's `Bash(git push:*)` ask. Exit codes are in its
 header. Exit 9 is CI it could not read (gh failed, no run appeared, or a run lost its hosted runner): before the
 push it says `nothing pushed`; after it the line says `LANDED`, and the runs are read back by hand with the loop
-below. A run that lost its hosted runner (a failed job with no failed step and a step left unfinished, which both
+below (on `no CI run for <sha>`, the paragraph after that loop says when to dispatch `ci` and when never to). A run that lost its hosted runner (a failed job with no failed step and a step left unfinished, which both
 of ship-land's trunk reads tell from a red run) is rerun, `gh run rerun <id> --failed`, and the land run again once
 the rerun is green: it is never landed past, so neither `--allow-red-trunk` nor `--no-ci` is for it.
 `--allow-red-trunk` is only for a trunk run that ended red on tests (`gh run view <id> --log-failed`) the diff does
@@ -100,6 +100,16 @@ slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one attempt failed 
 green at 46:36; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner, counted from
 the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, and earlier ones 48 and 46);
 the job's limit is 80 minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
+
+A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for
+<sha> after N s` (exit 9 after `LANDED`), wait, and check that `gh run list --commit <sha>` is still empty about 15
+minutes after the push. If `git fetch` shows `origin/main` still at <sha>, run `gh workflow run ci --ref main`, and
+`gh workflow run diagrams --ref main` too if the diff touches `diagrams.yml`'s paths; then run ship-land again on
+that sha: it prints `HEAD is on origin/main already`, runs no gate and no push, and reads `ci` back (read `diagrams`
+with the loop above if its run starts late). If `main` has moved past <sha>, do not dispatch: a dispatch runs the
+branch tip, not <sha>, and `ci` cancels an in-progress run on `main` (`cancel-in-progress`); read back the newest
+run on `main` that contains <sha>. Never dispatch for a `gh run list` or `gh run view` that failed, where a run may
+be live: retry the read. A run that lost its hosted runner stays `gh run rerun <id> --failed`.
 
 Before starting work, check trunk: `gh run list --branch main --limit 5`. A red run on `main` is fixed
 before unrelated work lands on top of it. Read the failure with `gh run view <id> --log-failed`.

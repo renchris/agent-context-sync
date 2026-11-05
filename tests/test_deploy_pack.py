@@ -368,6 +368,35 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "3f1dee54, a docs-only" not in note and "3f1dee54, a docs-only" not in guide
 
 
+def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> None:
+    """B13 round 35 C982 with C990: three round 34 lessons were in no guide. A ship-land exit 9 with no run
+    left the hand loop printing nothing, which reads like success, and nothing said that a dispatch runs the
+    branch tip and, sharing the push's concurrency group, cancels a live run on main; a lane waited two hours
+    on a background land that had ended, and every lane's land looks the same to a bare ps; and a quoted
+    dated-line form with a real date and item counts as a loose dated line. CLAUDE.md ties the dispatch to
+    `no CI run for <sha>` alone, the lane brief points there and gives the worktree's own ps match and the
+    quoting rule, and C990: since C869 a detached land needs no signal reset, so the brief's stale `own pane`
+    warning is gone."""
+    guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
+    lanes = _page("docs/lanes/COMMON.md")
+    assert "A loop that prints nothing has read nothing: an empty list is not green." in guide
+    assert "If ship-land's line says `no CI run for <sha> after N s` (exit 9 after `LANDED`), wait," in guide
+    assert "run `gh workflow run ci --ref main`, and `gh workflow run diagrams --ref main` too" in guide
+    assert (
+        "If `main` has moved past <sha>, do not dispatch: a dispatch runs the branch tip, not <sha>," in guide
+    )
+    assert "Never dispatch for a `gh run list` or `gh run view` that failed, where a run may be live" in guide
+    assert "(on `no CI run for <sha>`, the paragraph after that loop says when to dispatch `ci`" in guide
+    assert 'If its line says `no CI run for <sha>`, CLAUDE.md\'s "CI is part of the gate" says when' in lanes
+    assert (
+        "your own worktree's path shows in `ps -ax -o command | grep '<worktree>/scripts/ship-land'`" in lanes
+    )
+    assert (
+        "quote the form with `C<n>` or `<date>`, as each section's \"A dated line this round writes" in lanes
+    )
+    assert "Run ship-land in your own pane" not in lanes and "never under nohup" not in lanes
+
+
 def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path: Path) -> None:
     """B13 round 29 C149, C150 (one defect): macOS's `com.apple.tmp_cleaner` runs daily at local midnight
     and deletes an empty folder under /tmp whose mtime is over 3 days old; `cp -Rp` keeps the fixture's, so

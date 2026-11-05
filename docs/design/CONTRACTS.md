@@ -38075,3 +38075,22 @@ in round 30)` reads `18 to 62` and `61:22, in round 34`. The runner wait, 9:49 o
 appearing as the guide counts it, goes in ci.yml's note only, as C864's did, and `timeout-minutes` stays 80.
 `test_claude_md_gives_cis_time_and_its_limit` pins the three files and moves in the same commit, with `18 to 60`
 refused in both guides and its margin read against 62.
+
+**The guides say when to dispatch `ci`, how to find your own land, and how to quote a dated line** (C982 with C990,
+makes worse True; docs only). Three round 34 lessons were in no guide. A ship-land exit 9 after `LANDED` with no run
+left CLAUDE.md's hand loop printing nothing, which reads like success; CLAUDE.md now says an empty list has read
+nothing and ties the remedy to ship-land's `no CI run for <sha> after N s` alone: wait about 15 minutes, dispatch `ci`
+(and `diagrams` when the diff touches its paths) only while `origin/main` is still at <sha>, then run ship-land again,
+which prints `HEAD is on origin/main already`, gates and pushes nothing and reads `ci` back. The item's own fix tied the
+dispatch to every exit 9, which is worse, measured: a dispatch runs the branch tip, not <sha> (with `main` moved on it
+ran afterwards and exited 9 again), ci's `cancel-in-progress` group on `main` cancels a live push run, and a failed `gh
+run list` or `gh run view` may sit beside a live run; so the guide says never to dispatch then, and to read the newest
+run on `main` that contains <sha> once `main` has moved. The lane brief (`docs/lanes/COMMON.md`'s Landing paragraph)
+points there and tells a lane waiting on a background land to match its own worktree's path in `ps -ax -o command`, as
+only the `lockf` child carries it (round 34's lane waited two hours on a land that had ended), and its dated-line
+completeness paragraph says a quote with a real date, a home of §16.92 or later and a real item is a loose dated line,
+so a form is quoted with `C<n>` or `<date>` (measured: such a line under §16.229 with round 34's date and an item
+number failed the scan, the `C<n>` and `<date>` forms passed). C990: since §16.228 C869 the two signal tests pass under `nohup` and `&` (measured on the
+round 34 land's own detached tree, gate `rc=0`), so the brief's `Run ship-land in your own pane, ... never under nohup`
+warning was stale; the lead's round 35 brief commit already dropped it from COMMON.md, and the test pins its
+absence. Test: `test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land`.
