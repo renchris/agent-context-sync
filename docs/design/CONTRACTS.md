@@ -6210,6 +6210,9 @@ only in Doctor, no probe), and the frozen CLI surface (`doctor` and `policy` hid
   the person's (...), not a step for the agent: show it to them`.
 - A part of status that raises (a broken `[governance]`, a newer-schema manifest) becomes one
   `<part>: cannot read the state: <error>` line; every check line still prints.
+  Amended 2026-11-04, §16.232 C937: a read in status's detail that fails while the lines below it still print (a
+  refused [governance], a hold list or purge queue not read, a refused open) reads `status: some of the state could
+  not be read: <words>`; `<part>: cannot read the state:` stays for a part that prints nothing after it.
 - The `doctor` alias, and any `status` under `AGENTSYNC_NO_NEXT_HINT=1`, prints no status or policy lines (item 4),
   so install.sh's step-5 output, and setup-report's tail of `install.out`, hold what the old doctor printed and
   no label names. `policy show` keeps them.
@@ -38586,6 +38589,16 @@ and `test_the_sync_stops_log_row_names_the_hold_record_and_the_purge_record` rea
 Test: `test_cli.py::test_a_sync_stopped_by_the_governance_folder_records_the_folder_not_a_file_c935` (the folder at
 0000 and 0600, suppressed.json at 0000).
 
+**A partial state read has one head of its own** (C937). Since C829 status's detail kept HOLD, last runs and the
+sources below a refused read, so `status: cannot read the state:` sat above a section that did read the state. The
+three partial sites (a [governance] that does not load, a hold list or record not read, a purge queue not read) now
+open with one constant, `cli.STATUS_PARTLY_UNREAD` (`status: some of the state could not be read: `), one string so
+the hold read's and the queue read's lines stay equal and are said once (I89, C832). `_guarded`'s `<part>: cannot read
+the state:` stays, true there: a lock, heartbeat or manifest failure prints nothing after it, and install.sh's and
+the guide's words for that whole-read failure need no change. Lane RA's report reader takes both heads. The pins in
+test_cli.py and test_setup_report.py that read status's real output move in this commit. Tests: those pins, among
+them `test_cli.py::test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check` and
+`::test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file`.
 **Status names the agent's chmod before the person's FAIL beside it** (C911; amends §16.226 C808). C808's order held
 only in install.sh: with the audit trail at 0000 beside a suppression list moved aside (rehearsal state TRAIL0),
 `agentsync status` led with the person's governance.suppressed line as `not a step for the agent`, so an agent

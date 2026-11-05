@@ -1596,9 +1596,7 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
     try:
         gov = governance.load_governance(config.config_path)
     except Exception as exc:  # its [FAIL] governance.config line says why
-        out.append(
-            f"status: cannot read the state: {_unread_words(exc, refused='governance.config', config=config)}"
-        )
+        out.append(f"{STATUS_PARTLY_UNREAD}{_unread_words(exc, refused='governance.config', config=config)}")
     # a governance file that is not a file: one line each, and the rest still print (B13 round 26 E43); read
     # apart, so a queue that is not a file never hides the holds read, and a hold list that is not one never
     # hides sources.toml's own hold (B13 round 27 P44)
@@ -1613,7 +1611,7 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
                 raise
             # one this account cannot open keeps the lines below too, and a hold record that cannot be read
             # hides none of the holds the hold list lists (B13 round 30 C349; ruling 41)
-            out.append(f"status: cannot read the state: {_unread_words(exc, config=config)}")
+            out.append(f"{STATUS_PARTLY_UNREAD}{_unread_words(exc, config=config)}")
             holds = governance.config_holds(gov)
             with contextlib.suppress(AgentSyncError):  # the list's own failure: its line above
                 listed = governance.state_holds(config.state_paths.root)
@@ -1628,7 +1626,7 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
             exc.__cause__, PermissionError
         ):
             raise
-        line = f"status: cannot read the state: {_unread_words(exc, config=config)}"
+        line = f"{STATUS_PARTLY_UNREAD}{_unread_words(exc, config=config)}"
         if line not in out:  # governance/ itself: one line, not one per file under it (I89)
             out.append(line)
         queued, kept = [], []
@@ -2486,6 +2484,12 @@ def _check(
 
 
 _PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
+
+STATUS_PARTLY_UNREAD = "status: some of the state could not be read: "
+"""The head of a status detail line for a read that failed while the lines below it still print (a refused
+[governance], a hold list or purge queue not read, a refused open): one constant, so the hold read's and the
+queue read's lines stay equal and are said once (I89, C832). ``<part>: cannot read the state:`` stays for a
+part that prints nothing after it (B13 round 35 C937)."""
 
 _PURGE_YOURS_REPORT_NOTE = (
     "yours: the Summary's Loop line says whether a WAITING ON YOU line still names it; "

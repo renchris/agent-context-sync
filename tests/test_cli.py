@@ -3959,9 +3959,9 @@ def test_a_governance_folder_this_account_cannot_search_is_one_fail_naming_the_f
     assert queue.endswith(
         f"not checked: {gov} cannot be opened: Permission denied; the governance.hold line says why"
     )
-    (unread,) = [ln for ln in out if ln.startswith("status: cannot read the state: ")]
+    (unread,) = [ln for ln in out if ln.startswith(cli.STATUS_PARTLY_UNREAD)]
     assert unread == (
-        "status: cannot read the state: agentsync's governance folder cannot be opened: Permission denied; "
+        f"{cli.STATUS_PARTLY_UNREAD}agentsync's governance folder cannot be opened: Permission denied; "
         "the governance.hold [FAIL] line says why"
     ), unread
     assert f"error: state: {gov} cannot be opened: Permission denied (fix: {fix})" in err.splitlines(), err
@@ -7460,7 +7460,7 @@ def test_a_hold_record_that_cannot_be_read_hides_no_hold_the_hold_list_lists(
         said = (
             "hold-record.json cannot be opened: Permission denied; the governance.hold [FAIL] line says why"
         )
-        assert f"status: cannot read the state: {said}" in out, out
+        assert f"status: some of the state could not be read: {said}" in out, out
 
 
 def test_an_unreadable_hold_record_hides_no_hold_the_audit_trail_keeps(
@@ -9441,7 +9441,7 @@ def test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_c
         finally:
             target.chmod(0o600)
         assert rc == cli.EXIT_FAILED, out
-        said = [ln for ln in out if "cannot read the state" in ln]
+        said = [ln for ln in out if ln.startswith(cli.STATUS_PARTLY_UNREAD)]  # C937's partial-read head
         want = f"{target.name} cannot be opened: Permission denied; the {check} [FAIL] line says why"
         assert said and all(ln.endswith(want) for ln in said), said
         assert not any("Error:" in ln for ln in said), said
@@ -9933,9 +9933,7 @@ def test_status_prints_every_check_when_its_state_cannot_be_read(
     assert len(checks) > 15 and any(ln.startswith("loop: ") for ln in out), out
     if breakage == "governance":
         assert rc == cli.EXIT_FAILED and any(ln.startswith("[FAIL] governance.config") for ln in checks)
-        said = (
-            "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
-        )
+        said = f"{cli.STATUS_PARTLY_UNREAD}the configuration is refused: the governance.config [FAIL] line"
         assert any(ln.startswith(said) for ln in out)
         # B13 round 18 V10: only the lines that need [governance] go; the manifest's still print
         assert any(ln.startswith("last runs: ") for ln in out) and not any(
@@ -13940,7 +13938,7 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     lines = cli._status_lines(initialised)
     assert any(ln.startswith("HOLD: hold all (state): matter 8") for ln in lines), lines
     unread = (
-        "status: cannot read the state: the purge queue is not a file; the governance.purge_queue [FAIL] line"
+        f"{cli.STATUS_PARTLY_UNREAD}the purge queue is not a file; the governance.purge_queue [FAIL] line"
     )
     assert any(ln.startswith(unread) for ln in lines), lines
     capsys.readouterr()
@@ -13957,9 +13955,7 @@ def test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_
     _make_not_a_file(governance._holds_file(root), "a folder")
     lines = cli._status_lines(load_config(initialised.config_path))
     assert any(ln.startswith("HOLD: hold all (config)") for ln in lines), lines
-    held = (
-        "status: cannot read the state: the hold list is not a file; the governance.hold [FAIL] line says why"
-    )
+    held = f"{cli.STATUS_PARTLY_UNREAD}the hold list is not a file; the governance.hold [FAIL] line says why"
     assert held in lines, lines
 
 

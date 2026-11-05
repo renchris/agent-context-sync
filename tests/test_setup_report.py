@@ -4560,7 +4560,7 @@ def test_a_broken_governance_table_still_renders_every_check(
     doctor_section, status = section(text, "Doctor"), section(text, "Status")
     assert rc == 0 and "This section failed" not in doctor_section + status
     assert "[FAIL] governance.config" in doctor_section and "loop: skill " in status
-    assert "status: cannot read the state: the configuration is refused" in status
+    assert "status: some of the state could not be read: the configuration is refused" in status  # C937
 
 
 # ---- the redactor ---------------------------------------------------------------------------------------
@@ -10185,7 +10185,10 @@ def test_a_loop_stage_status_left_unread_by_its_read_note_says_its_words_c638(
         loop = _line(section(text, "Summary"), "- Loop: ")
         assert loop.startswith(f"- Loop: not read: status says {note}; NEXT: "), loop
         assert "status cannot read the state" not in loop, loop
-    unread = "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
+    unread = (
+        "status: some of the state could not be read: the configuration is refused: the governance.config "
+        "[FAIL] line"
+    )
     note = f"last runs: {manifest_mod.SCHEMA_READ_NOTE}"
     hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current", f"{unread} says why", note])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
@@ -10218,7 +10221,10 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: baseline drafted;")
     # V10: a refused [governance] beside "manifest: none yet" is a Mac that never synced, not unread
-    refused = "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
+    refused = (
+        "status: some of the state could not be read: the configuration is refused: the governance.config "
+        "[FAIL] line"
+    )
     none_yet = "manifest: none yet (no sync has run)"
     hooks = setup_report.ReportHooks(
         status=lambda c: ["loop: skill current · baseline missing", f"{refused} says why", none_yet]
@@ -10250,8 +10256,8 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     _rc, text, _ = report(tmp_path, cfg)
     status = section(text, "Status")
     assert (
-        "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line "
-        "says why" in status
+        "status: some of the state could not be read: the configuration is refused: the governance.config "
+        "[FAIL] line says why" in status
     ), status
     assert "last runs: " in status and "retention:" not in status, status
     assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: synced;")
