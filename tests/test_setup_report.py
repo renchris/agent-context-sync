@@ -60,7 +60,7 @@ from agentsync.config import (
     load_config,
     set_source_exclude,
 )
-from agentsync.convert import image, media, msg, ocr, pdf, recording, speech, vtt
+from agentsync.convert import diagram, image, media, msg, ocr, pdf, recording, speech, vtt
 from agentsync.convert import registry as registry_mod
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
@@ -15510,6 +15510,7 @@ REASONS = {
     msg.NOT_MSG_REASON: "not the type its name says",
     f"{msg.NOT_MSG_REASON}: OleFileError": "not the type its name says",
     msg.DAMAGED_MSG_REASON: "damaged",
+    diagram._NOT_DRAWIO: "not the type its name says",  # B13 round 35 C927
     cycle.HYDRATION_REFUSED: "download refused by the OS",
     None: "no reason recorded",
     "  ": "no reason recorded",
@@ -15559,6 +15560,7 @@ def test_every_unreadable_reason_is_a_class_the_repeat_conversions_note_names() 
         recording._NOT_RECORDING,
         recording._NOTHING,
         recording._UNDECODABLE,
+        diagram._NOT_DRAWIO,
     ]
     classes = {setup_report.quarantine_class(r) for r in reasons}
     assert classes <= set(setup_report._UNREADABLE_CLASSES), classes - set(setup_report._UNREADABLE_CLASSES)

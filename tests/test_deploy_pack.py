@@ -6491,6 +6491,14 @@ _ROUND_34_E_PARAGRAPH_AMENDS = (
 """Round 34 lane E's dated lines at sections its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: C847's correction of er-28#0's `whenever a folder is set`."""
 
+_ROUND_35_E_PARAGRAPH_AMENDS = (
+    ("16.28", "Amended 2026-10-11 by §16.48 (R36): the class `damaged`", "§16.233 C927, C930"),
+    ("16.42", "**Bounds.** No XML part is inflated past 32 MiB", "§16.233 C927, C930"),
+)
+"""Round 35 lane E's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: C927's and C930's at the class table's dated block and the diagram Bounds
+bullet."""
+
 _ROUND_32_RA_PARAGRAPH_AMENDS = (
     ("16.14", "KISS K16b revision (2026-10-05; supersedes the paragraphs above", "§16.213 C620"),
     ("16.40", "**A run with no end line says whether its process is gone**", "§16.213 C614"),
@@ -6864,6 +6872,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_32_E_PARAGRAPH_AMENDS,
         *_ROUND_33_E_PARAGRAPH_AMENDS,
         *_ROUND_34_E_PARAGRAPH_AMENDS,
+        *_ROUND_35_E_PARAGRAPH_AMENDS,
         *_ROUND_32_RA_PARAGRAPH_AMENDS,
         *_ROUND_33_RA_PARAGRAPH_AMENDS,
         *_ROUND_34_RA_PARAGRAPH_AMENDS,

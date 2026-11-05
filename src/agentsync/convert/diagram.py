@@ -41,7 +41,7 @@ from agentsync.convert._common import (
     _python_version,
 )
 from agentsync.convert.base import OptionValue, make_unit
-from agentsync.errors import ConversionError
+from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import plural
@@ -273,6 +273,17 @@ def _drawio_page(name: str, model: ET.Element) -> _Page:
     return page
 
 
+# A .drawio that is no draw.io diagram (B13 round 35 C927): text, PNG or PDF bytes, blanks, or well-formed
+# XML under another root element (an <svg>, a draw.io <mxlibrary>, which is no diagram).  Parsing the same
+# bytes again can never give another answer, so it is one settled stub at first read, as a wrong-type .vsdx,
+# .potx or .msg is, never a failure tried again on the next runs.  A truncated diagram, a declaration alone,
+# HTML that is not well-formed and an unsupported encoding open with markup, so they stay failed conversions.
+_NOT_DRAWIO = "not-drawio (not a draw.io diagram)"
+# what may stand before a diagram's first "<": NULs (UTF-16 without a mark), the UTF-8 and UTF-16 byte order
+# marks, and blanks
+_BEFORE_MARKUP = b"\x00\xef\xbb\xbf\xfe\xff \t\r\n"
+
+
 def _drawio_pages(src: Path) -> list[_Page]:
     budget = _Budget()
     try:
@@ -282,11 +293,20 @@ def _drawio_pages(src: Path) -> list[_Page]:
         raise ConversionError(f"cannot read: {exc}") from exc
     if len(data) > _MAX_TOTAL_BYTES:  # parsed whole, so bounded like an inflated part (about 10x in memory)
         raise ConversionError(f"diagram too large: over {_MAX_TOTAL_BYTES} bytes of XML")
-    top = _parse(data, "the draw.io file")
+    if not data:  # no bytes have no type to disagree with the name (B13 round 35 C930)
+        raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+    try:
+        top = _parse(data, "the draw.io file")
+    except ConversionError:
+        # decided only after the parser failed, never before it: expat reads UTF-16 with or without a byte
+        # order mark, which a test for a leading "<" would call no diagram (B13 round 35 C927)
+        if not data.lstrip(_BEFORE_MARKUP).startswith(b"<"):
+            raise UnreadableSourceError(_NOT_DRAWIO) from None
+        raise
     if top.tag == "mxGraphModel":
         return [_drawio_page("Page 1", top)]
     if top.tag != "mxfile":
-        raise ConversionError("not a draw.io diagram (no <mxfile> or <mxGraphModel> root element)")
+        raise UnreadableSourceError(_NOT_DRAWIO)
     pages: list[_Page] = []
     for n, diagram in enumerate(top.iter("diagram"), start=1):
         name = _one_line(diagram.get("name") or "") or f"Page {n}"

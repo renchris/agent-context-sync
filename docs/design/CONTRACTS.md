@@ -8577,6 +8577,8 @@ Amended 2026-10-14, §16.85 K59 (by §16.74 J52, J54): an image is no longer cou
 `ready`. Its suffix is in the withheld set for a row when its stub page's `reason:` reads `withheld by label rule:
 the label of a <suffix> file cannot be read` (`_Mirror.read_image_pages`); a page that says `no converter for` keeps
 the row `no converter`; only a page the report could not read goes by the OCR probe.
+Amended 2026-11-04, §16.233 C927, C930: the not-the-type row also takes `not-drawio` (a `.drawio` that is no
+draw.io diagram), and a zero-byte file under an Office, Outlook or draw.io name is `empty-output`, so `empty`.
 Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld` reads it (its
 `reason:`, its summary less `refused: `, or the body marker), not by its `reason:` alone, so a page from before its
 `reason:` said withheld (§16.66 G29) is withheld under `reason: no converter for <suffix>`, as its
@@ -12797,6 +12799,10 @@ it too. It uses the standard library only: no new dependency.
   name an undefined entity or the declared encoding). Entity expansion is bounded by expat's
   amplification limit (a billion-laughs file is a `not well-formed XML` failure); external entities are
   never fetched.
+  Amended 2026-11-04, §16.233 C927, C930: zero bytes are the `empty-output` stub, and bytes that fail the
+  parser without opening with markup (text, blanks, PDF or PNG bytes), or well-formed XML under another root
+  element, are the `not-drawio (not a draw.io diagram)` stub, settled at first read; a file that opens with
+  markup and fails the parser (truncated, a declaration alone) stays `conversion failed`.
 - **Labels.** `.vsdx` and `.vsdm` join `policy.OOXML_SUFFIXES`, so a Visio drawing is screened like any
   Office file (an excluded label refuses it, `refuse_unlabelled` refuses an unlabelled one, a name whose
   bytes are not a ZIP is `not-ooxml`) and, through `cycle._LABEL_CAPABLE`, is re-screened when the policy
@@ -38089,6 +38095,33 @@ three lines (`not judged`, ahead of unexpected) is lane RA's and install.sh's na
 (ruling 108), so this line never names AGENTSYNC_REPORT_TIME_LIMIT, which does not move the helper's fixed 5 s. Test:
 `test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (the three
 checks, with and without developer tools; the OCR helper ready once it answers).
+
+**A zero-byte or wrong-type file says so, once** (C930 and C927, makes worse True each; `agentsync.policy`,
+`agentsync.convert`; dated lines at §16.28 and §16.42). A zero-byte `.potx`, `.vsdx`, `.docx`, `.xlsx` or `.msg`
+was classed `not the type its name says` and a zero-byte `.drawio` `conversion failed`, while no bytes have no type
+to disagree with the name; and a `.drawio` holding text was a failed conversion tried three times, an error line
+each run, where a wrong-type `.vsdx` is one stub at first read. Three scoped edits, each reusing
+`policy.EMPTY_OUTPUT_REASON`: `screen_file`'s Office guard returns `empty-output` for `ContainerKind.EMPTY` after
+the label decision, never at the top of the screen (the verifier measured ten zero-byte text types, `.txt` to
+`.rtf`, turning from pages into stubs there, and a `refuse_unlabelled` refusal, never cached, turning into a cached
+`empty`); `MsgConverter.convert` raises it before the magic check; and `diagram._drawio_pages` raises it for zero
+bytes first, then, only after the parser has failed, `not-drawio (not a draw.io diagram)` (`_NOT_DRAWIO`, private)
+when the bytes do not open with `<` past NULs, byte order marks and blanks, and at the wrong root. Never before the
+parser: expat reads UTF-16 with and without a mark, which a test for a leading `<` would have made six settled
+stubs. A truncated file, a declaration alone, HTML that is not well-formed and UTF-32 stay `conversion failed`.
+`quarantine_class` reads `not-drawio` as `not the type its name says`. No emitter bump: a row already settled keeps
+its class until its bytes change, and a failed one was never cached. Not built here: a zero-byte `.pdf`, `.eml`,
+`.odt` or `.teams.json` still reads `conversion failed` and `.vtt` `other`. Tests:
+`test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930` (six names, three syncs,
+one try), `test_convert_family.py::test_a_drawio_that_is_no_diagram_is_one_stub_of_its_type_c927`,
+`test_convert_family.py::test_a_truncated_drawio_stays_a_failed_conversion_tried_again_c927`,
+`test_convert_family.py::test_a_typed_name_over_other_bytes_keeps_not_the_type_its_name_says_c930`,
+`test_convert_family.py::test_a_zero_byte_text_file_stays_a_page_c930`,
+`test_convert_family.py::test_a_zero_byte_office_file_under_a_label_rule_stays_label_unreadable_c930`,
+`test_convert_formats.py::test_a_drawio_that_is_no_diagram_is_settled_at_first_read_c927_c930`,
+`test_convert_formats.py::test_a_drawio_that_opens_with_markup_stays_a_failed_conversion_c927` and
+`test_convert_formats.py::test_a_utf_16_drawio_still_converts_c927`, with the wrong-root pin in
+`test_a_diagram_that_cannot_be_read_fails_bounded` moved and the reason in the report's class tables.
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

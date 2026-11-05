@@ -254,6 +254,8 @@ class MsgConverter:
                 head = fh.read(_HEAD_BYTES)
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc}") from exc
+        if not head:  # no bytes have no type to disagree with the name (B13 round 35 C930)
+            raise UnreadableSourceError(policy.EMPTY_OUTPUT_REASON)
         if head[: len(olefile.MAGIC)] != olefile.MAGIC:
             if _rfc822_head(head):  # mail saved as MIME text under a .msg name: an .eml by another name
                 return self._eml.convert(src, name=name)

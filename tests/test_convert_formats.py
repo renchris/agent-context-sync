@@ -4772,10 +4772,11 @@ def test_a_visio_master_is_read_only_when_needed_and_within_the_caps(
 
 
 def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
-    """A deflate bomb stops at the part limit; another XML document, a broken page and a non-zip .vsdx fail
-    with what they are. A diagram with no text at all is a current page that says so, as an empty deck is
-    (B13 round 19 W27: it was the empty-output stub, "could not convert", and a quarantine row): each page
-    reads ``[no text on this page]``, and one with no pages ``[empty diagram: no pages]``."""
+    """A deflate bomb stops at the part limit; a broken page and a non-zip .vsdx fail with what they are, and
+    another XML document is the ``not-drawio`` stub. A diagram with no text at all is a current page that
+    says so, as an empty deck is (B13 round 19 W27: it was the empty-output stub, "could not convert", and a
+    quarantine row): each page reads ``[no text on this page]``, and one with no pages ``[empty diagram: no
+    pages]``."""
     reg = Registry.default(CFG)
     bomb = build_drawio(tmp_path / "bomb.drawio", compressed=True, model="A" * (40 * 1024 * 1024))
     other = _write(tmp_path, "other.drawio", '<svg xmlns="http://www.w3.org/2000/svg"/>')
@@ -4810,9 +4811,9 @@ def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
     assert got["bomb.drawio"].status is ConversionStatus.FAILED and "too large" in str(
         got["bomb.drawio"].reason
     )
-    assert got["other.drawio"].reason == (
-        "conversion failed: not a draw.io diagram (no <mxfile> or <mxGraphModel> root element)"
-    )
+    # another XML document under the name is one settled stub of its type (B13 round 35 C927)
+    assert got["other.drawio"].status is ConversionStatus.UNREADABLE
+    assert got["other.drawio"].reason == "not-drawio (not a draw.io diagram)"
     assert got["garbled.drawio"].status is ConversionStatus.FAILED
     for name, said in (
         ("blank.drawio", "## Overview\n\n[no text on this page]\n\n## Notes\n\n[no text on this page]"),
@@ -5089,6 +5090,70 @@ def test_a_visio_shape_keeps_its_own_text_whatever_its_id(tmp_path: Path, shapes
     assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
         f"## Site plan\n\n{lines}\n## Frame"
     )
+
+
+_ROUTER = '<mxGraphModel><root><mxCell id="2" value="Contoso router" vertex="1"/></root></mxGraphModel>'
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",
+        b"a flow, typed as text\n",
+        b"  \r\n\t",
+        b"\xef\xbb\xbf",
+        b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n",
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+        b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+        b"<mxlibrary>[]</mxlibrary>",
+    ],
+    ids=["zero", "text", "blanks", "bom-only", "pdf", "png", "svg", "library"],
+)
+def test_a_drawio_that_is_no_diagram_is_settled_at_first_read_c927_c930(tmp_path: Path, data: bytes) -> None:
+    """B13 round 35 C927 and C930: bytes that cannot be a diagram are an UnreadableSourceError, one settled
+    stub, never a ConversionError tried again. Zero bytes are tested first and are ``empty-output``; the rest
+    are decided only after the parser failed (or at the wrong root), ``not-drawio``."""
+    src = _write(tmp_path, "Contoso flow.drawio", data)
+    with pytest.raises(UnreadableSourceError) as err:
+        DiagramConverter(CFG).convert(src, name=src.name)
+    want = policy.EMPTY_OUTPUT_REASON if not data else "not-drawio (not a draw.io diagram)"
+    assert str(err.value) == want
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b'<mxfile host="x"><diagram name="P"><mxGraphModel><root>',
+        b'<?xml version="1.0"?>',
+        b"<html><body><p>Contoso<br></body></html>",
+        _ROUTER.encode("utf-32"),
+    ],
+    ids=["truncated", "declaration-only", "html", "utf-32"],
+)
+def test_a_drawio_that_opens_with_markup_stays_a_failed_conversion_c927(tmp_path: Path, data: bytes) -> None:
+    """A truncated diagram, a declaration alone, HTML that is not well-formed and an encoding expat does not
+    read open with markup: they stay a failed conversion, tried again, as before."""
+    src = _write(tmp_path, "Contoso flow.drawio", data)
+    with pytest.raises(ConversionError) as err:
+        DiagramConverter(CFG).convert(src, name=src.name)
+    assert not isinstance(err.value, UnreadableSourceError)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"\xfe\xff" + _ROUTER.encode("utf-16-be"),
+        _ROUTER.encode("utf-16-be"),
+        b"\xff\xfe" + ("\n" + _ROUTER).encode("utf-16-le"),
+        b"\xfe\xff" + ('<?xml version="1.0" encoding="UTF-16"?>' + _ROUTER).encode("utf-16-be"),
+    ],
+    ids=["utf-16be-bom", "utf-16be-no-bom", "utf-16le-bom-newline", "utf-16be-bom-declaration"],
+)
+def test_a_utf_16_drawio_still_converts_c927(tmp_path: Path, data: bytes) -> None:
+    """The not-drawio test runs only after the parser failed: a test for a leading ``<`` before it would make
+    each of these, which expat reads, a settled stub (the verifier's six UTF-16 pages)."""
+    src = _write(tmp_path, "Contoso flow.drawio", data)
+    assert "Contoso router" in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
 
 
 @pytest.mark.parametrize(

@@ -626,7 +626,9 @@ class Screening:
     """A file (or item) that must not be converted, and why."""
 
     status: ScreenStatus
-    code: str  # encrypted-office | encrypted-pdf | label-excluded | unlabelled | label-unreadable
+    # encrypted-office | encrypted-pdf | label-excluded | unlabelled | label-unreadable | not-ooxml |
+    # empty-output
+    code: str
     reason: str  # one line, deterministic; UNREADABLE/REFUSED stub text
     label: SensitivityLabel | None = None
 
@@ -741,6 +743,8 @@ def screen_file(path: Path, *, name: str, policy: PolicyConfig) -> Screening | N
             decision = label_decision(read_labels(path, name=name, kind=kind), policy)
             if decision is not None:
                 return decision
+        if kind is ContainerKind.EMPTY:  # no bytes have no type to disagree with the name (B13 round 35 C930)
+            return Screening(ScreenStatus.UNREADABLE, "empty-output", EMPTY_OUTPUT_REASON)
         return Screening(ScreenStatus.UNREADABLE, "not-ooxml", NOT_OOXML_REASON)
     if not policy.labels_active:
         return None

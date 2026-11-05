@@ -8206,7 +8206,7 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
         return "empty"
     if text.startswith("damaged-msg"):
         return "damaged"
-    if text.startswith(("not-ooxml", "not a zip", "not-msg")):
+    if text.startswith(("not-ooxml", "not a zip", "not-msg", "not-drawio")):
         return "not the type its name says"
     return "other"
 

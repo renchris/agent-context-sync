@@ -14,6 +14,7 @@ import pytest
 
 from agentsync import convert as convert_pkg
 from agentsync import cycle as cycle_mod
+from agentsync import policy as policy_mod
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file
 from agentsync.convert import _common as common_mod
@@ -221,6 +222,118 @@ def test_a_word_document_named_potx_with_utf_16_content_types_is_converted_once(
     row = _row(config, "Contoso renamed doc.potx")
     assert row.state is RowState.QUARANTINED
     assert quarantine_class(row.state_reason) == "not the type its name says"
+
+
+def _tries(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The names the cycle hands to ``convert_file``, one per conversion it starts (but make_env's
+    ``README.txt``)."""
+    tries: list[str] = []
+    real = cycle_mod.convert_file
+
+    def counted(src: Path, *, name: str, **kw):  # type: ignore[no-untyped-def]
+        if name != "README.txt":
+            tries.append(name)
+        return real(src, name=name, **kw)
+
+    monkeypatch.setattr(cycle_mod, "convert_file", counted)
+    return tries
+
+
+@pytest.mark.parametrize("suffix", [".potx", ".vsdx", ".docx", ".xlsx", ".msg", ".drawio"])
+def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """B13 round 35 C930: a zero-byte ``.potx``, ``.vsdx`` or ``.msg`` was classed ``not the type its name
+    says`` and a zero-byte ``.drawio`` ``conversion failed``, tried 3 times; no bytes have no type to disagree
+    with the name, and the report's class list has ``empty``. Each is one ``empty-output`` stub, read once
+    over three syncs."""
+    config, src = make_env(tmp_path)
+    name = f"Contoso zero{suffix}"
+    (src / name).write_bytes(b"")
+    tries = _tries(monkeypatch)
+    for _ in range(3):
+        assert run(config).exit_code == 0
+    assert tries == [name]
+    row = _row(config, name)
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert quarantine_class(row.state_reason) == "empty"
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [("Contoso text.drawio", b"a flow, typed as text\n"), ("Contoso blanks.drawio", b"  \r\n\t")],
+)
+def test_a_drawio_that_is_no_diagram_is_one_stub_of_its_type_c927(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, data: bytes
+) -> None:
+    """B13 round 35 C927: a ``.drawio`` holding text was a failed conversion tried 3 times, an error line each
+    run, where a wrong-type ``.vsdx``, ``.potx`` or ``.msg`` is one stub at first read. It is one
+    ``not-drawio`` stub, ``not the type its name says``."""
+    config, src = make_env(tmp_path)
+    (src / name).write_bytes(data)
+    tries = _tries(monkeypatch)
+    for _ in range(3):
+        assert run(config).exit_code == 0
+    assert tries == [name]
+    row = _row(config, name)
+    assert row.state is RowState.QUARANTINED and row.state_reason == "not-drawio (not a draw.io diagram)"
+    assert quarantine_class(row.state_reason) == "not the type its name says"
+
+
+def test_a_truncated_drawio_stays_a_failed_conversion_tried_again_c927(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A diagram cut off part way opens with markup: it may read whole on a later run (a sync app still
+    writing it), so it keeps the failed conversion and its tries."""
+    config, src = make_env(tmp_path)
+    (src / "Contoso cut.drawio").write_bytes(b'<mxfile host="x"><diagram name="P"><mxGraphModel><root>')
+    tries = _tries(monkeypatch)
+    for _ in range(4):
+        assert run(config).exit_code == 0
+    assert len(tries) == 1 + cycle_mod._CONVERT_RETRIES
+    row = _row(config, "Contoso cut.drawio")
+    assert quarantine_class(row.state_reason) == "conversion failed"
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [("Contoso not a zip.potx", b"not a zip"), ("Contoso text.msg", b"plain text, not mail\n")],
+)
+def test_a_typed_name_over_other_bytes_keeps_not_the_type_its_name_says_c930(
+    tmp_path: Path, name: str, data: bytes
+) -> None:
+    """Only zero bytes are ``empty``: other bytes under an Office or Outlook name keep their stub's class."""
+    config, src = make_env(tmp_path)
+    (src / name).write_bytes(data)
+    assert run(config).exit_code == 0
+    assert quarantine_class(_row(config, name).state_reason) == "not the type its name says"
+
+
+@pytest.mark.parametrize("suffix", [".txt", ".url", ".md"])
+def test_a_zero_byte_text_file_stays_a_page_c930(tmp_path: Path, suffix: str) -> None:
+    """The empty check sits inside the Office guard, never at the top of the screen: zero-byte text types
+    are pages today and stay pages (no older test held this)."""
+    config, src = make_env(tmp_path)
+    name = f"Contoso zero{suffix}"
+    (src / name).write_bytes(b"")
+    assert run(config).exit_code == 0
+    assert _row(config, name).state is RowState.LIVE
+
+
+def test_a_zero_byte_office_file_under_a_label_rule_stays_label_unreadable_c930(tmp_path: Path) -> None:
+    """The empty check comes after the label decision: under ``refuse_unlabelled`` a zero-byte ``.docx`` keeps
+    its never-cached REFUSED ``label unreadable``, never a cached UNREADABLE ``empty``."""
+    zero = tmp_path / "Contoso zero.docx"
+    zero.write_bytes(b"")
+    strict = policy_mod.PolicyConfig(refuse_unlabelled=True)
+    decision = policy_mod.screen_file(zero, name=zero.name, policy=strict)
+    assert decision is not None and decision.status is policy_mod.ScreenStatus.REFUSED
+    assert quarantine_class(decision.reason) == "label unreadable"
+    plain = policy_mod.screen_file(zero, name=zero.name, policy=policy_mod.PolicyConfig())
+    assert plain is not None and (plain.status, plain.code) == (
+        policy_mod.ScreenStatus.UNREADABLE,
+        "empty-output",
+    )
 
 
 def test_every_presentation_main_type_stays_on_python_pptx(tmp_path: Path) -> None:
