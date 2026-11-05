@@ -49,7 +49,10 @@ name: ci
 # at 6706 tests), so 80 stays 21:35 above them; runner waits reached 18:03 (55808777), not counted against
 # timeout-minutes (B13 round 33 C772). Round 33's eight jobs (7b23a0a7 to 4e0e8604) took 43:16 to 57:17, all green
 # on attempt 1 (the slowest b948dfa7, pytest's step 56:47 at 7133 tests), so 80 stays 22:43 above them; runner waits
-# reached 13:58 (4e0e8604), not counted against timeout-minutes (B13 round 34 C864).
+# reached 13:58 (4e0e8604), not counted against timeout-minutes (B13 round 34 C864). Round 34's twelve jobs
+# (4288dd6a to 06ee4f6d) took 45:36 to 61:22, all green on their last attempt (75b0ff8d's first attempt failed a
+# test at 36:27, its rerun 46:36; the slowest dacdf5ba, pytest's step 60:36 at 7292 tests), so 80 stays 18:38 above
+# them; runner waits reached 9:49 (b028de91), not counted against timeout-minutes (B13 round 35 C985).
 on:
   workflow_dispatch:
   push:

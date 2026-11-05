@@ -38065,3 +38065,13 @@ cleared a test and this had not fired. Tests: `test_a_re_run_that_only_skips_a_f
 the call, a skip at setup and an imperative xfail, alone and beside a flake, land and lane),
 `test_a_re_run_whose_journal_cannot_be_read_clears_nothing`. §16.223's C800 rule gets a dated line, pinned in
 `_ROUND_35_D_PARAGRAPH_AMENDS`.
+
+**Round 34's twelve CI jobs are in CLAUDE.md, ci.yml's note and the lane brief** (C985; docs only). Jobs 4288dd6a to
+06ee4f6d took 45:36 to 61:22, all green on their last attempt (75b0ff8d's first attempt failed a test at 36:27, its
+rerun 46:36), the slowest on dacdf5ba (7292 tests, pytest's step 60:36), 18:38 under the limit of 80, so CLAUDE.md's
+`about 18 to 60 minutes` was false, not only behind. Following the series' round-up (51:10 gave 52, 59:43 gave 60), the
+headline is `about 18 to 62 minutes`, and docs/lanes/COMMON.md's `CI takes 18 to 60 minutes a run (the slowest, 59:43,
+in round 30)` reads `18 to 62` and `61:22, in round 34`. The runner wait, 9:49 on b028de91 counted from the run
+appearing as the guide counts it, goes in ci.yml's note only, as C864's did, and `timeout-minutes` stays 80.
+`test_claude_md_gives_cis_time_and_its_limit` pins the three files and moves in the same commit, with `18 to 60`
+refused in both guides and its margin read against 62.
