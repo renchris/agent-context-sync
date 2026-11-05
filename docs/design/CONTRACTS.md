@@ -37951,3 +37951,23 @@ and runs nothing again; gate.sh is unchanged for it. The finding itself needed n
 harvest, not 17, all `rerun_passed=0`, so no re-run has yet passed a test; its step 3 is C876's fix. Tests:
 `test_a_collection_error_beside_a_flake_stays_red` (land and lane),
 `test_the_failed_verb_reads_a_finished_journal_only`, extended.
+
+### 16.230 Round 35: the report: another home cut whole however spelled, a read cut or never started, and the Items order (2026-11-04, wave B13 round 35 lane RA)
+
+Reserved for round 35 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 35").
+
+### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
+
+Reserved for round 35 lane RB of B13.
+
+### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
+
+Reserved for round 35 lane B of B13.
+
+### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
+
+Reserved for round 35 lane E of B13.
+
+### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
+
+Reserved for round 35 lane D of B13.

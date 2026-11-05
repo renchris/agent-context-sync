@@ -2418,6 +2418,40 @@ section's landed tip, BASE `4288dd6a`, ids C901 and up, prompt v34, outputs `rou
 at `4e0e8604`, the v32 block at `c93fcd96` and the v31 block at `ed901cd3`. The stop rule names Codex and Gemini: a
 clean round without Gemini goes to the operator before the loop closes.
 
+### B13 round 35: v34 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-04)
+
+Run `wf_cd264238-72e` on `06ee4f6d` (BASE `4288dd6a`; 114 agents, 0 errors, 9.6 hours): 97 findings, 90 confirmed
+(0 turns, 23 wrongs, 67 small), 7 refuted (C913, C914, C924, C936, C986, C994, C997). The second round in a row with no
+turn; the stop rule is not met (23 wrongs). All six rehearsal scenarios passed on the role's path, and every finding
+came from probes beside it. No item needs prompt text, so v34 stays and no lane edits the README prompt block. Eight
+items are data integrity, seven of them privacy, and they build first: a path in another home kept its tail in the
+report when an earlier pass had made its first part a placeholder, or when it held a blank, an escape or a volume
+(C901, C912, C939, C941, C947, C992: ruling 91 was incomplete), and the docs repo's commit messages carried a source's
+path (C934); the eighth is a kept hold read as lost (C967). Most other wrongs are C804's own regressions: a doctor the
+report gave up on ran on, named the wrong last check or left a child running (C921, C925, C952, C953, C954, C978), and
+a gate re-run that only skipped a test cleared it (C977). Codex's five finders ran and its second opinion gave 23
+opinions, none disputed. Gemini did not run: the allow rule for `~/.claude/scripts/agy-review.sh` is still the
+operator's (backlog `8ed9dae0fbc0`). A triage workflow (`wf_6e69d86e-6e8`) placed every item once.
+
+Lead rulings for round 35 (in `lanes/COMMON34.md`, mirrored in `docs/lanes/COMMON.md`): (102) a path in another home is
+cut whole however it is spelled, completing ruling 91, with `/Volumes/<path>` under a volume (decision `5ca796fae675`,
+conviction 75, veto window to 2026-11-06); (103) a source's path never enters the docs repo's commit history, and
+bodies already committed stay, rewriting a person's history being the operator's call; (104) step 1 tells a kept hold
+from a lost one by one `kept_hold` field, amending ruling 92 (decision `2d491839acc4`, conviction 80, same window);
+(105) a doctor the report gave up on stops at that deadline and names the check it was in; (106) every child the
+report's call starts ends with that call and with agentsync; (107) a read the report did not get, or never started,
+says which; (108) install.sh's NEXT names the time-limit variable only where more time can help; (109) a NEXT, note or
+wait points only at a line its reader prints; (110) the guides and the contract say what the code prints; (111) the
+lead's calls: duplicates built once, C902's words, C987's count check over C977's timing variable.
+
+Convergence: confirmed as before, then 76, then 90; turns as before, then 0, then 0; wrongs as before, then 17, then 23.
+
+Lanes (`--account auto`, CONTRACTS §16.230 to §16.234, land lock `/tmp/b13-r35-land.lock`, scratch under `round35/`,
+back-channel pane 3 or its successor): RA 22 (C912 and C947 first: privacy), RB 17 (C901 with C992, C939, C941 first:
+privacy; then C967's shell half), B 22 (C934 first, then C967's governance half and C804's regressions), E 9, D 17
+(C977 with C987 first: every land gate runs it). The lead holds 3 kit items (C920, C931, C989) and the kit halves of
+C907, C980, C984 and C990 for round 36's script.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be

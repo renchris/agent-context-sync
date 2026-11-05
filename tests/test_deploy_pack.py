@@ -7809,7 +7809,7 @@ def test_the_lane_brief_guards_a_commit_with_an_unpiped_lint_and_a_helper_above_
     helper between a test and its skipif and parametrize decorators (bb9286d52 moved them back): a split
     skipif is silent. The gate paragraph says both, after its node_modules sentence."""
     lanes = " ".join((ROOT / "docs" / "lanes" / "COMMON.md").read_text(encoding="utf-8").split())
-    gate = lanes.split(" Gate: the repo's `scripts/gate.sh`", 1)[1].split(" Landing (round 34):", 1)[0]
+    gate = lanes.split(" Gate: the repo's `scripts/gate.sh`", 1)[1].split(" Landing (round ", 1)[0]
     assert gate.endswith(
         "scripts/gate.sh runs `npm ci` once when it is missing. Run a lint and the commit it guards as one"
         " `&&` chain, never `;`, with no pipe on the lint: `ruff check x | tail -3 && git commit` reads"
