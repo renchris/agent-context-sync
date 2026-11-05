@@ -37489,6 +37489,8 @@ sources.toml hold with the folder there and gone, a hold on another source liste
 lists lost, no hold; the purge's own hold test agrees with the words) and
 `test_an_older_build_keeps_its_lost_queue_verdict_and_its_release_words_c865`.
 
+Amended 2026-11-04, §16.231 C967: CORRECTED: a lost hold beside a hold still in force (sources.toml's or a listed one) read as lost and took the release rebuild; status's GovernanceLostError.kept_hold, read by getattr, now gives `,queue-held-kept` in place of `,queue-held`, whose words are the listed hold's `once the records owner releases the hold that covers it, as its status line says`, and the folder's rebuilt arms key on the lost form of HAND (B13 round 35 ruling 104, C967).
+
 Amended 2026-11-04, §16.231 C993: the rule has a fourth state: the release marker is read first, then status's conditional clause for a sourceless lost purge (`or finds nothing, and then only the records owner's decision lets it run`) gives `,queue-maybe`, whose hand run is `after a --dry-run of it, which a hold on another source refuses only if it reaches that source or finds nothing, and then only the records owner's decision lets it run`, never a release, ahead of the folder's rebuilt arms (B13 round 35 ruling 104, C993 with C951).
 
 **With governance/ gone the folder tails describe the folder and say which line each act fixes** (C810, C805 and
@@ -38064,6 +38066,21 @@ keeps its word. Test: `test_step_1_gives_a_sourceless_lost_purge_a_dry_run_under
 hold on another source listed, lost and with the folder gone, a hold on all, in sources.toml, on all beside one on
 another source, no hold, and the folder's joiner with the suppression list lost too), a sibling of the C840 table,
 whose purge-test assertion does not hold for a conditional hold.
+
+**A lost hold beside a hold still in force is no lost hold** (C967's install.sh half, on lane B's
+`GovernanceLostError.kept_hold`; ruling 104; amends §16.226 C840; `scripts/install.sh`,
+`docs/deploy/setup-feedback.md`). With a hold the hold list lost and another hold, from sources.toml or still listed,
+refusing the same hand purge, LOST_HOLD_PY gave `lost-hold,...,queue-held`, so the tails said the lost hold's
+`once the records owner releases the hold, since setting it again keeps every purge it covers refused`, and with the
+folder gone the release rebuild, which offers setting the lost hold again as a fix while the kept hold still refuses
+the run. When the release marker is there, a hold is lost and `getattr(queue, "kept_hold", False)` is true (lane B
+sets it in `_queue_lost` to `any(h.origin in ("config", "state") for h in blocked)`), it appends `,queue-held-kept` in
+place of `,queue-held`; `queue_hand_words`' arm for it, ahead of the lost-hold arms, gives C803's `once the records
+owner releases the hold that covers it, as its status line says`; `folder_gone_words` keys its two rebuilt arms on the
+lost form of HAND (`once the records owner releases the hold,`), never on any HAND, so the kept case takes the plain
+form after the hold's own clause. An older build without the attribute keeps `,queue-held` and today's words. No new
+phrase. Test: the `config+lost-beta` (both forms), `alpha+lost-beta` and `config+lost-alpha` (both forms) rows of
+`test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840`, the purge's own hold test agreeing.
 
 **The NEXT names the time limit only where more time can help, never at 60 s** (C922, C929, C915's install.sh half,
 C904's install.sh half, C976; ruling 108; amends §16.226 C834; `scripts/install.sh`, `docs/deploy/setup-feedback.md`).

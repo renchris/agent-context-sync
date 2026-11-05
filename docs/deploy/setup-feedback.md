@@ -1019,7 +1019,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   33 ruling 86, C776, C767); under a hold that refuses the hand run the queue's clause ends `by hand once the records
   owner releases the hold, since setting it again keeps every purge it covers refused` for a hold the records keep
   and the hold list lost, and `by hand once the records owner releases the hold that covers it, as its status line
-  says` for one still in the hold list or in sources.toml (ruling 86, C701; B13 round 34 ruling 93, C840); where a
+  says` for one still in the hold list or in sources.toml (ruling 86, C701; B13 round 34 ruling 93, C840), the first
+  only when every hold that refuses the run is lost: a hold still in force beside a lost one takes the second (B13
+  round 35 ruling 104, C967); where a
   lost hold joins the lost queue under that release, the fix says which line each act fixes: `they put agentsync's
   governance folder back whole from the copy kept; with no copy, the records owner sets the hold again or releases
   it, which fixes the hold line only, since setting it again keeps every purge it covers refused and the stop with
@@ -1047,7 +1049,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   after the config step's (`config_err=state-file-notfile,state-queue-lost`); under a hold that refuses the hand run,
   that run there ends as in the tails above, `once the records owner releases the hold, since setting it again keeps
   every purge it covers refused` for a hold the records keep and the hold list lost, and `once the records owner
-  releases the hold that covers it, as its status line says` for one still listed; a purge with no source under a
+  releases the hold that covers it, as its status line says` for one still listed, even beside a lost one (C967); a
+  purge with no source under a
   hold on another source ends `after a --dry-run of it, which a hold on another source refuses only if it reaches that
   source or finds nothing, and then only the records owner's decision lets it run`, here and in the folder's tail
   (B13 round 35 C993). A hold the hold list lost is named

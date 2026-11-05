@@ -13704,6 +13704,12 @@ REBUILT_RUN = (
         ("lost-all", "folder", "lost-hold-govgone,lost-queue-govgone,queue-held", HAND_LOST),
         ("none", "files", "none,lost-queue,queue-free", ""),
         ("all", "both", "none,lost-suppressed,lost-queue,queue-held", HAND_LISTED),
+        # B13 round 35 ruling 104 (C967): a hold still in force beside a lost one is no lost hold
+        ("config+lost-beta", "files", "lost-hold,lost-queue,queue-held-kept", HAND_LISTED),
+        ("config+lost-beta", "folder", "lost-hold-govgone,lost-queue-govgone,queue-held-kept", HAND_LISTED),
+        ("alpha+lost-beta", "files", "lost-hold,lost-queue,queue-held-kept", HAND_LISTED),
+        ("config+lost-alpha", "files", "lost-hold,lost-queue,queue-held-kept", HAND_LISTED),
+        ("config+lost-alpha", "folder", "lost-hold-govgone,lost-queue-govgone,queue-held-kept", HAND_LISTED),
     ],
 )
 def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
@@ -13723,7 +13729,8 @@ def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
     cfg = home / "agent-context" / "sources.toml"
     cfg.parent.mkdir(parents=True)
     held = '[governance]\nhold = true\nhold_reason = "matter 8"\n'
-    cfg.write_text(held if hold == "config" else "", encoding="utf-8")
+    holds = hold.split("+")
+    cfg.write_text(held if "config" in holds else "", encoding="utf-8")
     src = Path(__file__).resolve().parents[1] / "src"
     if form == "both":
         cfg, state = _both_lists_lost_state(tmp_path / "both", monkeypatch)
@@ -13731,16 +13738,22 @@ def test_step_1_reads_status_own_judgment_of_the_hold_over_a_lost_queue_c840(
     else:
         sel = governance.PurgeSelector(stable_id="x" * 16, source_id="alpha")
         assert governance.enqueue_purge(state, sel, governance.PurgeReason.ERASURE_REQUEST)
-    scope = hold.removeprefix("lost-")
-    if scope in ("all", "alpha", "beta"):
-        governance.set_hold(state, scope, reason="matter 8", owner="Quinn Avery")
+    for one in holds:
+        scope = one.removeprefix("lost-")
+        if scope in ("all", "alpha", "beta"):
+            governance.set_hold(state, scope, reason="matter 8", owner="Quinn Avery")
     if form == "folder":
         gov.rename(state / "governance.kept")
     else:
         for name in ("purge-queue.json", *(("suppressed.json",) if form == "both" else ())):
             (gov / name).rename(state / f"{name}.kept")
-        if hold.startswith("lost-"):
-            (gov / "holds.json").write_text('{"holds": []}', encoding="utf-8")
+        if any(one.startswith("lost-") for one in holds):  # the hold list keeps only the holds not lost
+            kept = [
+                h
+                for h in json.loads((gov / "holds.json").read_text())["holds"]
+                if f"lost-{h['scope']}" not in holds
+            ]
+            (gov / "holds.json").write_text(json.dumps({"holds": kept}), encoding="utf-8")
     assert _lost_hold_probe(cfg, src) == verdict
     # the purge's own test, as purge reads them: the holds in force on its source refuse it
     in_force = governance.active_holds(state, governance.load_governance(cfg))
