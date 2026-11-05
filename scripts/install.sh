@@ -126,7 +126,12 @@
 #      install whose interpreter is gone runs once more. launchd starts the next sync at its interval. A sync
 #      still running after the wait, or a lock lockf cannot take, leaves the reinstall as it was: not waited
 #      for. A run killed with SIGKILL during the wait leaves lockf to run the reinstall once the lock frees,
-#      still under the lock. install.log's step=agentsync line notes what the script saw:
+#      still under the lock. A SIGTERM to install.sh's own pid alone during the wait does the same: bash runs
+#      the trap only when the foreground command ends, so the reinstall still runs under the lock once it
+#      frees, and only then does the run stop (rc 143, with its report and NEXT:). That report can meet a
+#      re-run's rebuild (setup-report exit 127, a shell-fallback report); the re-run rewrites it. A signal to
+#      the whole process group ends the wait at once (B13 round 35 C926).
+#      install.log's step=agentsync line notes what the script saw:
 #      waited-for-a-background-sync, wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
 #      after the probe is waited for too, with no note); a lock with an empty body, which no sync need hold,
 #      notes waited-for-an-unrecorded-holder or lock-wait-ran-out-after-<N>s instead (B13 round 20 X43)
@@ -9464,6 +9469,9 @@ uv_tool_install_pinned() {
 			ticker "agentsync: reinstalling" &
 		fi
 		TICKER=$!
+		# In the foreground: a SIGTERM to this pid alone is acted on once uv_run returns, after the reinstall
+		# ran (step 2 in the header). A wait run in the background would let that signal kill uv mid-rebuild,
+		# or leave lockf to run it alone, and a Ctrl-C would no longer stop it (B13 round 35 C926)
 		hold_locks "$locks"
 		uv_run "${held[@]}" "$UV" "${args[@]}" || rc=$?
 		# A tick that starts the tool's Python while uv deletes the environment fails uv ("Directory not

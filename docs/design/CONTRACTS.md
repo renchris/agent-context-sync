@@ -12428,6 +12428,8 @@ hold value "Records" cuts none of it, and a row with no re-read record reads `no
     (**amended 2026-10-11, §16.47 R114, R125:** the locks are those of every config a job runs with, a locked
     install that leaves no interpreter runs once more, and a run killed with SIGKILL during the wait is said
     in the header; see §16.47.)
+    Amended 2026-11-04, §16.231 C926: the header also says a SIGTERM to install.sh's own pid alone during the
+    wait does the same; the run stops only once the reinstall has run under the lock.
   - Tests: `tests/test_install_oneshot.py` (the wait, released on the first tick; a wait that runs out; no
     lock file, none created; a free lock held while uv runs; a crash marker kept; a bad
     `AGENTSYNC_REINSTALL_WAIT_SECONDS` is a usage error) and `tests/test_ops_lock.py`
@@ -13727,6 +13729,8 @@ its own NEXT with one clause added.
 - The header says a tick in the rebuild ends in SPAWN_FAILED (exit 71) or an import error, and that a run killed
   with SIGKILL during the wait leaves lockf to run the reinstall once the lock frees (R125, kept). The launcher
   is unchanged: an edit would rebuild it, a new TCC identity.
+  Amended 2026-11-04, §16.231 C926: the header says a SIGTERM to install.sh's own pid alone during the wait does
+  the same as SIGKILL there, and a signal to the whole process group ends the wait at once.
 - Tests: the wait, ran-out and free-lock tests (their notes),
   `test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with`,
   `tests/test_launcher.py::test_install_sh_full_run_is_idempotent` (the reinstall's source is the checkout,
@@ -38164,6 +38168,19 @@ only such a renderer writes, never on the time limit alone, so a copy from 4e0e8
 lead-ins, the doctor's own wait, the job lines both ways, exit 113, a quoted Items row, a current copy kept line for
 line) and
 `test_the_shell_stopped_copy_idle_words_are_the_reports`.
+
+**A SIGTERM to install.sh alone in the reinstall wait is said, not changed** (C926; amends §16.41 "The reinstall
+holds the background sync's lock" and §16.47 R125; `scripts/install.sh`). Step 2 of the header named only SIGKILL in
+the wait. A SIGTERM to install.sh's own pid alone does the same: bash runs the trap only when the foreground command
+ends, so the reinstall still runs, once, under the lock when it frees, and only then does the run stop, rc 143, with
+its report and NEXT:, a report that can meet a re-run's rebuild (setup-report exit 127, a shell-fallback report),
+which the re-run rewrites; a signal to the whole process group ends the wait at once. The header and a comment at
+the locked install say so. The code stays: a wait run in the background let a SIGTERM kill uv mid-rebuild (with the
+shell's job control on) or left lockf, in a group of its own, to run uv after the release, and Ctrl-C and a group
+SIGKILL then no longer stopped it, while ending lockf alone frees the single-writer lock under a running uv. Test:
+`test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_reinstall_c926` (the header's words;
+alive with no uv run 3 s after the signal while the lock is held, then rc 143, one `uv tool install`, under the
+lock).
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 

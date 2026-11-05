@@ -23388,6 +23388,69 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
 
 
+def test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_reinstall_c926(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 35 C926: a SIGTERM to install.sh's own pid alone while the reinstall waits for the lock is
+    acted on only when the wait ends: bash runs the trap once the foreground command returns, so the run is
+    still alive and uv has not run while the lock is held, and once it frees the reinstall runs, once, under
+    the lock, then the run stops with rc 143. A backgrounded wait would kill uv mid-rebuild or leave lockf to
+    run it alone, so the header says so instead (step 2), and this pins it."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    header = " ".join(ln.lstrip("#").strip() for ln in script.splitlines()[100:150])
+    assert (
+        "A SIGTERM to install.sh's own pid alone during the wait does the same: bash runs the trap only when "
+        "the foreground command ends, so the reinstall still runs under the lock once it frees, and only "
+        "then does the run stop (rc 143, with its report and NEXT:)."
+    ) in header
+    e, lock = _held_sync(env)
+    e = {**e, "AGENTSYNC_PROGRESS_SECONDS": "1", "AGENTSYNC_REINSTALL_WAIT_SECONDS": "60"}
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)  # held with no body, as lockf holds it
+    tick = r"agentsync: reinstalling after the lock is free, still running, \d+s"
+    early: list[str] = []
+    proc: subprocess.Popen[str] | None = None
+    try:
+        try:
+            proc = subprocess.Popen(
+                [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=e,
+                stdin=subprocess.DEVNULL,
+            )
+            assert proc.stdout is not None
+            deadline = time.monotonic() + 50
+            for raw in proc.stdout:
+                early.append(raw.rstrip("\n"))
+                if re.fullmatch(tick, early[-1]) or time.monotonic() > deadline:
+                    break
+            assert re.fullmatch(tick, early[-1]), early
+            proc.send_signal(signal.SIGTERM)  # its own pid alone, not its process group
+            time.sleep(3)
+            assert proc.poll() is None, "the wait is not interrupted"
+            assert not [c for c in calls(e) if c.startswith("uv tool install")], calls(e)
+            Path(f"{lock}.released").touch()  # before the release: uv can only start after it
+        finally:
+            os.close(fd)
+        killer = threading.Timer(120, proc.kill)
+        killer.start()
+        try:
+            rest = proc.stdout.read()
+        finally:
+            killer.cancel()
+        proc.wait(timeout=10)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    out = "\n".join(early + rest.splitlines())
+    assert proc.returncode == 143, out
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1, calls(e)
+    assert _lock_log(e) == ["released=yes", "held=True"], out
+
+
 def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
