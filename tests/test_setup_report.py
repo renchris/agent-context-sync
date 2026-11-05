@@ -5874,6 +5874,32 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
     assert "a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not" in inst
 
 
+def test_a_mixed_runs_persons_fix_is_not_counted_as_the_agents_c942() -> None:
+    """B13 round 35 C942: a mixed run's NEXT gives the agent its chmod and says `the other [FAIL] lines
+    above are the person's to fix`, while the Installer section counted the person's [FAIL] fix as a hint the
+    agent may act on. It is the person's; the chmod stays the NEXT's own step, the TCC_PENDING Allow and a
+    plain `NEXT: fix` run keep their hints, and install.sh gives those words at both mixed NEXTs."""
+    install = (Path(setup_report.__file__).parents[2] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert install.count(f"; {setup_report._PERSONS_MIXED_NEXT} (each names its fix)") == 2
+    chmod = "[FAIL] state_dir — mode 755 (fix: chmod 700 ~/.local/state/agentsync)"
+    person = (
+        "[FAIL] source.contoso-plans.listable — /x/Plans does not exist (fix: fix path in [[source]] id = "
+        '"contoso-plans" in sources.toml, or sync that folder in OneDrive)'
+    )
+    tcc = "[FAIL] tcc.contoso-plans — TCC_PENDING: the launcher waits for Allow (fix: click Allow)"
+    mixed = (
+        "NEXT: agentsync's state folder ... has a mode that is wrong for it: the fix is the agent's: run "
+        "chmod 700 ~/.local/state/agentsync once, then re-run: install.sh; "
+        f"{setup_report._PERSONS_MIXED_NEXT} (each names its fix): if the re-run stops on them alone, ..."
+    )
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh"
+    counts = setup_report.instruction_counts([head, chmod, person, mixed])
+    assert counts == {"NEXT:": 1, "next-fix": 1, setup_report.PERSONS_FIX: 1}, counts
+    counts = setup_report.instruction_counts([head, chmod, person, tcc, mixed])
+    assert counts == {"NEXT:": 1, "next-fix": 1, setup_report.PERSONS_FIX: 1, "fix:": 1}, counts
+    assert setup_report.instruction_counts([head, person, chmod, "NEXT: fix"]) == {"NEXT:": 1, "fix:": 2}
+
+
 def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next() -> None:
     """B13 round 16 T8, T49: the person's clause was "and 1 fix: on [FAIL] lines that are the person's" at
     a count of 1, after a second "and"; it is the last item of an Oxford-comma list, its noun by the count.

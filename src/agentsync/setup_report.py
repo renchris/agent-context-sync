@@ -6778,8 +6778,9 @@ T47). Also a person's fix (``doctor.is_persons_fix``) on any line of a run whose
 is the person's (:data:`_PERSONS_STEP`): the state file's or a config's error line is no [FAIL] line (round
 17 U6). And the state file's fix (``doctor.MANIFEST_FIX``) on any line of a run with no NEXT yet, the one
 writing the report or a killed one: every install.sh exit-65 NEXT gives that stop to the person (round 18
-V87). Never a fix: on a [warn] line, which is :data:`_WARN_FIX`: :func:`_persons_kinds` names [FAIL] and state
-fixes only (B13 round 32 C602)."""
+V87). And a person's fix on a [FAIL] line of a mixed run, whose NEXT gives the agent a chmod and the other
+[FAIL] lines to the person (:data:`_PERSONS_MIXED_NEXT`, B13 round 35 C942). Never a fix: on a [warn] line,
+which is :data:`_WARN_FIX`: :func:`_persons_kinds` names [FAIL] and state fixes only (B13 round 32 C602)."""
 
 _NEXT_FIX = "next-fix"
 """The :func:`instruction_counts` kind of a ``fix:`` whose command is the one its run's NEXT gives the agent
@@ -6859,15 +6860,19 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     round 25 D74).
     A fix whose command the run's NEXT gives the agent is :data:`_NEXT_FIX` (B13 round 23 A35). A fix: on a
     ``[warn]`` line is :data:`_WARN_FIX`, before either, as the prompt gives every [warn] to the person
-    (B13 round 32 C602). A mixed run's
-    fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on any other
-    line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
+    (B13 round 32 C602). A mixed run, whose NEXT gives the agent a chmod and says the other [FAIL] lines are
+    the person's to fix (:data:`_PERSONS_MIXED_NEXT`), counts a person's fix on a [FAIL] line as
+    :data:`PERSONS_FIX` and its chmod as :data:`_NEXT_FIX` (B13 round 35 C942). The fixes of a run whose NEXT
+    says something else (:func:`_persons_run`), and a fix: on any other line, stay ``fix:`` (B13 round 15
+    S5, round 16 T47)."""
     counts: Counter[str] = Counter()
     run: list[str] = []
 
     def count(run: list[str]) -> None:
         persons = _persons_run(run)
         told = _persons_told(run)
+        # B13 round 35 C942: a mixed run's NEXT gives the agent its chmod and the other [FAIL]s to the person
+        mixed = any(ln.lstrip().startswith("NEXT:") and _PERSONS_MIXED_NEXT in ln for ln in run)
         # a run with no NEXT yet (the one writing this report, or a killed one): the state file's fix is the
         # person's whatever line holds it, as every install.sh exit-65 NEXT says (B13 round 18 V87)
         state = not any(ln.lstrip().startswith("NEXT:") for ln in run)
@@ -6884,6 +6889,7 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
                 and (
                     (persons and line.startswith("[FAIL"))
                     or (told and _persons_line(line))
+                    or (mixed and line.startswith("[FAIL") and _persons_line(line))
                     or (state and _manifest_fix_line(line))
                 )
             ):
@@ -6905,6 +6911,11 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
 _PERSONS_NEXT = "the [FAIL] lines above are the person's"
 """The words install.sh's NEXT gives a run whose stopping [FAIL] lines are all the person's
 (``PERSONS_FAILS``, after ``NEXT: `` or the loop's ``background sync: <result>; ``)."""
+_PERSONS_MIXED_NEXT = "the other [FAIL] lines above are the person's to fix"
+"""B13 round 35 C942: the words install.sh's NEXT gives a mixed run, beside the agent's chmod (its status
+step's and closing status's ``mixed_chmods`` NEXT): a person's fix on its [FAIL] lines is no hint for the
+agent. Never ``not a step for the agent``, which the prompt reads as "go to the report", skipping the
+chmod's re-run."""
 
 
 def _fix_of(line: str) -> str | None:

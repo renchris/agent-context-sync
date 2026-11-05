@@ -22089,6 +22089,9 @@ The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as
 Amended 2026-10-18, §16.127 T75 (by §16.116 S26): the count takes its noun, so the line reads `... and 0 other
 instruction-like lines and 6 fix: on [FAIL] lines that are the person's ...`; the `6 other instruction-like
 line(s) (6 fix:)` above is what the line read before S5.
+Amended 2026-11-04, §16.230 C942: a mixed run whose NEXT says `the other [FAIL] lines above are the person's to
+fix` (install.sh's mixed-chmod NEXT) counts the person's [FAIL] fix as `persons-fix` and its chmod as `next-fix`; a
+run whose NEXT says `fix the [FAIL] lines above` keeps both as `fix:`.
 
 Amended 2026-10-18, §16.122 T8, T47, T49: the clauses are an Oxford-comma list and the person's clause names what the rule reads, its noun
 by the count: `..., 0 other instruction-like lines, and 6 [FAIL] lines whose fix: is the person's (a sign-in, a
@@ -38163,6 +38166,17 @@ bracket C817 rules: `(2 earlier in the install log, +1 --list-folders)`, `(1 --l
 log)` when no install run came before; installs alone keep `(N earlier in the install log)`, and the `no install run
 during this attempt` prefix install.sh and the guide read is unchanged. Test:
 `tests/test_setup_report.py::test_an_attempt_with_no_install_run_counts_the_list_folders_runs_apart_c928`.
+
+**A mixed run's person's fix is not counted as the agent's** (C942; amends §16.116 S5;
+`src/agentsync/setup_report.py`). install.sh's NEXT for a run that stopped on a chmod and on the person's [FAIL]s
+gives the agent the chmod and says `the other [FAIL] lines above are the person's to fix`, while the Installer
+section counted the person's fix as a hint the agent may act on. `_PERSONS_MIXED_NEXT` holds those words; a run whose
+NEXT carries them counts a person's fix (`doctor.is_persons_fix`) on a [FAIL] line as `persons-fix`, the TCC_PENDING
+guard still first, and the chmod reaches `next-fix` as before. Never `not a step for the agent` in that NEXT, which
+the prompt reads as "go to the report", skipping the chmod's re-run; `_persons_run`'s all-lines rule and
+`_persons_told` are unchanged, and a run with no NEXT yet keeps the [FAIL]-only rule. Test:
+`tests/test_setup_report.py::test_a_mixed_runs_persons_fix_is_not_counted_as_the_agents_c942` (and that install.sh
+gives the words at both mixed NEXTs).
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
