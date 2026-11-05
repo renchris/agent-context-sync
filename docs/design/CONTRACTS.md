@@ -14926,6 +14926,8 @@ beside an unusable bundle. Pinned by `tests/test_speech.py::test_the_seed_trusts
 sets a proxy, and `_curl_env` drops every proxy variable.
 Amended 2026-11-03, §16.224 (review backtest er-28#0, er-28#1): beside a CA folder the bundle goes to
 `SSL_CERT_FILE`, not `CURL_CA_BUNDLE`, and `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`.
+Amended 2026-11-04, §16.233 C962: "unless the shell sets one" means one its curl reads: beside a
+`CURL_CA_BUNDLE` of the shell's own, the shell's `SSL_CERT_DIR` is dead, and git's folder replaces it.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -37201,6 +37203,8 @@ set. Test: `tests/test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches
 Amended 2026-11-03, §16.228 C847: CORRECTED: not whenever a folder is set. A `CURL_CA_BUNDLE` the shell set itself
 beside the shell's own `SSL_CERT_DIR`, with no folder from git, stays `CURL_CA_BUNDLE`, so the seed's curl drops that
 folder as the shell's curl does; a folder git trusts, or a bundle from git, still moves the bundle.
+Amended 2026-11-04, §16.233 C962: and where git trusts a folder other than the shell's, beside the shell's own
+bundle, git's folder is the one the seed's curl loads, never the shell's, which neither the shell's curl nor git reads.
 
 **git's `http.sslBackend` wins over the shell's `CURL_SSL_BACKEND`** (review backtest er-28#1; amends §16.54 Q52).
 Git selects the config's backend with `curl_global_sslset`, and libcurl reads `CURL_SSL_BACKEND` only when none was
@@ -37796,6 +37800,9 @@ drop it (the verifier's shell D). Tests:
 folder keep `CURL_CA_BUNDLE`; the shell's bundle beside git's folder from the environment or the config, one folder in
 both `SSL_CERT_DIR` and `GIT_SSL_CAPATH`, and git's bundle beside the shell's folder each move it, the folder kept),
 with `test_speech.py::test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file` unchanged.
+Amended 2026-11-04, §16.233 C962: the shell's bundle and folder beside a different folder git trusts loaded the
+shell's folder, which neither its curl nor git reads, and dropped git's; git's folder replaces it there, and the
+test takes those two cases.
 
 **A Graph file cut right after its suffix folds to its name (C860; `agentsync.cycle`; amends §16.221 C751).** C751
 folded every cut staged path at a text's end to `…`, so `<root><16 hex>.pptx…` lost the name `Plan.pptx` that its
@@ -38137,6 +38144,19 @@ that is built while its models are not placed. Speech's digest warning, `speech 
 does not match its pinned digest`, is grammatical and stays. No reader parses these lines. Test:
 `test_ocr.py::test_the_engines_v_log_line_takes_the_colon_form_c909` (the three engines by the three states: a
 helper a signal stopped, none built, switched off; `caplog`'s messages read exactly).
+
+**The seed's curl takes git's CA folder where the shell's is dead** (C962; `agentsync.convert.speech`; amends
+§16.54 Q79 and §16.228 C847, with a dated line at §16.224). With `CURL_CA_BUNDLE` and `SSL_CERT_DIR` from the shell
+and a different folder from git (`GIT_SSL_CAPATH` or `http.sslCAPath`), `_curl_env` gave `SSL_CERT_FILE` the
+bundle and `SSL_CERT_DIR` the shell's folder: one neither the shell's curl (`CApath: none` beside its own bundle,
+measured with `/usr/bin/curl` 8.7.1) nor git loads, while the folder git trusts was dropped, so the seed exited 60
+on a server git trusts (the verifier's three local TLS servers). The folder rule is now `if capath and
+("SSL_CERT_DIR" not in env or curls_own)`: beside the shell's own bundle the shell's folder is dead, and git's
+replaces it. The two are never joined: LibreSSL's curl accepts a joined list, but joining keeps the trust C847
+removed. Shells A to D of C847's test are unchanged; with no `CURL_CA_BUNDLE` a shell `SSL_CERT_DIR` still wins
+over git's, since the shell's curl reads it there. The docstring's "unless the shell sets one" now says "one its
+curl reads". Test: `test_speech.py::test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847`
+with the cases `two-folders` and `two-folders-config`.
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

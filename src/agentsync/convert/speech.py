@@ -575,17 +575,20 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
       unless the shell names a bundle of curl's own (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an
       empty file fails with exit 77, at /etc/ssl/cert.pem it fetches).
     * The CA folder git trusts (GIT_SSL_CAPATH, else http.sslCAPath) becomes SSL_CERT_DIR, unless the shell
-      sets one.  A CA folder adds to the bundle curl uses (measured with /usr/bin/curl 8.7.1 and LibreSSL: a
-      server signed by a CA in a hashed folder fetched with SSL_CERT_DIR at that folder beside
-      /etc/ssl/cert.pem, and exited 60 with GIT_SSL_CAPATH alone; github.com still fetched with SSL_CERT_DIR
-      at that folder or at one that does not exist).  Under CURL_SSL_BACKEND=secure-transport curl ignores
-      it, as before.  curl reads SSL_CERT_DIR (and SSL_CERT_FILE) only when CURL_CA_BUNDLE is unset (measured
-      with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE=/etc/ssl/cert.pem beside SSL_CERT_DIR at the folder showed
-      "CApath: none" and exited 60; SSL_CERT_FILE at the same bundle beside it fetched), while git uses both
-      its bundle and its folder.  So with a folder git trusts, or beside a bundle that came from git, the
-      bundle goes in SSL_CERT_FILE, and both count.  A shell that sets CURL_CA_BUNDLE itself beside its own
-      SSL_CERT_DIR, with no folder from git, keeps CURL_CA_BUNDLE: the shell's curl drops that folder and
-      git never reads it, so the seed's curl drops it too (B13 round 34 C847).
+      sets one its curl reads, that is, with no CURL_CA_BUNDLE of its own: beside that bundle the shell's
+      SSL_CERT_DIR is a folder neither its curl nor git loads, so git's replaces it, never joined to it, which
+      would keep the trust C847 removed (B13 round 35 C962). A CA folder adds to the bundle curl uses
+      (measured with /usr/bin/curl 8.7.1 and LibreSSL: a server signed by a CA in a hashed folder fetched with
+      SSL_CERT_DIR at that folder beside /etc/ssl/cert.pem, and exited 60 with GIT_SSL_CAPATH alone;
+      github.com still fetched with SSL_CERT_DIR at that folder or at one that does not exist). Under
+      CURL_SSL_BACKEND=secure-transport curl ignores it, as before. curl reads SSL_CERT_DIR (and
+      SSL_CERT_FILE) only when CURL_CA_BUNDLE is unset (measured with /usr/bin/curl 8.7.1:
+      CURL_CA_BUNDLE=/etc/ssl/cert.pem beside SSL_CERT_DIR at the folder showed "CApath: none" and exited 60;
+      SSL_CERT_FILE at the same bundle beside it fetched), while git uses both its bundle and its folder. So
+      with a folder git trusts, or beside a bundle that came from git, the bundle goes in SSL_CERT_FILE, and
+      both count. A shell that sets CURL_CA_BUNDLE itself beside its own SSL_CERT_DIR, with no folder from
+      git, keeps CURL_CA_BUNDLE: the shell's curl drops that folder and git never reads it, so the seed's curl
+      drops it too (B13 round 34 C847).
     * http.sslBackend becomes CURL_SSL_BACKEND, over the shell's: git selects the config's backend with
       curl_global_sslset, and libcurl reads CURL_SSL_BACKEND only when none was selected (measured with
       Xcode's git 2.50.1: CURL_SSL_BACKEND=secure-transport beside http.sslBackend=openssl used openssl, and
@@ -599,7 +602,7 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
     if cainfo and "CURL_CA_BUNDLE" not in env and "SSL_CERT_FILE" not in env:
         env["CURL_CA_BUNDLE"] = cainfo
     capath = env.get("GIT_SSL_CAPATH") or git_config.get("http.sslcapath")
-    if capath and "SSL_CERT_DIR" not in env:
+    if capath and ("SSL_CERT_DIR" not in env or curls_own):  # beside its own bundle the shell's is dead
         env["SSL_CERT_DIR"] = capath
     if "SSL_CERT_DIR" in env and "CURL_CA_BUNDLE" in env and (capath or not curls_own):  # else curl drops it
         env["SSL_CERT_FILE"] = env.pop("CURL_CA_BUNDLE")

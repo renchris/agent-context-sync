@@ -1188,6 +1188,20 @@ def test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file(
             {},
             (None, "/Users/contoso/git.pem", "/Users/contoso/shell-certs"),
         ),
+        (  # B13 round 35 C962: the shell's bundle and its own folder beside a different folder git trusts
+            {
+                "CURL_CA_BUNDLE": "/Users/contoso/curl.pem",
+                "SSL_CERT_DIR": "/Users/contoso/shell-certs",
+                "GIT_SSL_CAPATH": "/Users/contoso/git-certs",
+            },
+            {},
+            (None, "/Users/contoso/curl.pem", "/Users/contoso/git-certs"),
+        ),
+        (  # the same, git's folder from its config files
+            {"CURL_CA_BUNDLE": "/Users/contoso/curl.pem", "SSL_CERT_DIR": "/Users/contoso/shell-certs"},
+            {"http.sslcapath": "/Users/contoso/git-certs"},
+            (None, "/Users/contoso/curl.pem", "/Users/contoso/git-certs"),
+        ),
     ],
     ids=[
         "shell-bundle-shell-folder",
@@ -1195,6 +1209,8 @@ def test_a_ca_folder_beside_a_named_bundle_reaches_curl_as_ssl_cert_file(
         "shell-bundle-config-folder",
         "same-folder",
         "git-bundle-shell-folder",
+        "two-folders",
+        "two-folders-config",
     ],
 )
 def test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847(
@@ -1206,7 +1222,9 @@ def test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847(
     """B13 round 34 C847: er-28#0 moved the bundle to SSL_CERT_FILE whenever a folder was set, so beside a
     CURL_CA_BUNDLE and an SSL_CERT_DIR the shell set, with no folder from git, the seed's curl loaded a folder
     neither the shell's curl (CApath none, measured with /usr/bin/curl 8.7.1) nor Xcode's git reads.  The
-    bundle stays CURL_CA_BUNDLE only there: a folder git trusts, or a bundle from git, still moves it."""
+    bundle stays CURL_CA_BUNDLE only there: a folder git trusts, or a bundle from git, still moves it.  Round
+    35 C962: with a different folder from git beside them the seed kept the shell's folder, dead beside its
+    own bundle, and dropped git's; git's folder replaces it."""
     for key in ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", *speech._CURL_CA_VARS):
         monkeypatch.delenv(key, raising=False)
     for key, value in shell.items():
