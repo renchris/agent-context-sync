@@ -6536,6 +6536,15 @@ _ROUND_34_D_PARAGRAPH_AMENDS = (
 paragraphs, and C856's two lines at passages rewritten in place, with §16.219's C737 line, which the C736
 line's claim now shares (ruling 99), and C857's three at §16.34 and §16.35, which its claim names with no
 item, and C858's at C758's CORRECTED line in §16.215."""
+_ROUND_35_D_PARAGRAPH_AMENDS = (
+    (
+        "16.223",
+        "a re-run clears its part only when its journal's passed set holds every failed id",
+        "§16.234 C987",
+    ),
+)
+"""Round 35 lane D's dated lines at a section its claims name with no item, as
+:data:`_ROUND_34_D_PARAGRAPH_AMENDS`: C987's at §16.223's C800 rule (ruling 111)."""
 
 _ROUND_34_B_PARAGRAPH_AMENDS = (
     ("16.220", "**C701 (ruling 86's governance half).** With no copy", "§16.227 C874"),
@@ -6783,6 +6792,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_32_B_PARAGRAPH_AMENDS,
         *_ROUND_33_B_PARAGRAPH_AMENDS,
         *_ROUND_34_D_PARAGRAPH_AMENDS,
+        *_ROUND_35_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,

@@ -428,6 +428,97 @@ def test_a_collection_error_beside_a_flake_stays_red(tmp_path: Path, mode: str) 
     assert " rc=1 " in verdict and verdict.endswith(" rerun_passed=0"), verdict
 
 
+SKIPPED_ON_RE_RUN = {
+    "call": """
+import pytest
+from runs import ran
+
+
+def test_time_bound():
+    if ran("bound"):
+        pytest.skip("load 5 per core: a time bound cannot be judged")
+    assert False, "the contoso sync took 9 s against its 5 s bound"
+""",
+    "setup": """
+import pytest
+from runs import ran
+
+
+@pytest.fixture
+def load():
+    if ran("bound"):
+        pytest.skip("load 5 per core: a time bound cannot be judged")
+
+
+def test_time_bound(load):
+    assert False, "the contoso sync took 9 s against its 5 s bound"
+""",
+    "xfail": """
+import pytest
+from runs import ran
+
+
+def test_time_bound():
+    if ran("bound"):
+        pytest.xfail("the contoso share is slow today")
+    assert False, "the contoso sync took 9 s against its 5 s bound"
+""",
+}
+
+
+@pytest.mark.parametrize("mode", ["land", "lane"])
+@pytest.mark.parametrize("beside_flaky", [False, True], ids=["alone", "beside-flaky"])
+@pytest.mark.parametrize("how", ["call", "setup", "xfail"])
+def test_a_re_run_that_only_skips_a_failed_test_clears_nothing(
+    tmp_path: Path, mode: str, beside_flaky: bool, how: str
+) -> None:
+    """B13 round 35 C977 with C987 (ruling 111): rerun_alone read only pytest's exit status, and pytest ends 0
+    on a run that skips or xfails, so a test that failed and whose re-run was skipped (conftest's load skip,
+    in the call or at setup) or xfailed printed `failed under load and passed alone` and counted in
+    rerun_passed; beside a flake that passed, the mixed set cleared both. The part is green only when the
+    re-run's journal shows every failed id passed: red otherwise, `retry`, nothing counted as passed."""
+    suite = {"test_t.py": SKIPPED_ON_RE_RUN[how]}
+    if beside_flaky:
+        suite["test_s.py"] = FLAKY.format(n=1)
+    n = 2 if beside_flaky else 1
+    done, runs, verdict = _rerun_part(tmp_path, suite, "-n", "2", ".", mode=mode)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert sorted(runs) == sorted((["flaky0", "bound"] if beside_flaky else ["bound"]) * 2), (
+        "each ran once more"
+    )
+    assert f"== rest: {n} failed; re-running them once, alone" in done.stdout
+    cleared = 1 if beside_flaky else 0
+    assert f"== rest: the re-run passed {cleared} of {n}, the rest skipped or unread; not cleared, retry" in (
+        done.stdout
+    )
+    assert "passed alone" not in done.stdout and "is red too" not in done.stdout
+    skipped = 0 if how == "xfail" else 1
+    assert " rc=1 " in verdict and f" skipped_timing={skipped} " in verdict, verdict
+    assert verdict.endswith(" rerun_passed=0"), verdict
+
+
+def test_a_re_run_whose_journal_cannot_be_read_clears_nothing(tmp_path: Path) -> None:
+    """C987: the count fails closed: a re-run that ends 0 but whose passed set cannot be read (here the
+    journal reader refuses its `passed` verb) leaves the part red, never green on an unread count."""
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "failed").write_text("test_s.py::test_flaky[0]\n", encoding="utf-8")
+    harness = (
+        f"tmp='{work}' skipped_timing=0 rerun_passed=0\n"
+        'step() { echo "== $*"; }\n'
+        'journal_cli() { case $1 in failed) cat "$tmp/failed" ;; skipped-timing) echo 0 ;;'
+        " *) return 1 ;; esac; }\n"
+        f"{_functions('part_stopped', 'rerun_alone')}\n"
+        'rc=0; rerun_alone rest j "$tmp/again" "$tmp/out" || rc=$?\n'
+        'echo "rc=$rc rerun_passed=$rerun_passed"\n'
+    )
+    done = subprocess.run(["bash", "-c", harness], capture_output=True, text=True, check=False, timeout=60)
+    assert (
+        "== rest: the re-run passed none of 1, the rest skipped or unread; not cleared, retry" in done.stdout
+    )
+    assert done.stdout.rstrip().endswith("rc=1 rerun_passed=0"), done.stdout + done.stderr
+
+
 def test_more_than_twenty_failures_are_not_re_run(tmp_path: Path) -> None:
     """C800: 21 failed tests are a real break, not load: the part is red with each run once."""
     done, runs, verdict = _rerun_part(tmp_path, {"test_s.py": FLAKY.format(n=21)}, "-n", "2", ".")

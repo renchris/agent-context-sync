@@ -31,7 +31,8 @@ weekly, so the network, not a commit, decides its result.
 then `tests/test_deploy_pack.py`, then the rest, after a check that the three parts collect the full set, each test
 once), ending
 `GATE GREEN at <sha>`. It never reads the journal below. In every mode a pytest part that ends with 1 to 20 failed
-tests runs exactly those once more, alone (`-n 0`), and is red only when the re-run is; the land gate reads them from
+tests runs exactly those once more, alone (`-n 0`), and is green only when the re-run's journal shows every one of
+them passed (a re-run that skips or xfails one clears nothing: red, retry); the land gate reads them from
 a journal of that same run in its own temporary folder. The machine runs at a load of 600 to 1000 on 10 cores by
 design, no gate may wait for it to fall, and a failure under that load is "unknown, retry", not a verdict (operator
 ruling 2026-10-20). Lanes pre-gate with `scripts/gate.sh --affected`: every

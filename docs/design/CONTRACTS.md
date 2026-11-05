@@ -37171,6 +37171,12 @@ stays in the failed set; and a collection error leaves the part red, since the `
 `test_a_failed_call_or_setup_with_a_skipped_teardown_is_re_run_and_convicts`,
 `test_a_collection_error_beside_a_flake_stays_red`.
 
+Amended 2026-11-04, §16.234 C987: a re-run clears its part only when its journal's passed set holds every failed id
+(ruling 100: a gate re-run clears only what it ran). pytest ends 0 on a re-run that only skips or xfails, so `A green
+re-run makes the part green` cleared a test conftest's load skip never ran; such a part is now red, `== <part>: the
+re-run passed <k> of <n>, the rest skipped or unread; not cleared, retry`, with nothing counted in `rerun_passed`. Test:
+`test_a_re_run_that_only_skips_a_failed_test_clears_nothing`.
+
 ### 16.224 Review backtest: the seed's CA folder and TLS backend, the citation lint's stray quote mark, manifest damage in a source's extra work, and an organisation's in-word redaction (2026-11-03)
 
 **A CA folder beside a named bundle reaches the seed's curl** (review backtest er-28#0; amends §16.54 Q79).
@@ -38035,4 +38041,27 @@ Reserved for round 35 lane E of B13.
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 
-Reserved for round 35 lane D of B13.
+Round 35's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 100, 110 and 111 settle it). A dated line this round writes reads
+`Amended 2026-11-04, §16.234 C<n>`.
+
+**A gate re-run that only skips or xfails a failed test clears nothing** (C987 with C977, ruling 111;
+`scripts/gate.sh`'s `rerun_alone` and header, CLAUDE.md's Gate paragraph). `rerun_alone` read only pytest's exit
+status, and pytest ends 0 on a run whose tests all skip or xfail, so a test that failed once and whose re-run alone was
+skipped (conftest's load skip, `load 5 per core: a time bound cannot be judged`, in the call or at setup, or any other
+runtime skip) or imperatively xfailed printed `== rest: 1 failed under load and passed alone`, and the verdict line read
+`rc=0 skipped_timing=1 rerun_passed=1`; beside a flake that passed alone, the mixed set cleared both (reproduced at
+06ee4f6d through `_rerun_part` in land and lane modes). That broke ruling 100, a gate re-run clears only what it ran.
+After a re-run that ends 0 the gate now counts the failed ids in the re-run journal's `passed` set (`grep -Fxc`: the
+verb prints one blank line when nothing passed, and without `-x` that blank pattern matches every id) and clears the
+part only when the count equals the failed count; a short count, an unreadable journal or a grep error leaves the
+count unequal, so the part fails closed with `== <part>: the re-run passed <k> of <n>, the rest skipped or unread; not
+cleared, retry`, returns 1 and adds nothing to `rerun_passed`, no partial credit. The re-run gets no
+`AGENTSYNC_TIMING=1`: forcing a load-bound test to run under load would turn an imposed timeout into a verdict, which
+the operator's ruling of 2026-10-20 forbids, so a skipped timing test stays "unknown, retry". `scripts/ship-land.sh`
+reads only the exit status and is unchanged. The verdict log held 20 lines from round 34's harvest to round 35's (land
+rc 0 twelve, land rc 1 four, affected rc 1 one, affected rc 143 three), every one `rerun_passed=0`, so no re-run had
+cleared a test and this had not fired. Tests: `test_a_re_run_that_only_skips_a_failed_test_clears_nothing` (a skip in
+the call, a skip at setup and an imperative xfail, alone and beside a flake, land and lane),
+`test_a_re_run_whose_journal_cannot_be_read_clears_nothing`. §16.223's C800 rule gets a dated line, pinned in
+`_ROUND_35_D_PARAGRAPH_AMENDS`.

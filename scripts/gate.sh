@@ -5,9 +5,10 @@
 #   scripts/gate.sh --affected  a lane pre-gate: every static step, then the tests the change can turn red
 # Each run appends one line to <git-common-dir>/gate-verdicts.log. Nothing is skipped because a tree passed
 # before: the journal only resumes a run that was killed part way. In every mode a pytest part that ends 1 with 1 to
-# 20 failed tests re-runs exactly those once, alone (-n 0), and is red only when the re-run is: the machine's load is
-# by design and a failure under it is "unknown, retry" (operator ruling 2026-10-20; B13 round 33 C800). The land gate
-# reads only the journal it wrote in this run, and the verdict line counts the tests so passed (rerun_passed=).
+# 20 failed tests re-runs exactly those once, alone (-n 0), and is green only when the re-run passes every one of them:
+# the machine's load is by design and a failure under it is "unknown, retry" (operator ruling 2026-10-20; B13 round 33
+# C800), and a re-run that skips one clears nothing (B13 round 35 C987). The land gate reads only the journal it wrote
+# in this run, and the verdict line counts the tests so passed (rerun_passed=).
 set -euo pipefail
 
 mode=land
@@ -129,8 +130,11 @@ part_stopped() {
 # that each passed alone, a different set each run, none in the diff: subprocess timeouts and lost workers, which
 # conftest's load skip does not cover. When pytest ends a part 1 and its journal names 1 to 20 failed tests (call,
 # setup and teardown failures, and the test a lost worker was running), they run once more with -n 0, no workers of
-# our own competing, into a journal of their own. That run green makes the part green; a test that fails alone
-# convicts, and more than 20, another exit code or a failed set that cannot be read leave the part red as before.
+# our own competing, into a journal of their own. That run makes the part green only when its journal shows every one
+# of them passed: pytest ends 0 on a run that only skips (conftest's load skip, any runtime skip) or xfails, so a count
+# of the failed ids in its passed set short of the failed count, or a passed set that cannot be read, leaves the part
+# red, "retry", fail closed (B13 round 35 C987, ruling 111). A test that fails alone convicts, and more than 20,
+# another exit code or a failed set that cannot be read leave the part red as before.
 # A re-run a signal stopped convicts nothing: it says so through part_stopped and returns its own status, so the gate
 # exits with it; a re-run status of 1 to 128 stays plain red (B13 round 34 C877).
 rerun_alone() {
@@ -156,6 +160,13 @@ rerun_alone() {
     return 1
   fi
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$again")))
+  local cleared=''
+  journal_cli passed "$again" >"$tmp/$part.alone" &&
+    cleared=$(LC_ALL=C grep -Fxc -f "$tmp/$part.alone" "$tmp/$part.failed" || true)
+  if [ "$cleared" != "$n" ]; then
+    echo "== $part: the re-run passed ${cleared:-none} of $n, the rest skipped or unread; not cleared, retry"
+    return 1
+  fi
   rerun_passed=$((rerun_passed + n))
   echo "== $part: $n failed under load and passed alone: $(tr '\n' ' ' <"$tmp/$part.failed" | sed 's/ $//')"
 }
