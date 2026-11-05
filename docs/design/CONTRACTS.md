@@ -14899,6 +14899,8 @@ process ignores SIGINT, `_run_build` starts each tool through a `preexec_fn` tha
 before the exec; the parent's own disposition never changes, and with SIGINT not ignored no `preexec_fn` is passed
 (it makes Popen fork rather than vfork). Only a tool that ignores SIGINT itself now outlives the stop. Pinned by
 `tests/test_ocr.py::test_a_tool_started_with_sigint_ignored_still_stops_with_the_build`.
+Amended 2026-11-04, §16.233 C963: nor one slower than `_STOP_S` to stop: it is SIGKILLed with its group, and the
+compilers it started, in groups of their own, run on.
 
 #### The speech build
 
@@ -38157,6 +38159,26 @@ removed. Shells A to D of C847's test are unchanged; with no `CURL_CA_BUNDLE` a 
 over git's, since the shell's curl reads it there. The docstring's "unless the shell sets one" now says "one its
 curl reads". Test: `test_speech.py::test_the_seeds_curl_drops_a_ca_folder_only_where_the_shells_curl_does_c847`
 with the cases `two-folders` and `two-folders-config`.
+
+**The compiler stub keeps every SIGINT, and the late tests pin `_STOP_S`** (C963 and C991, ruling 111; tests,
+and `agentsync.convert.ocr`'s words; amends §16.54 Q51). One CI attempt (run 41765813033, attempt 1) failed
+`test_speech.py::test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too` with the compiler
+alive after the build; its rerun and every other run passed. Two measured causes give that failure and the log,
+which holds no timing, cannot tell which it was. The likely one (C991): `compiling`'s stub ran its poll's `sleep
+0.05` in the foreground beside its trap, and /bin/sh (bash 3.2) can drop a SIGINT that lands around a foreground
+child's end (9 of 2500 at a 0.01 s poll, measured by the finder and the verifier), and its second `trap halt INT`
+on an already trapped SIGINT drops one too or crashes bash 3.2 (11 of 3000 aimed at that line). The stub now sets
+one trap, once, that only notes the stop, keeps the compiler's pid (`c=$!`), polls with `sleep 0.05 & wait $!`,
+and acts on the stop only once the compiler has written its pid (0 of 6000 aimed, 0 of 1500 through the real
+`_run_build`). The other (C963): a compiler start held past the limit plus `_STOP_S` (a filesystem stall over
+about 9.5 s under load, seen once on this Mac) loses the stub to the group's SIGKILL, and the compiler, in a session
+of its own, runs on; no stub change fixes that, so both late tests set `ocr._STOP_S` to 60 s, which costs a passing
+run nothing. The production `_STOP_S` (10 s) and the late tests' margins are unchanged. `_run_build`'s docstring now
+says that a tool slower than `_STOP_S` to stop is SIGKILLed with its group and leaves its compilers running. These
+are test-code changes against a failure seen once in 13 runs: no deterministic test fails without them, and the
+evidence is the measured loss rates above. Tests: `test_ocr.py::compiling` and
+`test_ocr.py::test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`,
+`test_speech.py::test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`.
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

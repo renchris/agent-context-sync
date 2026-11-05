@@ -722,7 +722,8 @@ def _run_build(
     A Ctrl-Z stops this process, not the tool, which keeps compiling.  Each tool starts with SIGINT at its
     default, so an ignore inherited from a ``cmd &`` launch no longer keeps any tool running: /usr/bin/curl
     (speech's seed) sets no SIGINT handler and ran on after the stop (B13 Q51).  Only a tool that ignores
-    SIGINT itself outlives the stop."""
+    SIGINT itself outlives the stop; one slower than ``_STOP_S`` to stop is SIGKILLed with its group, and
+    the compilers it started, in groups of their own, run on (B13 round 35 C963)."""
     env = _env() if env is None else env
     # Only when this process ignores SIGINT: a preexec_fn makes Popen fork rather than vfork, and no tool
     # needs it otherwise.

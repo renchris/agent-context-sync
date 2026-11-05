@@ -423,6 +423,7 @@ def test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_to
     )
     monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
     monkeypatch.setattr(speech, "_clock", lambda: 0.0)
+    monkeypatch.setattr(ocr, "_STOP_S", 60.0)  # B13 round 35 C963: as test_ocr's late case
     with pytest.raises(
         SpeechError,
         match=rf"^{re.escape(speech._TIMED_OUT)}$",

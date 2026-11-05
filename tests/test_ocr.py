@@ -1024,12 +1024,18 @@ def compiling(pidfile: Path, start_after: float = 0.0) -> str:
     """A stub tool body that starts a "compiler" in a session of its own, which writes its pid, and stops it
     on SIGINT only, as swiftc and SwiftPM do (measured: their compilers outlive a SIGTERM or SIGKILL).  On
     SIGINT it writes a line before it stops the compiler: a tool whose output has no reader left dies of
-    SIGPIPE there.  The first trap is set before the compiler starts, so a SIGINT never finds it unset; it
-    only notes the stop until the compiler has written its pid, so a time limit counts from the compiler's
-    start: a SIGINT before then killed the compiler before it wrote one, and the test waited 30 s for a pid
-    that never came (B13 round 13 O73, under load).  ``start_after`` holds the compiler that long after it
-    has its session and before it writes its pid, so a test can make the SIGINT come first, every time
-    (B13 round 14 Q83)."""
+    SIGPIPE there.  Its one trap, set once before the compiler starts, only notes the stop, so a SIGINT never
+    finds it unset; the stub acts on it only once the compiler has written its pid, so a time limit counts
+    from the compiler's start: a SIGINT before then killed the compiler before it wrote one, and the test
+    waited 30 s for a pid that never came (B13 round 13 O73, under load).  ``start_after`` holds the compiler
+    that long after it has its session and before it writes its pid, so a test can make the SIGINT come
+    first, every time (B13 round 14 Q83).
+
+    Each poll's sleep runs in the background and the ``wait`` builtin waits for it, so no foreground child
+    stands beside the trap: /bin/sh (bash 3.2) can drop a SIGINT that lands around a foreground child's end,
+    and a second ``trap`` on an already trapped SIGINT drops one too, or crashes bash 3.2.  Either left the
+    stub waiting on its compiler past the build's stop (the verifier measured 9 in 2500 at a 0.01 s poll and
+    11 in 3000 aimed at the second trap; 0 with this form; B13 round 35 C991)."""
     late = f"time.sleep({start_after!r}); " if start_after > 0 else ""
     child = (
         f"import os, sys, time; os.setsid(); {late}open(sys.argv[1] + '.tmp', 'w').write(str(os.getpid())); "
@@ -1040,11 +1046,11 @@ def compiling(pidfile: Path, start_after: float = 0.0) -> str:
         "stop=\n"
         "trap 'stop=1' INT\n"
         f"{shlex.quote(sys.executable)} -c {shlex.quote(child)} {pid} &\n"
-        f"while [ ! -e {pid} ] && kill -0 $! 2>/dev/null; do sleep 0.05; done\n"
-        'halt() { echo "error: build cancelled" >&2; kill $!; exit 130; }\n'
-        "trap halt INT\n"
-        '[ -n "$stop" ] && halt\n'
-        "wait $!\n"
+        "c=$!\n"
+        f"while [ ! -e {pid} ] && kill -0 $c 2>/dev/null; do sleep 0.05 & wait $!; done\n"
+        'while [ -z "$stop" ] && kill -0 $c 2>/dev/null; do sleep 0.05 & wait $!; done\n'
+        '[ -n "$stop" ] || { wait $c; exit; }\n'
+        'echo "error: build cancelled" >&2; kill $c; exit 130\n'
     )
 
 
@@ -1267,6 +1273,9 @@ def test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too(
     pidfile = tmp_path / "compiler.pid"
     script(tools / "swiftc", compiling(pidfile, start_after=1.5))
     monkeypatch.setattr(ocr, "_BUILD_TIMEOUT_S", 1.0)
+    # B13 round 35 C963: a compiler start held past the limit plus _STOP_S (a stall under load) loses the stub
+    # to the group's SIGKILL and leaves the compiler; 60 s covers that, and a passing run waits no longer
+    monkeypatch.setattr(ocr, "_STOP_S", 60.0)
     with pytest.raises(ocr.OcrError, match=r"^swiftc ran out of time building the OCR helper; "):
         ocr.build(tmp_path)
     assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
