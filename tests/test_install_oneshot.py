@@ -3776,9 +3776,13 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
         "configured folder, there or as an added source's typed folder, cut at its first part that is not a "
         "fixed macOS folder or one every home or drive has; a path in another home (/Users/ and any "
-        "folder but Shared or this login's), cut whole, an unquoted one with a blank keeping its tail after "
-        "the first blank; and every word bash wrote in its dollar-quote form ($'...'),"
-    ), item  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822
+        "folder but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume; in "
+        "both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, comma or "
+        "semicolon, and after a blank from the first word that holds no /, or that is an option, a URL, a "
+        "path of its own or a number like 3/14); and every word bash wrote in its dollar-quote form ($'...'),"
+    ), (
+        item
+    )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
@@ -4115,7 +4119,8 @@ def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str])
             "right after a word character, a dot or a hyphen it is no home"
         )
         assert "source=/Users/<path> args=--source-local /Users/<path>\n" in text, path.name
-        assert "error: cannot read /Users/<path> Alpha/plan.docx" in text, "a blank ends an unquoted path"
+        # B13 round 35 C981: a word after the blank that holds a `/` carries the cut on
+        assert "error: cannot read /Users/<path>\n" in text, path.name
         assert (
             "moved from /Users/<path>, kept /Users/Shared/drop and (/Users/Shared) and /Users/<user>/" in text
         )
@@ -4175,6 +4180,63 @@ def test_this_homes_literal_wins_only_where_the_home_ends(tmp_path: Path) -> Non
     # a home outside /Users/ keeps the escape (only the trail): cutting there would print it whole
     out = _shell_cut_at_home(tmp_path, "/Volumes/Contoso/Users/kxy", ["at /Volumes/Contoso/Users/kxy\\ 1/x"])
     assert out == ["at ~\\ 1/x"], out
+
+
+# B13 round 35 ruling 102: lane RA's cases for setup_report.Redactor, as the shell cuts them (home /Users/kxy)
+_OTHER_HOME_CASES = (
+    (
+        "source=/System/Volumes/Data/Users/olga/Library/CloudStorage/OneDrive-Fabrikam/x",
+        "source=/Users/<path>",
+    ),
+    ("copied /Volumes/Backup/Users/olga/Fabrikam/x.docx", "copied /Volumes/<path>"),
+    ("'/Volumes/Macintosh HD/Users/olga/Fabrikam/x' and", "'/Volumes/<path>' and"),
+    ("/Volumes/Macintosh HD/Users/olga/Fabrikam/x then", "/Volumes/<path> then"),
+    ("/Volumes/Macintosh\\ HD/Users/olga/Fabrikam/x then", "/Volumes/<path> then"),
+    ("/Volumes/TM/Backups.backupdb/Mac/2026/Macintosh HD/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/Backup/Users/kxy/Fabrikam/x", "/Volumes/<path>"),
+    ("/USERS/olga/F /Users//olga/F /users/olga/F", "/Users/<path> /Users/<path> /Users/<path>"),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Big Fabrikam/Client/plan.docx", "/Users/<path>"),
+    ("/Users/olga/OneDrive - Fabrikam/Board Minutes/q3.docx", "/Users/<path>"),
+    ("error: cannot read /Users/olga/Client Alpha/plan.docx", "error: cannot read /Users/<path>"),
+    ("source=/Users/kxy\\ 1/Library/CloudStorage/OneDrive-Fabrikam/x", "source=/Users/<path>"),
+    ("/Users/kxy\\(1\\)/F /Users/kxy\\'s/F", "/Users/<path> /Users/<path>"),
+    (
+        "kept /Users/olga/a /Users/Shared/drop ~/x https://example.com/a/b 3/14 files",
+        "kept /Users/<path> /Users/Shared/drop ~/x https://example.com/a/b 3/14 files",
+    ),
+    ("copied /Volumes/Backup/a.docx to /Users/olga/b", "copied /Volumes/Backup/a.docx to /Users/<path>"),
+    (
+        "cp /Volumes/USB/stuff /tmp/y ; x/Volumes/Backup/Users/olga/y ; https://graph.microsoft.com/v1.0/users/me",
+        "cp /Volumes/USB/stuff /tmp/y ; x/Volumes/Backup/Users/olga/y ; https://graph.microsoft.com/v1.0/users/me",
+    ),
+    (
+        'own ~/x, "/Users/kxy", {\\"h\\": \\"/Users/kxy\\"} and /Users/kxy: no',
+        'own ~/x, "~", {\\"h\\": \\"~\\"} and ~: no',
+    ),
+    ("/Users/<user>/ok and /Users/<path> Alpha", "/Users/<user>/ok and /Users/<path> Alpha"),
+    ("/Users/olga/a(b)/Fabrikam", "/Users/<path>(b)/Fabrikam"),
+    ("/Users/olga/Zeta Alpha Beta/plan.docx", "/Users/<path> Alpha Beta/plan.docx"),  # the limit left
+    ("GET /users/me/drive/root failed", "GET /Users/<path> failed"),  # an accepted over-cut
+    # C981: after a blank, a word with a `/` carries the cut on; a number, an option, an `=`, a URL, a `~/` or
+    # `/` path of its own and a word with no `/` stop it
+    ("/Users/olga/a 2026/x b/c", "/Users/<path>"),
+    (
+        "/Users/olga/a 3/14 /Users/olga/b --o/a /Users/olga/c x=/a /Users/olga/d ~/b /Users/olga/e /c/d "
+        "/Users/olga/f https://e.example/a /Users/olga/g h i/j",
+        "/Users/<path> 3/14 /Users/<path> --o/a /Users/<path> x=/a /Users/<path> ~/b /Users/<path> /c/d "
+        "/Users/<path> https://e.example/a /Users/<path> h i/j",
+    ),
+)
+
+
+def test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks(tmp_path: Path) -> None:
+    """B13 round 35 ruling 102, the shell halves of C912, C947, C979 and C981 on lane RA's words: a home
+    behind /System/Volumes/Data or /Volumes/ (blanks allowed), `/USERS/` and `/Users//`, a CloudStorage or
+    `OneDrive - ` component with a blank, and the words after an unquoted blank that hold a `/` kept their
+    tails in clear. Each is cut as setup_report.Redactor cuts it; a same-login home behind a volume is cut
+    too."""
+    said = [given for given, _ in _OTHER_HOME_CASES]
+    assert _shell_cut_at_home(tmp_path, "/Users/kxy", said) == [cut for _, cut in _OTHER_HOME_CASES]
 
 
 @pytest.mark.parametrize("same_run", [True, False])

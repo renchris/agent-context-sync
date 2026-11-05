@@ -38027,6 +38027,23 @@ login-tailed home, and `/Users/` right after a letter, a digit, `_`, `.` or `-`,
 `test_this_homes_literal_wins_only_where_the_home_ends`, through `redact_stream` with HOME=/Users/<login>, since a
 sandbox home under /tmp never reaches the guard; test_report_redaction.py's shell locator now reads `/Users/<path>`.
 
+**The shell report cuts another home behind a volume and over its blanks, as the agentsync report does** (the shell
+halves of C912, C947, C979, C981 and C946, on lane RA's words; ruling 102; `scripts/install.sh`). `foreign_home_cut`
+finds `/users` in any case followed by one or more `/`. A volume in front is found by looking back from it:
+`/System/Volumes/Data` right before prints `/Users/<path>` (the login still kept), and the first `/Volumes/` before it
+on the line, at any depth and across blanks but no quote, backtick, bracket, `,` or `;`, with the `/users/` not right
+after a blank or a `/`, prints `/Volumes/<path>` (the login cut too); the word-character guard reads the byte before
+the volume. A component after `CloudStorage` or opening `OneDrive - ` runs to the next `/` when one follows, never past
+a quote or backtick; after an unquoted blank the cut goes on over each blank-separated word that holds a `/`, has no
+`=` or `://`, does not open with `-`, `/` or `~` and is not digits and `/` alone. The home pair under `/Users/` also
+refuses a match right after a letter, digit, `_`, `.` or `-` except in `/System/Volumes/Data`, so a same-login home
+behind a volume reaches the cut as `/Volumes/.../Users/<user>/` and is cut, never printed `/Volumes/<vol>~/` (the limit
+the ruling allowed the shell is not left). The legend's `<path>` item says lane RA's limit words: an unquoted path
+keeps its tail after the first quote, backtick, bracket, comma or semicolon, and after a blank from the first word that
+holds no `/`, or that is an option, a URL, a path of its own or a number like 3/14. Test:
+`test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks`, lane RA's cases through
+`redact_stream` with HOME=/Users/<login>.
+
 **The shell report reads lane B's governance folder stop** (C935's install.sh half; `scripts/install.sh`). Lane B's
 sync records a stop on the governance folder itself as `file=governance-folder`; `fallback_sync_stop_line` names it
 `agentsync's governance folder`, as setup_report._SYNC_STOP_FILES does, and the shell pairing's chmod fit gives it the

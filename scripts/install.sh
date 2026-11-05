@@ -3952,6 +3952,7 @@ redact_stream() {
 	}
 	# whether the bytes at..at+n-1 of t stand wholly inside one of the fixed phrases of agentsync written out in t
 	# (FIXED_PHRASES; setup_report._in_fixed_phrase): case as written, byte-wise, "#" a count
+	function sysdata(t) { return length(t) >= 20 && substr(t, length(t) - 19) == "/System/Volumes/Data" } # C947
 	function in_fixed(t, at, n,    q, u, off) {
 		for (q = 1; q <= nfp; q++) {
 			u = t; off = 0
@@ -4041,7 +4042,10 @@ redact_stream() {
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w" || f[3] == "i" || f[3] == "h" || f[3] == "H"); tail = (f[3] == "t" || f[3] == "u"); alnum = (f[3] == "e"); m = 0
 			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
-			esc = (f[3] == "u") # a home under /Users/: never before a `\` escape but `\"` (B13 round 35 C941)
+			# a home under /Users/: never before a `\` escape but `\"` (B13 round 35 C941), nor right after a letter, a
+			# digit, `_`, `.` or `-` but in /System/Volumes/Data, so a same-login home behind a volume reaches
+			# foreign_home_cut as /Volumes/.../Users/<user>/ and is cut (C947)
+			esc = (f[3] == "u")
 			hv = (f[3] == "h" || f[3] == "H"); line = ""
 			if (hv) for (j = 1; j <= ns; j++) line = line seg[j] # the line as it stands, for in_fixed
 			at = 0 # the bytes of the line before s
@@ -4051,7 +4055,7 @@ redact_stream() {
 				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
-					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (esc && post == "\\" && substr(s, i + n + 1, 1) != "\"") || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
+					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (esc && post == "\\" && substr(s, i + n + 1, 1) != "\"") || (esc && pre ~ /[A-Za-z0-9_.-]/ && !sysdata(acc substr(s, 1, i - 1))) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else if (hv && in_fixed(line, at + i, n)) {
 						acc = acc substr(s, 1, i + n - 1) # a fixed phrase of agentsync, not the value (ruling 39, C338, C397)
@@ -4081,13 +4085,22 @@ redact_stream() {
 # A path in another home (a moved home's install.log source= or args=, a --source in another account's folder) is
 # cut whole to /Users/<path>, the form a --source-local argument already gets, uncounted, as setup_report.Redactor
 # cuts it (B13 round 34 ruling 91, C822): after the pairs pass, so this home is already ~ and the login <user>.
-# `/Users/` not right after a letter, a digit, `_`, `.` or `-`, and its next component neither `Shared` nor `<user>`
-# nor an already-cut `<path>`, each whole: any other placeholder an earlier pass made, or one a component opens with
-# (`<value>`, `<org-1>`, `<name>`, `<user>.old`, `<user>\ 1`), is cut, never kept by a prefix test (B13 round 35
-# ruling 102, C901, C992). Right after a quote or a backtick the path runs to
-# the same mark's next one on the line; else one component, a `\` taking the byte after it (printf %q), and an
-# optional `/` tail, each up to a blank, a quote, a backtick, a bracket ((), [] or {}), `,` or `;`. An unquoted
-# path with a blank keeps its tail after the blank. Byte-wise, no regex lookahead (BSD has none).
+# `/users` in any case and one or more `/` (B13 round 35 ruling 102, C947), not right after a letter, a digit, `_`,
+# `.` or `-`, and its next component neither `Shared` nor `<user>` nor an already-cut `<path>`, each whole: any
+# other placeholder an earlier pass made, or one a component opens with (`<value>`, `<org-1>`, `<name>`,
+# `<user>.old`, `<user>\ 1`), is cut, never kept by a prefix test (C901, C992). A volume in front is cut with it,
+# found by looking back from that `/users/` (C947, C979): `/System/Volumes/Data` right before it prints
+# `/Users/<path>`, the login still kept; the first `/Volumes/` before it on the line (any depth, blanks allowed,
+# no quote, backtick, bracket, `,` or `;` between, the `/users/` not right after a blank or a `/`) prints
+# `/Volumes/<path>`, the
+# login cut too; the guard reads the byte before the volume. Right after a quote or a backtick the path runs to the
+# same mark's next one on the line; else one component, a `\` taking the byte after it (printf %q), then each
+# `/` component, a component after `CloudStorage` or opening `OneDrive - ` running to the next `/` when one
+# follows, never past a quote or backtick (C912), each other one up to a blank, a quote, a backtick, a bracket
+# ((), [] or {}), `,` or `;`. After an unquoted blank the cut goes on over each blank-separated word that holds a
+# `/`, has no `=` or `://`, does not open with `-`, `/` or `~` and is not digits and `/` alone (C981); the first
+# other word, and anything after a quote, a backtick, a bracket, `,` or `;`, is left as it is (the legend's
+# limit, C946). Byte-wise, no regex lookahead (BSD has none).
 foreign_home_cut() {
 	LC_ALL=C awk '
 	function upto(s, k, slash,    ch) { # the first byte at or after k that ends the path (slash: "/" ends it too)
@@ -4099,18 +4112,51 @@ foreign_home_cut() {
 		}
 		return k
 	}
+	function volume(s, i,    j, at, v) { # where a /Volumes/ prefix of the /users/ at i starts, else 0
+		if (i < 2 || substr(s, i - 1, 1) ~ /[ \t\/]/) return 0
+		at = 1
+		while ((j = index(substr(s, at, i - at), "/Volumes/")) > 0) {
+			v = at + j - 1
+			if (!(v > 1 && substr(s, v - 1, 1) ~ /[A-Za-z0-9_.-]/) && substr(s, v, i - v) !~ /["\047`()\[\]{},;]/) return v
+			at = v + 1
+		}
+		return 0
+	}
+	function more(w) { # C981: a word after an unquoted blank that carries the cut on
+		return w != "" && index(w, "/") && !index(w, "=") && !index(w, "://") && substr(w, 1, 1) !~ /[-\/~]/ && w !~ /^[0-9\/]+$/
+	}
 	BEGIN { STOP = " \t\r\f\v\"\047`()[]{},;" }
 	{
 		s = $0; out = ""
-		while ((i = index(s, "/Users/")) > 0) {
-			pre = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
-			k = upto(s, i + 7, 1); comp = substr(s, i + 7, k - i - 7)
-			if (comp == "" || comp == "Shared" || pre ~ /[A-Za-z0-9_.-]/ || comp == "<user>" || comp == "<path>") {
-				out = out substr(s, 1, i + 6); s = substr(s, i + 7); continue
+		while ((i = index(tolower(s), "/users/")) > 0) {
+			h = i + 6
+			while (substr(s, h + 1, 1) == "/") h++
+			k = upto(s, h + 1, 1); comp = substr(s, h + 1, k - h - 1)
+			ps = i; vol = 0
+			if (i > 20 && substr(s, i - 20, 20) == "/System/Volumes/Data") ps = i - 20
+			else if ((v = volume(s, i)) > 0) { ps = v; vol = 1 }
+			pre = (ps > 1) ? substr(s, ps - 1, 1) : substr(out, length(out), 1)
+			if (comp == "" || comp == "Shared" || comp == "<path>" || (comp == "<user>" && !vol) || pre ~ /[A-Za-z0-9_.-]/) {
+				out = out substr(s, 1, h); s = substr(s, h + 1); continue
 			}
-			out = out substr(s, 1, i - 1) "/Users/<path>"
-			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, i + 7), pre))) s = substr(s, i + 6 + q)
-			else s = substr(s, upto(s, k, 0))
+			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>")
+			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); continue }
+			last = comp
+			while (substr(s, k, 1) == "/") {
+				c = k + 1; r = substr(s, c)
+				if ((last == "CloudStorage" || substr(r, 1, 11) == "OneDrive - ") && (q = index(r, "/")) && substr(r, 1, q - 1) !~ /["\047`]/) {
+					last = substr(r, 1, q - 1); k = c + q - 1; continue
+				}
+				k = upto(s, c, 1); last = substr(s, c, k - c)
+			}
+			while (substr(s, k, 1) ~ /[ \t]/) {
+				c = k
+				while (substr(s, c, 1) ~ /[ \t]/) c++
+				e = upto(s, c, 0)
+				if (!more(substr(s, c, e - c))) break
+				k = e
+			}
+			s = substr(s, k)
 		}
 		print out s
 	}'
@@ -5646,14 +5692,17 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		# a configured ~/ or absolute argument is matched by its configured folders, as the body shows it (B13 round
 		# 21 Y8); any other is cut to <path>, as the Python report cuts it (round 22 Z2, Z13, Z29, Z42, Z77)
 		# and an added source's typed folder, cut as the argument is (B13 round 31 ruling 49: C529, lane RA's words);
-		# a path in another home, foreign_home_cut's (B13 round 34 ruling 91, C822)
+		# a path in another home, foreign_home_cut's (B13 round 34 ruling 91, C822), with the limit lane RA's legend
+		# words (B13 round 35 ruling 102, C946)
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
 		say "  there or as an added source's typed folder, cut at its first part that is not a fixed macOS folder or one"
 		say "  every home or drive has; a path in another home (/Users/ and any folder but Shared or this login's), cut"
-		say "  whole, an unquoted one with a blank keeping its tail after the first blank; and every word bash wrote in its"
-		say "  dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control character, a"
-		say "  curly apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
+		say "  whole to /Users/<path> (/Volumes/<path> behind a volume; in both reports, an unquoted path keeps its tail"
+		say "  after the first quote, backtick, bracket, comma or semicolon, and after a blank from the first word that"
+		say "  holds no /, or that is an option, a URL, a path of its own or a number like 3/14); and every word bash wrote"
+		say "  in its dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control"
+		say "  character, a curly apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
