@@ -37653,6 +37653,9 @@ group can hold, and re-raises the time-out as it was.
 Amended 2026-11-04, §16.233 C961: `doctor._run` reaches only doctor's own programs; a helper the ocr, media or
 speech check starts goes through `ocr._run_helper`, which keeps its own wait, starts nothing past `ocr.START_BY` and
 is killed by `ocr.end_helpers()`, alone, in its caller's process group (§16.233).
+Amended 2026-11-04, §16.232 C955: `RUN_DEADLINE`, the registry of running programs and `end_children` live in the
+leaf module `agentsync.ops.deadline` (doctor's names are the same objects), whose `run()` also bounds
+`gitops._run`, `governance._git` and `launchd._run_launchctl` under a caller's deadline.
 
 **C829 (makes worse True as found; the verifier's fix).** With governance/ at 0000 (or 0600) the purge queue's refused
 open raised a plain `GovernanceError` caused by a `PermissionError`, not `GovernanceUnreadError`, so `loop.next_step`
@@ -38262,6 +38265,22 @@ interpreter's import check says nothing of it (C917). Standalone doctor sets no 
 (a delayed `_read_cut_off`: git named, pandoc never run) and
 `::test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953` (a cut in run_checks and in the last
 extra check). Lane RA writes the report-level cases on this sha.
+
+**Every child the report's call starts ends with that call, and with agentsync** (C955; ruling 106; amends §16.227
+C804). gitops cannot import doctor (doctor imports gitops), so a report hook's git through `gitops._run`,
+`governance._git` (the `git remote` the finding's report went through) or `launchd._run_launchctl` used a plain
+`subprocess.run` that outlived the report, and a thread the cut freed could start one after it. The new leaf
+module `agentsync.ops.deadline` imports nothing of agentsync and holds `RUN_DEADLINE` (`doctor.RUN_DEADLINE` is the
+same object, so the report's `getattr(doctor, "RUN_DEADLINE")` sets it), `past_deadline`, `stop_past_deadline`, the
+registry (`register`, `unregister`, `end`, `end_children`, which doctor re-exports) and `run()`. With no deadline,
+`run()` is exactly `subprocess.run`, so a sync and standalone doctor are unchanged; with one, its limit is
+`min(timeout, deadline - now)`, it raises `TimeoutExpired` before any spawn once the deadline has passed, and it
+registers the pid while the program runs. That child stays in the caller's process group, so a signal to the group
+still reaches it, and `end_children` ends it with `os.kill`, never `killpg`, which would reach agentsync itself; none
+of the three gets `process_group=0`. Not covered, as the verifier found: net.py's 5 s `scutil`, `df`, `diskutil`,
+`launchctl getenv` and governance's `_CatFile`, each short-limited or not seen running under a report. The survivor
+half predates round 34. Test:
+`test_ops_doctor.py::test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_group_c955`.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

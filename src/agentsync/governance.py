@@ -76,7 +76,7 @@ from agentsync.manifest import (
     reads_only,
 )
 from agentsync.model import SourceKind
-from agentsync.ops import launchd
+from agentsync.ops import deadline, launchd
 from agentsync.ops.lock import HOLD_RECORD_KEY as _HOLD_RECORD_KEY
 from agentsync.ops.lock import HOLD_RECORD_NAME as _HOLD_RECORD_NAME
 from agentsync.ops.lock import SingleWriterLock, read_regular_text
@@ -3005,7 +3005,8 @@ def _git(
 ) -> subprocess.CompletedProcess[bytes]:
     argv = [str(gitops.git_executable()), "-C", str(repo), *args]
     try:
-        proc = subprocess.run(
+        # a caller's deadline (the setup report's) ends it by then, in this process's group (C955)
+        proc = deadline.run(
             argv,
             input=input_bytes,
             stdin=None if input_bytes is not None else subprocess.DEVNULL,

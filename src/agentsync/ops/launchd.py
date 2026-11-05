@@ -37,6 +37,7 @@ from pathlib import Path
 from agentsync.config import Config
 from agentsync.errors import ConfigError
 from agentsync.model import CycleMode, SourceKind
+from agentsync.ops import deadline
 from agentsync.paths import cloud_relative, expand, is_cloud_path, is_under
 from agentsync.skill import INSTALL_SH
 
@@ -94,7 +95,8 @@ class AgentSpec:
 def _run_launchctl(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Default runner: execute ``argv`` with a fixed environment, capture output, never raise on rc."""
     env = {"PATH": LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home())}
-    return subprocess.run(list(argv), capture_output=True, text=True, check=False, timeout=120, env=env)
+    # a caller's deadline (the setup report's) ends it by then, in this process's group (C955)
+    return deadline.run(list(argv), capture_output=True, text=True, check=False, timeout=120, env=env)
 
 
 def _domain() -> str:

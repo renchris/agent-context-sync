@@ -33,10 +33,11 @@ from agentsync import cli, gitops, governance, lints, setup_report
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.convert import pandoc as pandoc_mod
+from agentsync.errors import GitError
 from agentsync.loop import BIN
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
-from agentsync.ops import doctor, launchd
+from agentsync.ops import deadline, doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
 from agentsync.paths import expand
@@ -766,6 +767,66 @@ def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> Non
         doctor._run(["/bin/sleep", "600"], timeout=1.0)
     assert doctor._timed_out("git", caught.value).detail.startswith("sleep did not answer within 1s: ")
     assert doctor._importable(sys.executable) is True
+
+
+def test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_group_c955(
+    tmp_path: Path,
+) -> None:
+    """B13 round 35 C955 (ruling 106): gitops._run, governance._git and launchd._run_launchctl used a plain
+    subprocess.run, so a report hook's git outlived the report, and a thread the cut freed could start one
+    after it. Each goes through deadline.run: with no deadline exactly subprocess.run; with one passed,
+    nothing starts; with one set, the child stays in the caller's group, registered, and end_children ends it
+    alone (launchctl itself is out of a test's reach: its runner's source is read)."""
+    assert doctor.RUN_DEADLINE is deadline.RUN_DEADLINE and doctor.end_children is deadline.end_children
+    plain = deadline.run(
+        ["/bin/sh", "-c", "printf ok"], timeout=30, capture_output=True, text=True, check=False
+    )
+    assert (plain.returncode, plain.stdout) == (0, "ok")
+    ran = tmp_path / "ran"
+    token = deadline.RUN_DEADLINE.set(time.monotonic() - 1.0)
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            deadline.run(["/bin/sh", "-c", f"printf x > {ran}"], timeout=30, capture_output=True, check=False)
+        with pytest.raises(GitError) as git_cut:
+            gitops._run(tmp_path, ["status"])
+        assert git_cut.value.returncode == 124
+        with pytest.raises(governance.GovernanceError):
+            governance._git(tmp_path, "status")
+    finally:
+        deadline.RUN_DEADLINE.reset(token)
+    assert not ran.exists()
+    runner = inspect.getsource(launchd).split("def _run_launchctl(", 1)[1].split("\ndef ", 1)[0]
+    assert "deadline.run(" in runner and "subprocess.run(" not in runner
+    pidfile = tmp_path / "child.pid"
+    done: list[subprocess.CompletedProcess[str]] = []
+
+    def hung() -> None:
+        token = deadline.RUN_DEADLINE.set(time.monotonic() + 600)
+        try:
+            done.append(
+                deadline.run(
+                    ["/bin/sh", "-c", f"printf '%s;' $$ > {pidfile}; exec /bin/sleep 600"],
+                    timeout=600,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            )
+        finally:
+            deadline.RUN_DEADLINE.reset(token)
+
+    worker = threading.Thread(target=hung, daemon=True)
+    worker.start()
+    child = _pid_from(pidfile)
+    groups = subprocess.run(
+        ["/bin/ps", "-o", "pgid=", "-p", f"{child},{os.getpid()}"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert len(groups) == 2 and len(set(groups)) == 1, ("the child left the caller's process group", groups)
+    assert {child: False} == deadline._LIVE_CHILDREN
+    assert deadline.end_children() == 1
+    worker.join(30)
+    assert not worker.is_alive() and done and done[0].returncode == -9, done
+    assert _pid_gone(child) and not deadline._LIVE_CHILDREN
 
 
 def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) -> None:

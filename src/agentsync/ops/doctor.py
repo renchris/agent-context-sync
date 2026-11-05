@@ -10,7 +10,6 @@ time. Every FAIL names a fix: scripts/install.sh tells its reader so.
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import ctypes
 import enum
 import errno
@@ -21,7 +20,6 @@ import os
 import plistlib
 import re
 import shutil
-import signal
 import sqlite3
 import stat
 import subprocess
@@ -67,6 +65,7 @@ from agentsync.manifest import (
     read_note,
 )
 from agentsync.model import CycleMode, SourceKind
+from agentsync.ops import deadline as deadline_mod
 from agentsync.ops import launchd
 from agentsync.ops.lock import (
     STARTED_BY_LAUNCHD,
@@ -418,41 +417,18 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-RUN_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
-    "doctor_run_deadline", default=None
-)
-"""A caller's deadline (a :func:`time.monotonic` value) for every :func:`_run` in its context, the setup
-report's time limit among them: a program still running then times out inside doctor, its check's own
-time-out line, instead of outliving the call that gave up on it. Once it has passed, :func:`run_checks` stops
-with ``TimeoutError`` (:func:`stop_past_deadline`) rather than run on after the caller has gone (B13 round 35
-C952, ruling 105). Unset, as standalone ``agentsync doctor`` runs, each program keeps its own limit and every
-check runs (B13 round 34 C804)."""
-_LIVE_CHILDREN: set[int] = set()
-_LIVE_LOCK = threading.Lock()
+RUN_DEADLINE = deadline_mod.RUN_DEADLINE
+"""The caller's deadline, :data:`agentsync.ops.deadline.RUN_DEADLINE` itself, the same object the setup report
+sets (B13 round 34 C804; round 35 ruling 106 moved it to that leaf module)."""
+_LIVE_CHILDREN = deadline_mod._LIVE_CHILDREN  # the one registry of running programs (C955)
+end_children = deadline_mod.end_children
+past_deadline = deadline_mod.past_deadline
+stop_past_deadline = deadline_mod.stop_past_deadline
 
 
 def _end_group(pid: int) -> None:
     """SIGKILL the process group ``pid`` leads: the program and every child it started (a shim's git)."""
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pid, signal.SIGKILL)
-
-
-def past_deadline() -> bool:
-    """Whether a caller's :data:`RUN_DEADLINE` is set and has passed (never, standalone)."""
-    deadline = RUN_DEADLINE.get()
-    return deadline is not None and time.monotonic() >= deadline
-
-
-def stop_past_deadline() -> None:
-    """Raise ``TimeoutError`` once the caller's :data:`RUN_DEADLINE` has passed: the setup report gave up on
-    this doctor then, so the check it was in stays the one named and no later check runs, names itself or
-    hands back a fix (B13 round 35 C952, C953, C978; ruling 105). ``TimeoutError``, never
-    ``subprocess.TimeoutExpired``: the raise can reach the report's call before its own wait ends, and the
-    report's Doctor part catches only ``TimeoutError``. No margin: the deadline is the call's own limit, so
-    no program starts after the call's ``end_children``. Called outside each check's ``try``, so no check
-    turns it into a line. Standalone doctor sets no deadline and never stops."""
-    if past_deadline():
-        raise TimeoutError("the caller's deadline passed")
+    deadline_mod.end(pid, group=True)
 
 
 class _NotStarted(subprocess.TimeoutExpired):
@@ -466,24 +442,13 @@ _SHORTENED_NOTE = "the caller's deadline shortened this wait"
 :func:`_timed_out` names the report's time limit, never seconds the program was not given (C917)."""
 
 
-def end_children() -> int:
-    """SIGKILL each :func:`_run` program still running, with its process group, and return how many: a call
-    a caller abandoned (the setup report's time limit runs doctor in a thread it then leaves) keeps its child
-    otherwise, which the interpreter's exit never stops (B13 round 34 C804)."""
-    with _LIVE_LOCK:
-        live = sorted(_LIVE_CHILDREN)
-    for pid in live:
-        _end_group(pid)
-    return len(live)
-
-
 def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
     """Run ``argv`` with launchd's PATH, capturing text output; never raises on a non-zero exit. A program
     that does not end within ``timeout``, or by :data:`RUN_DEADLINE` when a caller set an earlier one, raises
     ``subprocess.TimeoutExpired``, which the check that asked turns into :func:`_timed_out` (and
     :func:`run_checks` does for one that gets past its check). Each program leads a process group of its own,
-    killed whole when it times out or the wait is interrupted, and :func:`end_children` can end it while it
-    runs (B13 round 34 C804)."""
+    killed whole when it times out or the wait is interrupted, the wait then on the program, never its pipes,
+    and :func:`end_children` can end it while it runs (B13 round 34 C804, round 35 C954, C955)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
     deadline = RUN_DEADLINE.get()
     shortened = False
@@ -502,8 +467,7 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
         env=env,
         process_group=0,
     ) as proc:
-        with _LIVE_LOCK:
-            _LIVE_CHILDREN.add(proc.pid)
+        deadline_mod.register(proc.pid, group=True)
         try:
             try:
                 out, err = proc.communicate(timeout=timeout)
@@ -518,8 +482,7 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
                 _end_group(proc.pid)
                 raise
         finally:
-            with _LIVE_LOCK:
-                _LIVE_CHILDREN.discard(proc.pid)
+            deadline_mod.unregister(proc.pid)
     return subprocess.CompletedProcess(list(argv), proc.returncode, out, err)
 
 

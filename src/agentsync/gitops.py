@@ -29,6 +29,7 @@ from pathlib import Path
 
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange
+from agentsync.ops import deadline
 from agentsync.paths import expand, is_cloud_path
 from agentsync.text import plural
 
@@ -238,7 +239,8 @@ def _run(
 ) -> subprocess.CompletedProcess[str]:
     argv = [str(git_executable()), *_SAFE_ARGS, "-C", str(repo), *args]
     try:
-        proc = subprocess.run(
+        # a caller's deadline (the setup report's) ends it by then, in this process's group (C955)
+        proc = deadline.run(
             argv,
             input=input_text,
             stdin=None if input_text is not None else subprocess.DEVNULL,
