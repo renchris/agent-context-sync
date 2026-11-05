@@ -37419,6 +37419,12 @@ half). `_Run.call` abandons a cut-off call's thread, and a doctor git child ran 
 `finally` (`_end_doctor_children`), which kills each program still running with its process group. Both are read by
 `getattr`, so a build without them reads as before. Test:
 `tests/test_setup_report.py::test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804`.
+Amended 2026-11-04, §16.233 C961: and the helper half. A doctor thread the report abandoned ran on into the ocr,
+media or speech check and started a helper through `ocr._run_helper`, which read no deadline, so on the real CLI that
+helper outlived the report (the evidence's own three probes do not, since doctor runs after them). `ocr.START_BY`,
+for the report to set beside `doctor.RUN_DEADLINE`, refuses any helper start past it, and `ocr.end_helpers()`, for
+`_end_doctor_children` to call by `getattr`, kills each helper still running; the report's half is lane RA's
+(§16.230).
 
 **`made no install run`, one phrase for an attempt with no install run** (C817, ruling 101's cluster; makes worse
 True as the finder gave it). A stopped copy said `this attempt ran no install.sh` while the same report showed that
@@ -37605,6 +37611,9 @@ Amended 2026-11-04, §16.232 C952, C954: once `RUN_DEADLINE` has passed, `run_ch
 with `TimeoutError` before the next check (`doctor.stop_past_deadline`), so the abandoned doctor runs nothing more;
 on a time-out `_run` kills the group, then waits on the program alone, not on its pipes, which a helper outside the
 group can hold, and re-raises the time-out as it was.
+Amended 2026-11-04, §16.233 C961: `doctor._run` reaches only doctor's own programs; a helper the ocr, media or
+speech check starts goes through `ocr._run_helper`, which keeps its own wait, starts nothing past `ocr.START_BY` and
+is killed by `ocr.end_helpers()`, alone, in its caller's process group (§16.233).
 
 **C829 (makes worse True as found; the verifier's fix).** With governance/ at 0000 (or 0600) the purge queue's refused
 open raised a plain `GovernanceError` caused by a `PermissionError`, not `GovernanceUnreadError`, so `loop.next_step`
@@ -38039,7 +38048,29 @@ extra check). Lane RA writes the report-level cases on this sha.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
-Reserved for round 35 lane E of B13.
+Round 35's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 102 to 111 settle it). A dated line this round writes reads
+`Amended 2026-11-04, §16.233 C<n>`.
+
+**A helper the report gave up on never outlives it** (C961, ruling 106, makes worse True; `agentsync.convert.ocr`;
+amends §16.225 C804 and §16.227 C804). On the real CLI the report runs its evidence first and Doctor after it, so the
+evidence's three `--version` probes are reaped by the time the report ends; the orphan came from the doctor thread
+the report's time limit abandoned, which ran on into the ocr check and started a helper the interpreter's exit left
+running (measured by the verifier: 3 of 3 runs with a slow `pandoc_path`). `ocr.py` now has `START_BY`, a contextvar
+holding a `time.monotonic()` moment, unset in a cycle: past it `_run_helper` starts nothing and raises the helper's
+`ran out of time` words. The helper's own wait is never shortened to it, so the report's wait always ends first and
+its `did not answer within 1.5s` never races the helper's (the verifier measured 4 of 18 lines flip when the two
+fired together). `_run_helper` starts the helper with `Popen` and waits with `communicate`, as `subprocess.run` did,
+every error mapped as before, and lists each running helper in `_LIVE` (Popen objects, never bare pids, so a reaped
+helper never names a reused pid) under one lock that also holds the start gate and the spawn, so once `START_BY`
+has passed a helper is either listed before `end_helpers()` reads the list or never started. `end_helpers()` kills each with SIGKILL, that process
+alone: no `process_group=0`, no new session and no `killpg`, since the helper stays in the caller's process group,
+where launchd's cleanup of a cycle and a signal to the report's group reach it. The report's half (setting
+`START_BY` in `_Run.call`'s copied context, `end_helpers()` from `_end_doctor_children` by `getattr`) is lane RA's.
+Tests: `test_ocr.py::test_no_helper_starts_once_its_callers_start_by_has_passed_c961`,
+`test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` and
+`test_ocr.py::test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961` (SIGTERM, SIGHUP and SIGKILL to
+the group), with the four `subprocess.run` fakes in `test_ocr.py` and `test_media.py` now `Popen` fakes.
 
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 

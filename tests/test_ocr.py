@@ -10,6 +10,7 @@ real Apple Vision helper; it is skipped where there are no macOS developer tools
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import json
 import os
 import shlex
@@ -17,6 +18,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 from collections.abc import Iterator, Sequence
@@ -115,6 +117,20 @@ def write_fake(
 def calls(helper: Path) -> list[dict[str, Any]]:
     log = Path(str(helper) + ".calls")
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def waiting(waits: list[float | None], *, hang: bool = False) -> type[subprocess.Popen[bytes]]:
+    """A Popen that notes each wait the helper runner gives a real helper in ``waits``; ``hang``: every wait
+    runs out of time at once, as a helper that never answers would (the runner then kills and reaps it)."""
+
+    class Waiting(subprocess.Popen[bytes]):
+        def communicate(self, input: Any = None, timeout: float | None = None) -> Any:
+            waits.append(timeout)
+            if hang:
+                raise subprocess.TimeoutExpired(self.args, timeout or 0)
+            return super().communicate(input, timeout)
+
+    return Waiting
 
 
 def fake_image(
@@ -366,14 +382,8 @@ def test_read_batches_images_and_shares_one_time_budget(
         fake_image(tmp_path / f"{n:02d}.png", [[[f"image {n}", 0.1, 0.1, 0.5, 0.05]]])
         for n in range(ocr._BATCH + 1)
     ]
-    timeouts: list[float] = []
-    real_run = subprocess.run
-
-    def run(argv: list[str], **kw: Any) -> Any:
-        timeouts.append(kw["timeout"])
-        return real_run(argv, **kw)
-
-    monkeypatch.setattr(subprocess, "run", run)
+    timeouts: list[float | None] = []
+    monkeypatch.setattr(subprocess, "Popen", waiting(timeouts))
     ticks = iter([100.0, 100.0, 130.0])  # the start, then before each of the two batches
     monkeypatch.setattr(ocr, "_clock", lambda: next(ticks))
     got = eng.read(images, work_dir=tmp_path, budget_s=60)
@@ -407,11 +417,7 @@ def test_read_turns_every_helper_failure_into_an_ocr_error_without_a_path(
     assert str(missing.value) == "the OCR helper cannot be checked: No such file or directory"
 
     slow = fake_engine(tmp_path / "slow")
-
-    def run(argv: list[str], **kw: Any) -> Any:
-        raise subprocess.TimeoutExpired(argv, kw["timeout"])
-
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "Popen", waiting([], hang=True))
     with pytest.raises(ocr.OcrError) as timed_out:
         slow.read([image], work_dir=tmp_path, budget_s=60)
     assert str(timed_out.value) == "the OCR helper ran out of time" and timed_out.value.__cause__ is None
@@ -419,7 +425,7 @@ def test_read_turns_every_helper_failure_into_an_ocr_error_without_a_path(
     def refuse(argv: list[str], **kw: Any) -> Any:
         raise PermissionError(13, "Permission denied", argv[0])
 
-    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
     with pytest.raises(ocr.OcrError) as refused:
         slow.read([image], work_dir=tmp_path, budget_s=60)
     assert str(refused.value) == "the OCR helper does not run: Permission denied"
@@ -805,15 +811,92 @@ def test_a_helper_that_hangs_on_version_is_a_failed_helper_after_a_short_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     place_fake(tmp_path)
-    waits: list[float] = []
-
-    def run(argv: list[str], **kw: Any) -> Any:
-        waits.append(kw["timeout"])
-        raise subprocess.TimeoutExpired(argv, kw["timeout"])
-
-    monkeypatch.setattr(subprocess, "run", run)
+    waits: list[float | None] = []
+    monkeypatch.setattr(subprocess, "Popen", waiting(waits, hang=True))
     assert ocr.probe(CFG, tmp_path) == ("failed", "the OCR helper ran out of time")
     assert waits == [5.0], "doctor runs inside setup-report's 12 s budget"
+
+
+def hung_helper(cache: Path, pidfile: Path) -> Path:
+    """A helper placed where this agentsync's goes that writes its pid to ``pidfile`` on any call, then never
+    answers."""
+    write = f"Path({str(pidfile)!r}).write_text(str(os.getpid()))\n"
+    return place_fake(cache, hook=write + "import time\ntime.sleep(120)\n")
+
+
+def helper_pid(pidfile: Path, within: float = 20.0) -> int:
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        with contextlib.suppress(OSError, ValueError):
+            return int(pidfile.read_text())
+        time.sleep(0.02)
+    raise AssertionError("the helper never started")
+
+
+def group_of(pid: int) -> int:
+    """The process group id of ``pid``, as ps reads it."""
+    argv = ["/bin/ps", "-o", "pgid=", "-p", str(pid)]
+    return int(subprocess.run(argv, capture_output=True, text=True, check=True).stdout)
+
+
+def test_no_helper_starts_once_its_callers_start_by_has_passed_c961(tmp_path: Path) -> None:
+    """B13 round 35 C961 (ruling 106): setup-report sets START_BY in the context of a call it may give up on;
+    a doctor thread it abandoned that reaches the ocr check after that starts nothing the report's end would
+    leave running, and says the helper ran out of time."""
+    helper = place_fake(tmp_path)
+    context = contextvars.copy_context()
+    context.run(ocr.START_BY.set, time.monotonic() - 1)
+    assert context.run(ocr.probe, CFG, tmp_path) == ("failed", "the OCR helper ran out of time")
+    assert calls(helper) == [], "nothing was started"
+    later = contextvars.copy_context()
+    later.run(ocr.START_BY.set, time.monotonic() + 60)
+    assert later.run(ocr.probe, CFG, tmp_path)[0] == "ready", "a start before the limit runs as ever"
+    assert ocr.probe(CFG, tmp_path)[0] == "ready", "a cycle sets none"
+
+
+def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961(tmp_path: Path) -> None:
+    """end_helpers() kills every helper running now (setup-report calls it as it ends), each one alone: the
+    helper stays in its caller's process group, where launchd's cleanup of a cycle reaches it (ocr.py's
+    "no new session"), so it is never a process group of its own to kill."""
+    pidfile = tmp_path / "helper.pid"
+    hung_helper(tmp_path, pidfile)
+    got: list[tuple[str, str]] = []
+    thread = threading.Thread(target=lambda: got.append(ocr.probe(CFG, tmp_path)), daemon=True)
+    started = time.monotonic()
+    thread.start()
+    pid = helper_pid(pidfile)
+    assert group_of(pid) == group_of(os.getpid()), "the helper is in its caller's process group"
+    ocr.end_helpers()
+    thread.join(10)
+    assert got == [("failed", "the OCR helper was stopped by SIGKILL (signal 9)")]
+    assert time.monotonic() - started < ocr._VERSION_TIMEOUT_S, "ended, not timed out"
+    assert gone(pid) and not ocr._LIVE, "reaped and off the list"
+    ocr.end_helpers()  # nothing left to end, and never a raise
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGKILL])
+def test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961(
+    tmp_path: Path, sig: signal.Signals
+) -> None:
+    """A helper the report is waiting on ends with the signal that ends the report's process group (a Terminal
+    closed or ^C, a launchd job stopped), because it never leaves that group."""
+    pidfile = tmp_path / "helper.pid"
+    hung_helper(tmp_path, pidfile)
+    code = (
+        "import sys; from pathlib import Path; from agentsync.convert import ocr\n"
+        "ocr._run_helper(ocr._helper_path(Path(sys.argv[1])), ['--version'], timeout=120)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", code, str(tmp_path)], start_new_session=True)
+    try:
+        pid = helper_pid(pidfile)
+        assert group_of(pid) == proc.pid, "the helper is in the group of the process that started it"
+        os.killpg(proc.pid, sig)
+        proc.wait(10)
+        assert gone(pid), f"{sig.name} to the group left the helper running"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait(10)
 
 
 def test_a_helper_someone_else_could_have_replaced_is_never_run(

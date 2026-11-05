@@ -26,6 +26,7 @@ diagram rows) are read row by row, joined with `` | ``.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import hashlib
 import itertools
 import json
@@ -40,6 +41,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -314,34 +316,88 @@ def _untrusted(helper: Path, kind: Helper = _OCR) -> str | None:
     return None
 
 
+# B13 round 35 C961 (ruling 106, the helper half of C804): a call that gives up on its thread
+# (setup-report's ``_Run.call``) sets START_BY in that thread's context to the moment it stops waiting; past
+# it _run_helper starts nothing, so an abandoned doctor thread that reaches the ocr, media or speech check
+# later starts no helper the report's end would leave running.  A cycle sets none.  The helper's own wait is
+# never shortened to it: the caller's wait then always ends first, so its words (``did not answer within
+# 1.5s``) never race the helper's.
+START_BY: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "agentsync_ocr_start_by", default=None
+)
+# Every helper running now, as Popen objects (never bare pids, so a helper already reaped never names a reused
+# pid), for end_helpers(); the lock also holds the start gate and the spawn together, so once START_BY has
+# passed a helper is either listed before end_helpers() reads the list or never started.
+_LIVE: set[subprocess.Popen[bytes]] = set()
+_LIVE_LOCK = threading.Lock()
+
+
+def end_helpers() -> None:
+    """Kill every helper still running (SIGKILL to that one process, never its group: the helper stays in the
+    caller's process group, which launchd cleans up for a cycle).  setup-report calls this as it ends, so a
+    helper the report gave up on never outlives it.  Never a raise."""
+    with _LIVE_LOCK:
+        live = list(_LIVE)
+    for proc in live:
+        with contextlib.suppress(OSError):
+            proc.kill()
+
+
+def _start(helper: Path, args: Sequence[str], cwd: Path | None, kind: Helper) -> subprocess.Popen[bytes]:
+    """The helper started and listed in :data:`_LIVE`; raises ``kind.error`` past :data:`START_BY`."""
+    with _LIVE_LOCK:
+        start_by = START_BY.get()
+        if start_by is not None and time.monotonic() >= start_by:
+            raise kind.error(f"the {kind.name} ran out of time")
+        try:  # no new session: the helper stays in the LaunchAgent's process group, which launchd cleans up
+            proc = subprocess.Popen(
+                [str(helper), *args],
+                cwd=cwd,
+                env=_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise kind.error(f"the {kind.name} does not run: {_strerror(exc)}") from None
+        _LIVE.add(proc)
+    return proc
+
+
 def _run_helper(
     helper: Path, args: Sequence[str], *, timeout: float, cwd: Path | None = None, kind: Helper = _OCR
 ) -> bytes:
-    """The helper's stdout for ``args``; raises ``kind.error``."""
+    """The helper's stdout for ``args``; raises ``kind.error``.  Waits as :func:`subprocess.run` does, killing
+    the helper on a time-out or any other stop of the wait."""
     refusal = _untrusted(helper, kind)
     if refusal is not None:
         raise kind.error(refusal)
-    try:  # no new session: the helper stays in the LaunchAgent's process group, which launchd cleans up
-        cp = subprocess.run(
-            [str(helper), *args],
-            cwd=cwd,
-            env=_env(),
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:  # its text holds the command line, so the helper's path
-        raise kind.error(f"the {kind.name} ran out of time") from None
-    except OSError as exc:
-        raise kind.error(f"the {kind.name} does not run: {_strerror(exc)}") from None
-    if cp.stderr:
-        log.debug("%s: %s", kind.name, _plain(cp.stderr))
-    if cp.returncode < 0:
-        raise kind.error(f"the {kind.name} was {_ended(cp.returncode, cp.stderr)}")
-    if cp.returncode != 0:
-        raise kind.error(f"the {kind.name} exited {cp.returncode}: {_plain(cp.stderr)}")
-    return cp.stdout
+    proc = _start(helper, args, cwd, kind)
+    try:
+        with proc:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:  # its text holds the command line, so the helper's path
+                proc.kill()
+                proc.wait()
+                raise kind.error(f"the {kind.name} ran out of time") from None
+            except OSError as exc:  # as subprocess.run, which caught it around the wait too
+                proc.kill()
+                raise kind.error(f"the {kind.name} does not run: {_strerror(exc)}") from None
+            except BaseException:
+                proc.kill()  # as subprocess.run does; Popen's exit waits for it
+                raise
+    finally:
+        with _LIVE_LOCK:
+            _LIVE.discard(proc)
+    returncode = proc.returncode
+    if stderr:
+        log.debug("%s: %s", kind.name, _plain(stderr))
+    if returncode < 0:
+        raise kind.error(f"the {kind.name} was {_ended(returncode, stderr)}")
+    if returncode != 0:
+        raise kind.error(f"the {kind.name} exited {returncode}: {_plain(stderr)}")
+    return stdout
 
 
 def _bad() -> OcrError:

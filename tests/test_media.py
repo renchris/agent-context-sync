@@ -28,7 +28,7 @@ from agentsync.convert import cue, media, ocr
 from agentsync.convert.media import Audio, MediaEngine, MediaError, Scan
 from media_kit import GRID_H, GRID_W, calls, fake_media, fake_recording, grids, recording, row, screen
 from test_launcher import _have_devtools
-from test_ocr import loose_umask, mode, script, write_fake
+from test_ocr import loose_umask, mode, script, waiting, write_fake
 
 CFG = ConvertConfig()
 DAY = 24 * 3600
@@ -346,13 +346,8 @@ def test_a_helper_failure_or_time_out_is_a_media_error_without_a_path(
             "the media helper's --version answer is not the expected JSON",
         )
 
-    waits: list[float] = []
-
-    def hang(argv: list[str], **kw: Any) -> Any:
-        waits.append(kw["timeout"])
-        raise subprocess.TimeoutExpired(argv, kw["timeout"])
-
-    monkeypatch.setattr(subprocess, "run", hang)
+    waits: list[float | None] = []
+    monkeypatch.setattr(subprocess, "Popen", waiting(waits, hang=True))
     with pytest.raises(MediaError, match=r"^the media helper ran out of time$"):
         eng.scan(clip, out=work, timeout=42)
     assert not eng.alive()
