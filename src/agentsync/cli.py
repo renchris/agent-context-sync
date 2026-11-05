@@ -3173,6 +3173,7 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
         ("install.commit", lambda: _install_check(config)),
     )
     for name, fn in checks:
+        doctor.stop_past_deadline()  # C953: the caller gave up; outside the try, as in run_checks
         doctor.saw_group(name)  # after run_checks' last: the check a cut-off doctor was in (Y22)
         try:
             out += fn()
@@ -3208,7 +3209,9 @@ def _report_hooks() -> setup_report.ReportHooks:
         read[:] = [(step, state_exc)]
         with doctor.groups_seen(seen.append):
             found = _status_checks(config, offline=True)
-        seen.append("")  # every check has run: what is left names none (the report's "a check")
+            # C953: a doctor the report gave up on hands back no fixes; C921: the marker goes through the gate
+            doctor.stop_past_deadline()
+            doctor.saw_group("")  # every check has run: what is left names none (the report's "a check")
         results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root), config=config)
         fixes[:] = _fail_steps(results)

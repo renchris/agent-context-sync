@@ -6,6 +6,7 @@ run for real.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import errno
 import fcntl
@@ -650,6 +651,121 @@ def test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804
     assert not (tmp_path / "ran").exists()
     assert doctor.RUN_DEADLINE.get() is None  # standalone doctor keeps each program's own limit
     assert doctor._run(["/bin/sh", "-c", "printf ok"], timeout=120).stdout == "ok"
+
+
+def test_run_checks_stops_at_the_callers_deadline_and_names_the_check_it_was_in_c952(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 C952 and C978 (ruling 105): a doctor the report gave up on ran on to the next check,
+    which then named itself, so a healthy check was called slow or hung. Past the caller's RUN_DEADLINE,
+    run_checks stops with TimeoutError before the next check: no later check runs or names itself."""
+    ran: list[str] = []
+
+    def hung(_config: Config) -> list[CheckResult]:
+        ran.append("git")
+        doctor._run(["/bin/sleep", "600"], timeout=120)
+        return []
+
+    def healthy(_config: Config) -> list[CheckResult]:
+        ran.append("pandoc")
+        return [CheckResult("pandoc", Severity.OK, "fine")]
+
+    monkeypatch.setattr(doctor, "_CHECKS", (("git", hung), ("pandoc", healthy)))
+    seen: list[str] = []
+    token = doctor.RUN_DEADLINE.set(time.monotonic() + 1.0)
+    try:
+        with doctor.groups_seen(seen.append), pytest.raises(TimeoutError):
+            doctor.run_checks(sample_config, tcc_canary=False)
+    finally:
+        doctor.RUN_DEADLINE.reset(token)
+    assert ran == ["git"] and seen == ["git"], (ran, seen)
+    assert not doctor._LIVE_CHILDREN
+    # standalone doctor, with no deadline, runs every check
+    monkeypatch.setattr(doctor, "_CHECKS", (("pandoc", healthy),))
+    assert [r.name for r in doctor.run_checks(sample_config, tcc_canary=False)] == ["pandoc"]
+
+
+def test_saw_group_tells_nobody_past_the_callers_deadline_c925() -> None:
+    """B13 round 35 C921 and C925 (ruling 105): the check a cut-off doctor was in is the one running at the
+    deadline, never one a thread that woke first reached after it."""
+    seen: list[str] = []
+    with doctor.groups_seen(seen.append):
+        doctor.saw_group("first")
+        token = doctor.RUN_DEADLINE.set(time.monotonic() - 0.01)
+        try:
+            doctor.saw_group("second")
+            with pytest.raises(TimeoutError):
+                doctor.stop_past_deadline()
+        finally:
+            doctor.RUN_DEADLINE.reset(token)
+        token = doctor.RUN_DEADLINE.set(time.monotonic() + 600)
+        try:
+            doctor.saw_group("third")
+            doctor.stop_past_deadline()
+        finally:
+            doctor.RUN_DEADLINE.reset(token)
+        doctor.saw_group("fourth")
+        doctor.stop_past_deadline()  # no deadline: never stops
+    assert seen == ["first", "third", "fourth"]
+
+
+def test_a_timed_out_program_waits_on_itself_not_on_pipes_a_helper_holds_c954(tmp_path: Path) -> None:
+    """B13 round 35 C954 (ruling 105): _run's time-out killed the program's group and then read its pipes
+    to the end, so a helper outside the group that held them kept doctor waiting without bound. It waits on
+    the program alone and re-raises the time-out as it was, its cmd and real limit kept."""
+    pidfile = tmp_path / "helper.pid"
+    for tail in ("time.sleep(600)", "pass"):  # still running at the limit, and gone at once (pipes held)
+        prog = (
+            "import subprocess, sys, time\n"
+            "p = subprocess.Popen(['/bin/sleep', '20'], start_new_session=True)\n"
+            f"open({str(pidfile)!r}, 'w').write(str(p.pid) + ';')\n"
+            f"{tail}\n"
+        )
+        started = time.monotonic()
+        try:  # the helper holds the pipes 20 s: the old drain waited on it
+            with pytest.raises(subprocess.TimeoutExpired) as caught:
+                doctor._run([sys.executable, "-I", "-c", prog], timeout=1.0)
+            assert caught.value.timeout == 1.0 and not isinstance(caught.value, doctor._NotStarted)
+            assert time.monotonic() - started < 10, "the wait outlived the limit on the helper's pipes"
+        finally:
+            with contextlib.suppress(ProcessLookupError, ValueError, AssertionError):
+                os.kill(_pid_from(pidfile), 9)
+        assert not doctor._LIVE_CHILDREN
+
+
+def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> None:
+    """B13 round 35 C917 (ruling 105): a check past its deadline said `did not answer within 0s` of a
+    program it never started, an ERROR. It says the program was not run, a WARN with no why or fallback; a
+    wait the deadline shortened names the report's time limit, never seconds; an unshortened one its seconds;
+    and the job interpreter's import check says nothing of a program it did not start."""
+    token = doctor.RUN_DEADLINE.set(time.monotonic() - 1.0)
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as caught:
+            doctor._run(["/bin/echo", "x"], timeout=30)
+        assert isinstance(caught.value, doctor._NotStarted)
+        assert doctor._importable(sys.executable) is None
+    finally:
+        doctor.RUN_DEADLINE.reset(token)
+    line = doctor._timed_out("git", caught.value, why="first start", fallback="install git")
+    assert line.severity is Severity.WARN
+    assert line.detail == (
+        "echo was not run: the report's time limit had already passed, so this check says nothing either way"
+    )
+    assert "first start" not in line.detail and "install git" not in (line.fix or "")
+    assert "within 0s" not in line.detail
+    token = doctor.RUN_DEADLINE.set(time.monotonic() + 1.0)
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as caught:
+            doctor._run(["/bin/sleep", "600"], timeout=120)
+    finally:
+        doctor.RUN_DEADLINE.reset(token)
+    shortened = doctor._timed_out("git", caught.value)
+    assert shortened.severity is Severity.ERROR
+    assert shortened.detail.startswith("sleep did not answer within the report's time limit: "), shortened
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        doctor._run(["/bin/sleep", "600"], timeout=1.0)
+    assert doctor._timed_out("git", caught.value).detail.startswith("sleep did not answer within 1s: ")
+    assert doctor._importable(sys.executable) is True
 
 
 def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) -> None:

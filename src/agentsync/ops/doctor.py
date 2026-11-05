@@ -423,8 +423,10 @@ RUN_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
 )
 """A caller's deadline (a :func:`time.monotonic` value) for every :func:`_run` in its context, the setup
 report's time limit among them: a program still running then times out inside doctor, its check's own
-time-out line, instead of outliving the call that gave up on it. Unset, as standalone ``agentsync doctor``
-runs, each program keeps its own limit (B13 round 34 C804)."""
+time-out line, instead of outliving the call that gave up on it. Once it has passed, :func:`run_checks` stops
+with ``TimeoutError`` (:func:`stop_past_deadline`) rather than run on after the caller has gone (B13 round 35
+C952, ruling 105). Unset, as standalone ``agentsync doctor`` runs, each program keeps its own limit and every
+check runs (B13 round 34 C804)."""
 _LIVE_CHILDREN: set[int] = set()
 _LIVE_LOCK = threading.Lock()
 
@@ -433,6 +435,35 @@ def _end_group(pid: int) -> None:
     """SIGKILL the process group ``pid`` leads: the program and every child it started (a shim's git)."""
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(pid, signal.SIGKILL)
+
+
+def past_deadline() -> bool:
+    """Whether a caller's :data:`RUN_DEADLINE` is set and has passed (never, standalone)."""
+    deadline = RUN_DEADLINE.get()
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def stop_past_deadline() -> None:
+    """Raise ``TimeoutError`` once the caller's :data:`RUN_DEADLINE` has passed: the setup report gave up on
+    this doctor then, so the check it was in stays the one named and no later check runs, names itself or
+    hands back a fix (B13 round 35 C952, C953, C978; ruling 105). ``TimeoutError``, never
+    ``subprocess.TimeoutExpired``: the raise can reach the report's call before its own wait ends, and the
+    report's Doctor part catches only ``TimeoutError``. No margin: the deadline is the call's own limit, so
+    no program starts after the call's ``end_children``. Called outside each check's ``try``, so no check
+    turns it into a line. Standalone doctor sets no deadline and never stops."""
+    if past_deadline():
+        raise TimeoutError("the caller's deadline passed")
+
+
+class _NotStarted(subprocess.TimeoutExpired):
+    """A :func:`_run` program the caller's deadline left unstarted: it had passed before the program could
+    start, so its check says nothing either way (:func:`_timed_out`, B13 round 35 C917). A
+    ``TimeoutExpired``, so every check that catches one still does."""
+
+
+_SHORTENED_NOTE = "the caller's deadline shortened this wait"
+"""The note :func:`_run` adds to a ``TimeoutExpired`` whose wait :data:`RUN_DEADLINE` cut short, so
+:func:`_timed_out` names the report's time limit, never seconds the program was not given (C917)."""
 
 
 def end_children() -> int:
@@ -455,10 +486,13 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
     runs (B13 round 34 C804)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
     deadline = RUN_DEADLINE.get()
+    shortened = False
     if deadline is not None:
-        timeout = min(timeout, deadline - time.monotonic())
-        if timeout <= 0:
-            raise subprocess.TimeoutExpired(list(argv), 0.0)
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise _NotStarted(list(argv), 0.0)  # C917: never started, never "within 0s"
+        shortened = left < timeout
+        timeout = min(timeout, left)
     with subprocess.Popen(  # its exit closes both pipes and reaps the program, an interrupted wait included
         list(argv),
         stdin=subprocess.DEVNULL,  # its own group is not the terminal's: a read there would stop it
@@ -473,10 +507,13 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
         try:
             try:
                 out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as exc:
                 _end_group(proc.pid)
-                out, err = proc.communicate()
-                raise subprocess.TimeoutExpired(list(argv), timeout, output=out, stderr=err) from None
+                # the program, never its pipes: a helper outside the group can hold them open (C954)
+                proc.wait()
+                if shortened:
+                    exc.add_note(_SHORTENED_NOTE)
+                raise
             except BaseException:
                 _end_group(proc.pid)
                 raise
@@ -822,6 +859,12 @@ def _again_fix(fallback: str | None = None) -> str:
     return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
 
 
+NOT_STARTED_WORDS = (
+    "was not run: the report's time limit had already passed, so this check says nothing either way"
+)
+"""What a check says of a program :data:`RUN_DEADLINE` left unstarted, after its name (B13 round 35 C917)."""
+
+
 def _timed_out(
     name: str,
     exc: subprocess.TimeoutExpired,
@@ -835,11 +878,18 @@ def _timed_out(
     way: the line says the check ran out of time, and its fix is to run the checks again and what to do if
     that changes nothing (:func:`_again_fix`).  ``what`` is the command as the line names it (default: the
     program's file name), ``why`` what is known about the wait, ``fallback`` the check's own fix for a
-    program that does not work."""
+    program that does not work. A wait the caller's deadline shortened names the report's time limit, not
+    seconds; a program the deadline left unstarted (:class:`_NotStarted`) says it was not run, a WARN with no
+    ``why`` or ``fallback``, whatever ``severity`` was asked (B13 round 35 C917)."""
     if what is None:
         argv = exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd]
         what = Path(str(argv[0])).name if argv else "the program"
-    detail = f"{what} did not answer within {exc.timeout:.0f}s: {_OUT_OF_TIME}"
+    if isinstance(exc, _NotStarted):  # C917: a program never started says nothing, a WARN whatever was asked
+        return _bad(name, f"{what} {NOT_STARTED_WORDS}", Severity.WARN, fix=_again_fix())
+    if _SHORTENED_NOTE in getattr(exc, "__notes__", ()):
+        detail = f"{what} did not answer within the report's time limit: {_OUT_OF_TIME}"
+    else:
+        detail = f"{what} did not answer within {exc.timeout:.0f}s: {_OUT_OF_TIME}"
     return _bad(name, f"{detail} ({why})" if why else detail, severity, fix=_again_fix(fallback))
 
 
@@ -3389,10 +3439,14 @@ def _job_child(args: Sequence[object]) -> list[str] | None:
     return child or None
 
 
-def _importable(interpreter: str) -> bool:
-    """True when ``interpreter -I -c 'import agentsync'`` succeeds (bounded, no network)."""
+def _importable(interpreter: str) -> bool | None:
+    """True when ``interpreter -I -c 'import agentsync'`` succeeds (bounded, no network); None when the
+    caller's deadline had passed before it could start (:class:`_NotStarted`), so the check says nothing of it
+    (B13 round 35 C917)."""
     try:
         cp = _run([interpreter, "-I", "-c", "import agentsync"], timeout=30)
+    except _NotStarted:
+        return None
     except (OSError, subprocess.SubprocessError):
         return False
     return cp.returncode == 0
@@ -3427,7 +3481,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
                     f"{BIN} install-agent (from the environment agentsync now runs in)",
                 )
             )
-        elif "agentsync" in child and not _importable(interp):
+        elif "agentsync" in child and _importable(interp) is False:
             problems.append(
                 (
                     Severity.ERROR,
@@ -4137,7 +4191,9 @@ def run_checks(
     loop_checks: Collection[str] | None = None,
     loop_waits: Mapping[str, int] | None = None,
 ) -> list[CheckResult]:
-    """Run every check, in a fixed order, never raising for a single failed check.
+    """Run every check, in a fixed order, never raising for a single failed check; a caller's
+    :data:`RUN_DEADLINE` that has passed stops it with ``TimeoutError`` before the next check
+    (:func:`stop_past_deadline`, B13 round 35 C952, ruling 105).
 
     python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; on-device
     OCR and the media helper each ready, off, not built (INFO) or failed (WARN), never built here and never a
@@ -4158,6 +4214,7 @@ def run_checks(
     results: list[CheckResult] = []
     unchecked = state_folder_unchecked(config)  # shut (X73), or not a folder (round 23 ruling 4)
     for group, check in _CHECKS:
+        stop_past_deadline()  # C952: the caller gave up; outside the try, so no check turns it into a line
         saw_group(group)  # the setup report names the check a doctor it cut off was in (Y22)
         if unchecked is not None and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (X73)
             results.append(_bad(group, unchecked, Severity.INFO))
@@ -4181,7 +4238,10 @@ global let another report's abandoned doctor thread reach this one's callback, o
 
 def saw_group(group: str) -> None:
     """Tell :func:`groups_seen`'s callback, if this thread holds one, that the check ``group`` starts (never
-    raises)."""
+    raises). Past the caller's :data:`RUN_DEADLINE` it tells nobody, so the check named is the one running
+    when the caller gave up, whichever thread wakes first (B13 round 35 C921, C925; ruling 105)."""
+    if past_deadline():
+        return
     seen = getattr(_group_holder, "seen", None)
     if seen is not None:
         with contextlib.suppress(Exception):

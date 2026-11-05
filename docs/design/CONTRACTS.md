@@ -3765,6 +3765,10 @@ to do if the same line comes back; an operating-system error (`OSError`) reads "
 <reason>" and its fix names the path; and a crash keeps "check crashed" and names `agentsync status -v`.
 Under `AGENTSYNC_AGENT_STEP_PENDING=1` only a `launchd.*` warn carries `AGENT_STEP_NOTE`; a FAIL keeps its
 fix.
+Amended 2026-11-04, §16.232 C917: under a caller's deadline (the setup report's), a program the deadline left
+unstarted reads `<command> was not run: the report's time limit had already passed, so this check says nothing
+either way`, a warn with no fallback, and a wait the deadline shortened reads `did not answer within the report's
+time limit`, with no seconds; an unshortened wait keeps its seconds.
 
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
@@ -26912,6 +26916,10 @@ its words are a cut-off's with no group read, `a check is slow or hung` in the l
 `test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it` (its `""` case).
 Amended 2026-10-22, §16.164 A28: the lead-ins read `that is above its core count (a busy Mac): <_IDLE_AGAIN>`
 and `that is not above its core count, so <check> is slow or hung, not a busy Mac; ...`.
+Amended 2026-11-04, §16.232 C921, C925: past the caller's deadline `doctor.saw_group` tells nobody, and the hook's
+every-check-ran marker goes through it, so the group named is the one the doctor was in when the report gave up,
+whichever thread wakes first; a passed deadline also stops `run_checks` and the CLI's own checks before the next
+group (C952).
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
@@ -37585,6 +37593,10 @@ live children under a lock, each removed once its wait returns. Lane RA's report
 `_Run.call` copies and calls `end_children()` in a finally. Tests:
 `test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804` and
 `test_end_children_kills_a_program_a_caller_abandoned_c804` (test_ops_doctor.py).
+Amended 2026-11-04, §16.232 C952, C954: once `RUN_DEADLINE` has passed, `run_checks` and the CLI's own checks stop
+with `TimeoutError` before the next check (`doctor.stop_past_deadline`), so the abandoned doctor runs nothing more;
+on a time-out `_run` kills the group, then waits on the program alone, not on its pipes, which a helper outside the
+group can hold, and re-raises the time-out as it was.
 
 **C829 (makes worse True as found; the verifier's fix).** With governance/ at 0000 (or 0600) the purge queue's refused
 open raised a plain `GovernanceError` caused by a `PermissionError`, not `GovernanceUnreadError`, so `loop.next_step`
@@ -37988,6 +38000,34 @@ refuses the purge has the origin `config` or `state`: status's own judgment, whi
 getattr (an older build keeps today's words) for its `,queue-held-kept` word. No phrase changes. Test:
 `test_cli.py::test_a_lost_queue_says_when_a_hold_still_in_force_refuses_its_hand_purge_c967` (no hold, a hold on
 another source and a lost hold alone False; sources.toml's hold and a listed hold on the purge's source True).
+
+**A doctor the report gave up on stops at that deadline, names the check it was in, and its waits end** (C952, C953,
+C978, C921, C925, C954 and C917; ruling 105; amends §16.152 Y22, §16.227 C804, dated lines at §15's doctor
+reference). C804 set `doctor.RUN_DEADLINE` to the report call's own limit, but the abandoned doctor thread ran on: to
+the next check, which named itself, so a healthy check was called slow or hung (C952, C921, C925), and to `fixes[:]`,
+so the Loop line named a [FAIL] line Doctor never printed (C953). `doctor.stop_past_deadline()` raises `TimeoutError`
+once the deadline has passed (`doctor.past_deadline()`), never `subprocess.TimeoutExpired`, since the report's
+Doctor part catches only `TimeoutError` and the raise can reach the call before its own wait ends. It runs in
+`run_checks`' loop and in `cli._extra_checks`' loop before `saw_group`, outside each check's try, and in the report
+hook's `checks_once` right after `_status_checks`, before the every-check-ran marker and `fixes[:]`. No margin
+(C978): the deadline stays the call's limit, so no program starts after the call's `end_children`. `saw_group`
+tells nobody past the deadline, and `checks_once`'s marker goes through it inside `groups_seen`, so the name never
+depends on which thread wakes first; the checks are cut, never handed back short as whole. On a time-out `_run`
+kills the group, then `proc.wait()`, never `communicate()`, whose drain waited without bound on a helper outside
+the group that held the pipes, then a bare raise (C954). A program the deadline left unstarted raises
+`doctor._NotStarted`, a `TimeoutExpired`, and `_timed_out` says `<what> ` + `doctor.NOT_STARTED_WORDS` (`was not
+run: the report's time limit had already passed, so this check says nothing either way`), a warn whatever severity
+was asked, with no why or fallback; a wait the deadline shortened says `did not answer within the report's time
+limit`, an unshortened one its seconds; `_importable` returns None for a program not started, so the job
+interpreter's import check says nothing of it (C917). Standalone doctor sets no deadline and is unchanged. Tests:
+`test_ops_doctor.py::test_run_checks_stops_at_the_callers_deadline_and_names_the_check_it_was_in_c952`,
+`::test_saw_group_tells_nobody_past_the_callers_deadline_c925`,
+`::test_a_timed_out_program_waits_on_itself_not_on_pipes_a_helper_holds_c954`,
+`::test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917`, and through the real
+`cli._report_hooks()`, `test_cli.py::test_a_cut_off_doctor_names_the_check_it_was_in_and_runs_no_later_one_c952`
+(a delayed `_read_cut_off`: git named, pandoc never run) and
+`::test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953` (a cut in run_checks and in the last
+extra check). Lane RA writes the report-level cases on this sha.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 

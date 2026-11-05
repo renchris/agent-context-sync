@@ -1237,7 +1237,10 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   start followed by a status that waits was about 27 s with no line.
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
-  wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again without
+  wrong`, or `within the report's time limit` in place of `<N>s` when the report's own time limit cut the wait
+  short. A program that limit left unstarted is a warn, `<command> was not run: the report's time limit had
+  already passed, so this check says nothing either way`, and a doctor the report gave up on runs no later
+  check. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again without
   --report-only, since a --report-only run builds nothing; a plain run keeps the folders already synced`, a
   step the prompt lets the agent take.
   Run by hand, it starts `run ~/.local/bin/agentsync status again as it is`.

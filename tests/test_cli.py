@@ -14433,3 +14433,89 @@ def test_the_report_hooks_leave_a_clean_wal_manifest_without_a_wal_or_shm_c526(
     cli.main(["status", "--config", cfg])
     capsys.readouterr()
     assert sorted(_manifest_files(db)) == ["manifest.sqlite"]
+
+
+def _hung_doctor_checks(monkeypatch: pytest.MonkeyPatch, ran: list[str]) -> None:
+    """doctor._CHECKS as git, whose program outlives any report, then a healthy pandoc (B13 round 35 C952)."""
+
+    def hung(_config: Config) -> list[doctor.CheckResult]:
+        ran.append("git")
+        doctor._run(["/bin/sleep", "600"], timeout=120)
+        return []
+
+    def healthy(_config: Config) -> list[doctor.CheckResult]:
+        ran.append("pandoc")
+        return [doctor.CheckResult("pandoc", doctor.Severity.OK, "fine")]
+
+    monkeypatch.setattr(doctor, "_CHECKS", (("git", hung), ("pandoc", healthy)))
+
+
+def _wait_for_report_threads() -> None:
+    """Wait (bounded) for every abandoned report call's thread to end."""
+    for _ in range(300):
+        if not [t for t in threading.enumerate() if t.name == "setup-report"]:
+            return
+        time.sleep(0.1)
+
+
+def test_a_cut_off_doctor_names_the_check_it_was_in_and_runs_no_later_one_c952(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C952, C978, C921 and C925 (ruling 105), through the real cli._report_hooks(): the report
+    gave up on a doctor whose git hung, and the abandoned doctor ran on to pandoc and named it, so a healthy
+    check was called slow or hung. A late _read_cut_off makes the race deterministic: the doctor stops at the
+    call's deadline, still naming git, and pandoc never runs."""
+    ran: list[str] = []
+    _hung_doctor_checks(monkeypatch, ran)
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 2.0)
+    real = setup_report._read_cut_off
+
+    def late(r: setup_report._Run) -> None:
+        time.sleep(1.0)
+        real(r)
+
+    monkeypatch.setattr(setup_report, "_read_cut_off", late)
+    r = setup_report._Run(initialised.config_path, cli._report_hooks(), budget_s=2.0)
+    lines = setup_report._doctor(r)
+    _wait_for_report_threads()
+    assert lines and lines[0].startswith("Cut off: the doctor call did not finish within "), lines
+    assert r.facts.doctor_cut_off_at == "git", r.facts.doctor_cut_off_at
+    assert ran == ["git"], ran
+    assert "within 0s" not in " ".join(lines)
+    assert not doctor._LIVE_CHILDREN
+    capsys.readouterr()
+
+
+def test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C953 (ruling 105): the abandoned doctor ran on past the cut, wrote its FAIL steps into the
+    hooks' fixes, and the report's Loop line then named a [FAIL] line Doctor never printed. A doctor past the
+    deadline stops before `fixes[:]`, in run_checks, in _extra_checks and after _status_checks, so the Loop
+    NEXT keeps the loop's own step. The cut lands in the last extra check too."""
+    ran: list[str] = []
+    _hung_doctor_checks(monkeypatch, ran)
+    monkeypatch.setattr(doctor, "_CHECKS", doctor._CHECKS[:1])  # git alone: the cut comes after run_checks
+
+    def hung_install(_config: Config) -> list[doctor.CheckResult]:
+        ran.append("install.commit")
+        doctor._run(["/bin/sleep", "600"], timeout=120)
+        return []
+
+    for hang_in in ("git", "install.commit"):
+        ran.clear()
+        if hang_in == "install.commit":
+            monkeypatch.setattr(doctor, "_CHECKS", ())
+            monkeypatch.setattr(cli, "_install_check", hung_install)
+        monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 2.0)
+        hooks = cli._report_hooks()
+        r = setup_report._Run(initialised.config_path, hooks, budget_s=2.0)
+        lines = setup_report._doctor(r)
+        _wait_for_report_threads()
+        assert lines and lines[0].startswith("Cut off: "), (hang_in, lines)
+        assert r.facts.doctor_cut_off_at == hang_in, (hang_in, r.facts.doctor_cut_off_at)
+        assert hooks.loop_next is not None
+        step = hooks.loop_next(initialised)
+        words = step.step if isinstance(step, loop.NextStep) else " ".join(step)
+        assert "check failed" not in words and "[FAIL]" not in words, (hang_in, words)
+    capsys.readouterr()
