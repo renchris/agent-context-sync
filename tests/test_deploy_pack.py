@@ -24,7 +24,9 @@ from typing import Any
 import pytest
 
 import exec_stub
+from agentsync import publish
 from agentsync.convert import speech
+from agentsync.model import SourceKind
 
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / "docs" / "deploy"
@@ -416,6 +418,21 @@ def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() ->
     assert "(`echo '====='`, never `echo =====` or `[ a == b ]`)" in note
     assert "The diff and shasum checks above end in the checker, so their `$?` is right as written" in note
     assert "manifest.sha256 | shasum -a 256 -c -)" in lanes and "| diff - dirs.txt" in lanes
+
+
+def test_no_reader_says_a_teams_channel_is_read_by_delta() -> None:
+    """B13 round 35 C996: docs/deploy/README.md's example, the mirror README's `How synced` row
+    (publish._HOW_SYNCED) and model.py's comment said a Teams channel is read by channel delta, while
+    graph/teams.py walks each channel back to the newest message already seen and calls no delta endpoint
+    (README.md says so, and it-request.md lists channel delta as not requested). Each says the walk."""
+    deploy = _page("docs/deploy/README.md")
+    assert "via channel delta" not in deploy
+    assert "# A Teams channel's messages, read back to the newest one already seen (ChannelMessage" in deploy
+    how = publish._HOW_SYNCED[SourceKind.GRAPH_TEAMS]
+    assert "delta" not in how and "read back to the newest already seen" in how, how
+    model = (ROOT / "src" / "agentsync" / "model.py").read_text(encoding="utf-8")
+    [line] = [x for x in model.splitlines() if x.lstrip().startswith("GRAPH_TEAMS = ")]
+    assert "delta" not in line and "read back to the last seen" in line, line
 
 
 def test_the_lane_brief_says_the_tmp_cleaner_takes_an_old_empty_folder(tmp_path: Path) -> None:

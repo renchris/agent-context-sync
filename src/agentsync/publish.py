@@ -384,7 +384,9 @@ _HOW_SYNCED: Mapping[SourceKind, str] = {
     SourceKind.INBOX: "manual drag-and-drop inbox",
     SourceKind.GRAPH_DRIVE: "Microsoft Graph drive delta (OneDrive / SharePoint library)",
     SourceKind.GRAPH_MAIL: "Microsoft Graph mail-folder delta",
-    SourceKind.GRAPH_TEAMS: "Microsoft Graph Teams channel delta (one page per month)",
+    SourceKind.GRAPH_TEAMS: (
+        "Microsoft Graph Teams channel messages, read back to the newest already seen (one page per month)"
+    ),
 }
 
 

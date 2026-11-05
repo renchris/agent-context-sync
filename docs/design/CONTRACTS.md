@@ -38114,3 +38114,13 @@ nowhere, since this file is the lane brief; so the pin moves with the word in th
 and ruling 61's own words in the brief's ruling list and at §16.212 stay as written. The brief's half (C806's shasum
 lines, without backticks, which end the workflow script's template literal) is the lead's. Test:
 `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`, moved.
+
+**No reader says a Teams channel is read by delta** (C996; words only; `docs/deploy/README.md`, `publish._HOW_SYNCED`,
+`model.SourceKind.GRAPH_TEAMS`'s comment). The deploy README's example said `A Teams channel's messages via channel
+delta`, the generated mirror README's `How synced` row said `Microsoft Graph Teams channel delta (one page per month)`
+and model.py's comment `channel message delta`, while `graph/teams.py` walks each channel back to the newest message
+already seen (its `hwm:` cursor; a legacy delta cursor is replaced by a full walk) and calls no delta endpoint, as
+README.md and it-request.md's `Not requested` list say. The three now say the walk (`read back to the newest one already
+seen`; the row `Microsoft Graph Teams channel messages, read back to the newest already seen (one page per month)`).
+tests/test_config.py:191's frozen pre-K15 template, tenant-probes.md's manual probe and CONTRACTS.md:518 under its
+SUPERSEDED note stay. Test: `test_no_reader_says_a_teams_channel_is_read_by_delta`.

@@ -178,7 +178,7 @@ mailbox = "me"     # or a shared mailbox UPN (adds Mail.Read.Shared)
 folder = "Inbox"   # well-known name or folder id
 state = "paused"
 
-# A Teams channel's messages via channel delta (ChannelMessage.Read.All needs admin consent)
+# A Teams channel's messages, read back to the newest one already seen (ChannelMessage.Read.All needs admin consent)
 [[source]]
 id = "team-acme-general"
 kind = "graph_teams"

@@ -25,7 +25,7 @@ class SourceKind(enum.StrEnum):
     INBOX = "inbox"  # arm C: manual drag-and-drop folder; max(created, modified), quiescence, dedup
     GRAPH_DRIVE = "graph_drive"  # arm A: OneDrive / SharePoint document library, one delta cursor per drive
     GRAPH_MAIL = "graph_mail"  # arm A: one mail folder, folder-scoped message delta
-    GRAPH_TEAMS = "graph_teams"  # arm A: one Teams channel, channel message delta -> monthly rollups
+    GRAPH_TEAMS = "graph_teams"  # arm A: one Teams channel, read back to the last seen -> monthly rollups
 
     @property
     def is_graph(self) -> bool:
