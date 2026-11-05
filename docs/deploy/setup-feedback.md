@@ -376,7 +376,7 @@ install.log (a `--list-folders` run is not an install run):
   install run at exit 0 it is "worked with help" (a stop whose fix is the person's that step 3 ended on is
   the one "failed" case, below). One stop is counted once: in time order, each recorded stop claims the
   first unclaimed step 3 error with a time at or after it (the same second counts) and before the stop
-  after next (v33 logs a fixed stop's line after the sync that follows its chmod, which can stop again
+  after next (since v32 the agent logs a fixed stop's line after the sync that follows its chmod, which can stop again
   first), of its own kind only: a stop the agent fixes claims a line that names a chmod of its own (a line that
   names a mode names its file's: 700 for the state folder, 600 or 700 for a governance file, 600 for any other
   file; B13 round 26 E59), never the person's chmod that doctor gives, a stop whose fix is the person's any line,
@@ -389,8 +389,8 @@ install.log (a `--list-folders` run is not an install run):
   lock file, and no sync ended 0 after it by this report: the fix is the agent's chmod` (`whether a sync
   ended 0 after it was not measured` when the runs table cannot be read). A stop the agent fixes on a file a stop
   came back on after the agent's chmod reads `a sync at step 3 exited 1 on agentsync's lock file and came back after
-  the agent's chmod, and no sync ended 0 after it by this report: the fix is no longer the agent's chmod, as v33 sends
-  it to the person` (for two, `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for
+  the agent's chmod, and no sync ended 0 after it by this report: the fix is no longer the agent's chmod, as the prompt
+  sends it to the person` (B13 round 35 C974: `as v33 sends it` before) (for two, `N syncs at step 3 exited 1 on <what>, the later after the agent's chmod for
   the earlier, and no sync ended 0 after them by this report: ...`, and for three or more `the later ones after` in
   place of `the later after`; `whether a sync ended 0 after it was not
   measured` when the runs table cannot be read; B13 round 26 E67). Neither kind is then in the
@@ -424,10 +424,10 @@ install.log (a `--list-folders` run is not an install run):
   `error` line, failing that the last step logged (unless the attempt only stopped at step 1, below), and failing
   that 1 when only `--list-folders` ran (for an earlier attempt whose last list worked, see the U35 exception
   below). When the last install run exited 0 and step 3 ended on a recorded sync stop whose fix is the person's
-  that no later sync ended ok after (v33 has the agent log it, show the `[FAIL]` line and go to the report), N is
+  that no later sync ended ok after (since v33 the agent logs it, shows the `[FAIL]` line and goes to the report), N is
   the report step: `failed at step 3 (computed: install.sh exit 0; a sync at step 3 exited 1 on agentsync's state
   file, which this account could not open, and no later sync ended 0: the person's to fix)`, as the same state
-  at step 2 is `failed at step 2`. A stop whose runs table cannot be read (a lost manifest's, under v33, since the
+  at step 2 is `failed at step 2`. A stop whose runs table cannot be read (a lost manifest's, from v33 on, since the
   table lives in the missing file) counts only while doctor shows a `[FAIL]` in a person's bucket, and then reads
   `a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and doctor's
   state_dir.manifest FAIL still stands: the person's to fix` (B13 round 25 ruling 10; B13 round 26 E69).

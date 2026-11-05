@@ -10,6 +10,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import inspect
 import itertools
 import json
 import logging
@@ -7184,7 +7185,7 @@ def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason
     assert summary.strip().splitlines()[0] == (
         "- **outcome: worked with help** (computed: install.sh exit 0; 2 syncs at step 3 exited 1 on "
         "agentsync's lock file, the later after the agent's chmod for the earlier, and no sync ended 0 after "
-        "them by this report: the fix is no longer the agent's chmod, as v33 sends it to the person)"
+        "them by this report: the fix is no longer the agent's chmod, as the prompt sends it to the person)"
     ), summary
     # E67's guard: a second stop alone is no proof the chmod ran; with the first stop's line unlogged, the
     # second claims the only chmod line and the reason keeps the agent's chmod
@@ -13196,6 +13197,18 @@ def test_an_earlier_failed_run_of_a_failed_attempt_is_an_item_with_its_mode_fix_
         ln for ln in got.splitlines() if ln.startswith("- install.sh · step 2 · run 20260929T100000Z")
     )
     assert line.endswith("the next run exited 1 at its status step ([FAIL] governance.suppressed)"), line
+
+
+def test_three_report_docstrings_say_round_34s_words_c973() -> None:
+    """B13 round 35 C973: `_no_install_words` quoted `install.sh: no run during this attempt`, a form round
+    34's C817 replaced, and `_git_ro_err` said every install-source read goes through `_git_read`, which
+    `_install_source`'s stderr read does not. Each says what the code prints and does."""
+    words = " ".join((setup_report._no_install_words.__doc__ or "").split())
+    assert "``install.sh: no install run during this attempt``" in words, words
+    assert "install.sh: no install run during this attempt" in inspect.getsource(setup_report._install_line)
+    ro = " ".join((setup_report._git_ro_err.__doc__ or "").split())
+    assert "every install-source read but :func:`_install_source`'s stderr read goes through" in ro, ro
+    assert "_git_ro_err(" in inspect.getsource(setup_report._install_source)
 
 
 def test_an_error_line_names_a_run_by_its_whole_id_c948() -> None:

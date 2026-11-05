@@ -3406,7 +3406,7 @@ def _again_reason(again: Sequence[_SyncStop], measured: bool, *, earlier: bool =
         if measured
         else f"whether a sync ended 0 after {it} was not measured"
     )
-    return f"{head}, and {then}: the fix is no longer the agent's chmod, as v33 sends it to the person"
+    return f"{head}, and {then}: the fix is no longer the agent's chmod, as the prompt sends it to the person"
 
 
 def _open_persons_stop(
@@ -5921,7 +5921,8 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
     """``git -C directory args`` read-only (``GIT_OPTIONAL_LOCKS=0``: not even the index's stat cache is
     rewritten), bounded by ``timeout`` and the report's budget: (exit status, stdout bytes, stderr bytes in
     the C locale, so its messages are git's English ones); 124/127 on a timeout or a missing git (B13 round
-    34 C802: every install-source read goes through :func:`_git_read`). Every caller reads a checkout: git
+    34 C802: every install-source read but :func:`_install_source`'s stderr read goes through
+    :func:`_git_read`, B13 round 35 C973). Every caller reads a checkout: git
     looks no higher than ``directory`` (its resolved parent is the ceiling), so a .git it cannot read is not
     read past into a repository around it (B13 round 11 M51).  git is what
     ``/usr/bin/git`` runs (:func:`gitops.usr_bin_git`, looked up after the budget is read and inside the
@@ -15896,10 +15897,10 @@ def _fail_step_in_doctor(r: _Run, found: str) -> str:
 
 def _no_install_words(r: _Run) -> str | None:
     """What the latest attempt ran when no install run of it did, the first-sync line's words; None when one
-    did: the Summary's ``install.sh: no run during this attempt`` (an attempt with a start line and none of
-    the install log's runs), or an attempt whose only run listed folders, which runs no sync (B13 round 33
-    C709). The Loop line's NEXT is then status's reading of state earlier attempts left, which the line says
-    (B13 round 32 C620)."""
+    did: the Summary's ``install.sh: no install run during this attempt`` (an attempt with a start line and
+    none of the install log's runs), or an attempt whose only run listed folders, which runs no sync (B13
+    round 33 C709). The Loop line's NEXT is then status's reading of state earlier attempts left, which the
+    line says (B13 round 32 C620)."""
     att = r.friction.latest if r.friction is not None else None
     if att is None or att.begin is None:
         return None

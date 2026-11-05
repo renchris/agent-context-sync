@@ -30469,6 +30469,8 @@ chmod, as v33 sends it to the person`. A second stop alone, with no claimed line
 `test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`.
 Amended 2026-10-24, §16.188 P36: the earlier stop must be agent-owned too; a person's stop, which claims any line,
 is no chmod of the agent's.
+Amended 2026-11-04, §16.230 C974: the reason ends `as the prompt sends it to the person`, version-free, so a v34
+report no longer names v33.
 
 **The new start's mirror pages are counted** (E1, E24, E27; ruling 14's report side, the D26 half of §16.178 that
 never fired). `_new_pages` took `int()` of lane B's `cycle.unowned_mirror_pages`, which returns the pages, so it
@@ -38189,6 +38191,16 @@ unread, the earlier failed runs, `the install stopped`, then the retried lines; 
 as written. Tests: `tests/test_setup_report.py::test_an_error_line_names_a_run_by_its_whole_id_c948`,
 `test_an_earlier_failed_run_said_by_the_agent_is_not_said_twice_c948_c949` (the label, the run id, another run, an
 id past the cut, and the order with no error line).
+
+**A printed clause names no prompt version, and three docstrings say round 34's words** (C974, C973; amends §16.183 E67;
+`src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). C974: a v34 report printed E67's reason ending `as
+v33 sends it to the person`; it reads `as the prompt sends it to the person`, and the guide's quote follows, its rule
+sentences saying `since v32 the agent logs a fixed stop's line`, `since v33 the agent logs it, shows the [FAIL] line
+and goes to the report` and `a lost manifest's, from v33 on`. C973: `_install_line`'s caller's docstring quoted the
+round 33 `no install.sh run` form, and `_install_source`'s said every install-source read goes through `_git_read`,
+which its stderr read does not; both say what the code does (governance.py's, lane B's). Tests: the E67 pin in
+`tests/test_setup_report.py::test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`,
+`test_three_report_docstrings_say_round_34s_words_c973`.
 
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
