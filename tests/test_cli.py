@@ -14684,3 +14684,29 @@ def test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_poi
     assert _unresolved_fail_pointers(out) == [], out
     (nxt,) = [ln for ln in out if ln.startswith("NEXT: ")]
     assert "chmod 700" in nxt or "governance.hold" in nxt, nxt
+
+
+def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 C903 (amending ruling 84): with install.sh's hint off, Doctor's governance.purge_queue
+    warn in the setup report said `yours: see WAITING ON YOU`, a line the report never holds, and with the
+    Loop line not read nothing named it at all. The report's hook swaps in one note pointing at the Summary's
+    Loop line and at status for a Loop line that says not read; status under install.sh keeps its own note."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    capsys.readouterr()
+    hooks = cli._report_hooks()
+    assert hooks.doctor is not None
+    lines = hooks.doctor(initialised)
+    (warn,) = [ln for ln in lines if ln.startswith("[warn] governance.purge_queue ")]
+    assert warn.endswith(f"({cli._PURGE_YOURS_REPORT_NOTE})"), warn
+    assert "(yours: see WAITING ON YOU)" not in warn, warn
+    assert f"if that line says not read, {loop.BIN} status says" in warn, warn
+    _rc, out = _status(cfg, capsys)
+    (kept,) = [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")]
+    assert kept.endswith(f"({cli._PURGE_YOURS_NOTE})"), kept

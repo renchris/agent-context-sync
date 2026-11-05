@@ -2454,6 +2454,14 @@ def _check(
 
 _PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
 
+_PURGE_YOURS_REPORT_NOTE = (
+    "yours: the Summary's Loop line says whether a WAITING ON YOU line still names it; "
+    f"if that line says not read, {loop.BIN} status says"
+)
+"""The setup report's :data:`_PURGE_YOURS_NOTE`: the report holds no WAITING ON YOU line, and its Loop line,
+read after doctor, can say not read, so one constant points at it and at status for that case, as
+``doctor.LISTING_YOURS_REPORT_NOTE`` does (B13 round 35 C903, amending ruling 84)."""
+
 _TRAIL_ALONE = (
     "judged from agentsync's audit trail alone, which shows no queued purge the queue lost: the purge record "
     "cannot be read, and the governance.suppressed line says why"
@@ -3242,12 +3250,12 @@ def _report_hooks() -> setup_report.ReportHooks:
         manifest_first[:] = [] if first is None else [first]
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
-        results = [
-            dataclasses.replace(r, note=doctor.LISTING_YOURS_REPORT_NOTE)
-            if r.note == doctor._LISTING_YOURS_NOTE
-            else r
-            for r in results
-        ]
+        # and none of a WAITING ON YOU line it does not hold (B13 round 35 C903)
+        swaps = {
+            doctor._LISTING_YOURS_NOTE: doctor.LISTING_YOURS_REPORT_NOTE,
+            _PURGE_YOURS_NOTE: _PURGE_YOURS_REPORT_NOTE,
+        }
+        results = [dataclasses.replace(r, note=swaps[r.note]) if r.note in swaps else r for r in results]
         return doctor.format_results(results).splitlines()
 
     def loop_next(config: Config) -> loop.NextStep | list[str]:

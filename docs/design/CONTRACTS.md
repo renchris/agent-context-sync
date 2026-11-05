@@ -36552,6 +36552,8 @@ do not change. Tests: `test_no_yours_group_without_the_loops_checks`, `test_no_y
 `test_a_stopped_copys_unread_loop_gives_no_idle_advice_ruling_84`. Amended 2026-11-03, §16.227 C818: doctor's note
 changes once, to the one form true whether or not the Loop line was read: `LISTING_YOURS_REPORT_NOTE` adds `; if that
 line says not read, ~/.local/bin/agentsync status says`; the evidence line does not change.
+Amended 2026-11-04, §16.232 C903: the report's governance.purge_queue warn changes too, its `yours: see WAITING ON
+YOU` swapped for `cli._PURGE_YOURS_REPORT_NOTE` in the same step.
 
 **The listing note and the label clause in each build's words** (rulings 81 and 90). `_LISTING_GOVERNANCE_RE` reads the
 old folder form, C722's `that` and C747's `... records: agentsync's audit trail no longer holds it`;
@@ -37717,6 +37719,9 @@ round 33's. §16.218's ruling 84 paragraph takes a dated line. Tests:
 a cut Loop) and the `report` and `report-before-C818` cases of
 `test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected` (test_setup_report.py), and
 `test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing` (test_install_oneshot.py).
+Amended 2026-11-04, §16.232 C903: the governance.purge_queue warn's `yours: see WAITING ON YOU` is swapped in the same
+step, for `yours: the Summary's Loop line says whether a WAITING ON YOU line still names it; if that line says not
+read, ~/.local/bin/agentsync status says`.
 
 **C831.** C733's `[info] governance.purge_queue` line said `agentsync's audit trail is not on disk either, so nothing
 shows ...: the purge record cannot be read, ...`: the reader met `either` before the negative it pairs with, which
@@ -38373,6 +38378,16 @@ queued purges are not counted: the governance.purge_queue [FAIL] line below says
 too, so the bare form is for a status with no such line. Tests:
 `test_loop.py::test_status_points_the_refused_queues_note_at_its_own_fail_line_c959` and the stopped sync's no-note
 check, which reads the bare clause too.
+
+**The report's purge warn names no WAITING ON YOU line it does not hold** (C903; amends §16.218 ruling 84, §16.227
+C818). Under install.sh's hint-off, Doctor's governance.purge_queue warn said `yours: see WAITING ON YOU`, a line
+the setup report never holds, and with the Loop line not read nothing in the report named it. `cli._PURGE_YOURS_REPORT_NOTE`
+reads `yours: the Summary's Loop line says whether a WAITING ON YOU line still names it; if that line says not read,
+~/.local/bin/agentsync status says`, one constant, as C818's is, since the report reads the Loop after doctor; the
+report hook's `checks_once` swaps it in beside C818's listing swap. `_PURGE_YOURS_NOTE` and install.sh's status
+output are unchanged. Test:
+`test_cli.py::test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903` (a real queued purge,
+the real hook, NO_NEXT_HINT_ENV=1; status keeps its note).
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
