@@ -1469,6 +1469,8 @@ def next_step(
                 "or let the sync client fill it, or grant Files and Folders access; to stop syncing it on "
                 f"purpose, {pause}"
             )
+            # the wait explains the root's own 0-entries warn too, so the report files it as yours (C938)
+            checks.append(f"source.{sid}.listable")
         checks.append(f"heartbeat.{sid}")
         names_source(sid)
     if blocked:

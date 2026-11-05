@@ -3221,3 +3221,44 @@ def test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it(
         assert loop.next_lines(sample_config, fixes=["x"], quiet=True) == []
     levels = [r.levelno for r in caplog.records if "cannot read the loop state" in r.getMessage()]
     assert levels == [logging.WARNING, logging.DEBUG], levels
+
+
+@pytest.mark.parametrize("kind", ["local", "inbox"])
+def test_an_empty_cloud_root_wait_explains_its_listing_warn_and_finder_comes_first_c938(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """B13 round 35 C938: an empty cloud folder chosen as a source left its root's `lists 0 entries` warn
+    unexpected in the report though the empty-root wait explained it, and the warn's fix sent the person to
+    Full Disk Access for a folder chosen empty. The wait names the warn's check, so the report files it as
+    yours; the fix opens Finder first and makes each remedy conditional on what Finder shows, never pausing
+    an inbox."""
+    monkeypatch.setattr(arm_local, "file_provider_marker", lambda _p: "contoso-domain")
+    home = Path(os.environ["HOME"])
+    root = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Empty Project"
+    root.mkdir(parents=True)
+    table = (local_source_table if kind == "local" else inbox_source_table)("empty-project", root)
+    config = _setup(tmp_path, table)
+    cli.main(["sync", "--config", str(config.config_path)])
+    capsys.readouterr()
+    step = loop.next_step(config)
+    assert step is not None
+    if kind == "local":
+        assert "source.empty-project.listable" in step.checks, step.checks
+    checked = doctor.run_checks(config, tcc_canary=False)
+    (warn,) = [r for r in checked if r.name == "source.empty-project.listable"]
+    assert warn.fix is not None and warn.fix.startswith("open "), warn
+    assert " in Finder once; " in warn.fix and "if Finder shows files: " in warn.fix, warn.fix
+    paused = 'set state = "paused" in [[source]] id = "empty-project" in '
+    assert (paused in warn.fix) == (kind == "local"), warn.fix
+    assert "if still empty" not in warn.fix, warn.fix
+
+
+def test_a_missing_or_refused_root_wait_names_no_listing_warn_c938(tmp_path: Path) -> None:
+    """C938's negative: only the empty-root wait names the listing warn; a missing root's does not."""
+    root = tmp_path / "Gone"
+    root.mkdir()
+    config = _setup(tmp_path, local_source_table("gone", root))
+    cli.main(["sync", "--config", str(config.config_path)])
+    root.rmdir()
+    step = loop.next_step(config)
+    assert step is None or "source.gone.listable" not in step.checks, step

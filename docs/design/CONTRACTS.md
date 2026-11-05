@@ -11690,6 +11690,8 @@ is not empty: `yours N: <check names> (see WAITING ON YOU)`. `NextStep` gains `c
 it writes a wait for a local source whose listing stops at a held privacy prompt, at an empty cloud folder, or
 at a folder it cannot list. It adds no other check, and `NextStep.lines()` is unchanged, so sync, status and
 STATE.md print what they printed.
+Amended 2026-11-04, §16.232 C938: the empty-root wait (`could not be listed or is empty`) also adds
+`source.<id>.listable`, whose `lists 0 entries` warn that wait explains; the missing-root and EACCES waits do not.
 
 The CLI's `ReportHooks.loop_next` returns that `NextStep`, or `[]` when the loop state cannot be read. The Loop
 line reads its lines as before, and a hook that returns lines is still accepted.
@@ -13396,6 +13398,10 @@ empty, run `~/.local/bin/agentsync exclude-empty <id>` ...`; the command is buil
   mount it or let the sync client fill it, or grant Files and Folders access; to stop syncing it on purpose, set
   state = "paused" in [[source]] id = "<id>" in <sources.toml>`, and its `heartbeat.<id>` check. Every other wait
   is byte-identical. Test: `tests/test_loop.py::test_a_source_root_a_sync_cannot_list_never_offers_an_exclude`.
+  Amended 2026-11-04, §16.232 C938: beside that wait, doctor's `source.<id>.listable` warn for a cloud root that
+  lists 0 entries opens Finder first and makes each remedy conditional on what Finder shows: `open <root> in Finder
+  once; if it is empty there too and is meant to be, set state = "paused" in [[source]] id = "<id>" in
+  <sources.toml>; if Finder shows files: <the Full Disk Access fix>`, an inbox without the pause.
   Amended 2026-10-17, §16.113 Q6, Q11, Q34: a root that does not exist (stored `unlisted_kinds:<id>` `{".":
   "missing"}`) has its own wait, `the folder of <id> does not exist (...)`.
 
@@ -38618,6 +38624,19 @@ other FAIL's fix ahead of the manifest's) stays, recorded here as ruling 111 rul
 `test_cli.py::test_status_names_the_agents_chmod_before_the_persons_fail_beside_it_c911` (TRAIL0, then the person's
 NEXT once the chmod is done) and `::test_the_chmod_goes_first_only_beside_the_persons_fails_alone_c911` (the
 heartbeat and purge-queue mixes, and a third kind of FAIL).
+
+**An empty folder chosen as a source is the person's wait, and Finder comes first** (C938). An empty cloud folder
+chosen as a source left its root's `lists 0 entries` warn under `unexpected` in the report, though the empty-root
+wait explained it, and the warn's fix sent the person to Full Disk Access for a folder chosen empty. In
+`loop.next_step`'s root_unlisted loop, only the final branch, the `could not be listed or is empty` wait, also adds
+`source.<id>.listable` to `NextStep.checks`, so lane RA's `_yours_warn` files the warn as yours only when that wait
+explains it (a live 0-entries warn beside another wait, a plain folder with no wait and a cloud inbox stay
+unexpected), and lane RA's `_loop_could_name` reads it as not judged when the Loop line was not read.
+`doctor._empty_root_fix` keeps Finder first and makes each remedy conditional: `open <root> in Finder once; if it is
+empty there too and is meant to be, set state = "paused" in [[source]] id = "<id>" in <sources.toml>; if Finder
+shows files: <the Full Disk Access fix>`, the config shown as the loop's waits show it; an inbox gets no pause. Tests:
+`test_loop.py::test_an_empty_cloud_root_wait_explains_its_listing_warn_and_finder_comes_first_c938` (a local source
+and an inbox) and `::test_a_missing_or_refused_root_wait_names_no_listing_warn_c938`.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
