@@ -4004,6 +4004,49 @@ def _real_speech(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
 
 
+@pytest.mark.parametrize("missing", [False, True], ids=["devtools", "no-devtools"])
+@pytest.mark.parametrize("check", ["ocr", "media", "speech"])
+def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, check: str, missing: bool
+) -> None:
+    """B13 round 35 C915: a helper whose ``--version`` did not answer within its wait (a slow first start
+    under load, or a hung helper; the same from here) said ``not working``, with no fix, in a report that
+    called the helper ready. It is the check's ran-out-of-time line now, a WARN (the helpers are optional:
+    never a FAIL), its fix the run again, then install.sh, which builds the helper again, or with no
+    developer tools their install. Convert's words stay: probe still says ``failed``."""
+    module, kind, real = {
+        "ocr": (ocr, ocr._OCR, _real_ocr),
+        "media": (media, media.MEDIA, _real_media),
+        "speech": (speech, speech.SPEECH, _real_speech),
+    }[check]
+    real(monkeypatch)
+    monkeypatch.setattr(module, "_VERSION_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: missing)
+    helper = ocr._helper_path(sample_config.cache_dir, kind)
+    answered = helper.parent / "slow-once"  # the first --version is slow, every later one answers
+    slow = (
+        f"import time\nif not os.path.exists({str(answered)!r}):\n    open({str(answered)!r}, 'w').close()\n"
+    )
+    write_fake(helper, hook=slow + "    time.sleep(30)\n")
+    started = time.monotonic()
+    results = run_checks(sample_config)
+    r = by_name(results)[check]
+    assert time.monotonic() - started < 20, "the helper's own wait, not the sleep"
+    assert (r.ok, r.severity) == (False, Severity.WARN)
+    assert r.detail == (
+        f"the {kind.name} --version did not answer within 1s: the check ran out of time, so it could not say "
+        "whether anything is wrong"
+    )
+    rebuild = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
+    fallback = f"xcode-select --install, then run {INSTALL_SH} again" if missing else rebuild
+    assert r.fix == f"run {BIN} status again as it is; if this line comes back: {fallback}"
+    assert "not working" not in r.detail and "failed" not in r.detail
+    assert errors(results) == [], "an optional helper: never a FAIL"
+    if check == "ocr":  # once it answers, the same check says ready
+        r = by_name(run_checks(sample_config))[check]
+        assert r.ok and r.detail == f"on-device OCR is ready: {OCR_READY}"
+
+
 def test_speech_off_is_ok_and_names_the_switch_or_the_missing_models(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:

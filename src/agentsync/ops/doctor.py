@@ -1057,8 +1057,9 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
     the reason when the last build failed, or the helper is there and may not be run or does not answer,
     with a fix only when the developer tools are missing, the build ran out of time or a signal stopped it
-    (:func:`_helper_again_fix`; B13 round 19 W49, round 25 D85).  Never a FAIL: a probe that crashes is a
-    WARN too.
+    (:func:`_helper_again_fix`; B13 round 19 W49, round 25 D85).  A ``--version`` that did not answer in
+    time is :func:`_probe_timed_out`'s line, never ``not working`` (B13 round 35 C915; the media and speech
+    checks too).  Never a FAIL: a probe that crashes is a WARN too.
 
     scripts/install.sh builds nothing on a Mac without developer tools and leaves no failure to report, so
     the not-built line says there that the build waits for them.  It stays INFO with no fix."""
@@ -1074,6 +1075,8 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("ocr", f"{detail}; {how}", Severity.INFO)]
+    if detail == _probe_out_of_time(ocr._OCR):
+        return [_probe_timed_out("ocr", ocr._OCR, ocr._VERSION_TIMEOUT_S)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "ocr")
     detail = _helper_detail(detail, fix)
     return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
@@ -1097,6 +1100,8 @@ def _check_media(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("media", f"{detail}; {how}", Severity.INFO)]
+    if detail == _probe_out_of_time(media.MEDIA):
+        return [_probe_timed_out("media", media.MEDIA, media._VERSION_TIMEOUT_S)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "media")
     detail = _helper_detail(detail, fix)
     return [_bad("media", f"media helper: not working: {detail}", Severity.WARN, fix=fix)]
@@ -1123,12 +1128,36 @@ def _check_speech(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
+    if detail == _probe_out_of_time(speech.SPEECH):
+        return [_probe_timed_out("speech", speech.SPEECH, speech._VERSION_TIMEOUT_S)]
     if _devtools_missing():
         fix: str | None = _OCR_DEVTOOLS_FIX
     else:
         fix = _helper_again_fix(detail, "speech") or _resolve_again_fix(detail)
     detail = _helper_detail(detail, fix)
     return [_bad("speech", f"speech: {state}: {detail}", Severity.WARN, fix=fix)]
+
+
+def _probe_out_of_time(kind: ocr.Helper) -> str:
+    """The words ``ocr._run_helper`` raises when a helper's ``--version`` did not answer in its wait (or a
+    caller's start gate had passed), and that a build's ``.failed`` marker keeps when its last ``--version``
+    timed out: ``the OCR helper ran out of time``."""
+    return f"the {kind.name} ran out of time"
+
+
+def _probe_timed_out(name: str, kind: ocr.Helper, wait_s: float) -> CheckResult:
+    """A helper whose ``--version`` did not answer within ``wait_s`` (B13 round 35 C915): a slow child and a
+    hung helper read the same from here, so the line says the check ran out of time, a WARN as every helper
+    line is (never a FAIL), never ``not working``.  Its fix is the run again (:func:`_again_fix`), then, if
+    the line comes back, install.sh again without --report-only, which builds the helper again since its
+    ``--version`` failed; or, with no developer tools, :data:`_OCR_DEVTOOLS_FIX`, since nothing can be built
+    then.  Convert's words are untouched: ``probe`` still says ``failed``, and only this check reads them."""
+    if _devtools_missing():
+        fallback = _OCR_DEVTOOLS_FIX
+    else:
+        fallback = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
+    exc = subprocess.TimeoutExpired(["--version"], wait_s)
+    return _timed_out(name, exc, Severity.WARN, what=f"the {kind.name} --version", fallback=fallback)
 
 
 _RETRY_CLAUSE = HELPER_RETRY_CLAUSE

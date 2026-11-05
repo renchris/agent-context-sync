@@ -38072,6 +38072,24 @@ Tests: `test_ocr.py::test_no_helper_starts_once_its_callers_start_by_has_passed_
 `test_ocr.py::test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961` (SIGTERM, SIGHUP and SIGKILL to
 the group), with the four `subprocess.run` fakes in `test_ocr.py` and `test_media.py` now `Popen` fakes.
 
+**A helper's `--version` that did not answer in time says so, never `not working`** (C915, ruling 108, makes worse
+True; `agentsync.ops.doctor`). A slow first start under load and a hung helper read the same from doctor, but the
+ocr, media and speech checks printed `on-device OCR is not working: the OCR helper ran out of time` (and `media
+helper: not working: ...`, `speech: failed: ...`) with no fix, in a report whose evidence called the helper ready
+(5 of 16 rehearsal reports). Each check now tells the exact words `ocr._run_helper` raises for its helper, `the
+<helper> ran out of time`, apart, before its other fix logic, and prints `_timed_out`'s line as a WARN (the helpers
+are optional, never a FAIL): `the <helper> --version did not answer within 5s: the check ran out of time, so it
+could not say whether anything is wrong`, with the fix `<the run again>; if this line comes back: run <install.sh>
+again without --report-only, which builds the <helper> again` (a plain install.sh run rebuilds a helper whose
+`--version` fails), or `xcode-select --install, then run <install.sh> again` with no developer tools, since nothing
+can be built then. `<helper>` is `OCR helper`, `media helper` or `speech helper`. A build's `.failed` marker that
+keeps those words reads the same, which is right there too. Convert is untouched: `_run_helper`'s words, `probe`'s
+`failed` state and the batch budget's `ran out of time` stay, so the pins on them hold. The report's bucket for these
+three lines (`not judged`, ahead of unexpected) is lane RA's and install.sh's narrowed time-limit grep lane RB's
+(ruling 108), so this line never names AGENTSYNC_REPORT_TIME_LIMIT, which does not move the helper's fixed 5 s. Test:
+`test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (the three
+checks, with and without developer tools; the OCR helper ready once it answers).
+
 ### 16.234 Round 35: the gate re-run's count, the records page and the setup guide (2026-11-04, wave B13 round 35 lane D)
 
 Round 35's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 35"; specs `round35/items/C<n>.md`, the
