@@ -38211,8 +38211,10 @@ not answer in time: <the advice whole>; if a report written when it is idle says
 run install.sh again without --report-only, which builds it again, and send the report as it is)`, before
 `unexpected`; a stopped copy gives `_STOPPED_NOT_SENT` only. `_IDLE_AGAIN` stays whole, so install.sh's grep turns the
 NEXT; its time-limit grep no longer reads a doctor line but its cut forms (lane RB), so the fixed 5 s never names
-`AGENTSYNC_REPORT_TIME_LIMIT`. git's and pandoc's lines stay where they are. Test:
-`tests/test_setup_report.py::test_a_helper_that_did_not_answer_in_time_is_not_judged_c915`.
+`AGENTSYNC_REPORT_TIME_LIMIT`. git's and pandoc's lines stay where they are. Tests:
+`tests/test_setup_report.py::test_a_helper_that_did_not_answer_in_time_is_not_judged_c915`,
+`test_the_helper_bucket_reads_doctors_own_time_out_words_c915` (doctor's `_probe_timed_out` for each helper, lane
+E's 2fa5f9d66, matches `_HELPER_LATE_RE` on its own check).
 
 **A report that gave up on doctor names the check it was in** (ruling 105's report-level case, on lane B's
 f1f777bb0; tests only). Through the real `cli._report_hooks()` and the whole report, a hung git check and a later

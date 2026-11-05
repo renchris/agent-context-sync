@@ -3336,6 +3336,17 @@ def test_a_helper_that_did_not_answer_in_time_is_not_judged_c915(fake_mac: dict[
         assert setup_report._HELPER_LATE_RE.match(_C915_LATE.format(helper=helper))
 
 
+def test_the_helper_bucket_reads_doctors_own_time_out_words_c915() -> None:
+    """B13 round 35 C915 (ruling 108): the report's not-judged bucket keys on the words lane E's doctor prints
+    for a helper's --version out of time (2fa5f9d66), on the three helper checks; this keeps the two equal."""
+    for name, kind in (("ocr", ocr._OCR), ("media", media.MEDIA), ("speech", speech.SPEECH)):
+        result = doctor._probe_timed_out(name, kind, ocr._VERSION_TIMEOUT_S)
+        assert result.name == name and name in setup_report._HELPER_CHECKS
+        assert result.severity == doctor.Severity.WARN
+        found = setup_report._HELPER_LATE_RE.match(result.detail)
+        assert found is not None and found.group(1) == kind.name, result.detail
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     write_install_log(fake_mac)
