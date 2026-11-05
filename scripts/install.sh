@@ -6576,6 +6576,12 @@ STOPPED_FIX_LINE="a fix: on a [FAIL] line of a run whose stopping [FAIL] lines a
 STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
 STOPPED_HELD_R33="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)"
 STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it; if that line says not read, ~/.local/bin/agentsync status says)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
+# The advice a renderer before B13 round 33 C718 gives a cut report in a stopped copy too, around its install.sh
+# path (setup_report._IDLE_AGAIN), and the words a stopped copy has in its place (_STOPPED_NOT_SENT; B13 round 35
+# C916)
+STOPPED_IDLE_HEAD='write the report again when this Mac is idle (`' # setup_report._IDLE_AGAIN's head (a test keeps them equal)
+STOPPED_IDLE_TAIL=' --report-only`) before sending it' # setup_report._IDLE_AGAIN's tail (a test keeps them equal)
+STOPPED_NOT_SENT="this copy is not for sending" # setup_report._STOPPED_NOT_SENT (a test keeps them equal)
 # An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
 # strip_run_pids) numbers the later ones <stamp>.2, .3 over install.log in its order (B13 round 12 N21). A stopped
 # copy is rendered by the older installed agentsync, so this gives its report those labels (B13 round 13 O21):
@@ -6809,7 +6815,8 @@ older_report_rewrite() { # MODE
 		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 		-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
 		-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
-		-v heldold="$STOPPED_HELD_OLD" -v heldr33="$STOPPED_HELD_R33" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
+		-v heldold="$STOPPED_HELD_OLD" -v heldr33="$STOPPED_HELD_R33" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" \
+		-v idlehead="$STOPPED_IDLE_HEAD" -v idletail="$STOPPED_IDLE_TAIL" -v notsent="$STOPPED_NOT_SENT" '
 		function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
 			m = split(ENVIRON["STEPWORDS"], ws, "\n")
 			for (i = 1; i <= m; i++) {
@@ -7107,6 +7114,37 @@ older_report_rewrite() { # MODE
 			q = i + 1 + j
 			return substr(line, 1, q - 1) changed substr(line, q)
 		}
+		# A cut report a renderer before B13 round 33 C718 wrote advises, in a stopped copy too, to write it again
+		# "before sending it", and some forms then to send it as it is: the advice and its lead-in that weighs a
+		# busy Mac give way to the copy\047s own words, and what follows it goes, a final full stop kept, as the
+		# renderer words a stopped copy since C718 (B13 round 35 C916)
+		function last_at(s, t,    j, k) { k = 0; while ((j = index(substr(s, k + 1), t))) k += j; return k }
+		function idle_off(line,    i, pre, k) {
+			if (!(i = index(line, idlehead)) || !index(substr(line, i), idletail)) return line
+			pre = substr(line, 1, i - 1)
+			if (ends(pre, "if this Mac was busy, ")) pre = substr(pre, 1, length(pre) - length("if this Mac was busy, "))
+			else if (ends(pre, "if the Mac was busy, ")) pre = substr(pre, 1, length(pre) - length("if the Mac was busy, "))
+			else if ((k = last_at(pre, "that is above its core count")) || (k = last_at(pre, "that is not above its core count"))) pre = substr(pre, 1, k - 1)
+			return pre notsent (ends(line, ".") ? "." : "")
+		}
+		# a launchd job line an older renderer wrote at exit 124, a read that did not finish, as "not installed" or
+		# "NOT loaded" (C916): its plist word, "" for none
+		function bg_cut(x) {
+			if (x == "not installed (no plist, not loaded: launchctl print exited 124)") return "absent"
+			if (index(x, "plist present \302\267 NOT loaded (launchctl print exited 124; ") == 1) return "present"
+			return ""
+		}
+		# the Summary\047s background sync line: such a job is not measured, as the renderer words it since C720
+		function bg_line(line,    jb, i, x, n, rest) {
+			for (jb in bgcut) for (i = 1; i <= 2; i++) {
+				x = jb " " (i == 1 ? "not installed" : "plist present but not loaded")
+				if (!(n = index(line, ": " x)) && !(n = index(line, "\302\267 " x))) continue
+				n += (substr(line, n, 1) == ":" ? 2 : 3)
+				rest = substr(line, n + length(x))
+				if (rest == "" || rest ~ /^( \302\267 |[:;]| \()/) line = substr(line, 1, n - 1) jb " not measured" rest
+			}
+			return line
+		}
 		FNR == 1 { sec = "" }
 		NR == FNR {
 			if (index($0, "## ") == 1) sec = $0
@@ -7114,6 +7152,10 @@ older_report_rewrite() { # MODE
 			if (s1note != "" && sec == "## Doctor" && stopped_fail($0)) mv[stopped_fail($0)] = ++nmv
 			if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
 			if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
+			# the jobs whose line is a cut read at exit 124, for the Summary line before it (C916)
+			if (cp && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && bg_cut(substr($0, RLENGTH + 1)) != "") {
+				bgj = substr($0, 3, RLENGTH - 4); sub(/^.*\./, "", bgj); bgcut[bgj] = 1
+			}
 			# an older build\047s words and lane RA\047s (B13 round 34 C817: "no install run during this attempt")
 			if (index($0, "- install.sh: no run during this attempt") == 1 || index($0, "- install.sh: no install run during this attempt") == 1) norun = 1
 			if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
@@ -7162,6 +7204,14 @@ older_report_rewrite() { # MODE
 		cp && sec == "## Summary" && index($0, "- **outcome: ") == 1 && (j = index($0, "(computed: no install.sh run")) { $0 = substr($0, 1, j + 20) substr($0, j + 24) }
 		cp && sec == "## Summary" && index($0, "- install.sh: no run during this attempt") == 1 { $0 = "- install.sh: no install run during this attempt" substr($0, 41) }
 		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ { j = nofs_at($0); $0 = substr($0, 1, j - 1) "no install run during this attempt (install.log)" substr($0, j + NOFS) }
+		# a cut report an older renderer wrote (C916): no advice to send a stopped copy, only on the lines that give
+		# it (never Items or the friction log, which quote an agent), and a read at exit 124 not measured
+		cp && !det && !fence && ((sec == "## Summary" && $0 ~ /^- (doctor|evidence|install source|background sync): /) || (sec == "## Doctor" && $0 ~ /^(Not run|Cut off): /)) { $0 = idle_off($0) }
+		cp && !det && !fence && sec == "## Summary" && index($0, "- background sync: ") == 1 { $0 = bg_line($0) }
+		cp && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" { $0 = "- Xcode Command Line Tools: not measured (xcode-select -p exited 124)" }
+		cp && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
+			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print exited 124; plist " j ")"
+		}
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
 		!det && !fence && sec == "## Environment" && $0 == "- macOS: macOS" { $0 = "- macOS: ?" }
@@ -7467,6 +7517,13 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
 	[ ! -f "$1" ] || note="$note The report of the last attempt that was not stopped is $shown."
+	# A cut stopped copy in the idle advice only a renderer before B13 round 33 C718 gives one: the rewrite drops
+	# the advice, and this says a line of the part that was cut may be a read that did not finish (B13 round 35
+	# C916). Its words blame no cause and name no line: that renderer gives the advice for the report's time
+	# limit, a state file a sync held and the doctor's own wait alike. Never keyed on the time limit alone: a
+	# newer renderer's cut copy is right as it is.
+	! LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$REPORT_PATH" ||
+		note="$note An agentsync older than this installer wrote it, and its Summary says part of it was cut off before it finished: a line in that part may be a read that did not finish, not a fact about this Mac."
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
 	if {
 		printf '%s\n\n' "$note" &&

@@ -19178,6 +19178,168 @@ def test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c
     assert old[2] in lines, lines
 
 
+_IDLE_SEND_TAIL = (
+    "; if a report written when it is idle is cut off again, the tcc check is slow or hung: send the report "
+    "as it is (install.sh's own doctor output is in install.out)"
+)
+"""What c93fcd96's and ed901cd3's _cut_off_words gave after the idle advice, in a stopped copy too."""
+
+
+def test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c916(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 35 C916: a stopped copy that a renderer before B13 round 33 C718 wrote, and the report's time
+    limit cut, told the reader to write it again "before sending it", or to send it as it is, under a head
+    that says not to send it, and called a read that did not finish a fact: Xcode's tools and a launchd job
+    "not installed" at exit 124. The copy now says "this copy is not for sending" after each of the advice's
+    lead-ins, those reads are not measured, and its head says a line of the part that was cut may be a read
+    that did not finish, blaming no cause: the doctor's own wait gives the same advice. Exit 113 and an
+    agent's quoted advice keep their words, and a copy a current renderer wrote gains no note and keeps every
+    line."""
+    idle = setup_report._IDLE_AGAIN
+    load = "the 1-minute load was 12.0 on 10 cores; "
+    leads = [
+        f"{load}that is above its core count (a busy Mac): {idle}{_IDLE_SEND_TAIL}",
+        f"{load}that is above its core count, so the Mac was busy: {idle}{_IDLE_SEND_TAIL}",
+        f"{load}that is not above its core count, so the tcc check is slow or hung, not a busy Mac; {idle} "
+        f"only if it was busy at another moment{_IDLE_SEND_TAIL}",
+        f"{load}that is not above its core count, so the tcc check is slow or hung, not the Mac busy; {idle} "
+        f"only if it was busy at another moment{_IDLE_SEND_TAIL}",
+        f"if this Mac was busy, {idle}{_IDLE_SEND_TAIL}",
+        f"if the Mac was busy, {idle}{_IDLE_SEND_TAIL}",
+        f"it was reading the loop state, which a sync held (the state file is busy); {idle}, once the sync "
+        "ends",
+    ]
+    quoted = f"- F4 {_DOT} step 1 {_DOT} note {_DOT} the report said: {idle}"
+    report = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        "- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)",
+        f"- doctor: cut off by the report's time limit after 9.0s (see Doctor) {_DOT} {leads[0]}",
+        f"- background sync: poll not installed {_DOT} reconcile plist present but not loaded",
+        *(f"- evidence: 8 lines at the end of Status are cut: {lead}" for lead in leads),
+        f"- install source: checkout ~/src/agent-context-sync {_DOT} origin: none {_DOT} on origin/main: "
+        "unknown",
+        "",
+        "Items that were not one command (attempt 1):",
+        "",
+        quoted,
+        "",
+        "## Environment",
+        "",
+        "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)",
+        "",
+        "## Doctor",
+        "",
+        f"Not run: the report's time budget was used up before doctor started; {idle}.",
+        "",
+        "## Background runs",
+        "",
+        "- com.agentsync.poll: not installed (no plist, not loaded: launchctl print exited 124)",
+        "- com.agentsync.reconcile: plist present · NOT loaded (launchctl print exited 124; "
+        "`~/.local/bin/agentsync install-agent` loads it)",
+        "",
+    ]
+    text = _stopped_copy_of(env, tmp_path, "\n".join(report))
+    lines = text.splitlines()
+    note = (
+        "An agentsync older than this installer wrote it, and its Summary says part of it was cut off "
+        "before it finished: a line in that part may be a read that did not finish, not a fact about this "
+        "Mac."
+    )
+    assert lines[0].endswith(note), lines[0]
+    evidence = [ln for ln in lines if ln.startswith("- evidence: ")]
+    want = [
+        f"{load}this copy is not for sending",
+        f"{load}this copy is not for sending",
+        f"{load}this copy is not for sending",
+        f"{load}this copy is not for sending",
+        "this copy is not for sending",
+        "this copy is not for sending",
+        "it was reading the loop state, which a sync held (the state file is busy); this copy is not for "
+        "sending",
+    ]
+    assert evidence == [f"- evidence: 8 lines at the end of Status are cut: {w}" for w in want], evidence
+    assert (
+        f"- doctor: cut off by the report's time limit after 9.0s (see Doctor) {_DOT} {load}this copy is not "
+        "for sending" in lines
+    ), lines
+    assert (
+        "Not run: the report's time budget was used up before doctor started; this copy is not for sending."
+        in lines
+    )
+    assert "- Xcode Command Line Tools: not measured (xcode-select -p exited 124)" in lines
+    assert "- com.agentsync.poll: not measured (launchctl print exited 124; plist absent)" in lines
+    assert "- com.agentsync.reconcile: not measured (launchctl print exited 124; plist present)" in lines
+    assert f"- background sync: poll not measured {_DOT} reconcile not measured" in lines, lines
+    assert quoted in lines, "an agent's quoted advice keeps its words"
+    body = [ln for ln in lines if ln != quoted]
+    assert not [ln for ln in body if "before sending it" in ln or "send the report as it is" in ln], body
+    # the doctor cut by its own wait, the time limit moved for it: the same advice, a note with no cause
+    slow = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        f"- doctor: cut off after 20.0s, the wait the report gives a slow doctor (see Doctor) {_DOT} if this "
+        f"Mac was busy, {idle}{_IDLE_SEND_TAIL}",
+        "",
+        "## Doctor",
+        "",
+        "Cut off: the doctor call did not finish within 20.0s, the wait the report gives a slow doctor (it "
+        "moves its 30s time limit for one; see Run metadata); if this Mac was busy, "
+        f"{idle}{_IDLE_SEND_TAIL}.",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(slow)).splitlines()
+    assert lines[0].endswith(note) and "time limit" not in lines[0], lines[0]
+    assert (
+        f"- doctor: cut off after 20.0s, the wait the report gives a slow doctor (see Doctor) {_DOT} this "
+        "copy is not for sending" in lines
+    ), lines
+    assert (
+        "Cut off: the doctor call did not finish within 20.0s, the wait the report gives a slow doctor (it "
+        "moves its 30s time limit for one; see Run metadata); this copy is not for sending." in lines
+    ), lines
+    # exit 113 is a job that is not loaded, a true read: it keeps its words, and the Summary's
+    other = [ln.replace("exited 124", "exited 113") for ln in report]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(other)).splitlines()
+    assert "- com.agentsync.poll: not installed (no plist, not loaded: launchctl print exited 113)" in lines
+    assert f"- background sync: poll not installed {_DOT} reconcile plist present but not loaded" in lines
+    # a copy a renderer from C718 on wrote is as it was: no note, no line changed
+    current = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        f"- background sync: poll not measured {_DOT} reconcile not measured (see the evidence line)",
+        '- evidence: 8 lines at the end of Status say "not measured" because the report\'s time limit cut '
+        "them off: this copy is not for sending",
+        "",
+        "## Background runs",
+        "",
+        "- com.agentsync.poll: not measured (the report's time limit was used up before launchctl print ran; "
+        "plist absent)",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(current)).splitlines()
+    assert note not in lines[0] and lines[0].startswith("> This report is of an attempt"), lines[0]
+    assert lines[2 : 2 + len(current) - 1] == current[:-1], lines
+
+
+def test_the_shell_stopped_copy_idle_words_are_the_reports() -> None:
+    """B13 round 35 C916: the advice the stopped-copy rewrite finds is setup_report._IDLE_AGAIN around its
+    install.sh path, and what it writes in its place is _STOPPED_NOT_SENT."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [head] = re.findall(r"(?m)^STOPPED_IDLE_HEAD='(.*)' #", script)
+    [tail] = re.findall(r"(?m)^STOPPED_IDLE_TAIL='(.*)' #", script)
+    [sent] = re.findall(r'(?m)^STOPPED_NOT_SENT="(.*)" #', script)
+    assert f"{head}{setup_report.INSTALL_SH}{tail}" == setup_report._IDLE_AGAIN
+    assert sent == setup_report._STOPPED_NOT_SENT
+
+
 @pytest.mark.parametrize("state", ["an install run after the list", "no install.commit warn"])
 def test_a_report_that_is_no_step_1_stop_of_an_older_build_is_left_as_rendered(
     env: dict[str, str], tmp_path: Path, state: str

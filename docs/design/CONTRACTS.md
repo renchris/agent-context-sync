@@ -38143,6 +38143,28 @@ and, only beside that line (`norun`), `no install run during this attempt (insta
 ones passing as they are, and a first sync line with no no-run line beside it kept) and
 `test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
 
+**A cut stopped copy an older build rendered gives no advice to send it** (C916; `scripts/install.sh`). A renderer
+before B13 round 33 C718 (c93fcd96, ed901cd3) gives a cut report the advice `write the report again when this Mac is
+idle (...) before sending it`, some forms then `send the report as it is`, in a stopped copy too, under a head that
+says not to send it, and writes a read that did not finish at exit 124 as a fact. The rewrite, gated on `cp` so step 1
+mode and sendable reports keep the advice, now takes on the Summary's doctor, evidence, install source and background
+sync lines and Doctor's `Not run:` and `Cut off:` lines (never Items or the friction log, which quote an agent) the
+advice, its busy-Mac lead-in in every renderer's form and all after it, writing `this copy is not for sending`, a final
+full stop kept, as `_cut_off_words` words a stopped copy since C718 (STOPPED_IDLE_HEAD, STOPPED_IDLE_TAIL and
+STOPPED_NOT_SENT, kept equal to setup_report's by a test). Environment's `Xcode Command Line Tools: not installed
+(xcode-select -p exited 124)` reads `not measured (...)`, without a `skipped:` cause, which the old line lost. A
+launchd job's `not installed (no plist, not loaded: launchctl print exited 124)` and `plist present · NOT loaded
+(launchctl print exited 124; ...)` read `not measured (launchctl print exited 124; plist absent|present)`, and the
+Summary's background sync line, read in pass 1, says that job is `not measured`; exit 113 keeps its words. Lines a cut
+leaves that cannot be told from a true one get one sentence in the head, `its Summary says part of it was cut off
+before it finished: a line in that part may be a read that did not finish`, which blames no cause and names no line,
+since that renderer gives the advice for the time limit, a state file a sync held and the doctor's own wait alike;
+it is added only when the unrewritten report's doctor or evidence line has the idle advice, which in a stopped copy
+only such a renderer writes, never on the time limit alone, so a copy from 4e0e8604 on gains nothing. Tests: `test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c916` (seven
+lead-ins, the doctor's own wait, the job lines both ways, exit 113, a quoted Items row, a current copy kept line for
+line) and
+`test_the_shell_stopped_copy_idle_words_are_the_reports`.
+
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
 Round 35's rulings 103 to 106 and 109 and C934, C952, C953, C978, C921, C925, C954, C917, C955, C906, C956, C980,
