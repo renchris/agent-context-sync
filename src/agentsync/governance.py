@@ -196,10 +196,23 @@ class GovernanceLostError(GovernanceUnreadError):
     sync refuses until the list is put back or each purge is run again (B13 round 29 C172: a list moved aside
     as its fix said read as no suppressions, and erased content was published again). ``record_only``: its
     FAIL credits purge-record.json alone, as the listing note beside it must (B13 round 33 C747; ruling
-    81)."""
+    81). ``kept_hold``: a lost queue's hand purge is refused by a hold still in force from the hold list or
+    sources.toml (origin ``state`` or ``config``), not only by a hold the hold list lost, so install.sh's
+    step 1 gives that hold's own release words, as status judges it (B13 round 35 C967, ruling 104; an older
+    build lacks it and the reader keeps today's words)."""
 
-    def __init__(self, path: Path, role: str, detail: str, fix: str, *, record_only: bool = False) -> None:
+    def __init__(
+        self,
+        path: Path,
+        role: str,
+        detail: str,
+        fix: str,
+        *,
+        record_only: bool = False,
+        kept_hold: bool = False,
+    ) -> None:
         self.record_only = record_only
+        self.kept_hold = kept_hold
         super().__init__(path, role, detail, fix)
 
 
@@ -2760,7 +2773,12 @@ def _queue_lost(state_dir: Path, gov: GovernanceConfig | None = None) -> Governa
                 f"refuses until then ({ways})"
             )
             return GovernanceLostError(
-                path, "the purge queue", detail, fix, record_only=bool(only) and not held
+                path,
+                "the purge queue",
+                detail,
+                fix,
+                record_only=bool(only) and not held,
+                kept_hold=any(h.origin in ("config", "state") for h in blocked),  # C967, ruling 104
             )
     return None
 

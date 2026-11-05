@@ -37980,6 +37980,15 @@ person's docs history is the operator's call. Test:
 `test_cycle.py::test_a_source_folder_never_enters_the_docs_repos_commit_history` (no body holds the home, the
 provider folder's name or the source folder; STATE.md keeps the full path).
 
+**C967, lane B's half (ruling 104; data integrity).** Step 1 read a lost hold beside a lost queue as the only hold
+refusing the queue's hand purge, though sources.toml's hold or a hold the hold list still names refused it too, so
+its words said setting the lost hold again keeps every purge refused: a kept hold read as lost. `GovernanceLostError`
+gains `kept_hold` (a bool, default False, as `record_only` is), which `_queue_lost` sets to whether any hold that
+refuses the purge has the origin `config` or `state`: status's own judgment, which lane RB's LOST_HOLD_PY reads by
+getattr (an older build keeps today's words) for its `,queue-held-kept` word. No phrase changes. Test:
+`test_cli.py::test_a_lost_queue_says_when_a_hold_still_in_force_refuses_its_hand_purge_c967` (no hold, a hold on
+another source and a lost hold alone False; sources.toml's hold and a listed hold on the purge's source True).
+
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
 Reserved for round 35 lane E of B13.

@@ -3364,6 +3364,44 @@ def test_a_lost_queue_counts_a_hold_in_sources_toml_and_a_source_hold_by_its_sou
     capsys.readouterr()
 
 
+def test_a_lost_queue_says_when_a_hold_still_in_force_refuses_its_hand_purge_c967(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 35 C967 (ruling 104; data integrity): step 1 read a lost hold beside a lost queue as the only
+    hold refusing the hand purge, though sources.toml's hold or a hold the hold list still names refused it
+    too, and its words said setting the lost hold again keeps every purge refused: a kept hold read as lost.
+    GovernanceLostError.kept_hold is status's own judgment: True only while a hold of origin ``config`` or
+    ``state`` refuses the purge."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    queue = governance._queue_file(root)
+    queue.rename(queue.with_suffix(".kept"))
+    lost = governance.queue_lost(root)
+    assert lost is not None and lost.kept_hold is False  # no hold at all
+    gov = governance.GovernanceConfig(hold=True, hold_reason="matter 9", hold_owner="Ada")
+    lost = governance.queue_lost(root, gov)
+    assert lost is not None and lost.kept_hold is True  # sources.toml's hold
+    other = ["hold", "other-source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(other) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None and lost.kept_hold is False  # a hold on another source refuses nothing here
+    mine = ["hold", "source", "--reason", "matter 9", "--owner", "Ada", "--config", cfg]
+    assert cli.main(mine) == cli.EXIT_OK
+    lost = governance.queue_lost(root)
+    assert lost is not None and lost.kept_hold is True  # a hold the hold list still names
+    holds = governance._holds_file(root)
+    holds.rename(holds.with_suffix(".kept"))  # the hold list lost: its holds are lost holds now
+    lost = governance.queue_lost(root)
+    assert lost is not None and "once the records owner decides to release " in lost.fix, lost.fix
+    assert lost.kept_hold is False  # only a lost hold refuses it
+    lost = governance.queue_lost(root, gov)
+    assert lost is not None and lost.kept_hold is True  # a lost hold and sources.toml's, still in force
+    capsys.readouterr()
+
+
 def test_a_lost_sourceless_purge_names_a_hold_on_another_source_only_as_one_its_dry_run_may_meet_c874(
     initialised: Config, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
