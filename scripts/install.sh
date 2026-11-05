@@ -7155,6 +7155,13 @@ older_report_rewrite() { # MODE
 			$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
 		}
 		cp && sec == "## Summary" { $0 = prompt_line($0) }
+		# an older renderer\047s no-run words before lane RA\047s round 34 C817, in a stopped copy only (the step 1
+		# mode reads both forms itself): the outcome\047s computed bracket, the install.sh line and, beside it, the
+		# first sync line take the words the renderer writes now; its "this attempt ran none" stays (B13 round 35
+		# C910)
+		cp && sec == "## Summary" && index($0, "- **outcome: ") == 1 && (j = index($0, "(computed: no install.sh run")) { $0 = substr($0, 1, j + 20) substr($0, j + 24) }
+		cp && sec == "## Summary" && index($0, "- install.sh: no run during this attempt") == 1 { $0 = "- install.sh: no install run during this attempt" substr($0, 41) }
+		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ { j = nofs_at($0); $0 = substr($0, 1, j - 1) "no install run during this attempt (install.log)" substr($0, j + NOFS) }
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
 		!det && !fence && sec == "## Environment" && $0 == "- macOS: macOS" { $0 = "- macOS: ?" }

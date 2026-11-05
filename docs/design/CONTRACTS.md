@@ -37596,6 +37596,9 @@ other. Tests: the new-words cases of
 `test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes`,
 `test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync` and
 `test_a_git_stop_of_the_older_build_names_the_earlier_first_sync`.
+Amended 2026-11-04, §16.231 C910: a stopped copy now also rewrites those three old lines into the current words,
+`no install run` in the outcome's bracket, `no install run during this attempt` on the install.sh line and, beside it,
+on the first sync line; `this attempt ran none` stays, the renderer's own words.
 
 ### 16.227 Round 34: the governance folder's words, a lost queue's release and doctor's abandoned child (2026-11-03, wave B13 round 34 lane B)
 
@@ -38128,6 +38131,17 @@ governance folder is missing $GONE_WHAT` already parses and stands, and the phra
 `test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole`,
 `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept` (which counts the new words once) and
 `test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_after_it`.
+
+**A stopped copy an older build rendered takes the current no-run words** (C910; amends §16.226 C817;
+`scripts/install.sh`). The rewrite only read an older renderer's `(computed: no install.sh run; ...)`, `- install.sh: no
+run during this attempt` and `no install.sh run with a first-sync step (install.log)`, so a stopped copy kept them
+beside this attempt's own install.sh --log-start error. Three rules after the prompt line's, gated on `cp` (a stopped
+copy; step 1 mode reads both forms itself), write `no install run`, `- install.sh: no install run during this attempt`
+and, only beside that line (`norun`), `no install run during this attempt (install.log)`, as the renderer does now. Its
+`this attempt ran none` is the renderer's own and stays. Tests:
+`test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c910` (the three old lines, the current
+ones passing as they are, and a first sync line with no no-run line beside it kept) and
+`test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 

@@ -19143,6 +19143,41 @@ def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_firs
     ), text
 
 
+def test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c910(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 35 C910: a stopped copy the older installed build rendered kept C817's old words, "no
+    install.sh run" in the outcome's computed bracket, the install.sh line's "no run during this attempt" and
+    the first sync's "no install.sh run with a first-sync step", beside this attempt's own install.sh
+    --log-start error; the copy takes the current renderer's words for all three. Its "this attempt ran none"
+    is the renderer's own and stays."""
+    head = ["# agentsync setup report", "", "## Summary", ""]
+    old = [
+        "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)",
+        "- install.sh: no run during this attempt (1 earlier in the install log)",
+        "- first sync: no install.sh run with a first-sync step (install.log)",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join([*head, *old, ""])).splitlines()
+    assert "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)" in lines, (
+        lines
+    )
+    assert "- install.sh: no install run during this attempt (1 earlier in the install log)" in lines, lines
+    assert "- first sync: no install run during this attempt (install.log)" in lines, lines
+    assert not [ln for ln in lines if "no install.sh run" in ln or "no run during" in ln], lines
+    # the current renderer's words, and its "ran none", pass as they are
+    now = [
+        "- **outcome: failed at step 1** (computed: no install run; step 1 logged an error)",
+        "- install.sh: no install run during this attempt (1 earlier in the install log)",
+        "- first sync: done in 4s (install.log: the install run of 2026-10-18T09:00:10Z, before this "
+        "attempt; this attempt ran none)",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join([*head, *now, ""])).splitlines()
+    assert all(ln in lines for ln in now), lines
+    # an attempt that ran install.sh keeps its first sync line: the rule needs the no-run line beside it
+    lines = _stopped_copy_of(env, tmp_path, "\n".join([*head, old[2], ""])).splitlines()
+    assert old[2] in lines, lines
+
+
 @pytest.mark.parametrize("state", ["an install run after the list", "no install.commit warn"])
 def test_a_report_that_is_no_step_1_stop_of_an_older_build_is_left_as_rendered(
     env: dict[str, str], tmp_path: Path, state: str
