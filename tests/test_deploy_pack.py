@@ -6684,11 +6684,74 @@ _ROUND_35_D_PARAGRAPH_AMENDS = (
         "§16.234 C923",
     ),
     ("16.225", "**One cut said one way in Environment and Status** (C820, ruling 96;", "§16.234 C969"),
+    ("16.14", "`_no_install_words` replaces `_ran_no_install`.", "§16.234 C972 (by §16.225 C817)"),
+    (
+        "16.32",
+        "and `no run during this attempt (1 earlier in the install log)`;",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.47",
+        "**First sync of an attempt that ran no install.sh** (R19, R28, one defect).",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.64",
+        "its why is `no install.sh run and no error; step 1 logged only a deviation (F<n>)`.",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.65",
+        "`(earlier attempts' install.sh output: this attempt ran no install.sh)`",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.129",
+        "**A stopped copy names the earlier run its first sync reads** (U28;",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.129",
+        "`no install.sh run; step 1 logged an error` with no cause.",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    ("16.164", "a stand-alone run: this attempt ran no install.sh)`.", "§16.234 C972 (by §16.225 C817)"),
+    (
+        "16.171",
+        "(1): `no install.sh run during this attempt, and step 1 logged an error (F<n>)`",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.178",
+        "B20 branch now takes every late exit: `no install.sh run during this attempt, and step 1",
+        "§16.234 C972 (by §16.225 C817)",
+    ),
+    (
+        "16.203",
+        "FAIL of a governance folder gone whole (`<gov>/ is missing, with the hold list,",
+        "§16.234 C972 (by §16.227 C810)",
+    ),
+    (
+        "16.203",
+        "folder's clause (`<gov>/ is missing, with the hold list, ...`) is what",
+        "§16.234 C972 (by §16.227 C810)",
+    ),
+    (
+        "16.205",
+        "hold's FAIL names the folder, `<gov>/ is missing, with the hold list,",
+        "§16.234 C972 (by §16.227 C810)",
+    ),
+    (
+        "16.217",
+        "**The records page says what to do over a missing governance folder** (ruling 63,",
+        "§16.234 C972 (by §16.227 C810)",
+    ),
 )
 """Round 35 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_34_D_PARAGRAPH_AMENDS`: C987's at §16.223's C800 rule (ruling 111); ruling 110's at the
 passages a later round made stale: C968's at §16.222's and §16.229's Command Line Tools passages,
-C923's beside it at §16.229, and C969's CORRECTED line at §16.225's C820 paragraph."""
+C923's beside it at §16.229, and C969's CORRECTED line at §16.225's C820 paragraph; and C972's fourteen
+lines in C857's form at the quotes round 34's C810 and C817 made stale (ruling 74: no quote rewritten)."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),

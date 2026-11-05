@@ -5419,6 +5419,8 @@ Amended 2026-10-28, §16.213 C620: when the attempt ran no install.sh, the NEXT 
 written; this attempt ran no install.sh)`, merged with the damage clause into one bracket.
 Amended 2026-11-01, §16.218 C709: an attempt whose only install.sh run was `--list-folders` carries the same bracket
 with `this attempt ran only install.sh --list-folders`; `_no_install_words` replaces `_ran_no_install`.
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the bracket's `this attempt ran no install.sh` above reads `this
+attempt made no install run`.
 **Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install (`INSTALL_STEP`), 3 sync loop and report
 (`REPORT_STEP`); the folder question and the one announced Allow click (step 1, `V7_ALLOW_CLICK_STEPS`: since
 K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v6;
@@ -10273,6 +10275,8 @@ Tests: `tests/test_setup_report.py` (the rehearsal's log on a Mac with an earlie
 and `no run during this attempt (1 earlier in the install log)`; the same with a logged question; a copy
 from before v8 with the header alone; a list run inside the attempt: one question and the folder question
 again; the rule on a stopped and on a current attempt).
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): `no run during this attempt (1 earlier in the install log)` above
+reads `no install run during this attempt (1 earlier in the install log)`.
 
 #### No warning for a docs repo no sync has reached (amends §13 and the `agentsync.curate` section; `agentsync.curate`)
 
@@ -13760,6 +13764,8 @@ its own NEXT with one clause added.
   install.out's counts are its own only under one of its runs' headers; an earlier run's are tagged `(install.out:
   the install run of <start>, before this attempt; ...)`, a headerless file's `(install.out: which run printed it is
   not recorded; ...)`.
+  Amended 2026-11-04, §16.234 C972 (by §16.225 C817): `no install.sh run during this attempt (install.log)` above reads
+  `no install run during this attempt (install.log)`.
 - **No install.sh run, no folder question** (R15). An attempt with no run of its own counts no folder question
   and reads `- expected turns: none (no install.sh --list-folders run in this attempt: no folder question and no
   Allow click)`; any run keeps the usual rules and a logged question still counts.
@@ -16175,6 +16181,8 @@ deviation; the wait is read from the deviations alone, and the why then reads `s
 kind(s)> and nothing else`. Amended 2026-10-13, §16.69 H42: the issue title says `Stopped at step 1 (…)`.
 Amended 2026-10-15, §16.92 M31: the Summary's line is `- attempt: N of N; earlier: …`, so an outcome's own note
 bracket is the line's only one.
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the why's `no install.sh run and no error` above reads `no install
+run and no error`.
 
 **G27: the origin/main clause dates the checkout's last fetch.** The run metadata's `install source` line ends `on
 origin/main: <yes|no|unknown> (<fetch>)`, from one lstat of the checkout's FETCH_HEAD (no new network, no write):
@@ -16295,6 +16303,9 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   copies `STUB_REPORT_FILE`), and `test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
   Amended 2026-10-16, §16.99 N22: the count now ends the renderer's bracket (`(...; 2 of them left out: the
   bring-back and issue link lines)`), not before it.
+  Amended 2026-11-04, §16.234 C972 (by §16.225 C817): F20's `this attempt ran no install.sh` above reads `this attempt
+  made no install run`, and the Summary's `- install.sh: no run during this attempt` reads `- install.sh: no install run
+  during this attempt (N earlier in the install log)`.
 - **A stopped copy's note and NEXT read in order** (G9, G19, one defect). The first line reads `> This report
   is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or
   bring it back.` and the NEXT starts the same way (the subject, verb and object were split by a relative
@@ -23757,6 +23768,8 @@ a first-sync step (`an earlier install run` with none), and the counts' tag `(in
 `test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
 Amended 2026-11-03, §16.229 C856 (by review backtest pilot-s1/er-13#6): the sentence above was never so;
 `stopped_run_labels`' `named()` adds `, run <label>` after the start, as the renderer's `_run_named` does.
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the Summary's `- install.sh: no run during this attempt` above reads
+`- install.sh: no install run during this attempt (N earlier in the install log)`.
 
 **One expected warn ends in its fix** (U31; dated line at §16.116 S26). Both the renderer and the stopped copy's
 header wrote `1 expected warn ends in (expected: <why>) instead of their fix`. It reads `its fix` for one; the copy's
@@ -23781,6 +23794,8 @@ build reads one attempt where the renderer reads two, and the words cannot be re
 the checkout's src stays refused (§16.111 Q27, §16.123 T11). Test:
 `test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words` (an install run after it, a later
 attempt).
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the outcome's `no install.sh run; step 1 logged an error` above
+reads `no install run; step 1 logged an error`.
 
 **The shell's report words are its printed text** (U4, U94: one defect from two finders). `report_word` read every
 lower-case word of 3 or more letters on every non-comment line of install.sh, code included: variables
@@ -28294,6 +28309,8 @@ after its end line stopped at its <step> step`, `; the --list-folders run after 
 the rest of the line being the attempt's own runs; the guide's rows quote the new forms. An ordinary attempt keeps
 its later runs as its own. Test:
 `test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart`.
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the excerpt heading's `this attempt ran no install.sh` above reads
+`this attempt made no install run`.
 
 **An origin with two url keys is labelled by the one git fetches from** (A24, A50, A90; amends §16.136 V70). The
 install source line's label is the first `remote.origin.url` key after the last empty one (`config --get-all`),
@@ -29152,6 +29169,8 @@ stand-alone run that does not change it` ("the last of N install.sh runs" for se
 keeps Y19's words. Test: `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome`.
 Amended 2026-10-23, §16.178 D15: a late run that ended 0 no longer keeps Y19's words: whatever its exit, the reason is
 the one above.
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): `no install.sh run during this attempt, and step 1 logged an error
+(F<n>)` above reads `no install run during this attempt, and step 1 logged an error (F<n>)`.
 
 **A chmod the status step's NEXT merged with others is that NEXT's step** (B53). Round 23's A35 counts a [FAIL]
 line's fix as `_NEXT_FIX`, not a separate hint, when the run's NEXT gives it to the agent, but it compared the fix
@@ -29896,6 +29915,8 @@ and `..., which ended rc 0, is a stand-alone run that does not change it`. Y19's
 stopped copy that also has an install run inside its attempt (the verifier measured that removing it brings back
 Y19's own contradiction there). Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
 `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` (an rc 0 row).
+Amended 2026-11-04, §16.234 C972 (by §16.225 C817): `no install.sh run during this attempt, and step 1 logged an error
+(F<n>)` above reads `no install run during this attempt, and step 1 logged an error (F<n>)`.
 
 **A run with no end line is in the time, install and installer output lines** (D16). After a stopped copy's end
 line, a stand-alone run that ended and one with no end line (killed) gave `after its end line: install 31s` (only
@@ -33702,6 +33723,9 @@ times (ruling 33) read as whole-second ones, as the trail line takes the day alo
 `test_a_status_stop_on_a_lost_hold_names_the_hold_list_c308`, `test_a_sync_stop_on_a_lost_list_names_the_list_c335`
 (a hand-written `kind=lost-list` line too), `test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313`
 and `test_a_microsecond_audit_time_reads_as_a_whole_second_one_ruling_33`.
+Amended 2026-11-04, §16.234 C972 (by §16.227 C810): the head reads `is missing (the folder where agentsync keeps any
+hold list, its audit trail, the purge queue and any suppression list)`, describing the folder, where the quote above
+names its contents.
 
 Rulings 40, 41, 42 (2026-10-26): **the words written ahead of lane B are its own names** (lane B's batch 2 on
 disk). The report wrote four of lane B's words before its code landed. Two are names lane B now exports, and the
@@ -33715,6 +33739,9 @@ governance/ is gone and the hold record keeps a hold, its fix opening `the perso
 folder (`. Tests: `test_the_words_written_ahead_of_lane_b_are_its_own_on_disk_ruling_40_41_42` and
 `test_a_governance_folder_gone_whole_is_the_folders_never_a_lost_hold_c313`, which now reads lane B's built
 FAIL.
+Amended 2026-11-04, §16.234 C972 (by §16.227 C810): the head reads `is missing (the folder where agentsync keeps any
+hold list, its audit trail, the purge queue and any suppression list)`, describing the folder;
+`governance.lost_hold_words` no longer prints the clause quoted above.
 
 C394, ruling 36 (2026-10-26): **a queued id the read-only split cannot judge reads as not judged, and the
 private copy stays in the state folder** (lane B's C394 fix pass). Lane B's `partition_queue_ro` keeps a queued
@@ -34301,6 +34328,9 @@ hold-record.json), and no release is recorded; ...`, and its fix opens `the pers
 report's bucket and cuts. Tests: `test_governance.py`
 `test_a_hold_only_the_record_keeps_has_the_origin_record_and_a_gone_folder_is_named`, `test_cli.py`
 `test_a_governance_folder_gone_under_a_hold_is_named_and_put_back_whole`.
+Amended 2026-11-04, §16.234 C972 (by §16.227 C810): the head reads `is missing (the folder where agentsync keeps any
+hold list, its audit trail, the purge queue and any suppression list)`, describing the folder, where the FAIL quoted
+above names its contents.
 
 C305 with C314, C355 (one defect from three finders, built once): status's own lost-hold WAITING ON YOU line told
 the reader to run status. `governance.LOST_HOLD_WAIT_STATUS` (`... so purge and compaction stay suspended: the
@@ -36489,6 +36519,9 @@ the bullet beside governance's constants and `accept_lost_suppression`'s two ref
 Amended 2026-11-01, §16.222 C757, C783: the sync's stop leads so only while purge-record.json keeps a purge the
 suppression list or the queue lost; with only a hold kept the sync runs, its wait naming the folder and status FAILing
 governance.hold (§16.215 C613; ruling 64).
+Amended 2026-11-04, §16.234 C972 (by §16.227 C810): the head reads `is missing (the folder where agentsync keeps any
+hold list, its audit trail, the purge queue and any suppression list)`, describing the folder
+(`governance.GOVERNANCE_GONE_HEAD`), where the lead quoted above names its contents.
 
 **The guide's Repeat conversions row gives the folder-path clause both triggers and each count its column**
 (C651 with ruling 73; `docs/deploy/setup-feedback.md`; after lane RA's ff38befe1 and 667696ce4). Since §16.211
@@ -38919,3 +38952,17 @@ Tests: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get` (C
 C971's pinned, each against the source), `test_the_guides_loop_paragraph_gives_each_rewrite_of_status_next_with_its_condition`
 (C970's clause), `test_the_guide_gives_a_failed_attempts_earlier_install_runs_items_line` (C975), and the dated-line
 pins in `_ROUND_35_D_PARAGRAPH_AMENDS` (C968 twice, C923, C969).
+
+**Fourteen quotes round 34 made stale get a dated line each** (C972, makes worse True as found; docs and pins). Round
+34's C810 changed the governance-gone head to `is missing (the folder where agentsync keeps any hold list, its audit
+trail, the purge queue and any suppression list)` and C817 every `ran no install.sh` and `no install.sh run` the report
+prints to `made no install run` and `no install run`, but only four older passages took a dated line, while ruling 74
+and C857 treat a quote the code no longer prints as stale wherever it stands. Each of the fourteen gets one line in
+C857's form, `Amended <date>, §16.234 C972 (by §16.227 C810)` or `(by §16.225 C817)`, giving the words printed now,
+and no quote is rewritten: §16.14's Loop-line bracket, §16.32's Summary count, §16.47's first-sync line, §16.64's why,
+§16.65's F20 suffix and Summary line, §16.129's two (the Summary line and the outcome), §16.164's excerpt heading,
+§16.171's and §16.178's outcome, §16.203's two, §16.205's FAIL and §16.217's records-page lead (C810's). The item's own
+fix, a line in `§16.227 C810`'s own form, turned `test_every_dated_line_from_round_11_on_is_held_by_a_test` red
+(measured: a dated line no test holds) and would stamp round 35's work as round 34's, as C856 rejected; §16.70's quote
+of an older build's words, which readers still take (§16.226), stays undated. The lines are ruling 74's and are pinned
+in `_ROUND_35_D_PARAGRAPH_AMENDS`, one row each.
