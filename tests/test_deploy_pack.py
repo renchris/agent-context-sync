@@ -9110,8 +9110,8 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     # B13 round 32 ruling 63: the governance folder's tail is one template, its parts from folder_gone_words
     folder = tails.pop("governance folder")
     assert folder == (
-        "; step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, "
-        "its audit trail, the purge queue and any suppression list, is missing, "
+        "; step 2 stops at its status step on agentsync's governance folder, which is missing (the folder "
+        "where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), "
         "$GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and "
         "~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
     )
@@ -9176,9 +9176,9 @@ def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     # folder's words, each quote derived from the script's own literal in the guide's placeholders
     after = (
         "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder,"
-        " where it keeps any hold list, its audit trail, the purge queue and any suppression list, is"
-        " missing, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and"
-        " ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
+        " which is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue"
+        " and any suppression list), $GONE_WHAT (not damage, not a mode): fixing that is the person's"
+        " ($GONE_FIX), and ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
     )
     second = (
         "and, on its $GONE_CHECK $GONE_LINE, a second stop that follows: agentsync's governance folder is"

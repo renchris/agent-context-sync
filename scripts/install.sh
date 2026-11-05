@@ -8925,7 +8925,7 @@ list_folders() {
 		# with governance/ gone, the folder's words, once (B13 round 32 ruling 63); never when governance/ that is
 		# not a folder is the file that stops first
 		if [ "$crole" != role-governance ] && folder_gone_words "$chold"; then
-			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
+			ctail="$ctail; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
 			clog="$clog$GONE_LOG"
 		fi
 	elif [ -n "$chold" ] && [ "$chold" != none ]; then
@@ -8948,7 +8948,7 @@ list_folders() {
 		*,lost-hold-govgone,* | *,lost-queue-govgone,* | *,lost-suppressed-govgone,*)
 			# ruling 63: governance/ gone, whatever its records keep, named once in the folder's words
 			folder_gone_words "$chold"
-			ctail="$ctail; step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, its audit trail, the purge queue and any suppression list, is missing, $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
+			ctail="$ctail; step 2 stops at its status step on agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), $GONE_WHAT (not damage, not a mode): fixing that is the person's ($GONE_FIX), and ~/.local/bin/agentsync status prints it on its $GONE_CHECK $GONE_LINE"
 			clog="$clog$GONE_LOG"
 			;;
 		*,lost-hold,*)

@@ -34946,6 +34946,9 @@ agentsync) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`, w
 Amended 2026-11-03, §16.226 C810: the tail now opens `on agentsync's governance folder, where it keeps any hold list,
 its audit trail, the purge queue and any suppression list, is missing, while ...`, describing the folder, never what
 best-effort records say it held (B13 round 34 ruling 94); the rest stands.
+Amended 2026-11-04, §16.231 C902: the tail now opens `on agentsync's governance folder, which is missing (the folder
+where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), while ...`, status's
+GOVERNANCE_GONE_HEAD after a `which` (ruling 94's words amended by ruling 111); the rest stands.
 
 **The shell's late block dedupes on one snapshot of sync-stops.log** (C536; `scripts/install.sh`).
 `fallback_sync_stops late` took the end-second stops the attempt claimed as line numbers from one `tail -n 200` of
@@ -37513,6 +37516,9 @@ second stop; a list lost alone stays one line. The new clauses join both phrase 
 `hold-queue` case of `test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept`,
 `test_the_second_stop_words_say_each_list_once_and_one_bracket_for_every_verdict` (the rebuilt fix, both lines, the
 hold-only arm, a hold on another source) and `test_the_guide_gives_step_1s_lost_list_tails_and_their_words`.
+Amended 2026-11-04, §16.231 C902: both folder tails now read `agentsync's governance folder, which is missing (the
+folder where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), $GONE_WHAT`
+(ruling 94's words amended by ruling 111); the rest stands.
 
 **One credit rule for the installer's lost-list word** (C872 and C836; ruling 95; amends §16.219 C735;
 `scripts/install.sh`, `docs/deploy/setup-feedback.md`). `list_word` added `-trail` whenever the detail named
@@ -38108,6 +38114,20 @@ This reader lands before lane B writes the role. Tests: `test_the_shell_stop_fil
 the `governance-folder-700` and `governance-folder-not-600` rows of
 `test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_agentsync_report_does`, whose comparison
 with the agentsync report's pairing runs once setup_report knows the role.
+
+**Step 1's governance-gone tails parse, on the folder `which is missing`** (C902, C908; ruling 111; amends §16.209
+C507 and §16.226 C810; `scripts/install.sh`). Ruling 94's `on agentsync's governance folder, where it keeps any hold
+list, its audit trail, the purge queue and any suppression list, is missing, $GONE_WHAT` left `is missing` with no
+subject, the folder being the object of `on`. Both tails, the stop alone and the one after a config-step stop, now
+read `on agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit
+trail, the purge queue and any suppression list), $GONE_WHAT (not damage, not a mode): ...`: status's
+GOVERNANCE_GONE_HEAD, in the `on ..., which` shape of the other tails and of the report's own cause. They still
+describe the folder and never branch on hold-record.json or purge-record.json. The second stop's `agentsync's
+governance folder is missing $GONE_WHAT` already parses and stands, and the phrase lists need no entry. Tests:
+`test_the_guide_gives_step_1s_lost_list_tails_and_their_words`,
+`test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_whole`,
+`test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept` (which counts the new words once) and
+`test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_after_it`.
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 

@@ -13431,11 +13431,11 @@ def test_the_lost_hold_probe_reads_the_checkout_first_and_is_silent_on_a_build_w
 
 
 GOVERNANCE_GONE_TAIL = (
-    "; step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, its "
-    "audit trail, the purge queue and any suppression list, is missing, while its records keep a "
-    "hold as set and not released (not damage, not a mode): fixing that is the person's (they put "
-    "agentsync's governance folder back whole from the copy kept, or the records owner sets the hold again "
-    "or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
+    "; step 2 stops at its status step on agentsync's governance folder, which is missing (the folder where "
+    "agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), while its "
+    "records keep a hold as set and not released (not damage, not a mode): fixing that is the person's (they "
+    "put agentsync's governance folder back whole from the copy kept, or the records owner sets the hold "
+    "again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line"
 )
 """Step 1's tail for a hold its records keep with governance/ itself gone (B13 round 31 ruling 60: C507), in
 fixed words that name no scope, owner or reason."""
@@ -13515,8 +13515,8 @@ def test_step_1_predicts_a_governance_folder_gone_under_a_hold_and_puts_it_back_
 
 
 GOVGONE_LEAD = (
-    "step 2 stops at its status step on agentsync's governance folder, where it keeps any hold list, its "
-    "audit trail, the purge queue and any suppression list, is missing, while "
+    "step 2 stops at its status step on agentsync's governance folder, which is missing (the folder where "
+    "agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), while "
 )
 GOVGONE_TAILS = {
     "queue": (
@@ -13931,7 +13931,7 @@ def test_step_1_names_a_governance_folder_gone_once_for_every_list_it_kept(
     gov.rename(kept)
     listed = install_sh(env, "--list-folders")
     assert last_line(listed).endswith(GOVGONE_TAILS[lost]), last_line(listed)
-    assert last_line(listed).count("agentsync's governance folder, where it keeps any hold list") == 1
+    assert last_line(listed).count("agentsync's governance folder, which is missing") == 1
     assert "the audit trail records" not in last_line(listed), last_line(listed)
     log = next(ln for ln in reversed(install_log(env)) if "config_err=" in ln)
     word = {
@@ -13969,8 +13969,8 @@ def test_a_config_step_stop_beside_a_governance_folder_gone_names_the_folder_aft
     tail = last_line(install_sh(env, "--list-folders"))
     after = (
         "; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, "
-        "where it keeps any hold list, its audit trail, the purge queue and any suppression list, is "
-        "missing, while purge-record.json keeps a purge as queued and not done (not "
+        "which is missing (the folder where agentsync keeps any hold list, its audit trail, the purge queue "
+        "and any suppression list), while purge-record.json keeps a purge as queued and not done (not "
         "damage, not a mode): fixing that is the person's (they put agentsync's governance folder back "
         "whole from the copy kept; with no copy, they run each such purge by hand before the next sync), "
         "and ~/.local/bin/agentsync status prints it on its governance.purge_queue line"

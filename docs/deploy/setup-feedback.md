@@ -996,15 +996,15 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   ruling 27), after either when both (`config_err=state-queue-lost,state-hold-lost`), its clause then opening `; the same stop
   names agentsync's hold list`, since one status step names both (B13 round 34 C837). With agentsync's governance
   folder itself gone, the audit trail with it, a hold its records keep gives `; step 2 stops at its status step on
-  agentsync's governance folder, where it keeps any hold list, its audit trail,
-  the purge queue and any suppression list, is missing, while its records keep a hold as set and not released (not damage, not a mode): fixing
+  agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail,
+  the purge queue and any suppression list), while its records keep a hold as set and not released (not damage, not a mode): fixing
   that is the person's (they put agentsync's governance folder back whole from the copy kept, or the records owner
   sets the hold again or releases it), and ~/.local/bin/agentsync status prints it on its governance.hold line`,
   logged `state-governance-lost`, in place of the hold list's (B13 round 31 ruling 60, C507). Since lane B's ruling
   63 every lost file is the folder's while governance/ is missing and purge-record.json or the hold record keeps
   what it held, and step 1 gives one folder tail that names the folder once: `; step 2 stops at its status step on
-  agentsync's governance folder, where it keeps any hold list, its audit trail,
-  the purge queue and any suppression list, is missing, while <what> (not damage, not a mode): fixing that is the person's (they put
+  agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail,
+  the purge queue and any suppression list), while <what> (not damage, not a mode): fixing that is the person's (they put
   agentsync's governance folder back whole from the copy kept<fixes>), and ~/.local/bin/agentsync status prints it on
   its <check> line`, `<what>` joining with `, and ` `its records keep a hold as set and not released` (a lost hold,
   whose fix adds `, or the records owner sets the hold again or releases it` and whose `<check>` is
@@ -1029,8 +1029,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   with --folder-lost, as its status line says, ` before the records owner when the suppression list lost one too,
   and the tail names both lines, `governance.hold and governance.purge_queue lines` (`governance.suppressed` for
   the list when it lost one), a list lost alone staying one line (B13 round 34 ruling 94, C805, C811); for a queued purge alone: `; step 2 stops at its status step on
-  agentsync's governance folder, where it keeps any hold list, its audit trail,
-  the purge queue and any suppression list, is missing, while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
+  agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail,
+  the purge queue and any suppression list), while purge-record.json keeps a purge as queued and not done (not damage, not a mode):
   fixing that is the person's (they put agentsync's governance folder back whole from the copy kept; with no copy,
   they run each such purge by hand before the next sync), and ~/.local/bin/agentsync status prints it on its
   governance.purge_queue line`. It is logged with the list's own word beside the folder's
@@ -1081,8 +1081,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   its re-run, with no `once`; the side files' `NEXT:` naming more than one ends `once they are fixed`, or `once all
   are fixed` with a second stop (B13 round 34 C855). With governance/ gone, the
   folder's words take the lists' place, once, `<what>`, `<fixes>` and `<check>` as in the folder tail above: step 1
-  adds `; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, where it keeps any hold list, its audit trail,
-  the purge queue and any suppression list, is missing, while <what>
+  adds `; once that is fixed, step 2 stops again at its status step on agentsync's governance folder, which is missing (the folder where agentsync keeps any hold list, its audit trail,
+  the purge queue and any suppression list), while <what>
   (not damage, not a mode): fixing that is the person's (they put agentsync's governance folder back whole from the
   copy kept<fixes>), and ~/.local/bin/agentsync status prints it on its <check> line`, logged after the config step's
   (`config_err=state-file-notfile,state-queue-lost,state-governance-lost` for a queued purge alone), and step 2's

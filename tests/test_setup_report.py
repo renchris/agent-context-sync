@@ -2969,8 +2969,8 @@ def test_a_hold_word_reason_cuts_no_fixed_line_of_a_built_report_c502(
         "  not run while the hold record cannot be read",
         # install.sh's own lines (B13 round 32 ruling 68, C634): the governance-gone and lost-hold tails, the
         # lost manifest's fact, the misplaced hold record's fix and the REPORT_ONLY NEXT
-        "step 2 stops at its status step on agentsync's governance folder, where it keeps any hold "
-        "list, its audit trail, the purge queue and any suppression list, is missing, "
+        "step 2 stops at its status step on agentsync's governance folder, which is missing (the folder "
+        "where agentsync keeps any hold list, its audit trail, the purge queue and any suppression list), "
         "while its records keep a hold as set and not released (not damage, not a mode): fixing that "
         "is the person's (they put agentsync's governance folder back whole from the copy kept, or "
         "the records owner sets the hold again or releases it), and ~/.local/bin/agentsync status "
