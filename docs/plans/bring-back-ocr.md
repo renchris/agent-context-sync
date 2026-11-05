@@ -2452,6 +2452,42 @@ privacy; then C967's shell half), B 22 (C934 first, then C967's governance half 
 (C977 with C987 first: every land gate runs it). The lead holds 3 kit items (C920, C931, C989) and the kit halves of
 C907, C980, C984 and C990 for round 36's script.
 
+### B13 round 35 landed (2026-11-05)
+
+All five lanes landed; the prompt stays v34. Notes `lanes/r35-<lane>.md`, lead notes `round29/lead-notes.md`. All 90
+confirmed items are built: 87 in the lanes' 58 commits (`dbe20757..d62ac148`, every landed tip CI green) and the
+lead's 3 kit items, with the kit halves of C907, C983 with C988, and C984, in round 36's script
+(`round36/tools/edit.py`, `harvest-lead.txt`; C990's half is that the lane brief carries no nohup sentence, now pinned
+absent). Nothing frozen was recorded as not built. Halves left unbuilt by their own verifiers: C980's drop half (gap
+I91: the id can sit in another source's history; round 34's note that C874's step 3 was left out is superseded, as
+step 3 is now built as promotion only), C933's wait naming both lines while two stops stand, C955's other callers
+(net.py's scutil, df, diskutil, launchctl getenv, governance's cat), and C930's other zero-byte types.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| B | `dbe20757..f1f777bb` (3, C934 first), `9d69f192..04af8355` (10), `b9b81139..d0959df5` (3) |
+| D | `7346415b..e6480a52` (7, C987 with C977 first), `30879c43`, `d62ac148` (ruling 110 and C972) |
+| E | `aac25c81..a2bc6e60`, 7 commits |
+| RB | `fcaf5320..c2130013`, 12 commits |
+| RA | `7ebe6c2a..2b31dce8`, 14 commits |
+
+Learnings: from the fire (2026-11-04 19:2x) to the last land took about 10 hours. Load reached 239 on 10 cores while
+the lead commit and lane B's first land ran their gates, and the lead commit took about 2 hours to land; it fell to
+10 to 15 by midnight. No ci run on main went red. Two of lane B's land attempts went red on its own misses, a mypy
+error hidden behind a piped lint and an older pin, both caught by the gate before any push: run mypy on each commit
+and never pipe a lint a commit is chained on. Lane D's own CONTRACTS prose twice quoted a dated-line form with a real
+date and the scan called it loose; quote the form with `<date>` (C982's lesson, now in COMMON.md). This section's own
+first land went red on 2026-11-05: the lead landed detached under `nohup`, and three SIGHUP cases new this round (C956
+and C961) waited on a child that had inherited the ignored signal, the trap C869 closed for two older tests. Lanes land
+in their own panes, so none saw it. Each test now resets the signal itself; a usage limit then left the red unread
+for about a day.
+
+Round 36: the round 35 workflow (`round35/round35-workflow.js` through `round36/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's, backlog `8ed9dae0fbc0`)
+with the harvest list in `round36/tools/harvest-lead.txt`, on this section's landed tip, BASE `d8385ef6`, ids C1001
+and up, prompt v34, outputs `round36/`. The stop rule names Codex and Gemini: a clean round without Gemini goes to the
+operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
