@@ -38147,6 +38147,13 @@ it never read profiles; it uses the real label and skips no label. Tests:
 real 124), `test_the_command_line_tools_time_out_is_not_measured_c716`,
 `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
 
+**C804's report test pins each half alone** (C944; tests only). The test passed with either half of C804 removed,
+since the other ended the child. It is parametrized `alone`: `deadline` stubs `doctor.end_children` (read by getattr at
+call time), `end_children` clears `RUN_DEADLINE` in the hung hook's own copied context; a red run kills the child's
+group before the assert. Measured: removing `_Run.call`'s deadline turns only `[deadline]` red, removing
+`_end_doctor_children`'s call only `[end_children]`. Test:
+`tests/test_setup_report.py::test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804`.
+
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
 **The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling

@@ -23050,17 +23050,23 @@ def test_the_late_listing_line_says_the_scaled_wait_c726(
     )
 
 
+@pytest.mark.parametrize("alone", ["deadline", "end_children"])
 def test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c804(
-    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alone: str
 ) -> None:
     """B13 round 34 C804 (lane B's doctor half): the report abandons a cut-off doctor call's thread, and its
     git child ran on past the report, past doctor's own 120 s limit. _Run.call gives doctor's RUN_DEADLINE the
     call's own deadline, and build_report ends what is left with doctor.end_children: after the report
-    returns, the program is gone."""
+    returns, the program is gone. B13 round 35 C944: each half is tested alone (the deadline with
+    end_children a no-op; end_children with this call's deadline cleared), and a red run kills its child."""
     monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    if alone == "deadline":
+        monkeypatch.setattr(doctor, "end_children", lambda: 0)  # read by getattr at call time
     pidfile = tmp_path / "pid"
 
     def hung(_config: object) -> list[str]:
+        if alone == "end_children":  # only this call's copied context: it leaks nowhere
+            doctor.RUN_DEADLINE.set(None)
         doctor._run(["/bin/sh", "-c", f"echo $$ > {pidfile}; exec sleep 600"], timeout=120)
         return []
 
@@ -23074,6 +23080,8 @@ def test_a_doctor_program_the_time_limit_cut_off_does_not_outlive_the_report_c80
             gone = True
             break
         time.sleep(0.1)
+    if not gone:  # a red run leaves no sleep 600 behind
+        os.killpg(pid, 9)  # SIGKILL
     assert gone, f"doctor's program {pid} outlived the report"
 
 
