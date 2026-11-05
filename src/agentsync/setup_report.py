@@ -4569,6 +4569,14 @@ class _Run:
             deadline = getattr(doctor, "RUN_DEADLINE", None)
             if deadline is not None:
                 context.run(deadline.set, time.monotonic() + limit)
+        # B13 round 35 C961 (ruling 106, lane E's ocr half): and an OCR, media or speech helper this call
+        # would start past its deadline starts nothing; a build without the gate reads as before
+        with contextlib.suppress(Exception):
+            from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if broken
+
+            start_by = getattr(ocr, "START_BY", None)
+            if start_by is not None:
+                context.run(start_by.set, time.monotonic() + limit)
         try:
             return call_with_timeout(lambda: context.run(fn), limit, name="setup-report")
         except CallTimedOutError as exc:  # the report names it TimeoutError, as it always has
@@ -18272,13 +18280,21 @@ def build_report(
 def _end_doctor_children() -> None:
     """End every doctor program a call the report's time limit abandoned left running, with its process group
     (``doctor.end_children``, lane B's half of B13 round 34 C804): a cut-off doctor's git otherwise outlived
-    the report, past doctor's own limit. Nothing from a build without it, and never a raise."""
+    the report, past doctor's own limit. And every OCR, media or speech helper it started
+    (``ocr.end_helpers``, lane E's half of B13 round 35 C961): the abandoned doctor thread's ocr check left
+    one running. Each read by getattr in its own guard: nothing from a build without it, and never a raise."""
     with contextlib.suppress(Exception):
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
         end = getattr(doctor, "end_children", None)
         if end is not None:
             end()
+    with contextlib.suppress(Exception):
+        from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        helpers = getattr(ocr, "end_helpers", None)
+        if helpers is not None:
+            helpers()
 
 
 def _build_report(

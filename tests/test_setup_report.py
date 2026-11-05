@@ -37,6 +37,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
+import exec_stub
 from agentsync import (
     arm_local,
     cli,
@@ -23265,6 +23266,87 @@ def test_a_report_that_gave_up_on_doctor_names_the_check_it_was_in_ruling_105(
             time.sleep(0.1)
         os.killpg(pid, 9)  # SIGKILL: a red run leaves no sleep 600 behind
         pytest.fail(f"doctor's program {pid} outlived the report")
+
+
+def _hung_ocr_helper(cache: Path, pidfile: Path) -> Path:
+    """A helper where this agentsync's OCR helper goes that writes its pid on any call, then never answers."""
+    helper = ocr._helper_path(cache)
+    helper.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    body = f"import os, time\nopen({str(pidfile)!r}, 'w').write(str(os.getpid()))\ntime.sleep(120)\n"
+    return exec_stub.write(helper, f"#!{sys.executable}\n{body}", 0o700)
+
+
+def _helper_gone(pidfile: Path, within: float = 5.0) -> bool:
+    """Whether the helper that wrote ``pidfile`` (if any did) is gone within ``within`` seconds; a red run
+    kills it."""
+    if not pidfile.exists():
+        return True
+    pid = int(pidfile.read_text(encoding="utf-8") or "0")
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    os.kill(pid, 9)  # SIGKILL
+    return False
+
+
+def _report_threads_end() -> None:
+    for _ in range(300):  # every abandoned report call's thread ends (bounded)
+        if not [t for t in threading.enumerate() if t.name == "setup-report"]:
+            return
+        time.sleep(0.1)
+
+
+def test_a_hung_helper_behind_a_blocked_doctor_hook_starts_nothing_c961(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 ruling 106 (C961, the report's half on lane E's aac25c813): a doctor hook the report gave
+    up on reached the ocr check after the cut and started the helper, which outlived the report. `_Run.call`
+    sets `ocr.START_BY` beside doctor's deadline, so the abandoned hook's probe starts nothing."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)  # the test session turns the helper off
+    pidfile = tmp_path / "helper.pid"
+    cache = tmp_path / "cache"
+    _hung_ocr_helper(cache, pidfile)
+    seen: list[tuple[str, str]] = []
+
+    def blocked(_config: object) -> list[str]:
+        time.sleep(5.0)  # past the call's limit: the report has given up on this hook
+        seen.append(ocr.probe(ConvertConfig(), cache))
+        return []
+
+    hooks = setup_report.ReportHooks(doctor=blocked)
+    setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+    _report_threads_end()
+    assert seen == [("failed", "the OCR helper ran out of time")], seen
+    assert not pidfile.exists() and _helper_gone(pidfile), "the helper was started"
+
+
+def test_a_helper_a_cut_call_started_does_not_outlive_the_report_c961(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 35 ruling 106 (C961): a helper a report call started before its deadline, and then gave up
+    on, ran on past the report. `_end_doctor_children` calls `ocr.end_helpers()`, which the report runs as it
+    ends, so the helper is gone."""
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)  # the test session turns the helper off
+    monkeypatch.setattr(ocr, "_VERSION_TIMEOUT_S", 60.0)  # only end_helpers can end it in the window below
+    pidfile = tmp_path / "helper.pid"
+    cache = tmp_path / "cache"
+    _hung_ocr_helper(cache, pidfile)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 60.0)
+    with pytest.raises(TimeoutError):
+        r.call(lambda: ocr.probe(ConvertConfig(), cache), timeout=2.0)
+    for _ in range(100):  # the helper started inside the call
+        if pidfile.exists() and pidfile.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.05)
+    assert pidfile.exists(), "the helper never started"
+    setup_report._end_doctor_children()
+    assert _helper_gone(pidfile), "the helper outlived the report"
+    _report_threads_end()
 
 
 @pytest.mark.parametrize("alone", ["deadline", "end_children"])

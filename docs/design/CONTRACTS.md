@@ -38221,6 +38221,16 @@ pandoc never runs, no `within 0s`, every `the <check> check failed` the Loop lin
 the hung program does not outlive the report. Red on main with f1f777bb0's source reverted (the Cut off line said `a
 check`). Test: `tests/test_setup_report.py::test_a_report_that_gave_up_on_doctor_names_the_check_it_was_in_ruling_105`.
 
+**A helper the report's call started, or would start, ends with the report** (C961's report half, ruling 106, on
+lane E's aac25c813; `src/agentsync/setup_report.py`). A doctor hook the report gave up on reached the ocr check after
+the cut and started the OCR helper, which outlived the report. `_Run.call` sets `ocr.START_BY` in the call's copied
+context beside doctor's `RUN_DEADLINE`, to the same deadline, so a helper the abandoned call would start past it
+starts nothing (`the OCR helper ran out of time`); `_end_doctor_children` also calls `ocr.end_helpers()`, in its own
+guard, so a helper started before the deadline is killed as the report ends. Each is read by getattr: a build
+without them reads as before. Tests: `tests/test_setup_report.py::test_a_hung_helper_behind_a_blocked_doctor_hook_starts_nothing_c961`,
+`test_a_helper_a_cut_call_started_does_not_outlive_the_report_c961` (the helper's own 5 s wait pinned to 60 s, so
+only `end_helpers` can end it); both are red without the half.
+
 ### 16.231 Round 35: the installer: the shell cut of another home, step 1's kept hold and the time-limit NEXT (2026-11-04, wave B13 round 35 lane RB)
 
 **The shell report cuts a path in another home whole however it is spelled** (C901, C992, C939, C941, C950; ruling
