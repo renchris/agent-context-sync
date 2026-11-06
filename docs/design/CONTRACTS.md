@@ -3883,6 +3883,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point (console script ``agentsync``); returns the process exit code."""
 ```
 
+### `agentsync.clio` — `src/agentsync/clio.py` — owner: **CLI conventions (§16.300)**
+
+Reserved for the shared stream, mode, JSON and signal layer (`docs/plans/cli-conventions.md` §2).
+
+### `agentsync.fsutil` — `src/agentsync/fsutil.py` — owner: **CLI conventions (§16.300)**
+
+Reserved for the one atomic-write helper (`docs/plans/cli-conventions.md` B-2).
+
 ## 16. Amendments — C15 corporate-controls hardening (2026-09-29, integrator)
 
 Six hardening roles (auth-tls, graph-arms, controls, governance, launcher, perf-pdf) implemented
@@ -38966,3 +38974,128 @@ fix, a line in `§16.227 C810`'s own form, turned `test_every_dated_line_from_ro
 (measured: a dated line no test holds) and would stamp round 35's work as round 34's, as C856 rejected; §16.70's quote
 of an older build's words, which readers still take (§16.226), stays undated. The lines are ruling 74's and are pinned
 in `_ROUND_35_D_PARAGRAPH_AMENDS`, one row each.
+
+### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
+
+The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
+land without touching each other's hunks. The number leaves room for the B13 rounds, which take the next numbers after §16.234.
+
+#### 16.300.1 U-A1a and U-A1b: the shared helper
+
+Reserved.
+
+#### 16.300.2 U-B1a: parser and validation
+
+Reserved.
+
+#### 16.300.3 U-B2: atomic writes, the holds lock, a failed purge push
+
+Reserved.
+
+#### 16.300.4 U-B3: sanitizing at the source modules
+
+Reserved.
+
+#### 16.300.5 U-B1b: streams, signals and copy
+
+Reserved.
+
+#### 16.300.6 U-B4 and U-B5: opt-in --json
+
+Reserved.
+
+#### 16.300.7 U-B6: start-up time, measured
+
+Reserved.
+
+#### 16.300.8 U-C1: help and version
+
+Reserved.
+
+#### 16.300.9 U-C2a and U-C2b: consent for purge and compact-history
+
+Reserved.
+
+#### 16.300.10 U-C3: the bug report
+
+Reserved.
+
+#### 16.300.11 U-C4a and U-C4b: stdout carries the result
+
+Reserved.
+
+#### 16.300.12 U-C5: login without a terminal
+
+Reserved.
+
+#### 16.300.13 U-A2: install.sh stream layer
+
+Reserved.
+
+#### 16.300.14 U-B7: install.sh parser and validation
+
+Reserved.
+
+#### 16.300.15 U-B8: install.sh help text, nouns and declarations
+
+Reserved.
+
+#### 16.300.16 U-B9: install.sh bounds and the atomic launcher
+
+Reserved.
+
+#### 16.300.17 U-B10: install.sh signals and swallowed failures
+
+Reserved.
+
+#### 16.300.18 U-B11: install.sh folder list
+
+Reserved.
+
+#### 16.300.19 U-B12: install.sh --json on the list
+
+Reserved.
+
+#### 16.300.20 U-B17: install.sh --version and machine help
+
+Reserved.
+
+#### 16.300.21 U-B13: tenant-probes harness, dry run and parser
+
+Reserved.
+
+#### 16.300.22 U-B14: tenant-probes names, help, copy and sanitizing
+
+Reserved.
+
+#### 16.300.23 U-B15: tenant-probes tracebacks, signals and atomic state
+
+Reserved.
+
+#### 16.300.24 U-B16: tenant-probes --json
+
+Reserved.
+
+#### 16.300.25 U-C1b: machine-readable help and field selection
+
+Reserved.
+
+#### 16.300.26 U-C9: install.sh conflicts and the consent spelling
+
+Reserved.
+
+#### 16.300.27 U-C10: install.sh standard options
+
+Reserved.
+
+#### 16.300.28 U-C11: install.sh short help
+
+Reserved.
+
+#### 16.300.29 U-C12: tenant-probes exit and stream contract
+
+Reserved.
+
+#### 16.300.30 U-C13: the exceptions record
+
+Reserved.
