@@ -880,11 +880,14 @@ def test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961(
     tmp_path: Path, sig: signal.Signals
 ) -> None:
     """A helper the report is waiting on ends with the signal that ends the report's process group (a Terminal
-    closed or ^C, a launchd job stopped), because it never leaves that group."""
+    closed or ^C, a launchd job stopped), because it never leaves that group.  The child takes SIGHUP's
+    default (as C869's tests do): a pytest started under ``nohup`` passes SIGHUP ignored on, and the case
+    then timed out."""
     pidfile = tmp_path / "helper.pid"
     hung_helper(tmp_path, pidfile)
     code = (
-        "import sys; from pathlib import Path; from agentsync.convert import ocr\n"
+        "import signal, sys; from pathlib import Path; from agentsync.convert import ocr\n"
+        "signal.signal(signal.SIGHUP, signal.SIG_DFL)\n"
         "ocr._run_helper(ocr._helper_path(Path(sys.argv[1])), ['--version'], timeout=120)\n"
     )
     proc = subprocess.Popen([sys.executable, "-c", code, str(tmp_path)], start_new_session=True)

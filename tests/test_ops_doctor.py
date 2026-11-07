@@ -771,8 +771,10 @@ def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> Non
 
 
 _SIGNALLED = """
+import signal
 import sys
 from agentsync.ops import doctor
+signal.signal(signal.SIGHUP, signal.SIG_DFL)
 doctor._run(["/bin/sh", "-c", 'printf "%s;" $$ > ' + sys.argv[1] + '; exec /bin/sleep 600'], timeout=600)
 """
 
@@ -785,7 +787,8 @@ def test_a_signal_to_agentsync_leaves_no_doctor_program_running_c956(
     """B13 round 35 C906 and C956 (ruling 106): C804 put each doctor program in a process group of its own, so
     a SIGTERM, SIGHUP or SIGKILL to agentsync, or to its group, left a hung program running with no limit.
     The program now joins the group of a watcher that kills it when agentsync's end of a pipe closes, by any
-    death, SIGKILL included."""
+    death, SIGKILL included.  The child takes SIGHUP's default (as C869's tests do): a pytest started under
+    ``nohup`` passes SIGHUP ignored on, and the SIGHUP cases then timed out."""
     pidfile = tmp_path / "child.pid"
     proc = subprocess.Popen(
         [sys.executable, "-c", _SIGNALLED, str(pidfile)], start_new_session=True, stdin=subprocess.DEVNULL
