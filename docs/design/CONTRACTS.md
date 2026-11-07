@@ -3885,7 +3885,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 ### `agentsync.clio` — `src/agentsync/clio.py` — owner: **CLI conventions (§16.300)**
 
-Reserved for the shared stream, mode, JSON and signal layer (`docs/plans/cli-conventions.md` §2).
+The shared stream, mode and signal layer (`docs/plans/cli-conventions.md` §2; rules in §16.300.1). The only module that
+calls `isatty`. Nothing in `src` imports it yet; the plan's wave B moves the callers.
+
+```python
+def result(text: str = "") -> None: ...
+def say(text: str) -> None: ...
+def stdout_closed() -> bool: ...
+def table(header: Sequence[str], rows: Iterable[Sequence[str]], *, to: Callable[[str], None] = result) -> None: ...
+def stdout_is_tty() -> bool: ...
+def interactive() -> bool: ...
+def recovery(instruction: str, command: str) -> None: ...
+class Terminated(KeyboardInterrupt):  # .signum: int
+    ...
+@contextlib.contextmanager
+def signals() -> Iterator[None]: ...
+```
 
 ### `agentsync.fsutil` — `src/agentsync/fsutil.py` — owner: **CLI conventions (§16.300)**
 
@@ -38982,7 +38997,39 @@ land without touching each other's hunks. The number leaves room for the B13 rou
 
 #### 16.300.1 U-A1a and U-A1b: the shared helper
 
-Reserved.
+U-A1a adds `agentsync.clio` and two names in `agentsync.text`. No caller changes: wave B moves `cli._out` to `clio.result`,
+`cli._err` to `clio.say` and `vtt._UNPRINTABLE_RE` to `text.UNPRINTABLE_RE`.
+
+**Streams.**
+- `clio.result(text="")` writes one line to stdout and flushes it. On `BrokenPipeError` it points fd 1 at the null device,
+  sets the closed flag and returns; every later `result` writes nothing. Bytes still buffered go to the null device, so the
+  interpreter's flush at exit meets no EPIPE. Any other `OSError` still raises.
+- `clio.say(text)` writes one line to stderr, after flushing stdout (B13 round 11 M26, moved from `cli._err`). A flush that
+  meets EPIPE closes stdout as `result` does; any other `OSError` or `ValueError` from the flush is ignored. A failed write
+  to stderr itself still raises, as `_err`'s does.
+- `clio.stdout_closed()` is True once a write or flush of stdout has met EPIPE.
+- `clio.table(header, rows, *, to=result)`: every cell passes through `safe_text(cell, cell=True)`. When
+  `clio.stdout_is_tty()` is False, each line is the cells joined by exactly one tab with no padding, the header included.
+  On a terminal, columns are left-aligned with two spaces between them and no trailing spaces. `stdout_is_tty` decides
+  even when `to` is `say`.
+- `clio.recovery(instruction, command)` writes a blank line, `<instruction>:` and the command indented by four spaces to
+  stderr, through `say`.
+
+**Mode.** `clio.interactive()` is True only when stdin is a terminal and `CI`, `SSH_CONNECTION` and `SSH_TTY` are each
+unset or empty. It ignores stdout and stderr, so `agentsync login 2>&1 | tee` still counts. A closed stream is not a
+terminal. No other module under `src/agentsync` calls `isatty` (`tests/test_clio.py::test_isatty_lives_only_in_clio`).
+
+**Signals.** Inside `with clio.signals():`, SIGTERM and SIGHUP raise `clio.Terminated(signum)`, a `KeyboardInterrupt` whose
+`.signum` is the signal. Previous handlers come back in `finally`. A signal already ignored on entry stays ignored, so a
+`nohup` run keeps surviving its hangup. Off the main thread, where Python refuses handlers, it changes nothing.
+
+**Sanitizer (`agentsync.text`).** It lives there, not in `clio`, so `convert/vtt.py` can share the class without importing a
+CLI module.
+- `text.UNPRINTABLE_RE` is `vtt._UNPRINTABLE_RE`'s character class, unchanged: C0, DEL, C1, surrogates, U+2028 and U+2029,
+  tag characters and blank fillers. `vtt` keeps its own copy until U-B3.
+- `agentsync.text.safe_text(s, *, cell=False)` removes CSI sequences and terminated OSC sequences whole (7-bit and 8-bit forms), shows
+  a newline as the two characters `\n` (and, with `cell=True`, a tab as `\t`), then removes `UNPRINTABLE_RE` matches and
+  category `Cf` characters. So without `cell=True` a tab is removed, and an unterminated OSC loses only its introducer.
 
 #### 16.300.2 U-B1a: parser and validation
 
