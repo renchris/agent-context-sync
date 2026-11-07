@@ -2413,6 +2413,9 @@ Rulings (2026-11-07):
 - D17 = Option B (B-17.1). `--version`'s plain two lines stay byte for byte, and U-B17 adds the JSON form. U-C17 is not built.
 - D18 = Option B (B-7.1). A stray SOURCE writes nothing; `--source-local`, `--launcher` and env-value errors keep the report.
   U-B7 built it (f638471bd, on clibp/queue, not on trunk when this was written), so it takes effect when the lead lands that.
+- D22 = Option A (C-9.2). The URL becomes the literal `https://astral.sh/uv/0.12.17/install.sh`, the version in ci.yml, diagrams.yml
+  and download-hosts.yml, with one committed SHA-256 and a test that keeps the URL's version equal to those workflows' (beyond
+  C-9.2's two tests). U-C9 builds it. A republished installer stops new installs until the hash is bumped.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
