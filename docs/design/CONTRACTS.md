@@ -39030,7 +39030,27 @@ Reserved.
 
 #### 16.300.13 U-A2: install.sh stream layer
 
-Reserved.
+install.sh is bash and runs before any Python exists, so it has its own small layer rather than `clio`.
+
+A closed stdout never kills the run. `start_capture` puts two tees between the run and its caller on every path: they
+ignore INT, TERM, HUP and PIPE, their own stderr is `/dev/null`, and each writes `open_install_out`'s install.out, or
+`/dev/null` for a dry run, `--report-only` and an install.out that cannot be created. BSD tee goes on reading and writing
+its file after EPIPE on its stdout (confirmed on macOS by `tests/test_install_streams.py`), so the shell never meets a
+closed pipe, a started mutation finishes, `on_exit` writes the report and the log, and the run exits with its real rc.
+The main shell never ignores PIPE, because every child would inherit it and each `say` would fail under `set -e`.
+`stop_capture` trims install.out only for a real capture, so a dry run still changes nothing. `--help` accepts 141 from
+`show_help`'s awk and exits 0. `--list-folders` keeps its documented exit 0, 3 or 4 when its reader closes. `rc_meaning`
+and every documented exit code are unchanged.
+
+The pieces of the JSON document change no behaviour until a caller sets `JSON_RUN`:
+- `json_str VALUE` prints one JSON string with `LC_ALL=C awk`, escaping backslash, quote and control bytes; a byte above
+  127 stays as it is.
+- With `JSON_RUN=1`, `start_capture` runs `exec 9>&1 8>&2` first: fd 9 is the caller's stdout for the one JSON document
+  and fd 8 the caller's stderr for the one error document (fd 3 is `uv_run`'s). The tees then write install.out only,
+  and human output goes to `/dev/null` when there is no install.out, so the JSON never enters install.out and its
+  readers keep working. Children inherit fd 8 and 9, so this is only for a run whose children are bounded.
+- `reason_for_list NOTE_WORD`, beside `rc_meaning`, maps the failed branches of `list_folders` to `denied`, `tcc_pending`,
+  `not_signed_in` and `no_folders`. It reads the branch's note word, never the rc, and the hyphenated `note=` tokens stay.
 
 #### 16.300.14 U-B7: install.sh parser and validation
 

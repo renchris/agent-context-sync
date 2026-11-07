@@ -1597,6 +1597,8 @@ ISSUE_URL="https://github.com/renchris/agent-context-sync/issues/new?template=se
 ISSUE_LINK_PREFIX="issue link (review the report first): "
 OUT_MAX_LINES=2000 # install.out keeps this many lines
 TEE_PIDS=""        # the two tee processes copying this run's output to install.out
+CAPTURE_TARGET=/dev/null # where they copy it: install.out, or nowhere for a run that keeps no copy
+JSON_RUN=0 # 1: fd 9 and fd 8 are the caller's stdout and stderr, and the human output stays off them (start_capture)
 # agentsync prints no "next:" hints of its own under this installer: its NEXT line is the only instruction.
 export AGENTSYNC_NO_NEXT_HINT=1
 # uv installs the agentsync binary into ~/.local/bin, the path every guide and NEXT line names (KISS K02).
@@ -1791,6 +1793,31 @@ rc_aside() { # CODE
 	m="$(rc_meaning "$1")"
 	[ "$m" = "exit $1" ] || printf ' (%s)' "$m"
 }
+# The reason word of a --list-folders exit, from the branch that took it: its note word (step_end), never its rc,
+# since list exit 3 is two reasons, rc_meaning's 3 is the wait running out and 4 has no line there. A branch that
+# ended well has none. The note words stay as they are: this script and setup_report read them.
+reason_for_list() { # NOTE_WORD
+	case "$1" in
+	denied) printf 'denied' ;;
+	tcc-pending) printf 'tcc_pending' ;;
+	not-signed-in) printf 'not_signed_in' ;;
+	no-folders) printf 'no_folders' ;;
+	esac
+}
+# VALUE as one JSON string, its quotes included and no newline: no jq or python3 before the install. Byte by byte
+# in the C locale, so a byte above 127 stays as it is. Through ENVIRON, as a multi-line awk -v kills BSD awk.
+json_str() { # VALUE
+	JSON_VALUE="$1" LC_ALL=C awk 'BEGIN {
+		v = ENVIRON["JSON_VALUE"]
+		for (i = 1; i < 32; i++) esc[sprintf("%c", i)] = sprintf("\\u%04x", i)
+		esc[sprintf("%c", 127)] = "\\u007f"
+		esc["\\"] = "\\\\"
+		esc["\""] = "\\\""
+		n = length(v)
+		for (i = 1; i <= n; i++) { c = substr(v, i, 1); out = out ((c in esc) ? esc[c] : c) }
+		printf "\"%s\"", out
+	}'
+}
 # with_timeout's watchdog, and start_pandoc_once's limit: kills PID once LIMIT seconds have passed. It waits
 # on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11). It
 # sleeps in 1 s slices while PID runs, because bash 3.2 holds a TERM that lands just before `wait` until the
@@ -1952,26 +1979,41 @@ trim_install_out() {
 		tail -n "$OUT_MAX_LINES" "$INSTALL_OUT" >"$INSTALL_OUT.$$.tmp" && mv -f "$INSTALL_OUT.$$.tmp" "$INSTALL_OUT"
 	) 2>/dev/null || rm -f "$INSTALL_OUT.$$.tmp"
 }
-# Copy stdout and stderr (each still to where it went) to install.out, from here to the exit. The tees
-# ignore INT, TERM and HUP: a tool that stops the whole process group still gets the end of the run (its
-# report and NEXT line), and they end when the run closes its output (stop_capture).
-start_capture() {
-	[ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 0
+# Status 0: install.out is ready for this run's copy, its header written. Not in a dry run or for --report-only.
+open_install_out() {
+	[ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 1
 	(
 		umask 077
 		mkdir -p "$SETUP_DIR" && touch "$INSTALL_OUT" && tighten_setup_modes
-	) 2>/dev/null || return 0
-	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] && [ -w "$INSTALL_OUT" ] || return 0
+	) 2>/dev/null || return 1
+	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] && [ -w "$INSTALL_OUT" ] || return 1
 	trim_install_out
-	printf '# run=%s %s install.sh%s\n' "$RUN_ID" "$RUN_AT" "$ALL_ARGS" >>"$INSTALL_OUT" 2>/dev/null || return 0
+	printf '# run=%s %s install.sh%s\n' "$RUN_ID" "$RUN_AT" "$ALL_ARGS" >>"$INSTALL_OUT" 2>/dev/null || return 1
+}
+# Copy stdout and stderr (each still to where it went) to install.out, from here to the exit. The tees
+# ignore INT, TERM and HUP: a tool that stops the whole process group still gets the end of the run (its
+# report and NEXT line), and they end when the run closes its output (stop_capture).
+# They ignore PIPE and stay silent too, and a run with no copy has them as well (target /dev/null): when the
+# reader goes (install.sh | head -1) a tee keeps reading and keeps its file, so this shell never meets a closed
+# pipe, a started mutation finishes and the run exits with its real rc. This shell itself never ignores PIPE:
+# every child would inherit that, and with stdout gone each say would fail under set -e.
+# A JSON run keeps its document out of every copy: fd 9 and fd 8 are the caller's stdout and stderr (not fd 3,
+# which uv_run takes), and the tees are handed /dev/null. Children inherit fd 8 and 9, and one that outlives the
+# run holds the caller's pipe open, so JSON_RUN is only for a run whose children are bounded.
+start_capture() {
+	if [ "$JSON_RUN" -eq 1 ]; then
+		exec 9>&1 8>&2 >/dev/null 2>/dev/null
+	fi
+	if open_install_out; then CAPTURE_TARGET="$INSTALL_OUT"; fi
 	exec > >(
-		trap '' INT TERM HUP
-		exec tee -a "$INSTALL_OUT"
+		trap '' INT TERM HUP PIPE
+		exec tee -a "$CAPTURE_TARGET" 2>/dev/null
 	)
 	TEE_PIDS="$!"
+	# the order matters: its stdout goes to the real stderr first, then its own stderr to /dev/null
 	exec 2> >(
-		trap '' INT TERM HUP
-		exec tee -a "$INSTALL_OUT" >&2
+		trap '' INT TERM HUP PIPE
+		exec tee -a "$CAPTURE_TARGET" >&2 2>/dev/null
 	)
 	TEE_PIDS="$TEE_PIDS $!"
 }
@@ -1990,7 +2032,7 @@ stop_capture() {
 		sleep 0.1
 		n=$((n + 1))
 	done
-	[ "$alive" -eq 1 ] || trim_install_out
+	[ "$alive" -eq 1 ] || [ "$CAPTURE_TARGET" = /dev/null ] || trim_install_out
 }
 step_start() {
 	STEP="$1"
@@ -9211,7 +9253,7 @@ while [ $# -gt 0 ]; do
 		exit 0
 		;;
 	-h | --help)
-		show_help
+		show_help || [ "$?" -eq 141 ] # 141: a reader that closed early (--help | head) took all it wanted
 		exit 0
 		;;
 	-*) usage_error "unknown option $1" ;;
