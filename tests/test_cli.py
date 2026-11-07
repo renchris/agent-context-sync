@@ -9265,7 +9265,12 @@ def test_every_cycle_command_runs_syncs_guard_of_a_state_file_that_is_not_a_file
     capsys.readouterr()
     assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
     said = capsys.readouterr()
-    assert said.err.splitlines() == ["error: state: " + failed.split(" — ", 1)[1]], said.err
+    warned = (
+        [f"warning: `agentsync checkpoint` is deprecated: run `{loop.BIN} sync`"]
+        if argv == ["checkpoint"]
+        else []
+    )
+    assert said.err.splitlines() == [*warned, "error: state: " + failed.split(" — ", 1)[1]], said.err
     assert said.out.splitlines()[-1] == loop.NEXT_PREFIX + cli.STATE_MISPLACED_COMMAND_STEP, said.out
     assert (stops.read_text(encoding="utf-8") if stops.exists() else "") == before
     assert path.is_dir() if "folder" in where else stat.S_ISFIFO(path.lstat().st_mode)

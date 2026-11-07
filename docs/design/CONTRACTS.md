@@ -39108,7 +39108,23 @@ so it does not import `it_request`; a caller passes `it_request.REPO_URL` as `is
 
 #### 16.300.2 U-B1a: parser and validation
 
-Reserved.
+Every parser sets `allow_abbrev=False`, so an option prefix (`offboard --purge`) is a usage error, not the long option
+it starts. `cli._validate_usage` is the first statement of `_cmd_purge`, `_cmd_hold` and `_cmd_reconcile`: a usage error
+exits 2 before any config load or write, so it beats a broken sources.toml, the round-28 carry and a manifest
+migration. It adds these refusals: `hold --list` with SCOPE, `--release`, `--reason` or `--owner`; `hold --release`
+with `--reason`; `purge --queue` with `--source` but no `--forget`; `purge --queue --push`, as
+`governance.run_purge_queue` takes no push.
+
+`cli._deprecated` writes one stderr line for `checkpoint`, `install-skill` and `migrate`; stdout and exit codes stay.
+`policy show` always says `renamed: run agentsync status`. `doctor` says it unless `AGENTSYNC_NO_NEXT_HINT=1`, because
+`test_status_honours_no_next_hint` pins install.sh's `doctor` call as silent on stderr.
+
+`--help` documents `AGENTSYNC_CONFIG`, the one public environment variable. `AGENTSYNC_NO_NEXT_HINT`,
+`AGENTSYNC_QUIET_LOCK_WAIT`, `AGENTSYNC_LOCK_WAIT_ANNOUNCED` and `AGENTSYNC_FRICTION_LOG` are the
+install.sh-to-agentsync interface: help leaves them out and they keep their names.
+
+Visible option and argument hints are angle-bracketed (`<PATH>`, `<SOURCE>`, `<NUMBER>`, `<TIME>`). `purge` keeps its
+name; its help and `offboard`'s say "delete", and their receipts keep "removed".
 
 #### 16.300.3 U-B2: atomic writes, the holds lock, a failed purge push
 
@@ -39144,7 +39160,9 @@ Reserved.
 
 #### 16.300.7 U-B6: start-up time, measured
 
-Reserved.
+Warm `uv run --locked python -m agentsync --version` took 0.28 to 0.97 s real at a load of 90 on 10 cores (user+sys
+about 0.27 s), and `import agentsync.cli` 838 ms under `-X importtime`, over the 200 ms target: kept: the fix reverses
+rulings B67 and A91; the decision is filed.
 
 #### 16.300.8 U-C1: help and version
 

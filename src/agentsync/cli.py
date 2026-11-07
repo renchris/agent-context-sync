@@ -12,6 +12,9 @@ Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml
 (:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
 and ``policy show`` are hidden aliases of it). ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops
 them from both.
+``AGENTSYNC_CONFIG`` is the one public environment variable (``--help`` documents it).
+``AGENTSYNC_NO_NEXT_HINT``, ``AGENTSYNC_QUIET_LOCK_WAIT``, ``AGENTSYNC_LOCK_WAIT_ANNOUNCED`` and
+``AGENTSYNC_FRICTION_LOG`` are the install.sh-to-agentsync interface; ``--help`` leaves them out.
 ``setup-report`` ends with the issue link, never a hint.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
@@ -172,6 +175,10 @@ exit codes:
       macOS privacy prompt; the cycle never ran or was stopped (see the job's .err.log,
       `{loop.BIN} status`)
 
+environment:
+  AGENTSYNC_CONFIG  path to sources.toml (default ~/agent-context/sources.toml);
+                    empty or unset uses the default
+
 files: ~/agent-context/sources.toml (config) · ~/agent-context/docs (the docs git repo) ·
 ~/Library/Application Support/agentsync (manifest, lock, heartbeat, governance/) · ~/Library/Caches/agentsync
 """
@@ -218,7 +225,7 @@ def _graph_options(p: argparse.ArgumentParser) -> None:
         "--url",
         action="append",
         default=[],
-        metavar="URL",
+        metavar="<URL>",
         help="discover: resolve this SharePoint/OneDrive site or sharing link instead (repeatable)",
     )
     p.add_argument("--toml", action="store_true", help="discover: print only the sources.toml snippet")
@@ -233,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[_common(None)],
+        allow_abbrev=False,
     )
     parser.add_argument("--version", action="version", version=f"agentsync {__version__}")
     common = _common(argparse.SUPPRESS)
@@ -244,6 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
             "parents": [common],
             "epilog": _EPILOG,
             "formatter_class": argparse.RawDescriptionHelpFormatter,
+            "allow_abbrev": False,  # each parser reads its own flag; parents do not pass it on
         }
         # A hidden command gets no ``help=``: argparse then lists no entry for it (``help=SUPPRESS`` would
         # print "==SUPPRESS==" on Python 3.11), yet it still parses.
@@ -265,7 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
         "docs repo (no remote), its scaffold, the inbox and the state dir (idempotent)",
         _cmd_add_source,
     )
-    p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
+    p.add_argument("path", type=Path, metavar="<PATH>", help="the folder to sync (it must exist)")
 
     p = add("sync", "run one sync cycle (what the launchd agents run)", _cmd_sync)
     # KISS K13b: sync takes no visible option. --once (a no-op: one cycle is the default), --mode (the launchd
@@ -282,7 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
         "that does not list SOURCE in full applies none and keeps the breaker)",
         _cmd_accept_deletions,
     )
-    p.add_argument("source", metavar="SOURCE", help="the source id the breaker tripped on")
+    p.add_argument("source", metavar="<SOURCE>", help="the source id the breaker tripped on")
 
     p = add(
         "exclude-empty",
@@ -291,7 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
         _cmd_exclude_empty,
         hidden=True,
     )
-    p.add_argument("source", metavar="SOURCE", help="the source id the WAITING ON YOU line names")
+    p.add_argument("source", metavar="<SOURCE>", help="the source id the WAITING ON YOU line names")
 
     p = add(
         "reconcile",
@@ -300,7 +309,7 @@ def build_parser() -> argparse.ArgumentParser:
         hidden=True,
     )
     p.add_argument(
-        "--source", action="append", default=[], metavar="ID", help="only this source (repeatable)"
+        "--source", action="append", default=[], metavar="<SOURCE>", help="only this source (repeatable)"
     )
     p.add_argument(
         "--accept-deletions",
@@ -339,12 +348,12 @@ def build_parser() -> argparse.ArgumentParser:
         hidden=True,
     )
     p.add_argument(
-        "--budget", metavar="BYTES", help='byte budget for this run, e.g. "500MB" (default: config)'
+        "--budget", metavar="<BYTES>", help='byte budget for this run, e.g. "500MB" (default: config)'
     )
-    p.add_argument("paths", nargs="*", type=Path, metavar="PATH", help="files inside a local/inbox source")
+    p.add_argument("paths", nargs="*", type=Path, metavar="<PATH>", help="files inside a local/inbox source")
 
     p = add("adopt", "copy an existing hand-made docs tree into topics/ as hand-written pages", _cmd_adopt)
-    p.add_argument("src_dir", type=Path, metavar="PATH")
+    p.add_argument("src_dir", type=Path, metavar="<PATH>")
 
     add("migrate", "a no-op: every command migrates the manifest itself", _cmd_migrate, hidden=True)
 
@@ -372,14 +381,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add("uninstall-agent", "unload and remove both LaunchAgents", _cmd_uninstall, hidden=True)
 
-    p = add("purge", "remove items from the docs repo's whole history, cache and manifest", _cmd_purge)
+    p = add(
+        "purge", "permanently delete items from the docs repo's whole history, cache and manifest", _cmd_purge
+    )
     p.add_argument(
         "selector",
         nargs="?",
-        metavar="SELECTOR",
+        metavar="<SELECTOR>",
         help="id=<stable_id> | path=<source glob> | docs=<docs-repo glob>",
     )
-    p.add_argument("--source", metavar="ID", help="only items of this source")
+    p.add_argument("--source", metavar="<SOURCE>", help="only items of this source")
     p.add_argument(
         "--reason",
         choices=[r.value for r in governance.PurgeReason],
@@ -388,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--queue", action="store_true", help="run every queued purge instead of SELECTOR")
     p.add_argument(
         "--forget",
-        metavar="SELECTOR",
+        metavar="<SELECTOR>",
         help=(
             "with --queue: take off the queue the upstream-deleted or label-escalation entry id=<queued id> "
             "(with --source) whose id reaches nothing in the docs history: looked up here unless a queue run "
@@ -398,7 +409,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--accept-lost",
-        metavar="AT",
+        metavar="<TIME>",
         help=(
             "accept what the suppression list lost of every purge status names by this time (an older "
             "build's purges can share one), with an audit line for each: its items, and a copy of content "
@@ -430,20 +441,22 @@ def build_parser() -> argparse.ArgumentParser:
         _cmd_compact,
         hidden=True,
     )
-    p.add_argument("--keep-days", type=int, metavar="N", help=">= 1; default: [governance] history_days")
+    p.add_argument(
+        "--keep-days", type=int, metavar="<NUMBER>", help=">= 1; default: [governance] history_days"
+    )
     p.add_argument("--dry-run", action="store_true", help="report only")
 
     p = add("hold", "legal/records hold: suspend purge and compaction for a scope", _cmd_hold)
-    p.add_argument("scope", nargs="?", metavar="SCOPE", help="'all' or a source id")
+    p.add_argument("scope", nargs="?", metavar="<SCOPE>", help="'all' or a source id")
     p.add_argument("--reason", help="why (required to set)")
     p.add_argument("--owner", help="records/legal owner setting or releasing the hold")
     p.add_argument("--release", action="store_true", help="release the hold on SCOPE")
     p.add_argument("--list", action="store_true", help="list active holds")
 
-    p = add("offboard", "list (default) or remove every local copy agentsync made", _cmd_offboard)
-    p.add_argument("--purge-data", action="store_true", help="also remove the docs repo and sources.toml")
+    p = add("offboard", "list (default) or delete every local copy agentsync made", _cmd_offboard)
+    p.add_argument("--purge-data", action="store_true", help="also delete the docs repo and sources.toml")
     p.add_argument("--dry-run", action="store_true", help="list only (the default without --confirm)")
-    p.add_argument("--confirm", metavar="DOCS_REPO", help="the docs repo path: required to remove anything")
+    p.add_argument("--confirm", metavar="<DOCS_REPO>", help="the docs repo path: required to delete anything")
 
     p = add("policy", f"renamed: run {loop.BIN} status", _cmd_status_renamed, hidden=True)
     p.add_argument("action", choices=["show"])
@@ -471,7 +484,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         type=Path,
         default=Path(it_request.DEFAULT_OUT),
-        metavar="PATH",
+        metavar="<PATH>",
         help=f"write the draft here, mode 0600 (default {it_request.DEFAULT_OUT}); never inside the "
         "agentsync checkout or the docs repo",
     )
@@ -481,6 +494,63 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------------------------------------
+
+
+def _purge_usage(args: argparse.Namespace) -> str | None:
+    if args.queue and args.selector:
+        return "purge: pass SELECTOR or --queue, not both"
+    others = (args.queue, args.selector, args.forget is not None, args.source, args.reason, args.push)
+    if args.accept_lost is not None and any(others):
+        return "purge: --accept-lost <at> goes alone (with --dry-run or --folder-lost)"
+    if args.folder_lost and args.accept_lost is None:
+        return "purge: --folder-lost goes with --accept-lost <at>"
+    if args.forget is not None and not args.queue:
+        return "purge: --forget goes with --queue"
+    if args.queue and args.source and args.forget is None:
+        return "purge: --queue runs every queued purge, so --source goes with it only beside --forget"
+    if args.queue and args.push:  # governance.run_purge_queue takes no push: it was dropped without a word
+        return "purge: --queue does not push: pass --queue or --push, not both"
+    return None
+
+
+def _hold_usage(args: argparse.Namespace) -> str | None:
+    if args.list:
+        given = (
+            ("SCOPE", args.scope is not None),
+            ("--release", args.release),
+            ("--reason", args.reason is not None),
+            ("--owner", args.owner is not None),
+        )
+        clash = [name for name, was_given in given if was_given]
+        return f"hold: --list goes alone, not with {', '.join(clash)}" if clash else None
+    if args.release and args.reason is not None:
+        return "hold: --release takes no --reason: pass --release or --reason, not both"
+    if args.scope is None and not args.release:
+        return None  # the bare list
+    if args.scope is None:
+        return "hold: SCOPE ('all' or a source id) is required"
+    if not args.owner:
+        return "hold: --owner (the records/legal owner) is required"
+    if not args.release and not args.reason:
+        return "hold: --reason is required to set a hold"
+    return None
+
+
+def _validate_usage(args: argparse.Namespace) -> str | None:
+    """What is wrong with this command line on its face, or None: each handler asks first, so a usage error
+    loads no config and writes nothing (no round-28 carry, no manifest migration)."""
+    if args.command == "purge":
+        return _purge_usage(args)
+    if args.command == "hold":
+        return _hold_usage(args)
+    if args.command == "reconcile" and args.accept_deletions and not args.source:
+        return f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE"
+    return None
+
+
+def _deprecated(old: str, instead: str) -> None:
+    """A hidden legacy name's one line on stderr. Each caller is a handler, which a process runs once."""
+    _err(f"warning: `agentsync {old}` is deprecated: {instead}")
 
 
 def _config(args: argparse.Namespace) -> Config:
@@ -1290,10 +1360,10 @@ def _unavailable_steps(config: Config, report: CycleReport) -> list[str]:
 
 
 def _cmd_reconcile(args: argparse.Namespace) -> int:
-    config = _config(args)
-    if args.accept_deletions and not args.source:
-        _err(f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE")
+    if (usage := _validate_usage(args)) is not None:
+        _err(usage)
         return EXIT_USAGE
+    config = _config(args)
     if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
     accept = tuple(args.source) if args.accept_deletions else ()
@@ -2434,11 +2504,11 @@ def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:
 
 
 def _cmd_status_renamed(args: argparse.Namespace) -> int:
-    """The hidden ``doctor`` and ``policy show`` aliases: run ``status`` (under AGENTSYNC_NO_NEXT_HINT=1 the
-    rename note is left out too). install.sh still calls ``doctor`` and reads its ``[FAIL`` lines, so
-    ``doctor`` prints only the NEXT, loop and check lines, as the old doctor did; ``policy show`` keeps the
+    """The hidden ``doctor`` and ``policy show`` aliases: run ``status``, saying the rename. install.sh still
+    calls ``doctor`` and reads its ``[FAIL`` lines, so ``doctor`` prints only the NEXT, loop and check lines,
+    as the old doctor did, and under AGENTSYNC_NO_NEXT_HINT=1 no rename note either; ``policy show`` keeps the
     policy detail."""
-    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+    if args.command != "doctor" or os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
         _err(f"renamed: run {loop.BIN} status")
     return _cmd_status(args, brief=args.command == "doctor")
 
@@ -3649,6 +3719,7 @@ def _cmd_curate_renamed(args: argparse.Namespace) -> int:
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
     """Hidden alias (KISS K06): run an interactive sync, which records the checkpoint itself, behind sync's
     guard of a state file that is not a file (B13 round 27 P43)."""
+    _deprecated("checkpoint", f"run `{loop.BIN} sync`")
     config = _config(args)
     if _not_a_file_stop(args, config, manifest=False, lost=True):
         return EXIT_FAILED
@@ -3657,6 +3728,7 @@ def _cmd_checkpoint(args: argparse.Namespace) -> int:
 
 def _cmd_install_skill(args: argparse.Namespace) -> int:
     """Hidden alias: write the skill every sync writes (see :mod:`agentsync.skill`); always exit 0."""
+    _deprecated("install-skill", f"`{loop.BIN} sync` writes the skill")
     config = _config(args)
     for path, written in skill.write_skill(expand(config.docs_repo)):
         _out(f"wrote skill {path}" if written else f"skill up to date: {path}")
@@ -3678,6 +3750,7 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
 def _cmd_migrate(args: argparse.Namespace) -> int:
     """KISS K13b: a no-op kept so older install.sh runs and scripts still exit 0; opening the manifest
     migrates it (with its pre-v<N> copy) in every command that uses it."""
+    _deprecated("migrate", "every command that changes state migrates the manifest")
     _out("migration is automatic: every agentsync command that opens the manifest migrates it")
     return EXIT_OK
 
@@ -3842,17 +3915,10 @@ this one writes none (B13 round 33 C743, C744; ruling 79)."""
 
 
 def _cmd_purge(args: argparse.Namespace) -> int:
+    if (usage := _validate_usage(args)) is not None:
+        _err(usage)
+        return EXIT_USAGE
     config = _config(args)
-    if args.queue and args.selector:
-        _err("purge: pass SELECTOR or --queue, not both")
-        return EXIT_USAGE
-    others = (args.queue, args.selector, args.forget is not None, args.source, args.reason, args.push)
-    if args.accept_lost is not None and any(others):
-        _err("purge: --accept-lost <at> goes alone (with --dry-run or --folder-lost)")
-        return EXIT_USAGE
-    if args.folder_lost and args.accept_lost is None:
-        _err("purge: --folder-lost goes with --accept-lost <at>")
-        return EXIT_USAGE
     if not args.dry_run:  # a preview writes nothing; a purge carries round 28's hold record first (C351)
         governance.carry_round28_record(config.state_paths.root)
     if (args.queue or args.selector) and _lost_state_stop(args, config):
@@ -3893,9 +3959,6 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"accepted the suppression list's loss of {what} (audited): {said}")
         return EXIT_OK
     if args.forget is not None:
-        if not args.queue:
-            _err("purge: --forget goes with --queue")
-            return EXIT_USAGE
         # the one audited way off the queue for an entry history names nothing of (B13 round 29 C173, C189)
         q = governance.forget_queued(
             config,
@@ -4013,6 +4076,9 @@ def _cmd_compact(args: argparse.Namespace) -> int:
 
 
 def _cmd_hold(args: argparse.Namespace) -> int:
+    if (usage := _validate_usage(args)) is not None:
+        _err(usage)
+        return EXIT_USAGE
     config = _config(args)
     listing = args.list or (args.scope is None and not args.release)
     # a hold and its release write holds.json and the audit trail; the list only reads holds.json, whose own
@@ -4029,20 +4095,11 @@ def _cmd_hold(args: argparse.Namespace) -> int:
             _out(h.describe())
         _out(plural(len(holds), "active hold"))
         return EXIT_OK
-    if args.scope is None:
-        _err("hold: SCOPE ('all' or a source id) is required")
-        return EXIT_USAGE
-    if not args.owner:
-        _err("hold: --owner (the records/legal owner) is required")
-        return EXIT_USAGE
     if args.release:
         released = governance.release_hold(root, args.scope, owner=args.owner)
         what = "released" if released else "no state hold (config holds live in sources.toml)"
         _out(f"hold {args.scope}: {what}")
         return EXIT_OK if released else EXIT_FAILED
-    if not args.reason:
-        _err("hold: --reason is required to set a hold")
-        return EXIT_USAGE
     _out(governance.set_hold(root, args.scope, reason=args.reason, owner=args.owner).describe())
     return EXIT_OK
 
