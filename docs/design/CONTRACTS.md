@@ -117,7 +117,8 @@ the explicit form (no copy).
 **Amended (2026-10-04, KISS K12 review):** "any caller" means every opener, read-only commands included:
 `sync --dry-run`, `purge --dry-run`, `status` and setup-report's Status section (through the status hook) each
 migrate an older manifest, with the copy, on first open; their "no writes" promises cover `docs/` and the
-manifest's rows, not this one-time schema step. `agentsync migrate` (install.sh step 4, which runs before anything
+manifest's rows, not this one-time schema step. One stderr line says so and names the copy (`_auto_migrate`'s
+warning, shown at the default verbosity; `test_status_migration_is_announced`). `agentsync migrate` (install.sh step 4, which runs before anything
 else opens the manifest) now takes the same copy whenever a step or a re-index will run, superseding "(no copy)"
 above. The copy is built as `<db>.pre-v<N>.partial` and renamed into place, so a process killed mid-copy (the
 status hook runs in an abandoned-on-timeout thread) leaves no truncated copy; `migration_backups` matches the
@@ -27032,8 +27033,10 @@ drive has, as the agentsync report cuts it; the item says so.
 the EXIT trap and left HUP, INT and TERM on `on_signal`, whose `exit` (once the report's `$( )` returned) skipped
 the report step line, bring-back.md, the issue link, the NEXT and `finish_setup_log`, so install.log kept the
 provisional `end rc=0` of a run that exited 143 and a later report said it ended 0. `on_exit` sets `EXITING` and
-traps the three to `SIG_RC` (129, 130, 143); `on_signal` only records once `EXITING` is set. The run finishes;
-then `rc` is the signal's, the error line `on_signal` prints is printed once, and the NEXT reads `this run was
+traps the three to `SIG_RC` (129, 130, 143); `on_signal` only records once `EXITING` is set. A run a signal already
+stopped says so on stderr just before the report, in one line: the report is being finished, up to about 120 s, and
+stopping again does not end it sooner (bash runs no trap inside the report's `$( )`, so it cannot be said later). The
+run finishes; then `rc` is the signal's, the error line `on_signal` prints is printed once, and the NEXT reads `this run was
 stopped while it wrote its report (<rc_meaning>); it is safe to re-run: <command>; the run had said: <its NEXT>`
 (a NEXT `on_signal` set is kept). Corrected by measurement: the verifier's `stopped by <rc_meaning>` repeated
 "stopped by", which `rc_meaning` already says. The report child is not killed: bash runs no trap inside the

@@ -7687,6 +7687,11 @@ on_exit() {
 			[ "$REPORT_ONLY" -eq 1 ] || stopped=2
 			REPORT_PATH="$SETUP_DIR/stopped-copy-report.md"
 		fi
+		# A stopped run still finishes its report, and a further stop is only recorded (Y16): say so now, since
+		# bash runs no trap inside the report's $( ), and nothing else says why the run has not ended yet.
+		if [ -n "$SIG_RC" ] || [ "${NEXT_MSG#this run was stopped }" != "$NEXT_MSG" ]; then
+			printf 'finishing the setup report before this run stops, up to about 120 s; stopping again does not end it sooner\n' >&2
+		fi
 		write_report "$rc"
 		case $? in
 		0)

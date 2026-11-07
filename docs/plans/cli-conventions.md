@@ -2403,6 +2403,8 @@ Rulings (2026-11-07):
   stays U-C13's job (R105/R236/R280).
 - D27 = Option A. `tighten_setup_tree` cannot fail a run, and the end of a run re-checks and warns once. Built on trunk with
   this line (`warn_setup_tree_open`), so U-B10 skips B-10.2's step 4.
+- D24 = Option B. A second stop still finishes the report, with the code kept at `on_exit`, and one stderr line says so before
+  the report. Built on trunk with this line, so U-B10 does not add it. The exceptions row stays U-C13's job.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or

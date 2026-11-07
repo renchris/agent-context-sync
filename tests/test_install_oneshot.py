@@ -16448,6 +16448,9 @@ def test_a_stopped_run_logs_its_end_and_names_the_rerun(
     assert ("first-sync", "failed", "143", "") in steps(log)
     assert re.search(r" end rc=143 seconds=\d+$", log[-1]) and " step=report " in log[-2]
     assert stdout.rstrip("\n").splitlines()[-1] in install_out(env).read_text(), "install.out has the end too"
+    # A second stop during the report is only recorded, so the run says why it has not ended yet, once
+    assert stderr.count("finishing the setup report before this run stops") == 1, stderr
+    assert "finishing the setup report" not in stdout, "stdout stays byte for byte"
     # B13 round 20 X7: 143's words held their own brackets, so the error and NEXT lines nested two deep
     for line in (stdout + stderr).splitlines():
         depth = deepest = 0
@@ -16548,6 +16551,7 @@ def test_a_signal_while_the_report_is_written_still_ends_the_run(
             os.killpg(proc.pid, signal.SIGKILL)
     assert proc.returncode == 143, stdout + stderr
     assert stderr.count("error: install.sh was stopped by a signal (stopped by SIGTERM") == 1, stderr
+    assert "finishing the setup report" not in stderr, "no stop had come when the report began"
     lines = stdout.rstrip("\n").splitlines()
     assert lines[-1].startswith(
         "NEXT: this run was stopped while it wrote its report (stopped by SIGTERM, perhaps a tool timeout); "
