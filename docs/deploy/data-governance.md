@@ -40,8 +40,9 @@ is a copy that no purge reaches, so exclude it too.
 
 - **Upstream deletion or disposition:** after a complete listing and the deletion breaker, the page becomes a
   tombstone and a purge is queued (`purge_on_upstream_delete = true`). `agentsync purge --queue` runs the queue.
-  Preview it first with `agentsync purge --queue --dry-run`. It writes nothing and prints each entry's reason and
-  the docs paths a run would erase.
+  Preview it first with `agentsync purge --queue --dry-run`. It changes nothing in `docs/` or the manifest's rows and
+  prints each entry's reason and the docs paths a run would erase. If this agentsync's manifest format is newer than
+  the file's, it still updates the format first, keeps a copy (`manifest.sqlite.pre-v<N>`), and says so in one line.
   An `upstream-deleted` entry whose file is listed again (it came back, under its id or a later one) stays queued;
   once the file is gone, the next `agentsync purge --queue` runs it. A file that came back quarantined or refused is still purged.
   Run it weekly (suggested) or on request, after the preview. Tombstones of purged items carry no `git show` recovery

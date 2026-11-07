@@ -2405,6 +2405,9 @@ Rulings (2026-11-07):
   this line (`warn_setup_tree_open`), so U-B10 skips B-10.2's step 4.
 - D24 = Option B. A second stop still finishes the report, with the code kept at `on_exit`, and one stderr line says so before
   the report. Built on trunk with this line, so U-B10 does not add it. The exceptions row stays U-C13's job.
+- K6 = option (b). Read-only commands and dry runs keep migrating (CONTRACTS K12). The existing warning is the one stderr line,
+  now pinned by `test_status_migration_is_announced`, and data-governance.md's sentence is corrected. Built on trunk with this
+  line; purge's `--dry-run` help already says it. U-C6 has no other work under this ruling.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or

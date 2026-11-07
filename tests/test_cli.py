@@ -1697,6 +1697,30 @@ def test_old_manifest_migrates_through_status_and_sync(initialised: Config) -> N
     assert not backup.exists()
 
 
+@pytest.mark.parametrize(
+    "argv", [["status"], ["sync", "--mode", "dry_run"], ["purge", "--queue", "--dry-run"]], ids=" ".join
+)
+def test_status_migration_is_announced(
+    initialised: Config, capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    """A read-only command or dry run still migrates an older manifest (KISS K12), and one stderr line says so
+    and names the copy; nothing is said once the manifest is current, and stdout never holds it."""
+    cfg = str(initialised.config_path)
+    db = initialised.state_paths.db
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _sql(db, "UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    capsys.readouterr()
+    cli.main([*argv, "--config", cfg])
+    out, err = capsys.readouterr()
+    copy = f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}"
+    assert db.with_name(copy).is_file()
+    said = [ln for ln in err.splitlines() if "migrated manifest" in ln]
+    assert len(said) == 1 and copy in said[0], err
+    assert "migrated manifest" not in out, out
+    cli.main([*argv, "--config", cfg])
+    assert "migrated manifest" not in capsys.readouterr().err
+
+
 def test_migrate_is_a_no_op_and_the_next_sync_migrates(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
