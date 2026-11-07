@@ -2410,6 +2410,7 @@ Rulings (2026-11-07):
   line; purge's `--dry-run` help already says it. U-C6 has no other work under this ruling.
 - D15 = Option B. `--json` ships on `--list-folders` first; an install run and `--report-only` answer usage_error until decided.
   U-B12 builds it, and this ruling clears its D15 hold.
+- D17 = Option B (B-17.1). `--version`'s plain two lines stay byte for byte, and U-B17 adds the JSON form. U-C17 is not built.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
