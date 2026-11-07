@@ -39,6 +39,7 @@ from agentsync.graph.drive import DiscoveredScope, _obj, _opt_str, _quote_segmen
 from agentsync.graph.teams import _CHATS_TEAM_ID
 from agentsync.model import SourceKind
 from agentsync.skill import AGENTSYNC_BIN
+from agentsync.text import safe_text
 
 log = logging.getLogger(__name__)
 
@@ -557,8 +558,8 @@ def _toml_str(value: str) -> str:
 
 
 def _comment(text: str) -> str:
-    """Text safe inside one ``#`` comment line."""
-    return re.sub(r"[\x00-\x1f\x7f]+", " ", text).strip()
+    """Text safe inside one ``#`` comment line; a line break or tab still reads as a space between words."""
+    return safe_text(re.sub(r"[\t\n\r\f\v]+", " ", text)).strip()
 
 
 def suggest_source_id(scope: DiscoveredScope, taken: set[str]) -> str:

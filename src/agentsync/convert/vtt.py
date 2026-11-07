@@ -20,7 +20,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
-from agentsync.text import plural
+from agentsync.text import UNPRINTABLE_RE, plural
 
 _EMITTER_VERSION = "1.0.0"
 _TURN_PAUSE_MS = 1000  # a pause of this much or more between two cues of one speaker starts a new turn
@@ -36,12 +36,6 @@ _VOICE_RE = re.compile(r"v(?:\.[^\s>]*)?(?:[ \t\f]+(.*))?", re.DOTALL)
 _ENTITY_RE = re.compile(r"&(amp|lt|gt|nbsp|lrm|rlm);")
 _ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "nbsp": "\u00a0", "lrm": "\u200e", "rlm": "\u200f"}
 _WS_RE = re.compile(r"\s+")
-# S9 rule 5, as the recording page applies it to its own SAID text: C0, DEL, the C1 block (NEL among it), lone
-# surrogates, the two Unicode line breaks, the tag characters and the blank fillers; format characters (Cf)
-# go by category.  ``str.splitlines`` breaks at several of these, so one left in would start a new line.
-_UNPRINTABLE_RE = re.compile(
-    r"[\x00-\x1f\x7f-\x9f\ud800-\udfff\u2028\u2029\U000e0000-\U000e007f\u115f\u1160\u3164\uffa0\u2800]"
-)
 _NAME_BREAK_RE = re.compile(r"[:\[\]\x00-\x1f\x7f-\x9f\u2028\u2029]")  # each becomes a space in a name
 _FORGED_MARK = "[?]"  # text ending so would read as the low-confidence mark of a recording page
 
@@ -75,7 +69,7 @@ def _clean(text: str) -> str:
     """Cue text as a page may print it: no unprintable or format character, every ``<`` printed ``&lt;``
     (no HTML block or ``<!--`` anchor opens) and ``![`` printed ``!\\[``, a trailing ``[?]`` printed ``(?)``,
     whitespace runs one space."""
-    kept = "".join(c for c in _UNPRINTABLE_RE.sub(" ", text) if unicodedata.category(c) != "Cf")
+    kept = "".join(c for c in UNPRINTABLE_RE.sub(" ", text) if unicodedata.category(c) != "Cf")
     out = unicodedata.normalize("NFC", kept).replace("<", "&lt;").replace("![", "!\\[")
     out = _WS_RE.sub(" ", out).strip()
     return out[: -len(_FORGED_MARK)] + "(?)" if out.endswith(_FORGED_MARK) else out

@@ -62,6 +62,7 @@ from agentsync.graph import errors as _gerr
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.paths import is_cloud_path
 from agentsync.skill import AGENTSYNC_BIN
+from agentsync.text import safe_text
 
 _LOGIN = f"{AGENTSYNC_BIN} graph login"
 """The sign-in command the Entra error texts name, by the binary's full path (B13 round 5 F95)."""
@@ -398,9 +399,10 @@ def _keychain_account(settings: AuthSettings) -> str:
 
 
 def _first_line(text: object) -> str:
-    """First line of an MSAL error description (they carry trace/correlation ids on later lines)."""
+    """First line of an MSAL error description (they carry trace/correlation ids on later lines), safe to
+    print: the text comes from the sign-in server."""
     s = str(text or "").strip()
-    return s.splitlines()[0].strip() if s else ""
+    return safe_text(s.splitlines()[0]).strip() if s else ""
 
 
 def _aadsts_code(result: Mapping[str, Any]) -> str | None:
@@ -443,7 +445,7 @@ def _describe_error(result: Mapping[str, Any], *, during: str, consent_url: str 
     """Human message for an MSAL error result: the AADSTS code, its IT action if known, MSAL's first line."""
     error = str(result.get("error") or "unknown_error")
     code = next((c for c in _all_codes(result) if c in _AADSTS_ACTIONS), None) or _aadsts_code(result)
-    head = f"{during} failed: {error}" + (f" {code}" if code else "")
+    head = safe_text(f"{during} failed: {error}" + (f" {code}" if code else ""))
     action = _AADSTS_ACTIONS.get(code or "") or _DEVICE_FLOW_ERRORS.get(error)
     if action and consent_url and code in _CONSENT_CODES:
         action = f"{action}. Admin-consent URL for the IT admin: {consent_url}"

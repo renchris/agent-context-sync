@@ -522,7 +522,7 @@ finally:
 emit()
 emit("## Not probed by this script")
 emit()
-emit("- Device-code block state (design §9 probe 2 extension): needs an interactive `agentsync login --device-code`, "
+emit("- Device-code block state (design §9 probe 2 extension): needs an interactive `agentsync graph login --device-code`, "
      "and only when IT has set `allow_device_code`; expect `blocked: policy` (AADSTS53003).")
 emit("- Token Protection, Teams channel delta, shared-mailbox delta, launchd matrix: C15 §8 probes 4, 6, 7 (manual).")
 report = write_report(out_dir)

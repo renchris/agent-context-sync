@@ -7170,7 +7170,8 @@ def _selected(config: Config, only: Sequence[str]) -> list[SourceConfig]:
     wanted = set(only)
     unknown = sorted(wanted - {s.id for s in config.sources})
     if unknown:
-        raise ConfigError(f"unknown source id(s): {', '.join(unknown)}")
+        noun = "id" if len(unknown) == 1 else "ids"
+        raise ConfigError(f"unknown source {noun}: {', '.join(unknown)}")
     return [s for s in config.sources if s.id in wanted]
 
 

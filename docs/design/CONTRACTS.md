@@ -39047,7 +39047,23 @@ Reserved.
 
 #### 16.300.4 U-B3: sanitizing at the source modules
 
-Reserved.
+Remote text is made safe where it enters, so no caller has to remember to. Each change below keeps today's bytes for
+ordinary text.
+
+- `graph/discover.py` `_comment` runs a Graph value through `agentsync.text.safe_text(` after turning each run of tab,
+  line feed, carriage return, form feed or vertical tab into one space, so a value with a line break still prints as
+  words with a space between them. Every other control is now removed rather than replaced by a space, and the C1 block,
+  bidi and zero-width characters no longer reach a `#` comment in the proposed sources file.
+- `graph/auth.py` `_first_line` sanitizes the first line of its text, after splitting, so a later line never joins the
+  message as a literal `\n`. Its other callers, which pass an exception or a broker's reason, get the same treatment.
+  `_describe_error` also sanitizes its head, because `error` and `error_codes` come from the same server. The prefix
+  `sign-in failed: <error> <AADSTS>` is unchanged.
+- `convert/vtt.py` uses `text.UNPRINTABLE_RE` itself, with no copy of its own. The class is the same, so converter
+  output is byte for byte what it was. The converter imports `agentsync.text`, not `clio`, so no CLI module enters a
+  converter.
+- `cycle._selected` says `unknown source id: nope` for one and `unknown source ids: a, b` for several. The exit code stays
+  `EXIT_CONFIG`.
+- `scripts/tenant-probes.sh` teaches `agentsync graph login --device-code`, the one spelling every other site teaches.
 
 #### 16.300.5 U-B1b: streams, signals and copy
 
