@@ -2,7 +2,7 @@
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
 # Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
-#                           [--report-only] [--version] [--help]
+#                           [--report-only] [--version] [--help] [help]
 #        scripts/install.sh --list-folders
 #        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX
 #
@@ -12,8 +12,11 @@
 #                           also build the signed launcher, sync once, install and start the two LaunchAgents
 #                           (agentsync install-agent) and wait for the first background run (steps 3, 6-8)
 #   --launcher PATH         with --confirm-install-agent: use this prebuilt, signed AgentSyncLauncher.app
-#                           instead of building one
-#   --report-only           only write the setup report (step 9), then exit; installs and logs nothing, except
+#                           instead of building one; given twice, the last one wins
+#   --source-local=FOLDER, --launcher=PATH
+#                           the same options; a folder named like an option needs this form or ./ before its name
+#   --                      ends the options: the next word is not read as one
+#   --report-only          only write the setup report (step 9), then exit; installs and logs nothing, except
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
 #                           that attempt has no end line yet, and that it leaves the setup folder's contents
 #                           owner-only, as every run does (see "Setup log"). When --log-start stopped that
@@ -154,7 +157,7 @@
 #      SwiftPM mirror the Mac uses) and the 87 MB library FluidAudio links from
 #      release-assets.githubusercontent.com, and may take up to 20 minutes; the model folders are placed by
 #      hand, see the README)
-#   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
+#   4. agentsync add-source for each --source-local folder, else agentsync init with no option: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes
 #      agentsync's own paths owner-only, as every sync does (what a coding agent wrote into the docs repo
@@ -193,7 +196,7 @@
 #      output is shown as its "converted N, deferred M online-only[, read again R | , first read R]" line(s), each prefixed
 #      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0, then
 #      -first-F when F of the R were first reads, and
-#      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
+#      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The option is passed unconditionally: sync --help hides it, and the agentsync
 #      installed here always has it. When another sync holds the config's lock as it starts, a line before
 #      the sync says it waits for that one to end, at most 10 minutes; one still running then skips it (75)
 #   With --confirm-install-agent and a first sync that ran:
@@ -218,7 +221,8 @@
 #   background sync the first sync would otherwise wait for. A stopped run (SIGTERM, SIGINT, SIGHUP) still logs
 #   its end (rc 143, 130, 129), writes the report and prints NEXT:. A stop of the whole process group during
 #   step 3 also stops the helper builds' compilers within seconds.
-#   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
+#   9. report, at every exit after the arguments are read (failures and usage errors too; an unknown option or a
+#      path that is no agentsync checkout or wheel stops before that and writes nothing) except in a dry run
 #      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
 #      same headings (machine facts, install.log, this run's doctor output, friction.md; the home path,
@@ -284,9 +288,10 @@
 # install.out next to install.log (0600): one "# run=<id> <UTC> install.sh <arguments>" line, then the output.
 # Only its last 2000 lines are kept. `agentsync setup-report` may embed its (redacted) tail.
 #
-# Exit status: 0 when every step ran, 2 on a usage error and when a run created the config and has no folder to
-# sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a status
-# [FAIL] that stops step 6, a listing held for an Allow click, a network/proxy/TLS failure
+# Exit status: 0 when every step ran, 2 on a usage error (one the argument parsing stops at, such as a path that is
+# no agentsync checkout or wheel, leaves no report and no "NEXT:" line) and when a run created the config and has no folder to
+# sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a
+# status [FAIL] that stops step 6, a listing held for an Allow click, a network/proxy/TLS failure
 # of uv, a failed first sync, a background run that exited 80, and --confirm-install-agent that did not
 # install the LaunchAgents), 3 when the wait ran out before a background run exited 0 (exit 79 then: macOS
 # still waits for Allow), 143 / 130 / 129 when stopped by a signal; --list-folders: see above. Every exit
@@ -806,6 +811,7 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			printf 'usage error: --log-end takes no argument and no other option (see --help)\n' >&2
 			return 2
 		fi
+		printf 'warning: --log-end is deprecated: --report-only closes the attempt; drop --log-end\n' >&2
 		friction_close_attempt # the same idempotent close as --report-only, so the pair adds one end line
 		;;
 	esac
@@ -1523,36 +1529,16 @@ shown_arg() {
 		;;
 	esac
 }
-ORIG_ARGS=""  # every flag given, for a re-run after a failure (install.log's args=)
+ORIG_ARGS=""  # every option given, for a re-run after a failure (install.log's args=); the option loop fills it
 ORIG_SHOWN="" # the same as a NEXT shows it (shown_arg)
 BASE_ARGS=""  # the same without --source-local FOLDER, for a re-run once the folders are in the config
-ALL_ARGS=""   # every argument as given, for install.out
-skip_next=0
+ALL_ARGS=""   # every argument as given, for install.out; --source-local=F as --source-local F, for its redaction
 for a in "$@"; do
-	ALL_ARGS="$ALL_ARGS $(printf '%q' "$a")"
-	if [ "$skip_next" -eq 1 ]; then
-		skip_next=0
-		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
-		ORIG_SHOWN="$ORIG_SHOWN $(shown_arg "$a")"
-		continue
-	fi
 	case "$a" in
-	--report-only | --no-report | --list-folders | --version | -h | --help) ;; # NEXT is for the real run
-	--source-local)
-		skip_next=1
-		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
-		ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$a")"
-		;;
-	*)
-		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
-		ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$a")"
-		BASE_ARGS="$BASE_ARGS $(printf '%q' "$a")"
-		;;
+	--source-local=*) ALL_ARGS="$ALL_ARGS --source-local $(printf '%q' "${a#--source-local=}")" ;;
+	*) ALL_ARGS="$ALL_ARGS $(printf '%q' "$a")" ;;
 	esac
 done
-# The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
-# them, as step 2 says to name only folders to add (B13 round 16 T22)
-RERUN_ARGS="$ORIG_SHOWN"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -1576,12 +1562,14 @@ REBUILD=0
 [ "${AGENTSYNC_REBUILD_LAUNCHER:-}" != "1" ] || REBUILD=1 # developer only: rebuild an up-to-date launcher (step 3)
 REPORT=1
 REPORT_ONLY=0
+NO_REPORT_SEEN=0
 LIST_FOLDERS=0
 LAUNCHER_SRC=""
 SOURCE=""
 SOURCE_KIND="-"
 SOURCE_LOCALS=()
 FOLDERS=()
+BAD_FOLDERS=()
 CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 APP_NAME="AgentSyncLauncher.app"
 APP_DEST="$HOME/Applications/$APP_NAME"
@@ -9245,24 +9233,105 @@ list_folders() {
 	return "$rc"
 }
 
+# What the loop below records for a re-run, in one pass, always in the space form: the scrub registry, its awk and
+# setup_report's _without_folders tokenize on the word --source-local, so an = folder would escape all three.
+# --report-only, --no-report, --list-folders, --version and help record nothing: NEXT is for the real run.
+record_arg() { # WORD: a word a re-run repeats, in the re-run once the folders are in the config too
+	ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$1")"
+	ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$1")"
+	BASE_ARGS="$BASE_ARGS $(printf '%q' "$1")"
+}
+record_folder() { # FOLDER: a --source-local, which that later re-run leaves out
+	ORIG_ARGS="$ORIG_ARGS --source-local $(printf '%q' "$1")"
+	ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$1")"
+}
+dash_safe() { # WORD: SAFE_WORD is it, written ./-x when it starts with a dash, so a recorded re-run still parses
+	SAFE_WORD="$1"
+	case "$1" in -*) SAFE_WORD="./$1" ;; esac
+}
+take_launcher() { # PATH: repeated, the last one wins
+	LAUNCHER_SRC="$1"
+	record_arg --launcher
+	record_arg "$1"
+}
+take_source() { # WORD: repeated, an error (a relative one after -- may start with a dash; cd reads that as an option)
+	[ -z "$SOURCE" ] || usage_error "only one SOURCE is accepted"
+	dash_safe "$1"
+	SOURCE="$SAFE_WORD"
+	record_arg "$SAFE_WORD"
+}
+# The option names a space-separated --launcher or --source-local value may not be: "--source-local --help" lost
+# its folder. A name like -foo stays a legal folder; --source-local=--help and ./--help name a folder called --help.
+option_name() { # WORD
+	case "$1" in
+	--confirm-install-agent | --report-only | --list-folders | --no-report | --log-start | --log | --log-end | \
+		--launcher | --source-local | --version | -h | --help | --) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+source_project_name() { # PYPROJECT: the [project] table's name, as written
+	LC_ALL=C awk '
+		/^[[:space:]]*\[/ { in_project = ($0 ~ /^[[:space:]]*\[project\][[:space:]]*(#.*)?$/); next }
+		in_project && /^[[:space:]]*name[[:space:]]*=/ {
+			sub(/^[^=]*=[[:space:]]*/, "")
+			if (match($0, /^"[^"]*"/) || match($0, /^\047[^\047]*\047/)) { print substr($0, 2, RLENGTH - 2); exit }
+		}' "$1" 2>/dev/null || true
+}
+resolve_source() { # $SOURCE, the wheel or checkout to install: absolute, with its kind, or a usage error
+	case "$SOURCE" in
+	*.whl)
+		[ -f "$SOURCE" ] || usage_error "wheel not found: $SOURCE"
+		case "$(basename "$SOURCE")" in
+		agentsync-*) ;;
+		*) usage_error "not an agentsync wheel: $SOURCE" ;;
+		esac
+		SOURCE="$(cd "$(dirname "$SOURCE")" && pwd)/$(basename "$SOURCE")"
+		SOURCE_KIND="wheel"
+		;;
+	*)
+		[ -f "$SOURCE/pyproject.toml" ] || usage_error "not an agentsync checkout (no pyproject.toml): $SOURCE"
+		[ "$(source_project_name "$SOURCE/pyproject.toml")" = "agentsync" ] ||
+			usage_error "not an agentsync checkout (the name in pyproject.toml is not agentsync): $SOURCE"
+		SOURCE="$(cd "$SOURCE" && pwd)"
+		SOURCE_KIND="checkout"
+		;;
+	esac
+}
+
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--confirm-install-agent) INSTALL_AGENT=1 ;;
+	--confirm-install-agent)
+		INSTALL_AGENT=1
+		record_arg "$1"
+		;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
-	--no-report) ;; # hidden, ignored: the old baseline prompt ran "install.sh --no-report && ... install-skill"
+	--no-report) NO_REPORT_SEEN=1 ;; # hidden, ignored: the old baseline prompt ran "install.sh --no-report && ... install-skill"
 	--log-start | --log | --log-end) usage_error "$1 must be the first argument and takes no other option" ;;
 	--launcher)
 		[ $# -ge 2 ] || usage_error "--launcher needs a path"
-		LAUNCHER_SRC="$2"
+		! option_name "$2" || usage_error "--launcher needs a path, got the option $2"
+		take_launcher "$2"
 		shift
+		;;
+	--launcher=*)
+		dash_safe "${1#--launcher=}"
+		take_launcher "$SAFE_WORD"
 		;;
 	--source-local)
 		if [ $# -lt 2 ] || [ -z "$2" ]; then
 			usage_error "--source-local needs a folder"
 		fi
+		! option_name "$2" || usage_error "--source-local needs a folder, got the option $2"
 		SOURCE_LOCALS+=("$2")
+		record_folder "$2"
 		shift
+		;;
+	--source-local=*)
+		[ -n "${1#--source-local=}" ] || usage_error "--source-local needs a folder"
+		SOURCE_LOCALS+=("${1#--source-local=}")
+		dash_safe "${1#--source-local=}"
+		record_folder "$SAFE_WORD"
 		;;
 	--version)
 		show_version
@@ -9272,14 +9341,32 @@ while [ $# -gt 0 ]; do
 		show_help || [ "$?" -eq 141 ] # 141: a reader that closed early (--help | head) took all it wanted
 		exit 0
 		;;
+	help) # the word for --help; a checkout folder named help stays reachable as ./help
+		show_help || [ "$?" -eq 141 ]
+		exit 0
+		;;
+	--) # never recorded: the --list-folders guard and the args=--list-folders anchors read what is
+		shift
+		[ $# -le 1 ] || usage_error "only one SOURCE is accepted"
+		[ $# -eq 0 ] || take_source "$1"
+		break
+		;;
 	-*) usage_error "unknown option $1" ;;
 	*) # SOURCE, a test seam left out of --help: the checkout or wheel to install instead of this checkout
-		[ -z "$SOURCE" ] || usage_error "only one SOURCE is accepted"
-		SOURCE="$1"
+		take_source "$1"
 		;;
 	esac
 	shift
 done
+[ "$NO_REPORT_SEEN" -eq 0 ] || warn "--no-report is deprecated and ignored: this run still writes the setup report; drop the option"
+# The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
+# them, as step 2 says to name only folders to add (B13 round 16 T22)
+RERUN_ARGS="$ORIG_SHOWN"
+# A SOURCE that is no agentsync checkout or wheel is a parse error: it stops here, before any file is written.
+# --list-folders refuses a SOURCE below, and --report-only reads none.
+if [ -n "$SOURCE" ] && [ "$LIST_FOLDERS" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
+	resolve_source
+fi
 
 # From here on every exit logs its end, writes the report (not in a dry run or --list-folders) and prints NEXT.
 PARSED=1
@@ -9339,19 +9426,8 @@ WAIT_EVERY=$((PROGRESS_EVERY - wp))
 
 if [ -z "$SOURCE" ]; then
 	SOURCE="$repo"
+	resolve_source
 fi
-case "$SOURCE" in
-*.whl)
-	[ -f "$SOURCE" ] || usage_error "wheel not found: $SOURCE"
-	SOURCE="$(cd "$(dirname "$SOURCE")" && pwd)/$(basename "$SOURCE")"
-	SOURCE_KIND="wheel"
-	;;
-*)
-	[ -f "$SOURCE/pyproject.toml" ] || usage_error "not an agentsync checkout (no pyproject.toml): $SOURCE"
-	SOURCE="$(cd "$SOURCE" && pwd)"
-	SOURCE_KIND="checkout"
-	;;
-esac
 if [ -n "$LAUNCHER_SRC" ]; then
 	[ "$INSTALL_AGENT" -eq 1 ] || usage_error "--launcher only applies with --confirm-install-agent (the launcher is for background sync)"
 	[ -d "$LAUNCHER_SRC" ] || usage_error "--launcher is not an app bundle directory: $LAUNCHER_SRC"
@@ -9366,9 +9442,20 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	/*) ;;
 	*) f="$PWD/$f" ;;
 	esac
-	[ -d "$f" ] || usage_error "--source-local is not an existing folder: $f"
-	FOLDERS+=("$f")
+	if [ -d "$f" ]; then FOLDERS+=("$f"); else BAD_FOLDERS+=("$f"); fi
 done
+# One line for each bad folder, at most 5 and then a count; usage_error writes the last of them, and exits once.
+bad_total=${#BAD_FOLDERS[@]}
+bad_shown=0
+while [ "$bad_shown" -lt 5 ] && [ "$((bad_shown + 1))" -lt "$bad_total" ]; do
+	printf 'usage error: --source-local is not an existing folder: %s (see --help)\n' "${BAD_FOLDERS[$bad_shown]}" >&2
+	bad_shown=$((bad_shown + 1))
+done
+if [ "$bad_total" -gt 5 ]; then
+	usage_error "--source-local: $((bad_total - 5)) more folders are not existing folders"
+elif [ "$bad_total" -gt 0 ]; then
+	usage_error "--source-local is not an existing folder: ${BAD_FOLDERS[$bad_shown]}"
+fi
 
 if [ "$SOURCE_KIND" = "checkout" ] && [ "$DRY_RUN" -eq 0 ] && [ -e "$SOURCE/.git" ]; then
 	read_commit "$SOURCE"

@@ -115,10 +115,13 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
         "--log",
         "--log-end",
         "--launcher",
+        "--launcher=*",
         "--source-local",
+        "--source-local=*",
         "--version",
         "-h",
         "--help",
+        "--",
         "*",
     ],
 }

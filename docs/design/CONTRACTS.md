@@ -5691,7 +5691,9 @@ last `Attempt:` has no such line, so a second `--report-only` adds none. The pre
 `AgentSyncLauncher.app` beside a wheel or under `launcher/prebuilt/`) is deleted; without developer tools or
 `--launcher PATH` a valid installed launcher is kept. The `SOURCE` positional (a checkout or wheel) still parses
 as a test seam and is left out of `--help`. The deleted options exit 2 as unknown options; the case arms are
-pinned by `tests/test_contracts.py::INSTALL_OPTIONS`.
+pinned by `tests/test_contracts.py::INSTALL_OPTIONS`. Since §16.300.14 the arms also hold `--launcher=*`,
+`--source-local=*` and `--`, and a `SOURCE` must name agentsync: a checkout's `[project]` name in `pyproject.toml`, a
+wheel's file name. A bad `SOURCE` is a parse error, with no report and no `NEXT:`.
 **CORRECTED (2026-10-05, K17 review):** the compat bump to 7 does not protect older prompts, because step 1's
 gate reads "setup-prompt-compat N or higher", so a saved v6 prompt runs against this installer.
 (**Amended 2026-10-07, §16.28 "Setup prompt v8":** the installer now stops such a copy at step 1; its own text
@@ -5699,7 +5701,8 @@ still ends at `--log-end && --report-only`, so the hidden arms stay.) `--log-end
 `--no-report` therefore stay as hidden arms, left out of `--help` and the guides (`INSTALL_HIDDEN`):
 `--log-end` (first argument, no other option) is the same idempotent close as `--report-only` and exits 0, so v6's
 `--log-end && --report-only` adds one end line and still writes the report; `--no-report` is ignored, so the old
-baseline prompt's `install.sh --no-report && agentsync install-skill` still runs. `AGENTSYNC_INSTALL_DRY_RUN=1`
+baseline prompt's `install.sh --no-report && agentsync install-skill` still runs. Since §16.300.14 each warns once on
+stderr and changes nothing else, so an `&&` chain still proceeds. `AGENTSYNC_INSTALL_DRY_RUN=1`
 covers the friction options too: `--log-start`, `--log` and `--log-end` print one `dry run:` line, write nothing
 and exit 0, and a dry-run `--report-only` leaves the attempt open.
 
@@ -9792,7 +9795,7 @@ tighten_setup_tree DIR   # scripts/install.sh
   the report, the bring-back file and the setup log): an install run, `--list-folders`, `--report-only`, a
   usage error, a run stopped by a signal. And in `--log-start` and `--log` (`friction_append`, where the
   folder was already set to 0700). `--help`, `--version` and a command line that does not parse touch
-  nothing, as before.
+  nothing, as before; a bad `SOURCE` is a parse error (§16.300.14) and is not reported.
 - **Quiet unless it failed.** It cannot fail a run: every error is ignored, and the walk prints nothing. At the end
   of a run `warn_setup_tree_open` reads the folder again and, only when an entry is still open to group or other,
   warns once, with no `next:`, `run:` or `(fix:`. A re-read, so a file removed during the walk raises nothing.
@@ -39123,7 +39126,35 @@ The pieces of the JSON document change no behaviour until a caller sets `JSON_RU
 
 #### 16.300.14 U-B7: install.sh parser and validation
 
-Reserved.
+**`help` and a stray `SOURCE` (K25; D18 Option B).** The bare word `help` prints what `--help` prints; a checkout
+folder named help stays reachable as `./help`. An explicit `SOURCE`, when the run is neither `--list-folders` nor
+`--report-only`, is checked before the arguments count as read: a bad one exits 2 with `usage error:` and writes
+nothing, no report, no `NEXT:` and no log line. `--source-local`, `--launcher` and the `AGENTSYNC_*` number errors
+stay post-parse and keep their report, `NEXT:`, log end line and tightening. Bad `--source-local` folders are all
+named, one line each, at most 5 and then a count, and the run exits through `usage_error` once.
+
+**`--name=value` and `--` (K26; D19 Option B).** The parser stays literal `case` arms in one pass, and that pass
+now also fills `ORIG_ARGS`, `ORIG_SHOWN` and `BASE_ARGS`, so the replay scan and its list are gone. The three
+always hold the space form, because the scrub registry, its awk and `setup_report._without_folders` tokenize on the
+word `--source-local`: an `=` folder written as given would escape them. `ALL_ARGS` keeps each argument as given
+except `--source-local=F`, written `--source-local F`, because `%q` quotes a whole word that holds a byte it cannot
+show, and `_SOURCE_LOCAL_RE` would miss the option name inside the quotes. `--` is never recorded. A dash-leading
+word from an `=` value or after `--` is recorded as `./-x`, so a re-run parses. A space-separated `--launcher` or
+`--source-local` value that is exactly an option name exits 2 (`--source-local needs a folder, got the option
+--help`); `-foo` stays a legal folder, and `--source-local=--help` and `./--help` are the escapes. `--launcher`
+repeated: the last wins. `SOURCE` repeated: an error. `--launcher ""` keeps its behaviour until K27.
+
+**Hidden options warn once (K28).** `--no-report` warns on stderr after the loop, before capture starts, so the line
+is not in `install.out` or the report, and `--help` and `--version` never print it. `--log-end` warns on stderr after
+its argument check and keeps its empty stdout and exit 0.
+
+**The checkout must be agentsync (K46).** `source_project_name` reads the `[project]` table's `name` with awk, since
+this runs before uv is set up, so a `name` under another table does not count and either quote style does. A wheel's
+file name must start `agentsync-`. Without this, a foreign project's commit would go into agentsync's stamp and
+`--confirm-install-agent` would run its `launcher/build.sh`. The default `SOURCE`, this checkout, takes the same
+check after the arguments are read, so it keeps its report.
+
+Tests: `tests/test_install_parser.py`.
 
 #### 16.300.15 U-B8: install.sh help text, nouns and declarations
 

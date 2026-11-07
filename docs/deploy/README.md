@@ -240,7 +240,8 @@ when doctor is slow). The coding agent
 logs what the prompt did not foresee as it goes, with `scripts/install.sh --log` (`--log-start` opens each attempt
 and `--report-only` closes it), into `~/agent-context/setup/friction.md` (0600); the report embeds it with the same
 redaction, and works out the outcome and run type itself. It prints a link that opens a pre-filled setup-report
-issue; nothing is sent. `install.sh` also writes the report at every exit, and `scripts/install.sh --report-only`
+issue; nothing is sent. `install.sh` also writes the report at every exit once its arguments parse (an unknown option,
+or a path that is no agentsync checkout or wheel, exits 2 and writes nothing), and `scripts/install.sh --report-only`
 (step 3 of the prompt) writes it whether or not agentsync got installed. [setup-feedback.md](setup-feedback.md) covers how to review it,
 send it (publicly, or privately to the machine you administer this setup from) and turn each friction line into a
 fix.
