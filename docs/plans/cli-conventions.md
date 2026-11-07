@@ -2423,6 +2423,8 @@ Rulings (2026-11-07):
 - D31 = Option B (B-8.4). An optional helper that does not build keeps exit 0, with a warning. U-B8 builds it (in progress when this
   was written).
 - D33 = Option A. tenant-probes exits 1 when a probe could not finish, never for a measured 401, 403, 404 or 410. U-C12 builds it.
+- D34 = Option A. U-B15's step 7 prints the short bug report with the error type and `<stdin>:line`, plus a hidden switch for the full
+  trace, mirroring C-3's `__AGENTSYNC_RAISE`. This clears U-B15's D34 hold.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
