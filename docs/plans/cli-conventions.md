@@ -2417,6 +2417,9 @@ Rulings (2026-11-07):
   and download-hosts.yml, with one committed SHA-256 and a test that keeps the URL's version equal to those workflows' (beyond
   C-9.2's two tests). U-C9 builds it. A republished installer stops new installs until the hash is bumped.
 - D26 = Option B (B-8.3). `--list-folders` keeps writing state and its help says so. U-B8 builds it (in progress when this was written).
+- D29 = Option B. U-C11 re-points the test at tests/test_install_oneshot.py (`test_doctors_persons_fix_words_are_install_shs`) to the
+  file header, keeps the wording check, and drops the persons sentence from the short help, reversing V53's promise that `--help`
+  prints it.
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
