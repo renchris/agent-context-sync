@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import IO as _IO
 from typing import Any, cast
 
-from agentsync import gitops
+from agentsync import fsutil, gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.convert.pieces import PieceStore
@@ -1509,27 +1509,52 @@ def lost_hold_words(state_dir: Path, hold: Hold) -> tuple[str, str]:
     return detail, fix
 
 
+@contextlib.contextmanager
+def _holds_lock(state_dir: Path) -> Iterator[None]:
+    """A short blocking flock on the governance folder around holds.json's read, change and replace, so two
+    parallel holds or a hold and a release never write over each other. A different inode from
+    :func:`_record_lock`'s, so the two cannot deadlock, and never the single-writer lock, so no hold is
+    refused while a sync runs. :func:`record_holds` runs after this is released: a second flock on a new
+    descriptor in the same process blocks. A folder that cannot be made or opened takes no lock: the read or
+    the write under it raises that folder's own error."""
+    folder = governance_dir(state_dir)
+    fd = -1
+    with contextlib.suppress(OSError):
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    if fd < 0:
+        yield
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # closing the descriptor releases the flock
+
+
 def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datetime | None = None) -> Hold:
     """Record a hold (records/legal owner only) that suspends purge and compaction for ``scope``."""
     s = _check_scope(scope)
     if not reason.strip() or not owner.strip():
         raise GovernanceError("a hold needs a reason and the name of the records or legal owner setting it")
-    at = _iso(_now(now))
-    holds = [h for h in _state_holds(state_dir) if h.scope != s]
-    hold = Hold(s, " ".join(reason.split()), " ".join(owner.split()), at, "state")
-    holds.append(hold)
-    with _audit_appender(state_dir) as audit:
-        _atomic_write_json(
-            _holds_file(state_dir),
-            {
-                "holds": [
-                    {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at}
-                    for h in sorted(holds, key=lambda h: h.scope)
-                ]
-            },
-        )
-        audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
-    record_holds(state_dir, holds)  # outside governance/, with every lost hold (I89; round 29 C199, C170)
+    with _holds_lock(state_dir):
+        at = _iso(_now(now))
+        holds = [h for h in _state_holds(state_dir) if h.scope != s]
+        hold = Hold(s, " ".join(reason.split()), " ".join(owner.split()), at, "state")
+        holds.append(hold)
+        with _audit_appender(state_dir) as audit:
+            _atomic_write_json(
+                _holds_file(state_dir),
+                {
+                    "holds": [
+                        {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at}
+                        for h in sorted(holds, key=lambda h: h.scope)
+                    ]
+                },
+            )
+            audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
+    # read again: the list this call wrote may be old by now, and a released scope must not stay in the record
+    record_holds(state_dir)  # outside governance/, with every lost hold (I89; round 29 C199, C170)
     log.info("governance: %s", hold.describe())  # the CLI prints it once, on stdout (B13 round 28 I47)
     return hold
 
@@ -1539,22 +1564,27 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
     holds.json lost but the audit trail or the hold record keeps (:func:`lost_holds`) is released
     too, with its own audit line, so a deliberate release never needs a set first (B13 round 28 I87)."""
     s = _check_scope(scope)
-    holds = _state_holds(state_dir)
-    keep = [h for h in holds if h.scope != s]
-    if len(keep) == len(holds) and not any(h.scope == s for h in lost_holds(state_dir, holds)):
+    # nothing to release writes nothing: the lock would make the governance folder every reader calls gone
+    if governance_gone(state_dir) and not any(h.scope == s for h in lost_holds(state_dir, ())):
         return False
-    at = _iso(_now(now))
-    with _audit_appender(state_dir) as audit:  # a release removes protection: never one with no record
-        _atomic_write_json(
-            _holds_file(state_dir),
-            {
-                "holds": [
-                    {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at} for h in keep
-                ]
-            },
-        )
-        audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
-    record_holds(state_dir, keep)  # a lost hold stays, a released one leaves (B13 round 29 C170)
+    with _holds_lock(state_dir):
+        holds = _state_holds(state_dir)
+        keep = [h for h in holds if h.scope != s]
+        if len(keep) == len(holds) and not any(h.scope == s for h in lost_holds(state_dir, holds)):
+            return False
+        at = _iso(_now(now))
+        with _audit_appender(state_dir) as audit:  # a release removes protection: never one with no record
+            _atomic_write_json(
+                _holds_file(state_dir),
+                {
+                    "holds": [
+                        {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at}
+                        for h in keep
+                    ]
+                },
+            )
+            audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
+    record_holds(state_dir)  # a lost hold stays, a released one leaves (B13 round 29 C170)
     log.info("governance: hold %s released by %s", s, owner)  # the audit trail records it (I47)
     return True
 
@@ -4006,6 +4036,7 @@ class PurgeReport:
     paths_left: tuple[str, ...] = ()  # extension: purged items' page paths still in HEAD (or never targeted)
     taken_paths: tuple[str, ...] = ()  # extension: targeted docs paths another item's live page holds in HEAD
     not_run: str = ""  # extension: why the queue did not run this entry (it stays queued); "" when it ran
+    push_failed: bool = False  # extension: the --push failed; ``remote`` says the state is unknown
 
     @property
     def verified(self) -> bool:
@@ -4440,7 +4471,7 @@ def _state_md_scrub(
 
 
 def _scrub_file(path: Path, scrub: Callable[[str], tuple[str, int]]) -> bool:
-    """Remove hit lines from one text file in place (0600 tmp + rename); True if changed. ``scrub`` is a
+    """Remove hit lines from one text file in place (atomic, its mode kept); True if changed. ``scrub`` is a
     scrubber's :meth:`_Scrubber.scrub`, or STATE.md's (:func:`_state_md_scrub`)."""
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > _SCRUB_MAX_BYTES:
@@ -4451,10 +4482,7 @@ def _scrub_file(path: Path, scrub: Callable[[str], tuple[str, int]]) -> bool:
     out, removed = scrub(text)
     if not removed:
         return False
-    tmp = path.with_name(f".{path.name}.scrub.tmp")
-    tmp.write_text(out, encoding="utf-8")
-    tmp.chmod(path.stat().st_mode & 0o777)
-    tmp.replace(path)
+    fsutil.atomic_write(path, out)
     return True
 
 
@@ -4759,10 +4787,17 @@ def _purge_locked(
         scrubbed, unscrubbable = _scrub_logs([expand(config.log_dir), sp.logs], log_scrubber)
         notes += [f"cannot scrub compressed log {p}: delete it" for p in unscrubbable]
         remote = "disabled"
+        push_failed = False
         if has_repo:
             names = _git_text(repo, "remote").split()
             if push and result is not None:
-                remote = push_rewritten(repo, gov, result.old_refs)
+                # the local erasure is done: a push that fails must not lose the suppressions and the audit
+                # line below, or the next sync can bring the content back
+                try:
+                    remote = push_rewritten(repo, gov, result.old_refs)
+                except GovernanceError as exc:
+                    remote = f"push failed, remote state unknown: {exc}"
+                    push_failed = True
             elif names:
                 remote = f"not pushed: remote(s) {', '.join(sorted(names))} still hold the purged history"
             else:
@@ -4799,6 +4834,7 @@ def _purge_locked(
             remote=remote,
             notes=tuple(notes),
             taken_paths=tuple(sorted(taken)),
+            push_failed=push_failed,
         )
         _audit_purge(
             sp.root,

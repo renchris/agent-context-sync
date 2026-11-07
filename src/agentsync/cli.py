@@ -4086,7 +4086,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
                 else ""
             )
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
-        return EXIT_OK if all(r.verified or r.not_run for r in reports) and not stuck else EXIT_FAILED
+        passed = all((r.verified and not r.push_failed) or r.not_run for r in reports)
+        return EXIT_OK if passed and not stuck else EXIT_FAILED
     if not args.selector:
         _err("purge: SELECTOR (id=<stable_id> | path=<glob> | docs=<glob>) or --queue is required")
         return EXIT_USAGE
@@ -4102,6 +4103,15 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     if rep.dry_run:  # a guess at a lost queued purge's selector is checked before it runs (C312)
         for line in governance.lost_queue_preview(config.state_paths.root, selector, rep):
             _out(f"  lost from the queue: {line}")
+    # inspect, never a blind retry: the lease may refuse a second push if the first landed
+    if rep.push_failed:
+        _err(f"error: the local purge is done and recorded, but {rep.remote}")
+        repo = doctor._shell_path(expand(config.docs_repo))
+        _err(
+            f"inspect: compare the remote with the rewritten history: git -C {repo} ls-remote origin "
+            "(a second push may be refused if the first one landed)"
+        )
+        return EXIT_FAILED
     return EXIT_OK if rep.dry_run or rep.verified else EXIT_FAILED
 
 

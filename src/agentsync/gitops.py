@@ -27,6 +27,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agentsync import fsutil
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange
 from agentsync.ops import deadline
@@ -294,9 +295,7 @@ def _write_info_exclude(repo: Path) -> bool:
     if path.is_symlink():
         path.unlink()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.agentsync-tmp")
-    tmp.write_text(_INFO_EXCLUDE, encoding="utf-8")
-    tmp.replace(path)
+    fsutil.atomic_write(path, _INFO_EXCLUDE)
     log.info("wrote agentsync's info/exclude in %s", repo)
     return True
 

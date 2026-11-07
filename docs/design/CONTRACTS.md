@@ -3925,7 +3925,12 @@ def signals() -> Iterator[None]: ...
 
 ### `agentsync.fsutil` — `src/agentsync/fsutil.py` — owner: **CLI conventions (§16.300)**
 
-Reserved for the one atomic-write helper (`docs/plans/cli-conventions.md` B-2).
+The one atomic-write helper (`docs/plans/cli-conventions.md` B-2; §16.300.3).
+
+`atomic_write(path: Path, data: str | bytes, *, mode: int | None = None) -> None`: a `mkstemp` temp beside the target
+(`.<name>.<random>.tmp`, O_EXCL, 0600), written, flushed and fsynced, set to `mode` (None: the target's current bits, or
+0600 for a new file), renamed over the target. Any failure, `BaseException` included, removes the temp and leaves the
+old file as it was. A `str` is written as UTF-8. The target's folder must exist; the caller makes it. Raises `OSError`.
 
 ## 16. Amendments — C15 corporate-controls hardening (2026-09-29, integrator)
 
@@ -4602,6 +4607,7 @@ class PurgeReport:
     paths_left: tuple[str, ...] = ()
     taken_paths: tuple[str, ...] = ()
     not_run: str = ''
+    push_failed: bool = False
     @property
     def verified(self) -> bool:
         """True when this was a real run and nothing targeted remains readable in the repo."""
@@ -39987,7 +39993,27 @@ name; its help and `offboard`'s say "delete", and their receipts keep "removed".
 
 #### 16.300.3 U-B2: atomic writes, the holds lock, a failed purge push
 
-Reserved.
+**One atomic write.** `skill._write_if_changed`, `gitops._write_info_exclude`, `governance._scrub_file` and
+`curate._atomic_write` write through `fsutil.atomic_write`, so no writer has a fixed temp name that a link already there
+could send somewhere else. `.agentsync-tmp` and `.scrub.tmp` are gone. A scrubbed page keeps its mode. `curate` still
+keeps only the owner bits. A SKILL.md or `info/exclude` that is new is 0600 instead of the umask's, and one that exists
+keeps its bits. `config._replace_config` already used `mkstemp` and stays.
+
+**The holds lock.** `governance._holds_lock` is a blocking flock on the `governance/` folder around holds.json's read,
+change, audit line and replace in `set_hold` and `release_hold`, so parallel holds keep every hold and an audit line's
+order is the hold list's. It is a different inode from `_record_lock`'s flock on the state folder, and never the
+`SingleWriterLock`: no hold is refused while a sync runs. `record_holds` runs after the lock is released and reads the
+list again. A folder that cannot be made or opened takes no lock, and the read or the write says why, in the same
+words as before. A release with nothing to release leaves a missing `governance/` missing.
+
+**A failed `purge --push`.** `purge` catches the `GovernanceError` of `push_rewritten`. `PurgeReport.push_failed` is True
+and `PurgeReport.remote` reads `push failed, remote state unknown: <git's error>`. The suppressions, the audit lines and
+the report still happen, because the local erasure is already done and the next sync must not bring the content back.
+There is no retry: `--force-with-lease` carries the old values, so a second push cannot overwrite newer work, but it may
+also be refused if the first push landed. `verified` still speaks only of the local repo, and `push_rewritten`'s own
+return values do not change. `agentsync purge --push` exits 1 on a failed push, the same code as before, with an
+`error:` line holding `remote state unknown` and an inspect line naming `git -C <repo> ls-remote origin`, never "retry".
+`purge --queue` also exits 1 on a report with `push_failed`, though the queue passes no push today.
 
 #### 16.300.4 U-B3: sanitizing at the source modules
 

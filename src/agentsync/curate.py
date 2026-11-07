@@ -22,7 +22,6 @@ import posixpath
 import re
 import shutil
 import stat
-import tempfile
 import unicodedata
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -31,7 +30,7 @@ from typing import Any
 
 import yaml
 
-from agentsync import gitops, slug
+from agentsync import fsutil, gitops, slug
 from agentsync.errors import CurateError, GitError
 from agentsync.frontmatter import FrontmatterError, parse_frontmatter, split_frontmatter
 from agentsync.manifest import DependsRow
@@ -926,18 +925,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
     except FileNotFoundError:
         mode = 0o600
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
-        tmp.chmod(mode)
-        tmp.replace(path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    fsutil.atomic_write(path, data, mode=mode)
 
 
 def _write_if_changed(path: Path, data: bytes) -> bool:

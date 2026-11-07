@@ -19,6 +19,7 @@ import logging
 import os
 from pathlib import Path
 
+from agentsync import fsutil
 from agentsync.paths import expand, is_temporary
 
 log = logging.getLogger(__name__)
@@ -255,9 +256,7 @@ def _write_if_changed(path: Path, text: str) -> bool:
     if path.is_file() and path.read_text(encoding="utf-8") == text:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.agentsync-tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    fsutil.atomic_write(path, text)
     return True
 
 
