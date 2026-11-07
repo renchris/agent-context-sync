@@ -3886,7 +3886,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 ### `agentsync.clio` — `src/agentsync/clio.py` — owner: **CLI conventions (§16.300)**
 
-The shared stream, mode and signal layer (`docs/plans/cli-conventions.md` §2; rules in §16.300.1). The only module that
+The shared stream, mode, JSON, consent and signal layer (`docs/plans/cli-conventions.md` §2; rules in §16.300.1). The only module that
 calls `isatty`. Nothing in `src` imports it yet; the plan's wave B moves the callers.
 
 ```python
@@ -3897,6 +3897,20 @@ def table(header: Sequence[str], rows: Iterable[Sequence[str]], *, to: Callable[
 def stdout_is_tty() -> bool: ...
 def interactive() -> bool: ...
 def recovery(instruction: str, command: str) -> None: ...
+def set_json(on: bool) -> None: ...
+def json_mode() -> bool: ...
+def emit(doc: Mapping[str, object]) -> None: ...
+class Reason(enum.StrEnum):  # usage, config_invalid, lock_held, login_required, sign_in_blocked, sign_in_failed,
+    ...                      # state_unreadable, state_misplaced, state_refused, governance_unreadable, manifest_schema,
+                             # confirmation_required, failed, internal_error, canceled, api_error, rate_limited,
+                             # network_policy
+def error_doc(reason: Reason, message: str, *, status: str = "error", next: Sequence[Mapping[str, object]] = (),
+              data: Mapping[str, object] | None = None, user_action_required: bool = False,
+              retryable: bool | None = None, retry_after: float | None = None, request_id: str | None = None,
+              warnings: Sequence[Mapping[str, str]] = ()) -> None: ...
+def confirm(*, tier: str, effects: Sequence[str], name: str | None, argv: Sequence[str], consequence: str,
+            yes: bool, noun: str = "target") -> bool: ...
+def bug_report(exc: BaseException, command: str | None, *, version: str, issues_url: str) -> None: ...
 class Terminated(KeyboardInterrupt):  # .signum: int
     ...
 @contextlib.contextmanager
@@ -39039,6 +39053,38 @@ CLI module.
 - `agentsync.text.safe_text(s, *, cell=False)` removes CSI sequences and terminated OSC sequences whole (7-bit and 8-bit forms), shows
   a newline as the two characters `\n` (and, with `cell=True`, a tab as `\t`), then removes `UNPRINTABLE_RE` matches and
   category `Cf` characters. So without `cell=True` a tab is removed, and an unterminated OSC loses only its introducer.
+
+U-A1b adds the JSON documents, the consent helper and the bug report to `agentsync.clio`. No caller changes, and nothing in
+`src` calls them yet.
+
+**JSON mode.** `clio.set_json(on)` sets it for the process and `clio.json_mode()` reads it. While it is on, `result`, `say`
+and `table` (even with a `to` of the caller's) write nothing.
+- `clio.emit(doc)` writes one document to stdout, with the closed-stdout rule of `result`: indented by two when
+  `stdout_is_tty()` is True, one compact line otherwise. It writes in either mode. Non-ASCII is escaped.
+- `clio.error_doc(reason, message, ...)` writes exactly one compact line to stderr in JSON mode and nothing otherwise, after
+  flushing stdout. A caller writes it last. `status`, `reason` and `message` are always present. `next`, `data`, `warnings`,
+  `userActionRequired` (only `true`), `retryable`, `retryAfter` and `requestId` appear only when set; `retryable` false
+  counts as set. `status` is `action_required` when the run was blocked before any effect. A `next` step is
+  `{"command", "argv", "when"?}`.
+- `clio.Reason` holds every value of the `reason` key. That key never comes from `exc.reason` in `errors.py`, which holds
+  strerror words; a typed-error attribute added later is named `code`.
+
+**Consent.** `clio.confirm(*, tier, effects, name, argv, consequence, yes, noun="target")` returns True on `yes`, with no
+output. Otherwise each effect and then `consequence` go to stderr through `say`.
+- With `json_mode()` True or `interactive()` False, it reads no byte of stdin and returns False. JSON mode gets one
+  `confirmation_required` document: `status` `action_required`, `userActionRequired` true, `data.effects`, and one `next`
+  step of `argv` with `when` reading `Only after a human approves: <consequence>`. Human mode gets one line starting
+  `error: confirmation_required:` and `recovery` naming the same command.
+- Otherwise the prompt goes to stderr and one line of stdin answers. Tier `destructive` asks `Continue? (y/N) `, where only
+  `y` or `yes` in any case is True. Any other tier asks `To confirm, type the <noun> name "<name>": ` and needs the exact
+  name; a wrong one returns False and names the expected one. End of input answers no. Such a tier with a `name` of None
+  raises `ValueError`, even under `yes`.
+
+**Bug report.** `clio.bug_report(exc, command, *, version, issues_url)` writes four lines through `say`, so nothing in JSON
+mode: `error: Unexpected error in agentsync <cmd>. This is a bug in agentsync.`, `  Error: <Type> at <module>:<line>` for the
+innermost agentsync frame (no location when there is none), `  Version: agentsync <v>, Python <x.y.z>, macOS <ver>` (the
+system's name off macOS) and `  Report: <issues_url>/issues/new`. No `str(exc)`, path or argv. `clio` imports nothing heavy,
+so it does not import `it_request`; a caller passes `it_request.REPO_URL` as `issues_url`.
 
 #### 16.300.2 U-B1a: parser and validation
 
