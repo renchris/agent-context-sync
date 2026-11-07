@@ -2395,6 +2395,11 @@ rebase; D36 must be decided before U-B5 fires, and D15 before U-B12.
 
 ### Needs decision (round 2)
 
+Rulings (2026-11-07):
+
+- D14 = Option B. install.sh stdout stays byte for byte; machines use `--json` (U-B12). C-14a is not built. The exceptions
+  row stays U-C13's job (R016/R173/R177/R006).
+
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
 callers' contract. The Default column is a recommendation, not a decision. It follows the verifier's verdict where the verdict gave one (D32, D34,
