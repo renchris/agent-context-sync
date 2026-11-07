@@ -2420,6 +2420,8 @@ Rulings (2026-11-07):
 - D29 = Option B. U-C11 re-points the test at tests/test_install_oneshot.py (`test_doctors_persons_fix_words_are_install_shs`) to the
   file header, keeps the wording check, and drops the persons sentence from the short help, reversing V53's promise that `--help`
   prints it.
+- D31 = Option B (B-8.4). An optional helper that does not build keeps exit 0, with a warning. U-B8 builds it (in progress when this
+  was written).
 
 These are the conflicts where a generalized rule meets a repo contract or a caller. Until the operator decides, **the repo rule and
 caller compatibility win, and the guideline rule stays recorded**, never dropped (U-C13). Option A follows the rule. Option B keeps the repo's or
