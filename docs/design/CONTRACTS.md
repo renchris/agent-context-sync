@@ -9792,7 +9792,10 @@ tighten_setup_tree DIR   # scripts/install.sh
   usage error, a run stopped by a signal. And in `--log-start` and `--log` (`friction_append`, where the
   folder was already set to 0700). `--help`, `--version` and a command line that does not parse touch
   nothing, as before.
-- **Quiet.** It prints nothing and cannot fail a run: every error is ignored.
+- **Quiet unless it failed.** It cannot fail a run: every error is ignored, and the walk prints nothing. At the end
+  of a run `warn_setup_tree_open` reads the folder again and, only when an entry is still open to group or other,
+  warns once, with no `next:`, `run:` or `(fix:`. A re-read, so a file removed during the walk raises nothing.
+  `--log-start` and `--log` stay silent.
 - `tighten_setup_modes` is unchanged and still runs at every log write. The walk is not in it: a run writes
   about ten log lines, and the walk is needed once, at the end.
 
@@ -9808,7 +9811,7 @@ output to `install.out`; the same after `--report-only`, whose bring-back file s
 after `--list-folders`, `--log-start`, `--log` and a usage error; a link in the folder to a file and to a
 folder outside it, and the setup folder itself as a link: nothing changed where they point; a setup log
 somewhere else: a file and a folder beside it keep their modes; a dry run of `--report-only` and of `--log`:
-no mode changed).
+no mode changed; a file the walk cannot change: one warning, the exit status unchanged, and none once it can).
 
 #### A job names its interpreter as the launcher pins it (amends §16.12 and §16.28; `agentsync.ops.launchd`, `agentsync.ops.doctor`, `agentsync.setup_report`)
 

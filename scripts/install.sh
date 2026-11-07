@@ -342,6 +342,14 @@ tighten_setup_tree() { # DIR
 	/usr/bin/find "$1" -mindepth 1 \( -type f -o -type d \) -user "$EUID" -perm +077 \
 		-exec chmod go-rwx {} + 2>/dev/null || true
 }
+# tighten_setup_tree ignores every error, so nothing else says when the owner-only promise was not kept. The end
+# of a run reads the folder again and warns once, only for what is still open: a re-read, not find's exit code,
+# so a file removed during the walk raises nothing. It cannot fail a run. The logging calls stay silent.
+warn_setup_tree_open() { # DIR
+	[ "$1" = "$HOME/agent-context/setup" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] || return 0
+	[ -n "$(/usr/bin/find "$1" \( -type f -o -type d \) -user "$EUID" -perm +077 -print -quit 2>/dev/null)" ] || return 0
+	warn "some of $1 could not be made owner-only; group or other can still reach it"
+}
 # Append TEXT (whole lines) to the friction log: its directory 0700 when this creates it (or it is the default
 # ~/agent-context/setup, whose contents are then made owner-only too), the file 0600; a file that does not
 # end in a newline gets one first.
@@ -7804,7 +7812,10 @@ on_exit() {
 	finish_setup_log "$rc"
 	# Last, so it also covers what this run wrote and what the agent wrote before it: --report-only is the
 	# prompt's last command and comes right after the agent's last write to fix-request.md.
-	[ "$DRY_RUN" -eq 1 ] || tighten_setup_tree "$SETUP_DIR"
+	[ "$DRY_RUN" -eq 1 ] || {
+		tighten_setup_tree "$SETUP_DIR"
+		warn_setup_tree_open "$SETUP_DIR"
+	}
 	[ -z "$DOCTOR_LOG" ] || rm -f "$DOCTOR_LOG"
 	[ -z "$SYNC_OUT" ] || rm -f "$SYNC_OUT"
 	[ -z "$LOOP_OUT" ] || rm -f "$LOOP_OUT"

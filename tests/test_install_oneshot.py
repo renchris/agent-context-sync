@@ -16839,6 +16839,29 @@ def test_every_run_leaves_what_the_agent_wrote_in_the_setup_folder_owner_only(
         assert "~~~~~~~~~~diff\n- a made-up request\n~~~~~~~~~~" in text.split("## 3. Local work", 1)[1]
 
 
+def test_a_setup_file_the_walk_cannot_tighten_warns_once_and_keeps_the_exit(env: dict[str, str]) -> None:
+    """Every error of the walk is ignored, so nothing else says the owner-only promise was not kept. A file
+    marked immutable keeps its mode: the run ends as it would have, with one warning, and none once it can."""
+    stuck = friction_path(env).parent / "unplanned.txt"
+    stuck.parent.mkdir(parents=True, exist_ok=True)
+    stuck.write_text("a made-up note\n")
+    stuck.chmod(0o644)
+    subprocess.run(["/usr/bin/chflags", "uchg", str(stuck)], check=True)
+    try:
+        cp = install_sh(env, "--report-only")
+        assert stat.S_IMODE(stuck.stat().st_mode) == 0o644, "the flag kept the mode: the case is real"
+    finally:
+        subprocess.run(["/usr/bin/chflags", "nouchg", str(stuck)], check=True)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    warned = [ln for ln in cp.stderr.splitlines() if "could not be made owner-only" in ln]
+    assert len(warned) == 1 and warned[0].startswith("warning: "), cp.stderr
+    assert "next:" not in warned[0] and "run:" not in warned[0] and "(fix:" not in warned[0], warned
+    assert "could not be made owner-only" not in cp.stdout, "NEXT stays stdout's last line"
+    again = install_sh(env, "--report-only")
+    assert "could not be made owner-only" not in again.stderr, "the walk could change it this time"
+    assert stat.S_IMODE(stuck.stat().st_mode) == 0o600
+
+
 def test_the_setup_folder_walk_follows_no_symlink_out_of_it(env: dict[str, str], tmp_path: Path) -> None:
     """Only regular files and folders inside the setup folder change: a link in it to a file or a folder
     somewhere else leaves that file, that folder and what is in it as they were."""
