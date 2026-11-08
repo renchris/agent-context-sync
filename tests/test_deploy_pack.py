@@ -439,6 +439,21 @@ def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() ->
     )
     assert "(`echo '====='`, never `echo =====` or `[ a == b ]`)" in note
     assert "The diff and shasum checks above end in the checker, so their `$?` is right as written" in note
+    # B13 round 36 C1113: a zsh expansion flag set off the removal check though the command held no rm
+    flags = note.split("Tools CI lacks", 1)[0]
+    assert (
+        'Never use zsh parameter-expansion flags in the Bash tool, such as `${(f)"$(...)"}` or any'
+        " `${(...)...}`: Claude Code's removal check refuses them as `could not be checked for dangerous rm"
+        " operations`, even with no rm (round 36 C1113)."
+    ) in flags
+    assert "Build any file list inside a kit script (/bin/bash) and run that script by path." in flags
+    assert "Do not use other zsh-only forms such as `${=var}` either" in flags
+    assert "`${=var}` is refused" not in flags, "it ran in a direct test: never claimed as refused"
+    assert (
+        "zsh does not split an unquoted `$var`, so never pass a list to a script as one unquoted variable"
+        in flags
+    )
+    assert "a refused command is still not reworded but recorded as a finding." in flags
     assert "manifest.sha256 | shasum -a 256 -c -)" in lanes and "| diff - dirs.txt" in lanes
 
 

@@ -1294,7 +1294,13 @@ not agentsync's. The Bash tool's shell here is zsh, while sb and the kit scripts
 to a file and read `$?` straight after: `sb '<cmd>' > logs/x.log 2>&1; rc=$?; echo "rc=$rc"` (not `status=`, which
 zsh holds read-only). Quote any word that starts with `=` (`echo '====='`, never `echo =====` or `[ a == b ]`): zsh
 reads it as a command name, stops with `= not found`, and skips the rest of the command. The diff and shasum checks
-above end in the checker, so their `$?` is right as written (round 35 C907).
+above end in the checker, so their `$?` is right as written (round 35 C907). Build any file list inside a kit script
+(/bin/bash) and run that script by path. Never use zsh parameter-expansion flags in the Bash tool, such as
+`${(f)"$(...)"}` or any `${(...)...}`: Claude Code's removal check refuses them as `could not be checked for dangerous
+rm operations`, even with no rm (round 36 C1113). Do not use other zsh-only forms such as `${=var}` either; sb and the
+kit scripts read them differently. zsh does not split an unquoted `$var`, so never pass a list to a script as one
+unquoted variable: let the script build the list itself, or pass one argument per file. This is what to do first, not
+a way around a refusal: a refused command is still not reworded but recorded as a finding.
 
 Tools CI lacks (round 18): lane RB's census test passed here only because this Mac has gitleaks; CI does not, and
 its land turned trunk red for 90 minutes. A test that reads a tool's output (gitleaks, pandoc, swift, tesseract)

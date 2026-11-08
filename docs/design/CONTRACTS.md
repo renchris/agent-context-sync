@@ -39713,6 +39713,16 @@ the 21-minute wait, and ci.yml's note adds the round with 80's 20:17 margin; the
 is still the slowest) and `timeout-minutes: 80` stay. The four later runs (7c4f775e to b76ce5f2) belong to the next
 round's entry. Test: `test_claude_md_gives_cis_time_and_its_limit`.
 
+**The kit note says no zsh expansion flag in the Bash tool** (C1113, the repo half; docs only; `docs/lanes/COMMON.md`'s
+rehearsal-kit note, before `Tools CI lacks`). A rehearsal's `for f in ${(f)"$(cat <list>)"}` held no rm, and Claude
+Code's removal check refused it (`could not be checked for dangerous rm operations`); the same command without the
+`(f)` flag ran, so the flag alone sets the check off, while `${=var}` ran in a direct test and is not claimed as
+refused. The note now says to build any file list inside a kit script (/bin/bash) run by path, never to use a zsh
+parameter-expansion flag (`${(f)"$(...)"}` or any `${(...)...}`) or another zsh-only form such as `${=var}` in the Bash
+tool, and, since zsh does not split an unquoted `$var`, never to pass a list to a script as one unquoted variable; a
+refused command is still not reworded but recorded. The generated brief's half is the lead's. Test:
+`test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
