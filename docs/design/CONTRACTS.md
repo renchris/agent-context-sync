@@ -38460,11 +38460,15 @@ governance folder is missing $GONE_WHAT` already parses and stands, and the phra
 run during this attempt` and `no install.sh run with a first-sync step (install.log)`, so a stopped copy kept them
 beside this attempt's own install.sh --log-start error. Three rules after the prompt line's, gated on `cp` (a stopped
 copy; step 1 mode reads both forms itself), write `no install run`, `- install.sh: no install run during this attempt`
-and, only beside that line (`norun`), `no install run during this attempt (install.log)`, as the renderer does now. Its
-`this attempt ran none` is the renderer's own and stays. Tests:
+and, only beside that line (`norun`), `no install run during this attempt (install.log)`, as the renderer does now;
+two more sites take `this attempt made no install run` for that renderer's `this attempt ran no install.sh`: the
+Summary's Loop bracket, plain or with its damage clause after, and the Installer details summary in every form it
+wrote. Its `this attempt ran none` is the renderer's own and stays. Tests:
 `test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c910` (the three old lines, the current
 ones passing as they are, and a first sync line with no no-run line beside it kept) and
 `test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
+
+Amended 2026-11-08, §16.236 C1107: the rules missed that renderer's `this attempt ran no install.sh` in the Loop bracket and the Installer details summary, so one copy said both; those two sites now take `this attempt made no install run` (B13 round 36 ruling 115).
 
 **A cut stopped copy an older build rendered gives no advice to send it** (C916; `scripts/install.sh`). A renderer
 before B13 round 33 C718 (c93fcd96, ed901cd3) gives a cut report the advice `write the report again when this Mac is
@@ -39169,6 +39173,18 @@ before ...`, since the old line holds no seconds and cannot tell a time-out from
 what report_time_helps greps (it reads the live report, never the copy, and these words match none of its time
 alternates). Test: `test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c916` (the three lines,
 no `exited 124`, no `within` or `time limit` in them).
+
+**A stopped copy says this attempt made no install run at every site** (C1107; ruling 115; amends §16.231 C910;
+`scripts/install.sh`). C910 gave an older renderer's outcome bracket, install.sh line and first sync line the current
+no-run words, but left that renderer's `this attempt ran no install.sh` in the Summary's Loop bracket (`(status when
+this report was written; ...)` and `(the loop's own read when this report was written; ...; <damage>)`) and in the
+Installer details summary (`earlier attempts' install.sh output: ...`, with or without its own left-out count), so one
+stopped copy said both. Two more rules under `cp` splice `this attempt made no install run` in by index, never by a
+`; ...)` anchor, which misses the summary's form and the damage form: in the `FNR == at` block before the left-out
+append, and on the Loop line beside the C910 rules. `none of this attempt's runs is in it` and `this attempt ran only
+install.sh --list-folders` stay. Test: `test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c910`
+(both Loop forms, the summary with and without its count, `ran no install.sh` nowhere, the current words byte for
+byte, and the two other forms kept).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 

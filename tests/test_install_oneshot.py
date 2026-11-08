@@ -19655,6 +19655,59 @@ def test_a_stopped_copy_an_older_build_rendered_takes_the_no_install_run_words_c
     # an attempt that ran install.sh keeps its first sync line: the rule needs the no-run line beside it
     lines = _stopped_copy_of(env, tmp_path, "\n".join([*head, old[2], ""])).splitlines()
     assert old[2] in lines, lines
+    # B13 round 36 C1107: the Loop line's bracket, plain and with its damage clause, and the Installer details
+    # summary in its "earlier attempts'" form, with and without its own left-out count, take the same words
+    loop = [
+        "- Loop: installed; NEXT: ok (status when this report was written; this attempt ran no install.sh)",
+        "- Loop: installed; NEXT: ok (the loop's own read when this report was written; this attempt ran no "
+        "install.sh; 2 evidence lines are damaged)",
+    ]
+    out = "the last 60 lines of ~/agent-context/setup/install.out (earlier attempts' install.sh output: "
+    for tail in (")", "; 2 of them left out: the bring-back and issue link lines)"):
+        summary = f"<details><summary>{out}this attempt ran no install.sh{tail}</summary>"
+        report = [
+            *head,
+            *old,
+            *loop,
+            "",
+            "## Installer",
+            "",
+            summary,
+            "",
+            "~~~",
+            "x",
+            "~~~",
+            "</details>",
+            "",
+        ]
+        lines = _stopped_copy_of(env, tmp_path, "\n".join(report)).splitlines()
+        assert f"<details><summary>{out}this attempt made no install run{tail}</summary>" in lines, lines
+        made = [ln.replace("ran no install.sh", "made no install run") for ln in loop]
+        assert all(ln in lines for ln in made) and made[1].endswith("; 2 evidence lines are damaged)"), lines
+        assert not [ln for ln in lines if "ran no install.sh" in ln], lines
+    # the current words pass byte for byte, and the renderer's other no-run words stay
+    now = [
+        *head,
+        "- Loop: installed; NEXT: ok (status when this report was written; this attempt made no install run)",
+        "",
+        "## Installer",
+        "",
+        f"<details><summary>{out}this attempt made no install run)</summary>",
+        "",
+        "~~~",
+        "x",
+        "~~~",
+        "</details>",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(now)).splitlines()
+    assert all(ln in lines for ln in now if ln), lines
+    for kept in ("none of this attempt's runs is in it", "this attempt ran only install.sh --list-folders"):
+        summary = f"<details><summary>{out}{kept})</summary>"
+        lines = _stopped_copy_of(
+            env, tmp_path, "\n".join([*head, "", "## Installer", "", summary, "</details>", ""])
+        )
+        assert summary in lines.splitlines(), lines
 
 
 _IDLE_SEND_TAIL = (

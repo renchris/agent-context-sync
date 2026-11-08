@@ -7242,6 +7242,8 @@ older_report_rewrite() { # MODE
 		FNR == 1 && s1out && s1fr && mvline != "" && !afother { s1mv = 1; if (s1item == "") s1item = mvline }
 		FNR == 1 && s1row != "" { s1what = row_what(s1row); if (s1mv) s1item = cut_item(s1item) }
 		cp && FNR == at {
+			# an older renderer\047s own no-run words in its summary, in every form it wrote them (B13 round 36 C1107)
+			if ((j = index($0, ": this attempt ran no install.sh"))) $0 = substr($0, 1, j + 1) "this attempt made no install run" substr($0, j + 32)
 			n = length($0) - length(saw)
 			if (noout && n > 0 && substr($0, n + 1) == saw)
 				$0 = substr($0, 1, n) was (norun ? "this attempt made no install run" : "none of this attempt\047s runs is in it") ")</summary>"
@@ -7267,6 +7269,8 @@ older_report_rewrite() { # MODE
 		# C910)
 		cp && sec == "## Summary" && index($0, "- **outcome: ") == 1 && (j = index($0, "(computed: no install.sh run")) { $0 = substr($0, 1, j + 20) substr($0, j + 24) }
 		cp && sec == "## Summary" && index($0, "- install.sh: no run during this attempt") == 1 { $0 = "- install.sh: no install run during this attempt" substr($0, 41) }
+		# and the Loop line\047s bracket, plain or with its damage clause after (B13 round 36 C1107)
+		cp && sec == "## Summary" && index($0, "- Loop: ") == 1 && (j = index($0, " when this report was written; this attempt ran no install.sh")) { $0 = substr($0, 1, j + 30) "this attempt made no install run" substr($0, j + 61) }
 		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ { j = nofs_at($0); $0 = substr($0, 1, j - 1) "no install run during this attempt (install.log)" substr($0, j + NOFS) }
 		# a cut report an older renderer wrote (C916): no advice to send a stopped copy, only on the lines that give
 		# it (never Items or the friction log, which quote an agent), and a read at exit 124 not measured, in words
