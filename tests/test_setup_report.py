@@ -2379,6 +2379,30 @@ def test_a_page_hold_cuts_no_fixed_line_of_a_built_report(fake_mac: dict[str, Pa
     assert "Private only: a hold's" in text and setup_report.issue_link(text) is None
 
 
+def test_a_public_report_holds_one_issue_link_its_last_line_c1112(fake_mac: dict[str, Path]) -> None:
+    """B13 round 36 C1112: install.out keeps every run's `issue link (review the report first): <url>` line,
+    and the Installer section quoted it, so a report written after a fully-one-command run and a failed step 1
+    held that run's prefilled `Fully one command` link above its own. The quoted line is one fixed line with
+    no URL, one line for one line, so the report holds one issues/new link, its last line."""
+    title = "&title=Setup%20report%3A%20Fully%20one%20command"
+    old = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.ISSUE_URL}{title}"
+    write_install_log(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"{old}\nNEXT: stop: session done\n"
+        "# run=20260929T110000Z-4343 2026-09-29T11:00:00Z install.sh --list-folders\n"
+        "error: step 1 failed\n",
+        encoding="utf-8",
+    )
+    write_friction(fake_mac)
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    links = [ln for ln in text.splitlines() if "issues/new?" in ln]
+    assert len(links) == 1 and text.rstrip("\n").endswith(links[0]), links
+    assert setup_report.issue_link(text) == links[0]
+    installer = section(text, "Installer")
+    assert installer.count(f"\n{setup_report.EARLIER_LINK}\n") == 1 and old not in text, installer
+
+
 def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: dict[str, Path]) -> None:
     """B13 round 27 P104: a private-only report (a hold's one-word value it would print) still copied an
     earlier run's `issue link (review the report first): https://github.com/.../issues/new?...` line from
@@ -2409,14 +2433,20 @@ def test_a_private_only_report_shows_no_issue_link_install_out_holds(fake_mac: d
     redaction = text.split("\n## Redaction\n", 1)[1]
     assert "Private only: a hold's reason or owner is also a word this report prints" in redaction
     assert "Send it: privately (" in redaction and setup_report.issue_link(text) is None, redaction
-    # a public report copies the old link and its NEXT: as they are
+    # a public report copies its NEXT: as it is, and the old link as one fixed line with no URL (B13 round 36
+    # C1112): the report holds one issue link, its last line
     cfg.write_text(
         '[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "Avery Quill"\n\n' + plain
     )
     text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
     installer = section(text, "Installer")
-    assert f"\n{link}\n" in installer and f"\n{next_line}\n" in installer, installer
-    assert "Private only:" not in text and setup_report.issue_link(text) is not None
+    assert f"\n{setup_report.EARLIER_LINK}\n" in installer and f"\n{next_line}\n" in installer, installer
+    assert link not in text and text.count("issues/new?") == 1, [
+        ln for ln in text.splitlines() if "issues/" in ln
+    ]
+    assert (
+        "Private only:" not in text and setup_report.issue_link(text) == text.rstrip("\n").rsplit("\n", 1)[1]
+    )
 
 
 def test_a_two_letter_hold_value_the_report_prints_makes_it_private(fake_mac: dict[str, Path]) -> None:

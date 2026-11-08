@@ -20558,7 +20558,12 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     gone = "(earlier runs' bring-back and issue link lines are left out of this report)"
     lines = side.read_text().splitlines()
     assert lines.count(gone) == 1, side.read_text()
-    assert lines[lines.index(gone) + 1].startswith("NEXT: stop: "), (
+    # B13 round 36 C1112: the report quotes the earlier link as one fixed line with no URL, which the copy
+    # keeps; it invites nothing, so the line above the NEXT still does not say otherwise
+    assert lines[lines.index(gone) + 1 : lines.index(gone) + 2] == [setup_report.EARLIER_LINK], (
+        side.read_text()
+    )
+    assert lines[lines.index(gone) + 2].startswith("NEXT: stop: "), (
         "the earlier run's NEXT is kept, and the line above it does not say otherwise (B13 round 6 G14)"
     )
     head, fenced = _embed(side)
@@ -20572,9 +20577,10 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     assert real.returncode == 0 and not side.exists()
     text = report_path(real_env).read_text()
     assert "\nSend it: " in text and text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
-    assert "\nbring back: ~/agent-context/bring-back.md (one file:" in text and "&title=Contoso" in text, (
-        "a report that was not stopped still quotes both lines"
-    )
+    assert (
+        "\nbring back: ~/agent-context/bring-back.md (one file:" in text and "&title=Contoso" not in text
+    ), "a report that was not stopped still quotes both lines, the link as one fixed line (C1112)"
+    assert f"\n{setup_report.EARLIER_LINK}\n" in text
     assert gone not in text and "Read the report before sending it: a" in text
 
 

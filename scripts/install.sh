@@ -2386,6 +2386,7 @@ FIXED_VALUE_PHRASES+="|legal holds are kept, in governance/holds.json|so if the 
 FIXED_VALUE_PHRASES+="|the person checks with the records owner|or the records owner runs "
 FIXED_VALUE_PHRASES+="|once its records owner releases it|once its records owner releases them"
 FIXED_VALUE_PHRASES+="|its records owner's release comes first|issue link (review the report first)"
+FIXED_VALUE_PHRASES+="|issue link (an earlier run's, not shown: this report's own link is its last line)"
 FIXED_VALUE_PHRASES+="|cited by (review by hand): |IT action: review the agentsync app registration|exclude_label_ids"
 FIXED_VALUE_PHRASES+="|exclude_label_names|excluded label id|no label rules (encrypted Office/PDF files"
 FIXED_VALUE_PHRASES+="|- [policy] label rule: |a label rule is set|[policy] label rule is set"

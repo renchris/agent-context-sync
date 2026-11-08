@@ -31258,6 +31258,8 @@ is private only)` and cuts a copied `NEXT:`'s `, or paste the setup report into 
 `paste it`) (`_without_copied_links`). The label is matched, never a bare `issues/new`. No second recount: the
 counts stand as counted on the shown text, and a recount could clear `word_named_shown` and flip the verdict. A
 public report copies both lines as they are. Test: `test_a_private_only_report_shows_no_issue_link_install_out_holds`.
+Amended 2026-11-08, §16.235 C1112: a public report no longer copies the earlier link: each such line of the copy
+reads `issue link (an earlier run's, not shown: this report's own link is its last line)`, so its one link is its last.
 
 **The friction counts take their nouns' number** (P20; amends §16.14's K10 Summary lines with a dated line). The
 line read `- agent friction: 0 deviation, 0 prompt, 2 error (F8, F10)`, a fixed string, while every other count
@@ -39165,6 +39167,20 @@ elsewhere and an id the printed line keeps is lost, or one it drops is read) and
 redactor's text and skips the hold cut). Test:
 `tests/test_setup_report.py::test_the_error_lines_read_for_an_earlier_run_are_not_counted_twice_c1021` (the home
 count is 3 more with `quiet` replaced by a no-op).
+
+**A public report holds one issue link, its last line** (C1112; ruling 68; amends §16.188 P104;
+`src/agentsync/setup_report.py`, `scripts/install.sh`'s FIXED_VALUE_PHRASES). install.out keeps every run's `issue
+link (review the report first): <url>` line, and the Installer section quoted its last 60 lines as they are, so a
+report written after a fully-one-command run and a failed step 1 held that run's prefilled `Fully one command` link
+above its own. Each such line of the copy is now one fixed line with no URL, `EARLIER_LINK`, `issue link (an earlier
+run's, not shown: this report's own link is its last line)`, one line for one line, so the tail's count and run
+owners do not move; `issue_link()` and install.sh's reader read only the last line, as before. The phrase is in
+`_FIXED_VALUE_PHRASES` and install.sh's `FIXED_VALUE_PHRASES` (ruling 68); `_without_copied_links` matches it too,
+so a private-only report still says `not shown: this report is private only` once. install.sh's stopped copy drops
+only the lines holding the URL, so it now keeps that fixed line above the earlier NEXT, which invites nothing; its
+`left out` count is unchanged. Tests: `tests/test_setup_report.py::test_a_public_report_holds_one_issue_link_its_last_line_c1112`,
+`test_a_private_only_report_shows_no_issue_link_install_out_holds` (its public half),
+`tests/test_install_oneshot.py::test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 

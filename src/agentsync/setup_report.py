@@ -384,6 +384,9 @@ _TIME_LIMIT_MAX_S = 60.0
 _REPO_SLUG = "renchris/agent-context-sync"
 ISSUE_URL = f"https://github.com/{_REPO_SLUG}/issues/new?template=setup-report.yml"
 ISSUE_LINK_LABEL = "issue link (review the report first):"
+EARLIER_LINK = "issue link (an earlier run's, not shown: this report's own link is its last line)"
+"""An earlier run's issue link line as the Installer section's copy of install.out shows it: one fixed line
+for one line, with no URL, so a public report holds one issue link, its last line (B13 round 36 C1112)."""
 """What ``setup-report --out`` prints before the issue link, as its last stdout line."""
 ISSUE_TITLE = "Setup report: "
 """The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
@@ -1532,6 +1535,7 @@ _FIXED_VALUE_PHRASES = (
     "once its records owner releases them",
     "its records owner's release comes first",
     "issue link (review the report first)",
+    EARLIER_LINK,  # B13 round 36 C1112 (ruling 68)
     "cited by (review by hand): ",
     "IT action: review the agentsync app registration",
     "exclude_label_ids",
@@ -7304,7 +7308,12 @@ def _installer_output(r: _Run) -> list[str]:
             r.facts.first_sync_first_read = (converted, again, again)
         elif read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
-    shown = [_labelled(ln, r.install_runs) for ln in lines[-INSTALL_OUT_TAIL:]]
+    # B13 round 36 C1112: an earlier run's issue link is one fixed line with no URL, so the report's own,
+    # its last line, is the one link it holds
+    shown = [
+        EARLIER_LINK if ln.lstrip().startswith(ISSUE_LINK_LABEL) else _labelled(ln, r.install_runs)
+        for ln in lines[-INSTALL_OUT_TAIL:]
+    ]
     # An attempt that ran no install.sh (a stopped copy) saw none of these lines: say whose they are, as the
     # Summary's installer output line does (B13 round 5 F20)
     att = r.friction.latest if r.friction is not None else None
@@ -18570,7 +18579,7 @@ def _without_copied_links(main: str) -> str:
     this follows from."""
     return "\n".join(
         _LINK_NOT_SHOWN
-        if ln.lstrip().startswith(ISSUE_LINK_LABEL)
+        if ln.lstrip().startswith((ISSUE_LINK_LABEL, EARLIER_LINK))  # B13 round 36 C1112: either form
         else _LINK_ABOVE_RE.sub("", ln)
         if ln.lstrip().startswith("NEXT:")
         else ln
