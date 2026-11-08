@@ -19870,6 +19870,135 @@ def test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c
     assert lines[2 : 2 + len(current) - 1] == current[:-1], lines
 
 
+_SPENT = "the report's time budget is used up"
+_SPENT_LIMIT = "the report's time limit was used up before"
+_STATUS_SPENT = f"_This section failed: TimeoutError: {_SPENT}_"
+_HB_HELD = (
+    "[warn] heartbeat.<folder-1> \u2014 3 deletions waited for the next pass; deletions held (fix: run "
+    "~/.local/bin/agentsync status)"
+)
+
+
+def _spent_copy(renderer: str, status: str = _STATUS_SPENT) -> list[str]:
+    """A report whose budget ran out before status started, as c93fcd96 or ed901cd3 (``old``) or 4e0e8604
+    (``4e0e``) wrote it (the shapes of round 36's K-Hcut, K-Icut and K-Gcut copies, with made-up names)."""
+    xcode = (
+        "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)"
+        if renderer == "old"
+        else f"- Xcode Command Line Tools: not measured (xcode-select -p exited 124: skipped: {_SPENT})"
+    )
+    return [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        "- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)",
+        f"- doctor: 0 FAIL, 2 warn (54 checks) {_DOT} expected 1: logs warn {_DOT} unexpected 2: "
+        "heartbeat.<folder-1> warn, tcc warn",
+        "",
+        "## Environment",
+        "",
+        f"- macOS: sw_vers exited 124: skipped: {_SPENT}",
+        f"- MDM enrollment (`profiles status -type enrollment`): `profiles` exited 124: skipped: {_SPENT}",
+        xcode,
+        f"- uv: ~/.local/bin/uv --version exited 124: skipped: {_SPENT}",
+        "- pandoc: ~/.local/bin/pandoc --version exited 124: timed out after 3.0s",
+        "- secret scan: builtin patterns + gitleaks (version unknown) (~/.local/bin/gitleaks; shell and "
+        "background runs); last re-screen: never",
+        "",
+        "## Doctor",
+        "",
+        _HB_HELD,
+        "[warn] tcc \u2014 Full Disk Access not granted (fix: grant it)",
+        "",
+        "## Status",
+        "",
+        status,
+        "",
+    ]
+
+
+@pytest.mark.parametrize("renderer", ["old", "4e0e"])
+def test_a_stopped_copy_of_a_spent_budget_an_older_build_rendered_takes_todays_words_c1108(
+    env: dict[str, str], tmp_path: Path, renderer: str
+) -> None:
+    """B13 round 36 C1108 (ruling 115): a stopped copy whose budget ran out before status started, as a
+    renderer before C820 wrote it, kept `sw_vers exited 124: skipped: ...`, `_This section failed:
+    TimeoutError: ..._`, `gitleaks (version unknown) (...)`, `Loop: unknown (no status loop line)` and a
+    heartbeat warn that holds deletions under `unexpected`. Each takes the current renderer's words by an
+    exact string in its own section; only that Status line opens the Status, Loop, gitleaks and doctor
+    rules, so a current render and an uncut copy keep every line, and a `timed out after` line stays."""
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(_spent_copy(renderer))).splitlines()
+    spent = "not started: the report's time budget was used up"
+    want = [
+        f"- Loop: not read (status {spent}); NEXT: not read ({spent})",
+        f"- doctor: 0 FAIL, 2 warn (54 checks) {_DOT} expected 1: logs warn {_DOT} not judged (the Loop line "
+        f"was not read: its NEXT was {spent}) 1: heartbeat.<folder-1> warn {_DOT} unexpected 1: tcc warn",
+        f"- macOS: not measured ({_SPENT_LIMIT} sw_vers ran)",
+        f"- MDM enrollment (`profiles status -type enrollment`): not measured ({_SPENT_LIMIT} `profiles` "
+        "ran)",
+        f"- uv: not measured ({_SPENT_LIMIT} ~/.local/bin/uv --version ran)",
+        "- pandoc: ~/.local/bin/pandoc --version exited 124: timed out after 3.0s",
+        "- secret scan: builtin patterns + gitleaks (version unknown; ~/.local/bin/gitleaks; shell and "
+        "background runs); last re-screen: never",
+        "Not run: the report's time budget was used up before status started.",
+        "- Xcode Command Line Tools: "
+        + (
+            "not measured (xcode-select -p did not answer in time)"
+            if renderer == "old"
+            else f"not measured ({_SPENT_LIMIT} xcode-select -p ran)"
+        ),
+    ]
+    assert [w for w in want if w not in lines] == [], lines
+    for gone in ("skipped:", "TimeoutError", "no status loop line", "(version unknown) (", "unexpected 2"):
+        assert not [ln for ln in lines if gone in ln], (gone, lines)
+    assert _HB_HELD in lines, "the Doctor line itself is kept"
+
+
+def test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 36 C1108: the rules read exact strings, never the evidence line a current render shares, so a
+    copy the current renderer wrote is byte for byte as it was, and an uncut c93fcd96 copy (no Status
+    TimeoutError line) keeps its Loop, gitleaks, yours and unexpected parts."""
+    spent = "not started: the report's time budget was used up"
+    current = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        f"- Loop: not read (status {spent}); NEXT: not read ({spent})",
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} not judged (the Loop line was not read: its NEXT was "
+        f"{spent}) 1: heartbeat.<folder-1> warn {_DOT} unexpected 0",
+        "",
+        "## Environment",
+        "",
+        f"- macOS: not measured ({_SPENT_LIMIT} sw_vers ran)",
+        "- secret scan: builtin patterns + gitleaks, version not measured (the report's time limit was used "
+        "up before gitleaks version ran) (~/.local/bin/gitleaks; shell and background runs); last re-screen: "
+        "never",
+        "",
+        "## Doctor",
+        "",
+        _HB_HELD,
+        "",
+        "## Status",
+        "",
+        "Not run: the report's time budget was used up before status started.",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(current)).splitlines()
+    assert lines[2 : 2 + len(current) - 1] == current[:-1], lines
+    uncut = _spent_copy("old", status="- <folder-1>: 12 files, last walk ok")
+    uncut[5] = (
+        f"- doctor: 0 FAIL, 2 warn (54 checks) {_DOT} yours 1: heartbeat.<folder-1> (see WAITING ON YOU) "
+        f"{_DOT} unexpected 1: tcc warn"
+    )
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(uncut)).splitlines()
+    for kept in (uncut[4], uncut[5], uncut[15], uncut[14]):
+        assert kept in lines, (kept, lines)
+
+
 def test_the_shell_stopped_copy_idle_words_are_the_reports() -> None:
     """B13 round 35 C916: the advice the stopped-copy rewrite finds is setup_report._IDLE_AGAIN around its
     install.sh path, and what it writes in its place is _STOPPED_NOT_SENT."""

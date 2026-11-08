@@ -39186,6 +39186,29 @@ install.sh --list-folders` stay. Test: `test_a_stopped_copy_an_older_build_rende
 (both Loop forms, the summary with and without its count, `ran no install.sh` nowhere, the current words byte for
 byte, and the two other forms kept).
 
+**A stopped copy of a spent budget takes today's words by exact strings** (C1108; ruling 115; `scripts/install.sh`).
+A stopped copy a renderer before C820 wrote (c93fcd96, ed901cd3, 4e0e8604) of a report whose budget ran out before
+status started kept that renderer's words: `<cmd> exited 124: skipped: the report's time budget is used up` in
+Environment, `_This section failed: TimeoutError: the report's time budget is used up_` in Status, `gitleaks (version
+unknown) (...)`, `- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)`, and a heartbeat
+warn that holds deletions under the doctor line's `unexpected`, where its uncut copy says `yours`. Rules in
+older_report_rewrite, each under `cp && !det && !fence` and in its own section, rewrite exact strings only: an
+Environment probe the budget skipped (sw_vers, `profiles`, uv, and 4e0e8604's `not measured (xcode-select -p exited 124:
+skipped: ...)`) reads `not measured (the report's time limit was used up before <cmd> ran)`, the current _probe_ended
+form (`skipped:` means the program never ran; a `timed out after Ns` line stays); and only when pass 1 saw that exact
+Status line, Status reads `Not run: the report's time budget was used up before status started.`, the Loop line the
+current not-started form, gitleaks lane RA's one bracket (C1020: `gitleaks (version unknown; ...` and `gitleaks
+(version not measured, <words>; ...`, never a second bracket), and each `heartbeat.<id> warn` whose Doctor line says
+`deletions held` moves from `unexpected` into `not judged (the Loop line was not read: its NEXT was not started: the
+report's time budget was used up) k: ...` (C1109's words, a stopped copy's), before `unexpected`, its count fixed. Any
+other TimeoutError text and unexpected item stays. No head note keys on any of it (makes worse True for that form):
+the evidence line such a copy carries is byte for byte a current render's, so a note keyed on it would tell a current
+copy an older agentsync wrote it; stopped_report_note's trigger is unchanged. Tests:
+`test_a_stopped_copy_of_a_spent_budget_an_older_build_rendered_takes_todays_words_c1108` (c93fcd96 and 4e0e8604
+shapes: every line in today's words, a `timed out after` line and the Doctor line kept) and
+`test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108` (a current render byte for byte, and an uncut copy's
+Loop, gitleaks, `yours` and `unexpected` kept).
+
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
 Reserved for round 36 lane B of B13.

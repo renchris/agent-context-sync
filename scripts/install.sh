@@ -7209,6 +7209,50 @@ older_report_rewrite() { # MODE
 			}
 			return line
 		}
+		# A stopped copy of a report whose budget ran out before status started, as a renderer before B13 round 34
+		# C820 wrote it (c93fcd96, ed901cd3, 4e0e8604): its lines take the current renderer\047s words by exact
+		# strings, each in its own section (B13 round 36 C1108, ruling 115). No head note keys on them: the
+		# evidence line such a copy shares with a current render cannot tell the two apart. An Environment probe
+		# the budget skipped never ran, so it reads as _probe_ended words a spent budget
+		function env_spent(line,    i, rest, sfx) {
+			sfx = " exited 124: skipped: the report\047s time budget is used up"
+			if (line == "- Xcode Command Line Tools: not measured (xcode-select -p" sfx ")")
+				return "- Xcode Command Line Tools: not measured (the report\047s time limit was used up before xcode-select -p ran)"
+			if (index(line, "- ") != 1 || !(i = index(line, ": ")) || !ends(line, sfx)) return line
+			rest = substr(line, i + 2, length(line) - i - 1 - length(sfx))
+			if (rest == "" || index(rest, " exited ")) return line
+			return substr(line, 1, i + 1) "not measured (the report\047s time limit was used up before " rest " ran)"
+		}
+		# the secret scan\047s gitleaks words in lane RA\047s one bracket (C1020): never a second one after it
+		function gl_one(line,    i, j, r) {
+			if ((i = index(line, "gitleaks (version unknown) ("))) return substr(line, 1, i - 1) "gitleaks (version unknown; " substr(line, i + 28)
+			if (!(i = index(line, "gitleaks, version not measured ("))) return line
+			r = substr(line, i + 32)
+			if (!(j = index(r, ") ("))) return line
+			return substr(line, 1, i - 1) "gitleaks (version not measured, " substr(r, 1, j - 1) "; " substr(r, j + 3)
+		}
+		# the Summary doctor line\047s heartbeat warns whose Doctor line says deletions held, out of its unexpected
+		# list and into the current renderer\047s not-judged part for a Loop line never read, before unexpected (C1109\047s
+		# words, a stopped copy\047s: no idle tail), the counts fixed as stop_bucket fixes them
+		function hb_move(line,    k, p, i, j, a, m, items, moved, nm, out, put) {
+			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
+			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
+				m = split(substr(p[i], index(p[i], ": ") + 2), a, ", "); items = ""
+				for (j = 1; j <= m; j++) {
+					if (a[j] in hbk) moved = moved (nm++ ? ", " : "") a[j]
+					else items = items (items == "" ? "" : ", ") a[j]
+				}
+				p[i] = "unexpected " (substr(p[i], 12) - nm) (items == "" ? "" : ": " items)
+				break
+			}
+			if (!nm) return line
+			out = "- doctor: " p[1]; put = 0
+			for (i = 2; i <= k; i++) {
+				if (!put && p[i] ~ /^unexpected [0-9]+/) { out = out " \302\267 not judged (the Loop line was not read: its NEXT was not started: the report\047s time budget was used up) " nm ": " moved; put = 1 }
+				out = out " \302\267 " p[i]
+			}
+			return out
+		}
 		FNR == 1 { sec = "" }
 		NR == FNR {
 			if (index($0, "## ") == 1) sec = $0
@@ -7216,6 +7260,9 @@ older_report_rewrite() { # MODE
 			if (s1note != "" && sec == "## Doctor" && stopped_fail($0)) mv[stopped_fail($0)] = ++nmv
 			if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
 			if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
+			# a status the spent budget never started, and the heartbeat warns that hold deletions (C1108)
+			if (sec == "## Status" && $0 == "_This section failed: TimeoutError: the report\047s time budget is used up_") spentst = 1
+			if (sec == "## Doctor" && $0 ~ /^\[warn\] heartbeat\./ && index($0, "deletions held")) { split($0, hw, " "); hbk["heartbeat." substr(hw[2], 11) " warn"] = 1 }
 			# the jobs whose line is a cut read at exit 124, for the Summary line before it (C916)
 			if (cp && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && bg_cut(substr($0, RLENGTH + 1)) != "") {
 				bgj = substr($0, 3, RLENGTH - 4); sub(/^.*\./, "", bgj); bgcut[bgj] = 1
@@ -7282,6 +7329,12 @@ older_report_rewrite() { # MODE
 		cp && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
 			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print did not answer in time; plist " j ")"
 		}
+		cp && !det && !fence && sec == "## Environment" { $0 = env_spent($0) }
+		cp && spentst && !det && !fence && sec == "## Environment" && index($0, "- secret scan: ") == 1 { $0 = gl_one($0) }
+		cp && spentst && !det && !fence && sec == "## Status" && $0 == "_This section failed: TimeoutError: the report\047s time budget is used up_" { $0 = "Not run: the report\047s time budget was used up before status started." }
+		cp && spentst && !det && !fence && sec == "## Summary" && $0 == "- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)" {
+			$0 = "- Loop: not read (status not started: the report\047s time budget was used up); NEXT: not read (not started: the report\047s time budget was used up)"
+		}
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
 		!det && !fence && sec == "## Environment" && $0 == "- macOS: macOS" { $0 = "- macOS: ?" }
@@ -7322,6 +7375,7 @@ older_report_rewrite() { # MODE
 		}
 		c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0, cp ? w : w1) }
 		s1note != "" && sec == "## Summary" && index($0, "- doctor: ") == 1 && nmv { $0 = stop_bucket($0) }
+		cp && spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0) }
 		# the stop of step 1 (B13 round 16 T11): its cause, as a renderer from N31 on writes it, and the turns
 		# v10\047s "ran (step 1))" reads "ran, in step 1" since 92b5fd13 (B13 round 17 U81)
 		s1cause != "" && sec == "## Summary" && index($0, "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran") == 1 && !index($0, "; it stopped: ") && ends($0, ")") {
