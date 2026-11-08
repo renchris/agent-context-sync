@@ -444,6 +444,39 @@ def _dataclass_stubs(text: str) -> dict[tuple[str, str], list[str]]:
     return stubs
 
 
+def test_the_office_suffix_snapshots_say_policys_eleven_c1038() -> None:
+    """B13 round 36 C1038: §15's canonical stub still assigned six Office suffixes, though canonical has
+    imported policy's list since §16.54 Q76, and §16.6's policy snapshot listed nine with no note that §16.42
+    and §16.48 added `.vsdx` and `.vsdm`; §16.6's `Registry.default` chain stopped at `ocr`. §16 keeps
+    replaced text as history, so each old value stays and a dated note gives today's. Every literal constant
+    left in the canonical stub equals the module's, and each note's facts are read from the code."""
+    from agentsync import policy  # noqa: PLC0415
+    from agentsync.convert import canonical, registry  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    section = text.split("### `agentsync.convert.canonical`", 1)[1]
+    block = section.split("```python\n", 1)[1].split("\n```", 1)[0]
+    tree = ast.parse(block)
+    assert any(
+        isinstance(n, ast.ImportFrom)
+        and n.module == "agentsync.policy"
+        and n.names[0].name == "OOXML_SUFFIXES"
+        for n in tree.body
+    )
+    assert canonical.OOXML_SUFFIXES is policy.OOXML_SUFFIXES and len(policy.OOXML_SUFFIXES) == 11
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign | ast.Assign) and node.value is not None:
+            [target] = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+            assert isinstance(target, ast.Name)
+            assert ast.literal_eval(node.value) == getattr(canonical, target.id), target.id
+    flat = " ".join(text.split())
+    note = "# amended 2026-11-08, §16.239 C1038 (by §16.42 and §16.48): gains '.vsdx' and '.vsdm', 11 entries"
+    assert note in flat and {".vsdx", ".vsdm"} <= set(policy.OOXML_SUFFIXES)
+    params = ", ".join(f"{p}=None" for p in list(inspect.signature(registry.Registry.default).parameters)[1:])
+    assert params == "policy=None, ocr=None, media=None, pieces=None, speech=None"
+    assert f"§16.239 C1038 (by §16.34 and §16.35):** `Registry.default(cfg, *, {params})`" in flat
+
+
 def test_the_registry_stub_has_the_code_signatures() -> None:
     """B13 round 13 O55: §15's `Registry` stub still read `__init__(self, converters)`, `default(cls, cfg)`
     and eight converters, and had no `policy`, `without_ocr`, `without_speech`, `screen`,

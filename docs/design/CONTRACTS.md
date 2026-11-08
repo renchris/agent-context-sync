@@ -2468,7 +2468,9 @@ class ConverterCache:
 H1: canonical content hashes that ignore container noise (design 4.1 #2) (owner: convert).
 
 ```python
-OOXML_SUFFIXES: tuple[str, ...] = (".docx", ".docm", ".xlsx", ".xlsm", ".pptx", ".pptm")
+# SUPERSEDED (2026-10-12, §16.54 Q76; noted 2026-11-08, §16.239 C1038): OOXML_SUFFIXES: tuple[str, ...] = (".docx",
+# ".docm", ".xlsx", ".xlsm", ".pptx", ".pptm"); one list since Q76, policy's 11 suffixes
+from agentsync.policy import OOXML_SUFFIXES  # every Office package agentsync reads or labels
 
 VOLATILE_PARTS: tuple[str, ...] = (
     "docProps/*",
@@ -4321,7 +4323,9 @@ def suggest_source_id(scope: DiscoveredScope, taken: set[str]) -> str:
 - Stub reasons: `policy.ENCRYPTED_OFFICE_REASON`, `ENCRYPTED_PDF_REASON` (and the converter's
   `encrypted-pdf (password-protected)`), `EMPTY_OUTPUT_REASON`; refusals start with `REFUSED_PREFIX`.
 - Additive signatures: `Registry(converters, *, policy=None, banner=False)`, `Registry.default(cfg, *,
-  policy=None)` (**amended 2026-10-06, §16.26:** `Registry.default(cfg, *, policy=None, ocr=None)`),
+  policy=None)` (**amended 2026-10-06, §16.26:** `Registry.default(cfg, *, policy=None, ocr=None)`; **amended
+  2026-11-08, §16.239 C1038 (by §16.34 and §16.35):** `Registry.default(cfg, *, policy=None, ocr=None, media=None,
+  pieces=None, speech=None)`),
   `Registry.policy`, `Registry.screen(src, *, name)`; `Publisher(config, manifest, *, clock=None,
   content_policy=None)`, `Publisher.content_policy`, `Publisher.policy_refusal(item)`; `PlannedPage.refusal`.
 
@@ -4382,6 +4386,8 @@ MSIP_LABELS_HEADER = 'msip_labels'
 NEUTRAL_SUFFIX = '-doc'
 
 OOXML_SUFFIXES = ('.docx', '.docm', '.dotx', '.xlsx', '.xlsm', '.xltx', '.pptx', '.pptm', '.potx')
+# amended 2026-11-08, §16.239 C1038 (by §16.42 and §16.48): gains '.vsdx' and '.vsdm', 11 entries; policy.py is the
+# authority
 
 PDF_MAGIC = b'%PDF-'
 
@@ -39722,6 +39728,19 @@ parameter-expansion flag (`${(f)"$(...)"}` or any `${(...)...}`) or another zsh-
 tool, and, since zsh does not split an unquoted `$var`, never to pass a list to a script as one unquoted variable; a
 refused command is still not reworded but recorded. The generated brief's half is the lead's. Test:
 `test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost`.
+
+**The Office suffix snapshots say policy's eleven** (C1038; docs only). §16.6's `agentsync.policy` snapshot listed
+`OOXML_SUFFIXES` with nine entries though §16.42 and §16.48 added `.vsdx` and `.vsdm` (policy.py has eleven), its
+`Registry.default` chain stopped at `ocr` though §16.34 and §16.35 added `media`, `pieces` and `speech`, and §15's
+canonical stub, the section generated from the stubs, still assigned six suffixes though canonical has imported
+policy's list since §16.54 Q76. §16 keeps the text it replaces as history, so nothing is overwritten: the §16.6 tuple
+takes a dated comment (`gains '.vsdx' and '.vsdm', 11 entries; policy.py is the authority`), its signature chain a
+dated `Registry.default(cfg, *, policy=None, ocr=None, media=None, pieces=None, speech=None)`, and §15's stub keeps the
+six as a SUPERSEDED comment above `from agentsync.policy import OOXML_SUFFIXES`. §16.26's own `Registry.default` record
+was true when written and stays. Test: `test_contracts.py::test_the_office_suffix_snapshots_say_policys_eleven_c1038`
+(every literal constant left in the canonical stub equals the module's; the notes' suffixes and parameters read from
+the code). Seven other §15 literals a stub-wide check finds stale (publish's three CLAUDE.md and gitattributes texts,
+gitops' generated pathspecs, the drive arm's select and delta headers) are outside this item.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
