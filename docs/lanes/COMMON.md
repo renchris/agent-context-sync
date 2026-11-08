@@ -1360,9 +1360,10 @@ fix, follow its words on a Mac in the state it is meant for AND test it on one w
 timing is skipped above a load of 4 per core: run any one you change with AGENTSYNC_TIMING=1 before you land.
 scripts/gate.sh re-runs a part's 1 to 20 failed tests once alone and convicts only on a second failure, so read a
 red land's log: a test that failed alone is yours or trunk's, never load. A background ship-land can end while its
-lane believes it is queued: while you wait on the lock, check with ps that your ship-land still runs. A new signal
-test resets the signals it relies on itself, since a detached land runs with SIGINT and SIGHUP ignored (round 35's
-C956 and C961). Send the words another lane waits on first, pre-gate with --affected and land once; two lanes that
+lane believes it is queued: while you wait on the lock, check with ps that your ship-land still runs. A test that
+sends SIGHUP or SIGINT to a child makes the child take that signal's default first, because a pytest started under
+nohup passes SIGHUP on ignored and one started with `&` passes SIGINT on ignored (C869 for two tests; b781e539 for
+C956 and C961). A new signal test must do the same, so a detached gate passes it (round 36 C1054). Send the words another lane waits on first, pre-gate with --affected and land once; two lanes that
 share a chain may land jointly under one gate, the shared commit with one owner. A whole-tree test one lane owns can
 turn another lane's gate red: ruling 68's phrase scan reads install.sh's literals too, so a lane that prints a new
 clause adds it to both phrase lists in that commit and runs the scan before it lands. A citation of an off-trunk sha

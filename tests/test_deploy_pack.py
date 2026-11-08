@@ -397,6 +397,19 @@ def test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land() -> N
         "quote the form with `C<n>` or `<date>`, as each section's \"A dated line this round writes" in lanes
     )
     assert "Run ship-land in your own pane" not in lanes and "never under nohup" not in lanes
+    # B13 round 36 C1054: "the two signal tests" and "the signals it relies on" named no rule; only SIGHUP
+    # (ignored under nohup) and SIGINT (ignored under `&`) reach a child ignored, and SIGKILL cannot be reset
+    assert "Since C869 the two signal tests" not in lanes and "resets the signals it relies on" not in lanes
+    assert (
+        "A test that sends SIGHUP or SIGINT to a child makes the child take that signal's default first,"
+        " because a pytest started under nohup passes SIGHUP on ignored and one started with `&` passes"
+        " SIGINT on ignored (C869 for two tests; b781e539 for C956 and C961). A new signal test must do the"
+        " same, so a detached gate passes it (round 36 C1054)."
+    ) in lanes
+    tests = ROOT / "tests"
+    assert "signal.signal(signal.SIGINT, signal.SIG_DFL)" in (tests / "test_gate_slot_plugin.py").read_text()
+    for name in ("test_ocr.py", "test_ops_doctor.py"):
+        assert "signal.signal(signal.SIGHUP, signal.SIG_DFL)" in (tests / name).read_text(), name
 
 
 def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() -> None:

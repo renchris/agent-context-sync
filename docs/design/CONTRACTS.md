@@ -39695,6 +39695,16 @@ compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history 
 `test_c934s_old_commit_bodies_age_out_by_compaction_c1051`, which reads each figure, the command and both refusals from
 the code.
 
+**The lane brief says which signals a new signal test resets** (C1054; docs only; `docs/lanes/COMMON.md`'s
+Regressions paragraph). It said, as `Since C869 the two signal tests pass under nohup and `&``, then, in the lead's
+round 36 brief, that a new signal test resets "the signals it relies on", which names no rule: many signal tests send
+SIGTERM or SIGKILL and reset nothing, and SIGKILL cannot be reset. Only SIGHUP (ignored under nohup) and SIGINT
+(ignored under `&`) reach a child ignored, so the sentence names those two: a test that sends either to a child makes
+the child take that signal's default first (C869's two tests, test_gate_slot_plugin's `DEFAULT_SIGINT` stub and
+test_ocr's group-stop child; b781e539 for C956 and C961), and a new one must do the same, so a detached gate passes
+it. The dated C990 lines and the plan's round 35 line stay as written. Test:
+`test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land`, which also reads the resets in the tests.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
