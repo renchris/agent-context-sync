@@ -1497,7 +1497,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             )
         # a sync its own guard stops prints no alarm until that FAIL is fixed (B13 round 31 C520; ruling 60),
         # and lists nothing: the head says so too (B13 round 32 C631; ruling 65)
-        stopped = loop._sync_stopped_on(config)
+        stopped = loop._sync_stops(config)  # every stop it waits on (B13 round 36 C1048)
         held = (
             "; "
             + "; ".join(parts)
@@ -1526,10 +1526,10 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
     without = f"lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
     lists = f"the next sync {without}"
-    if stopped is not None and gone:  # the pointer below says no sync runs until then, once (C631, C731)
+    if stopped and gone:  # the pointer below says no sync runs until then, once (C631, C731)
         lists = f"the next sync that runs {without}"
-    elif stopped is not None:
-        lists = f"once the {stopped} [FAIL] line is fixed, {lists}; until then no sync runs"
+    elif stopped:  # every stop it waits on (B13 round 36 C1048)
+        lists = f"once {loop.fail_lines(stopped)}, {lists}; until then no sync runs"
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
         f"({len(clear)} empty cloud {'folder' if len(clear) == 1 else 'folders'} added); an excluded "

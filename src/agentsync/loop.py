@@ -207,7 +207,12 @@ def _alarm_names(what: str, stored: int) -> str:
 
 
 def _named(
-    config: Config, ids: Sequence[str], what: str, *, in_state: bool = False, stopped: str | None = None
+    config: Config,
+    ids: Sequence[str],
+    what: str,
+    *,
+    in_state: bool = False,
+    stopped: str | Sequence[str] | None = None,
 ) -> str:
     """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
     ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there
@@ -239,8 +244,9 @@ def _named(
     state = _shown(expand(config.docs_repo) / _STATE_MD)
     it = "it" if len(ids) == 1 else "them"
     prints = f"a plain `{BIN} sync` prints {it} too"
-    if stopped is not None:
-        prints = f"once the {stopped} [FAIL] line is fixed, {prints}; until then no sync runs"
+    stops = _stops(stopped)
+    if stops:
+        prints = f"once {fail_lines(stops)}, {prints}; until then no sync runs"
     if len(ids) == 1:
         return f"{state} keeps the alarm line for {ids[0]}, which names {what} ({prints})"
     listed = f"{', '.join(ids[:-1])} and {ids[-1]}"
@@ -248,7 +254,7 @@ def _named(
 
 
 def _named_since(
-    config: Config, sid: str, left: int, *, in_state: bool = False, stopped: str | None = None
+    config: Config, sid: str, left: int, *, in_state: bool = False, stopped: str | Sequence[str] | None = None
 ) -> str:
     """Where a wait's empty cloud folders are named when some the alarm lists were excluded after the walk it
     is from (B13 round 15 S32): that alarm still names them, up to five, and past five may hide the
@@ -256,9 +262,11 @@ def _named_since(
     prints it again with those left. It replaces :func:`_named`'s whole pointer, its "(a plain sync prints it
     too)" as well, so sync is said once. ``in_state`` and ``stopped``: as :func:`_named`."""
     again = f"a plain `{BIN} sync` prints it again with the {plural(left, 'folder')} left"
-    if stopped is not None and not in_state:
-        # no sync runs while that FAIL stands, said once (B13 round 32 C631; ruling 65)
-        again = f"once the {stopped} [FAIL] line is fixed, {again}; until then no sync runs"
+    stops = _stops(stopped)
+    if stops and not in_state:
+        # no sync runs while that FAIL stands, said once (B13 round 32 C631; ruling 65); every stop named
+        # (B13 round 36 C1048)
+        again = f"once {fail_lines(stops)}, {again}; until then no sync runs"
     if in_state:
         return (
             f"the alarm line under ## {sid} below is from that source's last sync, before the exclude, so it "
@@ -287,23 +295,37 @@ QUEUE_REFUSED_NOTE_STATUS = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue [
 reader of status (B13 round 35 C959, ruling 109)."""
 
 
-def _sync_stopped_on(config: Config) -> str | None:
-    """The status check whose [FAIL] the sync's own guard stops on before it runs, by that guard itself
-    (``doctor.state_not_a_file`` with the sync's flags, as ``cli`` calls it: a governance file or governance/
-    not a file, damaged, or a list that lost a purge, the lock, heartbeat.json), or None: never a hold the
-    hold list lost, whose sync runs (B13 round 31 C520; ruling 60). Also the purge record or the
-    suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
-    governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
-    which a sync runs over at 0000 (B13 round 32 C639; ruling 65). And the lock this account cannot open,
-    whose refusal stops the sync's acquire (B13 round 34 C863). In the order the sync meets them: the lock,
-    then the suppression list (a refused governance/ names governance.hold there), then the purge record; the
-    folder's X_OK test runs only after a refused read, so a missing governance/ is no stop (B13 round 35
-    C933)."""
+def _stops(stopped: str | Sequence[str] | None) -> tuple[str, ...]:
+    """``stopped`` as the tuple of check names it holds: one name, several, or none."""
+    if stopped is None:
+        return ()
+    return (stopped,) if isinstance(stopped, str) else tuple(stopped)
+
+
+def fail_lines(names: Sequence[str]) -> str:
+    """The sufficiency clause of a wait that waits on each of ``names``' [FAIL] lines: ``the A [FAIL] line
+    is fixed`` for one, ``the A and B [FAIL] lines are fixed`` for two, ``the A, B and C [FAIL] lines are
+    fixed`` for more (B13 round 36 C1048; ruling 116)."""
+    if len(names) == 1:
+        return f"the {names[0]} [FAIL] line is fixed"
+    return f"the {', '.join(names[:-1])} and {names[-1]} [FAIL] lines are fixed"
+
+
+def _sync_stops(config: Config) -> tuple[str, ...]:
+    """Every status check whose [FAIL] a sync stops on, in the order the sync meets them, each once: the
+    guard's own stop (``doctor.state_not_a_file``), the lock this account cannot open, the suppression list
+    (a refused governance/ names governance.hold there), then the purge record (governance.suppressed). The
+    order and the rule are :func:`_sync_stopped_on`'s (C933): the folder's X_OK test runs only after a
+    refused read, never an ``os.access`` ahead of the reads; nothing returns early, so a wait that names
+    these says every line it waits on, never one fix that leaves the sync stopped on the next (B13 round 36
+    C1048; ruling 116). A limit stays: a refused governance/ hides a refused file inside it, which shows only
+    after the folder's chmod, so that wait can still be one step early."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
+    stops: list[str] = []
     found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
     if found is not None:
-        return found[1].name
+        stops.append(found[1].name)
     # the open a sync's acquire makes, as doctor's lock check makes it: a lock this account cannot open stops
     # every sync, so the waits and the heartbeat's note say none runs until the lock [FAIL] line is fixed,
     # never "another full walk lists it" (B13 round 34 C863, ruling 87's third gap). First, as the sync meets
@@ -314,7 +336,7 @@ def _sync_stopped_on(config: Config) -> str | None:
         pass
     except OSError as exc:
         if doctor.refused_state_path(config, "lock", exc) is not None:
-            return "lock"
+            stops.append("lock")
     root = config.state_paths.root
     # the suppression list first: a refused governance/ is met there, so it names governance.hold, whose fix
     # is the folder's chmod, before a purge record refused inside it (B13 round 35 C933)
@@ -329,11 +351,29 @@ def _sync_stopped_on(config: Config) -> str | None:
                 # doctor's own test (B13 round 35 C960); the `read is` guard keeps a purge record linked into
                 # a shut governance/ on governance.suppressed
                 if read is governance.load_suppressions and doctor.governance_refuser(root, cause.filename):
-                    return "governance.hold"
-                return "governance.suppressed"
+                    stops.append("governance.hold")
+                else:
+                    stops.append("governance.suppressed")
         except Exception:  # every other error is its own line's, as before
             continue
-    return None
+    return tuple(dict.fromkeys(stops))
+
+
+def _sync_stopped_on(config: Config) -> str | None:
+    """The status check whose [FAIL] the sync's own guard stops on before it runs, by that guard itself
+    (``doctor.state_not_a_file`` with the sync's flags, as ``cli`` calls it: a governance file or governance/
+    not a file, damaged, or a list that lost a purge, the lock, heartbeat.json), or None: never a hold the
+    hold list lost, whose sync runs (B13 round 31 C520; ruling 60). Also the purge record or the
+    suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
+    governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
+    which a sync runs over at 0000 (B13 round 32 C639; ruling 65). And the lock this account cannot open,
+    whose refusal stops the sync's acquire (B13 round 34 C863). In the order the sync meets them: the lock,
+    then the suppression list (a refused governance/ names governance.hold there), then the purge record; the
+    folder's X_OK test runs only after a refused read, so a missing governance/ is no stop (B13 round 35
+    C933). The first of :func:`_sync_stops`: its readers say no sync runs until it is fixed, which stays true
+    with more than one stop, while a wait that says what a fix brings names them all (B13 round 36 C1048)."""
+    stops = _sync_stops(config)  # the first of them: "until it is fixed" stays true with more (C1048)
+    return stops[0] if stops else None
 
 
 def _baseline(docs: Path) -> str:
@@ -928,7 +968,7 @@ def next_step(
 
     # a sync its own guard stops prints no alarm, so the waits' "a plain sync prints it" waits on that FAIL;
     # STATE.md's forms never say it, since only a sync that runs writes them (B13 round 31 C520)
-    stopped = None if in_state else _sync_stopped_on(config)
+    stopped = () if in_state else _sync_stops(config)  # every stop it waits on (B13 round 36 C1048)
 
     def named(ids: Sequence[str], what: str) -> str:
         return _named(config, ids, what, in_state=in_state, stopped=stopped)
@@ -983,7 +1023,7 @@ def next_step(
         ):
             raise
         split = governance.QueueSplit([], [])
-        if not isinstance(exc, governance.GovernanceUnreadError) and stopped is None:
+        if not isinstance(exc, governance.GovernanceUnreadError) and not stopped:
             # a sync that runs over a refused queue still says so, in its output and STATE.md, the only
             # record a background job keeps (C829's verifier: purge-queue.json alone at 0000)
             notes.append(QUEUE_REFUSED_NOTE)

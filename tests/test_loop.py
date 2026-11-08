@@ -564,6 +564,81 @@ def test_a_governance_folder_this_account_cannot_search_names_the_line_status_pr
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_wait_beside_two_sync_stops_names_both_fail_lines_c1048(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 36 C1048 (ruling 116, C933's unbuilt half): with governance/ and purge-record.json both
+    refused, the wait named the folder's stop alone and said a plain sync prints the alarm once it is fixed,
+    but after that chmod the sync still stopped on the record. The wait names every stop the sync meets, in
+    its order, each a [FAIL] line status prints, and _sync_stopped_on stays the first; each chmod drops one,
+    and with none left the plain words come back."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state = expand(config.state_paths.root)
+    gov = governance.governance_dir(state)
+    if not gov.exists():
+        assert loop._sync_stops(config) == ()  # a plain install: no governance/ is no stop
+        gov.mkdir(mode=0o700)
+    record = governance.purge_record_file(state)
+    record.write_text('{"purges": []}\n', encoding="utf-8")
+    lock = expand(config.state_paths.lock)
+    lock.touch()
+
+    def wait_and_fails() -> tuple[str, set[str]]:
+        capsys.readouterr()
+        cli.main(["status", "--config", cfg])
+        out = capsys.readouterr().out.splitlines()
+        (line,) = [ln for ln in out if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        return line, {ln.split()[1] for ln in out if ln.startswith("[FAIL] ")}
+
+    def stopped(*names: str) -> str:
+        return (
+            f"which names the folder (once {loop.fail_lines(names)}, a plain `{BIN} sync` prints it too; "
+            "until then no sync runs)"
+        )
+
+    record.chmod(0o000)
+    gov.chmod(0o000)
+    try:
+        assert loop._sync_stops(config) == ("governance.hold", "governance.suppressed")
+        assert loop._sync_stopped_on(config) == "governance.hold"
+        wait, fails = wait_and_fails()
+        assert wait.endswith(stopped("governance.hold", "governance.suppressed")), wait
+        assert "the governance.hold and governance.suppressed [FAIL] lines are fixed" in wait, wait
+        assert {"governance.hold", "governance.suppressed"} <= fails, fails
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        capsys.readouterr()
+        table = config.config_path.read_text(encoding="utf-8")
+        cli.main(["exclude-empty", "work", "--config", cfg])  # the third writer: exclude-empty's own clause
+        said = capsys.readouterr().out
+        config.config_path.write_text(table, encoding="utf-8")  # the folder back in, for the waits below
+        assert "once the governance.hold and governance.suppressed [FAIL] lines are fixed, " in said, said
+        gov.chmod(0o700)
+        wait, fails = wait_and_fails()
+        assert wait.endswith(stopped("governance.suppressed")), wait
+        assert "governance.suppressed" in fails, fails
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        lock.chmod(0o000)
+        gov.chmod(0o000)
+        assert loop._sync_stops(config) == ("lock", "governance.hold", "governance.suppressed")
+        wait, fails = wait_and_fails()
+        assert "the lock, governance.hold and governance.suppressed [FAIL] lines are fixed" in wait, wait
+        assert {"lock", "governance.hold", "governance.suppressed"} <= fails, fails
+    finally:
+        gov.chmod(0o700)
+        lock.chmod(0o600)
+        record.chmod(0o600)
+    assert loop._sync_stops(config) == () and loop._sync_stopped_on(config) is None
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    wait, _fails = wait_and_fails()
+    assert wait.endswith(f"which names the folder (a plain `{BIN} sync` prints it too)"), wait
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 @pytest.mark.parametrize("mode", [0o000, 0o600])
 def test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statuss_lines_c829(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], mode: int

@@ -38664,6 +38664,9 @@ is untouched. A wait naming both lines while two stops stand is not built (the v
 `stopped` into a list). Test: `test_cli.py::test_the_stop_named_beside_a_sync_is_the_one_it_meets_first_c933` (the
 lock and the record: lock; the folder and the record: governance.hold and the sync exits 1; after the folder's
 chmod governance.suppressed, the sync exits 1; after the record's, none and the sync exits 0).
+Amended 2026-11-08, §16.237 C1048: the wait naming both lines is built. `loop._sync_stops` keeps this order and
+rule and names every stop, and the waits and exclude-empty say `the A and B [FAIL] lines are fixed`;
+`_sync_stopped_on` is its first, for the readers that say no sync runs until that line is fixed.
 
 **`governance_refuser` answers yes or no** (C960; ruling 109; amends §16.227 C832). Its folder return was never read:
 the four callers tested `is not None`, and `loop._sync_stopped_on` inlined the same `os.access` test. It returns a
@@ -39361,7 +39364,25 @@ report nor bring-back file).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
-Reserved for round 36 lane B of B13.
+Round 36's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 36"; specs `round36/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 112 to 119 settle it). A dated line this round writes reads
+`Amended 2026-11-08, §16.237 C<n>`.
+
+**A wait beside two sync stops names both [FAIL] lines** (C1048; ruling 116, amending ruling 109; amends §16.232
+C933). C933 put the stops in the sync's order but still named the first alone, so with governance/ and
+purge-record.json both refused the wait said `once the governance.hold [FAIL] line is fixed, a plain sync prints it
+too`, and after the folder's chmod the sync still stopped on the record. `loop._sync_stops(config)` collects every
+stop the sync meets, in C933's order (the guard's own `doctor.state_not_a_file`, the lock's refused open, the
+suppression list, then the purge record), each once, with no early return and the folder's `X_OK` test still only
+after a refused read. The three writers that say what a fix brings, `loop._named`, `loop._named_since` and
+exclude-empty's held clause, take the tuple and print `loop.fail_lines`: `the A [FAIL] line is fixed` for one stop,
+`the A and B [FAIL] lines are fixed` for two, `the A, B and C [FAIL] lines are fixed` for three; every name is a
+[FAIL] line status prints, so ruling 109's pointer test holds. `_sync_stopped_on` is the first of them for the
+heartbeat, curate and the report, whose `no sync runs until the X [FAIL] line is fixed` stays true with more than
+one stop. A limit stays: a refused governance/ hides a refused file inside it, which shows only after the folder's
+chmod. Test: `test_loop.py::test_a_wait_beside_two_sync_stops_names_both_fail_lines_c1048` (the folder and the
+record: both lines, the first still governance.hold, the sync exits 1; after the folder's chmod the record's line
+alone; the lock as well: three; with none, the plain words and the sync exits 0).
 
 ### 16.238 Round 36: the converters: a file's class follows its bytes, and a helper started at the deadline (2026-11-08, wave B13 round 36 lane E)
 
