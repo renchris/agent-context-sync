@@ -39631,6 +39631,15 @@ fails safe either way (the run and its dry run are refused with the hold named),
 Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, its two pins moved and tied to
 governance's own words.
 
+**The README says an Outlook folder keeps a change token too** (C1070; `README.md`'s diff paragraph, outside the
+prompt block; docs only). It said only a OneDrive or SharePoint library connected through Microsoft Graph has a change
+token, while `graph/mail.py`'s `MailArm._run_round` resumes from its stored delta link (`messages/delta` with none)
+and returns the next one as its cursor, which the cycle stores as it does a drive's, and the README's own CORRECTED
+note under its cost table says Outlook folders use `deltaLink`. It now reads "Only a Microsoft Graph source with a delta
+link has a change token: a OneDrive or SharePoint library, or an Outlook folder"; the next sentence, a folder on the Mac
+re-listed in full and a Teams channel or chat read back to the newest message seen, stays. Test:
+`test_the_readme_says_an_outlook_folder_keeps_a_change_token_too`, which reads the mail arm's own delta calls.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

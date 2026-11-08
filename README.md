@@ -69,8 +69,8 @@ inbox: never empty it by hand, because removing a file turns its page into a tom
 
 **The diff is part of every sync, not a separate step.** Each run lists every source, decides from metadata alone
 which files changed, downloads only those, converts them and commits. The commit and the `CHANGELOG` entry are the
-diff; nothing else needs fetching. Only a OneDrive or SharePoint library connected through Microsoft Graph has a
-change token. A folder on the Mac is re-listed in full each run (metadata only, no file is opened), and a Teams channel
+diff; nothing else needs fetching. Only a Microsoft Graph source with a delta link has a change token: a OneDrive or
+SharePoint library, or an Outlook folder. A folder on the Mac is re-listed in full each run (metadata only, no file is opened), and a Teams channel
 or chat is read back to the newest message already seen.
 
 ### Every session: sync, then NEXT

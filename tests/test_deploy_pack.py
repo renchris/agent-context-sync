@@ -435,6 +435,28 @@ def test_no_reader_says_a_teams_channel_is_read_by_delta() -> None:
     assert "delta" not in line and "read back to the last seen" in line, line
 
 
+def test_the_readme_says_an_outlook_folder_keeps_a_change_token_too() -> None:
+    """B13 round 36 C1070: the README's diff paragraph said only a OneDrive or SharePoint library has a change
+    token, while graph/mail.py's arm resumes from its stored delta link and saves the next one, as a drive's
+    does (the README's own CORRECTED note under its cost table says Outlook folders use `deltaLink`). It names
+    the Outlook folder beside the libraries; a folder on the Mac and a Teams channel or chat keep no delta
+    link."""
+    from agentsync.graph import mail  # noqa: PLC0415
+
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "Only a OneDrive or SharePoint library connected through Microsoft Graph has a change token"
+        not in readme
+    )
+    assert (
+        "Only a Microsoft Graph source with a delta link has a change token: a OneDrive or SharePoint"
+        " library, or an Outlook folder. A folder on the Mac is re-listed in full each run"
+    ) in readme
+    resume = inspect.getsource(mail.MailArm._run_round)
+    assert "self._client.delta(delta_link" in resume and "/messages/delta" in resume
+    assert "new_cursor=result.delta_link" in inspect.getsource(mail)
+
+
 def test_the_guide_gives_a_failed_attempts_earlier_install_runs_items_line() -> None:
     """B13 round 35 C975: round 34's C813 gave a failed attempt an Items line for each install run that exited
     non-zero before its last one, but the guide's `Failed at step N` bullet never said so. It quotes the line,
