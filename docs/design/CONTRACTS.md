@@ -38625,6 +38625,10 @@ of the three gets `process_group=0`. Not covered, as the verifier found: net.py'
 `launchctl getenv` and governance's `_CatFile`, each short-limited or not seen running under a report. The survivor
 half predates round 34. Test:
 `test_ops_doctor.py::test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_group_c955`.
+Amended 2026-11-08, §16.237 C1065: the check, the spawn and the registration are one `deadline.start` under the
+registry's lock, and a report's `StartGate`, closed by `end_children`, starts nothing after it.
+Amended 2026-11-08, §16.237 C1049: `scutil`, `df`, `diskutil` and `launchctl getenv` now go through `deadline.run`;
+`_CatFile` alone stays outside it, a write path no report hook reaches.
 
 **A signal to agentsync leaves no doctor program running** (C906 with C956; ruling 106; amends §16.227 C804). C804
 put each `doctor._run` program in a process group of its own, so a SIGTERM, SIGHUP or SIGKILL to agentsync or to its
@@ -38701,6 +38705,8 @@ folder's chmod, the agent's fix, ahead of the table's (accepted, ruling 111). Te
 `test_cli.py::test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_pointers_name_c958`, whose
 `_unresolved_fail_pointers` reads every `the <check> [FAIL] line` the output names against the [FAIL] lines it
 prints.
+Amended 2026-11-08, §16.237 C1026: the rows are read with no table (`gov=None`), so the queued count is an [info]
+line with no fix and no held split, a lost-queue FAIL takes governance.config's fix, and no line invites a run.
 
 **Status points the refused queue's note at its own line** (C959; ruling 109; amends §16.227 C829). C829's note
 told a reader of status to run `agentsync status`. Status maps it at its render, where the lost-hold waits are
@@ -39373,6 +39379,58 @@ report nor bring-back file).
 Round 36's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 36"; specs `round36/items/C<n>.md`, the
 verifier's corrected fix built, as the lead's rulings 112 to 119 settle it). A dated line this round writes reads
 `Amended 2026-11-08, §16.237 C<n>`.
+
+**No line invites a purge a [governance] that does not load would refuse** (C1026; ruling 116, data integrity;
+amends §16.232 C958). C958 read the state's governance lines over a default `GovernanceConfig()` when [governance]
+did not load, so a queued purge was judged over a table that knows no hold, and status's governance.purge_queue
+warn, its `queued purges:` line and the loop's WAITING ON YOU line all invited `purge --queue`, which exits 78 on that
+same table (with a valid table and a hold, the same purge waits on the hold). `_governance_checks` now hands
+`_governance_lines` `gov=None`: the lines that judge the table read a default one and are dropped as before; the
+queue's refusal and its [info] not-checked lines stay; the queued count is an [info] line with no fix and no held
+split, `<N> purge request(s) queued (<reasons>); not judged: [governance] does not load; the governance.config line
+says why` (`cli._QUEUE_NOT_JUDGED`); a lost-queue FAIL keeps its detail with `GOVERNANCE_FIX`, since its redo
+refuses too. Status's summary reads `queued purges: <N> (not judged: [governance] does not load; see
+governance.config)` (`cli._SUMMARY_NOT_JUDGED`), and `loop.next_step` invites no run while
+`governance.governance_or_none` reads no table. Test:
+`test_cli.py::test_a_refused_governance_table_invites_no_purge_run_c1026` (with and without install.sh's hint: no
+line names `purge --queue`, every pointer resolves; the queue file losing the entry: its FAIL's fix is
+governance.config's).
+
+**The bare queue clause's docstring says a refused table prints the FAIL** (C1027; ruling 116). `QUEUE_REFUSED_BARE`'s
+docstring said a refused [governance] prints no governance.purge_queue [FAIL] line; since C958 it does, so it takes
+`QUEUE_REFUSED_NOTE_STATUS`, as C959's test shows. Docstring only. Test:
+`test_loop.py::test_the_bare_queue_clauses_docstring_says_a_refused_table_prints_the_fail_c1027`.
+
+**A program is checked for, started and listed in one locked step** (C1065, with the deadline half of C1067;
+ruling 117; amends §16.232 C955). `deadline.run` and `doctor._run` checked the caller's deadline, then spawned and
+registered outside the registry's lock, so an `end_children` that ran in between ended nothing and the program
+started after it, outliving the report. `deadline.start(spawn, refuse=, group=)` now checks the context's
+`START_GATE` and `RUN_DEADLINE`, spawns and registers under `_LIVE_LOCK`, as `ocr._start` holds its helpers, so a
+program is listed before `end_children` copies the list or never starts; the lock is held across the spawn alone,
+never across a read. `deadline.run` is one `start`, its limit worked out again after the spawn. `doctor._run` starts
+and lists its watcher in one `start`, reads the watcher's first line outside the lock (it has no limit), then starts
+the program in a second `start`, so a cut that ended the watcher during that read starts nothing in a group nobody
+watches; its shortened-wait note is judged after the program's spawn. One gate shape serves both registries:
+`deadline.StartGate` (`closed`, False at birth) in the ContextVar `deadline.START_GATE`, which the report's call
+puts in context fresh for each report; `end_children(gate)` (by default the context's gate) closes it under the
+lock before it copies, and a spawn in a context holding a closed gate raises its cut error (`TimeoutExpired`, or
+`doctor._NotStarted`). Unset, as for a sync and every other command, nothing is refused. Tests:
+`test_ops_doctor.py::test_a_spawn_the_reports_end_meets_mid_start_is_listed_or_never_started_c1065` (a spawn slowed
+under way: the end waits for it and ends it, for both spawners; the closed gate starts nothing after, a fresh one
+does) and `::test_a_doctor_watcher_the_end_kills_in_its_handshake_starts_no_program_c1065`.
+
+**The proxy, launchctl and volume probes end with the report** (C1049; ruling 117; amends §16.232 C955). `net._run_scutil`,
+`cli._launchctl_env`, `arm_local._mount_point` and `arm_local._diskutil_volume_uuid` started through a plain
+`subprocess.run`, so one could start after the report's cut and outlive it. Each goes through `deadline.run`,
+keeping its arguments and except clauses, and `_launchctl_env` stops at its first `TimeoutExpired` rather than try
+the other names. `governance._CatFile` stays as it is: its callers are write paths no report hook reaches, and
+killing its reader would abort a write. Test:
+`test_ops_doctor.py::test_the_proxy_launchctl_and_volume_probes_start_nothing_past_the_callers_deadline_c1049`.
+
+**doctor names no registry of its own** (C1031; ruling 117). `doctor._LIVE_CHILDREN` was an alias of deadline's
+registry that only tests read; it is gone, the tests read `deadline._LIVE_CHILDREN`, and §16.232 C955's line names
+the two objects doctor does share, `RUN_DEADLINE` and `end_children`. Test:
+`test_ops_doctor.py::test_doctor_names_no_registry_of_its_own_c1031`.
 
 **A wait beside two sync stops names both [FAIL] lines** (C1048; ruling 116, amending ruling 109; amends §16.232
 C933). C933 put the stops in the sync's order but still named the first alone, so with governance/ and
