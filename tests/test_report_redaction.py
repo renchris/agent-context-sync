@@ -16,6 +16,7 @@ from agentsync.config import load_config
 from test_install_oneshot import (  # noqa: F401  (fixture)
     BASH32,
     INSTALL_SH,
+    _shell_cut_stdout,
     _stub_id,
     _write_exe,
     env,
@@ -25,6 +26,7 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
 from test_setup_report import (  # noqa: F401  (fixtures)
     _REAL_FULL_NAME,
     V5_HAPPY,
+    _separator_lines,
     fake_mac,
     section,
     summary_of,
@@ -1056,3 +1058,33 @@ def test_an_organisation_after_another_kind_keeps_its_own_mode_and_lookup(
         red.add(kind, name, **flags)
     red.add("org", value, fuzzy=True)
     assert red.redact(said) == want
+
+
+def test_both_reports_cut_a_path_in_another_home_alike_whatever_byte_sits_in_it_ruling_112(
+    tmp_path: Path,
+) -> None:
+    """B13 round 36 ruling 112 (C1016, C1064, C1017, C1018, C1069; privacy; data integrity): the shell report
+    and the agentsync report read a path's bytes from two lists, so a byte that stopped one cut ran the other
+    over, and the shell kept another home whole behind a volume named with a comma, a semicolon or a bracket.
+    Every line of lane RA's proof (each separator byte in each slot, each prefix in each case) goes through
+    the shell's redact_stream once and through setup_report.Redactor, for HOME /Users/dana and the login
+    dana: the two print the same line, the documented one, and no hidden name but where the table stops or
+    ends the cut, or a blank right after this login keeps what follows."""
+    lines = _separator_lines()
+    assert len(lines) > 3000
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    # one run for every line, split on the newline alone (splitlines splits on \r, \v, \f, \x1c-\x1e, NEL)
+    shell = _shell_cut_stdout(tmp_path, "/Users/dana", [line for line, _ in lines], login="dana").split("\n")
+    assert shell[-1] == "" and len(shell) == len(lines) + 1, (len(shell), len(lines))
+    table = setup_report._CUT_BYTES
+    marks = table["blank"] + table["end"] + table["stop"]
+    wrong = []
+    for (line, cut), got in zip(lines, shell[:-1], strict=True):
+        py = red.redact(line)
+        if not (got == py == cut):
+            wrong.append((line, got, py, cut))
+        if not any(c in line for c in marks):
+            assert not re.search("olga|Fabrikam|Contoso", got), (line, got)
+    assert not wrong, (len(wrong), wrong[:8])

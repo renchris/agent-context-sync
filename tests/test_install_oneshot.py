@@ -3774,15 +3774,21 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
     assert item.startswith(
         "a relative --source-local argument in install.log (which records no working directory) whose first "
         "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
-        "configured folder, there or as an added source's typed folder, cut at its first part that is not a "
-        "fixed macOS folder or one every home or drive has; a path in another home (/Users/ and any "
-        "folder but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume; in "
-        "both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, comma or "
-        "semicolon, and after a blank from the first word that holds no /, or that is an option, a URL, a "
-        "path of its own or a number like 3/14); and every word bash wrote in its dollar-quote form ($'...'),"
+        "configured folder, there or as an added source's typed folder (never agentsync's own "
+        "~/agent-context/inbox), cut at its first part that is not a fixed macOS folder or one every home or "
+        "drive has; a path in another home (/Users/ and any "
+        "folder but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume, "
+        "the prefixes in any case; in both reports, an unquoted path keeps its tail after the first quote, "
+        "backtick, bracket, comma or semicolon, a provider folder's name running past a bracket, comma or "
+        "semicolon to the next /, and after a blank from the first word that holds no / or holds =, or that "
+        "is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends "
+        "it, so another home named as this one and a blank keeps what follows); and every word bash wrote "
+        "in its dollar-quote form ($'...'),"
     ), (
         item
-    )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946
+    )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946;
+    # round 36 ruling 112: lane RA's shared limit words, from "(/Volumes/<path> behind a volume" on, and
+    # C1123's own inbox, never cut
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
@@ -4130,6 +4136,12 @@ def test_the_shell_report_cuts_a_path_in_another_home_whole(env: dict[str, str])
 def _shell_cut_at_home(tmp_path: Path, home: str, said: Sequence[str]) -> list[str]:
     """``said``'s lines through the real redact_stream for HOME ``home`` (it need not exist) and the login
     ``kxy``: a sandbox home under /tmp never reaches the /Users/ home pair's guard (B13 round 35 C941)."""
+    return _shell_cut_stdout(tmp_path, home, said).splitlines()
+
+
+def _shell_cut_stdout(tmp_path: Path, home: str, said: Sequence[str], login: str = "kxy") -> str:
+    """:func:`_shell_cut_at_home`'s whole stdout, bytes decoded as UTF-8 with no newline translation (a
+    ``\r`` in a line stays one), for the login ``login`` (B13 round 36 ruling 112)."""
     cfg = tmp_path / "sources.toml"
     cfg.write_text("")
     text = INSTALL_SH.read_text()
@@ -4138,12 +4150,12 @@ def _shell_cut_at_home(tmp_path: Path, home: str, said: Sequence[str]) -> list[s
     words = re.compile(r"(?ms)^(?:joined_word|report_word|output_word|two_letter_word)\(\) \{\n.*?^\}$")
     helpers += "\n" + "\n".join(m.group(0) for m in words.finditer(text))
     said_file = tmp_path / "said.txt"
-    said_file.write_text("".join(f"{ln}\n" for ln in said))
+    said_file.write_bytes("".join(f"{ln}\n" for ln in said).encode("utf-8"))
     harness = "\n".join(
         [
             "with_timeout() { return 0; }",
             "repo_slug() { echo contoso/agentsync; }",
-            'id() { case "$1" in -un) echo kxy ;; -F) echo "Kim Xu" ;; esac; }',
+            f'id() {{ case "$1" in -un) echo {login} ;; -F) echo "Kim Xu" ;; esac; }}',
             f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent SELF_FILE={INSTALL_SH} REPORT_WORDS=",
             *re.findall(r"(?m)^(?:GENERIC_SOURCE_IDS|FIXED_CAPS_PHRASES|FIXED_VALUE_PHRASES)\+?=.*$", text),
             helpers,
@@ -4152,9 +4164,9 @@ def _shell_cut_at_home(tmp_path: Path, home: str, said: Sequence[str]) -> list[s
         ]
     )
     env = {"HOME": home, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()}
-    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, text=True, check=False, env=env)
-    assert cp.returncode == 0, cp.stderr
-    return cp.stdout.splitlines()
+    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, check=False, env=env)
+    assert cp.returncode == 0, cp.stderr.decode("utf-8", "replace")
+    return cp.stdout.decode("utf-8", "replace")
 
 
 def test_this_homes_literal_wins_only_where_the_home_ends(tmp_path: Path) -> None:
@@ -4205,13 +4217,13 @@ _OTHER_HOME_CASES = (
         "kept /Users/<path> /Users/Shared/drop ~/x https://example.com/a/b 3/14 files",
     ),
     ("copied /Volumes/Backup/a.docx to /Users/olga/b", "copied /Volumes/Backup/a.docx to /Users/<path>"),
-    (
+    (  # B13 round 36 C1016, C1064: behind a /Volumes/ the cut runs back over every byte, as Python does
         "cp /Volumes/USB/stuff /tmp/y ; x/Volumes/Backup/Users/olga/y ; https://graph.microsoft.com/v1.0/users/me",
-        "cp /Volumes/USB/stuff /tmp/y ; x/Volumes/Backup/Users/olga/y ; https://graph.microsoft.com/v1.0/users/me",
+        "cp /Volumes/<path> ; https://graph.microsoft.com/v1.0/users/me",
     ),
-    (
+    (  # ruling 112 (C1017): a colon is a path byte, so this home followed by one is another home
         'own ~/x, "/Users/kxy", {\\"h\\": \\"/Users/kxy\\"} and /Users/kxy: no',
-        'own ~/x, "~", {\\"h\\": \\"~\\"} and ~: no',
+        'own ~/x, "~", {\\"h\\": \\"~\\"} and /Users/<path> no',
     ),
     ("/Users/<user>/ok and /Users/<path> Alpha", "/Users/<user>/ok and /Users/<path> Alpha"),
     ("/Users/olga/a(b)/Fabrikam", "/Users/<path>(b)/Fabrikam"),
@@ -4226,6 +4238,41 @@ _OTHER_HOME_CASES = (
         "/Users/<path> 3/14 /Users/<path> --o/a /Users/<path> x=/a /Users/<path> ~/b /Users/<path> /c/d "
         "/Users/<path> https://e.example/a /Users/<path> h i/j",
     ),
+    # B13 round 36 ruling 112, on lane RA's table: C1016 and C1064, any byte behind a /Volumes/
+    ("/Volumes/Contoso, Inc/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/Contoso (old)/Users/olga/x", "/Volumes/<path>"),
+    ("/Volumes/Contoso [Old]/Users/olga/Fabrikam/x", "/Volumes/<path>"),
+    ("/Volumes/Backup/a; error=/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("'/Volumes/Contoso (Old)/Users/olga/Fabrikam/Board Minutes.docx'", "'/Volumes/<path>'"),
+    (
+        "source=/Volumes/Data; Old/Users/olga/Library/CloudStorage/OneDrive-Fabrikam/x",
+        "source=/Volumes/<path>",
+    ),
+    ("see (/Volumes/USB/a) and /Users/olga/b", "see (/Volumes/USB/a) and /Users/<path>"),
+    # C1018: /Volumes/, /System/Volumes/Data and Users in any case, the guard before the volume kept
+    ("/volumes/backup/users/olga/Fabrikam/x", "/Volumes/<path>"),
+    ("/VOLUMES/Backup/Users/olga/Fabrikam/x", "/Volumes/<path>"),
+    ("/system/volumes/data/users/olga/Fabrikam/x", "/Users/<path>"),
+    ("x/volumes/Backup/Users/olga/y", "x/volumes/Backup/Users/olga/y"),
+    ("cp /volumes/usb/a /tmp/y", "cp /volumes/usb/a /tmp/y"),
+    # C1017: a no-break or ideographic space is a path byte, and this home ends only where the table ends it
+    ("/Users/olga/Client\u00a0Alpha/Board/x.docx", "/Users/<path>"),
+    ("/Users/olga/Kaigi\u3000Shiryo/Board/x", "/Users/<path>"),
+    ("/Users/Shared\u00a0Alpha/Board/x", "/Users/<path>"),
+    ("/Users/kxy\u00a0old/Fabrikam/x", "/Users/<path>"),
+    ("/Users/kxy+x/Fabrikam", "/Users/<path>"),
+    ("/Users/kxy old/Fabrikam/x", "~ old/Fabrikam/x"),  # the one limit left: a blank right after this home
+    # C1069: a provider folder runs over brackets, commas and semicolons, and stops at "):" or ", stored as "
+    (
+        "seen /Users/olga/Library/CloudStorage/OneDrive-Contoso): kept/plan.docx",
+        "seen /Users/<path>): kept/plan.docx",
+    ),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Contoso, Inc./Docs/x", "/Users/<path>"),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Contoso (UK) Ltd/Docs/x", "/Users/<path>"),
+    (
+        "(/Users/olga/Library/CloudStorage/OneDrive-Contoso, stored as /Users/olga/x/y): 3 files",
+        "(/Users/<path>, stored as /Users/<path>): 3 files",
+    ),
 )
 
 
@@ -4237,6 +4284,61 @@ def test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks(
     too."""
     said = [given for given, _ in _OTHER_HOME_CASES]
     assert _shell_cut_at_home(tmp_path, "/Users/kxy", said) == [cut for _, cut in _OTHER_HOME_CASES]
+
+
+def test_the_shells_cut_bytes_are_the_reports_one_table_ruling_112() -> None:
+    """B13 round 36 ruling 112 (C1017, C1016, C1064): the shell and the Python report read a path's bytes
+    from two lists, so a byte one of them stopped at the other ran over. Every STOP install.sh's awk passes
+    define is setup_report._CUT_BYTES less the newline, and volume() checks no class of bytes between the
+    /Volumes/ and the /users/: only its not-after-a-blank test and the guard on the byte before the volume."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    stops = re.findall(r'\bSTOP = "((?:[^"\\]|\\.)*)"', script)
+    assert len(stops) == 2, stops
+    awk = {"\\t": "\t", "\\r": "\r", "\\f": "\f", "\\v": "\v", '\\"': '"', "\\047": "'"}
+    want = set("".join(setup_report._CUT_BYTES.values())) - {"\n"}
+    for stop in stops:
+        got = re.sub(r"\\(?:047|.)", lambda m: awk[m.group(0)], stop)
+        assert set(got) == want and len(got) == len(want), (stop, got)
+    [volume] = re.findall(r"(?ms)^\tfunction volume\(.*?^\t\}$", script)
+    assert re.findall(r"/\[[^\]]*\]/", volume) == ["/[ \\t\\/]/", "/[A-Za-z0-9_.-]/"], volume
+    assert 'index(substr(low, at, i - at), "/volumes/")' in volume and "low = tolower(s)" in volume
+
+
+def test_the_shell_report_shows_agentsyncs_own_inbox_uncut_in_a_tmp_home_c1123(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 36 C1123 (ruling 112): in a /tmp HOME the inbox note's two forms collapse to one, which the
+    shell cut to `~/<path>`, while a /private HOME printed `~/agent-context/inbox`: agentsync's own inbox
+    showed two ways. Its typed form is shown uncut after `added inbox source`, as the agentsync report shows
+    it; an inbox elsewhere and every `added source` note keep the cut."""
+    real = Path(os.path.realpath(tmp_path))
+    linked = str(real)[len("/private") :]
+    env = {**env, "HOME": f"{linked}/home", "TMPDIR": f"{linked}/T/"}
+    (real / "T").mkdir()
+    home = Path(env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    (home / "agent-context" / "setup").mkdir(parents=True)
+    cfg.write_text("")
+    notes = [
+        f"added inbox source 'inbox' ({linked}/home/agent-context/inbox, stored as "
+        f"{real}/home/agent-context/inbox): drop files you save by hand here",
+        f"added inbox source 'inbox' ({linked}/home/Tailspin/inbox, stored as {real}/home/Tailspin/inbox): "
+        "drop files you save by hand here",
+        f"added source 'zephyr' to {cfg} ({linked}/home/Zephyr Notes, stored as {real}/home/Zephyr Notes): "
+        "3 files",
+    ]
+    friction_path(env).write_text(
+        "Prompt: v33\n" + "".join(f"F{i} | step 2 | clean | 0 | {n} | -\n" for i, n in enumerate(notes, 1))
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    inbox = "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    assert inbox in text, text
+    assert "added inbox source 'inbox' (~/<path>): drop files you save by hand here" in text, text
+    assert re.search(r"added source '<?[a-z0-9-]+>?' to \S+ \(~/<path>\): 3 files", text), text
+    assert "Tailspin" not in text and "Zephyr" not in text
+    assert inbox in _py_report(env, cfg), "the agentsync report shows it the same"
 
 
 @pytest.mark.parametrize("same_run", [True, False])
