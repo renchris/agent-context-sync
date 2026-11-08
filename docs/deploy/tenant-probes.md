@@ -18,14 +18,17 @@ scripts/tenant-probes.sh                # prints: report: …/probes/tenant-prob
 `agentsync graph login` is the only interactive step, and it is yours. The script then uses the cached token
 silently, through the same interpreter, so the Keychain never asks. It never opens a browser and never writes to
 the tenant. The report and the probe-9 store are mode 0600 under `<state_dir>/probes/` (override with `--output`).
+Both are written whole or not at all, and one run at a time holds the store. The default folder is set to 0700 if
+the `mkdir -p` above left it looser; a folder given with `--output` is yours, so it gets a warning instead.
 
 | Exit | Meaning |
 |---|---|
 | 0 | report written |
 | 77 | not signed in, or sign-in blocked; the report names the state (for example `blocked: consent`, AADSTS65001) |
 | 78 | `sources.toml` invalid, or no `[graph] client_id` yet (IT request pending); a real run still writes its report, `--dry-run` writes nothing |
-| 1 | failed, e.g. `network-policy` (TLS inspection / PAC); see [README](README.md#install-one-command-no-admin) |
+| 1 | failed, e.g. `network-policy` (TLS inspection / PAC), see [README](README.md#install-one-command-no-admin); a damaged `deltalinks.json` (left as it was), another run holding probe 9, a report that cannot be written, or an interpreter without agentsync |
 | 2 | usage error |
+| 130, 129, 143 | stopped by INT (Ctrl-C), HUP or TERM; temporary downloads are removed and, once probing began, a partial report is written |
 
 Limits: `--max-pages 10` (about 2,000 delta items per drive), `--max-downloads 6`, `--max-bytes 20000000`.
 `--selftest` checks the offline helpers: 4 QuickXorHash vectors from rclone, a row-fold identity, and claim

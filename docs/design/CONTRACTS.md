@@ -40705,7 +40705,38 @@ strings, and `--selftest` checks one cleaned and one cut cell.
 
 #### 16.300.23 U-B15: tenant-probes tracebacks, signals and atomic state
 
-Reserved.
+`scripts/tenant-probes.sh` ends in `exec "$PY" -I -X utf8 - ...`, so a signal sent to the script's pid reaches the
+embedded Python; nothing runs after the heredoc. An interpreter path must be a regular, executable file (exit 1).
+
+- Imports: an `ImportError` on `truststore` or an agentsync module is one `Error:` line naming the module and
+  `sys.executable` and pointing at `--python` or `scripts/install.sh`, exit 1. `--selftest` still needs only
+  truststore.
+- Sign-in: an `AuthError` that is not a sign-in state (a PAC-only network, a failed refresh) is a failed probe-2 row,
+  the report, one `Error:` line and exit 1. 77 and 78 are unchanged.
+- Bug report (D34 = Option A): one `sys.excepthook`, installed first, turns an unexpected error into
+  `Unexpected error in tenant-probes.sh. This is a bug in agentsync.`, then `Error: <Type> at <stdin>:<line>`
+  (never the message), `Version:` and `Report: <it_request.REPO_URL>/issues/new`, and writes the partial report
+  when the run had reached it. `__AGENTSYNC_RAISE=1`, as in C-3, prints the full trace; help never names it.
+  `KeyboardInterrupt` goes to the default hook.
+- Signals: INT, TERM and HUP (each unless ignored at start) are handled. Before probing begins (the temporary
+  folder) a stop prints `Stopped. Nothing was downloaded; no report written.` and exits 128 + n. After it, the
+  stop unwinds to the cleanup: the folder is removed with the signals ignored, then a second signal ends the run
+  at once; the report gets `**stopped: SIG...**`, stderr `Stopped waiting. Nothing was written to the tenant;
+  temporary downloads removed. Partial report: <path>`, exit 130, 129 or 143. `rmtree` runs before
+  the Graph client is closed, so a close that raises cannot leave the downloads.
+- Probe 9 store: read by a validating loader before anything writes it. A decode error is
+  `<store>: line L column C: <msg>`, a shape error names the key path and entry index, a version above 1 is
+  "written by a newer build", and a missing version, a non-regular file or a read `OSError` are damage; the loader
+  raises an `AgentSyncError` subclass, so rc is 1, probes 1, 2 and 4b reach the report, and the store's bytes stay.
+  No message quotes the file's bytes or a link. `fcntl.flock(LOCK_EX | LOCK_NB)` on `<out>/.deltalinks.lock`
+  (0600) is held through the save; a held lock skips probe 9 with rc 1 and still writes the report. Tested outcomes
+  are saved even when the loop stops early.
+- Writes: the report and the store go through one atomic write (a 0600 `mkstemp` beside the target, fsync,
+  `os.replace`, unlinked on any exception). An `OSError` in the probes is rc 1 with the report; a report that
+  cannot be written is `Error: Can't write the report under <dir>: <strerror>. Pass --output ...`, exit 1. The
+  default folder is chmod 0700; a looser `--output` folder gets one warning and keeps its mode. No temporary or
+  lock name matches `login-*.txt`.
+- A `read_labels` defect becomes that file's `error: <Type>` cell.
 
 #### 16.300.24 U-B16: tenant-probes --json
 

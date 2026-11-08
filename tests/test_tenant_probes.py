@@ -14,8 +14,10 @@ import os
 import select
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,7 @@ SHIM = f'''
 import hashlib
 import os
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,6 +66,9 @@ class FakeAuth:
         )
 
     def get_token(self):
+        if SCENARIO == "slow-token":
+            Path(os.environ["PROBES_RECORD"]).write_text("token", encoding="utf-8")
+            time.sleep(60)
         if SCENARIO == "required":
             raise AuthRequiredError("no cached token")
         if SCENARIO == "blocked":
@@ -73,12 +79,20 @@ class FakeAuth:
 class FakeClient:
     def __init__(self, auth, **kwargs):
         self.links = 0
+        self.tested = 0
 
     def get_json(self, path, params=None):
         if SCENARIO == "network":
             raise NetworkPolicyError("TLS", "intercepted")
         if SCENARIO == "other":
             raise AgentSyncError("disk \\x1b[31mfull|now")
+        if SCENARIO == "bug":
+            raise ValueError("LINKTOKEN-in-a-message")
+        if path.startswith("{LINK}"):
+            self.tested += 1
+            if SCENARIO == "loop-auth" and self.tested > 1:
+                raise AuthRequiredError("the token was revoked")
+            return {{}}
         if path.endswith("/root/delta"):
             self.links += 1
             return {{"@odata.deltaLink": "{LINK}" + str(self.links)}}
@@ -92,14 +106,26 @@ class FakeClient:
     def download(self, path, dest, max_bytes=None):
         Path(os.environ["PROBES_RECORD"]).write_text(str(dest.parent), encoding="utf-8")
         dest.write_bytes(b"%PDF-1.4\\n")
+        if SCENARIO == "slow":
+            time.sleep(60)
         return 9, hashlib.sha256(b"%PDF-1.4\\n").hexdigest()
 
     def close(self):
         pass
 
 
+def full_disk_replace(src, dst, _real=os.replace):
+    if str(dst).endswith("deltalinks.json"):
+        raise OSError(28, "No space left on device", str(dst))
+    return _real(src, dst)
+
+
 agentsync.graph.auth.MsalAuth = FakeAuth
 agentsync.graph.client.GraphClient = FakeClient
+if SCENARIO == "full-disk":
+    os.replace = full_disk_replace
+for name in os.environ.get("PROBES_HIDE", "").split():
+    sys.modules[name] = None
 exec(compile(sys.stdin.read(), "tenant-probes-embedded", "exec"), {{"__name__": "__main__"}})
 '''
 
@@ -157,6 +183,20 @@ path = "{tmp_path / "src"}"
     return path
 
 
+def _env(tmp_path: Path, python: Path | None, env: dict[str, str] | None) -> dict[str, str]:
+    home, tmpdir = tmp_path / "home", tmp_path / "tmpdir"
+    home.mkdir(exist_ok=True)
+    tmpdir.mkdir(exist_ok=True)
+    return {
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": str(home),
+        "TMPDIR": str(tmpdir),
+        "AGENTSYNC_OCR": "0",
+        "AGENTSYNC_PYTHON": str(python or sys.executable),
+        **(env or {}),
+    }
+
+
 def _run(
     tmp_path: Path,
     *args: str,
@@ -164,20 +204,10 @@ def _run(
     python: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    home, tmpdir = tmp_path / "home", tmp_path / "tmpdir"
-    home.mkdir(exist_ok=True)
-    tmpdir.mkdir(exist_ok=True)
     return subprocess.run(
         ["/bin/bash", str(script), *args],
         cwd=tmp_path,
-        env={
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "HOME": str(home),
-            "TMPDIR": str(tmpdir),
-            "AGENTSYNC_OCR": "0",
-            "AGENTSYNC_PYTHON": str(python or sys.executable),
-            **(env or {}),
-        },
+        env=_env(tmp_path, python, env),
         capture_output=True,
         text=True,
         check=False,
@@ -432,6 +462,245 @@ def test_canned_drive_exits_0_and_keeps_names_and_links_out_of_the_report(tmp_pa
     assert not temp_root.exists()
 
 
+# ---- one-line failures, a damaged store, the bug report ----------------------------------------------------
+
+
+def _probe(
+    tmp_path: Path, scenario: str, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """A run through the shim against a Contoso config, the report under ``tmp_path/out`` unless args say."""
+    config = tmp_path / "agent-context" / "sources.toml"
+    return _run(
+        tmp_path,
+        "--config",
+        str(config if config.exists() else _config(tmp_path)),
+        *(args or ("--output", str(tmp_path / "out"))),
+        "--python",
+        str(_shim_python(tmp_path)),
+        env={"PROBES_SCENARIO": scenario, "PROBES_RECORD": str(tmp_path / "record"), **(env or {})},
+    )
+
+
+def _store(out: Path, text: str) -> Path:
+    out.mkdir(mode=0o700)
+    store = out / "deltalinks.json"
+    store.write_text(text, encoding="utf-8")
+    return store
+
+
+def _due_links(*suffixes: str) -> str:
+    """A store whose links are all due: obtained 40 days ago for the 30-day milestone."""
+    import json  # noqa: PLC0415
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    then = (datetime.now(UTC) - timedelta(days=40)).replace(microsecond=0).isoformat()
+    entry = {
+        "drive": "me",
+        "obtained_at": then,
+        "milestone_days": 30,
+        "tested_at": None,
+        "outcome": None,
+        "age_days": None,
+    }
+    return json.dumps({"version": 1, "links": [{**entry, "link": LINK + s} for s in suffixes]})
+
+
+@pytest.mark.parametrize("module", ["truststore", "agentsync.config"])
+def test_a_missing_interpreter_module_is_one_line(tmp_path: Path, module: str) -> None:
+    proc = _probe(tmp_path, "ok", env={"PROBES_HIDE": module})
+    assert (proc.returncode, proc.stdout) == (1, "")
+    assert proc.stderr == (
+        f"Error: Can't import {module} with {sys.executable}. Pass --python with the interpreter that has"
+        " agentsync installed, or run scripts/install.sh.\n"
+    )
+
+
+def test_a_damaged_store_keeps_the_other_probes(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    damaged = '{"version": 1, "links": [{"link": "' + LINK + '1"}'
+    store = _store(out, damaged)
+    proc = _probe(tmp_path, "ok")
+    assert (proc.returncode, proc.stdout) == (1, "")
+    report = _only_report(out)
+    text = report.read_text(encoding="utf-8")
+    assert "## Probe 2:" in text and "## Probe 1:" in text and "## Probe 4b:" in text
+    where = f"line 1 column {len(damaged) + 1}"  # the end of the text: the list was never closed
+    assert proc.stderr == f"failed: {store}: {where}: Expecting ',' delimiter; report {report}\n"
+    assert store.read_text(encoding="utf-8") == damaged
+    assert "LINKTOKEN" not in text + proc.stderr
+
+
+def test_a_newer_store_version_is_refused(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    newer = '{"version": 2, "links": []}'
+    store = _store(out, newer)
+    proc = _probe(tmp_path, "ok")
+    assert proc.returncode == 1
+    report = _only_report(out)
+    assert proc.stderr == (
+        f"failed: {store}: written by a newer build (version 2); this script reads version 1;"
+        f" report {report}\n"
+    )
+    assert store.read_text(encoding="utf-8") == newer
+
+
+def test_an_unexpected_error_is_a_short_bug_report(tmp_path: Path) -> None:
+    """D34: the type and the line, never the message; the partial report is still written. The hidden switch
+    __AGENTSYNC_RAISE=1 gives the full trace."""
+    proc = _probe(tmp_path, "bug")
+    assert (proc.returncode, proc.stdout) == (1, "")
+    head, error, version, link, partial = proc.stderr.splitlines()
+    assert head == "Error: Unexpected error in tenant-probes.sh. This is a bug in agentsync."
+    assert error.startswith("  Error: ValueError at tenant-probes-embedded:")
+    assert version.startswith("  Version: agentsync ")
+    assert link == "  Report: https://github.com/renchris/agent-context-sync/issues/new"
+    assert partial == f"  Partial report: {_only_report(tmp_path / 'out')}"
+    assert "LINKTOKEN" not in proc.stderr and "Traceback" not in proc.stderr
+    proc = _probe(tmp_path, "bug", "--output", str(tmp_path / "again"), env={"__AGENTSYNC_RAISE": "1"})
+    assert proc.returncode == 1
+    assert "Traceback" in proc.stderr and "ValueError: LINKTOKEN-in-a-message" in proc.stderr
+    assert "__AGENTSYNC_RAISE" not in _run(tmp_path, "--help").stdout
+
+
+# ---- a stop by signal ------------------------------------------------------------------------------------
+
+
+def _default_signals() -> None:
+    """A detached gate starts its tests with INT and HUP ignored, which the child would inherit."""
+    for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
+        signal.signal(sig, signal.SIG_DFL)
+
+
+def _stopped(tmp_path: Path, scenario: str, sig: signal.Signals) -> subprocess.CompletedProcess[str]:
+    """A shim run in its own process group, signalled once the stub marks that it is busy."""
+    record = tmp_path / "record"
+    argv = ["/bin/bash", str(SCRIPT), "--config", str(_config(tmp_path)), "--output", str(tmp_path / "out")]
+    proc = subprocess.Popen(
+        [*argv, "--python", str(_shim_python(tmp_path))],
+        cwd=tmp_path,
+        env=_env(tmp_path, None, {"PROBES_SCENARIO": scenario, "PROBES_RECORD": str(record)}),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+        preexec_fn=_default_signals,  # noqa: PLW1509 - no threads start before the exec
+    )
+    try:
+        deadline = time.monotonic() + 120
+        while not record.exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert record.exists(), proc.communicate(timeout=30)
+        os.killpg(proc.pid, sig)
+        out, err = proc.communicate(timeout=60)
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
+
+
+@pytest.mark.parametrize(("sig", "code"), [(signal.SIGTERM, 143), (signal.SIGHUP, 129)])
+def test_sigterm_removes_downloads_and_writes_a_partial_report(
+    tmp_path: Path, sig: signal.Signals, code: int
+) -> None:
+    proc = _stopped(tmp_path, "slow", sig)
+    assert proc.returncode == code, proc.stderr
+    assert proc.stdout == ""
+    report = _only_report(tmp_path / "out")
+    assert proc.stderr == (
+        "Stopped waiting. Nothing was written to the tenant; temporary downloads removed."
+        f" Partial report: {report}\n"
+    )
+    text = report.read_text(encoding="utf-8")
+    assert f"**stopped: {sig.name}**" in text and "## Probe 1:" in text
+    assert list((tmp_path / "tmpdir").glob("agentsync-probes-*")) == []
+
+
+def test_sigint_prints_no_traceback(tmp_path: Path) -> None:
+    proc = _stopped(tmp_path, "slow", signal.SIGINT)
+    assert proc.returncode == 130, proc.stderr
+    assert "Traceback" not in proc.stderr and "KeyboardInterrupt" not in proc.stderr
+    assert proc.stderr.startswith("Stopped waiting. ")
+    assert list((tmp_path / "tmpdir").glob("agentsync-probes-*")) == []
+
+
+def test_a_stop_before_probing_says_nothing_was_downloaded(tmp_path: Path) -> None:
+    proc = _stopped(tmp_path, "slow-token", signal.SIGTERM)
+    assert (proc.returncode, proc.stdout) == (143, "")
+    assert proc.stderr == "Stopped. Nothing was downloaded; no report written.\n"
+    assert not (tmp_path / "out").exists()
+    assert list((tmp_path / "tmpdir").iterdir()) == []
+
+
+# ---- the probe-9 store: atomic, locked, kept -------------------------------------------------------------
+
+
+def test_an_interrupted_store_write_keeps_the_old_bytes(tmp_path: Path) -> None:
+    """The replace that would publish the new store fails as on a full disk: the old bytes stay and no
+    temporary file is left beside them."""
+    out = tmp_path / "out"
+    old = _due_links("1")
+    store = _store(out, old)
+    proc = _probe(tmp_path, "full-disk")
+    assert proc.returncode == 1, proc.stderr
+    report = _only_report(out)
+    assert proc.stderr == f"failed: No space left on device ({store}); report {report}\n"
+    assert store.read_text(encoding="utf-8") == old
+    assert sorted(p.name for p in out.iterdir()) == [".deltalinks.lock", "deltalinks.json", report.name]
+
+
+def test_a_second_run_skips_probe_9_and_still_reports(tmp_path: Path) -> None:
+    import fcntl  # noqa: PLC0415
+
+    out = tmp_path / "out"
+    out.mkdir(mode=0o700)
+    fd = os.open(out / ".deltalinks.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        proc = _probe(tmp_path, "ok")
+    finally:
+        os.close(fd)
+    assert (proc.returncode, proc.stdout) == (1, "")
+    report = _only_report(out)
+    assert (
+        proc.stderr == f"failed: probe 9 skipped: another run holds {out}/.deltalinks.lock; report {report}\n"
+    )
+    assert "**Skipped:** another tenant-probes.sh run holds" in report.read_text(encoding="utf-8")
+    assert not (out / "deltalinks.json").exists()
+
+
+def test_outcomes_survive_an_auth_loss_mid_loop(tmp_path: Path) -> None:
+    """The first due link is tested and spent before sign-in is lost on the second: its outcome is kept, so
+    the next run does not test a one-shot link again."""
+    import json  # noqa: PLC0415
+
+    store = _store(tmp_path / "out", _due_links("a", "b"))
+    proc = _probe(tmp_path, "loop-auth")
+    assert proc.returncode == 77, proc.stderr
+    first, second = json.loads(store.read_text(encoding="utf-8"))["links"]
+    assert (first["link"], first["outcome"], first["age_days"]) == (None, "200: still valid", 40)
+    assert (second["link"], second["outcome"]) == (LINK + "b", None)
+    assert store.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_loose_default_dir_is_tightened(tmp_path: Path) -> None:
+    """The documented ``mkdir -p`` leaves the default folder 0755; the run makes it 0700. A folder given with
+    --output is the operator's: one warning, its mode untouched."""
+    default = tmp_path / "state" / "probes"
+    default.mkdir(parents=True)
+    default.chmod(0o755)
+    proc = _probe(tmp_path, "ok", "--max-downloads", "0")
+    assert proc.returncode == 0, proc.stderr
+    assert default.stat().st_mode & 0o777 == 0o700
+    given = tmp_path / "given"
+    given.mkdir()
+    given.chmod(0o755)
+    proc = _probe(tmp_path, "ok", "--output", str(given), "--max-downloads", "0")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stderr == f"warning: {given} is mode 0755, open to other users; the files in it stay 0600\n"
+    assert given.stat().st_mode & 0o777 == 0o755
+
+
 # ---- --dry-run writes nothing ----------------------------------------------------------------------------
 
 
@@ -651,7 +920,7 @@ def test_every_probe_help_example_parses(tmp_path: Path) -> None:
 def _script_helpers() -> dict[str, object]:
     """``clean`` and ``cell`` as the script defines them, taken from its heredoc with what they read."""
     text = SCRIPT.read_text(encoding="utf-8")
-    body = text.split("<<'PYTHON' || rc=$?\n", 1)[1].split("\nPYTHON\n", 1)[0]
+    body = text.split("<<'PYTHON'\n", 1)[1].split("\nPYTHON\n", 1)[0]
     wanted = {"re", "unicodedata", "ESCAPE_RE", "DROPPED", "clean", "cell"}
     keep = [
         node

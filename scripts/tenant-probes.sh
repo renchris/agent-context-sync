@@ -39,7 +39,8 @@
 #   Probes 1, 2, 4b and 9 run; probe 9 needs re-runs at +30, +60 and +90 days.
 #   Exit status: 0 report written; 1 any other failure; 2 usage error;
 #   77 not signed in or sign-in blocked (report written); 78 sources.toml
-#   invalid or no [graph] client_id.
+#   invalid or no [graph] client_id; 130, 129 or 143 stopped by INT, HUP or
+#   TERM (a partial report once probing began).
 #
 # Learn more: docs/deploy/tenant-probes.md
 set -euo pipefail
@@ -211,25 +212,107 @@ if [ -z "$PY" ]; then
 	error_line "Can't find a Python with agentsync installed. Run scripts/install.sh, or pass --python <PATH>."
 	exit 1
 fi
-if [ ! -x "$PY" ]; then
+if [ ! -f "$PY" ] || [ ! -x "$PY" ]; then
 	error_line "Can't run $PY: it isn't executable. Check --python or AGENTSYNC_PYTHON."
 	exit 1
 fi
 
-rc=0
-"$PY" -I -X utf8 - "$CONFIG" "$OUT" "$DRY_RUN" "$SELFTEST" "$MAX_PAGES" "$MAX_DOWNLOADS" "$MAX_BYTES" <<'PYTHON' || rc=$?
-import truststore  # the macOS trust store before anything imports ssl users (C15 section 9 item 32)
+# exec, so a signal sent to this pid reaches Python, which cleans up; nothing after the heredoc runs
+exec "$PY" -I -X utf8 - "$CONFIG" "$OUT" "$DRY_RUN" "$SELFTEST" "$MAX_PAGES" "$MAX_DOWNLOADS" "$MAX_BYTES" <<'PYTHON'
+import os
+import signal
+import sys
+
+
+def fail_line(text: str) -> None:
+    """An error line on stderr: the mark on a terminal, the word Error: in a log or a pipe."""
+    print(("✗ " if sys.stderr.isatty() else "Error: ") + text, file=sys.stderr)
+
+
+def no_module(exc: ImportError) -> None:
+    fail_line(f"Can't import {exc.name} with {sys.executable}. Pass --python with the interpreter that has agentsync "
+              "installed, or run scripts/install.sh.")
+    sys.exit(1)
+
+
+PROBING = False  # set just before the temporary folder exists: from then on a stop writes a partial report
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+class _Stopped(BaseException):
+    """INT, TERM or HUP arrived while probing; past every except arm, to the cleanup and the partial report."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+def on_signal(signum: int, _frame: object) -> None:
+    if not PROBING:
+        os.write(2, b"Stopped. Nothing was downloaded; no report written.\n")
+        os._exit(128 + signum)
+    raise _Stopped(signum)
+
+
+# a signal ignored at start stays ignored, or `nohup` would die at the hangup it was started to survive
+HANDLED = [s for s in STOP_SIGNALS if signal.getsignal(s) is not signal.SIG_IGN]
+for _sig in HANDLED:
+    signal.signal(_sig, on_signal)
+SOURCE = (lambda: None).__code__.co_filename  # <stdin> for this heredoc
+
+
+def bug_report(kind: type[BaseException], exc: BaseException, tb: object) -> None:
+    """D34: an unexpected error is a short bug report (its type and line, never its message, which can quote a
+    path or a link). __AGENTSYNC_RAISE=1 prints the full trace instead."""
+    if isinstance(exc, _Stopped):
+        os.write(2, b"Stopped. Temporary downloads may remain; no report written.\n")
+        os._exit(128 + exc.signum)
+    if issubclass(kind, KeyboardInterrupt) or os.environ.get("__AGENTSYNC_RAISE"):
+        sys.__excepthook__(kind, exc, tb)  # type: ignore[arg-type]
+        return
+    import platform
+    import traceback
+
+    frames = [f for f in traceback.extract_tb(tb) if f.filename == SOURCE]  # type: ignore[arg-type]
+    site = f"{kind.__name__} at {SOURCE}:{frames[-1].lineno}" if frames else kind.__name__
+    try:
+        from agentsync import __version__ as version
+    except Exception:
+        version = "unknown"
+    try:
+        from agentsync.it_request import REPO_URL as repo_url
+    except Exception:
+        repo_url = "https://github.com/renchris/agent-context-sync"
+    fail_line("Unexpected error in tenant-probes.sh. This is a bug in agentsync.")
+    host = f"macOS {platform.mac_ver()[0]}" if platform.mac_ver()[0] else platform.system()
+    print(f"  Error: {site}", file=sys.stderr)
+    print(f"  Version: agentsync {version}, Python {platform.python_version()}, {host}", file=sys.stderr)
+    print(f"  Report: {repo_url}/issues/new", file=sys.stderr)
+    if "write_report" in globals() and "out_dir" in globals():
+        try:
+            emit(f"**failed: unexpected error**: {site}")
+            print(f"  Partial report: {write_report(out_dir)}", file=sys.stderr)
+        except BaseException:
+            pass
+
+
+sys.excepthook = bug_report
+
+try:
+    import truststore  # the macOS trust store before anything imports ssl users (C15 section 9 item 32)
+except ImportError as exc:
+    no_module(exc)
 
 truststore.inject_into_ssl()
 
 import base64  # noqa: E402
 import datetime as dt  # noqa: E402
+import fcntl  # noqa: E402
 import json  # noqa: E402
-import os  # noqa: E402
 import platform  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
-import sys  # noqa: E402
+import stat  # noqa: E402
 import tempfile  # noqa: E402
 import unicodedata  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -256,11 +339,6 @@ def cell(text: object, limit: int | None = 160) -> str:
     """``clean`` for a report table cell: ``|`` becomes ``/``, and past ``limit`` it is cut with an ellipsis."""
     shown = clean(text).replace("|", "/")
     return shown if limit is None or len(shown) <= limit else shown[: limit - 1] + "…"
-
-
-def fail_line(text: str) -> None:
-    """An error line on stderr: the mark on a terminal, the word Error: in a log or a pipe."""
-    print(("✗ " if sys.stderr.isatty() else "Error: ") + text, file=sys.stderr)
 
 
 def quickxor(path: Path) -> str:
@@ -343,25 +421,121 @@ def selftest() -> int:
 if SELFTEST:
     sys.exit(selftest())
 
-from agentsync import __version__, net  # noqa: E402
-from agentsync.config import load_config  # noqa: E402
-from agentsync.errors import AgentSyncError, AuthRequiredError, ConfigError, GraphError  # noqa: E402
-from agentsync.model import SourceKind  # noqa: E402
+try:
+    from agentsync import __version__, net  # noqa: E402
+    from agentsync.config import load_config  # noqa: E402
+    from agentsync.errors import AgentSyncError, AuthError, AuthRequiredError, ConfigError, GraphError  # noqa: E402
+    from agentsync.model import SourceKind  # noqa: E402
+except ImportError as exc:
+    no_module(exc)
 
 lines: list[str] = []
+loose_warned = False
 
 
 def emit(text: str = "") -> None:
     lines.append(text)
 
 
-def write_report(out_dir: Path) -> Path:
+class StoreError(AgentSyncError):
+    """deltalinks.json can't be read or has the wrong shape: rc 1, and the probes before it still reach the report."""
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """``text`` to ``path`` (0600) through a temporary file in the same folder, so a stop or a full disk keeps
+    the old bytes. The temporary name never matches ``login-*.txt`` or ``tenant-probes-*.md``."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fd = -1
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        if fd >= 0:
+            os.close(fd)
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
+
+
+def ensure_out_dir(out_dir: Path) -> None:
+    """The report folder, 0700. The default one is tightened if it is looser (the documented ``mkdir -p``
+    makes it 0755); a folder given with --output is the operator's, so it is only warned about."""
+    global loose_warned
     out_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not OUT:
+        os.chmod(out_dir, 0o700)
+    elif out_dir.stat().st_mode & 0o077 and not loose_warned:
+        loose_warned = True
+        mode = stat.S_IMODE(out_dir.stat().st_mode)
+        print(f"warning: {out_dir} is mode {mode:04o}, open to other users; the files in it stay 0600", file=sys.stderr)
+
+
+def write_report(out_dir: Path) -> Path:
     path = out_dir / f"tenant-probes-{NOW.strftime('%Y%m%dT%H%M%SZ')}.md"
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines).rstrip() + "\n")
+    try:
+        ensure_out_dir(out_dir)
+        atomic_write(path, "\n".join(lines).rstrip() + "\n")
+    except OSError as exc:
+        fail_line(f"Can't write the report under {out_dir}: {exc.strerror or exc}. Pass --output with a folder you can write.")
+        sys.exit(1)
     return path
+
+
+def load_store(store: Path) -> dict:
+    """The probe-9 store, checked before anything writes it, so a damaged one is never truncated. A message names
+    the place, never the bytes: a link holds a token."""
+    try:
+        mode = store.stat().st_mode
+    except FileNotFoundError:
+        return {"version": 1, "links": []}
+    except OSError as exc:
+        raise StoreError(f"{store}: can't read it: {exc.strerror}") from None
+    if not stat.S_ISREG(mode):
+        raise StoreError(f"{store}: not a regular file")
+    try:
+        data = json.loads(store.read_bytes().decode("utf-8"))
+    except OSError as exc:
+        raise StoreError(f"{store}: can't read it: {exc.strerror}") from None
+    except UnicodeDecodeError as exc:
+        raise StoreError(f"{store}: not UTF-8 at byte {exc.start}") from None
+    except json.JSONDecodeError as exc:
+        raise StoreError(f"{store}: line {exc.lineno} column {exc.colno}: {exc.msg}") from None
+    if not isinstance(data, dict) or "version" not in data:
+        raise StoreError(f"{store}: damaged: no version")
+    version = data["version"]
+    if version != 1:
+        newer = isinstance(version, int) and not isinstance(version, bool) and version > 1
+        raise StoreError(f"{store}: written by a newer build (version {version}); this script reads version 1"
+                         if newer else f"{store}: damaged: version is not 1")
+    links = data.get("links")
+    if not isinstance(links, list):
+        raise StoreError(f"{store}: damaged: links is not a list")
+    want = {"drive": (str,), "obtained_at": (str,), "milestone_days": (int,), "link": (str, type(None)),
+            "tested_at": (str, type(None)), "outcome": (str, type(None)), "age_days": (int, type(None))}
+    for i, entry in enumerate(links):
+        if not isinstance(entry, dict):
+            raise StoreError(f"{store}: damaged: links[{i}] is not an object")
+        for key, types in want.items():
+            if not isinstance(entry.get(key), types) or isinstance(entry.get(key), bool):
+                raise StoreError(f"{store}: damaged: links[{i}].{key} is missing or of the wrong type")
+        try:
+            aware = dt.datetime.fromisoformat(entry["obtained_at"]).tzinfo is not None
+        except ValueError:
+            aware = False
+        if not aware:
+            raise StoreError(f"{store}: damaged: links[{i}].obtained_at is not a UTC time")
+    return data
 
 
 try:
@@ -389,11 +563,14 @@ if not config.graph.client_id:
     print(f"Report: {report}", file=sys.stderr)
     sys.exit(78)
 
-from agentsync.graph.auth import MsalAuth, settings_from_config  # noqa: E402 - msal after truststore
-from agentsync.graph.client import GraphClient, user_agent  # noqa: E402
-from agentsync.graph.drive import DRIVE_SELECT, resolve_drive_id  # noqa: E402
-from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError  # noqa: E402
-from agentsync.policy import read_labels  # noqa: E402
+try:
+    from agentsync.graph.auth import MsalAuth, settings_from_config  # noqa: E402 - msal after truststore
+    from agentsync.graph.client import GraphClient, user_agent  # noqa: E402
+    from agentsync.graph.drive import DRIVE_SELECT, resolve_drive_id  # noqa: E402
+    from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError  # noqa: E402
+    from agentsync.policy import read_labels  # noqa: E402
+except ImportError as exc:
+    no_module(exc)
 
 try:
     settings = settings_from_config(config)
@@ -437,6 +614,11 @@ except AuthRequiredError as exc:
     emit(f"| silent token | **reauth-required**: {cell(exc, None)}. Run `agentsync graph login 2>&1 | tee \"{out_dir}/login-$(date +%Y%m%d).txt\"`, then re-run |")
     print(f"not signed in; run `agentsync graph login`, then re-run; report {write_report(out_dir)}", file=sys.stderr)
     sys.exit(77)
+except AuthError as exc:  # a PAC-only network or a refresh that failed: not a sign-in state, so exit 1
+    emit(f"| silent token | **failed**: {cell(exc, None)} |")
+    report = write_report(out_dir)
+    fail_line(f"Can't get a token silently: {cell(exc, None)}; report {report}")
+    sys.exit(1)
 c = claims(token)
 del token
 emit(f"| token source (MSAL `token_source`) | `{auth.last_token_source or '-'}` |")
@@ -474,8 +656,10 @@ def status_of(path: str, params: dict | None = None) -> tuple[str, dict]:
 
 rc = 0
 failure = ""
-tmp_root = Path(tempfile.mkdtemp(prefix="agentsync-probes-"))
+tmp_root: Path | None = None
 try:
+    PROBING = True
+    tmp_root = Path(tempfile.mkdtemp(prefix="agentsync-probes-"))
     emit("| read | permission it needs | result |")
     emit("|---|---|---|")
     checks = [
@@ -583,9 +767,12 @@ try:
         except (GraphError, AgentSyncError) as exc:
             emit(f"| {n} | `{ext}` | {size} | - | download failed: {cell(exc, 80)} | - |")
             continue
-        labels = read_labels(a, name=f"probe{ext}")
-        lab = "error: " + cell(labels.error, 60) if labels.error else (
-            f"{len(labels.labels)} ({', '.join(sorted({lb.origin for lb in labels.labels}))})" if labels.labels else "none")
+        try:
+            labels = read_labels(a, name=f"probe{ext}")
+            lab = "error: " + cell(labels.error, 60) if labels.error else (
+                f"{len(labels.labels)} ({', '.join(sorted({lb.origin for lb in labels.labels}))})" if labels.labels else "none")
+        except Exception as exc:  # a reader defect is this file's cell, not the end of the run
+            lab = "error: " + cell(type(exc).__name__, 60)
         served = "n/a (no quickXorHash)" if not qxh else str(quickxor(a) == qxh)
         emit(f"| {n} | `{ext}` | {size} | {lab} | {sha_a == sha_b} | {served} |")
         a.unlink(missing_ok=True)
@@ -595,41 +782,61 @@ try:
     emit("## Probe 9: deltaLink idle lifetime (one link per milestone, each used once)")
     emit()
     store = out_dir / "deltalinks.json"
-    data = json.loads(store.read_text(encoding="utf-8")) if store.is_file() else {"version": 1, "links": []}
-    for entry in data["links"]:
-        obtained = dt.datetime.fromisoformat(entry["obtained_at"])
-        age = (NOW - obtained).days
-        if entry.get("link") and age >= entry["milestone_days"]:
+    ensure_out_dir(out_dir)
+    # one run at a time holds the store; never wait for the lock, since this section makes network calls
+    lock_fd = os.open(out_dir / ".deltalinks.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        lock_fd = -1
+    if lock_fd < 0:
+        emit("**Skipped:** another tenant-probes.sh run holds `.deltalinks.lock`; re-run probe 9 once it ends.")
+        rc = 1
+        failure = f"failed: probe 9 skipped: another run holds {out_dir}/.deltalinks.lock"
+    else:
+        try:
+            data = load_store(store)
             try:
-                client.get_json(entry["link"])
-                entry["outcome"] = "200: still valid"
-            except NetworkPolicyError:
-                raise
-            except GraphError as exc:
-                entry["outcome"] = f"{exc.status} {cell(exc.code, None)}" + (": expired, full re-enumeration" if exc.status == 410 else "")
-            entry["tested_at"], entry["age_days"], entry["link"] = NOW.isoformat(), age, None
-    if not any(e.get("link") for e in data["links"]):
-        for days in MILESTONES:
-            try:
-                page = client.get_json("/me/drive/root/delta", params={"token": "latest", "$select": "id"})
-            except GraphError as exc:
-                emit(f"Couldn't get a deltaLink: {exc.status} `{cell(exc.code)}`.")
-                break
-            link = page.get("@odata.deltaLink")
-            if link:
-                data["links"].append({"drive": "me", "obtained_at": NOW.isoformat(), "milestone_days": days,
-                                      "link": link, "tested_at": None, "outcome": None, "age_days": None})
-    out_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(store, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=1, sort_keys=True)
-    emit("| drive | obtained | test due | tested | age (days) | outcome |")
-    emit("|---|---|---|---|---|---|")
-    for e in data["links"]:
-        due = (dt.datetime.fromisoformat(e["obtained_at"]) + dt.timedelta(days=e["milestone_days"])).date()
-        emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {cell(e.get('outcome') or 'pending')} |")
-    emit()
-    emit("A 410 is not an outage: the drive arm falls back to a full enumeration. The result sets the reconcile floor.")
+                for entry in data["links"]:
+                    obtained = dt.datetime.fromisoformat(entry["obtained_at"])
+                    age = (NOW - obtained).days
+                    if entry.get("link") and age >= entry["milestone_days"]:
+                        try:
+                            client.get_json(entry["link"])
+                            entry["outcome"] = "200: still valid"
+                        except NetworkPolicyError:
+                            raise
+                        except GraphError as exc:
+                            entry["outcome"] = f"{exc.status} {cell(exc.code, None)}" + (": expired, full re-enumeration" if exc.status == 410 else "")
+                        entry["tested_at"], entry["age_days"], entry["link"] = NOW.isoformat(), age, None
+                if not any(e.get("link") for e in data["links"]):
+                    for days in MILESTONES:
+                        try:
+                            page = client.get_json("/me/drive/root/delta", params={"token": "latest", "$select": "id"})
+                        except GraphError as exc:
+                            emit(f"Couldn't get a deltaLink: {exc.status} `{cell(exc.code)}`.")
+                            break
+                        link = page.get("@odata.deltaLink")
+                        if link:
+                            data["links"].append({"drive": "me", "obtained_at": NOW.isoformat(), "milestone_days": days,
+                                                  "link": link, "tested_at": None, "outcome": None, "age_days": None})
+            finally:  # a link already tested is spent: keep its outcome even when the loop stopped early
+                atomic_write(store, json.dumps(data, indent=1, sort_keys=True))
+        finally:
+            os.close(lock_fd)
+        emit("| drive | obtained | test due | tested | age (days) | outcome |")
+        emit("|---|---|---|---|---|---|")
+        for e in data["links"]:
+            due = (dt.datetime.fromisoformat(e["obtained_at"]) + dt.timedelta(days=e["milestone_days"])).date()
+            emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {cell(e.get('outcome') or 'pending')} |")
+        emit()
+        emit("A 410 is not an outage: the drive arm falls back to a full enumeration. The result sets the reconcile floor.")
+except _Stopped as exc:
+    name = signal.Signals(exc.signum).name
+    emit(f"**stopped: {name}**: the run was stopped before it finished; this report holds what ran before it.")
+    rc = 128 + exc.signum
+    failure = "Stopped waiting. Nothing was written to the tenant; temporary downloads removed."
 except NetworkPolicyError as exc:
     emit(f"**failed: network-policy ({exc.policy})**: {cell(exc, None)}. See docs/deploy/README.md (TLS inspection / proxy).")
     rc = 1
@@ -641,10 +848,24 @@ except AuthRequiredError as exc:
 except AgentSyncError as exc:
     emit(f"**failed**: {cell(exc, None)}")
     rc = 1
-    failure = f"failed: {exc.status} {cell(exc.code)}" if isinstance(exc, GraphError) else f"failed: {cell(exc)}"
+    if isinstance(exc, GraphError):
+        failure = f"failed: {exc.status} {cell(exc.code)}"
+    else:  # a store message is the repair, so it is never cut
+        failure = f"failed: {cell(exc, None if isinstance(exc, StoreError) else 160)}"
+except OSError as exc:
+    where = f" ({exc.filename})" if exc.filename else ""
+    emit(f"**failed**: {cell(exc.strerror or exc, None)}{cell(where, None)}")
+    rc = 1
+    failure = f"failed: {cell(exc.strerror or exc, None)}{cell(where, None)}"
 finally:
+    # the downloads go first, past a second signal; then a second signal ends the run at once
+    for _sig in HANDLED:
+        signal.signal(_sig, signal.SIG_IGN)
+    if tmp_root is not None:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+    for _sig in HANDLED:
+        signal.signal(_sig, signal.SIG_DFL)
     client.close()
-    shutil.rmtree(tmp_root, ignore_errors=True)
 
 emit()
 emit("## Not probed by this script")
@@ -653,10 +874,11 @@ emit("- Device-code block state (design §9 probe 2 extension): needs an interac
      "and only when IT has set `allow_device_code`; expect `blocked: policy` (AADSTS53003).")
 emit("- Token Protection, Teams channel delta, shared-mailbox delta, launchd matrix: C15 §8 probes 4, 6, 7 (manual).")
 report = write_report(out_dir)
-if rc:
+if rc > 128:
+    print(f"{failure} Partial report: {report}", file=sys.stderr)
+elif rc:
     print(f"{failure}; report {report}", file=sys.stderr)
 else:
     print(f"report: {report}")
 sys.exit(rc)
 PYTHON
-exit "$rc"
