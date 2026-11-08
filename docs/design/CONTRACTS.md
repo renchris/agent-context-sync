@@ -38238,7 +38238,8 @@ literal, which would otherwise print it whole. Still in clear, as the legend say
 first quote, backtick, bracket, comma or semicolon (a tail may never run past `)`: `_ADDED_TYPED_RE` needs `):`), and
 after a blank from the first word with no `/` or that is an option, a URL, a path of its own or a number like `3/14`;
 `/mnt/old/Users/...`. `GET /users/me/...` is an accepted over-cut, as is a volume path whose line holds a later
-`/Users/` not after a blank. The legend's `<path>` item and setup-feedback.md:94 say both reports cut it, every stop
+`/Users/` not after a blank. The legend's `<path>` item (setup-feedback.md's placeholder table, the `<path>` row) says
+both reports cut it, every stop
 and the limit left (C946, C945 with C966: the row named the agentsync report only; the shell report is 105efec15).
 Tests: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102` (each
 value absent through `build_report`, C950's five byte classes, `/Users/Shared`, `/Users/<user>/`, `~/x`, a URL and
@@ -39741,6 +39742,13 @@ was true when written and stays. Test: `test_contracts.py::test_the_office_suffi
 (every literal constant left in the canonical stub equals the module's; the notes' suffixes and parameters read from
 the code). Seven other §15 literals a stub-wide check finds stale (publish's three CLAUDE.md and gitattributes texts,
 gitops' generated pathspecs, the drive arm's select and delta headers) are outside this item.
+
+**§16.230 names the guide's `<path>` row, not its line** (C1042; docs only). It cited setup-feedback.md's line 94 for
+the placeholder legend's `<path>` row, which six lines added above it in round 35 moved to line 100, so the citation
+pointed at an unrelated legend row. It now names the row (setup-feedback.md's placeholder table, the `<path>` row),
+which does not go stale when lines are added above it; no dated line, since no scanner asks for one. Test:
+`test_contracts.py::test_contracts_cites_the_guides_by_name_not_by_line_c1042` (no `setup-feedback.md:<n>` citation in
+CONTRACTS.md, and the named row is there).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

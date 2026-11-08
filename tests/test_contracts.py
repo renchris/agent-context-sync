@@ -477,6 +477,22 @@ def test_the_office_suffix_snapshots_say_policys_eleven_c1038() -> None:
     assert f"§16.239 C1038 (by §16.34 and §16.35):** `Registry.default(cfg, *, {params})`" in flat
 
 
+def test_contracts_cites_the_guides_by_name_not_by_line_c1042() -> None:
+    """B13 round 36 C1042: §16.230 cited `setup-feedback.md:94` for the legend's `<path>` row, which lines
+    added above it moved to 100, so the citation pointed at another row. The guide grows every round:
+    CONTRACTS.md names a guide's row or passage, never its line number, and the `<path>` row it names is
+    there."""
+    text = CONTRACTS.read_text(encoding="utf-8")
+    assert re.findall(r"setup-feedback\.md:\d+", text) == []
+    flat = " ".join(text.split())
+    assert (
+        "The legend's `<path>` item (setup-feedback.md's placeholder table, the `<path>` row) says both"
+        in flat
+    )
+    guide = (CONTRACTS.parent.parent / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    assert len(re.findall(r"^\| `<path>` \|", guide, flags=re.MULTILINE)) == 1
+
+
 def test_the_registry_stub_has_the_code_signatures() -> None:
     """B13 round 13 O55: §15's `Registry` stub still read `__init__(self, converters)`, `default(cls, cfg)`
     and eight converters, and had no `policy`, `without_ocr`, `without_speech`, `screen`,
