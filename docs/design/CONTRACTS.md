@@ -39209,6 +39209,18 @@ shapes: every line in today's words, a `timed out after` line and the Doctor lin
 `test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108` (a current render byte for byte, and an uncut copy's
 Loop, gitleaks, `yours` and `unexpected` kept).
 
+**A background wait the budget shortened names the report's time limit** (C1040's install.sh half; ruling 115;
+`scripts/install.sh`). Lane RA's report now words a launchctl print wait the spent budget cut below its 5 s cap
+`- <label>.poll: not measured (launchctl print did not answer within the report's time limit; plist ...)`, since
+the shortened seconds read as a fixed cap. report_time_helps' budget alternates now take that form for `.poll` and
+`.reconcile`, beside `the report's time limit was used up before launchctl print ran`, and return 0, so the NEXT
+names AGENTSYNC_REPORT_TIME_LIMIT=60 even when another line holds a full-cap `did not answer within 3.0s`, which
+would otherwise end the function on its last grep; that last `within [0-9]` grep stays, so a full-cap wait alone
+names no variable. The install source's shortened words already match its `the report's time limit` alternate.
+Tests: in `test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`, `launchctl-shortened`,
+`launchctl-shortened-beside-git-timeout` (the row a missing alternate turns) and `launchctl-and-git-timeout` (both at
+their full caps: no variable).
+
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
 Reserved for round 36 lane B of B13.

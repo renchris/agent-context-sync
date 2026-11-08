@@ -7692,7 +7692,9 @@ REPORT_LOOP_CUT='^- Loop: (.*; NEXT: )?not read \((it did not finish in time|the
 # Whether AGENTSYNC_REPORT_TIME_LIMIT can help the cut a report says (B13 round 34 ruling 97, C834): a doctor or
 # evidence line cut, a cut Loop read, or a line saying the report's own budget was spent (Run metadata's install
 # source, a Background job line, Status's `Not run:`) scale with it; git, xcode-select and launchctl print keep their
-# fixed 3 s and 5 s caps, so when only those timed out, by their seconds, it names no variable. An older build's
+# fixed 3 s and 5 s caps, so when only those timed out, by their seconds, it names no variable; a wait the spent
+# budget shortened below its cap names the report's time limit instead (lane RA's words, B13 round 36 ruling 115,
+# C1040: `launchctl print did not answer within the report's time limit`), which does. An older build's
 # install source words name no seconds and keep the clause (B13 round 35 C976). A report that already ran at 60 s,
 # setup_report._TIME_LIMIT_MAX_S (its `- time limit: 60s, from ...` or `- time limit: 60s: ... so 60 was used`
 # line; a test keeps the 60 equal), has no more time to give, so it never names the variable (C922, C929). A doctor
@@ -7705,7 +7707,7 @@ report_time_helps() { # REPORT
 	! LC_ALL=C grep -qE '^- time limit: 60s[,:] ' "$1" || return 1
 	LC_ALL=C grep -qE '^- doctor: (cut off|not started)|^- evidence: .*write the report again when this Mac is idle' "$1" && return 0
 	LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$1" && return 0
-	LC_ALL=C grep -qE "^- install source: .*(the report's time limit|, time limit\)|\(time limit\))|^- [^ ]+\.(poll|reconcile): not measured \(the report's time limit was used up before launchctl print ran|^Not run: the report's time budget was used up before status started" "$1" && return 0
+	LC_ALL=C grep -qE "^- install source: .*(the report's time limit|, time limit\)|\(time limit\))|^- [^ ]+\.(poll|reconcile): not measured \((the report's time limit was used up before launchctl print ran|launchctl print did not answer within the report's time limit)|^Not run: the report's time budget was used up before status started" "$1" && return 0
 	LC_ALL=C grep -qE '^- doctor: .*not judged \((the )?(OCR|media|speech) helper( and the (OCR|media|speech) helper)* did not answer in time' "$1" && return 1
 	! LC_ALL=C grep -qE '^- install source: .*did not answer within [0-9]|^- [^ ]+\.(poll|reconcile): not measured \(launchctl print did not answer within [0-9]' "$1"
 }

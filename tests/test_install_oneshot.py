@@ -5247,6 +5247,7 @@ def _helper_doctor(*helpers: str, stopped: bool = False) -> str:
 
 _HELPER_WARN = _helper_doctor("OCR helper")
 _IDLE = setup_report._IDLE_AGAIN
+_LAUNCHCTL_SHORT = "launchctl print did not answer within the report's time limit"  # lane RA's C1040 words
 _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, before their seconds or limit
 
 
@@ -5331,6 +5332,26 @@ _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, bef
         ([_helper_doctor("OCR helper", "media helper", "speech helper")], False),
         ([_helper_doctor("media helper", stopped=True)], False),
         ([_helper_doctor("OCR helper", "speech helper"), _DOCTOR_CUT], True),
+        # B13 round 36 ruling 115 (C1040): a launchctl wait the spent budget shortened (lane RA's words) names
+        # the variable, beside a git wait that got its full cap too; the 5.0s full-cap form does not
+        (
+            [f"- background sync: poll not measured: {_IDLE}", f"{_JOB} ({_LAUNCHCTL_SHORT}; plist present)"],
+            True,
+        ),
+        (
+            [
+                f"{_SOURCE_AT} (git did not answer within 3.0s) \u00b7 {_IDLE}",
+                f"- com.agentsync.reconcile: not measured ({_LAUNCHCTL_SHORT}; plist absent)",
+            ],
+            True,
+        ),
+        (
+            [
+                f"{_SOURCE_AT} (git did not answer within 3.0s) \u00b7 {_IDLE}",
+                f"{_JOB} (launchctl print did not answer within 5.0s; plist present)",
+            ],
+            False,
+        ),
     ],
     ids=[
         "loop-timeout",
@@ -5362,6 +5383,9 @@ _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, bef
         "helper-timeout-three",
         "helper-timeout-stopped",
         "helper-timeout-two-and-doctor-cut",
+        "launchctl-shortened",
+        "launchctl-shortened-beside-git-timeout",
+        "launchctl-and-git-timeout",
     ],
 )
 def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834(
