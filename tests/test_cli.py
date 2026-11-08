@@ -14470,7 +14470,7 @@ def _hung_doctor_checks(monkeypatch: pytest.MonkeyPatch, ran: list[str]) -> None
 
     def healthy(_config: Config) -> list[doctor.CheckResult]:
         ran.append("pandoc")
-        return [doctor.CheckResult("pandoc", doctor.Severity.OK, "fine")]
+        return [doctor.CheckResult("pandoc", True, "fine", doctor.Severity.INFO)]
 
     monkeypatch.setattr(doctor, "_CHECKS", (("git", hung), ("pandoc", healthy)))
 

@@ -671,7 +671,7 @@ def test_run_checks_stops_at_the_callers_deadline_and_names_the_check_it_was_in_
 
     def healthy(_config: Config) -> list[CheckResult]:
         ran.append("pandoc")
-        return [CheckResult("pandoc", Severity.OK, "fine")]
+        return [CheckResult("pandoc", True, "fine", Severity.INFO)]
 
     monkeypatch.setattr(doctor, "_CHECKS", (("git", hung), ("pandoc", healthy)))
     seen: list[str] = []
@@ -685,7 +685,11 @@ def test_run_checks_stops_at_the_callers_deadline_and_names_the_check_it_was_in_
     assert not deadline._LIVE_CHILDREN
     # standalone doctor, with no deadline, runs every check
     monkeypatch.setattr(doctor, "_CHECKS", (("pandoc", healthy),))
-    assert [r.name for r in doctor.run_checks(sample_config, tcc_canary=False)] == ["pandoc"]
+    # a real severity: a crashed check (Severity.OK does not exist) is no pass (B13 round 36 C1066)
+    ran.clear()
+    fine = [CheckResult("pandoc", True, "fine", Severity.INFO)]
+    assert doctor.run_checks(sample_config, tcc_canary=False) == fine
+    assert ran == ["pandoc"]
 
 
 def test_saw_group_tells_nobody_past_the_callers_deadline_c925() -> None:
