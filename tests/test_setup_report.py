@@ -4980,7 +4980,10 @@ def test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938(fake_mac: dic
     assert setup_report._claims(folder, said("chmod 700 ~/Library/x/governance"))
     assert not setup_report._claims(folder, said("chmod 600 ~/Library/x/governance"))
     assert setup_report._claims(old, said("chmod 600 ~/Library/x/governance/holds.json"))
-    for head in ("status: cannot read the state:", "status: some of the state could not be read:"):
+    # B13 round 36 C1024: the new head is lane B's own constant, the old one the words older builds write
+    assert cli.STATUS_PARTLY_UNREAD.rstrip() == setup_report._STATUS_PART_UNREAD
+    assert setup_report._STATUS_PART_UNREAD in setup_report._STATUS_UNREAD_HEADS
+    for head in ("status: cannot read the state:", cli.STATUS_PARTLY_UNREAD.rstrip()):
         lines = ["loop: skill current · baseline missing", f"{head} the hold list cannot be read"]
         hooks = setup_report.ReportHooks(status=lambda c, ln=lines: ln)
         text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)

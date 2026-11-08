@@ -39146,6 +39146,12 @@ of its own (`... a report written after it is fixed measures them (see Doctor's 
 0700 folder) keeps A87's file words. Test:
 `tests/test_setup_report.py::test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file` (both cases).
 
+**The partly-unread status head is lane B's own constant** (C1024; `tests/test_setup_report.py`). No test held
+`setup_report._STATUS_PART_UNREAD` equal to `cli.STATUS_PARTLY_UNREAD`, which the report cannot import (cli imports
+it). `test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938` pins the two equal (cli's without its trailing
+blank), pins the head among `_STATUS_UNREAD_HEADS`, and builds the new head from cli's constant while the old
+`status: cannot read the state:` stays a literal, the words older builds still write.
+
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
 **An escaped folder row is marked, equals no other row and never adds another folder** (C1001, C1116, C1072, C1002;
