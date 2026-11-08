@@ -1313,6 +1313,10 @@ class ReportHooks:
     # the check group the ``doctor`` hook's run started last (None: none yet, or not told): the one a doctor
     # the report cut off was in (B13 round 21 Y22)
     doctor_at: Callable[[], str | None] | None = None
+    # told that the report gave up on the ``doctor`` call (its time limit cut it): the abandoned thread's
+    # checks then publish no fixes and no first state stop, which loop_next would read as the doctor's
+    # (B13 round 36 C1030, ruling 117; lane B's hook sets it). Optional: None is a build without it
+    doctor_abandoned: Callable[[], None] | None = None
 
 
 def _tokens(value: str) -> list[str]:
@@ -8033,6 +8037,10 @@ def _doctor(r: _Run) -> list[str]:
     try:
         lines = r.call(lambda: doctor_fn(config), timeout=limit)
     except TimeoutError:  # the Summary says cut off, not "not run" (U48)
+        abandoned = r.hooks.doctor_abandoned  # B13 round 36 C1030: before the Loop line reads the fixes
+        if abandoned is not None:
+            with contextlib.suppress(Exception):
+                abandoned()
         # the wait the call was given, the number its own message names: one float in both places (V3, V49)
         had = r.last_call_limit or 0.0
         r.facts.doctor_cut_off = had if had > 0.2 else 0.0

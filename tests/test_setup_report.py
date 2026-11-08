@@ -22169,6 +22169,48 @@ def test_a_loop_read_never_started_says_its_next_was_not_started_c1109(stopped: 
     )
 
 
+def test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1030 (ruling 117): a doctor call the time limit cut kept running and published its fixes
+    and first state stop after the cut, which loop_next then read as the doctor's. The report tells the hook
+    it gave up (the optional ReportHooks.doctor_abandoned, lane B's to set) in the TimeoutError branch, before
+    the Loop line is read; a hook that raises changes nothing, and a build without it reads as before."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    release = threading.Event()
+
+    def slow(config: Config) -> list[str]:
+        release.wait(30)
+        return []
+
+    told: list[str] = []
+    order: list[str] = []
+
+    def loop_next(config: Config) -> list[str]:
+        order.append("loop_next")
+        return ["NEXT: ok"]
+
+    def abandoned() -> None:
+        told.append("abandoned")
+        order.append("abandoned")
+
+    try:
+        hooks = setup_report.ReportHooks(doctor=slow, doctor_abandoned=abandoned, loop_next=loop_next)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+        assert told == ["abandoned"] and order[0] == "abandoned", order
+        assert "Cut off: the doctor call did not finish" in section(text, "Doctor")
+
+        def boom() -> None:
+            raise RuntimeError("x")
+
+        hooks = setup_report.ReportHooks(doctor=slow, doctor_abandoned=boom)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+        assert "Cut off: the doctor call did not finish" in section(text, "Doctor")
+        assert setup_report.ReportHooks().doctor_abandoned is None
+    finally:
+        release.set()
+
+
 def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
     """A hook that gives lines (an older CLI) names no check: the warn is unexpected. One that fails or times
     out left the Loop line unread, so the warn it could have named is not judged (B13 round 33 C721, C703,

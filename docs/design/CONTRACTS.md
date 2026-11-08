@@ -39125,6 +39125,13 @@ started: the report's time budget was used up`: the loop_next call, never status
 COMMON.md:677 stays as written. Test: `tests/test_setup_report.py::test_a_loop_read_never_started_says_its_next_was_not_started_c1109`
 (a live copy with the idle advice, a stopped one without).
 
+**The report tells the doctor hook it gave up** (C1030, the report half; ruling 117; `src/agentsync/setup_report.py`).
+A doctor call the time limit cut kept running and published its fixes and first state stop after the cut, which the
+Loop line's loop_next then read as the doctor's. `ReportHooks` takes an optional `doctor_abandoned`, which `_doctor`
+calls under `contextlib.suppress(Exception)` first in its `TimeoutError` branch, before the Loop line is read; lane B's
+`cli._report_hooks` sets it, clearing both under the lock its checks publish under (§16.237). None, a build without
+it, reads as before. Test: `tests/test_setup_report.py::test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030`.
+
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
 **An escaped folder row is marked, equals no other row and never adds another folder** (C1001, C1116, C1072, C1002;
