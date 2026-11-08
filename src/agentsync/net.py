@@ -42,6 +42,8 @@ import truststore
 from requests.adapters import HTTPAdapter
 from urllib3 import proxy_from_url
 
+from agentsync.ops import deadline
+
 logger = logging.getLogger(__name__)
 
 REACH_ONLINE = "online"
@@ -173,11 +175,13 @@ def parse_scutil_proxy(text: str) -> SystemProxy:
 
 
 def _run_scutil() -> str | None:
-    """``scutil --proxy`` stdout, or None off macOS / on failure (seam for tests)."""
+    """``scutil --proxy`` stdout, or None off macOS / on failure (seam for tests). Through
+    :func:`agentsync.ops.deadline.run`, so under the setup report's deadline it starts nothing once that has
+    passed and ends with the report (B13 round 36 C1049; ruling 117)."""
     if sys.platform != "darwin":
         return None
     try:
-        proc = subprocess.run([_SCUTIL, "--proxy"], capture_output=True, text=True, timeout=5, check=False)
+        proc = deadline.run([_SCUTIL, "--proxy"], capture_output=True, text=True, timeout=5, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("scutil --proxy failed: %s", type(exc).__name__)
         return None

@@ -31,7 +31,7 @@ from typing import NoReturn
 
 import pytest
 
-from agentsync import cli, gitops, governance, lints, setup_report
+from agentsync import arm_local, cli, gitops, governance, lints, net, setup_report
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.convert import pandoc as pandoc_mod
@@ -866,6 +866,47 @@ def test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_gr
     worker.join(30)
     assert not worker.is_alive() and done and done[0].returncode == -9, done
     assert _pid_gone(child) and not deadline._LIVE_CHILDREN
+
+
+def test_the_proxy_launchctl_and_volume_probes_start_nothing_past_the_callers_deadline_c1049(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1049 (ruling 117): scutil, launchctl getenv, df and diskutil started through a plain
+    subprocess.run, so one could start after the report's cut and outlive it. Each goes through deadline.run:
+    past the caller's deadline none starts and each helper gives its own failure value; a launchctl read that
+    timed out tries none of the names after it."""
+    spawned: list[str] = []
+    real = subprocess.Popen
+
+    class Recording(real):  # type: ignore[misc,valid-type]
+        def __init__(self, args: Sequence[str], *a: object, **kw: object) -> None:
+            spawned.append(str(args[0]))
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", Recording)
+    monkeypatch.setattr(net.sys, "platform", "darwin")
+    token = deadline.RUN_DEADLINE.set(time.monotonic() - 1.0)
+    try:
+        assert net._run_scutil() is None
+        if Path("/bin/launchctl").exists():
+            assert cli._launchctl_env(["HTTPS_PROXY", "ALL_PROXY"]) == {}
+        with pytest.raises(subprocess.TimeoutExpired):
+            arm_local._mount_point(tmp_path)
+        with pytest.raises(OSError, match="diskutil fallback failed"):
+            arm_local._diskutil_volume_uuid(tmp_path)
+    finally:
+        deadline.RUN_DEADLINE.reset(token)
+    assert spawned == [], spawned
+    asked: list[str] = []
+
+    def cut(argv: Sequence[str], **_kw: object) -> NoReturn:
+        asked.append(argv[-1])
+        raise subprocess.TimeoutExpired(list(argv), 0.0)
+
+    monkeypatch.setattr(cli.deadline, "run", cut)
+    if Path("/bin/launchctl").exists():
+        assert cli._launchctl_env(["HTTPS_PROXY", "ALL_PROXY", "HTTP_PROXY"]) == {}
+        assert asked == ["HTTPS_PROXY"], asked
 
 
 def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) -> None:

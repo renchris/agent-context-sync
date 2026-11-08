@@ -59,6 +59,7 @@ from agentsync.model import (
     SourceItem,
     SourceKind,
 )
+from agentsync.ops import deadline
 from agentsync.paths import _glob_regex, cloud_storage_roots, expand, glob_match, glob_strip, is_under
 from agentsync.skill import AGENTSYNC_BIN
 from agentsync.text import plural
@@ -326,8 +327,10 @@ def _getattrlist_volume_uuid(path: Path) -> str:
 
 
 def _mount_point(path: Path) -> str:
-    """Return the mount point of the volume holding ``path`` (``df -P``)."""
-    out = subprocess.run(
+    """Return the mount point of the volume holding ``path`` (``df -P``), through
+    :func:`agentsync.ops.deadline.run`, so a report's cut starts none and ends one running (B13 round 36
+    C1049)."""
+    out: str = deadline.run(
         ["/bin/df", "-P", os.fspath(path)], capture_output=True, text=True, check=True, timeout=30
     ).stdout
     lines = out.strip().splitlines()
@@ -343,7 +346,7 @@ def _diskutil_volume_uuid(path: Path) -> str:
     """VolumeUUID from ``diskutil info -plist <mount point>``; raises OSError when absent."""
     try:
         mount = _mount_point(path)
-        proc = subprocess.run(
+        proc = deadline.run(  # under a report's deadline, as _mount_point (B13 round 36 C1049)
             ["/usr/sbin/diskutil", "info", "-plist", mount], capture_output=True, check=True, timeout=30
         )
         info = plistlib.loads(proc.stdout)

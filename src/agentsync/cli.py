@@ -125,7 +125,7 @@ from agentsync.manifest import (
     read_note,
 )
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
-from agentsync.ops import doctor, launchd
+from agentsync.ops import deadline, doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
 from agentsync.paths import (
     DocsLayout,
@@ -2605,16 +2605,20 @@ _PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY
 
 def _launchctl_env(names: Sequence[str]) -> dict[str, str]:
     """``launchctl getenv`` for ``names``: what every LaunchAgent of this session inherits (empty off
-    macOS)."""
+    macOS). Through :func:`agentsync.ops.deadline.run`, so under the setup report's deadline nothing starts
+    once it has passed and a running one ends with the report; the first time-out ends the loop, so a cut
+    call tries none of the names after it (B13 round 36 C1049; ruling 117)."""
     exe = Path("/bin/launchctl")
     if not exe.exists():
         return {}
     out: dict[str, str] = {}
     for name in names:
         try:
-            cp = subprocess.run(
+            cp = deadline.run(
                 [str(exe), "getenv", name], capture_output=True, text=True, timeout=5, check=False
             )
+        except subprocess.TimeoutExpired:
+            break
         except (OSError, subprocess.SubprocessError):
             continue
         value = cp.stdout.strip()
