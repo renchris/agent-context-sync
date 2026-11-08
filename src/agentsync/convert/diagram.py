@@ -35,6 +35,7 @@ from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _check_ooxml_container,
+    _check_ooxml_family,
     _emitter,
     _escape_line,
     _join_limited,
@@ -275,9 +276,10 @@ def _drawio_page(name: str, model: ET.Element) -> _Page:
 
 # A .drawio that is no draw.io diagram (B13 round 35 C927): text, PNG or PDF bytes, blanks, or well-formed
 # XML under another root element (an <svg>, a draw.io <mxlibrary>, which is no diagram).  Parsing the same
-# bytes again can never give another answer, so it is one settled stub at first read, as a wrong-type .vsdx,
-# .potx or .msg is, never a failure tried again on the next runs.  A truncated diagram, a declaration alone,
-# HTML that is not well-formed and an unsupported encoding open with markup, so they stay failed conversions.
+# bytes again can never give another answer, so it is one settled stub at first read, as a .vsdx that is not
+# a ZIP, or an Office package of another family (B13 round 36 C1033), and a wrong-type .potx or .msg are,
+# never a failure tried again on the next runs.  A truncated diagram, a declaration alone, HTML that is not
+# well-formed and an unsupported encoding open with markup, so they stay failed conversions.
 _NOT_DRAWIO = "not-drawio (not a draw.io diagram)"
 # what may stand before a diagram's first "<": NULs (UTF-16 without a mark), the UTF-8 and UTF-16 byte order
 # marks, and blanks
@@ -447,6 +449,9 @@ def _vsdx_page(page: _Page, contents: ET.Element, masters: _Masters) -> _Page:
 
 def _vsdx_pages(src: Path) -> list[_Page]:
     _check_ooxml_container(src)
+    # a Word, Excel or PowerPoint package named .vsdx is one settled stub, never a failure tried again (B13
+    # round 36 C1033); a real drawing's main type is no family it tells, so it passes
+    _check_ooxml_family(src, "visio", "a Visio drawing")
     budget = _Budget()
     try:
         with zipfile.ZipFile(src) as zf:

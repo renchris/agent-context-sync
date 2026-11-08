@@ -295,8 +295,9 @@ def test_a_drawio_that_is_no_diagram_is_one_stub_of_its_type_c927(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, data: bytes
 ) -> None:
     """B13 round 35 C927: a ``.drawio`` holding text was a failed conversion tried 3 times, an error line each
-    run, where a wrong-type ``.vsdx``, ``.potx`` or ``.msg`` is one stub at first read. It is one
-    ``not-drawio`` stub, ``not the type its name says``."""
+    run, where a ``.vsdx`` that is not a ZIP, or an Office package of another family (B13 round 36 C1033),
+    and a wrong-type ``.potx`` or ``.msg`` are one stub at first read. It is one ``not-drawio`` stub, ``not
+    the type its name says``."""
     config, src = make_env(tmp_path)
     (src / name).write_bytes(data)
     tries = _tries(monkeypatch)
@@ -306,6 +307,35 @@ def test_a_drawio_that_is_no_diagram_is_one_stub_of_its_type_c927(
     row = _row(config, name)
     assert row.state is RowState.QUARANTINED and row.state_reason == "not-drawio (not a draw.io diagram)"
     assert quarantine_class(row.state_reason) == "not the type its name says"
+
+
+@pytest.mark.parametrize("suffix", [".vsdx", ".vsdm"])
+def test_an_office_package_of_another_family_named_vsdx_is_one_stub_of_its_type_c1033(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """B13 round 36 C1033: a Word package named ``.vsdx`` was a failed conversion tried 3 times (``not a Visio
+    drawing (no visio/pages/pages.xml)``), where the same bytes named ``.potx`` are one settled stub.
+    ``_vsdx_pages`` now runs the Office family check, so it is one ``not-ooxml`` stub, ``not the type its
+    name says``, read once over three syncs."""
+    config, src = make_env(tmp_path)
+    name = f"Contoso word{suffix}"
+    word_package(src / name)
+    tries = _tries(monkeypatch)
+    for _ in range(3):
+        assert run(config).exit_code == 0
+    assert tries == [name]
+    row = _row(config, name)
+    assert row.state is RowState.QUARANTINED
+    assert row.state_reason == "not-ooxml: a Word document, not a Visio drawing (not the type its name says)"
+    assert quarantine_class(row.state_reason) == "not the type its name says"
+
+
+def test_a_zip_that_is_no_office_package_named_vsdx_stays_a_failed_conversion_c1033(tmp_path: Path) -> None:
+    """The limit C1033 states: a ZIP that is no Office package at all has no family to tell, so it keeps the
+    failed conversion, tried again, as a package still being written must."""
+    archive = make_zip(tmp_path / "Contoso archive.vsdx", {"notes.txt": b"not a drawing\n"})
+    with pytest.raises(ConversionError, match="not a Visio drawing"):
+        Registry.default(ConvertConfig()).for_name(archive.name).convert(archive, name=archive.name)  # type: ignore[union-attr]
 
 
 def test_a_truncated_drawio_stays_a_failed_conversion_tried_again_c927(

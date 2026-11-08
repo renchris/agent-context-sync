@@ -38809,6 +38809,8 @@ one try), `test_convert_family.py::test_a_drawio_that_is_no_diagram_is_one_stub_
 Amended 2026-11-08, §16.238 C1050, C1117: the "Not built here" half is built: a zero-byte `.pdf`, `.eml`, `.odt`,
 `.teams.json` or `.vtt` is one `empty-output` stub too, raised inside each converter, never at `screen_file`'s or
 `PandocConverter.convert`'s top; no emitter bump, for the same reason.
+Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
+another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
 
 **The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
 `convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
@@ -39074,6 +39076,21 @@ Tests: `test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_
 names), `test_convert_family.py::test_a_zero_byte_eml_under_a_label_rule_keeps_its_label_refusal_c1050`,
 `test_convert_formats.py::test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050`, and the zero-byte
 case of `test_convert_formats.py::test_vtt_that_is_not_a_transcript_is_a_fixed_stub` moved to `empty-output`.
+
+**A Word, Excel or PowerPoint package named `.vsdx` is one stub of its type** (C1033, ruling 118;
+`agentsync.convert.diagram`; amends §16.233 C927). C927's words said a wrong-type `.vsdx` is one stub at first read, but only bytes that are no
+ZIP were (the screen's Office guard): a Word package named `.vsdx` was `not a Visio drawing (no
+visio/pages/pages.xml)`, a failed conversion tried 3 times, while the same bytes named `.potx` are one settled stub
+(the verifier's three syncs). `_vsdx_pages` now runs `_check_ooxml_family(src, "visio", "a Visio drawing")` after
+the container check, as the pptx, xlsx and pandoc converters do, so it reads `not-ooxml: a Word document, not a
+Visio drawing (not the type its name says)`, cached, never tried again. A real drawing passes, since Visio's main
+type is no family `_ooxml_family` tells, and so does a damaged package it cannot read. The limit left, in C927's
+comment, its test's docstring and this file: a ZIP that is no Office package at all (a renamed archive) has no
+family to tell and stays a failed conversion, tried again, as a package still being written must; the words now
+say `a .vsdx that is not a ZIP, or an Office package of another family`. Tests:
+`test_convert_family.py::test_an_office_package_of_another_family_named_vsdx_is_one_stub_of_its_type_c1033`
+(`.vsdx` and `.vsdm`) and
+`test_convert_family.py::test_a_zip_that_is_no_office_package_named_vsdx_stays_a_failed_conversion_c1033`.
 
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 
