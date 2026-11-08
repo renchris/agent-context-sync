@@ -9458,6 +9458,28 @@ def test_v10s_dated_line_says_the_heads_status_prints_c1044() -> None:
     )
 
 
+def test_c972s_summary_lines_give_c928s_forms_c1046() -> None:
+    """B13 round 36 C1046: C972's dated lines at §16.65 and §16.129 gave only the installs-only Summary
+    bracket, while C928, landed before them, prints two more forms when --list-folders runs are in the log.
+    Each line, extended in place, gives all three; the forms are `_install_line`'s own."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    code = inspect.getsource(setup_report._install_line)
+    assert 'f"{earlier} earlier in the install log" + (f", +{lists} --list-folders"' in code
+    assert "f\"{lists} --list-folders run{'' if lists == 1 else 's'} earlier in the install log\"" in code
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    forms = (
+        "`- install.sh: no install run during this attempt (N earlier in the install log)`, or, with"
+        " --list-folders runs in the log, `(N earlier in the install log, +M --list-folders)` or `(M"
+        " --list-folders run[s] earlier in the install log)` (§16.230 C928; extended 2026-11-08, §16.239"
+        " C1046)."
+    )
+    assert text.count(forms) == 2
+    sections = {number: body for number, _start, body in _contracts_numbered_sections_at()}
+    for section in ("16.65", "16.129"):
+        assert forms in " ".join(sections[section].split()), section
+
+
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
     `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list

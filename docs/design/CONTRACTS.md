@@ -16369,7 +16369,9 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   bring-back and issue link lines)`), not before it.
   Amended 2026-11-04, §16.234 C972 (by §16.225 C817): F20's `this attempt ran no install.sh` above reads `this attempt
   made no install run`, and the Summary's `- install.sh: no run during this attempt` reads `- install.sh: no install run
-  during this attempt (N earlier in the install log)`.
+  during this attempt (N earlier in the install log)`, or, with --list-folders runs in the log, `(N earlier in the
+  install log, +M --list-folders)` or `(M --list-folders run[s] earlier in the install log)` (§16.230 C928; extended
+  2026-11-08, §16.239 C1046).
 - **A stopped copy's note and NEXT read in order** (G9, G19, one defect). The first line reads `> This report
   is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or
   bring it back.` and the NEXT starts the same way (the subject, verb and object were split by a relative
@@ -23833,7 +23835,9 @@ a first-sync step (`an earlier install run` with none), and the counts' tag `(in
 Amended 2026-11-03, §16.229 C856 (by review backtest pilot-s1/er-13#6): the sentence above was never so;
 `stopped_run_labels`' `named()` adds `, run <label>` after the start, as the renderer's `_run_named` does.
 Amended 2026-11-04, §16.234 C972 (by §16.225 C817): the Summary's `- install.sh: no run during this attempt` above reads
-`- install.sh: no install run during this attempt (N earlier in the install log)`.
+`- install.sh: no install run during this attempt (N earlier in the install log)`, or, with --list-folders runs in the
+log, `(N earlier in the install log, +M --list-folders)` or `(M --list-folders run[s] earlier in the install log)`
+(§16.230 C928; extended 2026-11-08, §16.239 C1046).
 
 **One expected warn ends in its fix** (U31; dated line at §16.116 S26). Both the renderer and the stopped copy's
 header wrote `1 expected warn ends in (expected: <why>) instead of their fix`. It reads `its fix` for one; the copy's
@@ -39771,6 +39775,17 @@ only the §16.21 CLI bullet. Ruling 74 keeps the quotes, so one line in C857's f
 with a round 36 line; it is pinned in `_ROUND_36_D_PARAGRAPH_AMENDS`. Test:
 `test_every_dated_line_from_round_11_on_is_held_by_a_test` with
 `test_v10s_dated_line_says_the_heads_status_prints_c1044` (each name read from the code).
+
+**C972's two Summary lines give C928's forms too** (C1046; docs only). C972's dated lines at §16.65's F20 bullet and
+§16.129's stopped-copy paragraph gave the Summary only as `- install.sh: no install run during this attempt (N earlier
+in the install log)`, the form `_install_line` prints only when every earlier run is an install run, though C928,
+which landed before C972 (f83d1977c, an ancestor of d62ac1487), also prints `(N earlier in the install log, +M
+--list-folders)` and `(M --list-folders run[s] earlier in the install log)`, and C972 said each line gives the words
+printed now. Each line is extended in place with C928's two forms, citing §16.230 C928; no new dated line is added,
+since one no pin table held would turn `test_every_dated_line_from_round_11_on_is_held_by_a_test` red, and
+`_ROUND_35_D_PARAGRAPH_AMENDS` matches the two by anchor and tag, so it holds them still. §16.32's line quotes an
+installs-only case and is right. Test: `test_c972s_summary_lines_give_c928s_forms_c1046` (both forms read from
+`_install_line`).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
