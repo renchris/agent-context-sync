@@ -27,7 +27,7 @@ import zlib
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, NoReturn
 from unittest.mock import ANY
 
 import httpx
@@ -42,7 +42,7 @@ from agentsync import cycle as cycle_mod
 from agentsync import policy as content_policy
 from agentsync import publish as publish_mod
 from agentsync.arm_local import LocalArm
-from agentsync.config import Config, parse_config
+from agentsync.config import Config, SourceConfig, parse_config
 from agentsync.convert import _common as convert_common
 from agentsync.convert import diagram as diagram_mod
 from agentsync.convert import image as image_mod
@@ -8228,3 +8228,41 @@ def test_a_source_folder_never_enters_the_docs_repos_commit_history(
     assert "empty-project: source root <source folder> has zero children" in bodies, bodies
     state_md = config.layout.state_md.read_text(encoding="utf-8")
     assert f"missing under {sentinel_less.resolve()}" in state_md, state_md  # STATE.md keeps the full path
+
+
+def test_the_commit_bodys_source_spellings_read_nothing_inside_the_cloud_tree_c1025(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1025 (ruling 119): the C934 cut resolved each source path and its provider folder at
+    every commit, alarm or not, an unguarded lstat inside the File Provider tree, where a held privacy prompt
+    can hold it, under the cycle's lock. The spellings are lexical (with the other ~/Library/CloudStorage
+    prefix), built only when an alarm needs them, and an alarm still commits as `<source folder>`."""
+    provider = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    work = provider / "Work"
+    work.mkdir(parents=True)
+    src = SourceConfig(id="work", kind=SourceKind.LOCAL, path=work)
+    read: list[str] = []
+    real_lstat = os.lstat
+
+    def spy(path: Any, *a: Any, **kw: Any) -> os.stat_result:
+        read.append(os.fsdecode(path))
+        return real_lstat(path, *a, **kw)
+
+    monkeypatch.setattr(os, "lstat", spy)
+    cut = cycle_mod._source_folder_spellings([src])
+    monkeypatch.setattr(os, "lstat", real_lstat)
+    inside = [r for r in read if r == str(provider) or r.startswith(f"{provider}/")]
+    assert inside == [], inside
+    assert str(work) in cut and str(provider) in cut, cut
+    said = cycle_mod._committed_alarm(f"source root {work} has zero children", cut)
+    assert said == "source root <source folder> has zero children", said
+    # a commit with no alarm builds no cut at all
+    config = config_with(tmp_path, local_source_dir)
+
+    def refused(_sources: object) -> NoReturn:
+        raise AssertionError("a commit with no alarm built the source spellings")
+
+    monkeypatch.setattr(cycle_mod, "_source_folder_spellings", refused)
+    report = run(config)
+    assert not [a for s in report.sources for a in s.alarms], report.sources
+    assert gitops.head_sha(config.docs_repo) is not None

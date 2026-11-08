@@ -38575,6 +38575,9 @@ The `<id>:` prefix already names the source. `acc.alarms`, the terminal, STATE.m
 person's docs history is the operator's call. Test:
 `test_cycle.py::test_a_source_folder_never_enters_the_docs_repos_commit_history` (no body holds the home, the
 provider folder's name or the source folder; STATE.md keeps the full path).
+Amended 2026-11-08, §16.237 C1025: the spellings are lexical (`cycle._lexical_spellings`, with the other
+`~/Library/CloudStorage` prefix), never `convert._common.spellings`' resolve, and are built only when an alarm needs
+them.
 
 **C967, lane B's half (ruling 104; data integrity).** Step 1 read a lost hold beside a lost queue as the only hold
 refusing the queue's hand purge, though sources.toml's hold or a hold the hold list still names refused it too, so
@@ -39415,6 +39418,16 @@ started. Its fix keeps the re-run (under install.sh the line can come back at ev
 run, which says nothing about the program` (`doctor._NOT_RUN_AGAIN`, no `(`). Test:
 `test_ops_doctor.py::test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917` (no `does not answer`, the
 fix ending in that clause).
+
+**The commit body's source spellings read nothing inside the cloud tree** (C1025; ruling 119; amends §16.232 C934).
+C934's cut called `convert._common.spellings`, which resolves the path, on every source path and its provider folder
+at every commit, alarm or not, so `_commit`, under the cycle's lock, made an lstat inside the File Provider tree that
+a held privacy prompt can hold without limit. `cycle._lexical_spellings` gives the same three forms (as written, as
+`repr` prints it, and inside single quotes) of the path and of the same path under the other
+`~/Library/CloudStorage` prefix (`paths.cloud_storage_roots`, which resolves only that folder and its ancestors), so
+a home reached through a symlink is still cut; `_commit` builds the cut only when some source has an alarm. Test:
+`test_cycle.py::test_the_commit_bodys_source_spellings_read_nothing_inside_the_cloud_tree_c1025` (no lstat at or
+below the provider folder, an alarm still committed as `<source folder>`, a commit with no alarm builds no cut).
 
 **A program is checked for, started and listed in one locked step** (C1065, with the deadline half of C1067;
 ruling 117; amends §16.232 C955). `deadline.run` and `doctor._run` checked the caller's deadline, then spawned and

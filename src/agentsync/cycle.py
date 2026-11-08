@@ -173,7 +173,7 @@ from agentsync.ops.lock import (
     write_heartbeat,
 )
 from agentsync.ops.lock import Stage as LockStage
-from agentsync.paths import expand
+from agentsync.paths import cloud_storage_roots, expand, is_under
 from agentsync.policy import PolicyConfig
 from agentsync.publish import (
     _CHANGELOG_HEADING,
@@ -1768,10 +1768,32 @@ _SOURCE_FOLDER_WORD = "<source folder>"
 body (B13 round 35 C934, ruling 103)."""
 
 
+def _lexical_spellings(path: Path) -> list[str]:
+    """``path`` as written, as ``repr`` prints it and as ``repr`` prints it inside single quotes (the forms of
+    ``convert._common.spellings``), and the same for its other ``~/Library/CloudStorage`` prefix
+    (:func:`agentsync.paths.cloud_storage_roots`, which resolves only that folder and its ancestors), read
+    lexically: nothing inside a File Provider tree is touched, where an lstat may wait on a privacy prompt
+    (B13 round 36 C1025)."""
+    forms = [path]
+    roots = cloud_storage_roots()
+    for root in roots:
+        if is_under(path, root):
+            rel = expand(path).relative_to(root)
+            forms += [other / rel for other in roots if other != root]
+    found: list[str] = []
+    for form in forms:
+        plain = str(form)
+        for spelling in (repr(plain)[1:-1], repr(plain + '"')[1:-2], plain):
+            if spelling not in found:
+                found.append(spelling)
+    return found
+
+
 def _source_folder_spellings(sources: Iterable[SourceConfig]) -> list[str]:
-    """Every spelling (``convert._common.spellings``) of each configured source's ``path`` and of the cloud
-    provider folder holding it (``cloud_provider_root``), longest first, so a source's own path is cut before
-    the provider folder it sits in (B13 round 35 C934)."""
+    """Every spelling (:func:`_lexical_spellings`) of each configured source's ``path`` and of the cloud
+    provider folder holding it (``cloud_provider_root``, lexical too), longest first, so a source's own path
+    is cut before the provider folder it sits in (B13 round 35 C934). Lexical, never a resolve inside the
+    tree, so a held privacy prompt cannot hold the commit (B13 round 36 C1025)."""
     found: set[str] = set()
     for src in sources:
         if src.path is None:
@@ -1780,7 +1802,7 @@ def _source_folder_spellings(sources: Iterable[SourceConfig]) -> list[str]:
         provider = cloud_provider_root(src.path)
         if provider is not None:
             paths.append(provider)
-        found.update(sp for path in paths for sp in convert_common.spellings(path) if len(sp) > 1)
+        found.update(sp for path in paths for sp in _lexical_spellings(path) if len(sp) > 1)
     return sorted(found, key=len, reverse=True)
 
 
@@ -4123,7 +4145,9 @@ class _Cycle:
             return None
         self.publisher.write_state_snapshot(statuses)
         source_ids = self._subject_sources()
-        cut = _source_folder_spellings(self.config.sources)
+        # built only when an alarm needs it: no read of any source's path on a commit with none (C1025)
+        alarmed = any(a.alarms for a in self.accs.values())
+        cut = _source_folder_spellings(self.config.sources) if alarmed else []
         notes = [
             f"{a.src.id}: {_committed_alarm(alarm, cut)}" for a in self.accs.values() for alarm in a.alarms
         ]
