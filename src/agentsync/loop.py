@@ -1005,11 +1005,14 @@ def next_step(
     on_hold: list[tuple[governance.QueuedPurge, list[governance.Hold]]] = []
     if queued:
         # a hold suspends its entries: a note, the records owner's move, never a run that refuses (B13 round
-        # 28 I91); a [governance] that does not load keeps the wait, its governance.config FAIL speaks
-        with contextlib.suppress(Exception):
-            queued, on_hold = governance.held_purges(
-                config.state_paths.root, governance.load_governance(config.config_path), queued
-            )
+        # 28 I91); a [governance] that does not load judges no queue: no run is invited, since every purge
+        # refuses until it loads, and its governance.config FAIL speaks (B13 round 36 C1026)
+        table = governance.governance_or_none(config.config_path)
+        if table is None:
+            queued = []
+        else:
+            with contextlib.suppress(Exception):
+                queued, on_hold = governance.held_purges(config.state_paths.root, table, queued)
     if on_hold:
         notes.append(governance.held_words(on_hold))
     if queued:

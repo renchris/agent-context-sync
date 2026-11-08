@@ -1702,7 +1702,10 @@ def _status_lines(config: Config, *, checks_beside: bool = True) -> list[str]:
         queued, kept = [], []
     for h in holds:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
-    if queued and governance.hold_list_unread(config.state_paths.root):
+    if queued and gov is None:
+        # a [governance] that does not load: every purge refuses, so no run is invited (B13 round 36 C1026)
+        out.append(f"queued purges: {len(queued)} ({_SUMMARY_NOT_JUDGED})")
+    elif queued and governance.hold_list_unread(config.state_paths.root):
         # read apart from the holds (P44), so a hold list that cannot be read invites no run here (P131)
         out.append(
             f"queued purges: {len(queued)} ({governance.hold_list_wait(config.state_paths.root)}: see "
@@ -2974,20 +2977,32 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     """The governance lines. A [governance] that does not load is governance.config's FAIL, then the not-ok
     lines of the state's own files read over a default table, never one that judges the table, so a pointer
     to `the governance.hold [FAIL] line` (a shut governance folder) names a line status prints; an [ok] line
-    would speak for a hold setting nobody could read (B13 round 35 C958)."""
+    would speak for a hold setting nobody could read (B13 round 35 C958). They are read with no table
+    (``gov=None``), so no queued purge is judged over a default table that knows no hold: the count stays, as
+    an [info] line with no fix, and nothing invites a run every purge refuses (B13 round 36 C1026)."""
     try:
         gov = governance.load_governance(config.config_path)
     except ConfigError as exc:
         failed = _check("governance.config", False, str(exc), doctor.Severity.ERROR, fix=GOVERNANCE_FIX)
-        rows = _governance_lines(config, governance.GovernanceConfig())
+        rows = _governance_lines(config, None)
         return [failed, *[r for r in rows if not r.ok and r.name not in _JUDGE_THE_TABLE]]
     return _governance_lines(config, gov)
 
 
-def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[doctor.CheckResult]:
-    """:func:`_governance_checks` over a loaded (or default) [governance] ``gov``."""
+_SUMMARY_NOT_JUDGED = "not judged: [governance] does not load; see governance.config"
+"""Status's ``queued purges:`` clause under a [governance] that does not load (B13 round 36 C1026)."""
+_QUEUE_NOT_JUDGED = "not judged: [governance] does not load; the governance.config line says why"
+"""The clause the queued count takes when sources.toml's [governance] does not load: every purge and `purge
+--queue` refuse until it does, so the count is told and no run, hold or split is (B13 round 36 C1026)."""
+
+
+def _governance_lines(config: Config, gov: governance.GovernanceConfig | None) -> list[doctor.CheckResult]:
+    """:func:`_governance_checks` over a loaded [governance] ``gov``, or ``None`` for one that does not load:
+    the lines that judge the table read a default one (:data:`_JUDGE_THE_TABLE`, which the caller drops), and
+    the queue is not judged (B13 round 36 C1026)."""
     out: list[doctor.CheckResult] = []
-    findings = _refuse_remotes(config, gov)
+    table = gov if gov is not None else governance.GovernanceConfig()
+    findings = _refuse_remotes(config, table)
     if findings:
         out += [
             _check("governance.remote", False, f, doctor.Severity.ERROR, fix=REMOTE_FIX) for f in findings
@@ -3001,7 +3016,7 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[
     # sources.toml's, so it is shown first either way (B13 round 21 Y44: the not-checked line hid it)
     out += [
         _check("governance.hold", True, h.describe(), doctor.Severity.INFO)
-        for h in governance.config_holds(gov)
+        for h in governance.config_holds(table)
     ]
     shut = doctor.state_folder_unchecked(config)  # shut, or not a folder (round 23 ruling 4)
     folder = governance.governance_dir_error(expand(config.state_paths.root)) if shut is None else None
@@ -3030,7 +3045,7 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[
                 out.append(_refused_check(config, "governance.hold", exc))
                 # the holds only the audit trail keeps are read without the record (C349's review)
                 record_read, lost = False, governance.audit_lost_holds(root, holds)
-            if record_read and not holds and not lost and not governance.config_holds(gov):
+            if record_read and not holds and not lost and not governance.config_holds(table):
                 # one governance.hold line in every state, an ok one when it read and holds none (C155),
                 # saying what it read: never "hold list read" with no hold list on disk (B13 round 32 C624)
                 none_said = governance.no_hold_words(root)
@@ -3048,7 +3063,7 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[
         except OSError as exc:  # its own line, never the hold lines above with it (B13 round 22 Z46)
             out.append(doctor.stopped(config, "governance.time_machine", exc))
     try:
-        state, detail = governance.compaction_state(config.docs_repo, gov)
+        state, detail = governance.compaction_state(config.docs_repo, table)
     except AgentSyncError as exc:
         state, detail = "overdue", f"cannot read the docs repo history: {exc}"
     severity = {"ok": doctor.Severity.INFO, "due": doctor.Severity.WARN}.get(state, doctor.Severity.ERROR)
@@ -3093,7 +3108,9 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[
             alone = _trail_alone_words(config)
             out.append(_check("governance.purge_queue", False, alone, doctor.Severity.INFO))
     if gone is not None:
-        out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone.fix))
+        # judged with no table, its redo refuses too: the fix is governance.config's first (C1026)
+        gone_fix = gone.fix if gov is not None else GOVERNANCE_FIX
+        out.append(_check("governance.purge_queue", False, gone.detail, doctor.Severity.ERROR, fix=gone_fix))
     kept_text = "; ".join(governance.kept_lines(kept))
     also = f"; {kept_text}" if kept else ""
     if not queued and kept and record_read:
@@ -3104,6 +3121,14 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig) -> list[
     if queued:
         # each reason actually queued, never a fixed list that misnamed a published credential (I91)
         detail = f"{plural(len(queued), 'purge request')} queued ({governance.reason_counts(queued)}){also}"
+        if gov is None:
+            # a [governance] that does not load judges no queue: the count, no fix, no held split (C1026)
+            out.append(
+                _check(
+                    "governance.purge_queue", False, f"{detail}; {_QUEUE_NOT_JUDGED}", doctor.Severity.INFO
+                )
+            )
+            return out
         unread = governance.hold_list_unread(config.state_paths.root)
         runnable, held = ([], []) if unread else _held_split(config, gov, queued)
         # the ones from before the new start a run looks up in the docs history first (C102, C124)

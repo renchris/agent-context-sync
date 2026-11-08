@@ -14711,6 +14711,46 @@ def test_a_refused_governance_table_beside_a_shut_folder_prints_the_line_its_poi
     assert "chmod 700" in nxt or "governance.hold" in nxt, nxt
 
 
+@pytest.mark.parametrize("hint_off", [False, True])
+def test_a_refused_governance_table_invites_no_purge_run_c1026(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, hint_off: bool
+) -> None:
+    """B13 round 36 C1026 (ruling 116): under a [governance] that did not load, status judged a queued purge
+    over a default table that knows no hold, and its warn, WAITING ON YOU and `queued purges:` lines invited a
+    `purge --queue` that exits 78 on that same table. The count stays as an [info] line with no fix and no
+    held split, and no line names `purge --queue` as a step."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    path = Path(cfg)
+    path.write_text(path.read_text(encoding="utf-8") + "\n[governance]\nhold = true\n", encoding="utf-8")
+    if hint_off:
+        monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
+    (info,) = [ln for ln in out if ln.startswith("[info] governance.purge_queue ")]
+    assert info.startswith("[info] governance.purge_queue — 1 purge request queued (1 erasure-request"), info
+    assert info.endswith(f"; {cli._QUEUE_NOT_JUDGED}"), info
+    assert "(fix: " not in info and "hold" not in info, info
+    assert not [ln for ln in out if ln.startswith("[warn] governance.purge_queue ")], out
+    summary = [ln for ln in out if ln.startswith("queued purges")]
+    want = [] if hint_off else [f"queued purges: 1 ({cli._SUMMARY_NOT_JUDGED})"]
+    assert summary == want, out
+    assert not [ln for ln in out if "purge --queue" in ln], out
+    assert _unresolved_fail_pointers(out) == [], out
+    # the queue file lost it: the lost-queue FAIL keeps its detail, its redo refused too, so its fix is
+    # governance.config's, never a hand purge judged over no hold
+    governance._queue_file(root).write_text('{"queue": []}\n', encoding="utf-8")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (lost,) = [ln for ln in out if ln.startswith("[FAIL] governance.purge_queue ")]
+    assert " no longer holds " in lost and lost.endswith(f"(fix: {cli.GOVERNANCE_FIX})"), lost
+    assert not [ln for ln in out if "purge --queue" in ln or "purge id=" in ln], out
+
+
 def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
