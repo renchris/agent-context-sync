@@ -672,47 +672,73 @@ _NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
 # B13 round 34 C822 (ruling 91): a path in another home (a moved home's install.log source= or args=, an
 # install.out line), cut whole to /Users/<path> as a --source-local argument is: never a /Users/<user-N>/
-# prefix, past which _cut_path would walk and print the provider folder's organisation. Not right after a
-# word character, "." or "-"; /Users/Shared, the whole components <user> and <path> and this account's login
-# (registered, so a sandbox HOME's /Users/<user>/) are left alone, and every other component is cut, one an
-# earlier pass made a placeholder included (<value>, <org-1>, <user>.old). B13 round 35 ruling 102: "Users"
-# in any case, after one or more slashes (C979); behind /System/Volumes/Data, this home's volume, or behind
-# /Volumes/ at any depth, blanks allowed, up to the first /Users/ not after a blank or "/", where no login is
-# left alone and the cut prints /Volumes/<path> (C947, C979). Right after a quote or a backtick, to the
+# prefix, past which _cut_path would walk and print the provider folder's organisation. Not right after an
+# ASCII letter or digit, "_", "." or "-"; /Users/Shared, the whole components <user> and <path> and this
+# account's login (registered, so a sandbox HOME's /Users/<user>/) are left alone, and every other component
+# is cut, one an earlier pass made a placeholder included (<value>, <org-1>, <user>.old). B13 round 35 ruling
+# 102: "Users" in any case, after one or more slashes (C979); behind /System/Volumes/Data, this home's
+# volume, or behind /Volumes/ at any depth, up to the first /Users/ not after a blank or "/", where no login
+# is left alone and the cut prints /Volumes/<path> (C947, C979). Right after a quote or a backtick, to the
 # closing one on the line; else one component, escape-aware (``dana\ fabrikam``), a registered value
-# holding a blank taken as path characters (C912), then an optional tail up to whitespace, a quote, a
-# backtick, a bracket ()[]{}, "," or ";", where the component after /CloudStorage/ or one opening
-# "OneDrive - " runs to the next "/" (C912), and after an unquoted blank the cut goes on over each word that
-# holds a "/", has no "=" or "://", does not open with "-", "/" or "~" and is not digits and "/" alone
-# (C981). So an unquoted path keeps its tail after the first quote, backtick, bracket, comma or semicolon,
-# and after a blank from the first word that does not go on (C946)
-_PATH_END = r"(?![^/\s\"'`()\[\]{},;])"  # a path component ends here
-_PATH_STOP = r"\s\\\"'`()\[\]{},;"  # a path cut stops at one of these: whitespace, a quote, a bracket
+# holding a blank taken as path characters (C912), then an optional tail up to a blank, an end or a stop
+# (:data:`_CUT_BYTES`), where the component after /CloudStorage/ or one opening "OneDrive - " runs to the
+# next "/" (C912), and after an unquoted blank the cut goes on over each word that holds a "/", has no "="
+# or "://", does not open with "-", "/" or "~" and is not digits and "/" alone (C981). So an unquoted path
+# keeps its tail after the first stop, and after a blank from the first word that does not go on (C946).
+# B13 round 36 ruling 112: every character's class comes from the one table, ASCII as install.sh's STOP is
+# under LC_ALL=C, so a no-break, ideographic or other Unicode space and every control byte but the three
+# ends are path characters (C1017); behind /Volumes/ the look-back runs over every byte on the line, quotes,
+# backticks, brackets, commas and semicolons included (C1016, C1064), to the first /Volumes/ no ASCII
+# letter, digit, "_", "." or "-" precedes; /Volumes/, /System/Volumes/Data and Users match in any case
+# (C1018); a provider folder's name runs over brackets, commas and semicolons to the next "/", stopping only
+# at a quote, a backtick, "):" or ", stored as ", the delimiters the added-source note's readers need
+# (C1069); and this home's own literal ends only where the table ends a component (Redactor._compile)
+_CUT_BYTES = {
+    "blank": " \t",  # a cut goes on over the next word that holds a "/" and no "=" (C981)
+    "end": "\n\r\f\v",  # a cut ends here
+    "stop": "\"'`()[]{},;",  # a cut ends here; behind /Volumes/ the look-back goes on over it
+}
+"""B13 round 36 ruling 112 (C1017): the class of every character a path cut reads, one table for both
+reports (``scripts/install.sh``'s ``STOP`` is its blanks, ends and stops; a test holds the two equal). A
+blank is a space or a tab only; every character in no class, ``/`` and ``\\`` aside, is a path character."""
+
+
+def _cut_class(*kinds: str) -> str:
+    """The characters of :data:`_CUT_BYTES`' ``kinds``, escaped for a regex character class."""
+    return "".join(re.escape(c) for kind in kinds for c in _CUT_BYTES[kind])
+
+
+_PATH_END = rf"(?![^/{_cut_class('blank', 'end', 'stop')}])"  # a path component ends here
+_PATH_STOP = _cut_class("blank", "end", "stop") + r"\\"  # a path cut stops at one of these, or a "\\"
+_NOT_AFTER_BLANK = rf"(?<![{_cut_class('blank')}/])"  # a /Users/ right after a blank or "/" opens no volume
 _OTHER_HOME_HEAD = (  # the /Users part: the case of "Users" and its slashes free (C979)
     r"(?i:/Users)/+(?!Shared" + _PATH_END + r")(?!<(?:user|path)>" + _PATH_END + ")"
 )
-_VOLUMES_ANY_DEPTH = r"/Volumes/(?:[^\n\"'`\\]|\\.)*?(?<![\s/])"  # up to the first /Users/ not after a blank
+_SYSTEM_DATA = r"(?:(?i:/System/Volumes/Data))?"  # this home's volume, in any case (C1018)
+_VOLUMES_ANY_DEPTH = rf"(?i:/Volumes/)[^\n]*?{_NOT_AFTER_BLANK}"  # any byte, to a /Users/ not after a blank
 
 
 def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     """:data:`_PATH_END`'s comment: the pattern of a path in another home, ``logins`` left alone outside
     /Volumes/, each of ``spaced`` (registered values holding a blank) taken whole as path characters."""
     login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
-    home = rf"(?:{_VOLUMES_ANY_DEPTH}{_OTHER_HOME_HEAD}|(?:/System/Volumes/Data)?{_OTHER_HOME_HEAD}{login})"
+    home = rf"(?:{_VOLUMES_ANY_DEPTH}{_OTHER_HOME_HEAD}|{_SYSTEM_DATA}{_OTHER_HOME_HEAD}{login})"
     quoted = ""
     for q in ('"', "'", "`"):
-        volume = rf"/Volumes/(?:[^{q}\n\\]|\\.)*?(?<![\s/])"
-        head = rf"(?:{volume}{_OTHER_HOME_HEAD}|(?:/System/Volumes/Data)?{_OTHER_HOME_HEAD}{login})"
+        volume = rf"(?i:/Volumes/)(?:[^{q}\n\\]|\\.)*?{_NOT_AFTER_BLANK}"
+        head = rf"(?:{volume}{_OTHER_HOME_HEAD}|{_SYSTEM_DATA}{_OTHER_HOME_HEAD}{login})"
         quoted += rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|"
     values = sorted({re.escape(v) for v in spaced}, key=len, reverse=True)
     char = rf"(?i:{'|'.join(values)})|[^/{_PATH_STOP}]|\\." if values else rf"[^/{_PATH_STOP}]|\\."
-    stuck = r"[^/\n\"'`]*(?=/)"  # a provider folder's own name: to the next "/", never past a quote (C912)
+    # a provider folder's own name: to the next "/", never past a quote (C912), "):" or ", stored as " (C1069)
+    stuck = r"(?:(?!\):|, stored as )[^/\n\"'`])*(?=/)"
     tail = rf"(?:/(?:(?<=/CloudStorage/){stuck}|OneDrive - {stuck}|(?:{char})*))*"
+    blank = f"[{_cut_class('blank')}]"
     word = (  # C981: a word after an unquoted blank that holds a "/" goes on with the cut
-        rf"(?:[ \t]+(?![-/~])(?![^={_PATH_STOP}]*://)(?![0-9/]+(?![^{_PATH_STOP}]))"
+        rf"(?:{blank}+(?![-/~])(?![^={_PATH_STOP}]*://)(?![0-9/]+(?![^{_PATH_STOP}]))"
         rf"(?:[^/={_PATH_STOP}]|\\[^=])*/(?:[^={_PATH_STOP}]|\\[^=])*(?![^{_PATH_STOP}]))*"
     )
-    return rf"{quoted}(?<![\w.-]){home}(?:{char})+{tail}{word}"
+    return rf"{quoted}(?<![A-Za-z0-9_.-]){home}(?:{char})+{tail}{word}"
 
 
 _GENERIC_FOLDERS = frozenset(
@@ -1082,11 +1108,14 @@ _LEGEND = {
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
     "path": (  # every <path> the body can show, the uncounted ones too (B13 round 27 P38)
         "<path> a link's target outside this home (a state file's or the docs repo's), or an item path or "
-        "document name in a log line, a --source-local argument, an added source's typed folder or an "
-        "exclude entry, cut as its section says, or a path in another home, cut whole to /Users/<path> "
-        "(/Volumes/<path> behind a volume; in both reports, an unquoted path keeps its tail after the "
-        "first quote, backtick, bracket, comma or semicolon, and after a blank from the first word that "
-        "holds no /, or that is an option, a URL, a path of its own or a number like 3/14)"
+        "document name in a log line, a --source-local argument, an added source's typed folder (never "
+        "agentsync's own ~/agent-context/inbox) or an exclude entry, cut as its section says, or a path in "
+        "another home, cut whole to /Users/<path> (/Volumes/<path> behind a volume, the prefixes in any "
+        "case; in both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, "
+        "comma or semicolon, a provider folder's name running past a bracket, comma or semicolon to the "
+        "next /, and after a blank from the first word that holds no / or holds =, or that is an option, a "
+        "URL, a path of its own or a number like 3/14; a blank right after this home ends it, so another "
+        "home named as this one and a blank keeps what follows)"
     ),
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
@@ -2039,8 +2068,10 @@ class Redactor:
                     trail = ""
                 if (  # B13 round 35 C941 (ruling 102): a %q sibling (/Users/dana\ 1) is another home,
                     edge.startswith("/Users/") and self._known(form) == "~"  # cut whole below; \" ends
-                ):  # a JSON-escaped own home. Under /Users only: a home elsewhere would print whole
-                    trail += r'(?!\\[^"\n])'
+                ):  # a JSON-escaped own home. Under /Users only: a home elsewhere would print whole.
+                    # B13 round 36 ruling 112: and it ends only where _CUT_BYTES ends a component, so
+                    # /Users/dana<U+00A0>old and /Users/dana:x are another home; a blank still ends it
+                    trail = rf'(?:{_PATH_END}|(?=\\"))'
                 if (
                     mode == "org"
                 ):  # B13 round 11 M50: and inside a longer word at a CamelCase or digit boundary
@@ -2075,7 +2106,8 @@ class Redactor:
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
         if groups.get("otherhome") is not None:  # uncounted, as every <path> cut is (B13 round 34 C822)
-            return "/Volumes/<path>" if text.startswith("/Volumes/") else "/Users/<path>"  # C947
+            volume = text[:9].lower() == "/volumes/"  # in any case (B13 round 36 C1018)
+            return "/Volumes/<path>" if volume else "/Users/<path>"  # C947
         if groups.get("govremote") is not None:
             groups["remote"] = text
         if any(groups.get(k) is not None for k in ("label", "remote", "value")):
@@ -17990,10 +18022,25 @@ def _cut_path(text: str) -> str:
     return text
 
 
+_OWN_INBOX_TYPED = "~/agent-context/inbox"
+"""agentsync's own default inbox as an added inbox source's typed form shows it once redacted: shown uncut,
+in both reports, however HOME is spelled (B13 round 36 ruling 112, C1123). Only this form: a docs repo moved
+by hand, and every ``added source`` note, keep the cut (C658's (c))."""
+
+
+def _typed_shown(m: re.Match[str]) -> str:
+    """The typed folder of an added-source note: cut by :func:`_cut_path`, but agentsync's own inbox
+    (:data:`_OWN_INBOX_TYPED`) after ``added inbox source``."""
+    typed = m.group("typed")
+    if typed == _OWN_INBOX_TYPED and m.group("lead").startswith("added inbox source '"):
+        return typed
+    return _cut_path(typed)
+
+
 def _typed_cut(m: re.Match[str]) -> str:
-    """:data:`_ADDED_TYPED_RE`'s note with its typed folder cut by :func:`_cut_path` and its stored form as
-    it is (the configured root, already redacted and shown in the sources table)."""
-    return f"{m.group('lead')}({_cut_path(m.group('typed'))}, stored as {m.group('stored')})"
+    """:data:`_ADDED_TYPED_RE`'s note with its typed folder cut by :func:`_typed_shown` and its stored form
+    as it is (the configured root, already redacted and shown in the sources table)."""
+    return f"{m.group('lead')}({_typed_shown(m)}, stored as {m.group('stored')})"
 
 
 _AGENT_AT = r"(?:^ *\d+  \s*(?:[-*]\s+)?\**(?i:agent)\**\s*:\s*\**\s*| · agent: |; agent )"
@@ -18041,7 +18088,7 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
     def plain(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
         if ", stored as " in line:
-            line = _ADDED_SAME_RE.sub(lambda m: f"{m.group('lead')}({_cut_path(m.group('typed'))})", line)
+            line = _ADDED_SAME_RE.sub(lambda m: f"{m.group('lead')}({_typed_shown(m)})", line)
             line = _ADDED_TYPED_RE.sub(_typed_cut, _SAME_STORED_RE.sub(r"(\1)", line))
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)

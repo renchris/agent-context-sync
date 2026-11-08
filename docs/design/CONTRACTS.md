@@ -38206,6 +38206,12 @@ and the limit left (C946, C945 with C966: the row named the agentsync report onl
 Tests: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102` (each
 value absent through `build_report`, C950's five byte classes, `/Users/Shared`, `/Users/<user>/`, `~/x`, a URL and
 `3/14` kept), `tests/test_deploy_pack.py::test_the_guide_says_both_reports_cut_a_path_in_another_home`.
+Amended 2026-11-08, §16.235 C1017, C1018, C1069, C1019, C1123 (ruling 112): the stops above are one ASCII table,
+`_CUT_BYTES`, so a no-break or ideographic space is a path character; the volume look-back crosses every byte on the
+line; `/Volumes/` and `/System/Volumes/Data` match in any case; a provider folder's name runs over a bracket, comma or
+semicolon but never past `):` or `, stored as ` (the sentence above saying a tail never runs past `)` was false for
+it); this home's literal ends only where the table ends a component; the legend names the `=` and agentsync's own
+inbox; see §16.235.
 
 **The report reads lane B's round 35 words, old and new** (C935, C937, C938, the report's halves;
 `src/agentsync/setup_report.py`). Each reader lands before lane B writes its words (§16.232). C935: a sync stopped
@@ -38366,8 +38372,10 @@ a quote or backtick; after an unquoted blank the cut goes on over each blank-sep
 refuses a match right after a letter, digit, `_`, `.` or `-` except in `/System/Volumes/Data`, so a same-login home
 behind a volume reaches the cut as `/Volumes/.../Users/<user>/` and is cut, never printed `/Volumes/<vol>~/` (the limit
 the ruling allowed the shell is not left). The legend's `<path>` item says lane RA's limit words: an unquoted path
-keeps its tail after the first quote, backtick, bracket, comma or semicolon, and after a blank from the first word that
-holds no `/`, or that is an option, a URL, a path of its own or a number like 3/14. Test:
+keeps its tail after the first quote, backtick, bracket, comma or semicolon, a provider folder's name running past a
+bracket, comma or semicolon to the next /, and after a blank from the first word that holds no / or holds =, or that is
+an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends it (amended 2026-11-08 by
+§16.235's ruling 112 words, which also say the prefixes match in any case and agentsync's own inbox is not cut). Test:
 `test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks`, lane RA's cases through
 `redact_stream` with HOME=/Users/<login>.
 
@@ -39028,7 +39036,41 @@ in `_ROUND_35_D_PARAGRAPH_AMENDS`, one row each.
 
 ### 16.235 Round 36: the report: another home cut whatever byte sits in it, a cut read's words, and the stopped copy (2026-11-08, wave B13 round 36 lane RA)
 
-Reserved for round 36 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 36").
+Lane RA's items of B13 round 36 (`docs/plans/bring-back-ocr.md`, "B13 round 36"). A dated line this round writes
+in another section reads `Amended 2026-11-08, §16.235 C<n>`.
+
+**A path in another home is cut whole whatever byte sits in it** (C1017, C1018, C1069, C1019 and C1123; ruling 112,
+the Python half; privacy; data integrity; `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`; amends
+§16.230 C912). The Python report read a path's blanks and stops through Unicode `\s`, while the shell reads bytes
+under `LC_ALL=C`, so `/Users/olga/Client<U+00A0>Alpha/Board/x.docx` printed `/Users/<path><U+00A0>Alpha/Board/x.docx`
+and `/Users/Shared<U+00A0>Alpha/...` printed whole (C1017); `/volumes/...` and `/system/volumes/data/...` in another
+case were no volume, so the guard refused the `/users/` after them and both reports printed the line whole (C1018);
+a provider folder's name ran past `):` and `, stored as `, eating the delimiter `_ADDED_TYPED_RE` reads (C1069). One
+table, `_CUT_BYTES`, now gives every character its class: a blank is a space or a tab; `\n`, `\r`, `\f` and `\v` end a
+cut; a stop is a quote, a backtick, a bracket `()[]{}`, a comma or a semicolon; every other character, a no-break,
+ideographic or other Unicode space and every control byte included, is a path character. `_PATH_END`, `_PATH_STOP`
+and the volume lookbehinds `(?<![ \t/])` are ASCII, built from it, and the guard before a home is ASCII
+`[A-Za-z0-9_.-]`, as the shell's is. Behind `/Volumes/` the cut looks back over every character on the line, quotes,
+backticks, brackets, commas and semicolons included (`/Volumes/Olga's Passport/Users/olga/...` is cut whole); a path
+that opens right after a quote still ends at its closing one. `/Volumes/`, `/System/Volumes/Data` and `Users` match
+in any case, and `_replace` prints `/Volumes/<path>` for any case of `/volumes/`. A provider folder's name (after
+`/CloudStorage/` or opening `OneDrive - `) runs over brackets, commas and semicolons to the next `/`, stopping only at
+a quote, a backtick, `):` or `, stored as ` (C1069, makes worse True as built by the finder: stopping it at a bracket
+or comma printed `, Inc./Docs/x` and `(UK) Ltd/Docs/x`, part of an organisation's name; the verifier's stop at the two
+delimiters keeps both cut). This home's literal under `/Users/` ends only where the table ends a component, or at
+`\"` (C941), so `/Users/dana<U+00A0>old/...`, `/Users/dana+x/...` and `/Users/dana: no` are another home, cut to
+`/Users/<path>`; a blank right after it still ends it (`~ old/x`), the one limit left, which the legend states. The
+legend also names the `=` that stops a later word (C1019) and says agentsync's own `~/agent-context/inbox` is never
+cut: an `added inbox source` note whose typed form is exactly that shows it uncut, in a /tmp HOME where the note
+collapses to one form as in a /private one, while every `added source` note and every other inbox folder keeps the
+cut (C1123; C658's (c) Tailspin case unchanged). The shell half, its tie test and the both-reports test over the same
+lines are lane RB's (§16.236). Not changed: `CloudStorage` and `OneDrive - ` match only as written in both reports.
+Tests: `tests/test_setup_report.py::test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112` (every
+code point 1 to 127 but `/` and the newline, every `str.isspace()` one, U+200B and U+FEFF, in a volume name, a provider
+folder's name, right after this login, inside another login and between two words after it, each prefix as written,
+lowercase and uppercase: `_separator_lines()`, which lane RB's test reads; and the specs' named rows),
+`test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123`, and the moved pins in
+`test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102`.
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 

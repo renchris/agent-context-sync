@@ -4690,7 +4690,8 @@ def test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102(fake_mac
         _RULING_102_KEPT[3],
         _RULING_102_KEPT[4],
     ]
-    assert kept[5] == 'own ~/x, "~", {\\"h\\": \\"~\\"} and ~: no', kept[5]
+    # B13 round 36 ruling 112: ":" is a path character, so /Users/dana: is another home
+    assert kept[5] == 'own ~/x, "~", {\\"h\\": \\"~\\"} and /Users/<path> no', kept[5]
     assert kept[6:] == [
         "/Users/<user>/ok and /Users/<path> Alpha",
         "/Users/<path>(b)/Fabrikam",
@@ -4714,8 +4715,127 @@ def test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102(fake_mac
     for value in ("olga", "Fabrikam", "Macintosh", "Backup", "Client", "Board", "Ltd"):
         assert value not in text, value
     legend = section(text, "Redaction")
-    assert "/Volumes/<path> behind a volume; in both reports, an unquoted path keeps its tail after" in legend
-    assert "quote, backtick, bracket, comma or semicolon, and after a blank from the first word" in legend
+    assert "/Volumes/<path> behind a volume, the prefixes in any case; in both reports, an unquoted" in legend
+    assert "keeps its tail after the first quote, backtick, bracket, comma or semicolon, a provider" in legend
+    assert "holds no / or holds =, or that is an option" in legend  # B13 round 36 C1019
+    assert "a blank right after this home ends it" in legend  # ruling 112's one limit left
+
+
+_RULING_112_ROWS = (  # B13 round 36 ruling 112: the specs' rows as both reports print them (home /Users/dana)
+    ("/Users/olga/Client\u00a0Alpha/Board/x.docx", "/Users/<path>"),  # C1017: a no-break space is a path byte
+    ("/Users/olga/Kaigi\u3000Shiryo/Board/x", "/Users/<path>"),  # an ideographic space
+    ("/Users/olga/a b\u00a0c/d", "/Users/<path>"),
+    ("/Users/Shared\u00a0Alpha/Board/x", "/Users/<path>"),  # no longer Shared's whole component
+    ("/Users/olga/Zeta\u00a0Alpha", "/Users/<path>"),
+    ("/Users/dana\u00a0old/Fabrikam/x", "/Users/<path>"),  # this home ends only where the table ends it
+    ("/Users/dana: no", "/Users/<path> no"),  # a colon is a path byte, so this is another home
+    ("/volumes/backup/users/olga/Fabrikam/x", "/Volumes/<path>"),  # C1018: the prefixes in any case
+    ("/VOLUMES/Backup/Users/olga/Fabrikam/x", "/Volumes/<path>"),
+    ("/system/volumes/data/users/olga/Fabrikam/x", "/Users/<path>"),
+    ('"/volumes/b x/users/olga/F"', '"/Volumes/<path>"'),
+    ("/Volumes/Con,toso;(x)/Users/olga/Fabrikam/x", "/Volumes/<path>"),  # C1016, C1064: any byte behind it
+    ("/Volumes/Olga's Passport/Users/olga/Fabrikam/x", "/Volumes/<path>"),
+    # C1069: a provider folder runs over brackets, commas and semicolons, and stops at "):" or ", stored as "
+    (
+        "seen /Users/olga/Library/CloudStorage/OneDrive-Contoso): kept/plan.docx",
+        "seen /Users/<path>): kept/plan.docx",
+    ),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Contoso, Inc./Docs/x", "/Users/<path>"),
+    ("/Users/olga/Library/CloudStorage/OneDrive-Contoso (UK) Ltd/Docs/x", "/Users/<path>"),
+    ("/Users/olga/Client a=b/Board/x.docx", "/Users/<path> a=b/Board/x.docx"),  # C1019: the legend's "="
+    ("/Users/dana old/Fabrikam/x", "~ old/Fabrikam/x"),  # the one limit left: a blank right after this home
+)
+_RULING_112_KEPT = ("x/volumes/Backup/Users/olga/y", "cp /volumes/usb/a /tmp/y")
+
+
+def _separator_lines() -> list[tuple[str, str]]:
+    """B13 round 36 ruling 112's proof, as ``(line, cut)``: every separator byte (each code point 1 to 127 but
+    ``/`` and the newline, each ``str.isspace()`` one, U+200B and U+FEFF) in each slot (a volume name, a
+    provider folder's name, right after this login, inside another login, between two words after it), with
+    each prefix as written, lowercase and uppercase, and the line both reports print for HOME /Users/dana and
+    the login dana. ``olga``, ``Fabrikam`` and ``Contoso`` are absent from ``cut`` but where
+    :data:`setup_report._CUT_BYTES` makes the byte a stop or an end, or a blank right after this login, where
+    ``cut`` is the documented one. test_report_redaction.py runs the same lines through the shell report."""
+    table = setup_report._CUT_BYTES
+    chars = [chr(c) for c in range(1, 128) if chr(c) not in "/\n"]
+    chars += [chr(c) for c in range(128, 0x110000) if chr(c).isspace()] + ["\u200b", "\ufeff"]
+    ends = table["end"] + table["stop"]
+
+    def cases(prefix: str) -> list[str]:
+        return [prefix, prefix.lower(), prefix.upper()]
+
+    out: list[tuple[str, str]] = []
+    for c in chars:
+        for vol in cases("/Volumes/"):
+            out.append((f"copied {vol}Con{c}toso/Users/olga/Fabrikam/x.docx", "copied /Volumes/<path>"))
+        for users in cases("/Users/"):
+            quote = c in "\"'`"
+            line = f"{users}olga/Library/CloudStorage/OneDrive-Contoso{c}Ltd/Fabrikam/x.docx"
+            out.append((line, f"/Users/<path>{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>"))
+            line = f"{users}olga/OneDrive - Contoso{c}Ltd/Fabrikam/x.docx"
+            out.append((line, f"/Users/<path> - Contoso{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>"))
+            mine = c in ends or c in table["blank"]
+            own = "~" if users == "/Users/" else f"{users}<user>"  # this home's literal is as written
+            cut = f"{own}{c}Fabrikam/x.docx" if mine else "/Users/<path>"
+            out.append((f"{users}dana{c}Fabrikam/x.docx", cut))
+        for users in [*cases("/Users/"), *cases("/System/Volumes/Data/Users/")]:
+            cut = f"/Users/<path>{c}ga/Fabrikam/x.docx" if c in ends else "/Users/<path>"
+            out.append((f"{users}ol{c}ga/Fabrikam/x.docx", cut))
+            line = f"{users}olga/Fabrikam{c}Contoso/x.docx"
+            out.append((line, f"/Users/<path>{c}Contoso/x.docx" if c in ends else "/Users/<path>"))
+    return out
+
+
+def test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112() -> None:
+    """B13 round 36 ruling 112 (C1017, C1018, C1069, C1019, C1123; privacy; data integrity): the Python report
+    read a path's blanks as Unicode whitespace while the shell reads bytes, so a no-break or ideographic space
+    ended the cut and printed another home's tail (C1017); `/volumes/` and `/system/volumes/data` in another
+    case were no volume (C1018); a provider folder ran past `):` and `, stored as ` (C1069). Every character's
+    class now comes from setup_report._CUT_BYTES, the one table both reports read: for every separator byte in
+    every slot (:func:`_separator_lines`), the report prints the documented line and no name it hides."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    table = setup_report._CUT_BYTES
+    assert table["blank"] == " \t" and set(table["end"]) == set("\n\r\f\v")
+    assert table["stop"] == "\"'`()[]{},;"
+    lines = _separator_lines()
+    assert len(lines) > 3000
+    wrong = [(line, red.redact(line), cut) for line, cut in lines if red.redact(line) != cut]
+    assert not wrong, (len(wrong), wrong[:8])
+    for line, cut in lines:  # a hidden name prints only where the table stops or ends the cut
+        if not any(c in line for c in table["end"] + table["stop"] + table["blank"]):
+            assert not re.search("olga|Fabrikam|Contoso", cut), line
+    for line, cut in _RULING_112_ROWS:
+        assert red.redact(line) == cut, line
+    for line in _RULING_112_KEPT:
+        assert red.redact(line) == line
+
+
+def test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123() -> None:
+    """B13 round 36 C1123 (ruling 112): in a /tmp HOME the inbox note's two forms collapse to one, which was
+    cut to `~/<path>`, while a /private HOME printed `~/agent-context/inbox`: agentsync's own inbox showed two
+    ways. Its typed form is shown uncut after `added inbox source`; every other collapsed note keeps the cut
+    (C658's (c))."""
+    red = setup_report.Redactor()
+    for home in ("/tmp/contoso-x/home3", "/private/tmp/contoso-x/home3"):
+        red.add("home", home)
+    red.add("user", "dana")
+    lines = [
+        "added inbox source 'inbox' (/tmp/contoso-x/home3/agent-context/inbox, stored as "
+        "/private/tmp/contoso-x/home3/agent-context/inbox): drop files you save by hand here",
+        "added inbox source 'inbox' (/private/tmp/contoso-x/home3/agent-context/inbox): drop files you save "
+        "by hand here",
+        "added source 'tailspin' to ~/agent-context/sources.toml (/tmp/contoso-x/home3/Tailspin Merger, "
+        "stored as /private/tmp/contoso-x/home3/Tailspin Merger): 3 files",
+        "added inbox source 'inbox' (/tmp/contoso-x/home3/Tailspin/inbox, stored as "
+        "/private/tmp/contoso-x/home3/Tailspin/inbox): drop files you save by hand here",
+    ]
+    out = setup_report._redact_lines(red, lines).splitlines()
+    inbox = "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    assert out[:2] == [inbox, inbox], out
+    assert out[2] == "added source 'tailspin' to ~/agent-context/sources.toml (~/<path>): 3 files", out
+    assert out[3] == "added inbox source 'inbox' (~/<path>): drop files you save by hand here", out
 
 
 # ---- K4, K6, K9, K10, K17 -------------------------------------------------------------------------------
@@ -22259,8 +22379,8 @@ def test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once() -> None:
         f"{stored}/Library/CloudStorage/OneDrive-Contoso/Plans):",
     ]
     out = setup_report._redact_lines(red, lines).splitlines()
-    # the one form cut as a --source-local argument is (B13 round 32 C658)
-    assert out[0] == "added inbox source 'inbox' (~/<path>): drop files you save by hand here"
+    # the one form, agentsync's own inbox never cut (B13 round 36 C1123; every other one cut, C658)
+    assert out[0] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
     assert out[1] == (
         "added source 'plans' to ~/agent-context/sources.toml "
         "(~/Library/CloudStorage/OneDrive-<org-1>/<path>):"
@@ -22301,7 +22421,8 @@ def test_an_added_sources_typed_folder_through_a_link_is_cut_as_its_argument_is_
         "(~/<path>, stored as ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>):"
     ), out[1]
     assert "Plans Link" not in "\n".join(out)
-    assert out[2] == "added inbox source 'inbox' (~/<path>): drop files you save by hand here"  # C658
+    # agentsync's own inbox is never cut (B13 round 36 C1123)
+    assert out[2] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
     assert out[3] == (
         "added source 'plans' to ~/agent-context/sources.toml (~/Documents/<path>, stored as "
         "~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
