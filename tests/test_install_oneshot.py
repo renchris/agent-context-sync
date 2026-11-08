@@ -7369,10 +7369,9 @@ def test_the_shell_report_pairs_each_step_3_stop_with_the_agents_line_as_the_age
             in (outcome)
         ), outcome
     assert "may be the agent's account" not in text, outcome
-    # and the agentsync report pairs the same lines (lane RA's setup_report._stop_pairs), once it knows each
-    # role (B13 round 35 C935: lane RA's governance-folder reader lands beside this one)
-    if not all(stop.split()[1] in setup_report._SYNC_STOP_FILES for stop in stops):
-        return
+    # and the agentsync report pairs the same lines (lane RA's setup_report._stop_pairs), always: a guard that
+    # returned when a role was not in setup_report._SYNC_STOP_FILES could skip the comparison unseen (B13
+    # round 36 C1023)
     attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
     recorded = [
         setup_report._SyncStop(
