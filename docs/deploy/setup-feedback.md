@@ -1401,7 +1401,9 @@ line's `not measured (<why>; plist present|absent)` gives none: the Summary's ba
 or ends `(see the evidence line)` when the evidence line already gives it (B13 round 34 C819). When the Loop line
 was not read, the Summary's doctor line files a listing, purge-queue or hold warn under `not judged (the Loop line
 was not read: <why>)`, before `unexpected`, adding `; a report written when this Mac is idle sorts it` only for a
-time-out or a busy state file (B13 round 33 ruling 84, C721; lane RA's 541fe447a). `install.sh --report-only`'s `NEXT:` says part of the report was cut off when a Summary line carries the advice
+time-out or a busy state file (B13 round 33 ruling 84, C721; lane RA's 541fe447a); a Loop read the spent budget never
+started reads `not judged (the Loop line was not read: its NEXT was not started: the report's time budget was used
+up)` (B13 round 36 C1109). `install.sh --report-only`'s `NEXT:` says part of the report was cut off when a Summary line carries the advice
 or the Loop line says its own read was cut (`not read (it did not finish in time`, with or without its `: a sync held
 the state file` tail, `not read (the state file is busy: a sync holds it)` or `not read (status did not finish in
 time)`, or a call the spent budget never started, `not read (status not started: the report's time budget was used
@@ -1412,7 +1414,9 @@ ran at 60 s, its most (its `- time limit: 60s` line; B13 round 35 C922, C929); a
 answer (the doctor line's `not judged (<helper> did not answer in time: ...)`) names none either (C915); when only
 git, xcode-select or launchctl print timed out on their fixed 3 s and 5 s caps (a line that names the seconds), it
 says to run the report again once the Mac is idle and names no variable, while an older build's install source words
-keep it (B13 round 34 ruling 97, C834; round 35 C976). A run of a build older than these
+keep it (B13 round 34 ruling 97, C834; round 35 C976); a wait the report's spent budget made shorter than its cap
+names no seconds but `did not answer within the report's time limit`, and so does name the variable (B13 round 36
+C1040). A run of a build older than these
 parts did not record what it converted or OCR's time: its row says "not recorded" or "-".
 
 The report shows the Mac at the moment it is written. After an upgrade to a build with OCR, the files from

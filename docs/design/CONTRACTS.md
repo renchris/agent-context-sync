@@ -14804,6 +14804,9 @@ available. The shell report adds `- gitleaks: <path>` or `not found (builtin pat
 Amended 2026-11-04, §16.230 C918: a gitleaks version read the report's time limit cut reads `gitleaks, version not
 measured (gitleaks version did not answer within 3.0s)` (or the spent budget's words); `(version unknown)` stays
 for a gitleaks that answered.
+Amended 2026-11-08, §16.235 C1020: the version's state goes inside the one path bracket, `gitleaks (version not
+measured, gitleaks version did not answer within 3.0s; <path>; shell and background runs)` or `gitleaks (version
+unknown; <path>; ...)`, never two brackets side by side.
 
 ### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
 
@@ -37447,6 +37450,8 @@ and `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a
 Amended 2026-11-04, §16.230 C940: rev-list and `_last_fetch` no longer read as a failed count or the undated
 words when cut: `_cut_words` gives `git did not answer within 3.0s` or `... within the report's time limit` in the
 fetch bracket (`how far behind not read: <words>; `, `date not read: <words>`).
+Amended 2026-11-08, §16.235 C1040: only a wait that had its own cap names seconds; one the spent budget made shorter
+(decided on the float limit, never the printed `3.0s`) reads `did not answer within the report's time limit`.
 
 **A cut Status call says the Loop line was not read** (C801, ruling 96). With the Status call cut by the time limit,
 the Loop line said `unknown (no status loop line)`, as if status had answered without one. `_status_section` records
@@ -38265,6 +38270,9 @@ it never read profiles; it uses the real label and skips no label. Tests:
 `tests/test_setup_report.py::test_every_environment_probe_says_a_cut_as_not_measured_c820` (each probe, gitleaks, a
 real 124), `test_the_command_line_tools_time_out_is_not_measured_c716`,
 `tests/test_deploy_pack.py::test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`.
+Amended 2026-11-08, §16.235 C1020, C1040: the secret scan's cut reads `gitleaks (version not measured, <words>;
+<path>; ...)` and its answered-but-empty read `gitleaks (version unknown; <path>; ...)`, one bracket; a wait the spent
+budget made shorter than its cap reads `not measured (<cmd> did not answer within the report's time limit)`.
 
 **C804's report test pins each half alone** (C944; tests only). The test passed with either half of C804 removed,
 since the other ended the child. It is parametrized `alone`: `deadline` stubs `doctor.end_children` (read by getattr at
@@ -39082,6 +39090,40 @@ folder's name, right after this login, inside another login and between two word
 lowercase and uppercase: `_separator_lines()`, which lane RB's test reads; and the specs' named rows),
 `test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123`, and the moved pins in
 `test_a_path_in_another_home_is_cut_whole_however_spelled_ruling_102`.
+
+**A wait the spent budget shortened names the report's time limit** (C1040; ruling 115; amends §16.225 C834 and
+§16.230 C905; `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). `_Run.run` and `_git_ro_err` printed
+`timed out after <limit>s` for any time-out, so a read the spent budget gave 1.1 s of its 3 s cap printed `git did not
+answer within 1.1s`, which install.sh's `report_time_helps` and the guide read as a fixed cap, and NEXT named no
+`AGENTSYNC_REPORT_TIME_LIMIT` though more time would help. Both runners now decide on the float limit against the
+command's own cap, never on the printed seconds (2.96 s prints `3.0s` and was shortened): `_timed_out` gives `timed
+out after <limit>s` only when the command had its cap, else `_SHORTENED`, `timed out at the report's time limit`, one
+of `_NOT_ANSWERED_NOTES`. `_within` gives None for it, and `_waited` gives the seconds or `the report's time limit`, so
+`_probe_ended`, `_git_not_answered`, `_cut_words`, the install source's xcode-select, uncommitted-changes and
+origin/main reads, Background's `launchctl print` and the report's own pandoc start each read `did not answer within
+the report's time limit` for a shortened wait; a budget spent before the command ran keeps its words. install.sh's
+install source alternate already takes them; Background's is lane RB's (§16.236). Tests:
+`tests/test_setup_report.py::test_a_wait_the_spent_budget_shortened_names_the_reports_time_limit_c1040` (a real
+`sleep` under a shortened budget, `_git_ro_err` with a hanging git, and install.sh's own grep),
+`test_a_launchctl_print_that_did_not_answer_is_not_measured_c720`'s third case, and the pandoc time-out test, whose
+6 s budget leaves less than the 5 s cap.
+
+**The secret scan's version state sits in its one bracket** (C1020; ruling 115; amends §16.52 Q81 and §16.230 C918;
+`src/agentsync/setup_report.py`). A cut `gitleaks version` read printed `gitleaks, version not measured (...)
+(<path>; ...)` and an answered-but-empty one `gitleaks (version unknown) (<path>; ...)`, two brackets side by side,
+which round 13's O14 and V11, V54 rule out. The state now opens the path bracket in all three branches: `gitleaks
+(version not measured, <words>; <path>; shell and background runs)`, `<words>` being `_probe_ended`'s, and `gitleaks
+(version unknown; <path>; ...)`. Nothing reads the line. Tests:
+`tests/test_setup_report.py::test_environment_says_what_the_secret_scan_can_use` ("version fails"),
+`test_every_environment_probe_says_a_cut_as_not_measured_c820` (no `) (`).
+
+**The Loop line's unread clause names what did not start** (C1109; ruling 115; `src/agentsync/setup_report.py`,
+`docs/deploy/setup-feedback.md`). `_loop_unread_head` printed `not judged (the Loop line was not read: not started:
+the report's time budget was used up)`, two colons and no subject. For `_NOT_STARTED` it now prints `its NEXT was not
+started: the report's time budget was used up`: the loop_next call, never status, which may have been read.
+`_NOT_STARTED`, Status's words and the idle test are unchanged, as install.sh keys on them; ruling 84's own text at
+COMMON.md:677 stays as written. Test: `tests/test_setup_report.py::test_a_loop_read_never_started_says_its_next_was_not_started_c1109`
+(a live copy with the idle advice, a stopped one without).
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 

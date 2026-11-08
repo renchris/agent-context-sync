@@ -10543,8 +10543,10 @@ def test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bu
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=6.0)
     [pandoc] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
     assert "skipped: the report's time budget" not in pandoc, pandoc
+    # B13 round 36 C1040: 6 s leaves less than the 5 s cap, so the wait names the report's time limit
+    within = r"(?:\d+\.\ds|the report's time limit)"
     assert re.search(
-        rf"/bin/pandoc{re.escape(which)} did not answer within \d+\.\ds \({re.escape(why)}\)$", pandoc
+        rf"/bin/pandoc{re.escape(which)} did not answer within {within} \({re.escape(why)}\)$", pandoc
     ), pandoc
     assert ("first start" in pandoc) is (kind == "wheel"), pandoc
 
@@ -21356,7 +21358,8 @@ def test_environment_says_what_the_secret_scan_can_use(
         "both": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks; shell and background runs)",
         "shell only": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks) in this shell only; "
         "background runs use the builtin patterns alone (fix: ~/.local/bin/agentsync sync from this shell)",
-        "version fails": "builtin patterns + gitleaks (version unknown) (~/.local/bin/gitleaks; shell and "
+        # B13 round 36 C1020: the version's state inside the one path bracket, never `) (`
+        "version fails": "builtin patterns + gitleaks (version unknown; ~/.local/bin/gitleaks; shell and "
         "background runs)",
     }[case]
     assert line == f"- secret scan: {want}; last re-screen: builtin patterns only", line
@@ -22142,6 +22145,28 @@ def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_o
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- doctor: ")]
     assert "install.sh's doctor" not in line and "run when this report" not in line, line
+
+
+@pytest.mark.parametrize("stopped", [False, True], ids=["live", "stopped"])
+def test_a_loop_read_never_started_says_its_next_was_not_started_c1109(stopped: bool) -> None:
+    """B13 round 36 C1109 (ruling 115): the doctor line's clause read `the Loop line was not read: not
+    started: the report's time budget was used up`, two colons with no subject. It names what did not start,
+    the Loop line's NEXT read (the loop_next call, never status, which may have been read); _NOT_STARTED and
+    the idle test that keys on it are unchanged, and a live copy keeps the idle advice."""
+    r = setup_report._Run(None, setup_report.ReportHooks(), 60.0)
+    r.facts.loop_unread_why = setup_report._NOT_STARTED
+    r.facts.copy_stopped = stopped
+    idle = "" if stopped else setup_report._IDLE_SORTS
+    assert setup_report._loop_unread_head(r) == (
+        "not judged (the Loop line was not read: its NEXT was not started: the report's time budget was used "
+        f"up{idle})"
+    )
+    assert setup_report._NOT_STARTED == "not started: the report's time budget was used up"  # install.sh's
+    r.facts.loop_unread_why = setup_report._NOT_IN_TIME
+    assert (
+        setup_report._loop_unread_head(r)
+        == f"not judged (the Loop line was not read: {setup_report._NOT_IN_TIME}{idle})"
+    )
 
 
 def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
@@ -22968,6 +22993,48 @@ def test_the_command_line_tools_time_out_is_not_measured_c716(
     assert ("not installed" in line) is (answer[0] == 2), line
 
 
+def test_a_wait_the_spent_budget_shortened_names_the_reports_time_limit_c1040(tmp_path: Path) -> None:
+    """B13 round 36 C1040 (ruling 115): a read the spent budget gave less than its own 3 s cap printed the
+    shortened seconds (`git did not answer within 1.1s`), which install.sh's report_time_helps and the guide
+    read as a fixed cap, so NEXT named no AGENTSYNC_REPORT_TIME_LIMIT though more time would help. The runners
+    decide on the float limit against the cap, never on the printed seconds, and a shortened wait reads `did
+    not answer within the report's time limit` everywhere it is said, which install.sh's grep takes."""
+    hooks = setup_report.ReportHooks()
+    short = setup_report._Run(None, hooks, setup_report._RESERVE_S + 1.2)
+    rc, note = short.run(["/bin/sleep", "5"], 3.0)
+    assert (rc, note) == (124, setup_report._SHORTENED)
+    assert setup_report._Run(None, hooks, 30.0).run(["/bin/sleep", "5"], 0.5) == (124, "timed out after 0.5s")
+    assert setup_report._timed_out(2.96, 3.0) == setup_report._SHORTENED  # it prints 3.0s, yet was shortened
+    assert setup_report._timed_out(3.0, 3.0) == "timed out after 3.0s"
+    assert setup_report._not_answered(rc, note) and setup_report._within(note) is None
+    limit = "the report's time limit"
+    assert setup_report._probe_ended("xcode-select -p", rc, note) == (
+        f"not measured (xcode-select -p did not answer within {limit})"
+    )
+    assert setup_report._waited(note) == limit and setup_report._waited("timed out after 3.0s") == "3.0s"
+    spent = "skipped: the report's time budget is used up"
+    assert setup_report._waited(spent) is None
+    assert setup_report._probe_ended("sw_vers", 124, spent) == (
+        "not measured (the report's time limit was used up before sw_vers ran)"
+    )
+    hang = tmp_path / "git"
+    hang.write_text("#!/bin/sh\nexec /bin/sleep 5\n", encoding="utf-8")
+    hang.chmod(0o755)
+    short = setup_report._Run(None, hooks, setup_report._RESERVE_S + 1.2)
+    short.git = hang
+    assert setup_report._git_ro_err(short, tmp_path, "status") == (124, b"", setup_report._SHORTENED.encode())
+    short.facts.install_source_why = note
+    assert setup_report._cut_words(short) == f"git did not answer within {limit}"
+    assert setup_report._git_not_answered(short) == f" (git did not answer within {limit})"
+    # install.sh's report_time_helps takes it as the budget's: the install source alternate names the variable
+    [budget] = re.findall(
+        r'grep -qE "(\^- install source: [^"]*)" "\$1" && return 0',
+        (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(),
+    )
+    line = f"- install source: checkout ~/x · origin: not read (git did not answer within {limit})"
+    assert re.search(budget.split("|^- [^ ]+")[0], line), budget
+
+
 @pytest.mark.parametrize(
     "note", ["timed out after 3.0s", "skipped: the report's time budget is used up"], ids=["timeout", "spent"]
 )
@@ -23017,10 +23084,11 @@ def test_every_environment_probe_says_a_cut_as_not_measured_c820(
                 assert "not measured (" in line, line
         scan = next(ln for ln in lines if ln.startswith("- secret scan: "))
         if cut:
-            assert "gitleaks, version not measured (" in scan and "version unknown" not in scan, scan
+            assert "gitleaks (version not measured, " in scan and "version unknown" not in scan, scan  # C1020
+            assert ") (" not in scan and "not measured (" not in scan, scan
             assert "exited 124" not in scan, scan
         else:
-            assert "gitleaks (version unknown)" in scan and "not measured" not in scan, scan
+            assert "gitleaks (version unknown; " in scan and "not measured" not in scan, scan
 
 
 def test_a_cut_status_section_says_not_run_or_cut_off_never_failed_c820(
@@ -23085,6 +23153,11 @@ def test_the_install_source_says_a_devtools_read_that_did_not_answer_c716(
         (
             "skipped: the report's time budget is used up",
             "the report's time limit was used up before launchctl print ran",
+        ),
+        # B13 round 36 C1040: a wait the spent budget shortened names the report's time limit
+        (
+            "timed out at the report's time limit",
+            "launchctl print did not answer within the report's time limit",
         ),
     ],
 )

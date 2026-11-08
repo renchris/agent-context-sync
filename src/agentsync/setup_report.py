@@ -466,7 +466,11 @@ _IDLE_AGAIN = f"write the report again when this Mac is idle (`{INSTALL_SH} --re
 """The advice for a part the report's time limit cut off, or a state file a sync held (``_RETRY_WHYS``): the
 Summary's evidence and doctor lines; Doctor. install.sh's ``--report-only`` NEXT keys on it (B13 round 20
 X37). Byte-identical on every report that was not stopped, and read through :func:`_idle_again`."""
-_NOT_ANSWERED_NOTES = ("timed out after ", "skipped: the report's time budget")
+_SHORTENED = "timed out at the report's time limit"
+"""A time-out whose wait the spent budget made shorter than the command's own cap (B13 round 36 C1040, ruling
+115): decided on the float limit, never on the printed seconds (2.96 s prints ``3.0s``), so a reader says
+``did not answer within the report's time limit``, which more time helps, never a cap's seconds."""
+_NOT_ANSWERED_NOTES = ("timed out after ", _SHORTENED, "skipped: the report's time budget")
 """How :meth:`_Run.run` and :func:`_git_ro_err` say a command did not answer, the note beside their rc 124."""
 _STOPPED_NOT_SENT = "this copy is not for sending"
 """What a stopped copy says where any other report gives :data:`_IDLE_AGAIN` (B13 round 33 C718): its first
@@ -4480,6 +4484,12 @@ def _exited(rc: int, text: str | None = None) -> str:
     return f"was {ocr._ended(rc, (text or '').encode())}"
 
 
+def _timed_out(limit: float, timeout: float) -> str:
+    """A runner's time-out note: ``timed out after <limit>s`` when the command had its own cap, else
+    :data:`_SHORTENED` (B13 round 36 C1040: the float decides, never the printed seconds)."""
+    return f"timed out after {limit:.1f}s" if limit >= timeout else _SHORTENED
+
+
 def _probe_ended(cmd: str, rc: int, text: str) -> str:
     """``<cmd> exited <rc>: <text>`` for a probe that did not exit 0, as ``not measured (...)`` when the
     runner gave no answer (a time-out or a spent budget, :func:`_not_answered`), the form C716 gives the
@@ -4487,10 +4497,11 @@ def _probe_ended(cmd: str, rc: int, text: str) -> str:
     C905 (ruling 107): a program the runner never answered for never exited 124, so a time-out reads ``not
     measured (<cmd> did not answer within 3.0s)`` and a spent budget ``not measured (the report's time limit
     was used up before <cmd> ran)``, the words the Background lines use; a real exit 124 with other text
-    keeps ``exited 124: <text>``, and rc 124 inside :class:`_Run` is unchanged."""
+    keeps ``exited 124: <text>``, and rc 124 inside :class:`_Run` is unchanged. B13 round 36 C1040: a wait the
+    spent budget shortened reads ``not measured (<cmd> did not answer within the report's time limit)``."""
     if not _not_answered(rc, text):
         return f"{cmd} {_exited(rc, text)}"
-    within = _within(text)
+    within = _waited(text)
     if within:
         return f"not measured ({cmd} did not answer within {within})"
     return f"not measured (the report's time limit was used up before {cmd} ran)"
@@ -4586,7 +4597,7 @@ class _Run:
                 env={**os.environ, "LC_ALL": "C"},
             )
         except subprocess.TimeoutExpired:
-            return 124, f"timed out after {limit:.1f}s"
+            return 124, _timed_out(limit, timeout)
         except OSError as exc:
             return 127, f"{type(exc).__name__}: {exc.strerror or exc}"
         return cp.returncode, (cp.stdout + cp.stderr).strip()
@@ -5935,7 +5946,7 @@ def _install_source(r: _Run) -> str:
     elif directory is not None and tools is None:
         r.facts.install_source_cut = True
         # B13 round 34 C834 (ruling 96): a time-out says its seconds, a spent budget the time limit
-        within = _within(r.devtools_note)
+        within = _waited(r.devtools_note)  # B13 round 36 C1040: or a shortened wait's
         where += (
             f" (commit and origin not read: xcode-select did not answer within {within})"
             if within
@@ -6001,7 +6012,7 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return 124, b"", f"timed out after {limit:.1f}s".encode()
+        return 124, b"", _timed_out(limit, timeout).encode()
     except OSError:
         return 127, b"", b""
     return cp.returncode, cp.stdout, cp.stderr
@@ -6036,9 +6047,18 @@ B13 round 34 C834 (ruling 96) only a spent budget's words: a time-out says its s
 def _within(note: str) -> str | None:
     """The seconds a runner's time-out note gives (``3.0s`` of ``timed out after 3.0s``); None for a spent
     budget or any other note (B13 round 34 C834, ruling 96): the git, xcode-select and launchctl reads keep
-    their fixed caps, so a time-out is said in its seconds and only a spent budget names the time limit."""
+    their fixed caps, so a time-out is said in its seconds and only a spent budget names the time limit.
+    B13 round 36 C1040 (ruling 115): None too for a wait the spent budget shortened (:data:`_SHORTENED`),
+    whose seconds were the budget's, not the cap's."""
     head = "timed out after "
     return note.removeprefix(head) if note.startswith(head) else None
+
+
+def _waited(note: str) -> str | None:
+    """What a runner's time-out waited for: ``3.0s`` on the command's own cap, ``the report's time limit``
+    for a wait the spent budget shortened (B13 round 36 C1040, ruling 115: its seconds were the budget's);
+    None for a budget spent before it ran or any other note."""
+    return _within(note) or (_THE_REPORTS_TIME_LIMIT if note.startswith(_SHORTENED) else None)
 
 
 def _git_not_answered(r: _Run) -> str:
@@ -6089,7 +6109,7 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     text = f" @ {sha}"
     dirty, _, cut = _git_read(r, directory, "diff", "--quiet", "HEAD", "--")
     if cut:  # C834: a spent budget keeps ", time limit"
-        within = _within(r.facts.install_source_why)
+        within = _waited(r.facts.install_source_why)  # or a shortened wait's (B13 round 36 C1040)
         text += (
             f" (uncommitted changes: not read, git did not answer within {within})"
             if within
@@ -6136,7 +6156,7 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     text += f" ({'; '.join(notes)})" if notes else ""
     rc, _, cut = _git_read(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
     if cut:  # no fetch's date beside it: a read that did not answer has no origin/main to date
-        within = _within(r.facts.install_source_why)
+        within = _waited(r.facts.install_source_why)  # or a shortened wait's (B13 round 36 C1040)
         return text + (
             f" · on origin/main: not read (git did not answer within {within})"
             if within
@@ -6403,22 +6423,23 @@ def _environment(r: _Run) -> list[str]:
         else:
             rc, out = r.run([str(found), "version"], 3.0)
             first = out.splitlines()[0].strip() if rc == 0 and out.strip() else ""
-            if first:
-                ver = f"gitleaks {first}"
-            elif _not_answered(rc, out):  # B13 round 35 C918: one cut said one way across Environment
-                ver = f"gitleaks, version {_probe_ended('gitleaks version', rc, out)}"
-            else:
-                ver = "gitleaks (version unknown)"
+            # B13 round 36 C1020: a version that is not one folds into the one path bracket, never `) (`
+            # (round 13 O14): `gitleaks (version not measured, <words>; <path>; ...)`, `gitleaks (version
+            # unknown; <path>; ...)`; a cut is said in _probe_ended's words (B13 round 35 C918)
+            ver, note = (f"gitleaks {first}", "") if first else ("gitleaks", "version unknown; ")
+            if not first and _not_answered(rc, out):
+                ended = _probe_ended("gitleaks version", rc, out).removeprefix("not measured (")
+                note = f"version not measured, {ended.removesuffix(')')}; "
             if shell is not None and bg is not None:
                 where = f"{shell}" + ("" if bg == shell else f", background runs: {bg}")
-                text = f"builtin patterns + {ver} ({where}; shell and background runs)"
+                text = f"builtin patterns + {ver} ({note}{where}; shell and background runs)"
             elif shell is not None:
                 text = (
-                    f"builtin patterns + {ver} ({shell}) in this shell only; background runs use the builtin "
-                    f"patterns alone (fix: {AGENTSYNC_BIN} sync from this shell)"
+                    f"builtin patterns + {ver} ({note}{shell}) in this shell only; background runs use the "
+                    f"builtin patterns alone (fix: {AGENTSYNC_BIN} sync from this shell)"
                 )
             else:
-                text = f"builtin patterns + {ver} ({bg}) in background runs only; this shell has none"
+                text = f"builtin patterns + {ver} ({note}{bg}) in background runs only; this shell has none"
         return f"{text}; last re-screen: {_last_rescreen(r)}"
 
     def pandoc() -> str:
@@ -6441,8 +6462,8 @@ def _environment(r: _Run) -> list[str]:
                 return str(exc)
             which = " (native arm64 copy)" if kind == "native" else ""
         rc, text = r.run([str(exe), "--version"], 5.0)
-        if rc == 124 and text.startswith("timed out after "):  # a slow start, not an exit code (U48)
-            secs = text.removeprefix("timed out after ")
+        secs = _waited(text) if rc == 124 else None  # or a shortened wait's words (B13 round 36 C1040)
+        if secs:  # a slow start, not an exit code (U48)
             return f"{exe}{which} did not answer within {secs} ({_slow_start(kind)})"
         return (
             text.splitlines()[0] + which
@@ -11687,11 +11708,15 @@ def _status_section(r: _Run) -> list[str]:
 
 _STATUS_NOT_IN_TIME = "did not finish in time"
 """``facts.status_failed`` for a Status call the report's time limit cut (B13 round 34 C801)."""
-_NOT_STARTED = "not started: the report's time budget was used up"
+_NOT_STARTED_HEAD = "not started: "
+_NOT_STARTED = f"{_NOT_STARTED_HEAD}the report's time budget was used up"
 """B13 round 35 C904 with C919 (ruling 107): ``facts.status_failed``, and the Loop line's NEXT half, for a
 call the spent budget never started (its own limit 0.2s or less), Doctor's sibling words: the Loop line reads
 ``not read (status not started: ...)`` and its NEXT ``not read (not started: ...)``, never "did not finish in
 time", which a call that ran and was cut keeps."""
+_NEXT_NOT_STARTED = "its NEXT was not started: "
+"""B13 round 36 C1109 (ruling 115): the doctor line's ``not judged (the Loop line was not read: ...)`` names
+what :data:`_NOT_STARTED` did not start, the Loop line's NEXT read, never ``read: not started:``."""
 
 
 def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]:
@@ -11969,9 +11994,11 @@ def _background(r: _Run) -> list[str]:
         has_plist = plist.exists()
         rc, text = _launchctl_print(r.run, label)
         if _not_answered(rc, text):  # never `NOT loaded` or `not installed`: a job is not, at 113 (C720)
+            # B13 round 36 C1040: a wait the spent budget shortened names the report's time limit
+            within = _waited(text)  # B13 round 36 C1040: a shortened wait names the report's time limit
             why = (
-                f"launchctl print did not answer within {text.removeprefix('timed out after ')}"
-                if text.startswith("timed out after ")
+                f"launchctl print did not answer within {within}"
+                if within
                 else "the report's time limit was used up before launchctl print ran"
             )
             state = "present" if has_plist else "absent"
@@ -13471,7 +13498,10 @@ def _loop_unread_head(r: _Run) -> str:
     when idle sorts them only when waiting can (a time-out or a busy state file, not a crash or no hook)."""
     why = r.facts.loop_unread_why
     idle = why.startswith((_NOT_IN_TIME, _NOT_STARTED)) and not r.facts.copy_stopped  # C904: both
-    return f"not judged (the Loop line was not read: {why}{_IDLE_SORTS if idle else ''})"
+    # B13 round 36 C1109 (ruling 115): what did not start, the Loop line's own NEXT read (the loop_next call),
+    # never status, which may have been read; _NOT_STARTED itself stays, as install.sh keys on it
+    said = f"{_NEXT_NOT_STARTED}{why.removeprefix(_NOT_STARTED_HEAD)}" if why == _NOT_STARTED else why
+    return f"not judged (the Loop line was not read: {said}{_IDLE_SORTS if idle else ''})"
 
 
 def _refusing_checks(c: Config) -> frozenset[str]:
