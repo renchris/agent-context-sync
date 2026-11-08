@@ -3,6 +3,7 @@
 #
 # Usage: scripts/tenant-probes.sh [--dry-run] [--config PATH] [--out DIR] [--python PATH]
 #                                 [--max-pages N] [--max-downloads N] [--max-bytes BYTES] [--selftest]
+#                                 [--version] [--]
 #
 #   --dry-run          load the config and print what would be requested; no sign-in, no network, no writes
 #   --config PATH      sources.toml (default: $AGENTSYNC_CONFIG or ~/agent-context/sources.toml)
@@ -13,6 +14,12 @@
 #   --max-downloads N  files downloaded twice for probe 4b (default 6)
 #   --max-bytes BYTES  largest file probe 4b downloads (default 20000000)
 #   --selftest         check the offline helpers (QuickXorHash vectors, claim decoding) and exit
+#   --version          print the commit of this checkout, or unknown, and exit (no git, no interpreter)
+#   -h, --help, help   print this text and exit; it wins over --version in either order
+#   --                 end the options
+#
+# --name VALUE and --name=VALUE are the same, a repeat takes the last value, and an empty value is a usage
+# error. A value that is itself an option needs the = form.
 #
 # Run it after `agentsync graph login` (the only interactive step, done by the operator). It never opens a
 # browser, never prompts and never writes to the tenant: it uses the cached token silently (exit 77 when
@@ -36,6 +43,7 @@ repo="$(cd "$here/.." && pwd)"
 
 DRY_RUN=0
 SELFTEST=0
+SHOW_VERSION=0
 CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 OUT=""
 PY="${AGENTSYNC_PYTHON:-}"
@@ -48,46 +56,100 @@ usage_error() {
 	exit 2
 }
 show_help() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
-need_value() { [ "$1" -ge 2 ] || usage_error "$2 needs a value"; }
+# The option a separated value must not be: --out --dry-run would set OUT and leave DRY_RUN=0, a live run for
+# someone asking for a dry one.
+need_value() {
+	[ "$1" -ge 2 ] || usage_error "$2 needs a value"
+	case "${3:-}" in
+	-h | --help | --version | --dry-run | --selftest | -- | --config | --out | --python | --max-pages | --max-downloads | --max-bytes | --config=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*)
+		usage_error "$2 needs a value, got the option $3 (write $2=$3 if that is the value)"
+		;;
+	esac
+}
 is_uint() { case "$1" in '' | *[!0-9]*) return 1 ;; *) return 0 ;; esac }
-
-while [ $# -gt 0 ]; do
+set_value() {
+	[ -n "$2" ] || usage_error "$1 needs a value"
 	case "$1" in
-	--dry-run) DRY_RUN=1 ;;
-	--selftest) SELFTEST=1 ;;
-	--config)
-		need_value $# "$1"
-		CONFIG="$2"
-		shift
-		;;
-	--out)
-		need_value $# "$1"
-		OUT="$2"
-		shift
-		;;
-	--python)
-		need_value $# "$1"
-		PY="$2"
-		shift
-		;;
-	--max-pages | --max-downloads | --max-bytes)
-		need_value $# "$1"
+	--config) CONFIG="$2" ;;
+	--out) OUT="$2" ;;
+	--python) PY="$2" ;;
+	*)
 		is_uint "$2" || usage_error "$1 needs a non-negative integer, got '$2'"
 		case "$1" in
 		--max-pages) MAX_PAGES="$2" ;;
 		--max-downloads) MAX_DOWNLOADS="$2" ;;
 		*) MAX_BYTES="$2" ;;
 		esac
+		;;
+	esac
+}
+# The commit of the checkout at $1 without running git: /usr/bin/git can offer to install developer tools, and
+# this script promises no prompts. Empty when it cannot be read. As git_head_file in install.sh, and it also
+# follows the .git file of a linked worktree, whose branches live in the common directory.
+git_head_file() {
+	local git_dir="$1/.git" common head ref
+	if [ -f "$git_dir" ]; then
+		git_dir="$(sed -n 's/^gitdir: //p' "$git_dir" 2>/dev/null || true)"
+		[ -n "$git_dir" ] || return 0
+		case "$git_dir" in
+		/*) ;;
+		*) git_dir="$1/$git_dir" ;;
+		esac
+	fi
+	common="$git_dir"
+	if [ -f "$git_dir/commondir" ]; then
+		common="$(cat "$git_dir/commondir" 2>/dev/null || true)"
+		case "$common" in
+		/*) ;;
+		*) common="$git_dir/$common" ;;
+		esac
+	fi
+	head="$(cat "$git_dir/HEAD" 2>/dev/null || true)"
+	case "$head" in
+	"ref: "*)
+		ref="${head#ref: }"
+		if [ -f "$common/$ref" ]; then
+			head="$(cat "$common/$ref")"
+		else
+			head="$(awk -v r="$ref" '$2 == r { print $1; exit }' "$common/packed-refs" 2>/dev/null || true)"
+		fi
+		;;
+	esac
+	case "$head" in
+	[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) printf '%s' "$head" | cut -c1-12 ;;
+	esac
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--dry-run) DRY_RUN=1 ;;
+	--selftest) SELFTEST=1 ;;
+	--version) SHOW_VERSION=1 ;;
+	--config | --out | --python | --max-pages | --max-downloads | --max-bytes)
+		need_value $# "$1" "${2:-}"
+		set_value "$1" "$2"
 		shift
 		;;
-	-h | --help)
+	--config=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*) set_value "${1%%=*}" "${1#*=}" ;;
+	-h | --help | help)
 		show_help
 		exit 0
+		;;
+	--)
+		shift
+		[ $# -eq 0 ] || usage_error "unexpected argument $1"
+		break
 		;;
 	*) usage_error "unknown argument $1" ;;
 	esac
 	shift
 done
+
+if [ "$SHOW_VERSION" = 1 ]; then
+	commit="$(git_head_file "$repo")"
+	printf '%s\n' "${commit:-unknown}"
+	exit 0
+fi
 
 case "$CONFIG" in
 /*) ;;
@@ -262,6 +324,9 @@ emit("- read-only: GETs and downloads into a deleted temporary directory; nothin
 emit()
 
 if not config.graph.client_id:
+    if DRY:
+        print("not run: [graph] client_id is unset; dry run wrote nothing", file=sys.stderr)
+        sys.exit(78)
     emit("**Not run:** `[graph] client_id` is unset (the IT app registration is pending; docs/deploy/it-request.md).")
     print(f"not run: [graph] client_id is unset; report {write_report(out_dir)}", file=sys.stderr)
     sys.exit(78)

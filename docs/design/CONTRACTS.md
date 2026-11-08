@@ -39826,7 +39826,23 @@ Reserved.
 
 #### 16.300.21 U-B13: tenant-probes harness, dry run and parser
 
-Reserved.
+`scripts/tenant-probes.sh --dry-run` with `[graph] client_id` unset exits 78 and writes nothing: stderr says
+`client_id is unset` and `dry run wrote nothing`, stdout is empty, and neither `--out` nor the state folder is
+created. A real run still writes its report and exits 78.
+
+`--name VALUE` and `--name=VALUE` are the same for `--config`, `--out`, `--python`, `--max-pages`, `--max-downloads`
+and `--max-bytes`; a repeat takes the last value. Exit 2, before any work: an empty value, a separated value that is
+itself a known option (`--out --dry-run`; the message names the `=` form as the escape), and any argument after `--`.
+A bare `--` ends the options.
+
+`--version` prints the commit of this checkout (12 hex digits) or `unknown`, and exits 0. It reads `.git/HEAD`, a
+branch's loose ref or `packed-refs`, and a linked worktree's `.git` file and `commondir`, and never runs git, the
+interpreter or reads the config. `-h`, `--help` and `help` print the same text and win over `--version` in either
+order. There is no `-v`.
+
+`tests/test_tenant_probes.py` runs the embedded Python past sign-in with no network and no Keychain: `--python` is a
+wrapper that drops `-I -X utf8 -` and runs the real interpreter on a shim file, which replaces `MsalAuth` and
+`GraphClient` and then executes the script's Python from stdin as `__main__`.
 
 #### 16.300.22 U-B14: tenant-probes names, help, copy and sanitizing
 

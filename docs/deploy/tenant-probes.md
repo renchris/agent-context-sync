@@ -11,7 +11,7 @@ days.
 ```sh
 mkdir -p "$HOME/Library/Application Support/agentsync/probes"
 agentsync graph login 2>&1 | tee "$HOME/Library/Application Support/agentsync/probes/login-$(date +%Y%m%d).txt"
-scripts/tenant-probes.sh --dry-run      # what it would request; no sign-in, no network
+scripts/tenant-probes.sh --dry-run      # what it would request; no sign-in, no network, no writes
 scripts/tenant-probes.sh                # prints: report: …/probes/tenant-probes-<UTC>.md
 ```
 
@@ -23,13 +23,15 @@ the tenant. The report and the probe-9 store are mode 0600 under `<state_dir>/pr
 |---|---|
 | 0 | report written |
 | 77 | not signed in, or sign-in blocked; the report names the state (for example `blocked: consent`, AADSTS65001) |
-| 78 | `sources.toml` invalid, or no `[graph] client_id` yet (IT request pending) |
+| 78 | `sources.toml` invalid, or no `[graph] client_id` yet (IT request pending); a real run still writes its report, `--dry-run` writes nothing |
 | 1 | failed, e.g. `network-policy` (TLS inspection / PAC); see [README](README.md#install-one-command-no-admin) |
 | 2 | usage error |
 
 Limits: `--max-pages 10` (about 2,000 delta items per drive), `--max-downloads 6`, `--max-bytes 20000000`.
 `--selftest` checks the offline helpers: 4 QuickXorHash vectors from rclone, a row-fold identity, and claim
-decoding.
+decoding. `--version` prints the commit of this checkout, or `unknown`, without running git. Every option that takes
+a value also takes the `=` form (`--max-pages=20`), which is how to pass a value that is itself an option; a repeat
+takes the last value, an empty value is a usage error, and `--` ends the options.
 
 ## What each probe records
 
