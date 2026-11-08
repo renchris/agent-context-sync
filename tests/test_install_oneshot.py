@@ -16772,6 +16772,84 @@ def test_the_status_step_prints_progress_lines_too(env: dict[str, str], folder: 
     assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
 
 
+def _rendered_by_home(env: dict[str, str], tmp_path: Path, installed: str) -> tuple[dict[str, str], Path]:
+    """A home whose ~/.local/bin/agentsync is uv's link into its tool folder, the stub there, stamped
+    ``commit=<installed>``, and a report the stub renders as an older build would: Run metadata, and a Doctor
+    section the time limit cut (snapPull's state, B13 round 36 C1103)."""
+    home = Path(env["HOME"])
+    tool = home / ".local" / "share" / "uv" / "tools" / "agentsync"
+    (tool / "bin").mkdir(parents=True, exist_ok=True)
+    exec_stub.copy(env["STUB_AGENTSYNC"], tool / "bin" / "agentsync")
+    (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    (home / ".local" / "bin" / "agentsync").symlink_to(tool / "bin" / "agentsync")
+    (tool / ".agentsync-install-source").write_text(f"commit={installed} source={REPO}\n", encoding="utf-8")
+    old = tmp_path / "old-report.md"
+    report = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        "- outcome: x",
+        "- friction: ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>",
+        "",
+        "### Run metadata",
+        "",
+        "- agentsync: 0.1.0 (python 3.11.9, ~/.local/share/uv/tools/agentsync/bin/python)",
+        "- last install.sh run: commit -",
+        "",
+        "## Doctor",
+        "",
+        "_This section failed: TimeoutError_",
+        "",
+    ]
+    old.write_text("\n".join(report), encoding="utf-8")
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-11-08T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n2026-11-08T10:00:01Z | step 1 | note | "
+        "the person keeps ~/Library/CloudStorage/OneDrive-Contoso/Contoso Secret Project | -\n",
+        encoding="utf-8",
+    )
+    return {**env, "STUB_REPORT_FILE": str(old)}, old
+
+
+@pytest.mark.parametrize("same", [False, True])
+def test_run_metadata_names_the_build_that_rendered_the_report_c1103(
+    env: dict[str, str], tmp_path: Path, same: bool
+) -> None:
+    """B13 round 36 C1103: a report the installed agentsync rendered, when that build is older than this
+    checkout (a step 1 stop before step 2 reinstalls it), used that build's words with nothing to say so but
+    Doctor's install.commit warn, which a cut doctor never prints. Run metadata now names both commits, read
+    from the stamp beside the binary and the checkout's files, with no git call; the same commit adds no line,
+    a second run adds none again, and the friction log's folder stays out of the report."""
+    head = subprocess.run(
+        ["git", "-C", str(REPO), "rev-parse", "--short=12", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    installed = head if same else "0123456789abcdef0123456789abcdef01234567"
+    e, _old = _rendered_by_home(env, tmp_path, installed)
+    for _ in range(2):
+        cp = install_sh(e, "--report-only")
+        assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout + cp.stderr
+    lines = report_path(env).read_text(encoding="utf-8").splitlines()
+    rendered = [ln for ln in lines if ln.startswith("- rendered by: ")]
+    if same:
+        assert rendered == [], rendered
+    else:
+        assert rendered == [
+            "- rendered by: the installed agentsync, installed from 0123456789ab; this checkout is at "
+            f"{head}, so this report uses that build's words (step 2 reinstalls agentsync)"
+        ], lines
+        assert (
+            lines.index(rendered[0])
+            == next(i for i, ln in enumerate(lines) if ln.startswith("- agentsync: ")) + 1
+        )
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        assert "Contoso Secret Project" not in path.read_text(encoding="utf-8"), path.name
+    assert "rendered by" not in last_line(cp), "the NEXT is unchanged"
+
+
 def test_the_config_step_prints_progress_lines_while_it_runs_c1013(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

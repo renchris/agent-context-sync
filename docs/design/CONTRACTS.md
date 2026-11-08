@@ -39245,6 +39245,21 @@ progress list names step 4. The config path in the line holds the home, which th
 path. Test: `test_the_config_step_prints_progress_lines_while_it_runs_c1013` (an add-source the stub slows past a 1 s
 interval: ticks naming the config, all before step 5's first line, and no home path in the report).
 
+**Run metadata names the build that rendered the report** (C1103; `scripts/install.sh`). A report the installed
+agentsync rendered while it was older than this checkout (step 1's stops come before step 2 reinstalls it) used that
+build's words, and only Doctor's install.commit warn said so, which a doctor the time limit cut never prints.
+`rendered_by_note`, after write_report when the installed agentsync wrote the report (never the shell fallback),
+reads that build's commit from the stamp beside the binary, a file (uv links `~/.local/bin/agentsync` into its tool
+folder, which holds `.agentsync-install-source`, `commit=<A> source=<path>`), and this checkout's from its files,
+never git (`git_head_file`, which now follows a linked worktree's `.git` file and its `commondir` as
+cli._checkout_head does). When both are known and their first 12 characters differ, one line goes right after Run
+metadata's `- agentsync: ...`: `- rendered by: the installed agentsync, installed from <A12>; this checkout is at
+<B12>, so this report uses that build's words (step 2 reinstalls agentsync)`, whatever Doctor holds, once per report;
+the NEXT is unchanged. No reader of the report parses Run metadata's lines, and the line names no path. Test:
+`test_run_metadata_names_the_build_that_rendered_the_report_c1103` (`[False]`: the line, after the agentsync line,
+once over two runs, with a cut Doctor; `[True]`, the same commit: none; the friction log's made-up folder in neither
+report nor bring-back file).
+
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
 Reserved for round 36 lane B of B13.

@@ -1675,17 +1675,30 @@ checkout_commit() {
 	fi
 }
 # The commit of the checkout at $1 without running git (no developer tools: /usr/bin/git would offer to
-# install them); empty when it cannot be read.
+# install them); empty when it cannot be read. A linked worktree too, as cli._checkout_head reads one: its .git
+# file names the git folder, whose commondir holds the refs it shares (B13 round 36 C1103).
 git_head_file() {
-	local head ref
-	head="$(cat "$1/.git/HEAD" 2>/dev/null || true)"
+	local head ref gd="$1/.git" common
+	if [ -f "$gd" ]; then
+		head="$(cat "$gd" 2>/dev/null || true)"
+		case "$head" in "gitdir: "*) gd="${head#gitdir: }" ;; *) return 0 ;; esac
+		case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
+	fi
+	common="$gd"
+	if [ -f "$gd/commondir" ]; then
+		common="$(cat "$gd/commondir" 2>/dev/null || true)"
+		case "$common" in /*) ;; *) common="$gd/$common" ;; esac
+	fi
+	head="$(cat "$gd/HEAD" 2>/dev/null || true)"
 	case "$head" in
 	"ref: "*)
 		ref="${head#ref: }"
-		if [ -f "$1/.git/$ref" ]; then
-			head="$(cat "$1/.git/$ref")"
+		if [ -f "$gd/$ref" ]; then
+			head="$(cat "$gd/$ref")"
+		elif [ -f "$common/$ref" ]; then
+			head="$(cat "$common/$ref")"
 		else
-			head="$(awk -v r="$ref" '$2 == r { print $1; exit }' "$1/.git/packed-refs" 2>/dev/null || true)"
+			head="$(awk -v r="$ref" '$2 == r { print $1; exit }' "$common/packed-refs" 2>/dev/null || true)"
 		fi
 		;;
 	esac
@@ -7639,6 +7652,34 @@ step1_report_note() {
 		return 1
 	fi
 }
+# The report the installed agentsync rendered, when that build is not this checkout's: one Run metadata line
+# after its agentsync line names both commits, so a reader knows its words are that build's (B13 round 36
+# C1103). The build is read from the stamp beside the binary, a file (uv links ~/.local/bin/agentsync into its
+# tool folder, which holds .agentsync-install-source), and the checkout from its files, never git; whatever the
+# Doctor section holds, so a timed-out doctor hides nothing. Once per report; the NEXT is unchanged.
+rendered_by_note() {
+	local b t a h tmp line
+	b="$(report_agentsync || true)"
+	[ -n "$b" ] || return 0
+	t="$(readlink "$b" 2>/dev/null || true)"
+	if [ -n "$t" ]; then case "$t" in /*) b="$t" ;; *) b="${b%/*}/$t" ;; esac; fi
+	a="$(LC_ALL=C sed -n 's/^commit=\([0-9a-f][0-9a-f]*\)[^ ]* source=.*/\1/p' "${b%/*/*}/.agentsync-install-source" 2>/dev/null | LC_ALL=C head -n 1 || true)"
+	h="$(git_head_file "$repo")"
+	[ "${#a}" -ge 12 ] && [ "${#h}" -ge 12 ] && [ "${a:0:12}" != "${h:0:12}" ] || return 0
+	! LC_ALL=C grep -q '^- rendered by: ' "$REPORT_PATH" 2>/dev/null || return 0
+	line="- rendered by: the installed agentsync, installed from ${a:0:12}; this checkout is at ${h:0:12}, so this report uses that build's words (step 2 reinstalls agentsync)"
+	tmp="$(mktemp "${REPORT_PATH%/*}/.rendered-by.XXXXXX" 2>/dev/null)" || return 1
+	if LINE="$line" LC_ALL=C awk 'index($0, "### Run metadata") == 1 { meta = 1 }
+		{ print }
+		meta && !done && index($0, "- agentsync: ") == 1 { print ENVIRON["LINE"]; done = 1 }' "$REPORT_PATH" >"$tmp" && [ -s "$tmp" ]; then
+		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
+		chmod 600 "$tmp" 2>/dev/null || true
+		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -7805,6 +7846,7 @@ on_exit() {
 				rm -f "$SETUP_DIR/stopped-copy-report.md"
 				# an older installed agentsync rendered a step 1 stop: before bring-back.md embeds the report
 				[ "$REPORT_BY" != agentsync ] || step1_report_note || warn "could not reword $REPORT_PATH in this checkout's words"
+				[ "$REPORT_BY" != agentsync ] || rendered_by_note || warn "could not name the build that rendered $REPORT_PATH"
 				if write_bring_back; then wrote=1; else wrote=0; warn "could not write $back${BACK_WHY:+: $BACK_WHY}"; fi
 				link="$(report_issue_link)"
 				if [ -n "$link" ]; then
