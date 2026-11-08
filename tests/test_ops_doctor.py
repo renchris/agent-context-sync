@@ -644,7 +644,7 @@ def test_a_doctor_program_ends_by_its_callers_deadline_with_its_whole_group_c804
     assert time.monotonic() - started < 60 and caught.value.timeout <= 2.0, caught.value
     grandchild = _pid_from(pidfile)
     assert _pid_gone(grandchild), "the program's own child outlived its time-out"
-    assert not doctor._LIVE_CHILDREN
+    assert not deadline._LIVE_CHILDREN
     with pytest.raises(subprocess.TimeoutExpired):  # a deadline already past starts nothing
         token = doctor.RUN_DEADLINE.set(time.monotonic() - 1.0)
         try:
@@ -682,7 +682,7 @@ def test_run_checks_stops_at_the_callers_deadline_and_names_the_check_it_was_in_
     finally:
         doctor.RUN_DEADLINE.reset(token)
     assert ran == ["git"] and seen == ["git"], (ran, seen)
-    assert not doctor._LIVE_CHILDREN
+    assert not deadline._LIVE_CHILDREN
     # standalone doctor, with no deadline, runs every check
     monkeypatch.setattr(doctor, "_CHECKS", (("pandoc", healthy),))
     assert [r.name for r in doctor.run_checks(sample_config, tcc_canary=False)] == ["pandoc"]
@@ -733,7 +733,7 @@ def test_a_timed_out_program_waits_on_itself_not_on_pipes_a_helper_holds_c954(tm
         finally:
             with contextlib.suppress(ProcessLookupError, ValueError, AssertionError):
                 os.kill(_pid_from(pidfile), 9)
-        assert not doctor._LIVE_CHILDREN
+        assert not deadline._LIVE_CHILDREN
 
 
 def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> None:
@@ -868,6 +868,14 @@ def test_a_program_started_outside_doctor_ends_by_the_callers_deadline_in_its_gr
     assert _pid_gone(child) and not deadline._LIVE_CHILDREN
 
 
+def test_doctor_names_no_registry_of_its_own_c1031() -> None:
+    """B13 round 36 C1031 (ruling 117): doctor kept `_LIVE_CHILDREN` as an alias of deadline's registry that
+    only tests read, so the contract said doctor had a name for it. The alias is gone; RUN_DEADLINE and
+    end_children stay deadline's own objects."""
+    assert not hasattr(doctor, "_LIVE_CHILDREN")
+    assert doctor.RUN_DEADLINE is deadline.RUN_DEADLINE and doctor.end_children is deadline.end_children
+
+
 def test_the_proxy_launchctl_and_volume_probes_start_nothing_past_the_callers_deadline_c1049(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -926,7 +934,7 @@ def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) ->
     assert doctor.end_children() == 1
     worker.join(30)
     assert not worker.is_alive() and done and done[0].returncode == -9, done
-    assert _pid_gone(child) and not doctor._LIVE_CHILDREN
+    assert _pid_gone(child) and not deadline._LIVE_CHILDREN
     assert doctor.end_children() == 0
 
 

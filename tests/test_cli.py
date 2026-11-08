@@ -74,7 +74,7 @@ from agentsync.model import (
     SourceReport,
     Verdict,
 )
-from agentsync.ops import doctor, launchd
+from agentsync.ops import deadline, doctor, launchd
 from agentsync.ops import lock as lock_mod
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.paths import expand
@@ -14507,7 +14507,7 @@ def test_a_cut_off_doctor_names_the_check_it_was_in_and_runs_no_later_one_c952(
     assert r.facts.doctor_cut_off_at == "git", r.facts.doctor_cut_off_at
     assert ran == ["git"], ran
     assert "within 0s" not in " ".join(lines)
-    assert not doctor._LIVE_CHILDREN
+    assert not deadline._LIVE_CHILDREN
     capsys.readouterr()
 
 

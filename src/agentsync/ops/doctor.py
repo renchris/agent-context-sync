@@ -420,7 +420,6 @@ def _now() -> datetime:
 RUN_DEADLINE = deadline_mod.RUN_DEADLINE
 """The caller's deadline, :data:`agentsync.ops.deadline.RUN_DEADLINE` itself, the same object the setup report
 sets (B13 round 34 C804; round 35 ruling 106 moved it to that leaf module)."""
-_LIVE_CHILDREN = deadline_mod._LIVE_CHILDREN  # the one registry of running programs (C955)
 end_children = deadline_mod.end_children
 past_deadline = deadline_mod.past_deadline
 stop_past_deadline = deadline_mod.stop_past_deadline

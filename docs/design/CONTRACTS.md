@@ -37797,8 +37797,8 @@ Amended 2026-11-04, §16.233 C961: `doctor._run` reaches only doctor's own progr
 speech check starts goes through `ocr._run_helper`, which keeps its own wait, starts nothing past `ocr.START_BY` and
 is killed by `ocr.end_helpers()`, alone, in its caller's process group (§16.233).
 Amended 2026-11-04, §16.232 C955: `RUN_DEADLINE`, the registry of running programs and `end_children` live in the
-leaf module `agentsync.ops.deadline` (doctor's names are the same objects), whose `run()` also bounds
-`gitops._run`, `governance._git` and `launchd._run_launchctl` under a caller's deadline.
+leaf module `agentsync.ops.deadline` (doctor's `RUN_DEADLINE` and `end_children` are the same objects), whose `run()`
+also bounds `gitops._run`, `governance._git` and `launchd._run_launchctl` under a caller's deadline.
 Amended 2026-11-04, §16.232 C906, C956: each program no longer leads a group of its own; it joins the group of a
 watcher `_run` starts first, which kills that group when agentsync's end of a pipe closes, so a signal to agentsync
 or to its group, SIGKILL included, leaves no program running.
