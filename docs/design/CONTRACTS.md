@@ -38756,6 +38756,9 @@ Tests: `test_ocr.py::test_no_helper_starts_once_its_callers_start_by_has_passed_
 `test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` and
 `test_ocr.py::test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961` (SIGTERM, SIGHUP and SIGKILL to
 the group), with the four `subprocess.run` fakes in `test_ocr.py` and `test_media.py` now `Popen` fakes.
+Amended 2026-11-08, §16.238 C1067: `START_BY` alone left a helper free to start after a report a Ctrl+C ended
+before its limit; `end_helpers(gate)` now closes that report's `START_GATE` under the same lock before it copies
+`_LIVE`, and `_start` refuses a closed gate as it refuses a passed `START_BY`.
 
 **A helper's `--version` that did not answer in time says so, never `not working`** (C915, ruling 108, makes worse
 True; `agentsync.ops.doctor`). A slow first start under load and a hung helper read the same from doctor, but the
@@ -39027,7 +39030,29 @@ Reserved for round 36 lane B of B13.
 
 ### 16.238 Round 36: the converters: a file's class follows its bytes, and a helper started at the deadline (2026-11-08, wave B13 round 36 lane E)
 
-Reserved for round 36 lane E of B13.
+Round 36's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 36"; specs `round36/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 112 to 119 settle it). A dated line this round writes reads
+`Amended 2026-11-08, §16.238 C<n>`.
+
+**A helper started after its report ended is never started** (C1067, ruling 117; `agentsync.convert.ocr`; amends
+§16.233 C961). `START_BY` refused a start only once its moment had passed, and `end_helpers()` only copied `_LIVE`,
+so a report a Ctrl+C ended before its limit left its abandoned doctor thread free to reach the ocr, media or speech
+check after the copy and start a helper nothing would end (the verifier: 3 of 4 runs through a real `_Run`).
+`ocr.py` now has `StartGate`, a small object with one `closed` bool, and `START_GATE`, a contextvar holding one,
+unset in a cycle and a standalone doctor. `end_helpers(gate=None)` sets `gate.closed` and copies `_LIVE` in one
+hold of `_LIVE_LOCK`, then kills outside it; `_start` checks the gate beside `START_BY` under that same lock and
+raises the same `the <helper> ran out of time` words, so a helper is either on the copy or never started. The gate
+is per report, never a module-wide flag, which would refuse every later report's and cycle's helper. Setting a
+fresh gate in each report's context and passing it to `end_helpers` (with the `getattr` fallback to the old call)
+is lane RA's; doctor's own registry takes the same shape as `deadline.START_GATE` in lane B's §16.237. Tests:
+`test_ocr.py::test_a_probe_that_reaches_the_helper_after_its_reports_end_starts_nothing_c1067` and
+`test_ocr.py::test_a_closed_gate_is_one_reports_never_a_later_ones_or_a_cycles_c1067`.
+
+**The cycle learns why it has no OCR engine** (for lane B's C1101; `agentsync.convert.ocr`). `ocr.engine()` returned
+None for every state but `ready` and only logged which. `ocr.engine_state(cfg, cache_dir)` returns `EngineState`, a
+named tuple of `probe()`'s state and detail with the engine, from the one `--version` run `engine()` made (never a
+second), logging and stamping the helper as `engine()` does; `engine()` is now its `.engine`. Test:
+`test_ocr.py::test_engine_state_hands_the_cycle_the_probes_state_with_one_version_run`.
 
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 

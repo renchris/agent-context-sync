@@ -875,6 +875,76 @@ def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c
     ocr.end_helpers()  # nothing left to end, and never a raise
 
 
+def test_a_probe_that_reaches_the_helper_after_its_reports_end_starts_nothing_c1067(tmp_path: Path) -> None:
+    """B13 round 36 C1067 (ruling 117): a report's doctor thread abandoned on a Ctrl+C keeps a START_BY still
+    ahead of the clock.  end_helpers(gate) closes that report's gate under the lock before it copies the list,
+    so the thread's probe, reaching the helper only after the report's end, starts nothing and says the
+    helper ran out of time; with only START_BY it started a helper no one would end."""
+    helper = place_fake(tmp_path)
+    gate = ocr.StartGate()
+    report = contextvars.copy_context()
+    report.run(ocr.START_BY.set, time.monotonic() + 60)  # the report's limit has not passed
+    report.run(ocr.START_GATE.set, gate)
+    release = threading.Event()
+    got: list[tuple[str, str]] = []
+
+    def abandoned() -> None:
+        release.wait(10)
+        got.append(report.run(ocr.probe, CFG, tmp_path))
+
+    thread = threading.Thread(target=abandoned, daemon=True)
+    thread.start()
+    ocr.end_helpers(gate)  # the report ends while its thread still waits
+    assert gate.closed, "the report's end closes its gate"
+    release.set()
+    thread.join(10)
+    assert got == [("failed", "the OCR helper ran out of time")]
+    assert calls(helper) == [] and not ocr._LIVE, "nothing was started after the report ended"
+
+
+def test_a_closed_gate_is_one_reports_never_a_later_ones_or_a_cycles_c1067(tmp_path: Path) -> None:
+    """The gate is per report, never module-wide: once one report's gate is closed, a later report with its
+    own fresh gate, a context with none (a cycle, a standalone doctor) and end_helpers() with no gate all
+    start the helper as ever."""
+    helper = place_fake(tmp_path)
+    ended = ocr.StartGate()
+    ocr.end_helpers(ended)
+    first = contextvars.copy_context()
+    first.run(ocr.START_GATE.set, ended)
+    assert first.run(ocr.probe, CFG, tmp_path) == ("failed", "the OCR helper ran out of time")
+    assert calls(helper) == []
+    later = contextvars.copy_context()
+    later.run(ocr.START_GATE.set, ocr.StartGate())
+    assert not ocr.StartGate().closed, "a new gate is open"
+    assert later.run(ocr.probe, CFG, tmp_path)[0] == "ready", "a later report's own gate is open"
+    assert ocr.probe(CFG, tmp_path)[0] == "ready", "a cycle sets none"
+    ocr.end_helpers()  # no gate: nothing is closed
+    assert ocr.probe(CFG, tmp_path)[0] == "ready"
+    assert len(calls(helper)) == 3
+
+
+def test_engine_state_hands_the_cycle_the_probes_state_with_one_version_run(tmp_path: Path) -> None:
+    """B13 round 36, for C1101: engine_state() gives the cycle probe()'s state and detail with the engine, so
+    a helper that is built but failing is told apart from no converter; one ``--version`` run, never two,
+    and engine() is its engine."""
+    assert ocr.engine_state(CFG, tmp_path) == ("not-built", "the OCR helper is not built", None)
+    helper = place_fake(tmp_path, **VERSION_ANSWERS["exits 3"])
+    looked = ocr.engine_state(CFG, tmp_path)
+    assert looked.state == "failed" and looked.engine is None
+    assert looked.detail == ocr.probe(CFG, tmp_path)[1] and looked.detail.startswith("the OCR helper")
+    helper.unlink()
+    Path(str(helper) + ".calls").unlink()
+    helper = place_fake(tmp_path)
+    looked = ocr.engine_state(CFG, tmp_path)
+    assert looked.state == "ready" and looked.engine is not None
+    assert looked.detail == looked.engine.description and looked.engine.helper == helper
+    assert len(calls(helper)) == 1, "one --version run"
+    found = ocr.engine(CFG, tmp_path)
+    assert found is not None and found.identity == looked.engine.identity
+    off = replace(CFG, ocr=False)
+    assert ocr.engine_state(off, tmp_path) == ("off", "[convert] ocr = false", None)
+
+
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGKILL])
 def test_a_signal_to_the_reports_process_group_ends_its_helper_too_c961(
     tmp_path: Path, sig: signal.Signals

@@ -47,7 +47,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import NamedTuple, Protocol, TypeVar
 
 from agentsync.config import ConvertConfig, load_config
 from agentsync.errors import ConfigError, ConversionError
@@ -332,11 +332,34 @@ _LIVE: set[subprocess.Popen[bytes]] = set()
 _LIVE_LOCK = threading.Lock()
 
 
-def end_helpers() -> None:
+class StartGate:
+    """One report's start gate (B13 round 36 C1067, ruling 117): open until :func:`end_helpers` closes it, and
+    once closed no helper starts in a context that holds it.  setup-report puts a fresh one in each report's
+    context (:data:`START_GATE`), so an abandoned doctor thread that reaches a probe after the report ended,
+    with START_BY still ahead, starts nothing; a later report or a cycle never sees it."""
+
+    __slots__ = ("closed",)
+
+    def __init__(self) -> None:
+        self.closed = False
+
+
+# Per report, never module-wide: a closed module flag would refuse every later report's and cycle's helper.
+# A cycle and a standalone doctor set none.
+START_GATE: contextvars.ContextVar[StartGate | None] = contextvars.ContextVar(
+    "agentsync_ocr_start_gate", default=None
+)
+
+
+def end_helpers(gate: StartGate | None = None) -> None:
     """Kill every helper still running (SIGKILL to that one process, never its group: the helper stays in the
     caller's process group, which launchd cleans up for a cycle).  setup-report calls this as it ends, so a
-    helper the report gave up on never outlives it.  Never a raise."""
+    helper the report gave up on never outlives it.  ``gate``, the report's :data:`START_GATE`, is closed
+    under the same lock before the list is copied, so a helper is either on that copy or never started.
+    Never a raise."""
     with _LIVE_LOCK:
+        if gate is not None:
+            gate.closed = True
         live = list(_LIVE)
     for proc in live:
         with contextlib.suppress(OSError):
@@ -344,10 +367,12 @@ def end_helpers() -> None:
 
 
 def _start(helper: Path, args: Sequence[str], cwd: Path | None, kind: Helper) -> subprocess.Popen[bytes]:
-    """The helper started and listed in :data:`_LIVE`; raises ``kind.error`` past :data:`START_BY`."""
+    """The helper started and listed in :data:`_LIVE`; raises ``kind.error`` past :data:`START_BY` or once
+    the context's :data:`START_GATE` is closed."""
     with _LIVE_LOCK:
         start_by = START_BY.get()
-        if start_by is not None and time.monotonic() >= start_by:
+        gate = START_GATE.get()
+        if (gate is not None and gate.closed) or (start_by is not None and time.monotonic() >= start_by):
             raise kind.error(f"the {kind.name} ran out of time")
         try:  # no new session: the helper stays in the LaunchAgent's process group, which launchd cleans up
             proc = subprocess.Popen(
@@ -652,19 +677,35 @@ def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
     return state, detail
 
 
-def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None:
-    """The engine a cycle should use, or None when :func:`probe` is not ``ready`` (logged).  Never compiles
-    and never raises: without OCR every converter behaves as it did before OCR existed.
+class EngineState(NamedTuple):
+    """What a cycle learns from one look at the helper: :func:`probe`'s state and detail with the engine,
+    which is None unless ``state`` is ``ready`` (B13 round 36, for C1101: a ``failed`` helper is told apart
+    from no converter at all)."""
 
-    The helper it hands out gets a new modification time: that is its last use, which is what a later build
-    goes by when it removes old helpers (:func:`_prune`).  :func:`probe` only looks and stamps nothing."""
+    state: str
+    detail: str
+    engine: OcrEngine | None
+
+
+def engine_state(cfg: ConvertConfig, cache_dir: Path) -> EngineState:
+    """:func:`engine`'s one look, with the state and detail :func:`probe` would give: one ``--version`` run,
+    never two.  Never compiles and never raises; logs and stamps as :func:`engine` does."""
     state, detail, found = _resolve(cfg, cache_dir)
     if found is None:
         log.info("on-device OCR: %s: %s", state, detail)
     else:
         with contextlib.suppress(OSError):
             os.utime(found.helper)
-    return found
+    return EngineState(state, detail, found)
+
+
+def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None:
+    """The engine a cycle should use, or None when :func:`probe` is not ``ready`` (logged).  Never compiles
+    and never raises: without OCR every converter behaves as it did before OCR existed.
+
+    The helper it hands out gets a new modification time: that is its last use, which is what a later build
+    goes by when it removes old helpers (:func:`_prune`).  :func:`probe` only looks and stamps nothing."""
+    return engine_state(cfg, cache_dir).engine
 
 
 # ---------------------------------------------------------------------------------------------------------
