@@ -39705,6 +39705,14 @@ test_ocr's group-stop child; b781e539 for C956 and C961), and a new one must do 
 it. The dated C990 lines and the plan's round 35 line stay as written. Test:
 `test_the_guides_say_when_to_dispatch_ci_and_how_to_find_your_own_land`, which also reads the resets in the tests.
 
+**CLAUDE.md and ci.yml give round 35's CI figures** (C1056; docs only). Both carried round 34's figures as C985 worded
+them. Read back with `gh run view --json jobs`: the eleven `ci` jobs on main from d8385ef6 to b781e539 took 44:12 to
+59:43, nine past 50 and none past 60, all green on attempt 1, the slowest on d62ac148 (pytest's step 59:16, 7580
+tests), and their runner waits were 3 to 6 s but d8385ef6's 21:01. CLAUDE.md's duration paragraph adds the eleven and
+the 21-minute wait, and ci.yml's note adds the round with 80's 20:17 margin; the headline's `18 to 62` (round 34's 61:22
+is still the slowest) and `timeout-minutes: 80` stay. The four later runs (7c4f775e to b76ce5f2) belong to the next
+round's entry. Test: `test_claude_md_gives_cis_time_and_its_limit`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

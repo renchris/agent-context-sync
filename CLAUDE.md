@@ -97,9 +97,11 @@ the twelve after those, from 7f132615 to 357f6d5b, took 43:35 to 57:05, all gree
 from 7b23a0a7 to 4e0e8604, took 43:16 to 57:17, all green on attempt 1, the slowest on b948dfa7, 7133 tests and
 pytest's step 56:47; the twelve after those, from 4288dd6a to 06ee4f6d, took 45:36 to 61:22, one past 60, the
 slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one attempt failed a test at 36:27 and its rerun was
-green at 46:36; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner, counted from
-the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50, and earlier ones 48 and 46);
-the job's limit is 80 minutes (`timeout-minutes` in ci.yml), and a wait does not count against it.
+green at 46:36; the eleven after those, from d8385ef6 to b781e539, took 44:12 to 59:43, nine past 50, all green on
+attempt 1, the slowest on d62ac148, 7580 tests and pytest's step 59:16; one run took 34 on a runner loaded 5 to 8 per
+core), plus any wait for a macOS runner, counted from the run appearing to its job starting (one waited 63 minutes, on
+ef12f28f, another 50, one 21, on d8385ef6, and earlier ones 48 and 46); the job's limit is 80 minutes
+(`timeout-minutes` in ci.yml), and a wait does not count against it.
 
 A loop that prints nothing has read nothing: an empty list is not green. If ship-land's line says `no CI run for
 <sha> after N s` (exit 9 after `LANDED`), wait, and check that `gh run list --commit <sha>` is still empty about 15
