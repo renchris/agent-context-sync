@@ -6795,6 +6795,12 @@ _ROUND_35_B_PARAGRAPH_AMENDS = (
 :data:`_ROUND_34_B_PARAGRAPH_AMENDS`: C917's not-run and shortened-wait words at §15's doctor reference
 (§16.32's amendment), C903's purge note at §16.218's ruling 84 paragraph, and C937's head at §16.21's bullet
 for a part of status that raises, and C938's listing check and fix at §16.39 N16 and §16.45 R102."""
+_ROUND_36_B_PARAGRAPH_AMENDS = (
+    ("15", "**Amended (2026-10-07, §16.32):** every FAIL names a fix.", "§16.237 C1028"),
+)
+"""Round 36 lane B's dated line at a section its claims name with no item, as
+:data:`_ROUND_35_B_PARAGRAPH_AMENDS`: C1028's own re-run clause at §15's doctor reference, beside
+C917's line."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -7023,6 +7029,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_35_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
+        *_ROUND_36_B_PARAGRAPH_AMENDS,
         *_ROUND_35_RB_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )

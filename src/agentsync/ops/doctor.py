@@ -876,6 +876,14 @@ NOT_STARTED_WORDS = (
 )
 """What a check says of a program :data:`RUN_DEADLINE` left unstarted, after its name (B13 round 35 C917)."""
 
+_NOT_RUN_AGAIN = (
+    "report it: the report's time limit ran out before this check could run, "
+    "which says nothing about the program"
+)
+"""The ``if this line comes back:`` part of a not-run line's fix: never :data:`_STILL_NO_ANSWER`'s "the
+program does not answer", since it was never started and the line says nothing either way; a fix still does
+not end at "again", since under install.sh the line can come back at every run (B13 round 36 C1028)."""
+
 
 def _timed_out(
     name: str,
@@ -897,7 +905,7 @@ def _timed_out(
         argv = exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd]
         what = Path(str(argv[0])).name if argv else "the program"
     if isinstance(exc, _NotStarted):  # C917: a program never started says nothing, a WARN whatever was asked
-        return _bad(name, f"{what} {NOT_STARTED_WORDS}", Severity.WARN, fix=_again_fix())
+        return _bad(name, f"{what} {NOT_STARTED_WORDS}", Severity.WARN, fix=_again_fix(_NOT_RUN_AGAIN))
     if _SHORTENED_NOTE in getattr(exc, "__notes__", ()):
         detail = f"{what} did not answer within the report's time limit: {_OUT_OF_TIME}"
     else:

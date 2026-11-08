@@ -3770,6 +3770,9 @@ Amended 2026-11-04, §16.232 C917: under a caller's deadline (the setup report's
 unstarted reads `<command> was not run: the report's time limit had already passed, so this check says nothing
 either way`, a warn with no fallback, and a wait the deadline shortened reads `did not answer within the report's
 time limit`, with no seconds; an unshortened wait keeps its seconds.
+Amended 2026-11-08, §16.237 C1028: no check fallback, but a re-run clause of its own: the not-run line's fix ends
+`if this line comes back: report it: the report's time limit ran out before this check could run, which says nothing
+about the program`.
 
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
@@ -38609,6 +38612,9 @@ interpreter's import check says nothing of it (C917). Standalone doctor sets no 
 (a delayed `_read_cut_off`: git named, pandoc never run) and
 `::test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953` (a cut in run_checks and in the last
 extra check). Lane RA writes the report-level cases on this sha.
+Amended 2026-11-08, §16.237 C1028: the not-run line's fix keeps its re-run and ends `if this line comes back:
+report it: the report's time limit ran out before this check could run, which says nothing about the program`,
+never `does not answer`.
 
 **Every child the report's call starts ends with that call, and with agentsync** (C955; ruling 106; amends §16.227
 C804). gitops cannot import doctor (doctor imports gitops), so a report hook's git through `gitops._run`,
@@ -39400,6 +39406,15 @@ governance.config's).
 docstring said a refused [governance] prints no governance.purge_queue [FAIL] line; since C958 it does, so it takes
 `QUEUE_REFUSED_NOTE_STATUS`, as C959's test shows. Docstring only. Test:
 `test_loop.py::test_the_bare_queue_clauses_docstring_says_a_refused_table_prints_the_fail_c1027`.
+
+**A check the deadline left unstarted gets a fallback of its own** (C1028; amends §16.232 C917, dated lines at §15's
+doctor reference). The not-run line says the check says nothing either way, but its fix ended with `_again_fix`'s
+default, `report it: the program does not answer on this Mac, and no setup step clears that`, of a program never
+started. Its fix keeps the re-run (under install.sh the line can come back at every run, so a fix does not end at
+`again`) and ends `if this line comes back: report it: the report's time limit ran out before this check could
+run, which says nothing about the program` (`doctor._NOT_RUN_AGAIN`, no `(`). Test:
+`test_ops_doctor.py::test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917` (no `does not answer`, the
+fix ending in that clause).
 
 **A program is checked for, started and listed in one locked step** (C1065, with the deadline half of C1067;
 ruling 117; amends §16.232 C955). `deadline.run` and `doctor._run` checked the caller's deadline, then spawned and

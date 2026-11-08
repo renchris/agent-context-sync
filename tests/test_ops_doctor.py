@@ -760,6 +760,9 @@ def test_a_program_the_deadline_left_unstarted_says_it_was_not_run_c917() -> Non
     )
     assert "first start" not in line.detail and "install git" not in (line.fix or "")
     assert "within 0s" not in line.detail
+    # its fallback is its own: never the program not answering, which a never-started one cannot say (C1028)
+    assert line.fix is not None and "does not answer" not in line.fix, line.fix
+    assert line.fix.endswith(f"; if this line comes back: {doctor._NOT_RUN_AGAIN}") and "(" not in line.fix
     token = doctor.RUN_DEADLINE.set(time.monotonic() + 1.0)
     try:
         with pytest.raises(subprocess.TimeoutExpired) as caught:

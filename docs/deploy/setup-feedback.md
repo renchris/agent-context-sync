@@ -1272,6 +1272,9 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   --report-only, since a --report-only run builds nothing; a plain run keeps the folders already synced`, a
   step the prompt lets the agent take.
   Run by hand, it starts `run ~/.local/bin/agentsync status again as it is`.
+  The not-run line's fix then ends `if this line comes back: report it: the report's time limit ran out before
+  this check could run, which says nothing about the program`, never that the program does not answer (CONTRACTS
+  §16.237, C1028).
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
   which is the fix of the pandoc the line names (CONTRACTS §16.120, S29; §16.126, T54): for the bundled one
