@@ -20788,7 +20788,7 @@ def test_log_with_a_wrong_argument_count_exits_2_and_keeps_what_was_given(env: d
     assert cp.returncode == 2 and "usage error: --log takes four arguments" in cp.stderr
     (line,) = friction_path(env).read_text().splitlines()
     assert line.endswith(
-        " | error | install.sh --log got 3 argument(s), not 4 (STEP KIND WHAT FIX, each in single quotes): "
+        " | error | install.sh --log got 3 arguments, not 4 (STEP KIND WHAT FIX, each in single quotes): "
         "2 / error / exit 3 | -"
     )
 
@@ -24203,7 +24203,9 @@ def test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_
     that ended 0 before the trap ran is logged done, `stopped-after-install`, so the report names no failed
     agentsync step; one whose uv failed stays failed."""
     script = INSTALL_SH.read_text(encoding="utf-8")
-    header = " ".join(ln.lstrip("#").strip() for ln in script.splitlines()[100:150])
+    lines = script.splitlines()[1:]  # the header: the comment block show_help prints, wherever it ends
+    block = lines[: next(i for i, ln in enumerate(lines) if not ln.startswith("#"))]
+    header = " ".join(ln.lstrip("#").strip() for ln in block)
     assert (
         "A SIGTERM to install.sh's own pid alone during the wait does the same: bash runs the trap only when "
         "the foreground command ends, so the reinstall still runs under the lock once it frees, and only "

@@ -16403,7 +16403,7 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   `--unset-upstream`, deleted-tracking-ref and detached-HEAD states).
 - **The legend's proxy clause has a verb and the matcher's rule** (G4). `proxy hosts (one named like proxy or
   wpad only inside a URL)` read as a garden path and hid that a bare `proxy:8080` is replaced too. It reads
-  `proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or
+  `proxy hosts (a host that is only a common word, such as proxy or wpad, is replaced only where a URL or
   host:port names it)`, the paragraph is reflowed to 115 columns, and `Read the report before sending it:
   anything ...` stays on one line, which `stopped_report_note` rewrites. docs/deploy/setup-feedback.md's
   `<proxy-N>` row says the same for both reports (the agentsync report's rule is the URL alone).
@@ -40101,7 +40101,21 @@ Tests: `tests/test_install_parser.py`.
 
 #### 16.300.15 U-B8: install.sh help text, nouns and declarations
 
-Reserved.
+- **Help names no test seam.** The seam paragraph and the five internal variables of the "Nothing else it prints is an
+  instruction" passage moved beside the code; `--help` keeps only the operator variables.
+- **Nouns.** `--help` has a `Terms` block, and `docs/design/glossary.md` is the one glossary: meaning, identity and banned
+  synonyms per noun. No runtime word changed.
+- **`--list-folders` declares what it writes:** the setup folder if missing, its log lines, install.out and the
+  owner-only sweep; under `AGENTSYNC_INSTALL_DRY_RUN=1` none of these.
+- **An optional helper that did not build warns once on stderr,** after the `helpers` step, and the exit stays what it
+  would be: `warning: optional helpers not ready: <names joined by +>; ...`. The names are `ocr`, `media` and `speech`,
+  not the helper's own line. A config that cannot be read is the `config-unreadable` skip, with no warning.
+- **uv's failures guess no cause.** The installer's download and run say `its error is above`; `uv tool install failed`
+  keeps the HTTPS_PROXY / UV_SYSTEM_CERTS=1 advice as a condition, not a question.
+- **`install.sh --log got 1 argument` or `got N arguments`,** not `argument(s)`.
+- **A missing `--source-local` folder keeps its name out of the shell report.** Stderr names it for the person; the
+  report's last-error lines read `--source-local is not an existing folder: <path>`.
+- Tests: `tests/test_install_help.py`.
 
 #### 16.300.16 U-B9: install.sh bounds and the atomic launcher
 

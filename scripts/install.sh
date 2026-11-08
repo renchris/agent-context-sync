@@ -8,7 +8,8 @@
 #
 #   --source-local FOLDER   sync this folder (e.g. one inside ~/Library/CloudStorage/OneDrive-<Org>) as a live
 #                           local source; repeatable, and already-configured folders are left as they are
-#   --confirm-install-agent optional background sync, the operator's choice (a setup agent never passes it):
+#   --confirm-install-agent optional background sync, the operator's choice (a coding agent running the setup
+#                           prompt never passes it):
 #                           also build the signed launcher, sync once, install and start the two LaunchAgents
 #                           (agentsync install-agent) and wait for the first background run (steps 3, 6-8)
 #   --launcher PATH         with --confirm-install-agent: use this prebuilt, signed AgentSyncLauncher.app
@@ -29,8 +30,11 @@
 #   --list-folders          only list the folders this Mac syncs, as candidates for --source-local: every
 #                           folder 1 or 2 levels inside each ~/Library/CloudStorage/<provider> (names only: no
 #                           file is opened; no dot folders), sorted, one full path per line, at most 200 then
-#                           "(N more)"; installs nothing and writes no report, only a list-folders step in the
-#                           setup log. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet),
+#                           "(N more)"; installs nothing and writes no report; it does create the setup folder
+#                           if missing, append its start, list-folders and end lines to the setup log, copy its
+#                           output to install.out, and leave the setup folder's contents owner-only, as every
+#                           run does (see "Setup log"); under AGENTSYNC_INSTALL_DRY_RUN=1 it writes none of
+#                           these. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet),
 #                           or a folder this Mac already syncs under ~/Library/CloudStorage is not on disk and
 #                           its app is signed out (its provider folder gone with no other folder of that app,
 #                           or there and empty), even when other folders were listed; 4 this terminal app was
@@ -58,6 +62,16 @@
 #                           not this installer's is told to stop
 #   --log STEP KIND WHAT FIX
 #                           append one event to it; KIND is question, click, approval, deviation, error or prompt
+#
+# Terms (all of them, and the agentsync nouns: docs/design/glossary.md):
+#   folder          a folder on this Mac, as --source-local names it and --list-folders lists it
+#   source          one entry of the config that agentsync reads from; a folder becomes a local source when it is
+#                   added, and the mail, Teams and Graph drive kinds are sources that are no folder
+#   LaunchAgent     one of the two macOS background jobs that agentsync install-agent installs and starts
+#   background sync the runs those LaunchAgents start, the operator's choice
+#   coding agent    the tool that runs the setup prompt for the person
+#   agent step      the step, logged step=agent, that installs the LaunchAgents: agent there is the LaunchAgent, and
+#                   "not a step for the agent" means the coding agent
 #
 # The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml.
 #
@@ -154,7 +168,8 @@
 #      on-device OCR helper (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever
 #      compiles it).
 #      It prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
-#      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
+#      build is that line and one warning on stderr naming every helper that did not build, never a failed
+#      run. Without developer tools nothing is tried, and the line says so.
 #      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
 #      "media helper: ..." line; [convert] recordings = false builds nothing), then the speech helper (python
 #      -I -m agentsync.convert.speech, one "speech: ..." line; it fetches FluidAudio from github.com (or the
@@ -249,12 +264,11 @@
 # too (its "no folder is synced yet" step). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
-# filtered out of its output; every other agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of
-# its own; the first sync also gets AGENTSYNC_QUIET_LOCK_WAIT=1, since that step prints its own lock-wait line
-# and ticker, and AGENTSYNC_LOCK_WAIT_ANNOUNCED, whether that line was printed), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
-# then say the agent step below installs the LaunchAgents instead of naming a command). Step 9's setup-report
-# gets AGENTSYNC_REPORT_RUN=<this run's id>: the run's NEXT: line comes after the report, which counts it as
-# still to come.
+# filtered out of its output; every other agentsync call is told to print no "next:" hints of its own (the
+# first sync also leaves its lock-wait line to this script, which prints that line and a ticker), and with
+# --confirm-install-agent step 5's launchd.* lines say the agent step below installs the LaunchAgents instead
+# of naming a command. Step 9's setup-report is told this run's id: the run's NEXT: line comes after the
+# report, which counts it as still to come.
 #
 # Setup prompt: SETUP_PROMPT_COMPAT (below) is the N of "setup prompt vN" in README.md ("Set up on a new Mac:
 # one prompt"), whose step 1 requires `install.sh --version` to print exactly that number and hands it to
@@ -312,14 +326,6 @@
 # Dry run: AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something and changes nothing (no
 # log, no install.out, no report, no friction-log line); its NEXT: line says to re-run without it. With
 # --log-start or --log it prints one "dry run:" line instead, and exits 0.
-#
-# Test-only seams, never for a real Mac: AGENTSYNC_SIMULATE_LAUNCHD=1 replaces install-agent, the kickstart
-# and the wait with "SIMULATED" lines (no plist, no launchctl write; the wait succeeds at once; the log and
-# the report record "launchd: simulated"), for sandboxed runs of the setup prompt. AGENTSYNC_LAUNCHCTL (the
-# launchctl to run, default /bin/launchctl), AGENTSYNC_WAIT_POLL_SECONDS (default 3),
-# AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
-# on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
-# providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
 SETUP_PROMPT_COMPAT=35 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
@@ -697,7 +703,7 @@ git_ro_resolve() {
 	return 0
 }
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
-	local op="$1" now line step kind what fix note="" v a p rest said rc=0 TELL FIX
+	local op="$1" now line step kind what fix note="" v w a p rest said rc=0 TELL FIX
 	shift
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	case "$op" in
@@ -772,7 +778,8 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			for a in "$@"; do v="${v:+$v / }$a"; done
 			v="${v//$'\r'/ }"
 			v="${v//$'\n'/ }"
-			friction_append "$now | error | install.sh --log got $# argument(s), not 4 (STEP KIND WHAT FIX, each in single quotes): ${v:--} | -"$'\n' || true
+			if [ $# -eq 1 ]; then w="1 argument"; else w="$# arguments"; fi
+			friction_append "$now | error | install.sh --log got $w, not 4 (STEP KIND WHAT FIX, each in single quotes): ${v:--} | -"$'\n' || true
 			printf 'usage error: --log takes four arguments, STEP KIND WHAT FIX, each in single quotes (see --help); logged as an error line\n' >&2
 			return 2
 		fi
@@ -1581,6 +1588,13 @@ APP_DEST="$HOME/Applications/$APP_NAME"
 UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
 PROMPT_TEXT='“agentsync-launcher” wants to access files managed by “<your sync app, e.g. OneDrive>”'
 REPORT_PATH="${AGENTSYNC_SETUP_REPORT:-$HOME/agent-context/setup-report.md}"
+# Test-only seams, never for a real Mac: AGENTSYNC_SIMULATE_LAUNCHD=1 replaces install-agent, the kickstart
+# and the wait with "SIMULATED" lines (no plist, no launchctl write; the wait succeeds at once; the log and
+# the report record "launchd: simulated"), for sandboxed runs of the setup prompt. AGENTSYNC_LAUNCHCTL (the
+# launchctl to run, default /bin/launchctl), AGENTSYNC_WAIT_POLL_SECONDS (default 3),
+# AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
+# on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
+# providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
 SIMULATE=0
 [ "${AGENTSYNC_SIMULATE_LAUNCHD:-}" != "1" ] || SIMULATE=1
 LAUNCHCTL="${AGENTSYNC_LAUNCHCTL:-/bin/launchctl}"
@@ -1616,6 +1630,7 @@ RERUN=""       # the command a stopped run names (default: this script with the 
 EXITING=0      # 1 once on_exit runs: a signal then only sets SIG_RC (B13 round 21 Y16)
 SIG_RC=""      # the exit code of a signal that came while on_exit ran (129, 130 or 143)
 LAST_ERROR=""  # the last error message, for the shell report
+USAGE_ERROR_REPORTED="" # the report's words for the next usage_error, when stderr's name a private folder
 BACK_WHY=""    # why write_bring_back wrote no bring-back.md, for its warning (B13 round 14 Q19)
 BACK_UNREAD=0  # the kept patches write_bring_back could not read, for the NEXT (B13 round 14 Q20, Q29)
 BACK_BRANCHES=0 # the local-work branches whose commits bring-back.md does not carry, for the NEXT (B13 round 21 Y23)
@@ -1639,7 +1654,7 @@ fail() {
 }
 usage_error() {
 	printf 'usage error: %s (see --help)\n' "$*" >&2
-	LAST_ERROR="usage error: $*"
+	LAST_ERROR="usage error: ${USAGE_ERROR_REPORTED:-$*}"
 	if [ "$PARSED" -eq 1 ]; then
 		log_start
 		NEXT_MSG="fix the usage error above (see $SELF --help), then run the corrected command"
@@ -5764,7 +5779,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# here: the shell names an environment proxy only by its variable (B13 round 10 L3). A remote's path is
 	# replaced whole when a word in it is no generic one, as a rewrite's is (B13 round 23 A25)
 	case "$used" in *" <proxy-[0-9] "*)
-		say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
+		say "- <proxy-N>: proxy hosts (a host that is only a common word, such as proxy or wpad, is replaced only where a"
 		say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
 		say "  kept) and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be"
 		say "  missing here (an environment proxy this report names only by its variable keeps its number); also a host"
@@ -6550,7 +6565,8 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	step_start report
 	bin="$(report_agentsync || true)"
 	if [ -n "$bin" ]; then
-		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode
+		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode.
+		# AGENTSYNC_REPORT_RUN: the run's NEXT: line comes after the report, which counts it as still to come.
 		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
 		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
 			REPORT_BY=agentsync
@@ -9555,7 +9571,7 @@ case "$CONFIG" in
 /*) ;;
 *) CONFIG="$PWD/$CONFIG" ;;
 esac
-if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report, one list-folders step in the log
+if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report; its writes are in the header (--list-folders)
 	REPORT=0
 	if [ -n "$ORIG_ARGS" ] || [ "$REPORT_ONLY" -eq 1 ]; then
 		usage_error "--list-folders takes no other option or SOURCE"
@@ -9647,6 +9663,9 @@ done
 if [ "$bad_total" -gt 5 ]; then
 	usage_error "--source-local: $((bad_total - 5)) more folders are not existing folders"
 elif [ "$bad_total" -gt 0 ]; then
+	# The person reads the name on stderr; the report words it without: its scrub cuts a folder's name only right
+	# after --source-local, and this folder is in no config for a pair to name it.
+	USAGE_ERROR_REPORTED="--source-local is not an existing folder: <path>"
 	usage_error "--source-local is not an existing folder: ${BAD_FOLDERS[$bad_shown]}"
 fi
 
@@ -9682,9 +9701,9 @@ else
 	else
 		tmp="$(mktemp -d)"
 		/usr/bin/curl -LsSf --retry 3 "$UV_INSTALLER_URL" -o "$tmp/uv-install.sh" ||
-			fail "could not download $UV_INSTALLER_URL (proxy or TLS inspection?); install uv by hand"
+			fail "could not download $UV_INSTALLER_URL (its error is above); install uv by hand"
 		env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 /bin/sh "$tmp/uv-install.sh" </dev/null ||
-			fail "the uv installer failed (network, proxy or TLS inspection?)"
+			fail "the uv installer failed (its error is above)"
 		rm -rf "$tmp"
 		[ -x "$HOME/.local/bin/uv" ] || fail "the uv installer did not create $HOME/.local/bin/uv"
 	fi
@@ -9921,7 +9940,7 @@ else
 		if [ ! -x "$TOOL_DIR/agentsync/bin/python" ] && [ -d "$TOOL_DIR/agentsync" ]; then
 			(exit "$UV_RC") || fail "uv tool install failed and left the tool environment without its interpreter (a background run started in it while uv removed it, or the network failed after the removal): run this command again"
 		fi
-		(exit "$UV_RC") || fail "uv tool install failed (network, proxy or TLS inspection? set HTTPS_PROXY / UV_SYSTEM_CERTS=1)"
+		(exit "$UV_RC") || fail "uv tool install failed (its error is above); if this Mac reaches the network through a proxy or TLS inspection, set HTTPS_PROXY / UV_SYSTEM_CERTS=1 and re-run"
 	}
 	if [ "$DRY_RUN" -eq 0 ] && [ ! -x "$AGENTSYNC" ]; then
 		fail "uv tool install finished but $AGENTSYNC is missing"
@@ -10047,6 +10066,7 @@ if have_devtools; then
 			build_helper media "media helper" "media helper: not built (the build did not run)" || nb="$nb${nb:++}media"
 			build_helper speech "speech helper" "speech: not built (the build did not run)" || nb="$nb${nb:++}speech"
 			step_end "done" 0 "${nb:+not-built-$nb}"
+			[ -z "$nb" ] || warn "optional helpers not ready: $nb; the run goes on, each line above says why, and re-running install.sh tries the build again"
 		else
 			say "media helper: not checked (the config cannot be read)"
 			say "speech: not checked (the config cannot be read)"
