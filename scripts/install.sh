@@ -7269,12 +7269,14 @@ older_report_rewrite() { # MODE
 		cp && sec == "## Summary" && index($0, "- install.sh: no run during this attempt") == 1 { $0 = "- install.sh: no install run during this attempt" substr($0, 41) }
 		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ { j = nofs_at($0); $0 = substr($0, 1, j - 1) "no install run during this attempt (install.log)" substr($0, j + NOFS) }
 		# a cut report an older renderer wrote (C916): no advice to send a stopped copy, only on the lines that give
-		# it (never Items or the friction log, which quote an agent), and a read at exit 124 not measured
+		# it (never Items or the friction log, which quote an agent), and a read at exit 124 not measured, in words
+		# with no exit and no seconds: that build gave 124 for a time-out and a spent budget alike, never a real
+		# exit, and the old line tells neither apart nor holds the seconds (B13 round 36 C1022, C905, ruling 107)
 		cp && !det && !fence && ((sec == "## Summary" && $0 ~ /^- (doctor|evidence|install source|background sync): /) || (sec == "## Doctor" && $0 ~ /^(Not run|Cut off): /)) { $0 = idle_off($0) }
 		cp && !det && !fence && sec == "## Summary" && index($0, "- background sync: ") == 1 { $0 = bg_line($0) }
-		cp && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" { $0 = "- Xcode Command Line Tools: not measured (xcode-select -p exited 124)" }
+		cp && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" { $0 = "- Xcode Command Line Tools: not measured (xcode-select -p did not answer in time)" }
 		cp && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
-			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print exited 124; plist " j ")"
+			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print did not answer in time; plist " j ")"
 		}
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)

@@ -19749,9 +19749,18 @@ def test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c
         "Not run: the report's time budget was used up before doctor started; this copy is not for sending."
         in lines
     )
-    assert "- Xcode Command Line Tools: not measured (xcode-select -p exited 124)" in lines
-    assert "- com.agentsync.poll: not measured (launchctl print exited 124; plist absent)" in lines
-    assert "- com.agentsync.reconcile: not measured (launchctl print exited 124; plist present)" in lines
+    # B13 round 36 C1022 (C905, ruling 107): no exit 124, and no seconds or spent budget the old line lacks
+    assert "- Xcode Command Line Tools: not measured (xcode-select -p did not answer in time)" in lines
+    assert (
+        "- com.agentsync.poll: not measured (launchctl print did not answer in time; plist absent)" in lines
+    )
+    assert (
+        "- com.agentsync.reconcile: not measured (launchctl print did not answer in time; plist present)"
+        in lines
+    )
+    cut = [ln for ln in lines if "did not answer in time" in ln]
+    assert len(cut) == 3 and not [ln for ln in cut if "within" in ln or "time limit" in ln], cut
+    assert not [ln for ln in lines if "exited 124" in ln], lines
     assert f"- background sync: poll not measured {_DOT} reconcile not measured" in lines, lines
     assert quoted in lines, "an agent's quoted advice keeps its words"
     body = [ln for ln in lines if ln != quoted]

@@ -38475,9 +38475,10 @@ sync lines and Doctor's `Not run:` and `Cut off:` lines (never Items or the fric
 advice, its busy-Mac lead-in in every renderer's form and all after it, writing `this copy is not for sending`, a final
 full stop kept, as `_cut_off_words` words a stopped copy since C718 (STOPPED_IDLE_HEAD, STOPPED_IDLE_TAIL and
 STOPPED_NOT_SENT, kept equal to setup_report's by a test). Environment's `Xcode Command Line Tools: not installed
-(xcode-select -p exited 124)` reads `not measured (...)`, without a `skipped:` cause, which the old line lost. A
-launchd job's `not installed (no plist, not loaded: launchctl print exited 124)` and `plist present · NOT loaded
-(launchctl print exited 124; ...)` read `not measured (launchctl print exited 124; plist absent|present)`, and the
+(xcode-select -p exited 124)` reads `not measured (xcode-select -p did not answer in time)`, without a `skipped:`
+cause, which the old line lost. A launchd job's `not installed (no plist, not loaded: launchctl print exited 124)` and
+`plist present · NOT loaded (launchctl print exited 124; ...)` read `not measured (launchctl print did not answer in
+time; plist absent|present)`, and the
 Summary's background sync line, read in pass 1, says that job is `not measured`; exit 113 keeps its words. Lines a cut
 leaves that cannot be told from a true one get one sentence in the head, `its Summary says part of it was cut off
 before it finished: a line in that part may be a read that did not finish`, which blames no cause and names no line,
@@ -38487,6 +38488,8 @@ only such a renderer writes, never on the time limit alone, so a copy from 4e0e8
 lead-ins, the doctor's own wait, the job lines both ways, exit 113, a quoted Items row, a current copy kept line for
 line) and
 `test_the_shell_stopped_copy_idle_words_are_the_reports`.
+
+Amended 2026-11-08, §16.236 C1022: the rewritten Xcode and launchd lines said `exited 124`, an exit C905 (ruling 107) says no report prints, since that build gave 124 for a time-out and a spent budget alike; they now say `did not answer in time`, with no seconds and no spent budget, which the old line holds neither of (B13 round 36 ruling 115).
 
 **A SIGTERM to install.sh alone in the reinstall wait is said, not changed** (C926; amends §16.41 "The reinstall
 holds the background sync's lock" and §16.47 R125; `scripts/install.sh`). Step 2 of the header named only SIGKILL in
@@ -39155,6 +39158,17 @@ variable) and two helpers beside a cut doctor line (the variable), each through 
 `test_the_helper_grep_holds_the_reports_own_words_for_every_helper_set_c1071` (install.sh's own pattern matches the
 report's line for every ordered set of the three helpers, live and stopped, under `re` and the real `grep -E`, after
 the cut checks).
+
+**A stopped copy's time-out lines say did not answer in time** (C1022; ruling 115; amends §16.231 C916;
+`scripts/install.sh`). C916's rewrite of an older renderer's cut Environment and Background runs lines wrote
+`not measured (xcode-select -p exited 124)` and `not measured (launchctl print exited 124; plist ...)`, the exit C905
+(ruling 107) says no report prints: that build's runner gave 124 for a time-out and for a spent budget alike, never a
+real exit. They now read `not measured (xcode-select -p did not answer in time)` and `not measured (launchctl print did
+not answer in time; plist absent|present)`: never `did not answer within <n>` or `the report's time limit was used up
+before ...`, since the old line holds no seconds and cannot tell a time-out from a spent budget, and those forms are
+what report_time_helps greps (it reads the live report, never the copy, and these words match none of its time
+alternates). Test: `test_a_cut_stopped_copy_an_older_build_rendered_gives_no_advice_to_send_it_c916` (the three lines,
+no `exited 124`, no `within` or `time limit` in them).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
