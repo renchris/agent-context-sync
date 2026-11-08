@@ -40514,7 +40514,30 @@ Tests: `tests/test_install_parser.py`.
 
 #### 16.300.16 U-B9: install.sh bounds and the atomic launcher
 
-Reserved.
+- **Step 1's download is bounded and leaves nothing.** One array, `UV_CURL`, is both the real call and the dry run's
+  line: `/usr/bin/curl -LsSf --connect-timeout 20 --max-time 120 --retry 3 --retry-max-time 300` (proposed values,
+  not measured). The download folder is `UV_TMP`, which on_exit removes after a failure or a stop. The uv installer
+  runs under `with_timeout` for 900 s; its stop is logged rc 1 and said as `timed out`, and a downloader it started
+  may outlive it.
+- **Stated limits, applied narrowly.** The first sync runs as `with_progress "$SYNC_LABEL" with_timeout
+  "$FIRST_SYNC_LIMIT" first_sync_run` (3600 s, estimated), whose `exec` makes the killed pid agentsync's; the step-5
+  and closing status put `with_timeout "$STATUS_LIMIT"` (900 s) on the binary, never on the function. A kill stays
+  rc 143 (no 124): elapsed time tells the run's own limit from an outside signal, and only then does stderr say
+  `<step>: stopped at its limit of <N>s; <agentsync> status shows where it got to`, with the step note `timeout`.
+  The first sync and step 5 then end the run 1; the closing status keeps the exit and its `closing_status=143`.
+  `uv_run` and `install-agent` are not wrapped. `with_timeout` keeps its own job line ("Terminated: 15") off stderr
+  and gives its command the caller's stderr through fd 4.
+- **The launcher is swapped, never removed first.** `install_app` copies with ditto into a hidden
+  `~/Applications/.AgentSyncLauncher.XXXXXX` folder (`APP_STAGE`), moves the old bundle aside and the new one in. A
+  failed copy says `$APP_DEST was not changed`; a failed move puts the old one back; a stop in between is undone by
+  on_exit, which also removes step 3's build folder (`LAUNCHER_OUT`). A dry run prints the same three lines as before
+  and creates nothing. The install stamp is written beside itself and renamed over.
+- **Every exit ends on one NEXT.** An exit after parsing with a non-zero code and no NEXT (one set -e took) prints
+  `error: install.sh stopped in step <step>: a command exited <rc> (its message, if any, is above)` when no error was
+  said, and `NEXT: fix the error above, then re-run: <command>`. The exit code is unchanged.
+- Test seams, never in `--help`: `__AGENTSYNC_CURL`, `__AGENTSYNC_DITTO`, `__AGENTSYNC_FIRST_SYNC_LIMIT`,
+  `__AGENTSYNC_STATUS_LIMIT`.
+- Tests: `tests/test_install_bounds.py`.
 
 #### 16.300.17 U-B10: install.sh signals and swallowed failures
 

@@ -124,7 +124,8 @@
 # typographic ’ is logged as text; a line break inside one becomes a space (one event per line).
 #
 # Steps, each skipped when already done:
-#   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
+#   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH; its
+#      download gives up after 2 minutes an attempt and 5 minutes in all, and the installer after 15 minutes
 #   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
 #      trust store for TLS; UV_TOOL_BIN_DIR pinned to ~/.local/bin, so the binary sits where the guides say;
 #      the dependencies at the versions of the checkout's uv.lock when uv can export it); skipped when the last
@@ -238,7 +239,12 @@
 #   run with --confirm-install-agent takes the first sync's time plus at most the 3-minute wait: give it a
 #   10-minute command timeout (30 minutes while the speech helper is not built: its build alone can take up to
 #   20 minutes). A re-run may spend up to 2 minutes of the first sync's time in step 2, waiting for a
-#   background sync the first sync would otherwise wait for. A stopped run (SIGTERM, SIGINT, SIGHUP) still logs
+#   background sync the first sync would otherwise wait for. The run sets its own limits too, so that a child
+#   that hangs cannot hold a run left in the background for ever: the first sync stops after 60 minutes (an
+#   estimate, not a measure: well above its 10-minute lock wait plus the conversion) and each status after 15,
+#   with "<step>: stopped at its limit of <N>s" on stderr and the step's note timeout; the first sync's and
+#   step 5's then fail the run, and the closing status's keeps the exit as a signal's stop of it does. Your
+#   tool's own command timeout may still end the run first. A stopped run (SIGTERM, SIGINT, SIGHUP) still logs
 #   its end (rc 143, 130, 129), writes the report and prints NEXT:. A stop of the whole process group during
 #   step 3 also stops the helper builds' compilers within seconds.
 #   9. report, at every exit after the arguments are read (failures and usage errors too; an unknown option or a
@@ -1586,6 +1592,16 @@ CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 APP_NAME="AgentSyncLauncher.app"
 APP_DEST="$HOME/Applications/$APP_NAME"
 UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
+# Step 1's download of the uv installer, the dry run's line too. curl retries a timeout, so --max-time bounds one
+# attempt and --retry-max-time all of them (proposed values, not measured). __AGENTSYNC_CURL (a test seam) is
+# the program to run in place of /usr/bin/curl.
+UV_CURL=("${__AGENTSYNC_CURL:-/usr/bin/curl}" -LsSf --connect-timeout 20 --max-time 120 --retry 3 --retry-max-time 300)
+UV_INSTALL_LIMIT=900 # seconds for the uv installer itself, whose own downloads the flags above do not bound
+# The limits of step 6 (the first sync) and of the two status runs, in seconds (see the header);
+# __AGENTSYNC_FIRST_SYNC_LIMIT and __AGENTSYNC_STATUS_LIMIT are test seams.
+FIRST_SYNC_LIMIT="${__AGENTSYNC_FIRST_SYNC_LIMIT:-3600}"
+STATUS_LIMIT="${__AGENTSYNC_STATUS_LIMIT:-900}"
+DITTO="${__AGENTSYNC_DITTO:-/usr/bin/ditto}" # the launcher's copy; __AGENTSYNC_DITTO is a test seam
 PROMPT_TEXT='“agentsync-launcher” wants to access files managed by “<your sync app, e.g. OneDrive>”'
 REPORT_PATH="${AGENTSYNC_SETUP_REPORT:-$HOME/agent-context/setup-report.md}"
 # Test-only seams, never for a real Mac: AGENTSYNC_SIMULATE_LAUNCHD=1 replaces install-agent, the kickstart
@@ -1637,6 +1653,9 @@ BACK_BRANCHES=0 # the local-work branches whose commits bring-back.md does not c
 DOCTOR_LOG=""  # this run's doctor output, for the shell report
 SYNC_OUT=""    # the first sync's stdout
 LOOP_OUT=""    # the closing status's output (the loop's NEXT)
+UV_TMP=""      # step 1's download folder, which on_exit removes
+APP_STAGE=""   # install_app's folder beside APP_DEST: on_exit puts the old launcher back from it and removes it
+LAUNCHER_OUT="" # step 3's build folder, which on_exit removes
 END_LINE=""    # the provisional end line in install.log (set at the exit, before the report)
 REPORT_LINE="" # the report step's line, written before the end line (finish_setup_log)
 ACTION_SHOWN=0 # the ACTION line is printed once
@@ -1866,18 +1885,27 @@ watchdog() { # LIMIT PID
 	! kill -0 "$2" 2>/dev/null || kill "$2"
 }
 # Run a command for at most $1 seconds (bash 3.2 and macOS have no timeout(1)); its status, 143 if killed.
+# The command's stderr is the caller's (through fd 4); this shell's own goes nowhere while it waits, since
+# bash prints a job line ("line N: <pid> Terminated: 15 <the command>") for a child a signal killed, even one
+# that died before the wait.
 with_timeout() {
 	local t="$1" pid wd rc=0
 	shift
-	"$@" &
-	pid=$!
-	watchdog "$t" "$pid" >/dev/null 2>&1 &
-	wd=$!
-	wait "$pid" || rc=$?
-	kill "$wd" 2>/dev/null || true
-	wait "$wd" 2>/dev/null || true
+	{
+		"$@" 2>&4 4>&- &
+		pid=$!
+		watchdog "$t" "$pid" >/dev/null 2>&1 4>&- &
+		wd=$!
+		wait "$pid" || rc=$?
+		kill "$wd" || true
+		wait "$wd" || true
+	} 4>&2 2>/dev/null
 	return "$rc"
 }
+# Whether a run that ended RC after starting at T0 was stopped by its own LIMIT, not by a signal from outside:
+# with_timeout's kill is 143, as an outside SIGTERM is, and comes only once the limit has passed.
+at_limit() { [ "$1" -eq 143 ] && [ $((SECONDS - $2)) -ge "$3" ]; } # RC T0 LIMIT
+limit_line() { printf '%s: stopped at its limit of %ss; %s status shows where it got to\n' "$1" "$2" "$AGENTSYNC" >&2; } # STEP LIMIT
 # Run a command, printing "LABEL: still running, <N>s" every $PROGRESS_SECONDS while it runs (a coding tool
 # may stop a command that prints nothing for a while); its exit status. A wait that may print nothing and
 # is followed by this one (start_pandoc_once, before status) leaves the time of its last line, or of its
@@ -7876,6 +7904,15 @@ on_exit() {
 	trap 'SIG_RC=143' TERM
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
+	# Any other exit that set no NEXT (a command set -e stopped on) still ends on one, and the report's Recent
+	# errors have its line; set before step_end, which clears STEP. The exit code stays.
+	if [ "$rc" -ne 0 ] && [ -z "$NEXT_MSG" ]; then
+		[ -n "$LAST_ERROR" ] || {
+			LAST_ERROR="install.sh stopped in step ${STEP:-unknown}: a command exited $rc (its message, if any, is above)"
+			printf 'error: %s\n' "$LAST_ERROR" >&2
+		}
+		NEXT_MSG="fix the error above, then re-run: ${RERUN:-$SELF$RERUN_ARGS}"
+	fi
 	# add-source's held stderr, when a signal ended the run inside the call: bash runs the trap once the
 	# pipeline ends, and on_signal's exit came before the loop printed it, so its error was lost and the file
 	# was left in TMPDIR. Printed here, before the report reads install.out for it (B13 round 19 W39).
@@ -7885,6 +7922,13 @@ on_exit() {
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
 	[ -z "${AGENTSYNC_PINS:-}" ] || rm -f "$AGENTSYNC_PINS" # a run stopped during step 2's reinstall
+	[ -z "$UV_TMP" ] || rm -rf "$UV_TMP" # step 1's download, after a failure or a stop
+	# a launcher swap that did not finish: the old bundle goes back where it was, unless the new one got there
+	if [ -n "$APP_STAGE" ]; then
+		[ -e "$APP_DEST" ] || [ ! -e "$APP_STAGE/old.app" ] || mv "$APP_STAGE/old.app" "$APP_DEST"
+		rm -rf "${APP_STAGE:?}"
+	fi
+	[ -z "$LAUNCHER_OUT" ] || rm -rf "$LAUNCHER_OUT"
 	if [ "$STEP" = agentsync ] && [ "${AGENTSYNC_DONE_BEFORE_SIGNAL:-0}" -eq 1 ]; then
 		step_end "done" 0 stopped-after-install # the reinstall ended 0 before the signal (C1119)
 	else
@@ -9795,15 +9839,24 @@ if [ -n "$UV" ]; then
 else
 	say "uv: not found; installing into $HOME/.local/bin with the official installer"
 	if [ "$DRY_RUN" -eq 1 ]; then
-		run /usr/bin/curl -LsSf "$UV_INSTALLER_URL" -o "<tmp>/uv-install.sh"
+		run "${UV_CURL[@]}" "$UV_INSTALLER_URL" -o "<tmp>/uv-install.sh"
 		run env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 /bin/sh "<tmp>/uv-install.sh"
 	else
-		tmp="$(mktemp -d)"
-		/usr/bin/curl -LsSf --retry 3 "$UV_INSTALLER_URL" -o "$tmp/uv-install.sh" ||
+		UV_TMP="$(mktemp -d)"
+		"${UV_CURL[@]}" "$UV_INSTALLER_URL" -o "$UV_TMP/uv-install.sh" ||
 			fail "could not download $UV_INSTALLER_URL (its error is above); install uv by hand"
-		env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 /bin/sh "$tmp/uv-install.sh" </dev/null ||
-			fail "the uv installer failed (its error is above)"
-		rm -rf "$tmp"
+		# with_timeout stops only this sh: a downloader the installer started may outlive it. A kill is 143,
+		# which reads as a signal, so a timeout is logged as a plain failure (1) and said as one.
+		urc=0
+		t0=$SECONDS
+		with_timeout "$UV_INSTALL_LIMIT" env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 \
+			/bin/sh "$UV_TMP/uv-install.sh" </dev/null || urc=$?
+		if [ "$urc" -eq 143 ] && [ $((SECONDS - t0)) -ge "$UV_INSTALL_LIMIT" ]; then
+			false || fail "the uv installer timed out after ${UV_INSTALL_LIMIT}s; install uv by hand"
+		fi
+		(exit "$urc") || fail "the uv installer failed (its error is above)"
+		rm -rf "$UV_TMP"
+		UV_TMP=""
 		[ -x "$HOME/.local/bin/uv" ] || fail "the uv installer did not create $HOME/.local/bin/uv"
 	fi
 	UV="$HOME/.local/bin/uv"
@@ -10046,7 +10099,11 @@ else
 	fi
 	if [ "$DRY_RUN" -eq 0 ] && [ -d "$TOOL_DIR/agentsync" ]; then
 		if [ "$SOURCE_KIND" = "checkout" ] && [ "$COMMIT" != "-" ] && [ "${COMMIT%-dirty}" = "$COMMIT" ]; then
-			printf '%s\n' "$STAMP_WANT" >"$STAMP" 2>/dev/null || true
+			# written beside it and renamed over it, so a stop never leaves half a stamp; best-effort, never fatal
+			st="$(mktemp "$STAMP.XXXXXX" 2>/dev/null)" || st=""
+			if [ -n "$st" ]; then
+				{ printf '%s\n' "$STAMP_WANT" >"$st" && mv -f "$st" "$STAMP"; } 2>/dev/null || rm -f "$st" || true
+			fi
 		else
 			rm -f "$STAMP" 2>/dev/null || true
 		fi
@@ -10067,13 +10124,36 @@ installed_launcher_sha() {
 launcher_valid() { /usr/bin/codesign --verify --strict "$1" >/dev/null 2>&1; }
 cdhash_of() { /usr/bin/codesign -dv "$1" 2>&1 | sed -n 's/^CDHash=//p'; }
 install_app() {
-	# Replace APP_DEST with the bundle $1 (ditto keeps the signature intact).
-	run mkdir -p "$HOME/Applications"
-	if [ -e "$APP_DEST" ]; then
-		say "launcher: replacing $APP_DEST (a new ad-hoc signature is a new TCC identity: macOS asks again)"
-		run rm -rf "$APP_DEST"
+	# Replace APP_DEST with the bundle $1 (ditto keeps the signature intact). A real run copies it into a hidden
+	# folder beside APP_DEST (one filesystem, and no name ending in .app), then swaps it in by two renames, so a
+	# failed copy leaves the old launcher as it was and a stop in between gets it back (on_exit). A plain mv onto
+	# an existing bundle would nest the new one inside it.
+	local rc
+	if [ "$DRY_RUN" -eq 1 ]; then
+		run mkdir -p "$HOME/Applications"
+		if [ -e "$APP_DEST" ]; then
+			say "launcher: replacing $APP_DEST (a new ad-hoc signature is a new TCC identity: macOS asks again)"
+			run rm -rf "$APP_DEST"
+		fi
+		run "$DITTO" "$1" "$APP_DEST"
+		return 0
 	fi
-	run /usr/bin/ditto "$1" "$APP_DEST"
+	mkdir -p "$HOME/Applications" || fail "could not create $HOME/Applications"
+	[ ! -e "$APP_DEST" ] ||
+		say "launcher: replacing $APP_DEST (a new ad-hoc signature is a new TCC identity: macOS asks again)"
+	APP_STAGE="$(mktemp -d "$HOME/Applications/.AgentSyncLauncher.XXXXXX")" ||
+		fail "could not create a folder in $HOME/Applications for the new launcher"
+	"$DITTO" "$1" "$APP_STAGE/new.app" || fail "could not copy the launcher into $HOME/Applications; $APP_DEST was not changed"
+	if [ -e "$APP_DEST" ]; then
+		mv "$APP_DEST" "$APP_STAGE/old.app" || fail "could not move the old launcher aside; $APP_DEST was not changed"
+	fi
+	mv "$APP_STAGE/new.app" "$APP_DEST" || {
+		rc=$?
+		[ ! -e "$APP_STAGE/old.app" ] || [ -e "$APP_DEST" ] || mv "$APP_STAGE/old.app" "$APP_DEST" || true
+		(exit "$rc") || fail "could not move the new launcher into $APP_DEST; the old one, if any, was put back"
+	}
+	rm -rf "$APP_STAGE"
+	APP_STAGE=""
 }
 
 # Only for background sync (KISS K11b): a run without --confirm-install-agent builds, copies and checks nothing.
@@ -10100,10 +10180,11 @@ elif [ "$SOURCE_KIND" = "checkout" ] && [ -x "$SOURCE/launcher/build.sh" ] && ha
 		run env OUT_DIR="<tmp>" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh"
 		install_app "<tmp>/$APP_NAME"
 	else
-		out="$(mktemp -d)"
-		OUT_DIR="$out" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh" || fail "launcher/build.sh failed"
-		install_app "$out/$APP_NAME"
-		rm -rf "$out"
+		LAUNCHER_OUT="$(mktemp -d)"
+		OUT_DIR="$LAUNCHER_OUT" ALLOWED_PROGRAM="$TOOL_PY" /bin/bash "$SOURCE/launcher/build.sh" || fail "launcher/build.sh failed"
+		install_app "$LAUNCHER_OUT/$APP_NAME"
+		rm -rf "$LAUNCHER_OUT"
+		LAUNCHER_OUT=""
 	fi
 	LAUNCHER_STATE="installed"
 elif [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST"; then
@@ -11189,9 +11270,12 @@ start_pandoc_once() {
 	PROGRESS_SINCE=$SECONDS
 	say "pandoc: started after $((SECONDS - t0))s"
 }
-status_run() { "$AGENTSYNC" status --config "$CONFIG" | tee "$DOCTOR_LOG"; } # the pipeline's status is status's
+# The pipeline's status is status's. The limit is on agentsync, not on this function: a kill of the
+# function's shell would leave agentsync running and writing the log.
+status_run() { with_timeout "$STATUS_LIMIT" "$AGENTSYNC" status --config "$CONFIG" | tee "$DOCTOR_LOG"; }
 step_start status
 DOCTOR_RC=0
+DOCTOR_TIMEOUT=0 # 1: status stopped at STATUS_LIMIT
 DOCTOR_TCC_ONLY=0 # every [FAIL] line is the launcher's TCC_PENDING: not a stop; the wait (step 8) asks for the Allow when GO=1
 if [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" status --config "$CONFIG"
@@ -11208,12 +11292,18 @@ else
 	start_pandoc_once
 	# With progress lines, like the first sync: status can wait two minutes on one folder macOS holds for a
 	# click, and it prints its lines only at its end.
+	status_t0=$SECONDS
 	with_progress "status" status_run || DOCTOR_RC=$?
 	unset AGENTSYNC_AGENT_STEP_PENDING
-	if [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG" && [ -z "$(blocking_fails "$DOCTOR_LOG")" ]; then
+	! at_limit "$DOCTOR_RC" "$status_t0" "$STATUS_LIMIT" || DOCTOR_TIMEOUT=1
+	if [ "$DOCTOR_TIMEOUT" -eq 0 ] && [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG" && [ -z "$(blocking_fails "$DOCTOR_LOG")" ]; then
 		DOCTOR_TCC_ONLY=1
 	fi
-	if [ "$DOCTOR_TCC_ONLY" -eq 1 ]; then
+	if [ "$DOCTOR_TIMEOUT" -eq 1 ]; then
+		step_end failed "$DOCTOR_RC" timeout
+		limit_line status "$STATUS_LIMIT"
+		LAST_ERROR="agentsync status stopped at its limit of ${STATUS_LIMIT}s"
+	elif [ "$DOCTOR_TCC_ONLY" -eq 1 ]; then
 		step_end "done" "$DOCTOR_RC" tcc-pending
 	else
 		# fail-lines only when status printed one; a status that exited non-zero with none (a traceback, a
@@ -11275,10 +11365,11 @@ SYNC_SUMMARY_RE='converted [0-9]+, deferred [0-9]+ online-only'
 # the wait once, as a plain line, and marks stdout so the note below books it (B13 round 17 U68). An older
 # agentsync ignores both. The sync's own stderr goes out through fd 3, and the group's 2>/dev/null takes only
 # bash's own job line for a child a signal killed ("line N: <pid> Killed: 9 <the command unexpanded>"), which
-# reached install.out and both reports; SYNC_RC keeps 137 or 143 (B13 round 30 C320).
+# reached install.out and both reports; SYNC_RC keeps 137 or 143 (B13 round 30 C320). It runs under
+# with_timeout, which kills only the pid it started: exec makes that pid agentsync's, so the limit stops the sync.
 first_sync_run() {
 	{ AGENTSYNC_QUIET_LOCK_WAIT=1 AGENTSYNC_LOCK_WAIT_ANNOUNCED="$SYNC_LOCK_BUSY" \
-		"$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT" 2>&3 3>&-; } 3>&2 2>/dev/null
+		exec "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT" 2>&3 3>&-; } 3>&2 2>/dev/null
 }
 # What the first sync printed: its "converted N, deferred M online-only" line(s) after a success, else all of
 # it (a failure's detail, or an agentsync that prints no such line).
@@ -11345,7 +11436,8 @@ else
 			say "$SYNC_LABEL: another sync is still running; waiting for it to end, at most 10 minutes"
 		fi
 	fi
-	with_progress "$SYNC_LABEL" first_sync_run || SYNC_RC=$?
+	sync_t0=$SECONDS
+	with_progress "$SYNC_LABEL" with_timeout "$FIRST_SYNC_LIMIT" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then
 		# a wait the probe missed is booked too, from agentsync's stdout mark (cli.LOCK_WAITED_MARK; U68)
@@ -11386,6 +11478,12 @@ else
 		LAST_ERROR="the first sync (agentsync sync --once) exited 65 ($(rc_meaning 65))"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		NEXT_MSG="agentsync's state file cannot be read (the first sync's error above, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		exit 1
+	elif at_limit "$SYNC_RC" "$sync_t0" "$FIRST_SYNC_LIMIT"; then
+		step_end failed "$SYNC_RC" timeout
+		limit_line "$SYNC_LABEL" "$FIRST_SYNC_LIMIT"
+		LAST_ERROR="the first sync (agentsync sync --once) stopped at its limit of ${FIRST_SYNC_LIMIT}s"
+		NEXT_MSG="the first sync did not finish within ${FIRST_SYNC_LIMIT}s (the line above); it is safe to re-run: $SELF$RERUN_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -ge 129 ] && [ "$SYNC_RC" -le 192 ] && case "$(rc_signal_words "$SYNC_RC")" in "stopped by "*) true ;; *) false ;; esac; then
 		# A signal stopped the sync alone (a signal to the whole run goes to on_signal): it reported no error,
@@ -11605,7 +11703,8 @@ esac
 # status step's own output (DOCTOR_LOG) never has that line: its heartbeat check names no folder. The group's
 # 2>/dev/null also takes bash's own "Killed: 9" or "Terminated: 15" job line for a status a signal killed,
 # which reached install.out and both reports; closing_status and its note read the exit code (B13 round 30 C320).
-loop_status_run() { { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT"; } 2>/dev/null; }
+# The limit is on the env command, as status_run's is on agentsync, which env execs: the same pid.
+loop_status_run() { { with_timeout "$STATUS_LIMIT" /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT"; } 2>/dev/null; }
 # A local listing the step-5 status warned was held, that this closing status reads as ok, was cleared by this run's
 # sync: say so, by source id as the heartbeat lines do, rather than leave the reader to infer it from a WAITING
 # line that is missing (B13 round 6 G33). Run only when this run's sync ran and exited 0: a [FAIL] that skipped
@@ -11628,8 +11727,12 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	# the run ended 0 on the fallback NEXT with nothing said (B13 round 27 P14). Keyed on the rc, never on an
 	# empty LOOP_OUT: a status left running when only with_progress was stopped can still write it later, and
 	# one stopped after its NEXT left that NEXT in it. The exit stays: the sync itself finished
+	local t0=$SECONDS
 	with_progress "status" loop_status_run || srun=$?
-	if [ "$srun" -ge 128 ]; then
+	if at_limit "$srun" "$t0" "$STATUS_LIMIT"; then
+		limit_line "closing status" "$STATUS_LIMIT" # its rc stays 143 in the report line (closing_status=)
+		LOOP_STOPPED="$srun"
+	elif [ "$srun" -ge 128 ]; then
 		# R81's phrase standing alone, as the report's _closing_stopped says it, never rc_meaning's 143 aside,
 		# which ran into "before it finished" (B13 round 31 ruling 58: C513)
 		say "note: the closing status was $(rc_signal_words "$srun") before it finished, so its NEXT line may be missing here: $AGENTSYNC status prints it again"
@@ -11672,6 +11775,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
 elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
 	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+elif [ "$DOCTOR_TIMEOUT" -eq 1 ]; then
+	EXIT_RC=1
+	next="agentsync status did not finish within ${STATUS_LIMIT}s (the line above); it is safe to re-run: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && misplaced_only "$DOCTOR_LOG"; then
 	EXIT_RC=1 # add-source opened past it (--source-local): its own fix, as the config step's NEXT (B13 round 28 I36)
 	misplaced_status_next "the next run is: $SELF$RERUN_ARGS"
