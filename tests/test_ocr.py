@@ -855,10 +855,17 @@ def test_no_helper_starts_once_its_callers_start_by_has_passed_c961(tmp_path: Pa
     assert ocr.probe(CFG, tmp_path)[0] == "ready", "a cycle sets none"
 
 
-def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961(tmp_path: Path) -> None:
+def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """end_helpers() kills every helper running now (setup-report calls it as it ends), each one alone: the
     helper stays in its caller's process group, where launchd's cleanup of a cycle reaches it (ocr.py's
-    "no new session"), so it is never a process group of its own to kill."""
+    "no new session"), so it is never a process group of its own to kill.
+
+    B13 round 36 C1036: the helper's own ``--version`` wait is pinned to 60 s, as the setup-report twin's is,
+    so a start stalled past the 5 s default on a loaded Mac is still ended by end_helpers and never by that
+    wait; a red run kills the helper itself, so it never sleeps out its 120 s past the test."""
+    monkeypatch.setattr(ocr, "_VERSION_TIMEOUT_S", 60.0)  # only end_helpers can end it in the window below
     pidfile = tmp_path / "helper.pid"
     hung_helper(tmp_path, pidfile)
     got: list[tuple[str, str]] = []
@@ -866,13 +873,17 @@ def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c
     started = time.monotonic()
     thread.start()
     pid = helper_pid(pidfile)
-    assert group_of(pid) == group_of(os.getpid()), "the helper is in its caller's process group"
-    ocr.end_helpers()
-    thread.join(10)
-    assert got == [("failed", "the OCR helper was stopped by SIGKILL (signal 9)")]
-    assert time.monotonic() - started < ocr._VERSION_TIMEOUT_S, "ended, not timed out"
-    assert gone(pid) and not ocr._LIVE, "reaped and off the list"
-    ocr.end_helpers()  # nothing left to end, and never a raise
+    try:
+        assert group_of(pid) == group_of(os.getpid()), "the helper is in its caller's process group"
+        ocr.end_helpers()
+        thread.join(10)
+        assert got == [("failed", "the OCR helper was stopped by SIGKILL (signal 9)")]
+        assert time.monotonic() - started < ocr._VERSION_TIMEOUT_S, "ended, not timed out"
+        assert gone(pid) and not ocr._LIVE, "reaped and off the list"
+        ocr.end_helpers()  # nothing left to end, and never a raise
+    finally:
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)  # a red run leaves no helper behind
 
 
 def test_a_probe_that_reaches_the_helper_after_its_reports_end_starts_nothing_c1067(tmp_path: Path) -> None:

@@ -39092,6 +39092,16 @@ say `a .vsdx that is not a ZIP, or an Office package of another family`. Tests:
 (`.vsdx` and `.vsdm`) and
 `test_convert_family.py::test_a_zip_that_is_no_office_package_named_vsdx_stays_a_failed_conversion_c1033`.
 
+**The end_helpers test pins the helper's own wait, and a red run leaves no helper** (C1036; tests). C961's
+`test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` kept the helper's
+5 s `--version` wait, so a start stalled past it on a loaded Mac (the verifier measured stalls over 9 s) let that
+wait kill the helper first and read `the helper never started`, while its setup-report twin already pinned
+`ocr._VERSION_TIMEOUT_S` to 60 s. It pins the same 60 s now, its `< ocr._VERSION_TIMEOUT_S` check still telling a
+kill from a time-out (the helper sleeps 120 s), and kills the helper in a `finally`, so a red run never leaves one
+sleeping out its 120 s. Measured in this lane with a 6 s stall before the helper writes its pid: without the pin
+the test fails with `the helper never started`, with it it passes. A test-code change: no deterministic test fails
+without it.
+
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 
 Reserved for round 36 lane D of B13.
