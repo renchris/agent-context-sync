@@ -4,9 +4,11 @@ file."""
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import errno
 import functools
+import inspect
 import json
 import logging
 import os
@@ -677,6 +679,28 @@ def test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statu
     assert loop.QUEUE_REFUSED_NOTE not in "\n".join(out), "the stopped sync's FAIL speaks, no note"
     # status maps the note to its own forms (C959): neither may stand in for the stopped sync's FAIL either
     assert loop.QUEUE_REFUSED_BARE not in "\n".join(out), "the stopped sync's FAIL speaks, no note"
+
+
+def test_the_bare_queue_clauses_docstring_says_a_refused_table_prints_the_fail_c1027() -> None:
+    """B13 round 36 C1027 (ruling 116): QUEUE_REFUSED_BARE's docstring said a refused [governance] prints no
+    governance.purge_queue [FAIL] line, while since C958 it does (C959's test shows it). The docstring says
+    the bare clause is for a status where no such line prints, and that a table that does not load takes
+    the line's form."""
+    tree = ast.parse(Path(inspect.getfile(loop)).read_text(encoding="utf-8"))
+    body = tree.body
+    (at,) = [
+        n
+        for n, node in enumerate(body)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", "") == "QUEUE_REFUSED_BARE" for t in node.targets)
+    ]
+    doc = body[at + 1]
+    assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant), (
+        "QUEUE_REFUSED_BARE has no docstring"
+    )
+    words = " ".join(str(doc.value.value).split())
+    assert "a refused [governance] prints none" not in words, words
+    assert "since C958 a [governance] that does not load prints that line too" in words, words
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")

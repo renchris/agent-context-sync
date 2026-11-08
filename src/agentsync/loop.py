@@ -288,8 +288,9 @@ QUEUE_REFUSED_NOTE = (
 in the sync's output and STATE.md (B13 round 34 C829). Status maps it to :data:`QUEUE_REFUSED_NOTE_STATUS`, or
 the bare clause, at its render (B13 round 35 C959)."""
 QUEUE_REFUSED_BARE = "the purge queue cannot be opened, so its queued purges are not counted"
-""":data:`QUEUE_REFUSED_NOTE`'s clause alone, as status prints it with no governance.purge_queue [FAIL] line
-(a refused [governance] prints none; B13 round 35 C959)."""
+""":data:`QUEUE_REFUSED_NOTE`'s clause alone, as status prints it when no governance.purge_queue [FAIL] line
+prints (since C958 a [governance] that does not load prints that line too, so it takes
+:data:`QUEUE_REFUSED_NOTE_STATUS`; B13 round 35 C959, round 36 C1027)."""
 QUEUE_REFUSED_NOTE_STATUS = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue [FAIL] line below says why"
 """:data:`QUEUE_REFUSED_NOTE` in status's own output, which prints that [FAIL] line: never "run status" to a
 reader of status (B13 round 35 C959, ruling 109)."""
