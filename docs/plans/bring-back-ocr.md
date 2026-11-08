@@ -2488,6 +2488,47 @@ with the harvest list in `round36/tools/harvest-lead.txt`, on this section's lan
 and up, prompt v34, outputs `round36/`. The stop rule names Codex and Gemini: a clean round without Gemini goes to the
 operator before the loop closes.
 
+### B13 round 36: v34 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-08)
+
+Run `wf_9b11be6c-6df` on `b781e539` (BASE `d8385ef6`), cut by a weekly limit and resumed on another account; only
+rehearsal A then ran fresh, as B to F stopped on their killed attempts' sandbox roots, so the continuation
+`wf_6054e001-dfb` re-ran them under fresh roots (b2 to f2). Together: 86 confirmed (5 turns, 10 wrongs, 71 small), 10
+refuted (C1003, C1029, C1058, C1061, C1062, C1102, C1104, C1105, C1110, C1122). All six rehearsal scenarios passed on
+the role's path. Four of the turns are one kit defect, a re-fired slot that reused its sandbox root (C1008 with C1005,
+C1009, C1011, C1012 and C1014), the lead's for round 37's kit; the fifth is real: install.sh's helper time-out advice
+recommends a report run that cannot help, because its grep never matches the report's words (C1071 with C1015, C1032,
+C1039, C1063 and C1106). Eight items are data integrity, four of them privacy: a path in another home kept its tail
+when a volume name held a comma or a semicolon (C1016 with C1064, the shell) or the path held a no-break or ideographic
+space (C1017, C1018, the Python report), so ruling 102 was incomplete again; a folder row shown escaped could add
+another folder (C1001 with C1116 and C1072); a [governance] that failed to load printed a purge-queue warn (C1026). One
+item needs prompt text (C1072), so the prompt goes to v35 in lane D's one commit and round 37 rehearses the prompt the
+operator will paste, as round 34 did for C823. Codex's five finders ran and its second opinion gave 15 opinions; its 4
+disputes (C1008, C1009, C1012, C1014) say only that an export without the kit cannot tell. Gemini did not run: the
+allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's (backlog `8ed9dae0fbc0`). A triage workflow
+(`wf_1355ad16-17d`) placed every item once.
+
+Lead rulings for round 36 (in `lanes/COMMON35.md`, mirrored in `docs/lanes/COMMON.md`): (112) a path in another home
+is cut whole whatever byte sits in it, completing ruling 102, with one separator table for both reports and a property
+test, not one more case; (113) a folder row step 1 shows escaped is marked, equals no other row and can never add
+another folder, and takes the prompt to v35; (114) install.sh reads the report's helper words as the report writes
+them, and the report's words stay; (115) a cut read says ruling 107's words wherever it is printed, quoted or
+rewritten, and a wait the spent budget shortened names the report's time limit; (116) no line invites a purge a hold
+could refuse, and a sync's wait names every line it waits on; (117) a child the report's call starts ends with it even
+when it starts between the deadline check and the spawn or after a Ctrl+C, completing ruling 106; (118) a file's class
+follows its bytes, completing C927 and C930; (119) the lead's calls on the triage's open questions. The calls under 90%
+are filed with their courses kept: decision `b6a6b8eabfd6` (ruling 112's three calls, conviction 75) and
+`ef4a5985f497` (rulings 113 to 119, conviction 80), veto window to 2026-11-10.
+
+Convergence: confirmed as before, then 76, then 90, then 86; turns as before, then 0, then 0, then 5 (4 of them the
+kit's); wrongs as before, then 17, then 23, then 10.
+
+Lanes (`--account auto`, CONTRACTS §16.235 to §16.239, land lock `/tmp/b13-r36-land.lock`, scratch under `round36/`,
+back-channel pane 3 or its successor): RA 12 (C1017 and C1018 first: privacy), RB 19 (C1016 with C1064 first:
+privacy; then C1001 with C1116 and C1072's install.sh half, whose mark's words go to lane D first; then C1071 with its
+cluster), B 13 (C1026 first), E 6, D 17 (C1072's v35 commit, then C1068 and C1070). The lead holds 19: the kit items
+for round 37 (C1008 with its five, C1006, C1007, C1010, C1111, C1114, C1115, C1124) and its own housekeeping (C1052
+with C1055, C1053, C1057, C1059, C1060).
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be

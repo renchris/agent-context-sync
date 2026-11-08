@@ -39013,6 +39013,26 @@ fix, a line in `§16.227 C810`'s own form, turned `test_every_dated_line_from_ro
 of an older build's words, which readers still take (§16.226), stays undated. The lines are ruling 74's and are pinned
 in `_ROUND_35_D_PARAGRAPH_AMENDS`, one row each.
 
+### 16.235 Round 36: the report: another home cut whatever byte sits in it, a cut read's words, and the stopped copy (2026-11-08, wave B13 round 36 lane RA)
+
+Reserved for round 36 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 36").
+
+### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
+
+Reserved for round 36 lane RB of B13.
+
+### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
+
+Reserved for round 36 lane B of B13.
+
+### 16.238 Round 36: the converters: a file's class follows its bytes, and a helper started at the deadline (2026-11-08, wave B13 round 36 lane E)
+
+Reserved for round 36 lane E of B13.
+
+### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
+
+Reserved for round 36 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
