@@ -28322,6 +28322,9 @@ GovernanceError whose OSError `doctor.state_unopenable` places in the state fold
 worded `a file in the state folder cannot be opened by this account: see Doctor's governance lines`, with an
 evidence clause of its own, after the shut-folder and not-a-folder tests; `_why_not_read` has no root, so the
 mapping is not there. Test: `test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file`.
+Amended 2026-11-08, §16.235 C1121: when governance/ itself is the one shut (`doctor.governance_refuser`), the words
+and their evidence clause name the folder, `agentsync's governance folder cannot be opened by this account: see
+Doctor's governance.hold line`; a file shut inside a governance/ it can search keeps the words above.
 
 **A state folder on a read-only volume it can search is no shut folder** (A85, the report's half).
 `_state_folder_shut` says no for this account's own 0700 folder on a read-only volume (`doctor._read_only`) that it
@@ -39131,6 +39134,17 @@ Loop line's loop_next then read as the doctor's. `ReportHooks` takes an optional
 calls under `contextlib.suppress(Exception)` first in its `TimeoutError` branch, before the Loop line is read; lane B's
 `cli._report_hooks` sets it, clearing both under the lock its checks publish under (§16.237). None, a build without
 it, reads as before. Test: `tests/test_setup_report.py::test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030`.
+
+**A governance folder that is shut is named, not a file in the state folder** (C1121; ruling 116; amends §16.164
+A87; `src/agentsync/setup_report.py`). With governance/ at 0000, the Purge queue part and the evidence line said `a
+file in the state folder cannot be opened`, though no such file need exist, while status's governance.hold FAIL named
+the folder. `_StateGovernanceShutError` takes its words: `_purge_part` asks `doctor.governance_refuser` (behind a
+getattr) and raises it with `_STATE_GOVERNANCE_FOLDER_SHUT`, `agentsync's governance folder cannot be opened by this
+account: see Doctor's governance.hold line`, which `_why_not_read` returns and the evidence line counts in a clause
+of its own (`... a report written after it is fixed measures them (see Doctor's governance.hold line)`), never
+`another cause`. A file this account cannot open inside a governance/ it can search (purge-queue.json at 0000 under a
+0700 folder) keeps A87's file words. Test:
+`tests/test_setup_report.py::test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file` (both cases).
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 

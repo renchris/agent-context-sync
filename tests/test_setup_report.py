@@ -17879,10 +17879,26 @@ def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
         gov.chmod(0o700)
     purge = section(text, "Status").split("### Purge queue", 1)[1].split("###", 1)[0]
     assert "GovernanceError" not in purge and "state_dir" not in purge, purge
+    # B13 round 36 C1121 (ruling 116): governance/ itself is the one shut, so the folder is named, not a file
+    assert f"not measured ({setup_report._STATE_GOVERNANCE_FOLDER_SHUT})" in purge, purge
+    assert "a file in the state folder" not in text
+    evidence = _line(section(text, "Summary"), "- evidence: ")
+    assert (
+        "because agentsync's governance folder cannot be opened by this account: a report written after it "
+        "is fixed measures that line (see Doctor's governance.hold line)" in evidence
+    ), evidence
+    assert "another cause" not in evidence, evidence
+    # a file it cannot open inside a governance/ it can search keeps the file's words (C1121's sibling)
+    (gov / "purge-queue.json").chmod(0o000)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        (gov / "purge-queue.json").chmod(0o600)
+    purge = section(text, "Status").split("### Purge queue", 1)[1].split("###", 1)[0]
     assert f"not measured ({setup_report._STATE_GOVERNANCE_SHUT})" in purge, purge
     evidence = _line(section(text, "Summary"), "- evidence: ")
     assert "because a file in the state folder cannot be opened by this account: a report written" in evidence
-    assert "another cause" not in evidence, evidence
+    assert "governance folder cannot be opened" not in evidence and "another cause" not in evidence, evidence
 
 
 def test_the_reports_read_only_opens_create_no_file_beside_a_manifest_it_cannot_write(

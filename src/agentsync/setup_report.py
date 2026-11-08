@@ -8607,7 +8607,12 @@ def _not_file_error(db: Path) -> _NoStateError:
 class _StateGovernanceShutError(Exception):
     """A governance file in the state folder (the purge queue, holds.json, or the governance/ folder that
     holds them) this account cannot open, while the state folder itself opens: Doctor's governance lines FAIL
-    it with their fix, never "another cause" (B13 round 23 A87)."""
+    it with their fix, never "another cause" (B13 round 23 A87). B13 round 36 C1121 (ruling 116): its words,
+    :data:`_STATE_GOVERNANCE_FOLDER_SHUT` when governance/ itself is the one shut, else the file's."""
+
+    def __init__(self, words: str | None = None) -> None:
+        super().__init__()
+        self.words = words or _STATE_GOVERNANCE_SHUT
 
 
 class _StateFolderShutError(Exception):
@@ -8952,6 +8957,11 @@ _STATE_GOVERNANCE_SHUT = (
     "a file in the state folder cannot be opened by this account: see Doctor's governance lines"
 )
 """For a governance file this account cannot open (:class:`_StateGovernanceShutError`, B13 round 23 A87)."""
+_STATE_GOVERNANCE_FOLDER_SHUT = (
+    "agentsync's governance folder cannot be opened by this account: see Doctor's governance.hold line"
+)
+"""For governance/ itself shut to this account (``doctor.governance_refuser``): the folder, never ``a file in
+the state folder``, which none need be, and the one line giving its fix (B13 round 36 C1121, ruling 116)."""
 _STATE_NOT_FILE = "the state file is not a file: see Doctor's state_dir.manifest line"
 """For something other than a file where the manifest belongs (B13 round 21 Y47, round 22 Z12)."""
 _STATE_FOLDER_NOT_FOLDER = "the state folder is not a folder: see Doctor's state_dir line"
@@ -9026,8 +9036,8 @@ def _why_not_read(exc: BaseException) -> str:
         return exc.words
     if isinstance(exc, _StateNotFileError):
         return _STATE_NOT_FILE
-    if isinstance(exc, _StateGovernanceShutError):  # B13 round 23 A87
-        return _STATE_GOVERNANCE_SHUT
+    if isinstance(exc, _StateGovernanceShutError):  # B13 round 23 A87; round 36 C1121: the folder's words
+        return exc.words
     if isinstance(exc, _StateFolderNotFolderError):  # B13 round 23 A23
         return _STATE_ABOVE_NOT_FOLDER if exc.above else _STATE_FOLDER_NOT_FOLDER
     # B13 round 21 Y38: governance's read of a file it cannot open raises its own error from the OSError
@@ -10182,7 +10192,13 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
         if isinstance(exc.__cause__, OSError) and doctor.state_unopenable(exc.__cause__, root):
-            raise _StateGovernanceShutError from exc
+            # B13 round 36 C1121 (ruling 116): governance/ itself shut names the folder in words of its own;
+            # a file it cannot open inside a governance/ it can search keeps the file's
+            refuser = getattr(doctor, "governance_refuser", None)
+            folder = False
+            with contextlib.suppress(Exception):
+                folder = refuser is not None and bool(refuser(root, exc.__cause__.filename))
+            raise _StateGovernanceShutError(_STATE_GOVERNANCE_FOLDER_SHUT if folder else None) from exc
         raise
     lost = _lost_queue_line(config)
     if not queue:
@@ -11593,6 +11609,8 @@ def _evidence_line(r: _Run) -> str:
     # B13 round 29 ruling 27 (C103, C137, C161): governance/ not a folder, or a governance file that cannot
     # be read, by _governance_unread_words' fixed words, never "another cause"
     govdir = sum(n for w, n in why.items() if w.startswith("agentsync's governance folder is not a folder"))
+    # B13 round 36 C1121 (ruling 116): governance/ itself shut, in its own clause, not a file's
+    govshut = sum(n for w, n in why.items() if w.startswith("agentsync's governance folder cannot be opened"))
     govfile = {w: n for w, n in why.items() if w.endswith(" line says why") and " cannot be read; " in w}
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
@@ -11645,6 +11663,11 @@ def _evidence_line(r: _Run) -> str:
             "agentsync's governance folder is not a folder: a report written after the person puts the real "
             "one back measures them (see Doctor's governance.hold line)",
         ),
+        (
+            govshut,
+            "agentsync's governance folder cannot be opened by this account: a report written after it is "
+            "fixed measures them (see Doctor's governance.hold line)",
+        ),
         *(
             (
                 n,
@@ -11670,6 +11693,7 @@ def _evidence_line(r: _Run) -> str:
             - gov
             - config
             - govdir
+            - govshut
             - sum(govfile.values()),
             "of another cause: see those lines",
         ),
