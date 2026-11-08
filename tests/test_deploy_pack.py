@@ -7737,10 +7737,12 @@ def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> 
     held = (
         "run each lost queued purge by hand as its FAIL names it; a hold in force on the page's source, the"
         " hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for the"
-        " records owner's decision to release the hold; a hold on another source does not refuse it, unless a"
-        " run with no `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling 92)."
-        " Accept each lost suppression, under a hold too, with `agentsync purge --accept-lost <at>"
-        " --folder-lost`"
+        " records owner's decision to release the hold; a hold on another source does not refuse a run with"
+        " `--source`, and a purge with no source (its FAIL says `of every source`), which a hold on another"
+        " source refuses only if it reaches that source or finds nothing, takes its `--dry-run` first: only a"
+        " refused one waits for the records owner's decision to release that hold (B13 round 34 C851; ruling"
+        " 92; B13 round 36 C1068). Accept each lost suppression, under a hold too, with `agentsync purge"
+        " --accept-lost <at> --folder-lost`"
     )
     assert held in bullet
     assert "Release it first" not in bullet and "release the hold first" not in bullet
@@ -7748,14 +7750,25 @@ def test_the_records_page_says_what_to_do_over_a_missing_governance_folder() -> 
     assert (
         "With no copy, run each purge by hand with what the FAIL names for it (a hold in force on its source,"
         " the hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for"
-        " the records owner's decision to release the hold; a hold on another source does not refuse it,"
-        " unless a run with no `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling"
-        " 92)): for a purge by id"
+        " the records owner's decision to release the hold; a hold on another source does not refuse a run"
+        " with `--source`, and a purge with no source (its FAIL says `of every source`), which a hold on"
+        " another source refuses only if it reaches that source or finds nothing, takes its `--dry-run`"
+        " first: only a refused one waits for the records owner's decision to release that hold (B13 round 34"
+        " C851; ruling 92; B13 round 36 C1068)): for a purge by id"
     ) in queue_bullet
-    # what the page says is what purge does: its source's holds and the hold on all, every hold when a run
-    # with no source resolves to nothing
+    # what the page says is what purge does: its source's holds and the hold on all, and for a run with no
+    # source the holds on every source its plan reaches, or every hold when it resolves to nothing (B13 round
+    # 36 C1068: "unless it finds nothing" left out a sourceless run that reaches a held source); both bullets
+    # say it in status's own conditional words and the FAIL's `of every source`
     held_by = "blocking_holds(active_holds(sp.root, gov), affected_sources or None)"
     assert held_by in inspect.getsource(governance)
+    assert '"refuses only if it reaches that source"' in inspect.getsource(governance)
+    assert " or finds nothing, and then only the records owner" in inspect.getsource(governance)
+    assert '"every source"' in inspect.getsource(governance._lost_entry)
+    for words in (bullet, queue_bullet):
+        assert "does not refuse it, unless a run with no `--source` finds nothing" not in words
+        conditional = "which a hold on another source refuses only if it reaches that source or finds nothing"
+        assert conditional in words
     # B13 round 33 C759 (ruling 88): the folder a later write re-creates, in the words its FAILs print.
     # test_cli's test_folder_lost_is_judged_by_the_trails_content_never_by_the_folder_alone_c606 runs each one
     recreated = bullet.split("A later `hold` or hand purge re-creates the governance folder", 1)[1]

@@ -37260,6 +37260,9 @@ Amended 2026-11-03, §16.229 C851: the page still never says a hold blocks `--ac
 page's source, the hold on all included, lost or set again, does refuse the hand purge and its `--dry-run` (ruling 92,
 §16.227 C874), so the bullet says so as the records owner's decision, beside the hand run, and that a hold on another
 source does not refuse it unless a run with no `--source` finds nothing.
+Amended 2026-11-08, §16.239 C1068: a hold on another source does not refuse a run with `--source`, and refuses a purge
+with no source only if it reaches that source or finds nothing (status's conditional words), so its `--dry-run` comes
+first.
 
 **The records page names the re-created folder, where plain `--accept-lost` is refused** (C759, ruling 88;
 `docs/deploy/data-governance.md`). The missing-folder bullet read only while governance/ is gone, while a later `hold`
@@ -38116,6 +38119,12 @@ queue's, say so on lane B's ruling 92 words (f3c127f51), worded as the records o
 release, and never resting on the FAIL for a `docs=` selector. The test's regex narrows to a hold that blocks
 `--accept-lost`, which the page still never says, and pins both sentences, the release beside the hand run, and
 `purge`'s own hold judgment. Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`.
+Amended 2026-11-08, §16.239 C1068: "unless a run with no `--source` finds nothing" left out a sourceless run that
+reaches the held source, which `blocking_holds(..., affected_sources or None)` refuses too; both bullets now say a hold
+on another source does not refuse a run with `--source`, and give a purge with no source (its FAIL says `of every
+source`) status's own conditional words, `refuses only if it reaches that source or finds nothing` (governance's
+`_queue_lost`, setup-feedback.md's `queue-maybe`), so its `--dry-run` comes first and only a refused one waits for the
+records owner's decision, never a release worded as an instruction.
 
 **The re-created folder's fix names the list's own file** (C854, built with C851; amends §16.222 C759; docs only). The
 bullet said the lost FAILs' fix leads with `putting that one file back`, after a sentence about the audit trail, so it
@@ -39605,7 +39614,22 @@ cites it. A removed assert: nothing fails without it, and nothing else read it.
 
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 
-Reserved for round 36 lane D of B13.
+Round 36's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 36"; specs `round36/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 113 to 119 settle it). A dated line this round writes reads
+`Amended 2026-11-08, §16.239 C<n>`.
+
+**The records page gives a purge with no source status's conditional words** (C1068, ruling 116; amends §16.229 C851
+and §16.222 C757; docs only). Both bullets, the lost queue's and the missing folder's, said a hold on another source
+does not refuse the hand purge "unless a run with no `--source` finds nothing", but `purge` refuses by the sources its
+plan reaches (`blocking_holds(active_holds(sp.root, gov), affected_sources or None)`, before the `--dry-run` branch),
+so a sourceless run that reaches the held source is refused too, as status's FAIL (`_queue_lost`: `which <hold>
+refuses only if it reaches that source or finds nothing`) and setup-feedback.md's `queue-maybe` already said. Both
+now say a hold on another source does not refuse a run with `--source`, and a purge with no source (its FAIL says `of
+every source`) takes its `--dry-run` first, only a refused one waiting for the records owner's decision to release
+that hold, never a release worded as an instruction, and still never that a hold blocks `--accept-lost`. The code
+fails safe either way (the run and its dry run are refused with the hold named), so the fix is the reader's next step.
+Test: `test_the_records_page_says_what_to_do_over_a_missing_governance_folder`, its two pins moved and tied to
+governance's own words.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

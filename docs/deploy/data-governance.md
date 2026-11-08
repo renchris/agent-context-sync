@@ -111,8 +111,10 @@ is a copy that no purge reaches, so exclude it too.
   `the <reason> purge at <time>, a <kind> selector of source <source>`, the sync refuses. Put purge-queue.json back
   from a copy you trust. With no copy, run each purge by hand with what the FAIL names for it (a hold in force on
   its source, the hold on all included, lost or set again, refuses that run and its `--dry-run`, so it waits for the
-  records owner's decision to release the hold; a hold on another source does not refuse it, unless a run with no
-  `--source` finds nothing, which every hold refuses (B13 round 34 C851; ruling 92)): for a purge by id the manifest
+  records owner's decision to release the hold; a hold on another source does not refuse a run with `--source`, and
+  a purge with no source (its FAIL says `of every source`), which a hold on another source refuses only if it
+  reaches that source or finds nothing, takes its `--dry-run` first: only a refused one waits for the records
+  owner's decision to release that hold (B13 round 34 C851; ruling 92; B13 round 36 C1068)): for a purge by id the manifest
   still names, the exact `agentsync purge id=<id> --source <source> --reason <reason>`, its id rebuilt from the
   manifest (the audit trail keeps only the selector's hash, never its text); for one it cannot rebuild, the id is
   the `stable_id:` line of the page's front matter in the docs repo's history (`git log --all -p --
@@ -165,8 +167,10 @@ is a copy that no purge reaches, so exclude it too.
   --reason <why> --owner <name>`, or releases it with `agentsync hold <scope> --release --owner <name>`. With no copy,
   run each lost queued purge by hand as its FAIL names it; a hold in force on the page's source, the hold on all
   included, lost or set again, refuses that run and its `--dry-run`, so it waits for the records owner's decision to
-  release the hold; a hold on another source does not refuse it, unless a run with no `--source` finds nothing,
-  which every hold refuses (B13 round 34 C851; ruling 92). Accept each lost suppression, under a hold too, with
+  release the hold; a hold on another source does not refuse a run with `--source`, and a purge with no source (its
+  FAIL says `of every source`), which a hold on another source refuses only if it reaches that source or finds
+  nothing, takes its `--dry-run` first: only a refused one waits for the records owner's decision to release that
+  hold (B13 round 34 C851; ruling 92; B13 round 36 C1068). Accept each lost suppression, under a hold too, with
   `agentsync purge --accept-lost <at> --folder-lost` (preview it with `--dry-run` first): `--folder-lost` is your
   word that no copy of the folder is left, and the act first records in the new audit trail and in purge-record.json
   that the old audit trail was lost (an `audit-trail-lost` line), so a new trail never reads as the whole history.
