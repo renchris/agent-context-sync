@@ -40401,7 +40401,36 @@ wrapper that drops `-I -X utf8 -` and runs the real interpreter on a shim file, 
 
 #### 16.300.22 U-B14: tenant-probes names, help, copy and sanitizing
 
-Reserved.
+`scripts/tenant-probes.sh` names its report folder `-o, --output <DIR>` (and `--output=DIR`). `--out` still works
+with any value, prints `warning: --out is deprecated; use --output <DIR>` once on stderr, and is left out of the help.
+`--output -` is a usage error (the folder also holds `deltalinks.json` and the login files), and so is
+`--output json`, `yaml`, `table` or `text` (the script has no JSON output yet). `--config` keeps its name; there is
+no `-v`. Exit codes are unchanged, 77 and 78 included.
+
+`--help` is the header comment, every line at most 80 columns: `Usage:`, a one-line summary, Options sorted by long
+name with `<FILE>`, `<DIR>`, `<PATH>` and `<NUMBER>` hints and `(default: VALUE)`, two `Examples:` that each exit 0
+with `--dry-run`, Notes, and `Learn more: docs/deploy/tenant-probes.md`. It lists exactly the options the parse loop
+has, except the `--out` alias and the word `help`.
+
+Usage errors keep `usage error: ` and exit 2: `Unknown option X for tenant-probes.sh.` for an unknown option and
+`Unexpected positional argument X for tenant-probes.sh.` for a positional one, after `--` included. Other error
+lines start `Error: ` off a terminal and `✗ ` on one: `Can't find a Python with agentsync installed.` and `Can't run
+PATH: it isn't executable.` (both exit 1), `Configuration invalid: {exc}` (exit 78), and `Can't run the probes.
+[graph] client_id is unset.` followed by `Report: PATH` (exit 78; a dry run adds `The dry run wrote nothing.` and
+writes nothing). `selftest FAILED` lines go to stderr; `selftest ok` stays on stdout.
+
+Exit 0 prints `report: PATH` on stdout, byte for byte as before. Every other run that writes a report prints nothing
+on stdout and one stderr line ending `; report PATH`: ``not signed in; run `agentsync graph login`, then re-run``,
+`sign-in blocked (STATE): REASON`, ``stopped: sign-in required mid-run; run `agentsync graph login`, then re-run``,
+`failed: network-policy (POLICY); see docs/deploy/README.md (TLS inspection / proxy)`, or `failed: STATUS CODE` /
+`failed: MESSAGE`. The report quotes the login tee path in double quotes, since the default state folder has a space.
+
+Remote text (Graph codes and messages, file extensions, stored probe-9 outcomes) passes through the script's own
+`clean()`, which drops CSI and OSC sequences and the categories Cc, Cf, Cs, Co, Cn, Zl and Zp and shows a newline,
+return or tab as two characters, and `cell(text, limit=160)`, which also maps `|` to `/` and cuts with `…`. Request
+ids, consent URLs and GET URLs are never cut. `clean()` stays local because the interpreter may hold an older
+agentsync; `tests/test_tenant_probes.py` holds it equal to `agentsync.text.safe_text(s, cell=True)` on sample
+strings, and `--selftest` checks one cleaned and one cut cell.
 
 #### 16.300.23 U-B15: tenant-probes tracebacks, signals and atomic state
 

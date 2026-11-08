@@ -17,7 +17,7 @@ scripts/tenant-probes.sh                # prints: report: …/probes/tenant-prob
 
 `agentsync graph login` is the only interactive step, and it is yours. The script then uses the cached token
 silently, through the same interpreter, so the Keychain never asks. It never opens a browser and never writes to
-the tenant. The report and the probe-9 store are mode 0600 under `<state_dir>/probes/` (override with `--out`).
+the tenant. The report and the probe-9 store are mode 0600 under `<state_dir>/probes/` (override with `--output`).
 
 | Exit | Meaning |
 |---|---|

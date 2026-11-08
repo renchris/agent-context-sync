@@ -1,5 +1,5 @@
-"""scripts/tenant-probes.sh run for real: its exit table, the paths past sign-in, the dry run, the parser and
---version.
+"""scripts/tenant-probes.sh run for real: its exit table, the paths past sign-in, the dry run, the parser,
+--version, the help text, the error lines and the cleaning of remote text.
 
 Nothing here signs in, reaches Graph or touches the Keychain.  The script runs ``"$PY" -I -X utf8 - ...``, and
 ``-I`` ignores PYTHONPATH, so a path past sign-in passes as ``--python`` a wrapper that drops those four
@@ -9,12 +9,18 @@ the script's Python from stdin as ``__main__``.
 
 from __future__ import annotations
 
+import ast
+import os
+import select
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from agentsync.text import safe_text
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "tenant-probes.sh"
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -30,7 +36,7 @@ from types import SimpleNamespace
 
 import agentsync.graph.auth
 import agentsync.graph.client
-from agentsync.errors import AuthRequiredError
+from agentsync.errors import AgentSyncError, AuthRequiredError
 from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError
 
 SCENARIO = os.environ["PROBES_SCENARIO"]
@@ -71,6 +77,8 @@ class FakeClient:
     def get_json(self, path, params=None):
         if SCENARIO == "network":
             raise NetworkPolicyError("TLS", "intercepted")
+        if SCENARIO == "other":
+            raise AgentSyncError("disk \\x1b[31mfull|now")
         if path.endswith("/root/delta"):
             self.links += 1
             return {{"@odata.deltaLink": "{LINK}" + str(self.links)}}
@@ -102,10 +110,10 @@ def _executable(path: Path, text: str) -> Path:
     return path
 
 
-def _shim_python(tmp_path: Path) -> Path:
+def _shim_python(tmp_path: Path, text: str = SHIM) -> Path:
     """The wrapper for ``--python``: it refuses any other call shape, so a change to the script's is loud."""
     shim = tmp_path / "shim.py"
-    shim.write_text(SHIM, encoding="utf-8")
+    shim.write_text(text, encoding="utf-8")
     return _executable(
         tmp_path / "python-wrapper",
         '#!/bin/bash\n[ "$1 $2 $3 $4" = "-I -X utf8 -" ] || exit 99\nshift 4\n'
@@ -194,7 +202,12 @@ def _only_report(out: Path) -> Path:
 @pytest.mark.parametrize(
     ("args", "words"),
     [
-        (["--frob"], "unknown argument --frob"),
+        (["--frob"], "Unknown option --frob for tenant-probes.sh."),
+        (["x"], "Unexpected positional argument x for tenant-probes.sh."),
+        (["--output", "-"], "--output needs a folder, not -"),
+        (["-o", "json"], "-o takes a folder, not a format: tenant-probes.sh has no JSON output yet"),
+        (["--output=table"], "--output takes a folder, not a format"),
+        (["-o", "--dry-run"], "-o needs a value, got the option --dry-run (write --output=--dry-run"),
         (["--max-pages", "abc"], "--max-pages needs a non-negative integer, got 'abc'"),
         (["--max-pages=abc"], "--max-pages needs a non-negative integer, got 'abc'"),
         (["--config"], "--config needs a value"),
@@ -203,8 +216,8 @@ def _only_report(out: Path) -> Path:
         (["--config="], "--config needs a value"),
         (["--max-bytes="], "--max-bytes needs a value"),
         (["--out", ""], "--out needs a value"),
-        (["--", "x"], "unexpected argument x"),
-        (["--", "--dry-run"], "unexpected argument --dry-run"),
+        (["--", "x"], "Unexpected positional argument x for tenant-probes.sh."),
+        (["--", "--dry-run"], "Unexpected positional argument --dry-run for tenant-probes.sh."),
     ],
 )
 def test_usage_errors_exit_2_before_any_work(tmp_path: Path, args: list[str], words: str) -> None:
@@ -219,20 +232,31 @@ def test_usage_errors_exit_2_before_any_work(tmp_path: Path, args: list[str], wo
     assert [p for p in _tree(tmp_path) if p not in before and not p.endswith(("/home", "/tmpdir"))] == []
 
 
-def test_missing_python_path_exits_1(tmp_path: Path) -> None:
+def test_two_interpreter_failures_have_two_messages(tmp_path: Path) -> None:
+    """None found and one that cannot run are different repairs, so each names its own; both exit 1."""
     proc = _run(tmp_path, "--python", str(tmp_path / "no-such-python"))
-    assert proc.returncode == 1
-    assert proc.stdout == ""
-    assert proc.stderr.startswith("error: no interpreter with agentsync installed")
+    assert (proc.returncode, proc.stdout) == (1, "")
+    assert proc.stderr == (
+        f"Error: Can't run {tmp_path}/no-such-python: it isn't executable."
+        " Check --python or AGENTSYNC_PYTHON.\n"
+    )
+    # none found: a checkout with no .venv, no uv on PATH or under HOME, and AGENTSYNC_PYTHON empty
+    repo = _checkout(tmp_path, "none")
+    proc = _run(tmp_path, script=repo / "scripts" / "tenant-probes.sh", env={"AGENTSYNC_PYTHON": ""})
+    assert (proc.returncode, proc.stdout) == (1, "")
+    assert proc.stderr == (
+        "Error: Can't find a Python with agentsync installed."
+        " Run scripts/install.sh, or pass --python <PATH>.\n"
+    )
 
 
 def test_invalid_sources_toml_exits_78(tmp_path: Path) -> None:
     config = tmp_path / "sources.toml"
     config.write_text("this is [not toml\n", encoding="utf-8")
-    proc = _run(tmp_path, "--config", str(config), "--out", str(tmp_path / "x"))
+    proc = _run(tmp_path, "--config", str(config), "--output", str(tmp_path / "x"))
     assert proc.returncode == 78
     assert proc.stdout == ""
-    assert proc.stderr.startswith("configuration invalid: ")
+    assert proc.stderr.startswith("Error: Configuration invalid: ")
     assert not (tmp_path / "x").exists()
 
 
@@ -241,8 +265,59 @@ def test_client_id_unset_exits_78_with_a_report(tmp_path: Path) -> None:
     assert proc.returncode == 78
     assert proc.stdout == ""
     report = _only_report(tmp_path / "state" / "probes")
-    assert proc.stderr == f"not run: [graph] client_id is unset; report {report}\n"
+    assert proc.stderr == f"Error: Can't run the probes. [graph] client_id is unset.\nReport: {report}\n"
     assert "**Not run:** `[graph] client_id` is unset" in report.read_text(encoding="utf-8")
+
+
+def test_error_lines_are_plain_off_a_tty(tmp_path: Path) -> None:
+    """``Error:`` in a log or a pipe and the ``✗`` mark only on a terminal, from bash and from Python."""
+    missing = ("--python", str(tmp_path / "no-such-python"))
+    bad = tmp_path / "bad.toml"
+    bad.write_text("this is [not toml\n", encoding="utf-8")
+    for args in (missing, ("--config", str(bad))):
+        piped = _run(tmp_path, *args)
+        assert piped.stderr.startswith("Error: ") and "✗" not in piped.stderr
+        main, side = os.openpty()
+        on_tty = b""
+        try:
+            proc = subprocess.run(
+                ["/bin/bash", str(SCRIPT), *args],
+                cwd=tmp_path,
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "HOME": str(tmp_path / "home"),
+                    "AGENTSYNC_PYTHON": sys.executable,
+                },
+                stdout=subprocess.PIPE,
+                stderr=side,
+                check=False,
+                timeout=300,
+            )
+            # drain while the terminal is still open: macOS drops what is unread once its last side closes
+            while select.select([main], [], [], 0.5)[0]:
+                chunk = os.read(main, 4096)
+                if not chunk:
+                    break
+                on_tty += chunk
+        finally:
+            os.close(side)
+            os.close(main)
+        assert proc.returncode == piped.returncode
+        assert on_tty.decode().startswith("✗ "), on_tty
+        assert on_tty.decode().replace("\r\n", "\n")[2:] == piped.stderr.removeprefix("Error: ")
+
+
+def test_selftest_failures_go_to_stderr(tmp_path: Path) -> None:
+    """A FAILED line is a diagnostic: stderr, exit 1, and stdout stays empty for a caller that reads it."""
+    broken = (
+        "import sys\n"
+        'source = sys.stdin.read().replace("SgAAAAAAAAAAAAAAAQAAAAAAAAA=", "broken")\n'
+        'exec(compile(source, "tenant-probes-embedded", "exec"), {"__name__": "__main__"})\n'
+    )
+    proc = _run(tmp_path, "--selftest", "--python", str(_shim_python(tmp_path, broken)))
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.startswith("selftest FAILED: quickxor vector 1: ")
 
 
 def test_selftest_exits_0(tmp_path: Path) -> None:
@@ -258,26 +333,42 @@ def test_selftest_exits_0(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("scenario", "code", "stderr", "in_report"),
     [
-        ("required", 77, "not signed in; report ", "**reauth-required**"),
+        (
+            "required",
+            77,
+            "not signed in; run `agentsync graph login`, then re-run; report ",
+            "**reauth-required**",
+        ),
         (
             "blocked",
             77,
-            "sign-in blocked (blocked: consent); report ",
+            "sign-in blocked (blocked: consent): consent refused; report ",
             "**blocked: consent** (`AADSTS65001`)",
         ),
-        ("mid-run", 77, "", "**stopped: sign-in required mid-run**: the token was revoked"),
-        ("network", 1, "", "**failed: network-policy (TLS)**"),
+        (
+            "mid-run",
+            77,
+            "stopped: sign-in required mid-run; run `agentsync graph login`, then re-run; report ",
+            "**stopped: sign-in required mid-run**: the token was revoked",
+        ),
+        (
+            "network",
+            1,
+            "failed: network-policy (TLS); see docs/deploy/README.md (TLS inspection / proxy); report ",
+            "**failed: network-policy (TLS)**",
+        ),
     ],
 )
 def test_past_sign_in_failures_write_the_report(
     tmp_path: Path, scenario: str, code: int, stderr: str, in_report: str
 ) -> None:
+    """Each failure names its state and the report on stderr; stdout stays empty."""
     out = tmp_path / "out"
     proc = _run(
         tmp_path,
         "--config",
         str(_config(tmp_path)),
-        "--out",
+        "--output",
         str(out),
         "--python",
         str(_shim_python(tmp_path)),
@@ -286,12 +377,31 @@ def test_past_sign_in_failures_write_the_report(
     assert proc.returncode == code, proc.stdout + proc.stderr
     report = _only_report(out)
     assert in_report in report.read_text(encoding="utf-8")
-    if stderr:
-        assert proc.stdout == ""
-        assert proc.stderr == f"{stderr}{report}\n"
-    else:
-        assert proc.stderr == ""
-        assert proc.stdout == f"report: {report}\n"
+    assert proc.stdout == ""
+    assert proc.stderr == f"{stderr}{report}\n"
+
+
+def test_a_failed_run_prints_nothing_on_stdout(tmp_path: Path) -> None:
+    """Any other agentsync error: exit 1, one stderr line with the cleaned message and the report, no stdout;
+    the report quotes the same message cleaned."""
+    out = tmp_path / "out"
+    proc = _run(
+        tmp_path,
+        "--config",
+        str(_config(tmp_path)),
+        "--output",
+        str(out),
+        "--python",
+        str(_shim_python(tmp_path)),
+        env={"PROBES_SCENARIO": "other"},
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert proc.stdout == ""
+    report = _only_report(out)
+    assert proc.stderr == f"failed: disk full/now; report {report}\n"
+    text = report.read_text(encoding="utf-8")
+    assert "**failed**: disk full/now" in text
+    assert "\x1b" not in text
 
 
 def test_canned_drive_exits_0_and_keeps_names_and_links_out_of_the_report(tmp_path: Path) -> None:
@@ -300,7 +410,7 @@ def test_canned_drive_exits_0_and_keeps_names_and_links_out_of_the_report(tmp_pa
         tmp_path,
         "--config",
         str(_config(tmp_path)),
-        "--out",
+        "--output",
         str(out),
         "--python",
         str(_shim_python(tmp_path)),
@@ -370,6 +480,33 @@ def test_bare_double_dash_ends_the_options(tmp_path: Path) -> None:
     proc = _run(tmp_path, "--config", str(_config(tmp_path)), "--dry-run", "--")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout.startswith("dry run: nothing is signed in, requested or written")
+
+
+def test_output_is_the_name_and_out_an_alias_that_warns(tmp_path: Path) -> None:
+    """``-o``, ``--output`` and ``--out`` set the same folder; only ``--out`` adds one stderr line naming
+    ``--output``. ``--output -`` is a usage error: the folder also holds deltalinks.json and login files."""
+    config, out = str(_config(tmp_path)), tmp_path / "x"
+    runs = {
+        spelling: _run(tmp_path, "--config", config, *args, "--dry-run")
+        for spelling, args in {
+            "--output": ("--output", str(out)),
+            "-o": ("-o", str(out)),
+            "--output=": (f"--output={out}",),
+            "--out": ("--out", str(out)),
+            "--out=": (f"--out={out}",),
+        }.items()
+    }
+    for spelling, proc in runs.items():
+        assert proc.returncode == 0, (spelling, proc.stderr)
+        assert proc.stdout == runs["--output"].stdout
+        assert f"report: {out}/tenant-probes-" in proc.stdout
+        alias = spelling in ("--out", "--out=")
+        want = "warning: --out is deprecated; use --output <DIR>\n" if alias else ""
+        assert proc.stderr == want, spelling
+    assert not out.exists()
+    proc = _run(tmp_path, "--config", config, "--output", "-", "--dry-run")
+    assert (proc.returncode, proc.stdout) == (2, "")
+    assert proc.stderr.startswith("usage error: --output needs a folder, not -")
 
 
 # ---- --version and help ----------------------------------------------------------------------------------
@@ -447,7 +584,7 @@ def test_version_prints_one_value_and_exits_0(tmp_path: Path, layout: str, print
 def test_help_word_matches_dash_h(tmp_path: Path) -> None:
     dash_h = _run(tmp_path, "-h")
     assert dash_h.returncode == 0
-    assert dash_h.stdout.startswith("agentsync tenant probes:")
+    assert dash_h.stdout.startswith("Usage: scripts/tenant-probes.sh [options]\n")
     assert dash_h.stderr == ""
     for spelling in ("--help", "help"):
         proc = _run(tmp_path, spelling)
@@ -459,3 +596,103 @@ def test_help_wins_over_version(tmp_path: Path) -> None:
     for args in (["--version", "--help"], ["--help", "--version"], ["--version", "help"]):
         proc = _run(tmp_path, *args)
         assert (proc.returncode, proc.stdout, proc.stderr) == (0, help_text, "")
+
+
+def _help_section(help_text: str, title: str) -> list[str]:
+    """The indented lines under ``title:`` up to the next blank line."""
+    lines = help_text.split(f"\n{title}:\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert lines and all(line.startswith("  ") for line in lines), lines
+    return lines
+
+
+def test_help_lists_exactly_the_parsed_options(tmp_path: Path) -> None:
+    """Every option the parse loop has is in Options, and nothing else: ``--out`` (the alias that warns) and
+    the word ``help`` parse and stay out, and each ``--name=*`` arm has its separated arm."""
+    from test_contracts import _install_case_arms  # noqa: PLC0415
+
+    arms = _install_case_arms(SCRIPT.read_text(encoding="utf-8"), "while [ $# -gt 0 ]; do", "done")
+    equals = {a.removesuffix("=*") for a in arms if a.endswith("=*")}
+    assert equals and equals <= set(arms)
+    parsed = {a for a in arms if not a.endswith("=*")} - {"*", "--out", "help"}
+    listed: list[str] = []
+    for line in _help_section(_run(tmp_path, "--help").stdout, "Options"):
+        left = line[2:].split("  ", 1)[0]
+        if left.startswith("-"):
+            listed += [part.split(" ")[0] for part in left.split(", ")]
+    assert sorted(listed) == sorted(parsed)
+    longs = [n for n in listed if n.startswith("--") and n != "--"]
+    assert longs == sorted(longs)  # sorted by long name
+
+
+def test_help_fits_80_columns(tmp_path: Path) -> None:
+    text = _run(tmp_path, "--help").stdout
+    assert text.endswith("Learn more: docs/deploy/tenant-probes.md\n")
+    assert [line for line in text.splitlines() if len(line) > 80] == []
+
+
+def test_every_probe_help_example_parses(tmp_path: Path) -> None:
+    """R100: each ``Examples:`` command, with ``--dry-run`` added where absent, exits 0 against a Contoso
+    config and changes nothing under tmp_path. A dry run never signs in."""
+    config = _config(tmp_path)
+    examples = _help_section(_run(tmp_path, "--help").stdout, "Examples")
+    (tmp_path / "home").mkdir(exist_ok=True)
+    (tmp_path / "tmpdir").mkdir(exist_ok=True)
+    before = _tree(tmp_path)
+    for example in examples:
+        argv = shlex.split(example)
+        assert argv[0] == "scripts/tenant-probes.sh", example
+        args = argv[1:] + ([] if "--dry-run" in argv else ["--dry-run"])
+        proc = _run(tmp_path, *args, env={"AGENTSYNC_CONFIG": str(config)})
+        assert proc.returncode == 0, (example, proc.stderr)
+        assert proc.stdout.startswith("dry run: nothing is signed in, requested or written")
+        assert _tree(tmp_path) == before, example
+
+
+def _script_helpers() -> dict[str, object]:
+    """``clean`` and ``cell`` as the script defines them, taken from its heredoc with what they read."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    body = text.split("<<'PYTHON' || rc=$?\n", 1)[1].split("\nPYTHON\n", 1)[0]
+    wanted = {"re", "unicodedata", "ESCAPE_RE", "DROPPED", "clean", "cell"}
+    keep = [
+        node
+        for node in ast.parse(body).body
+        if (isinstance(node, ast.Import) and node.names[0].name in wanted)
+        or (isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) in wanted)
+        or (isinstance(node, ast.FunctionDef) and node.name in wanted)
+    ]
+    assert len(keep) == len(wanted), [ast.dump(n)[:40] for n in keep]
+    namespace: dict[str, object] = {}
+    exec(compile(ast.Module(body=keep, type_ignores=[]), "tenant-probes-helpers", "exec"), namespace)
+    return namespace
+
+
+# Where the two agree. They differ, on purpose, on a carriage return (the script shows it as \r, safe_text
+# drops it), on private-use and unassigned code points (the script drops them by category) and on the blank
+# fillers safe_text lists by code point.
+SAMPLES = (
+    "plain words",
+    "café 日本 🎉",
+    "\x1b[31mred\x1b[0m and \x9b1mcsi8",
+    "\x1b]8;;https://contoso.test\x07link\x1b]8;;\x1b\\ end",
+    "bidi \u202eflip\u202c and \u2066iso\u2069",
+    "zero\u200bwidth\ufeffjoin\u200d",
+    "line\nbreak and tab\there",
+    "nul\x00 bel\x07 del\x7f nel\x85 c1\x9f",
+    "line\u2028sep\u2029para",
+    "a|b|c",
+    "x" * 300,
+)
+
+
+@pytest.mark.parametrize("sample", SAMPLES)
+def test_cell_matches_safe_text_on_samples(sample: str) -> None:
+    """The script keeps its own cleaner (its interpreter may hold an older agentsync), held equal here to
+    agentsync.text.safe_text with ``cell=True``."""
+    helpers = _script_helpers()
+    clean, cell = helpers["clean"], helpers["cell"]
+    assert callable(clean) and callable(cell)
+    assert clean(sample) == safe_text(sample, cell=True)
+    assert cell(sample, None) == safe_text(sample, cell=True).replace("|", "/")
+    cut = cell(sample)
+    assert len(cut) <= 160
+    assert cut.endswith("…") == (len(safe_text(sample, cell=True)) > 160)

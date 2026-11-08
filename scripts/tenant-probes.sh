@@ -1,41 +1,47 @@
 #!/bin/bash
-# agentsync tenant probes: the open design §9 probes that need the target tenant, read-only and zero-prompt.
+# Usage: scripts/tenant-probes.sh [options]
 #
-# Usage: scripts/tenant-probes.sh [--dry-run] [--config PATH] [--out DIR] [--python PATH]
-#                                 [--max-pages N] [--max-downloads N] [--max-bytes BYTES] [--selftest]
-#                                 [--version] [--]
+# Measure the target tenant with read-only probes and write a dated report.
 #
-#   --dry-run          load the config and print what would be requested; no sign-in, no network, no writes
-#   --config PATH      sources.toml (default: $AGENTSYNC_CONFIG or ~/agent-context/sources.toml)
-#   --out DIR          where the dated report goes (default: <state_dir>/probes, mode 0700)
-#   --python PATH      the interpreter that has agentsync installed (default: $AGENTSYNC_PYTHON, then the
-#                      uv tool environment `agentsync graph login` ran in, then this checkout's .venv)
-#   --max-pages N      delta pages read per drive for probe 1 (default 10, about 2,000 items)
-#   --max-downloads N  files downloaded twice for probe 4b (default 6)
-#   --max-bytes BYTES  largest file probe 4b downloads (default 20000000)
-#   --selftest         check the offline helpers (QuickXorHash vectors, claim decoding) and exit
-#   --version          print the commit of this checkout, or unknown, and exit (no git, no interpreter)
-#   -h, --help, help   print this text and exit; it wins over --version in either order
-#   --                 end the options
+# Options:
+#   --config <FILE>           sources.toml to read (default: $AGENTSYNC_CONFIG,
+#                             then ~/agent-context/sources.toml)
+#   --dry-run                 print what would be requested and exit; no
+#                             sign-in, no network, no writes
+#   -h, --help                print this help and exit, even with --version
+#   --max-bytes <NUMBER>      largest file probe 4b downloads, in bytes
+#                             (default: 20000000)
+#   --max-downloads <NUMBER>  probe 4b downloads up to --max-downloads files
+#                             twice each (default: 6)
+#   --max-pages <NUMBER>      delta pages probe 1 reads per drive
+#                             (default: 10, about 2,000 items)
+#   -o, --output <DIR>        where the report goes, mode 0700
+#                             (default: <state_dir>/probes)
+#   --python <PATH>           the interpreter that has agentsync installed
+#                             (default: $AGENTSYNC_PYTHON, then the uv tool
+#                             environment, then the .venv of this checkout)
+#   --selftest                check the offline helpers and exit
+#   --version                 print the commit of this checkout, or unknown,
+#                             and exit
+#   --                        end the options
 #
-# --name VALUE and --name=VALUE are the same, a repeat takes the last value, and an empty value is a usage
-# error. A value that is itself an option needs the = form.
+# Examples:
+#   scripts/tenant-probes.sh --dry-run
+#   scripts/tenant-probes.sh
 #
-# Run it after `agentsync graph login` (the only interactive step, done by the operator). It never opens a
-# browser, never prompts and never writes to the tenant: it uses the cached token silently (exit 77 when
-# there is none) and only GETs, plus two downloads per probe-4b file into a temporary directory it deletes.
-# Probes (design §9 numbering):
-#   1   hashes/cTag coverage: GET /drives/{id}/root/delta ($select as the drive arm) on /me/drive, the root
-#       site's library and every configured graph_drive source; counts only, no names
-#   2   consent outcome: granted scopes (the token's scp claim), token source, device claim, and the HTTP status
-#       of one read per permission; the newest <out>/login-*.txt (tee'd `agentsync graph login` output) is quoted
-#   4b  label/hash stability: up to N Office/PDF files downloaded twice; sha256 equal? served bytes ==
-#       quickXorHash? labels present in the file? (the files are deleted at once)
-#   9   deltaLink idle lifetime: stores three `token=latest` links (mode 0600, never in the report) and tests
-#       each exactly once, at 30, 60 and 90 days; re-run the script on or after those dates
+# Notes:
+#   Run `agentsync graph login` first: it is the only interactive step.
+#   The probes never prompt, never open a browser and never write to the
+#   tenant. They use the cached token silently and only GET, plus two
+#   downloads per probe-4b file into a temporary folder that is deleted.
+#   An option that takes a value also takes the --name=VALUE form, which is
+#   how to pass a value that is itself an option; a repeat takes the last.
+#   Probes 1, 2, 4b and 9 run; probe 9 needs re-runs at +30, +60 and +90 days.
+#   Exit status: 0 report written; 1 any other failure; 2 usage error;
+#   77 not signed in or sign-in blocked (report written); 78 sources.toml
+#   invalid or no [graph] client_id.
 #
-# Exit status: 0 report written; 2 usage error; 77 not signed in / sign-in blocked (report written, names
-# the state); 78 configuration invalid or no [graph] client_id; 1 any other failure (network policy included).
+# Learn more: docs/deploy/tenant-probes.md
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +52,7 @@ SELFTEST=0
 SHOW_VERSION=0
 CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 OUT=""
+OUT_ALIAS=0
 PY="${AGENTSYNC_PYTHON:-}"
 MAX_PAGES=10
 MAX_DOWNLOADS=6
@@ -55,14 +62,22 @@ usage_error() {
 	printf 'usage error: %s (see --help)\n' "$*" >&2
 	exit 2
 }
+# An error line: the mark on a terminal, the word Error: in a log or a pipe.
+error_line() {
+	if [ -t 2 ]; then
+		printf '✗ %s\n' "$*" >&2
+	else
+		printf 'Error: %s\n' "$*" >&2
+	fi
+}
 show_help() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
-# The option a separated value must not be: --out --dry-run would set OUT and leave DRY_RUN=0, a live run for
-# someone asking for a dry one.
+# The option a separated value must not be: --output --dry-run would set OUT and leave DRY_RUN=0, a live run
+# for someone asking for a dry one.
 need_value() {
 	[ "$1" -ge 2 ] || usage_error "$2 needs a value"
 	case "${3:-}" in
-	-h | --help | --version | --dry-run | --selftest | -- | --config | --out | --python | --max-pages | --max-downloads | --max-bytes | --config=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*)
-		usage_error "$2 needs a value, got the option $3 (write $2=$3 if that is the value)"
+	-h | --help | --version | --dry-run | --selftest | -- | --config | -o | --output | --out | --python | --max-pages | --max-downloads | --max-bytes | --config=* | --output=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*)
+		usage_error "$2 needs a value, got the option $3 (write ${2/#-o/--output}=$3 if that is the value)"
 		;;
 	esac
 }
@@ -71,7 +86,18 @@ set_value() {
 	[ -n "$2" ] || usage_error "$1 needs a value"
 	case "$1" in
 	--config) CONFIG="$2" ;;
-	--out) OUT="$2" ;;
+	-o | --output)
+		# the folder also holds deltalinks.json and the login files, so stdout cannot stand in for it
+		case "$2" in
+		-) usage_error "$1 needs a folder, not -: it also holds deltalinks.json and the login files" ;;
+		json | yaml | table | text) usage_error "$1 takes a folder, not a format: tenant-probes.sh has no JSON output yet" ;;
+		esac
+		OUT="$2"
+		;;
+	--out)
+		OUT="$2"
+		OUT_ALIAS=1
+		;;
 	--python) PY="$2" ;;
 	*)
 		is_uint "$2" || usage_error "$1 needs a non-negative integer, got '$2'"
@@ -125,22 +151,23 @@ while [ $# -gt 0 ]; do
 	--dry-run) DRY_RUN=1 ;;
 	--selftest) SELFTEST=1 ;;
 	--version) SHOW_VERSION=1 ;;
-	--config | --out | --python | --max-pages | --max-downloads | --max-bytes)
+	--config | -o | --output | --out | --python | --max-pages | --max-downloads | --max-bytes)
 		need_value $# "$1" "${2:-}"
 		set_value "$1" "$2"
 		shift
 		;;
-	--config=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*) set_value "${1%%=*}" "${1#*=}" ;;
+	--config=* | --output=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*) set_value "${1%%=*}" "${1#*=}" ;;
 	-h | --help | help)
 		show_help
 		exit 0
 		;;
 	--)
 		shift
-		[ $# -eq 0 ] || usage_error "unexpected argument $1"
+		[ $# -eq 0 ] || usage_error "Unexpected positional argument $1 for tenant-probes.sh."
 		break
 		;;
-	*) usage_error "unknown argument $1" ;;
+	-*) usage_error "Unknown option $1 for tenant-probes.sh." ;;
+	*) usage_error "Unexpected positional argument $1 for tenant-probes.sh." ;;
 	esac
 	shift
 done
@@ -150,6 +177,7 @@ if [ "$SHOW_VERSION" = 1 ]; then
 	printf '%s\n' "${commit:-unknown}"
 	exit 0
 fi
+[ "$OUT_ALIAS" = 0 ] || printf 'warning: --out is deprecated; use --output <DIR>\n' >&2
 
 case "$CONFIG" in
 /*) ;;
@@ -179,8 +207,12 @@ if [ -z "$PY" ]; then
 		fi
 	done
 fi
-if [ -z "$PY" ] || [ ! -x "$PY" ]; then
-	printf 'error: no interpreter with agentsync installed (run scripts/install.sh, or pass --python)\n' >&2
+if [ -z "$PY" ]; then
+	error_line "Can't find a Python with agentsync installed. Run scripts/install.sh, or pass --python <PATH>."
+	exit 1
+fi
+if [ ! -x "$PY" ]; then
+	error_line "Can't run $PY: it isn't executable. Check --python or AGENTSYNC_PYTHON."
 	exit 1
 fi
 
@@ -195,9 +227,11 @@ import datetime as dt  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import platform  # noqa: E402
+import re  # noqa: E402
 import shutil  # noqa: E402
 import sys  # noqa: E402
 import tempfile  # noqa: E402
+import unicodedata  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 CONFIG, OUT, DRY, SELFTEST = Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "1", sys.argv[4] == "1"
@@ -205,6 +239,28 @@ MAX_PAGES, MAX_DOWNLOADS, MAX_BYTES = int(sys.argv[5]), int(sys.argv[6]), int(sy
 MILESTONES = (30, 60, 90)
 PROBE_EXTS = (".docx", ".xlsx", ".pptx", ".pdf")
 NOW = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+# CSI and terminated OSC sequences, whole, as agentsync.text has them; the categories below take the rest
+ESCAPE_RE = re.compile(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|(?:\x1b\]|\x9d)[^\x07\x1b\x9c\x9d]*(?:\x07|\x1b\\|\x9c)")
+DROPPED = frozenset(("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"))
+
+
+def clean(text: object) -> str:
+    """Remote text (a Graph code or message, a file name) as one printable line: no escape sequence, control,
+    bidi or zero-width character; a newline, return or tab shows as two characters. Local rather than
+    agentsync.text.safe_text, because the interpreter may hold an older agentsync build."""
+    shown = ESCAPE_RE.sub("", str(text)).replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return "".join(c for c in shown if unicodedata.category(c) not in DROPPED)
+
+
+def cell(text: object, limit: int | None = 160) -> str:
+    """``clean`` for a report table cell: ``|`` becomes ``/``, and past ``limit`` it is cut with an ellipsis."""
+    shown = clean(text).replace("|", "/")
+    return shown if limit is None or len(shown) <= limit else shown[: limit - 1] + "…"
+
+
+def fail_line(text: str) -> None:
+    """An error line on stderr: the mark on a terminal, the word Error: in a log or a pipe."""
+    print(("✗ " if sys.stderr.isatty() else "Error: ") + text, file=sys.stderr)
 
 
 def quickxor(path: Path) -> str:
@@ -256,7 +312,7 @@ def selftest() -> int:
             p.write_bytes(data)
             got = quickxor(p)
             if got != want:
-                print(f"selftest FAILED: quickxor vector {n}: {got} != {want}")
+                print(f"selftest FAILED: quickxor vector {n}: {got} != {want}", file=sys.stderr)
                 return 1
         big = Path(tmp) / "big"  # the row fold must equal the byte-by-byte definition across rows
         data = bytes((i * 7 + 3) % 251 for i in range(1000))
@@ -269,12 +325,16 @@ def selftest() -> int:
         for i, b in enumerate(len(data).to_bytes(8, "little")):
             ref[12 + i] ^= b
         if quickxor(big) != base64.b64encode(bytes(ref)).decode():
-            print("selftest FAILED: row fold differs from the byte-by-byte QuickXorHash")
+            print("selftest FAILED: row fold differs from the byte-by-byte QuickXorHash", file=sys.stderr)
             return 1
     body = base64.urlsafe_b64encode(json.dumps({"scp": "User.Read Files.Read.All", "deviceid": "x"}).encode())
     c = claims("h." + body.decode().rstrip("=") + ".s")
     if c.get("scp") != ["Files.Read.All", "User.Read"] or c.get("device_claim") is not True or claims("opaque"):
-        print(f"selftest FAILED: claims {c}")
+        print(f"selftest FAILED: claims {c}", file=sys.stderr)
+        return 1
+    got = cell("\x1b[31mred\x1b[0m \u202eflip|pipe\nnext\x1b]8;;x\x07")
+    if got != "red flip/pipe\\nnext" or cell("x" * 160) != "x" * 160 or cell("x" * 161) != "x" * 159 + "…":
+        print(f"selftest FAILED: cell {got!r}", file=sys.stderr)
         return 1
     print("selftest ok: 4 QuickXorHash vectors (rclone), row fold, claim decoding")
     return 0
@@ -304,14 +364,10 @@ def write_report(out_dir: Path) -> Path:
     return path
 
 
-def cell(text: object) -> str:
-    return str(text).replace("|", "/").replace("\n", " ")[:160]
-
-
 try:
     config = load_config(CONFIG)
 except ConfigError as exc:
-    print(f"configuration invalid: {exc}", file=sys.stderr)
+    fail_line(f"Configuration invalid: {exc}")
     sys.exit(78)
 
 out_dir = Path(OUT) if OUT else config.state_paths.root / "probes"
@@ -325,10 +381,12 @@ emit()
 
 if not config.graph.client_id:
     if DRY:
-        print("not run: [graph] client_id is unset; dry run wrote nothing", file=sys.stderr)
+        fail_line("Can't run the probes. [graph] client_id is unset. The dry run wrote nothing.")
         sys.exit(78)
     emit("**Not run:** `[graph] client_id` is unset (the IT app registration is pending; docs/deploy/it-request.md).")
-    print(f"not run: [graph] client_id is unset; report {write_report(out_dir)}", file=sys.stderr)
+    report = write_report(out_dir)
+    fail_line("Can't run the probes. [graph] client_id is unset.")
+    print(f"Report: {report}", file=sys.stderr)
     sys.exit(78)
 
 from agentsync.graph.auth import MsalAuth, settings_from_config  # noqa: E402 - msal after truststore
@@ -340,7 +398,7 @@ from agentsync.policy import read_labels  # noqa: E402
 try:
     settings = settings_from_config(config)
 except ConfigError as exc:
-    print(f"configuration invalid: {exc}", file=sys.stderr)
+    fail_line(f"Configuration invalid: {exc}")
     sys.exit(78)
 
 drives_planned = ["me (/me/drive)", "root-site (/sites/root/drive)"] + [f"{s.id} ({s.drive_id or s.site})" for s in graph_sources]
@@ -372,12 +430,12 @@ if logins:
 try:
     token = auth.get_token()
 except AuthBlockedError as exc:
-    emit(f"| silent token | **{exc.state}** (`{exc.aadsts or '-'}`): {cell(exc)} |")
-    print(f"sign-in blocked ({exc.state}); report {write_report(out_dir)}", file=sys.stderr)
+    emit(f"| silent token | **{exc.state}** (`{cell(exc.aadsts or '-')}`): {cell(exc, None)} |")
+    print(f"sign-in blocked ({exc.state}): {cell(exc, None)}; report {write_report(out_dir)}", file=sys.stderr)
     sys.exit(77)
 except AuthRequiredError as exc:
-    emit(f"| silent token | **reauth-required**: {cell(exc)}. Run `agentsync graph login 2>&1 | tee {out_dir}/login-$(date +%Y%m%d).txt`, then re-run |")
-    print(f"not signed in; report {write_report(out_dir)}", file=sys.stderr)
+    emit(f"| silent token | **reauth-required**: {cell(exc, None)}. Run `agentsync graph login 2>&1 | tee \"{out_dir}/login-$(date +%Y%m%d).txt\"`, then re-run |")
+    print(f"not signed in; run `agentsync graph login`, then re-run; report {write_report(out_dir)}", file=sys.stderr)
     sys.exit(77)
 c = claims(token)
 del token
@@ -409,12 +467,13 @@ def status_of(path: str, params: dict | None = None) -> tuple[str, dict]:
     except NetworkPolicyError:
         raise
     except AuthRequiredError as exc:
-        return f"401 {cell(exc)[:60]}", {}
+        return f"401 {cell(exc, None)}", {}
     except GraphError as exc:
-        return f"{exc.status} `{exc.code}`", {}
+        return f"{exc.status} `{cell(exc.code)}`", {}
 
 
 rc = 0
+failure = ""
 tmp_root = Path(tempfile.mkdtemp(prefix="agentsync-probes-"))
 try:
     emit("| read | permission it needs | result |")
@@ -454,7 +513,7 @@ try:
         try:
             targets.append((src.id, resolve_drive_id(client, src), "200"))
         except GraphError as exc:
-            targets.append((src.id, None, f"{exc.status} `{exc.code}`"))
+            targets.append((src.id, None, f"{exc.status} `{cell(exc.code)}`"))
     candidates: list[tuple[str, str, str, int, str | None]] = []
     nohash_ext: dict[str, int] = {}
     seen_drives: set[str] = set()
@@ -495,10 +554,10 @@ try:
                     listing = f"sample: first {pages} pages"
                     break
         except GraphError as exc:
-            listing = f"stopped: {exc.status} `{exc.code}`"
+            listing = f"stopped: {exc.status} `{cell(exc.code)}`"
         emit(f"| {name} | {n} | {files} | {qx} | {sha} | {none} | {ctag} | {zero} | {onenote} | {listing} |")
     emit()
-    emit("Files without any hash, by extension: " + (", ".join(f"`{k}` {v}" for k, v in sorted(nohash_ext.items())) or "none") + ".")
+    emit("Files without any hash, by extension: " + (", ".join(f"`{cell(k, 32)}` {v}" for k, v in sorted(nohash_ext.items())) or "none") + ".")
     emit("Not probed here: whether `cTag` lags right after an upload (needs a write; do it by hand in a scratch library).")
     emit()
 
@@ -522,10 +581,10 @@ try:
             _, sha_a = client.download(f"/drives/{drive_id}/items/{item_id}/content", a, max_bytes=MAX_BYTES)
             _, sha_b = client.download(f"/drives/{drive_id}/items/{item_id}/content", b, max_bytes=MAX_BYTES)
         except (GraphError, AgentSyncError) as exc:
-            emit(f"| {n} | `{ext}` | {size} | - | download failed: {cell(exc)[:80]} | - |")
+            emit(f"| {n} | `{ext}` | {size} | - | download failed: {cell(exc, 80)} | - |")
             continue
         labels = read_labels(a, name=f"probe{ext}")
-        lab = "error: " + cell(labels.error)[:60] if labels.error else (
+        lab = "error: " + cell(labels.error, 60) if labels.error else (
             f"{len(labels.labels)} ({', '.join(sorted({lb.origin for lb in labels.labels}))})" if labels.labels else "none")
         served = "n/a (no quickXorHash)" if not qxh else str(quickxor(a) == qxh)
         emit(f"| {n} | `{ext}` | {size} | {lab} | {sha_a == sha_b} | {served} |")
@@ -547,14 +606,14 @@ try:
             except NetworkPolicyError:
                 raise
             except GraphError as exc:
-                entry["outcome"] = f"{exc.status} {exc.code}" + (": expired, full re-enumeration" if exc.status == 410 else "")
+                entry["outcome"] = f"{exc.status} {cell(exc.code, None)}" + (": expired, full re-enumeration" if exc.status == 410 else "")
             entry["tested_at"], entry["age_days"], entry["link"] = NOW.isoformat(), age, None
     if not any(e.get("link") for e in data["links"]):
         for days in MILESTONES:
             try:
                 page = client.get_json("/me/drive/root/delta", params={"token": "latest", "$select": "id"})
             except GraphError as exc:
-                emit(f"Could not obtain a deltaLink: {exc.status} `{exc.code}`.")
+                emit(f"Couldn't get a deltaLink: {exc.status} `{cell(exc.code)}`.")
                 break
             link = page.get("@odata.deltaLink")
             if link:
@@ -568,18 +627,21 @@ try:
     emit("|---|---|---|---|---|---|")
     for e in data["links"]:
         due = (dt.datetime.fromisoformat(e["obtained_at"]) + dt.timedelta(days=e["milestone_days"])).date()
-        emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {e.get('outcome') or 'pending'} |")
+        emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {cell(e.get('outcome') or 'pending')} |")
     emit()
     emit("A 410 is not an outage: the drive arm falls back to a full enumeration. The result sets the reconcile floor.")
 except NetworkPolicyError as exc:
-    emit(f"**failed: network-policy ({exc.policy})**: {cell(exc)}. See docs/deploy/README.md (TLS inspection / proxy).")
+    emit(f"**failed: network-policy ({exc.policy})**: {cell(exc, None)}. See docs/deploy/README.md (TLS inspection / proxy).")
     rc = 1
+    failure = f"failed: network-policy ({exc.policy}); see docs/deploy/README.md (TLS inspection / proxy)"
 except AuthRequiredError as exc:
-    emit(f"**stopped: sign-in required mid-run**: {cell(exc)}. Run `agentsync graph login`, then re-run.")
+    emit(f"**stopped: sign-in required mid-run**: {cell(exc, None)}. Run `agentsync graph login`, then re-run.")
     rc = 77
+    failure = "stopped: sign-in required mid-run; run `agentsync graph login`, then re-run"
 except AgentSyncError as exc:
-    emit(f"**failed**: {cell(exc)}")
+    emit(f"**failed**: {cell(exc, None)}")
     rc = 1
+    failure = f"failed: {exc.status} {cell(exc.code)}" if isinstance(exc, GraphError) else f"failed: {cell(exc)}"
 finally:
     client.close()
     shutil.rmtree(tmp_root, ignore_errors=True)
@@ -591,7 +653,10 @@ emit("- Device-code block state (design §9 probe 2 extension): needs an interac
      "and only when IT has set `allow_device_code`; expect `blocked: policy` (AADSTS53003).")
 emit("- Token Protection, Teams channel delta, shared-mailbox delta, launchd matrix: C15 §8 probes 4, 6, 7 (manual).")
 report = write_report(out_dir)
-print(f"report: {report}")
+if rc:
+    print(f"{failure}; report {report}", file=sys.stderr)
+else:
+    print(f"report: {report}")
 sys.exit(rc)
 PYTHON
 exit "$rc"
