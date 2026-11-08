@@ -7,6 +7,10 @@ setup report's call sets :data:`RUN_DEADLINE` in the context its hook runs in; e
 through :func:`run` or ``doctor._run`` then ends by that deadline, and :func:`end_children` ends any still
 running when the report gives up on the call. Unset, as for a sync, standalone ``agentsync doctor`` and
 every other command, :func:`run` is exactly ``subprocess.run``.
+
+Every spawner checks the deadline and the report's :data:`START_GATE`, spawns and registers in one
+:func:`start`, under the registry's lock, so a program is either listed before :func:`end_children` copies
+the list or never starts (B13 round 36 C1065, C1067; ruling 117).
 """
 
 from __future__ import annotations
@@ -18,8 +22,8 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Any, TypeVar
 
 RUN_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
     "doctor_run_deadline", default=None
@@ -37,6 +41,52 @@ _LIVE_CHILDREN: dict[int, bool] = {}
 its own (``doctor._run``'s watcher, ended with its group) or stays in the caller's (:func:`run`'s, ended
 alone)."""
 _LIVE_LOCK = threading.Lock()
+
+_P = TypeVar("_P", bound="subprocess.Popen[Any]")
+
+
+class StartGate:
+    """One report's start gate: :func:`end_children` closes it under the registry's lock before it copies the
+    list, and no program starts through :func:`start` in a context holding it after that, so a child that a
+    Ctrl+C or an early end left between its check and its spawn never outlives the report (B13 round 36
+    C1067; ruling 117). One per report, put in context fresh by the report's call, never a module-wide flag,
+    which would refuse every later report and sync. ``ocr.StartGate`` is the same shape for the helpers."""
+
+    __slots__ = ("closed",)
+
+    def __init__(self) -> None:
+        self.closed = False
+
+
+START_GATE: contextvars.ContextVar[StartGate | None] = contextvars.ContextVar(
+    "agentsync_deadline_start_gate", default=None
+)
+"""The report's :class:`StartGate` in the context its hooks run in; unset (None) for a sync, standalone
+``agentsync doctor`` and every other command, which no gate refuses (B13 round 36 C1067)."""
+
+
+def _shut() -> bool:
+    """Whether no program may start now: the context's :data:`START_GATE` closed, or its
+    :data:`RUN_DEADLINE` passed. Read under :data:`_LIVE_LOCK` by :func:`start`."""
+    gate = START_GATE.get()
+    return (gate is not None and gate.closed) or past_deadline()
+
+
+def start(spawn: Callable[[], _P], *, refuse: Callable[[], BaseException], group: bool | None) -> _P:
+    """``spawn()`` under the registry's lock, after the gate: ``refuse()`` is raised instead once the
+    context's :data:`START_GATE` is closed or its :data:`RUN_DEADLINE` has passed, and a program started is
+    registered before the lock is let go (``group`` True when it leads its own process group, False when it
+    stays in the caller's; None leaves it unlisted, for a program started into a group already listed). So a
+    program is either listed before :func:`end_children` reads the list or never starts, as ``ocr._start``
+    holds its helpers (B13 round 36 C1065; ruling 117). The lock is held across the spawn alone, which ends
+    at the program's exec, never across a read."""
+    with _LIVE_LOCK:
+        if _shut():
+            raise refuse()
+        proc = spawn()
+        if group is not None:
+            _LIVE_CHILDREN[proc.pid] = group
+    return proc
 
 
 def past_deadline() -> bool:
@@ -79,11 +129,16 @@ def end(pid: int, *, group: bool) -> None:
             os.kill(pid, signal.SIGKILL)
 
 
-def end_children() -> int:
+def end_children(gate: StartGate | None = None) -> int:
     """SIGKILL each program still running under a caller's deadline and return how many: a call a caller
     abandoned (the setup report's time limit runs its hooks in a thread it then leaves) keeps its child
-    otherwise, which the interpreter's exit never stops (B13 round 34 C804, round 35 C955)."""
+    otherwise, which the interpreter's exit never stops (B13 round 34 C804, round 35 C955). ``gate`` (by
+    default the context's :data:`START_GATE`, when one is set) is closed under the lock before the list is
+    copied, so no program starts after it in a context holding that gate (B13 round 36 C1067; ruling 117)."""
     with _LIVE_LOCK:
+        shut = gate if gate is not None else START_GATE.get()
+        if shut is not None:
+            shut.closed = True
         live = sorted(_LIVE_CHILDREN.items())
     for pid, group in live:
         end(pid, group=group)
@@ -95,24 +150,31 @@ def run(argv: Sequence[str], *, timeout: float, **kwargs: Any) -> subprocess.Com
     exactly that call. With one, the limit is ``min(timeout, deadline - now)``, ``TimeoutExpired`` is raised
     before any spawn once it has passed, and the program is registered for :func:`end_children` while it runs.
     It stays in the caller's process group, so a signal to that group still reaches it, and it is ended with
-    ``os.kill``, never ``killpg`` (B13 round 35 C955, ruling 106)."""
+    ``os.kill``, never ``killpg`` (B13 round 35 C955, ruling 106). The check, the spawn and the registration
+    are one :func:`start`, and the limit is worked out again after the spawn; a :data:`START_GATE` closed
+    refuses it as a passed deadline does (B13 round 36 C1065, C1067; ruling 117)."""
     deadline = RUN_DEADLINE.get()
-    if deadline is None:
+    if deadline is None and START_GATE.get() is None:
         return subprocess.run(list(argv), timeout=timeout, **kwargs)  # noqa: PLW1510 - the caller's check
-    left = deadline - time.monotonic()
-    if left <= 0:
-        raise subprocess.TimeoutExpired(list(argv), 0.0)
-    timeout = min(timeout, left)
     data = kwargs.pop("input", None)
     check = bool(kwargs.pop("check", False))
     if kwargs.pop("capture_output", False):
         kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
     if data is not None:
         kwargs["stdin"] = subprocess.PIPE
-    with subprocess.Popen(list(argv), **kwargs) as proc:
-        register(proc.pid, group=False)
+    proc = start(
+        lambda: subprocess.Popen(list(argv), **kwargs),
+        refuse=lambda: subprocess.TimeoutExpired(list(argv), 0.0),
+        group=False,
+    )
+    with proc:
         try:
             try:
+                if deadline is not None:  # counted from the spawn, never from a check before it (C1065)
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise subprocess.TimeoutExpired(list(argv), 0.0)
+                    timeout = min(timeout, left)
                 out, err = proc.communicate(data, timeout=timeout)
             except subprocess.TimeoutExpired:
                 end(proc.pid, group=False)

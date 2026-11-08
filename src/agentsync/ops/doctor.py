@@ -458,24 +458,28 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
     watcher (:data:`_WATCH`) started first, which kills the group if agentsync dies any way at all; the group
     is killed whole when the program times out or the wait is interrupted, the wait is then on the program,
     never its pipes, and :func:`end_children` can end it while it runs (B13 round 34 C804, round 35 C954,
-    C906, C956)."""
+    C906, C956). The watcher is checked for, started and registered in one ``deadline.start``, its first line
+    is read outside the registry's lock, and the program is checked for and started in a second, so a cut
+    that ended the watcher during that read starts nothing in a group nobody watches; the limit is worked out
+    after the program's spawn (B13 round 36 C1065, C1067; ruling 117)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
     deadline = RUN_DEADLINE.get()
-    shortened = False
-    if deadline is not None:
-        left = deadline - time.monotonic()
-        if left <= 0:
-            raise _NotStarted(list(argv), 0.0)  # C917: never started, never "within 0s"
-        shortened = left < timeout
-        timeout = min(timeout, left)
+
+    def not_started() -> BaseException:
+        return _NotStarted(list(argv), 0.0)  # C917: never started, never "within 0s"
+
     said, tell = os.pipe()
     try:
-        watcher = subprocess.Popen(
-            ["/bin/sh", "-c", _WATCH],
-            stdin=said,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            process_group=0,
+        watcher = deadline_mod.start(
+            lambda: subprocess.Popen(
+                ["/bin/sh", "-c", _WATCH],
+                stdin=said,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                process_group=0,
+            ),
+            refuse=not_started,
+            group=True,
         )
     except BaseException:
         os.close(tell)
@@ -483,22 +487,34 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
     finally:
         os.close(said)
     try:
-        with watcher.stdout or contextlib.nullcontext():
-            if watcher.stdout is not None:
-                watcher.stdout.readline()  # up: its group exists before the program joins it
-        deadline_mod.register(watcher.pid, group=True)
         try:
+            with watcher.stdout or contextlib.nullcontext():
+                if watcher.stdout is not None:
+                    # up: its group exists before the program joins it; never under the lock (no limit)
+                    watcher.stdout.readline()
             # its exit closes both pipes and reaps the program, an interrupted wait included
-            with subprocess.Popen(
-                list(argv),
-                stdin=subprocess.DEVNULL,  # its own group is not the terminal's: a read there would stop it
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-                process_group=watcher.pid,
+            with deadline_mod.start(
+                lambda: subprocess.Popen(
+                    list(argv),
+                    # its own group is not the terminal's: a read there would stop it
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                    process_group=watcher.pid,
+                ),
+                refuse=not_started,
+                group=None,  # the watcher's group, listed above
             ) as proc:
+                shortened = False
                 try:
+                    if deadline is not None:  # counted from the program's spawn (C1065)
+                        left = deadline - time.monotonic()
+                        shortened = left < timeout
+                        if left <= 0:
+                            raise subprocess.TimeoutExpired(list(argv), 0.0)
+                        timeout = min(timeout, left)
                     out, err = proc.communicate(timeout=timeout)
                 except subprocess.TimeoutExpired as exc:
                     _end_group(watcher.pid)

@@ -7,6 +7,7 @@ run for real.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import dataclasses
 import errno
 import fcntl
@@ -886,6 +887,105 @@ def test_end_children_kills_a_program_a_caller_abandoned_c804(tmp_path: Path) ->
     assert not worker.is_alive() and done and done[0].returncode == -9, done
     assert _pid_gone(child) and not doctor._LIVE_CHILDREN
     assert doctor.end_children() == 0
+
+
+def _in_report(gate: deadline.StartGate, call: Callable[[], object], out: list[object]) -> threading.Thread:
+    """``call`` in a thread whose fresh context holds a report's ``gate`` and a deadline 600 s out, as the
+    setup report's call runs a hook; what it returns or raises lands in ``out``."""
+
+    def body() -> None:
+        deadline.RUN_DEADLINE.set(time.monotonic() + 600)
+        deadline.START_GATE.set(gate)
+        try:
+            out.append(call())
+        except BaseException as exc:
+            out.append(exc)
+
+    ctx = contextvars.Context()
+    worker = threading.Thread(target=lambda: ctx.run(body), daemon=True)
+    worker.start()
+    return worker
+
+
+@pytest.mark.parametrize("spawner", ["deadline.run", "doctor._run"])
+def test_a_spawn_the_reports_end_meets_mid_start_is_listed_or_never_started_c1065(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spawner: str
+) -> None:
+    """B13 round 36 C1065 (ruling 117): deadline.run and doctor._run checked the deadline, then spawned and
+    registered outside the registry's lock, so an end_children that ran in between ended nothing and the
+    program started after it, outliving the report. The check, the spawn and the registration are one locked
+    step: the end waits for a spawn under way and ends it, and the gate it closes starts nothing after."""
+    started: list[str] = []
+    real = subprocess.Popen
+    in_spawn = threading.Event()
+
+    class SlowPopen(real):  # type: ignore[misc,valid-type]
+        def __init__(self, args: Sequence[str], *a: object, **kw: object) -> None:
+            started.append(str(args[0]))
+            if not in_spawn.is_set():  # the first spawn: the watcher, or deadline.run's program
+                in_spawn.set()
+                time.sleep(0.6)
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", SlowPopen)
+    gate = deadline.StartGate()
+    out: list[object] = []
+    if spawner == "deadline.run":
+        call: Callable[[], object] = lambda: deadline.run(  # noqa: E731
+            ["/bin/sleep", "600"], timeout=600, capture_output=True, check=False
+        )
+    else:
+        call = lambda: doctor._run(["/bin/sleep", "600"], timeout=600)  # noqa: E731
+    worker = _in_report(gate, call, out)
+    try:
+        assert in_spawn.wait(30)
+        time.sleep(0.2)  # the end comes while the spawn is under way
+        ended = deadline.end_children(gate)
+        worker.join(30)
+    finally:
+        deadline.end_children()  # without the fix the program started after the end: never left running
+        worker.join(30)
+    assert gate.closed and ended == 1, (ended, out, started)
+    assert not worker.is_alive() and not deadline._LIVE_CHILDREN
+    if spawner == "deadline.run":
+        assert isinstance(out[0], subprocess.CompletedProcess) and out[0].returncode == -9, out
+    else:  # the watcher ended in its handshake: the program never started in a group nobody watches
+        assert isinstance(out[0], doctor._NotStarted), out
+        assert started == ["/bin/sh"], started
+    # the closed gate starts nothing more in that report; a fresh report's gate does
+    out.clear()
+    ran = tmp_path / "ran"
+    _in_report(gate, lambda: deadline.run(["/usr/bin/touch", str(ran)], timeout=30), out).join(30)
+    assert isinstance(out[0], subprocess.TimeoutExpired) and not ran.exists(), out
+    out.clear()
+    fresh = deadline.StartGate()
+    _in_report(fresh, lambda: deadline.run(["/usr/bin/touch", str(ran)], timeout=30), out).join(30)
+    assert isinstance(out[0], subprocess.CompletedProcess) and ran.exists(), out
+
+
+def test_a_doctor_watcher_the_end_kills_in_its_handshake_starts_no_program_c1065(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1065 (ruling 117): doctor._run registered its watcher only after its first line, so an
+    end_children during that handshake ended nothing, and the program then started in the watcher's group.
+    The watcher is listed at its spawn and the program's start is checked again under the lock: the end kills
+    the watcher, and no program starts."""
+    up = tmp_path / "up"
+    monkeypatch.setattr(doctor, "_WATCH", f"printf x > {up}; /bin/sleep 2; {doctor._WATCH}")
+    gate = deadline.StartGate()
+    out: list[object] = []
+    worker = _in_report(gate, lambda: doctor._run(["/bin/sleep", "600"], timeout=600), out)
+    try:
+        end = time.monotonic() + 30
+        while not up.exists() and time.monotonic() < end:
+            time.sleep(0.02)
+        ended = deadline.end_children(gate)
+        worker.join(30)
+    finally:
+        deadline.end_children()
+        worker.join(30)
+    assert ended == 1 and isinstance(out[0], doctor._NotStarted), (ended, out)
+    assert not worker.is_alive() and not deadline._LIVE_CHILDREN
 
 
 def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
