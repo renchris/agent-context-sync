@@ -190,6 +190,7 @@ case "$sub" in
       { echo "configuration error: $cfg: not valid TOML (stub)" >&2; exit "$STUB_INIT_RC"; }
     setup; inbox; hint "agentsync doctor" ;;
   add-source)
+    [ -z "${STUB_ADD_SOURCE_SLEEP:-}" ] || sleep "$STUB_ADD_SOURCE_SLEEP"  # a slow call on a busy Mac
     [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
     [ "$pos" != "${STUB_ADD_SOURCE_FAIL:-}" ] || { echo "add-source failed (stub)" >&2; exit 1; }
     setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor"
@@ -16769,6 +16770,31 @@ def test_the_status_step_prints_progress_lines_too(env: dict[str, str], folder: 
     cp = install_sh(failing, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 1 and LISTING_HELD_FAIL in cp.stdout.splitlines(), cp.stdout + cp.stderr
     assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
+
+
+def test_the_config_step_prints_progress_lines_while_it_runs_c1013(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 36 C1013: step 4, init or each add-source and the folder counts, printed nothing while it
+    ran, which a busy Mac can make longer than a coding tool's silence limit. A progress line names the step
+    and the config while it runs, ended with the step, before step 5's lines; the config's path in it, which
+    holds the home, is redacted in the report."""
+    e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "1", "STUB_ADD_SOURCE_SLEEP": "2.5"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    tick = rf"config: reading and updating {re.escape(str(cfg))}, still running, \d+s"
+    ticks = [i for i, ln in enumerate(out) if re.fullmatch(tick, ln)]
+    # the step ends before step 5, status, whose first line comes after every tick (the folder count prints no
+    # line for a config this run created)
+    status = out.index("[warn] launchd.poll \u2014 not loaded (fix: agentsync install-agent)")
+    assert ticks and max(ticks) < status, cp.stdout
+    assert not [
+        ln for ln in out if ln.startswith("config: reading and updating") and not re.fullmatch(tick, ln)
+    ]
+    report = report_path(env).read_text(encoding="utf-8")
+    assert env["HOME"] not in report, "the config path is redacted"
 
 
 def test_default_progress_interval_is_15_seconds() -> None:

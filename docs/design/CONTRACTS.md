@@ -39235,6 +39235,16 @@ written, so a re-run reinstalls; the header lists the note. Test:
 `test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_reinstall_c926` (`[False]`: the done
 line, no failed step in setup_report's run table; `[True]`, uv failing: `failed`).
 
+**The config step prints a progress line while it runs** (C1013; `scripts/install.sh`). Step 4, init or each
+add-source and the folder counts around them, printed nothing until it ended, and a busy Mac can make it longer than a
+coding tool's silence limit. Right after `step_start config` a `ticker` prints `config: reading and updating <config>,
+still running, <N>s` every progress interval (15 s; AGENTSYNC_PROGRESS_SECONDS), while init, every add-source and
+both folder counts stay in the foreground; it is ended after the last count, before the step's `folders:` line and
+its log line, and before the added-then-refused log line, and on_exit ends it on any other stop. The header's
+progress list names step 4. The config path in the line holds the home, which the report redacts as every other
+path. Test: `test_the_config_step_prints_progress_lines_while_it_runs_c1013` (an add-source the stub slows past a 1 s
+interval: ticks naming the config, all before step 5's first line, and no home path in the report).
+
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
 Reserved for round 36 lane B of B13.

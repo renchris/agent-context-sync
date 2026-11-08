@@ -214,7 +214,8 @@
 #      canaries waits for an exit 0. While macOS waits for Allow (TCC_PENDING in the launcher log, or exit
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
 #   Step 2's reinstall under a background sync's lock, the helper builds (step 3: "helpers: building the
-#   <OCR|media|speech> helper, still running, <N>s"), steps 5, 6 and 8 and the closing status (see NEXT below)
+#   <OCR|media|speech> helper, still running, <N>s"), step 4 ("config: reading and updating <config>, still
+#   running, <N>s"), steps 5, 6 and 8 and the closing status (see NEXT below)
 #   print a progress line at least every 15 s, so a coding tool that stops a command which has printed nothing
 #   for a while does not stop this one. Step 5's two waits keep one clock for that: a start of pandoc too
 #   quick to print a line is counted in the first interval of status, which follows it (the one part with no
@@ -10020,6 +10021,11 @@ fi
 
 # ------------------------------------------------------------------------------------------------ 4. config
 step_start config
+# init, each add-source and the two folder counts run in the foreground, a progress line beside them, so a
+# config step that is slow on a busy Mac is not silent past a coding tool's limit (B13 round 36 C1013); ended
+# before the step's own lines (on_exit ends it on every stop)
+ticker "config: reading and updating $CONFIG" &
+TICKER=$!
 # add-source and the flagless init each create whatever is missing (sources.toml, the docs repo and its
 # scaffold, the inbox, the state dir) and are idempotent (KISS K14). Opening the manifest migrates it, so an
 # upgrade (step 2) needs no separate migrate call.
@@ -10716,6 +10722,8 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 			[ "$left" -ne 1 ] || WHY="$WHY; the 1 folder after it was not added"
 			[ "$left" -le 1 ] || WHY="$WHY; the $left folders after it were not added"
 			NOW="$(synced_count)"
+			kill "$TICKER" 2>/dev/null || true
+			TICKER=""
 			if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -gt "$KEPT" ]; then
 				step_end failed "$HELD_RC" "added-then-refused kept=$KEPT added=$((NOW - KEPT))"
 			else
@@ -10737,6 +10745,8 @@ fi
 # the step's log line for the setup report.
 FOLDER_COUNTS=""
 NOW="$(synced_count)"
+kill "$TICKER" 2>/dev/null || true
+TICKER=""
 if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -ge "$KEPT" ]; then
 	ADDED=$((NOW - KEPT))
 	FOLDER_COUNTS=" kept=$KEPT added=$ADDED"
