@@ -244,7 +244,6 @@ def test_the_content_types_cap_is_on_stored_bytes_before_the_utf_16_decode_c964(
         assert common_mod._ooxml_family(doc) == utf16, chars
         twin = _types_in(word_package(tmp_path / f"{chars}-utf-8.potx"), "utf-8", padded(chars))
         assert common_mod._ooxml_family(twin) == "word", chars
-    assert "before any decode" in " ".join((common_mod._ooxml_family.__doc__ or "").split())
 
 
 def _tries(monkeypatch: pytest.MonkeyPatch) -> list[str]:

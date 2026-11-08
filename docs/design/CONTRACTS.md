@@ -39102,6 +39102,13 @@ sleeping out its 120 s. Measured in this lane with a 6 s stall before the helper
 the test fails with `the helper never started`, with it it passes. A test-code change: no deterministic test fails
 without it.
 
+**C964's test no longer reads its own docstring** (C1037; tests). The last line of
+`test_convert_family.py::test_the_content_types_cap_is_on_stored_bytes_before_the_utf_16_decode_c964` asserted
+`before any decode` in `_ooxml_family.__doc__`, the pattern §16.168 A66 retired (a true rewording turns it red and
+an untrue sentence in new words passes); the line is gone, and the test's behavior (both byte orders: 524,287
+ASCII characters read, 524,288 None, the UTF-8 twin read at both) stays the pin, as C964's paragraph already
+cites it. A removed assert: nothing fails without it, and nothing else read it.
+
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 
 Reserved for round 36 lane D of B13.
