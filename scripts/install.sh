@@ -140,7 +140,8 @@
 #      install.log's step=agentsync line notes what the script saw:
 #      waited-for-a-background-sync, wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
 #      after the probe is waited for too, with no note); a lock with an empty body, which no sync need hold,
-#      notes waited-for-an-unrecorded-holder or lock-wait-ran-out-after-<N>s instead (B13 round 20 X43)
+#      notes waited-for-an-unrecorded-holder or lock-wait-ran-out-after-<N>s instead (B13 round 20 X43); a
+#      SIGTERM acted on after the reinstall ended 0 notes stopped-after-install, the step done (B13 round 36 C1119)
 #   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
 #      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
@@ -7734,7 +7735,11 @@ on_exit() {
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
 	[ -z "${AGENTSYNC_PINS:-}" ] || rm -f "$AGENTSYNC_PINS" # a run stopped during step 2's reinstall
-	step_end failed "$rc"
+	if [ "$STEP" = agentsync ] && [ "${AGENTSYNC_DONE_BEFORE_SIGNAL:-0}" -eq 1 ]; then
+		step_end "done" 0 stopped-after-install # the reinstall ended 0 before the signal (C1119)
+	else
+		step_end failed "$rc"
+	fi
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
 		secs=$SECONDS
@@ -7916,6 +7921,7 @@ report_issue_link() {
 # A signal (a coding tool's timeout sends SIGTERM) still ends through on_exit: the log's end line, the report
 # and a NEXT line that says to run the same command again.
 on_signal() {
+	local prev=$? # the status of the command the signal waited for: the trap keeps it
 	# on_exit has begun (a signal before it set its own traps): record it, and let it finish
 	[ "$EXITING" -eq 0 ] || {
 		SIG_RC="$1"
@@ -7924,6 +7930,10 @@ on_signal() {
 	LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$1")) before it finished"
 	printf 'error: %s\n' "$LAST_ERROR" >&2
 	NEXT_MSG="this run was stopped before it finished ($(rc_meaning "$1")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}"
+	# a SIGTERM to install.sh alone is acted on once the foreground uv run ends: one that ended 0 installed
+	# agentsync, so its step is done, not failed (on_exit; B13 round 36 C1119). The stamp is still not written,
+	# so a re-run reinstalls.
+	if [ "${AGENTSYNC_UV_RUNNING:-0}" -eq 1 ] && [ "$prev" -eq 0 ]; then AGENTSYNC_DONE_BEFORE_SIGNAL=1; fi
 	exit "$1"
 }
 # What macOS calls the app behind a ~/Library/CloudStorage entry ("OneDrive-Contoso" -> OneDrive).
@@ -9799,7 +9809,9 @@ uv_tool_install_pinned() {
 		# ran (step 2 in the header). A wait run in the background would let that signal kill uv mid-rebuild,
 		# or leave lockf to run it alone, and a Ctrl-C would no longer stop it (B13 round 35 C926)
 		hold_locks "$locks"
+		AGENTSYNC_UV_RUNNING=1 # a SIGTERM read once uv_run ended 0 is a reinstall that finished (B13 round 36 C1119)
 		uv_run "${held[@]}" "$UV" "${args[@]}" || rc=$?
+		AGENTSYNC_UV_RUNNING=0
 		# A tick that starts the tool's Python while uv deletes the environment fails uv ("Directory not
 		# empty") and leaves no interpreter: once more, still under the locks.
 		if [ "$rc" -ne 0 ] && [ "$rc" -ne 75 ] && [ ! -x "$TOOL_DIR/agentsync/bin/python" ] &&
@@ -9807,7 +9819,9 @@ uv_tool_install_pinned() {
 			say "agentsync: uv left the tool environment half removed (a background run started in it?); installing once more"
 			rc=0
 			hold_locks "$locks" # a deadline of its own: the first one may be past
+			AGENTSYNC_UV_RUNNING=1
 			uv_run "${held[@]}" "$UV" "${args[@]}" || rc=$?
+			AGENTSYNC_UV_RUNNING=0
 		fi
 		kill "$TICKER" 2>/dev/null || true
 		TICKER=""
@@ -9833,7 +9847,11 @@ uv_tool_install_pinned() {
 			say "agentsync: the other sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
 		fi
 	fi
-	uv_run "$UV" "${args[@]}"
+	rc=0
+	AGENTSYNC_UV_RUNNING=1
+	uv_run "$UV" "${args[@]}" || rc=$?
+	AGENTSYNC_UV_RUNNING=0
+	return "$rc"
 }
 step_start agentsync
 BIN_DIR="$HOME/.local/bin"

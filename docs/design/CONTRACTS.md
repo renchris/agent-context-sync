@@ -13790,6 +13790,8 @@ its own NEXT with one clause added.
   is unchanged: an edit would rebuild it, a new TCC identity.
   Amended 2026-11-04, §16.231 C926: the header says a SIGTERM to install.sh's own pid alone during the wait does
   the same as SIGKILL there, and a signal to the whole process group ends the wait at once.
+  Amended 2026-11-08, §16.236 C1119: such a SIGTERM, acted on once a reinstall ended 0, logs the step `done` with the
+  note `stopped-after-install`, never `failed`; one whose uv failed stays `failed`, and no stamp is written.
 - Tests: the wait, ran-out and free-lock tests (their notes),
   `test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with`,
   `tests/test_launcher.py::test_install_sh_full_run_is_idempotent` (the reinstall's source is the checkout,
@@ -39220,6 +39222,18 @@ names no variable. The install source's shortened words already match its `the r
 Tests: in `test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`, `launchctl-shortened`,
 `launchctl-shortened-beside-git-timeout` (the row a missing alternate turns) and `launchctl-and-git-timeout` (both at
 their full caps: no variable).
+
+**A reinstall that ended before a SIGTERM is recorded as done** (C1119; amends §16.47 R125; `scripts/install.sh`). A
+SIGTERM to install.sh alone during step 2's reinstall is acted on once the foreground uv run ends (C926), so a
+reinstall that finished still ended its run with `step=agentsync ... result=failed rc=143`, and the report named a
+failed agentsync step. `AGENTSYNC_UV_RUNNING` is 1 around each of uv_tool_install_pinned's three uv runs (the locked
+one, the half-removed retry and the unlocked one, whose rc it now returns); on_signal reads the status the trap kept
+(`local prev=$?`) and, when it is 0 inside such a run, sets `AGENTSYNC_DONE_BEFORE_SIGNAL`, so on_exit logs `step=agentsync
+result=done rc=0 note=stopped-after-install` in place of `failed`. A uv run that failed, a lockf refusal and a signal to
+the whole process group that kills uv mid-rebuild give a non-zero status and stay `failed`. The stamp is still not
+written, so a re-run reinstalls; the header lists the note. Test:
+`test_a_sigterm_to_install_sh_alone_in_the_reinstall_wait_stops_it_after_the_reinstall_c926` (`[False]`: the done
+line, no failed step in setup_report's run table; `[True]`, uv failing: `failed`).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
