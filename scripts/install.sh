@@ -7637,13 +7637,16 @@ REPORT_LOOP_CUT='^- Loop: (.*; NEXT: )?not read \((it did not finish in time|the
 # setup_report._TIME_LIMIT_MAX_S (its `- time limit: 60s, from ...` or `- time limit: 60s: ... so 60 was used`
 # line; a test keeps the 60 equal), has no more time to give, so it never names the variable (C922, C929). A doctor
 # line counts only cut (`cut off` or `not started`): a helper whose --version did not answer, which lane E makes a
-# WARN and lane RA files under `not judged (<helper> did not answer in time: ...)`, never names it (C915).
+# WARN and lane RA files under `not judged (the <helper>[ and the <helper>] did not answer in time: ...)`
+# (setup_report._helper_late_head, one helper or more, a stopped copy too), never names it (C915). The grep reads
+# those words as the report writes them: until B13 round 36 ruling 114 (C1071) it read a form with no `the`, which
+# no build wrote, so a helper time-out alone named the variable. A test builds the line from the report itself.
 report_time_helps() { # REPORT
 	! LC_ALL=C grep -qE '^- time limit: 60s[,:] ' "$1" || return 1
 	LC_ALL=C grep -qE '^- doctor: (cut off|not started)|^- evidence: .*write the report again when this Mac is idle' "$1" && return 0
 	LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$1" && return 0
 	LC_ALL=C grep -qE "^- install source: .*(the report's time limit|, time limit\)|\(time limit\))|^- [^ ]+\.(poll|reconcile): not measured \(the report's time limit was used up before launchctl print ran|^Not run: the report's time budget was used up before status started" "$1" && return 0
-	LC_ALL=C grep -qE '^- doctor: .*not judged \((OCR|media|speech) helper did not answer in time' "$1" && return 1
+	LC_ALL=C grep -qE '^- doctor: .*not judged \((the )?(OCR|media|speech) helper( and the (OCR|media|speech) helper)* did not answer in time' "$1" && return 1
 	! LC_ALL=C grep -qE '^- install source: .*did not answer within [0-9]|^- [^ ]+\.(poll|reconcile): not measured \(launchctl print did not answer within [0-9]' "$1"
 }
 on_exit() {

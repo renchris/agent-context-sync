@@ -5224,10 +5224,28 @@ _DOCTOR_CUT = (
     f"- doctor: cut off by the report's time limit after 30.0s (see Doctor) · {setup_report._IDLE_AGAIN}"
 )
 _LIMIT_NAN = "- time limit: 12s: AGENTSYNC_REPORT_TIME_LIMIT is not a number of seconds, so it was not used"
-_HELPER_WARN = (
-    f"- doctor: 0 FAIL, 1 warn (54 checks) · not judged (OCR helper did not answer in time: the OCR helper "
-    f"--version did not answer within 5s) 1: ocr warn · {setup_report._IDLE_AGAIN}"
-)
+
+
+def _helper_late(helpers: Sequence[str], stopped: bool = False) -> str:
+    """setup_report._helper_late_head's clause for ``helpers``, a live or a stopped copy's, from the report
+    itself, never typed (B13 round 36 ruling 114, C1032: the typed form held no `the`, which no build
+    wrote)."""
+    r = setup_report._Run(Path("/nonexistent/agent-context/sources.toml"), setup_report.ReportHooks(), 5.0)
+    r.facts.copy_stopped = stopped
+    return setup_report._helper_late_head(r, list(helpers))
+
+
+def _helper_doctor(*helpers: str, stopped: bool = False) -> str:
+    """A Summary doctor line whose helpers' --version did not answer, as build_report writes it."""
+    checks = ", ".join(f"{h.split()[0].lower()} warn" for h in helpers)
+    n = len(helpers)
+    return (
+        f"- doctor: 0 FAIL, {n} warn (54 checks) · {_helper_late(helpers, stopped)} {n}: {checks} · "
+        f"{setup_report._IDLE_AGAIN}"
+    )
+
+
+_HELPER_WARN = _helper_doctor("OCR helper")
 _IDLE = setup_report._IDLE_AGAIN
 _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, before their seconds or limit
 
@@ -5308,6 +5326,11 @@ _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, bef
         # C915: a helper's --version time-out (lane E's WARN, lane RA's bucket) is no cut doctor line
         ([_HELPER_WARN], False),
         ([_HELPER_WARN, _DOCTOR_CUT], True),
+        # B13 round 36 ruling 114 (C1071): the report's own words, two and three helpers, a stopped copy
+        ([_helper_doctor("OCR helper", "speech helper")], False),
+        ([_helper_doctor("OCR helper", "media helper", "speech helper")], False),
+        ([_helper_doctor("media helper", stopped=True)], False),
+        ([_helper_doctor("OCR helper", "speech helper"), _DOCTOR_CUT], True),
     ],
     ids=[
         "loop-timeout",
@@ -5335,6 +5358,10 @@ _GIT_WITHIN = "git did not answer within "  # B13 round 35 C940's cut words, bef
         "doctor-cut-at-60",
         "helper-timeout",
         "helper-timeout-and-doctor-cut",
+        "helper-timeout-two",
+        "helper-timeout-three",
+        "helper-timeout-stopped",
+        "helper-timeout-two-and-doctor-cut",
     ],
 )
 def test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834(
@@ -5412,6 +5439,37 @@ def test_the_cut_loop_grep_holds_the_reports_own_words_c821() -> None:
         'when this Mac is idle\' "$REPORT_PATH" ||' in text
     )
     assert 'LC_ALL=C grep -qE "$REPORT_LOOP_CUT" "$REPORT_PATH"; }; then' in text
+
+
+def test_the_helper_grep_holds_the_reports_own_words_for_every_helper_set_c1071() -> None:
+    """B13 round 36 ruling 114 (C1071, C1015, C1032, C1039, C1063, C1106): report_time_helps read `not
+    judged (OCR helper did not answer in time`, a form with no `the` that no build wrote, so a helper whose
+    --version ran out of its time named AGENTSYNC_REPORT_TIME_LIMIT, which gives it none. Its grep matches
+    the doctor line setup_report._helper_late_head writes for every set of helpers, in every order, live and
+    stopped, under Python's re and the real grep -E, and stays after the cut checks, so a real cut beside it
+    still names it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    [helps] = re.findall(r"(?ms)^report_time_helps\(\) \{.*?^\}$", text)
+    [grep] = re.findall(
+        r"(?m)^\tLC_ALL=C grep -qE '(\^- doctor: \.\*not judged [^']*)' \"\$1\" && return 1$", helps
+    )
+    assert (
+        helps.index(grep) > helps.index("$REPORT_LOOP_CUT") > helps.index("^- doctor: (cut off|not started)")
+    )
+    names = ["OCR helper", "media helper", "speech helper"]
+    assert [f"{n} helper" for n in ("OCR", "media", "speech")] == names
+    assert len(setup_report._HELPER_CHECKS) == len(names)
+    for k in range(1, len(names) + 1):
+        for subset in itertools.permutations(names, k):
+            for stopped in (False, True):
+                line = "- doctor: 0 FAIL, 1 warn (54 checks) · " + _helper_late(subset, stopped)
+                assert re.search(grep, line), (grep, line)
+    line = _helper_doctor("OCR helper", "speech helper")
+    cp = subprocess.run(["/usr/bin/grep", "-qE", grep], input=line + "\n", text=True, check=False)
+    assert cp.returncode == 0, (grep, line)
+    assert not re.search(
+        grep, "- doctor: 0 FAIL, 1 warn (54 checks) · not judged (the Loop line was not read: x)"
+    )
 
 
 @pytest.mark.parametrize("link", [True, False])

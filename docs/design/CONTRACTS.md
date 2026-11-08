@@ -39140,6 +39140,22 @@ and the combined row now `cp /Volumes/<path> ; https://...` and `... and /Users/
 `_separator_lines()` through the shell once and through `setup_report.Redactor`, HOME /Users/dana: the same line, the
 documented one, and no hidden name but where the table stops or ends the cut).
 
+**The helper time-out NEXT reads the report's own words** (C1071, C1015, C1032, C1039, C1063, C1106; ruling 114;
+amends ruling 108's quote; `scripts/install.sh`). `report_time_helps` kept AGENTSYNC_REPORT_TIME_LIMIT out of the NEXT
+for a helper whose `--version` ran out of its fixed time by grepping `not judged \((OCR|media|speech) helper did not
+answer in time`, but setup_report._helper_late_head writes `not judged (the <helper>[ and the <helper>]... did not
+answer in time: ...)`, in a live and a stopped copy, and no build ever wrote the form with no `the` (C915's test typed
+that form, so it passed): a helper time-out alone named the variable, which gives the helper no time. The grep now
+reads `not judged \((the )?(OCR|media|speech) helper( and the (OCR|media|speech) helper)* did not answer in time`,
+one helper or more in any order, and stays after the cut, Loop and budget checks, so a helper beside a real cut still
+names the variable. setup_report.py is unchanged: the reader moves, never the writer. Tests: in
+`test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`, `_HELPER_WARN` is built from
+`_helper_late_head` on a minimal `_Run`, never typed, with rows for two and three helpers and a stopped copy (no
+variable) and two helpers beside a cut doctor line (the variable), each through `install.sh --report-only`; and
+`test_the_helper_grep_holds_the_reports_own_words_for_every_helper_set_c1071` (install.sh's own pattern matches the
+report's line for every ordered set of the three helpers, live and stopped, under `re` and the real `grep -E`, after
+the cut checks).
+
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
 Reserved for round 36 lane B of B13.
