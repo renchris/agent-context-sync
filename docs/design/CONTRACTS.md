@@ -24481,6 +24481,10 @@ when status said no words, `not read (status cannot read the state)`. Tests:
 `test_cli.py::test_status_prints_every_check_when_its_state_cannot_be_read`.
 Amended 2026-10-28, §16.213 C638: status's `last runs: not read ...` read note counts as its words when it printed no
 `status: cannot read the state:` line, so the fallback is only for a status that said neither.
+Amended 2026-11-08, §16.239 C1044 (by §16.232 C937): the refused [governance]'s one line above reads `status: some of
+the state could not be read: ...` (`cli.STATUS_PARTLY_UNREAD`); `status: cannot read the state:` is now only
+`_guarded`'s whole-read line, which prints nothing after it, and the C638 fallback counts a line under either head
+(`setup_report._STATUS_UNREAD_HEADS`).
 
 **Status's reasons carry no bracket of their own** (V11; amends §16.128 U21). `_unread_words` wrote `the state file
 cannot be read (file is not a database)`, which the report put inside its own bracket. Each reason follows a colon:
@@ -39756,6 +39760,17 @@ CONTRACTS.md, and the named row is there).
 rendered C911 inside C937's paragraph; it was the only one of the file's `**...** (C<n>` entries not opened by a blank
 line. One blank line goes between them, and nothing else changes. Test:
 `test_contracts.py::test_every_item_paragraph_opens_after_a_blank_line_c1043`.
+
+**§16.134 V10 says the partly-unread head** (C1044; docs only). V10's paragraph says `cli._status_lines` loads
+governance in its own guard with "one `status: cannot read the state: ...` line", and its C638 line counts a read
+note only when status "printed no `status: cannot read the state:` line", but since round 35's C937 the refused
+[governance] prints `status: some of the state could not be read: ...` (`cli.STATUS_PARTLY_UNREAD`), the old head is
+`_guarded`'s whole-read line alone, and the report reads either head (`setup_report._STATUS_UNREAD_HEADS`). C937 dated
+only the §16.21 CLI bullet. Ruling 74 keeps the quotes, so one line in C857's form follows the C638 line, `Amended
+<date>, §16.239 C1044 (by §16.232 C937)`, covering both, and a `(by ...)` form so round 35's C937 is not credited
+with a round 36 line; it is pinned in `_ROUND_36_D_PARAGRAPH_AMENDS`. Test:
+`test_every_dated_line_from_round_11_on_is_held_by_a_test` with
+`test_v10s_dated_line_says_the_heads_status_prints_c1044` (each name read from the code).
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

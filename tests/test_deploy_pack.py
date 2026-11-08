@@ -6846,6 +6846,16 @@ _ROUND_35_D_PARAGRAPH_AMENDS = (
 passages a later round made stale: C968's at §16.222's and §16.229's Command Line Tools passages,
 C923's beside it at §16.229, and C969's CORRECTED line at §16.225's C820 paragraph; and C972's fourteen
 lines in C857's form at the quotes round 34's C810 and C817 made stale (ruling 74: no quote rewritten)."""
+_ROUND_36_D_PARAGRAPH_AMENDS = (
+    (
+        "16.134",
+        "**A refused [governance] hides only what needs it, and the Loop line quotes status once**",
+        "§16.239 C1044 (by §16.232 C937)",
+    ),
+)
+"""Round 36 lane D's dated lines at a section its claims name with no item, as
+:data:`_ROUND_35_D_PARAGRAPH_AMENDS`: C1044's at §16.134's V10 paragraph, in C857's form, whose quotes round
+35's C937 made stale (ruling 74: no quote rewritten)."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
@@ -7114,6 +7124,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_33_B_PARAGRAPH_AMENDS,
         *_ROUND_34_D_PARAGRAPH_AMENDS,
         *_ROUND_35_D_PARAGRAPH_AMENDS,
+        *_ROUND_36_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,
@@ -9427,6 +9438,24 @@ def test_c934s_old_commit_bodies_age_out_by_compaction_c1051() -> None:
     )
     cli_text = inspect.getsource(cli)
     assert '"compact-history"' in cli_text and '"--keep-days"' in cli_text
+
+
+def test_v10s_dated_line_says_the_heads_status_prints_c1044() -> None:
+    """B13 round 36 C1044: §16.134's V10 paragraph quotes `status: cannot read the state:` as the refused
+    [governance]'s one line, which round 35's C937 changed to the partly-unread head, and its C638 line counts
+    a read note only beside the old head, while the report reads either. One dated line in C857's form (ruling
+    74: the quotes stay) says so; each name it gives is read from the code."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = text.split("Amended 2026-11-08, §16.239 C1044 (by §16.232 C937): ", 1)[1].split(" **", 1)[0]
+    assert f"`{cli.STATUS_PARTLY_UNREAD}...` (`cli.STATUS_PARTLY_UNREAD`)" in line
+    assert "`status: cannot read the state:` is now only `_guarded`'s whole-read line" in line
+    assert 'f"{name}: cannot read the state: ' in inspect.getsource(cli._guarded)
+    assert "(`setup_report._STATUS_UNREAD_HEADS`)" in line and len(setup_report._STATUS_UNREAD_HEADS) == 2
+    assert "`status: cannot read the state: ...` line) and leaves out only the HOLD" in text, (
+        "the quote stays"
+    )
 
 
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
