@@ -9365,6 +9365,33 @@ def test_the_guide_says_a_sourceless_id_purge_takes_the_release_of_the_hold_its_
     assert "resolved.get(n, [])" in holds and "if hold not in known and hold not in conditional" in holds
 
 
+def test_c934s_old_commit_bodies_age_out_by_compaction_c1051() -> None:
+    """B13 round 36 C1051 (ruling 119, makes things worse as asked): ruling 103 left the docs-repo commit
+    bodies written before C934, which name a source's path, as the operator's call, and the finder asked for a
+    decision packet to keep or rewrite them. Scheduled compaction already squashes them, and a rewrite outside
+    it would skip its refusals under archive and a hold, so no packet is filed: C934's paragraph says when
+    they age out. Each figure, the command and both refusals are read from the code."""
+    from agentsync import cli, cycle, governance  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = text.split("Amended 2026-11-08, §16.239 C1051: ", 1)[1].split(" Amended ", 1)[0]
+    assert line.startswith("bodies committed before C934 keep their text until scheduled compaction squashes")
+    assert "within history_days plus compaction_slack_days (30 + 7 by default)" in line
+    assert "sooner by `agentsync compact-history --keep-days N`" in line
+    assert "never under [governance] archive or a hold" in line
+    assert governance.DEFAULT_HISTORY_DAYS == 30 and governance.GovernanceConfig().compaction_slack_days == 7
+    due = inspect.getsource(governance.compaction_due)
+    assert "gov.history_days + gov.compaction_slack_days" in due
+    assert "governance.compact_history(" in inspect.getsource(cycle)
+    squash = inspect.getsource(governance.compact_history)
+    assert (
+        "if gov.archive:" in squash
+        and '_refuse_if_held(active_holds(sp.root, gov), "history compaction")' in squash
+    )
+    cli_text = inspect.getsource(cli)
+    assert '"compact-history"' in cli_text and '"--keep-days"' in cli_text
+
+
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
     `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list

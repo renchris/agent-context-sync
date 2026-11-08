@@ -38591,6 +38591,10 @@ provider folder's name or the source folder; STATE.md keeps the full path).
 Amended 2026-11-08, §16.237 C1025: the spellings are lexical (`cycle._lexical_spellings`, with the other
 `~/Library/CloudStorage` prefix), never `convert._common.spellings`' resolve, and are built only when an alarm needs
 them.
+Amended 2026-11-08, §16.239 C1051: bodies committed before C934 keep their text until scheduled compaction squashes
+them, within history_days plus compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history
+--keep-days N`, never under [governance] archive or a hold, where keeping the history is intended; no decision packet
+asks the operator, and no rewrite of the docs history is offered.
 
 **C967, lane B's half (ruling 104; data integrity).** Step 1 read a lost hold beside a lost queue as the only hold
 refusing the queue's hand purge, though sources.toml's hold or a hold the hold list still names refused it too, so
@@ -39675,6 +39679,21 @@ every other hold still asks for the dry run (the drop half stays unbuilt, gap I9
 the dry run only; its citation adds C980. install.sh and governance.py are unchanged. Test:
 `test_the_guide_says_a_sourceless_id_purge_takes_the_release_of_the_hold_its_id_reaches_c1047`, which reads each
 limit from governance's own code.
+
+**Compaction, not the operator, retires the commit bodies written before C934** (C1051, ruling 119; amends §16.232
+C934; docs only, makes things worse as asked). Ruling 103 left the bodies already committed as "the operator's call",
+and no decision packet asked. The finder's fix, a class C packet offering to keep or rewrite them, makes things worse
+(measured from the code): `cycle._retention` runs `governance.compact_history` in each reconcile once
+`compaction_due` finds a commit older than `history_days + compaction_slack_days` (`DEFAULT_HISTORY_DAYS` 30, slack 7),
+and compaction squashes everything older into one root snapshot with a fixed message, expires the reflogs, prunes and
+checks that no dropped object survives, so "keep" cannot be honoured under the defaults, and a one-off rewrite would
+skip compaction's own refusals under [governance] archive and under a hold (`_refuse_if_held`), rewriting history a
+records hold requires agentsync to keep. So no packet is filed and no rewrite is offered: C934's paragraph gets a dated
+line saying the bodies keep their text until scheduled compaction squashes them, within history_days plus
+compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history --keep-days N`, never under
+[governance] archive or a hold. Push stays opt-in, so no body was published. Test:
+`test_c934s_old_commit_bodies_age_out_by_compaction_c1051`, which reads each figure, the command and both refusals from
+the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
