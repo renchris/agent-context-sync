@@ -13444,6 +13444,44 @@ def test_an_earlier_failed_run_said_by_the_agent_is_not_said_twice_c948_c949(
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_the_error_lines_read_for_an_earlier_run_are_not_counted_twice_c1021(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1021: C948 reads Items' own error lines to see whether one names an earlier run, through
+    the counting redactor, so each unnumbered replacement in them (a home path) was counted twice in the
+    Redaction line. That read goes through Redactor.quiet(): the same text, nothing counted; the printed
+    Items line counts it once (never scrub() or a raw cut: makes worse True, the verifier's measure)."""
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(
+        LIST_RUN
+        + install_run("2026-09-29T10:00:00Z", 1, status_failed=True)
+        + install_run("2026-09-29T10:20:00Z", 1, status_failed=True).replace("100000Z", "102000Z"),
+        encoding="utf-8",
+    )
+    home = Path.home()
+    said = f"install.sh exited 1 reading {home}/a.txt, {home}/b.txt and {home}/c.txt"
+    error = f"2026-09-29T10:00:30Z | step 2 | error | {said} | -\n"
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", error, V8_HAPPY) + RETRY_LATE)
+
+    def home_count() -> int:
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        found = re.search(r"\bhome (\d+)\b", section(text, "Redaction"))
+        assert found is not None, section(text, "Redaction")
+        assert "~/a.txt, ~/b.txt and ~/c.txt" in section(text, "Summary")
+        return int(found.group(1))
+
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    with red.quiet():
+        assert red.redact("/Users/dana/x") == "~/x"
+    assert red.total == 0 and red._counting
+    assert red.redact("/Users/dana/y") == "~/y" and red.total == 1
+    quiet = home_count()
+    monkeypatch.setattr(setup_report.Redactor, "quiet", lambda self: contextlib.nullcontext())
+    assert home_count() == quiet + 3, "the three home paths were counted once more without quiet()"
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

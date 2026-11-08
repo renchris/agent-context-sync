@@ -135,7 +135,7 @@ import time
 import unicodedata
 import weakref
 from collections import Counter
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
@@ -2203,6 +2203,18 @@ class Redactor:
             return self.scrub(text)
         finally:
             self._agent_mode = False
+
+    @contextlib.contextmanager
+    def quiet(self) -> Iterator[None]:
+        """Redact as usual inside it (enabled or not, holds cut, the agent's name as Items does it) but count
+        nothing: for text the report reads and never prints, whose replacements the printed copy counts
+        itself (B13 round 36 C1021: never :meth:`scrub`, which redacts a disabled redactor's text and skips
+        the hold cut, nor a raw cut, which falls at another place than the printed one)."""
+        was, self._counting = self._counting, False
+        try:
+            yield
+        finally:
+            self._counting = was
 
     def scrub(self, text: str) -> str:
         """``text`` redacted even when this redactor is disabled, without counting (for the issue link: it is
@@ -17267,8 +17279,10 @@ def _failed_before_lines(r: _Run, att: Attempt, runs: Sequence[InstallRun], outc
     if outcome.kind != "failed" or att.begin is None or att.layout.version < 7:
         return []
     installs = [x for x in install_runs_only(runs) if x.rc is not None and x.rc not in STOPPED_EXITS]
-    # B13 round 35 C948: from the lines Items prints, so an id cut from a line never hides a run
-    told = " ".join(_item_line(r, att, e) for e in att.of_kind("error"))
+    # B13 round 35 C948: from the lines Items prints, so an id cut from a line never hides a run; B13 round 36
+    # C1021: read, never printed, so its replacements are not counted twice in the Redaction line
+    with r.red.quiet():
+        told = " ".join(_item_line(r, att, e) for e in att.of_kind("error"))
     out: list[str] = []
     for run, nxt in itertools.pairwise(installs):
         if run.rc == 0 or _names_run(run, told):

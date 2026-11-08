@@ -38314,6 +38314,8 @@ unread, the earlier failed runs, `the install stopped`, then the retried lines; 
 as written. Tests: `tests/test_setup_report.py::test_an_error_line_names_a_run_by_its_whole_id_c948`,
 `test_an_earlier_failed_run_said_by_the_agent_is_not_said_twice_c948_c949` (the label, the run id, another run, an
 id past the cut, and the order with no error line).
+Amended 2026-11-08, §16.235 C1021: that read of the printed lines goes through `Redactor.quiet()`, so its
+replacements are not counted a second time in the Redaction line.
 
 **A printed clause names no prompt version, and three docstrings say round 34's words** (C974, C973; amends §16.183 E67;
 `src/agentsync/setup_report.py`, `docs/deploy/setup-feedback.md`). C974: a v34 report printed E67's reason ending `as
@@ -39151,6 +39153,18 @@ of its own (`... a report written after it is fixed measures them (see Doctor's 
 it). `test_the_report_reads_lane_bs_old_and_new_words_c935_c937_c938` pins the two equal (cli's without its trailing
 blank), pins the head among `_STATUS_UNREAD_HEADS`, and builds the new head from cli's constant while the old
 `status: cannot read the state:` stays a literal, the words older builds still write.
+
+**An error line read and never printed is not counted** (C1021, makes worse True as the finder built it; amends
+§16.230 C948; `src/agentsync/setup_report.py`). C948 reads Items' own error lines (`_item_line`) to see whether one
+names an earlier failed run, through the counting redactor, so each unnumbered replacement in them (a home path, a
+login) was counted a second time in the Redaction line (63 against 60 with three home paths). `Redactor.quiet()`, a
+context manager that only turns counting off, wraps that read: the same text, enabled or not, holds cut and the
+agent's name redacted as Items does it, nothing added to counts, `_used`, `value_word_shown` or `agent_kept`. Not
+built: a raw cut of the unredacted what and fix (measured: redaction changes a line's length, so the cut falls
+elsewhere and an id the printed line keeps is lost, or one it drops is read) and `scrub()` (it redacts a disabled
+redactor's text and skips the hold cut). Test:
+`tests/test_setup_report.py::test_the_error_lines_read_for_an_earlier_run_are_not_counted_twice_c1021` (the home
+count is 3 more with `quiet` replaced by a no-op).
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
