@@ -262,14 +262,19 @@ def _tries(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return tries
 
 
-@pytest.mark.parametrize("suffix", [".potx", ".vsdx", ".docx", ".xlsx", ".msg", ".drawio"])
+@pytest.mark.parametrize(
+    "suffix",
+    [".potx", ".vsdx", ".docx", ".xlsx", ".msg", ".drawio", ".pdf", ".eml", ".odt", ".teams.json", ".vtt"],
+)
 def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
 ) -> None:
     """B13 round 35 C930: a zero-byte ``.potx``, ``.vsdx`` or ``.msg`` was classed ``not the type its name
     says`` and a zero-byte ``.drawio`` ``conversion failed``, tried 3 times; no bytes have no type to disagree
     with the name, and the report's class list has ``empty``. Each is one ``empty-output`` stub, read once
-    over three syncs."""
+    over three syncs.  B13 round 36 C1050 with C1117 (ruling 118): a zero-byte ``.pdf``, ``.eml``, ``.odt``
+    or ``.teams.json`` was a ``conversion failed`` tried 3 times and a ``.vtt`` ``other``; each converter now
+    says ``empty`` for zero bytes itself."""
     config, src = make_env(tmp_path)
     name = f"Contoso zero{suffix}"
     (src / name).write_bytes(b"")
@@ -330,6 +335,18 @@ def test_a_typed_name_over_other_bytes_keeps_not_the_type_its_name_says_c930(
     (src / name).write_bytes(data)
     assert run(config).exit_code == 0
     assert quarantine_class(_row(config, name).state_reason) == "not the type its name says"
+
+
+def test_a_zero_byte_eml_under_a_label_rule_keeps_its_label_refusal_c1050(tmp_path: Path) -> None:
+    """B13 round 36 C1050: the label decision runs before any converter, so under ``refuse_unlabelled`` a
+    zero-byte ``.eml`` stays the never-cached ``label policy`` refusal, never the converter's ``empty``."""
+    config, src = make_env(tmp_path, extra="[policy]\nrefuse_unlabelled = true\n")
+    assert config.policy.refuse_unlabelled
+    (src / "Contoso zero.eml").write_bytes(b"")
+    assert run(config).exit_code == 0
+    row = _row(config, "Contoso zero.eml")
+    assert row.state_reason == f"{policy_mod.REFUSED_PREFIX}no sensitivity label; refuse_unlabelled = true"
+    assert quarantine_class(row.state_reason) == "label policy"
 
 
 @pytest.mark.parametrize("suffix", [".txt", ".url", ".md"])

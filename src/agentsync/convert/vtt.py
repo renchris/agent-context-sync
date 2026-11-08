@@ -20,6 +20,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import UNPRINTABLE_RE, plural
 
 _EMITTER_VERSION = "1.0.0"
@@ -193,6 +194,8 @@ class VttConverter:
             data = src.read_bytes()
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc.strerror or type(exc).__name__}") from exc
+        if not data:  # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050)
+            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
         try:
             text = _decode_text(data).removeprefix("\ufeff")
         except ConversionError:

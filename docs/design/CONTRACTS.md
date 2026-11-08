@@ -8625,6 +8625,8 @@ the label of a <suffix> file cannot be read` (`_Mirror.read_image_pages`); a pag
 the row `no converter`; only a page the report could not read goes by the OCR probe.
 Amended 2026-11-04, §16.233 C927, C930: the not-the-type row also takes `not-drawio` (a `.drawio` that is no
 draw.io diagram), and a zero-byte file under an Office, Outlook or draw.io name is `empty-output`, so `empty`.
+Amended 2026-11-08, §16.238 C1050, C1117: so is a zero-byte `.pdf`, `.eml`, `.odt`, `.teams.json` or `.vtt`, each
+converter saying so for zero bytes itself.
 Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld` reads it (its
 `reason:`, its summary less `refused: `, or the body marker), not by its `reason:` alone, so a page from before its
 `reason:` said withheld (§16.66 G29) is withheld under `reason: no converter for <suffix>`, as its
@@ -38804,6 +38806,9 @@ one try), `test_convert_family.py::test_a_drawio_that_is_no_diagram_is_one_stub_
 `test_convert_formats.py::test_a_drawio_that_opens_with_markup_stays_a_failed_conversion_c927` and
 `test_convert_formats.py::test_a_utf_16_drawio_still_converts_c927`, with the wrong-root pin in
 `test_a_diagram_that_cannot_be_read_fails_bounded` moved and the reason in the report's class tables.
+Amended 2026-11-08, §16.238 C1050, C1117: the "Not built here" half is built: a zero-byte `.pdf`, `.eml`, `.odt`,
+`.teams.json` or `.vtt` is one `empty-output` stub too, raised inside each converter, never at `screen_file`'s or
+`PandocConverter.convert`'s top; no emitter bump, for the same reason.
 
 **The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
 `convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
@@ -39053,6 +39058,22 @@ None for every state but `ready` and only logged which. `ocr.engine_state(cfg, c
 named tuple of `probe()`'s state and detail with the engine, from the one `--version` run `engine()` made (never a
 second), logging and stamping the helper as `engine()` does; `engine()` is now its `.engine`. Test:
 `test_ocr.py::test_engine_state_hands_the_cycle_the_probes_state_with_one_version_run`.
+
+**A zero-byte PDF, message, OpenDocument, Teams rollup or transcript is `empty`, once** (C1050 with C1117, one
+defect, ruling 118; `agentsync.convert`; amends §16.233 C930, with a dated line at §16.28). C930 left them out: a
+zero-byte `.pdf` (`not a PDF (no %PDF- header)`), `.eml` (`empty message file`), `.odt` (`not an ODF package`) and
+`.teams.json` (`invalid JSON`) were a `conversion failed` tried 3 times, an error line each sync, and a `.vtt` (`not
+a WebVTT transcript`) one stub classed `other` (the verifier's three syncs each; rehearsal e2's runs 16 to 18). Each
+converter now raises `UnreadableSourceError(policy.EMPTY_OUTPUT_REASON)` for zero bytes before its own type check:
+`PdfConverter` on an empty first read, `EmlConverter` and `VttConverter` on empty bytes, `TeamsMonthConverter` before
+it decodes, and `PandocConverter` in its odt branch only. Never at `screen_file`'s top or `PandocConverter.convert`'s,
+where a zero-byte `.rtf` or `.html` is a page. Only zero bytes: a `.eml` of blanks keeps `empty message file`, and
+blanks under the other names keep their words. The label decision still runs before any converter, so under
+`refuse_unlabelled` a zero-byte `.eml` stays the never-cached `label policy` refusal. No emitter bump, as for C930.
+Tests: `test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930` (five more
+names), `test_convert_family.py::test_a_zero_byte_eml_under_a_label_rule_keeps_its_label_refusal_c1050`,
+`test_convert_formats.py::test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050`, and the zero-byte
+case of `test_convert_formats.py::test_vtt_that_is_not_a_transcript_is_a_fixed_stub` moved to `empty-output`.
 
 ### 16.239 Round 36: the v35 prompt, the lost-queue steps, Outlook's change token and the guides (2026-11-08, wave B13 round 36 lane D)
 

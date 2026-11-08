@@ -58,8 +58,9 @@ from agentsync.convert.image import (
 )
 from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import OcrEngine, OcrError, _ended
-from agentsync.errors import ConversionError
+from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
@@ -788,6 +789,10 @@ class PandocConverter:
             _check_ooxml_container(src)
             _check_ooxml_family(src, "word", "a Word document")
         elif fmt == "odt":
+            # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050); here only, not at
+            # the top, where a zero-byte .rtf or .html is a page
+            if src.stat().st_size == 0:
+                raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
             _check_odf_container(src)
         placed, cut = 0, False
         if fmt == "html":

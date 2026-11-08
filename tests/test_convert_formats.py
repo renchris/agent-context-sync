@@ -3784,7 +3784,7 @@ def test_vtt_lines_behind_the_banner_are_what_the_lint_reads_as_heard(fixture_fi
 @pytest.mark.parametrize(
     ("data", "reason"),
     [
-        (b"", "not a WebVTT transcript (no WEBVTT first line)"),
+        (b"", policy.EMPTY_OUTPUT_REASON),  # B13 round 36 C1050: zero bytes are `empty`, not `other`
         (b"1\n00:00:01.000 --> 00:00:02.000\nhello\n", "not a WebVTT transcript (no WEBVTT first line)"),
         (
             b"WEBVTTX\n\n00:00:01.000 --> 00:00:02.000\nhello\n",
@@ -5118,6 +5118,36 @@ def test_a_drawio_that_is_no_diagram_is_settled_at_first_read_c927_c930(tmp_path
         DiagramConverter(CFG).convert(src, name=src.name)
     want = policy.EMPTY_OUTPUT_REASON if not data else "not-drawio (not a draw.io diagram)"
     assert str(err.value) == want
+
+
+def test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050(tmp_path: Path) -> None:
+    """B13 round 36 C1050 with C1117 (ruling 118): the pdf, eml, odt, teams and vtt converters each raise the
+    ``empty-output`` stub for zero bytes themselves, so the file is one settled ``empty`` stub, never a
+    failed conversion tried again (``.vtt``: never ``other``).  Blanks alone keep each type's own words, and
+    the check is in pandoc's odt branch only: a zero-byte ``.rtf`` or ``.html`` is never ``empty`` there."""
+    for name, converter in (
+        ("x.pdf", PdfConverter(CFG)),
+        ("x.eml", EmlConverter(CFG)),
+        ("x.odt", PandocConverter(CFG)),
+        ("x.teams.json", TeamsMonthConverter(CFG)),
+        ("x.vtt", VttConverter(CFG)),
+    ):
+        with pytest.raises(UnreadableSourceError) as err:
+            converter.convert(_write(tmp_path, name, b""), name=name)
+        assert str(err.value) == policy.EMPTY_OUTPUT_REASON, name
+    with pytest.raises(ConversionError, match=r"^empty message file$"):
+        EmlConverter(CFG).convert(_write(tmp_path, "blanks.eml", b" \r\n\t"), name="blanks.eml")
+    with pytest.raises(ConversionError, match="no %PDF- header"):
+        PdfConverter(CFG).convert(_write(tmp_path, "blanks.pdf", b"\n"), name="blanks.pdf")
+    with pytest.raises(ConversionError, match="not an ODF package"):
+        PandocConverter(CFG).convert(_write(tmp_path, "blanks.odt", b" "), name="blanks.odt")
+    with pytest.raises(ConversionError, match="invalid JSON"):
+        TeamsMonthConverter(CFG).convert(_write(tmp_path, "b.teams.json", b" "), name="b.teams.json")
+    for name in ("x.rtf", "x.html"):
+        try:
+            PandocConverter(CFG).convert(_write(tmp_path, name, b""), name=name)
+        except (ConversionError, UnreadableSourceError) as exc:  # pandoc is not on every runner
+            assert str(exc) != policy.EMPTY_OUTPUT_REASON, name
 
 
 @pytest.mark.parametrize(

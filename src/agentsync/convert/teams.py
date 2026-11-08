@@ -16,8 +16,9 @@ from agentsync.config import ConvertConfig
 from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body, _decode_text, _python_version
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
-from agentsync.errors import ConversionError
+from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import TEAMS_MONTH_SCHEMA, RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.0"
@@ -194,12 +195,15 @@ class TeamsMonthConverter:
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
         try:
-            text = _decode_text(src.read_bytes())
-            doc_raw = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ConversionError(f"teams rollup: invalid JSON ({exc.msg} at line {exc.lineno})") from exc
+            raw = src.read_bytes()
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc}") from exc
+        if not raw:  # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050)
+            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
+        try:
+            doc_raw = json.loads(_decode_text(raw))
+        except json.JSONDecodeError as exc:
+            raise ConversionError(f"teams rollup: invalid JSON ({exc.msg} at line {exc.lineno})") from exc
         doc, msgs = _parse(doc_raw)
         team, channel, month = _one_line(doc["team_name"]), _one_line(doc["channel_name"]), str(doc["month"])
         order = sorted(msgs, key=lambda m: (m.created, m.id))

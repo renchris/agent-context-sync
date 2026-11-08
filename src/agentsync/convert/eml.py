@@ -25,6 +25,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import plural
 
 _EMITTER_VERSION = "1.1.0"
@@ -175,6 +176,8 @@ class EmlConverter:
             data = src.read_bytes()
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc}") from exc
+        if not data:  # zero bytes: one `empty` stub (B13 round 36 C1050); blanks stay below
+            raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
         if not data.strip():
             raise ConversionError("empty message file")
         msg = email.message_from_bytes(data, policy=email.policy.default)
