@@ -41,6 +41,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import sqlite3
 import stat
 import subprocess
@@ -54,7 +55,9 @@ from typing import Any, TypeGuard
 
 from agentsync import (
     __version__,
+    clio,
     curate,
+    fsutil,
     gitops,
     governance,
     it_request,
@@ -141,7 +144,7 @@ from agentsync.paths import (
 )
 from agentsync.publish import Publisher, archive_path, notice_gone_why
 from agentsync.slug import collision_key
-from agentsync.text import plural
+from agentsync.text import plural, safe_text
 
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
@@ -192,16 +195,40 @@ _TCC_TOKENS = ("TCC_PENDING", "TCC_DENIED")
 Handler = Callable[[argparse.Namespace], int]
 
 
+_STDERR_FD = 2
+_stderr_closed = False
+
+
 def _out(text: str = "") -> None:
-    sys.stdout.write(text + "\n")
+    clio.result(text)
 
 
 def _err(text: str) -> None:
-    # stdout first: in a pipe it is block-buffered and stderr is not, so a line printed before an error
-    # landed after it (B13 round 11 M26)
-    with contextlib.suppress(OSError, ValueError):
-        sys.stdout.flush()
-    sys.stderr.write(text + "\n")
+    # clio.say flushes stdout first: in a pipe it is block-buffered and stderr is not, so a line printed
+    # before an error landed after it (B13 round 11 M26)
+    _to_stderr(lambda: clio.say(text))
+
+
+def _recovery(instruction: str, command: str) -> None:
+    _to_stderr(lambda: clio.recovery(instruction, command))
+
+
+def _to_stderr(write: Callable[[], None]) -> None:
+    """A reader of stderr that went away (``2>&1 | head -1``) ends the person's lines, not the run: the rest
+    go to the null device, so the command still returns its own code and no traceback meets the closed pipe.
+    """
+    global _stderr_closed  # noqa: PLW0603 - once per process: the reader of this pipe does not come back
+    if _stderr_closed:
+        return
+    try:
+        write()
+    except BrokenPipeError:
+        _stderr_closed = True
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, _STDERR_FD)
+        finally:
+            os.close(devnull)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -231,7 +258,11 @@ def _graph_options(p: argparse.ArgumentParser) -> None:
         metavar="<URL>",
         help="discover: resolve this SharePoint/OneDrive site or sharing link instead (repeatable)",
     )
-    p.add_argument("--toml", action="store_true", help="discover: print only the sources.toml snippet")
+    p.add_argument(
+        "--toml",
+        action="store_true",
+        help="discover: leave out the source table on stderr (stdout is only the sources.toml snippet)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1093,10 +1124,9 @@ def _refuse_remotes(config: Config, gov: governance.GovernanceConfig) -> list[st
 
 
 def _write_config(cfg_path: Path, text: str) -> None:
-    """Write a new sources.toml (0600), its folder included."""
+    """Write a new sources.toml (0600), its folder included, whole or not at all."""
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(text, encoding="utf-8")
-    cfg_path.chmod(0o600)
+    fsutil.atomic_write(cfg_path, text, mode=0o600)
     _out(f"wrote {cfg_path}")
 
 
@@ -3907,18 +3937,24 @@ def _discover(config: Config, auth: TokenProvider, *, urls: Sequence[str], toml_
             report = discover.DiscoveryReport(scopes=tuple(scopes), failures=tuple(failures))
         else:
             report = discover.discover_sources(client, known=config.sources)
-    if not toml_only:
-        for scope in report.scopes:
-            where = scope.configured or "new"
-            _out(
-                f"{scope.kind.value}\t{scope.name}\t{where}\tdrive_id={scope.drive_id or '-'}\t"
-                f"site={scope.site or '-'}\t{scope.note}"
+    if not toml_only:  # stderr, so stdout is the TOML alone (`discover > new.toml`); each cell safe_text'd
+        rows = [
+            (
+                scope.kind.value,
+                scope.name,
+                scope.configured or "new",
+                f"drive_id={scope.drive_id or '-'}",
+                f"site={scope.site or '-'}",
+                scope.note,
             )
-        _out("")
+            for scope in report.scopes
+        ]
+        clio.table(("kind", "name", "configured", "drive_id", "site", "note"), rows, to=_err)
+        _err("")
     _out(discover.render_sources_toml(report, known=config.sources).rstrip("\n"))
     if not report.complete:
         for f in report.failures:
-            _err(f"discovery incomplete: {f.endpoint} -> HTTP {f.status} {f.code}: {f.action}")
+            _err(f"discovery incomplete: {f.endpoint} -> HTTP {f.status} {safe_text(f.code)}: {f.action}")
         return EXIT_FAILED
     return EXIT_OK
 
@@ -4203,6 +4239,9 @@ def _cmd_hold(args: argparse.Namespace) -> int:
     root = config.state_paths.root
     if args.list or (args.scope is None and not args.release):
         holds = governance.active_holds(root, governance.load_governance(config.config_path))
+        if not holds:  # a remark, not a result: stdout stays empty for `hold --list | wc -l`
+            _err("No active holds.")
+            return EXIT_OK
         for h in holds:
             _out(h.describe())
         _out(plural(len(holds), "active hold"))
@@ -4219,9 +4258,17 @@ def _cmd_hold(args: argparse.Namespace) -> int:
 def _cmd_offboard(args: argparse.Namespace) -> int:
     config = _config(args)
     dry = bool(args.dry_run) or args.confirm is None
+    expected = str(expand(config.docs_repo))  # governance.offboard's own comparison, so both agree
+    purge = " --purge-data" if args.purge_data else ""
+    if not dry and args.confirm != expected:
+        _err("error: Can't offboard: --confirm doesn't match the docs repo path.")
+        _recovery("To remove, run", f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}")
+        return EXIT_FAILED
     rep = governance.offboard(config, purge_data=bool(args.purge_data), dry_run=dry, confirm=args.confirm)
-    for loc in rep.locations:
-        _out(f"{loc.kind}\t{'exists' if loc.exists else 'absent'}\t{loc.location}\t{loc.action}")
+    clio.table(
+        ("kind", "state", "location", "action"),
+        [(loc.kind, "exists" if loc.exists else "absent", loc.location, loc.action) for loc in rep.locations],
+    )
     for r in rep.removed:
         _out(f"removed: {r}")
     for e in rep.errors:
@@ -4229,7 +4276,7 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
     for m in rep.manual_steps:
         _out(f"manual: {m}")
     if rep.dry_run:
-        _out(f"dry run: nothing removed; to remove, pass --confirm {expand(config.docs_repo)}")
+        _out(f"dry run: nothing removed; to remove, pass --confirm {shlex.quote(expected)}{purge}")
     return EXIT_FAILED if rep.errors else EXIT_OK
 
 
@@ -4722,6 +4769,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         os.umask(previous)
 
 
+_READ_COMMANDS = frozenset({"status", "doctor", "policy", "curate", "whoami", "discover"})
+
+
+def _is_read(args: argparse.Namespace) -> bool:
+    """Whether the command only reads, so a reader that went away ends it with 0."""
+    command = getattr(args, "command", None)
+    if command == "graph":
+        return getattr(args, "action", None) in {"whoami", "discover"}
+    if command == "hold":
+        return bool(args.list) or (args.scope is None and not args.release)
+    return command in _READ_COMMANDS
+
+
 def _main(argv: Sequence[str] | None) -> int:
     net.inject_system_trust()  # idempotent; the module-top injection already ran (C15 req 32)
     parser = build_parser()
@@ -4735,7 +4795,8 @@ def _main(argv: Sequence[str] | None) -> int:
         parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
-        return handler(args)
+        with clio.signals():
+            code = handler(args)
     except LockHeldError as exc:
         # .holder, not str(exc): that already starts "lock held: " (B13 round 8 J11, J25)
         _err(f"skipped: lock held by {_skip_holder(exc)}")
@@ -4765,16 +4826,16 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(f"state: {exc} (fix: {doctor.MANIFEST_FIX})")
         return EXIT_STATE
     except AuthBlockedError as exc:
-        _err(f"sign-in blocked ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''}): {exc}")
+        _err(f"sign-in blocked ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''}): {safe_text(str(exc))}")
         return EXIT_REAUTH
     except AuthRequiredError as exc:
-        _err(f"sign-in required: {exc} — run `{loop.BIN} graph login`")
+        _err(f"sign-in required: {safe_text(str(exc))} — run `{loop.BIN} graph login`")
         return EXIT_REAUTH
     except ManifestSchemaError as exc:
         _err(f"manifest: {exc}")
         return EXIT_FAILED
     except AuthError as exc:
-        _err(f"sign-in failed: {exc}")
+        _err(f"sign-in failed: {safe_text(str(exc))}")
         return EXIT_FAILED
     except ManifestOpenError as exc:
         # not 65: the file is not damaged, and MANIFEST_FIX's move-aside would throw good state away; exit 1,
@@ -4805,7 +4866,7 @@ def _main(argv: Sequence[str] | None) -> int:
         if said is None:
             if not isinstance(exc, ManifestPathError):
                 raise
-            _err(f"error: {exc}")
+            _err(f"error: {safe_text(str(exc))}")
             return EXIT_FAILED
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
@@ -4846,7 +4907,7 @@ def _main(argv: Sequence[str] | None) -> int:
             return EXIT_FAILED
         # a governance file in the state folder this account cannot open (holds.json): the same line
         said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
-        _err(said or f"error: {exc}")
+        _err(said or f"error: {safe_text(str(exc))}")  # a Graph message is remote text
         if said:
             _state_next(args, said=said, path=getattr(exc.__cause__, "filename", None))
         return EXIT_FAILED
@@ -4885,6 +4946,15 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("database: %s", exc, exc_info=True)
         _err(f"error: {type(exc).__name__}: {exc}")
         return EXIT_FAILED
-    except KeyboardInterrupt:
-        _err("interrupted")
-        return 130
+    except KeyboardInterrupt as exc:  # Ctrl-C, or clio.Terminated for SIGTERM and SIGHUP
+        if _is_read(args):
+            _err("interrupted: Canceled. Nothing was changed.")
+        else:  # a mutation may be part done, so never "nothing was changed" (R294)
+            _err("interrupted: Stopped.")
+            _recovery("See what the last pass committed", f"{loop.BIN} status")
+        return 128 + exc.signum if isinstance(exc, clio.Terminated) else 130
+    if (clio.stdout_closed() or _stderr_closed) and _is_read(args):
+        return (
+            EXIT_OK  # the reader took what it wanted (`status | head -1`); a mutation keeps its code (R341)
+        )
+    return code

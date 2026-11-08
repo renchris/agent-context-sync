@@ -40797,7 +40797,36 @@ ordinary text.
 
 #### 16.300.5 U-B1b: streams, signals and copy
 
-Reserved.
+The CLI's commands write through `clio`, end cleanly on a signal or a closed pipe, and print fixes that run as typed.
+
+- `cli._out` writes through `clio.result` and `cli._err` through `clio.say`; both wrappers stay, since tests patch them.
+  A reader of stderr that went away (`agentsync status 2>&1 | head -1`) sends the rest of stderr to the null device,
+  never a traceback.
+- `_main` runs each handler inside `clio.signals`, so SIGTERM and SIGHUP run Ctrl-C's cleanup (the lock is released)
+  and exit `128 + signum`: 143 and 129. Ctrl-C stays 130. No global SIGPIPE handler is set, and ocr.py keeps its own
+  SIGINT handling.
+- Once stdout or stderr has met a closed pipe, a read (`status`, `doctor`, `policy`, `curate`, `whoami`, `discover`,
+  `hold --list`) exits 0; a mutation keeps its own code, because what it already did stays done.
+- An interrupt keeps the word `interrupted`. A read from the list above says `interrupted: Canceled. Nothing was
+  changed.` Every other command, whether or not it ran a cycle (a sync, purge, compact-history, offboard), may be part
+  done, so it says `interrupted: Stopped.` with the recovery `agentsync status`, never that nothing changed. The exit
+  codes are as above.
+- `offboard --confirm` that does not match the docs repo path, compared as governance compares it (the expanded path
+  as a string), exits 1 before governance runs and prints the runnable command with the path shell-quoted and
+  `--purge-data` when given. The dry run's hint is quoted the same way. The location rows go through `clio.table` with
+  the header `kind state location action`; off a terminal the row bytes are unchanged.
+- `discover` prints only the sources.toml snippet on stdout, so `discover > new.toml` parses. The scope table, its
+  header `kind name configured drive_id site note` and the blank line go to stderr; `--toml` leaves them out. Each
+  cell, a failure's `code`, the `sign-in blocked`, `required` and `failed` messages and `error: <message>` pass through
+  `agentsync.text.safe_text(`. The prefixes and `GraphError`'s own text are unchanged.
+- `hold --list` with no holds says `No active holds.` on stderr and nothing on stdout; with holds, stdout still ends
+  `N active hold(s)`.
+- `init` writes sources.toml with `fsutil.atomic_write` at mode 0600: a failed write leaves neither the file nor a
+  temp beside it.
+
+Tests: `tests/test_cli_streams.py` and `tests/test_cli_conventions.py`, which also pins U-B1a's three refusals
+(`purge --queue --source` without `--forget`, `purge --queue --push`, `hold --release --reason`): exit 2, both
+options named, nothing written.
 
 #### 16.300.6 U-B4 and U-B5: opt-in --json
 
