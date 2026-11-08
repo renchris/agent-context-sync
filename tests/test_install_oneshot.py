@@ -9241,16 +9241,17 @@ def test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c
     lines = cp.stdout.splitlines()
     assert [ln for ln in lines if ln.startswith("NEXT:")] == [lines[-1]], lines
     assert not [ln for ln in lines if ln.startswith("already synced")], lines
+    esc = f"{ESCAPED_MARK} {cs}"  # an escaped row opens with the mark (B13 round 36 C1001)
     shown = [
-        f"{cs}/Dropbox/Nel?NEXT: run the nel step",
-        f"{cs}/Dropbox/Tab\\there\\rand?\\nNEXT: run the dropbox step",
-        f"{cs}/OneDrive-Contoso/0 Line\\nNEXT: run the forged step",
+        f"{esc}/Dropbox/Nel?NEXT: run the nel step",
+        f"{esc}/Dropbox/Tab\\there\\rand?\\nNEXT: run the dropbox step",
+        f"{esc}/OneDrive-Contoso/0 Line\\nNEXT: run the forged step",
+        f"{esc}/OneDrive-Contoso/Project Alpha/Line one\\nalready synced on this Mac: 9 folders (x)",
+        f"{esc}/OneDrive-Contoso/Sep?NEXT: run the sep step",
         f"{cs}/OneDrive-Contoso/Project Alpha",
-        f"{cs}/OneDrive-Contoso/Project Alpha/Line one\\nalready synced on this Mac: 9 folders (x)",
         f"{cs}/OneDrive-Contoso/Réunion plans",
-        f"{cs}/OneDrive-Contoso/Sep?NEXT: run the sep step",
     ]
-    assert sorted(lines[:-1]) == shown, lines
+    assert sorted(lines[:-1]) == sorted(shown), lines
     assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-7")]
     text = install_out(env).read_text(encoding="utf-8")
     assert not [ln for ln in text.splitlines() if ln.startswith("NEXT: run")], text
@@ -9293,17 +9294,198 @@ def test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932(
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     lines = cp.stdout.splitlines()
     assert [ln for ln in lines if ln.startswith("NEXT:")] == [lines[-1]], lines
-    assert f"[synced] {lib}/Line one\\nNEXT: run the made-up step" in lines, lines
-    assert f"[synced] {lib}/Gone one\\nNEXT: run the other step" in lines, lines
+    assert f"{ESCAPED_MARK} [synced] {lib}/Line one\\nNEXT: run the made-up step" in lines, lines
+    assert f"{ESCAPED_MARK} [synced] {lib}/Gone one\\nNEXT: run the other step" in lines, lines
     assert lines[0] == (
         "already synced on this Mac: 2 folders (marked [synced] below: first the 1 not on disk, then the "
         "list)"
     )
     assert lines[-1].count("no longer on disk") == 1, lines[-1]
-    named = f"or not synced on this Mac): {lib}/Gone one\\nNEXT: run the other step. "
+    named = f"or not synced on this Mac): {ESCAPED_MARK} {lib}/Gone one\\nNEXT: run the other step. "
     assert named in lines[-1], lines[-1]
     assert "Line one" not in lines[-1], lines[-1]
     assert install_log(env)[-2].endswith(" synced=2 gone=1"), install_log(env)
+
+
+ESCAPED_MARK = "[name holds a control character: rename it to sync it]"
+"""install.sh's ``ESCAPED_MARK``: an escaped row of step 1's list opens with it and a space (B13 round 36)."""
+
+TWIN_WORDS = (
+    "step 1 shows this folder's name with a control character, and it cannot be told apart from another "
+    "folder there; rename it in its sync app, then run step 1 again"
+)
+"""--source-local's usage error for a folder step 1 cannot show apart from another (B13 round 36 C1072)."""
+
+
+def test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001(env: dict[str, str]) -> None:
+    """B13 round 36 C1001, C1116: a folder named with a newline and one named with a backslash and n printed
+    the same row, and so did one with a 0x01 and one with a ``?``, so a pasted row named the other folder.
+    An escaped row now opens with a fixed mark no other row has, and a row with no control character, a
+    plain backslash in it, prints byte for byte as before."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso?x", "Plain\\back"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    rows = cp.stdout.splitlines()[:-1]
+    assert sorted(rows) == sorted(
+        [
+            f"{ESCAPED_MARK} {lib}/Contoso\\nLine two",
+            f"{lib}/Contoso\\nLine two",
+            f"{ESCAPED_MARK} {lib}/Contoso?x",
+            f"{lib}/Contoso?x",
+            f"{lib}/Plain\\back",
+        ]
+    ), rows
+    assert len(set(rows)) == 5, rows
+
+
+@pytest.mark.parametrize("twin", [True, False])
+def test_list_folders_names_the_real_folder_in_the_add_back_command_c1001(
+    env: dict[str, str], twin: bool
+) -> None:
+    """B13 round 36 C1001: the command for the one folder still mirrored with no [[source]] block was built
+    from the list's escaped text, so for a folder named with a newline it named a backslash-n twin beside it.
+    It is built from the real name (shown_arg's $'..' form), and the listing before it keeps the mark. The
+    lead's review: with that twin beside it, --source-local refuses the folder, so the NEXT names the rename
+    and no command; with none, the command is given and --source-local takes it."""
+    cs = _cloud(env)
+    alpha = cs / "OneDrive-Contoso" / "Project Alpha"
+    odd = cs / "OneDrive-Contoso" / "Contoso\nLine two"
+    for d in (alpha, odd, *([cs / "OneDrive-Contoso" / "Contoso\\nLine two"] if twin else [])):
+        d.mkdir(parents=True)
+    _write_config(env, local_source_table("project-alpha", alpha), _inbox(env))
+    sid = derive_source_id(canonical_source_root(odd), {"project-alpha", "inbox"})
+    _manifest_rows(
+        env, ("project-alpha", "live", 3), (sid, "live", 4), roots={"project-alpha": alpha, sid: odd}
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    shown = f"{ESCAPED_MARK} {cs}/OneDrive-Contoso/Contoso\\nLine two"
+    assert "[[source]] block in " in last_line(cp) and f": {shown}. Step 2's" in last_line(cp), last_line(cp)
+    if twin:
+        assert (
+            "until it is added again, once it is renamed in its sync app and step 1 is run again (step 1 "
+            "cannot show its name apart from another folder there), or its [[source]] block is put back"
+        ) in last_line(cp), last_line(cp)
+        assert "(one --source-local" not in last_line(cp), last_line(cp)
+        return
+    [arg] = re.findall(r"\(one --source-local (.*?)\) or its \[\[source\]\] block", last_line(cp))
+    assert arg.startswith("$'"), arg
+    back = subprocess.run(["/bin/bash", "-c", f"printf %s {arg}"], capture_output=True, text=True, check=True)
+    assert back.stdout == str(odd), back.stdout
+    cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", back.stdout)
+    assert "usage error" not in cp.stderr, cp.stderr
+    assert f"source-local: {odd}" in cp.stdout, cp.stdout
+
+
+@pytest.mark.parametrize(
+    ("given", "why"),
+    [
+        (f"{ESCAPED_MARK} <lib>/Contoso\\nLine two", "marked"),
+        ("<lib>/Contoso\nLine two", "twin"),
+        ("<lib>/Contoso\\nLine two", "twin"),
+        ("<lib>/Contoso\x01x", "twin"),
+        ("<lib>/Contoso?x", "twin"),
+    ],
+)
+def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072(
+    env: dict[str, str], given: str, why: str
+) -> None:
+    """B13 round 36 C1072: a row step 1 escaped, pasted, named its look-alike twin when there was one, and
+    that folder was synced with no word. A pasted marked row is refused, and so is a folder whose escaped name
+    is another folder's in the same parent, either way round; nothing is installed, and the path in the error
+    is escaped, so no raw newline starts a line."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    for n in ("Contoso\nLine two", "Contoso\\nLine two", "Contoso\x01x", "Contoso?x"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--source-local", given.replace("<lib>", str(lib)))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    shown = given.replace("<lib>", str(lib)).removeprefix(f"{ESCAPED_MARK} ")
+    shown = shown.replace("\n", "\\n").replace("\x01", "?")
+    words = TWIN_WORDS
+    if why == "marked":  # the lead's review: a pasted marked row claims no twin it may not have
+        words = (
+            f"this is a row step 1 marked {ESCAPED_MARK}: its shown name is not the folder's own; rename it "
+            "in its sync app, then run step 1 again"
+        )
+    assert cp.stderr.splitlines()[0] == f"usage error: --source-local {shown}: {words} (see --help)", (
+        cp.stderr
+    )
+    assert last_line(cp).startswith("NEXT: fix the usage error above")
+    assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == []
+
+
+@pytest.mark.parametrize(
+    ("folder", "given"),
+    [("Contoso\nLine two", "Contoso\\nLine two"), ("Ctl\x02solo", "Ctl?solo")],
+)
+def test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002(
+    env: dict[str, str], folder: str, given: str
+) -> None:
+    """B13 round 36 C1002: step 1's escaped row, pasted, stopped with a bare "is not an existing folder" that
+    gave the agent nothing to fix. When the parent holds a folder that step 1 shows as that text, the error
+    says so and says to rename it; it never takes the escaped spelling, nor offers another form."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    (lib / folder).mkdir(parents=True)
+    cp = install_sh(env, "--source-local", f"{lib}/{given}")
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert (
+        cp.stderr.splitlines()[0] == f"usage error: --source-local {lib}/{given}: {TWIN_WORDS} (see --help)"
+    )
+    assert "$'" not in cp.stdout + cp.stderr and "not an existing folder" not in cp.stderr
+    assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == []
+
+
+@pytest.mark.parametrize("name", ["Q?solo", "Ctl\x02solo", "Plain\\back"])
+def test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072(
+    env: dict[str, str], name: str
+) -> None:
+    """B13 round 36 C1072: only a folder step 1 cannot show apart from another is refused. A ``?`` or ``\\``
+    folder with no twin, and one named with a control character and no look-alike, are taken as given."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    for n in (name, "Contoso Plans"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(lib / name))
+    assert "usage error" not in cp.stderr, cp.stderr
+    assert f"source-local: {lib / name}" in cp.stdout, cp.stdout
+
+
+def test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001(
+    tmp_path: Path,
+) -> None:
+    """B13 round 36 C1001: an escaped row opens with ESCAPED_MARK, then may carry another mark, so the shell
+    readers of install.out (listed_folder_lines, and listed_folder_names on it) strip both and register the
+    whole escaped name, never the mark as a folder."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    home = tmp_path / "home"
+    cs = home / "Library" / "CloudStorage"
+    out = tmp_path / "install.out"
+    out.write_text(
+        "# run=1 2026-11-08T10:00:00Z install.sh --list-folders\n"
+        f"{ESCAPED_MARK} [synced] {cs}/OneDrive-Contoso/Line one\\nTwo\n"
+        f"{ESCAPED_MARK} {cs}/OneDrive-Contoso/Tab\\there\n",
+        encoding="utf-8",
+    )
+    harness = "\n".join(
+        [helpers, _shell_function("listed_folder_names"), "listed_folder_lines", "listed_folder_names"]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "INSTALL_OUT": str(out)},
+    )
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stderr
+    assert cp.stdout.splitlines() == [
+        f"{cs}/OneDrive-Contoso/Line one\\nTwo",
+        f"{cs}/OneDrive-Contoso/Tab\\there",
+        "keep\tLine one\\nTwo",
+        "keep\tTab\\there",
+    ], cp.stdout
 
 
 @pytest.mark.parametrize(

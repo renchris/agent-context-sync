@@ -3680,14 +3680,15 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
     # B13 round 16 T6, T30: the mirrored-folder tail's words, which say neither "on disk" nor "not signed in"
-    # (the keys of the gone-folder sentence and the sign-in wait), on both of the list's NEXTs
+    # (the keys of the gone-folder sentence and the sign-in wait), on both of the list's NEXTs; one folder
+    # has a third, for a name step 1 cannot show apart from another, naming the rename (B13 round 36 C1001)
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    for tail in (
-        "is still mirrored but has no [[source]] block",
-        "are still mirrored but have no [[source]] block",
+    for tail, count in (
+        ("is still mirrored but has no [[source]] block", 3),
+        ("are still mirrored but have no [[source]] block", 2),
     ):
         lines = [ln for ln in script.splitlines() if tail in ln and "vtail=" in ln]
-        assert len(lines) == 2 and not any("on disk" in ln or "signed in" in ln for ln in lines), lines
+        assert len(lines) == count and not any("on disk" in ln or "signed in" in ln for ln in lines), lines
     # B13 round 11 M4 (lane RB's words): with OneDrive signed out, a Mac that already syncs folders got
     # "[synced]" lines for folders that are not on disk, and the exception sent an unattended agent on to a
     # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception

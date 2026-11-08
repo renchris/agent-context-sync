@@ -49,7 +49,10 @@
 #                           not. A synced folder gone while its app is signed in (renamed, moved or deleted
 #                           there, or not synced on this Mac), or in a SharePoint library not synced on this Mac beside its
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
-#                           status names its fix
+#                           status names its fix. A folder whose name holds a control character is shown
+#                           escaped (\n, \t, \r, else ?) after "[name holds a control character: rename it
+#                           to sync it] "; --source-local refuses such a row, and a folder it cannot show
+#                           apart from another, until the folder is renamed
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -2419,14 +2422,16 @@ FIXED_VALUE_PHRASES+="|because a label rule could not parse or open its label da
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 # The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
-# marks: what redaction_pairs registers from the lists, and what the legend reads (B13 round 9 K45).
+# marks: what redaction_pairs registers from the lists, and what the legend reads (B13 round 9 K45). An escaped
+# row opens with $ESCAPED_MARK, then may carry another mark: both go (B13 round 36 C1001).
 listed_folder_lines() {
 	local cs="$HOME/Library/CloudStorage" line
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 0
 	while IFS= read -r line; do
 		case "$line" in "$cs"/*/*) printf '%s\n' "$line" ;; esac
 	done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
-		list { sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
+		list { sub(/^\[name holds a control character: rename it to sync it\] /, "")
+			sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
 }
 # Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
 # (every drive's name, or coding-agent product words only), else "keep<TAB><name>" (B13 round 11 M3).
@@ -7970,6 +7975,9 @@ SYNCED_MARK="[synced]" # what --list-folders writes before a folder the config a
 # that holds one would be read twice if it were added. Each gets its own mark.
 INSIDE_MARK="[inside a synced folder]"
 CONTAINS_MARK="[contains a synced folder]"
+# A row list_shown printed with a control character escaped opens with this mark, before any other: two
+# folders can show as one escaped text, so such a row is never a folder to paste (B13 round 36 C1001, C1072)
+ESCAPED_MARK="[name holds a control character: rename it to sync it]"
 # The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
 # $1: prints their number, then how many of them the file $2 (one folder path per line) does not hold, then
 # each of those as "$SYNCED_MARK <path>" (the path the config has, sorted), then each line of the file, with
@@ -8672,34 +8680,65 @@ sys.stdout.write("".join(w + "\n" for w in words))
 # the cap and every loop (B13 round 35 C932): list_real gives the name back for a test on disk, and list_shown
 # prints rows, or list_esc one path, with a control character escaped in place (newline \n, tab \t, CR \r, any
 # other ?, a C1 control or U+2028/U+2029 ? too), the path prefix and its mark kept, so a name never starts a line
-# of its own, a NEXT: line least of all. A name that itself holds RS reads as holding a newline. Such a row cannot be pasted into --source-local:
-# that one folder stops with no such folder, as the alarm and exclude-empty already show its name.
+# of its own, a NEXT: line least of all. A name that itself holds RS reads as holding a newline. An escaped row
+# opens with $ESCAPED_MARK and a space, so it equals no other row, a raw backslash-n or ? twin's included (a row
+# with no control character prints byte for byte as before), and --source-local refuses it pasted, or a folder
+# whose escaped form is another folder's in the same parent, either way round (B13 round 36 C1001, C1116, C1072,
+# C1002). list_plain escapes the same way with no mark, for the comparison and for a path in an error.
 LIST_RS=$'\036'
 list_real() { # ROW: sets LIST_REAL
 	local nl=$'\n'
 	LIST_REAL="${1//$LIST_RS/$nl}"
 }
-list_shown() { # rows on stdin
-	LC_ALL=C awk 'function esc(s,    o, i, c) {
-		o = ""
-		for (i = 1; i <= length(s); i++) {
-			c = substr(s, i, 1)
-			if (c == "\036") o = o "\\n"
-			else if (c == "\t") o = o "\\t"
-			else if (c == "\r") o = o "\\r"
-			else if (c ~ /[[:cntrl:]]/) o = o "?"
-			# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
-			# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
-			else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o "?"; i++ }
-			else if (c == "\342" && substr(s, i + 1, 2) ~ /^\200[\250\251]$/) { o = o "?"; i += 2 }
-			else o = o c
-		}
-		return o
+LIST_ESC_AWK='function esc(s,    o, i, c) {
+	o = ""
+	for (i = 1; i <= length(s); i++) {
+		c = substr(s, i, 1)
+		if (c == "\036") o = o "\\n"
+		else if (c == "\t") o = o "\\t"
+		else if (c == "\r") o = o "\\r"
+		else if (c ~ /[[:cntrl:]]/) o = o "?"
+		# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
+		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
+		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o "?"; i++ }
+		else if (c == "\342" && substr(s, i + 1, 2) ~ /^\200[\250\251]$/) { o = o "?"; i += 2 }
+		else o = o c
 	}
-	{ print (/[[:cntrl:]]|\302[\200-\237]|\342\200[\250\251]/ ? esc($0) : $0) }'
+	return o
+}
+function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\250\251]/ }
+function shown(s) { return escd(s) ? mark esc(s) : s }
+'
+list_shown() { # rows on stdin
+	LC_ALL=C awk -v mark="$ESCAPED_MARK " "$LIST_ESC_AWK"'{ print shown($0) }'
+}
+list_plain() { # rows on stdin, escaped as list_shown escapes them, with no mark
+	LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'{ print shown($0) }'
 }
 list_esc() { # PATH
 	printf '%s\n' "$1" | list_shown
+}
+# A folder step 1 cannot show apart from another (B13 round 36 C1001, C1072, C1002): true when another folder
+# in the parent of the path $1 shows, once escaped as list_shown escapes it, as $1 itself does with $2 "dir" (a
+# folder that is there), or as the text $1 reads with no $2 (a path that is not). Only a name holding a control
+# character, a \ or a ? can have such a twin, so no other name lists its parent.
+escaped_twin() {
+	local p="$1" parent name nl=$'\n'
+	while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+	parent="${p%/*}" name="${p##*/}"
+	[ -n "$parent" ] || parent=/
+	[ -n "$name" ] && [ -d "$parent" ] || return 1
+	LIST_NAME="$name" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { s = ENVIRON["LIST_NAME"]
+		exit !(escd(s) || index(s, "\\") || index(s, "?")) }' || return 1
+	find "$parent" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | LC_ALL=C tr '\n\0' '\036\n' |
+		LIST_SELF="${p//$nl/$LIST_RS}" LIST_DIR="${2:-}" LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'
+		BEGIN { self = ENVIRON["LIST_SELF"]; t = (ENVIRON["LIST_DIR"] == "dir" ? shown(self) : self) }
+		$0 != self && shown($0) == t { found = 1 }
+		END { exit !found }'
+}
+list_name() { # PATH: as list_plain shows it, for an error
+	local nl=$'\n'
+	printf '%s\n' "${1//$nl/$LIST_RS}" | list_plain
 }
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
@@ -8709,7 +8748,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list0"
@@ -8800,6 +8839,8 @@ list_folders() {
 					while IFS= read -r line; do
 						vback=$((vback + 1))
 						vpaths="${vpaths:+$vpaths; }$(list_esc "$line")"
+						list_real "$line"
+						vreal="$LIST_REAL" # the one folder's real path, for its command (B13 round 36 C1001)
 					done < <(sed -n '2,$p' "$tmp/vanished")
 					;;
 				esac
@@ -8916,10 +8957,15 @@ list_folders() {
 	# The words for those sources: a listed folder one --source-local adds back under the same id, else only
 	# the block put back; never "on disk" or "not signed in", the words the prompt's other step 1 cases read.
 	# Logged as a count, never an id (B13 round 16 T6, T30). The command names the folder as every NEXT does
-	# (shown_arg: a $ or a backtick in a OneDrive name must not expand when pasted; B13 round 17 U88); the
-	# listing before it is the list's own text.
-	if [ "$vback" -eq 1 ]; then
-		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local $(shown_arg "$vpaths")) or its [[source]] block is put back, as it was or retired"
+	# (shown_arg: a $ or a backtick in a OneDrive name must not expand when pasted; B13 round 17 U88), from its
+	# real path, never the shown text, which may be escaped (B13 round 36 C1001); the listing before it is the
+	# list's own text.
+	# A folder --source-local refuses, one step 1 cannot show apart from another, is added again only once it is
+	# renamed, so its words name the rename, never a command that stops (B13 round 36 C1001 review)
+	if [ "$vback" -eq 1 ] && escaped_twin "$vreal" dir; then
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again, once it is renamed in its sync app and step 1 is run again (step 1 cannot show its name apart from another folder there), or its [[source]] block is put back, as it was or retired"
+	elif [ "$vback" -eq 1 ]; then
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local $(shown_arg "$vreal")) or its [[source]] block is put back, as it was or retired"
 	elif [ "$vback" -gt 1 ]; then
 		vtail="; $vback folders in the list above are still mirrored but have no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on each until it is added again (one --source-local for each) or its [[source]] block is put back, as it was or retired"
 	fi
@@ -9434,15 +9480,32 @@ if [ -n "$LAUNCHER_SRC" ]; then
 	LAUNCHER_SRC="$(cd "$LAUNCHER_SRC" && pwd)"
 fi
 # Each --source-local folder: absolute (a quoted "~/..." expanded), and an existing directory, checked before
-# anything is installed. agentsync resolves symlinks and derives the source id.
+# anything is installed. agentsync resolves symlinks and derives the source id. A row step 1 marked
+# $ESCAPED_MARK is refused as pasted (it is not absolute, so before the expansion), and so is a folder step 1
+# cannot show apart from another, either way round, and a missing path that is such a folder's shown text: each
+# is named for a rename, never taken in an escaped spelling (B13 round 36 C1001, C1072, C1002).
+twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, then run step 1 again"
 for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
+	case "$f" in
+	*"$ESCAPED_MARK"*)
+		g="${f#*"$ESCAPED_MARK"}"
+		usage_error "--source-local $(list_name "${g# }"): this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, then run step 1 again"
+		;;
+	esac
 	case "$f" in
 	\~) f="$HOME" ;;
 	\~/*) f="$HOME/${f#\~/}" ;;
 	/*) ;;
 	*) f="$PWD/$f" ;;
 	esac
-	if [ -d "$f" ]; then FOLDERS+=("$f"); else BAD_FOLDERS+=("$f"); fi
+	if [ -d "$f" ]; then
+		! escaped_twin "$f" dir || usage_error "--source-local $(list_name "$f"): step 1 shows this folder's name with a control character, $twin_tail"
+		FOLDERS+=("$f")
+	elif escaped_twin "$f"; then
+		usage_error "--source-local $(list_name "$f"): step 1 shows this folder's name with a control character, $twin_tail"
+	else
+		BAD_FOLDERS+=("$f")
+	fi
 done
 # One line for each bad folder, at most 5 and then a count; usage_error writes the last of them, and exits once.
 bad_total=${#BAD_FOLDERS[@]}

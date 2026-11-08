@@ -4127,9 +4127,15 @@ _LIST_RUN_RE = re.compile(r"^# run=\S+ \S+ install\.sh(?: .*)? --list-folders(?:
 """install.out's header of a ``--list-folders`` run (``start_capture``): the folder list follows it."""
 
 
-_LIST_MARKS = ("[synced] ", "[inside a synced folder] ", "[contains a synced folder] ")
-"""install.sh's ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space the folder list
-puts after it (a test holds them equal to install.sh's)."""
+_LIST_MARKS = (
+    "[name holds a control character: rename it to sync it] ",
+    "[synced] ",
+    "[inside a synced folder] ",
+    "[contains a synced folder] ",
+)
+"""install.sh's ``ESCAPED_MARK``, ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space
+the folder list puts after it (a test holds them equal to install.sh's). An escaped row opens with the first,
+then may carry one of the others, so they are stripped in this order (B13 round 36 C1001)."""
 
 
 def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:
@@ -4147,7 +4153,9 @@ def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int
         if line.startswith("# run="):
             listing = _LIST_RUN_RE.match(line) is not None
             continue
-        path = next((line[len(m) :] for m in _LIST_MARKS if line.startswith(m)), line) if listing else ""
+        path = line if listing else ""
+        for m in _LIST_MARKS:
+            path = path.removeprefix(m)
         head = next((h for h in heads if path.startswith(h)), None)
         if head is None:
             continue

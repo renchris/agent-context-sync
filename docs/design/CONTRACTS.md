@@ -38505,13 +38505,16 @@ though the shell's C locale does not, in place,
 with the path prefix and its mark, so both list readers (setup_report.listed_folder_names, listed_folder_lines)
 register the escaped name whole; a name with none prints byte for byte, an accented one too. Not a `$'...'` row,
 which neither reader decodes, and not %q, which escapes blanks and accents. A name that holds RS itself reads as
-holding a newline, and the escaped row cannot be pasted into --source-local: that one folder stops with no such
-folder, as the alarm and exclude-empty already show it. setup_report's NEXT count is left as it is. Tests:
+holding a newline, and the escaped row cannot be pasted into --source-local: --source-local refuses it, and a
+folder step 1 cannot show apart from another, with words that say to rename it (§16.236). setup_report's NEXT count
+is left as it is. Tests:
 `test_list_folders_prints_a_newline_in_a_folder_name_escaped_in_its_own_row_c932` (OneDrive and Dropbox, a newline,
 NEL and U+2028, one NEXT: by splitlines, no forged `already synced`, `listed-7`, each whole name registered and no
 half) and
 `test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932` (marked, no false not-on-disk, a gone one
 on one line in the real NEXT).
+
+Amended 2026-11-08, §16.236 C1072: the sentence said that one folder stops with no such folder; with a look-alike twin beside it (a backslash and n, or a `?`) the pasted row named the twin, which was then synced. An escaped row now opens with `[name holds a control character: rename it to sync it] `, and --source-local refuses that row, a folder whose escaped name is another folder's in the same parent, and a missing path that is such a folder's shown text (B13 round 36 ruling 113).
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
@@ -39029,7 +39032,40 @@ Reserved for round 36 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
-Reserved for round 36 lane RB of B13.
+**An escaped folder row is marked, equals no other row and never adds another folder** (C1001, C1116, C1072, C1002;
+ruling 113; amends §16.231 C932; `scripts/install.sh`). `list_shown` escaped a control character in place but left a `\` and a `?` as
+they were, so a folder named with a newline and one named with a backslash and n printed the same row, and so did
+one with a 0x01 and one with a `?`: pasted into --source-local, the row named the twin, which was synced with no
+word, and with no twin it stopped with a bare `is not an existing folder` that gave the agent nothing to fix. The
+one-folder lost-[[source]]-block command was built from that shown text too, so it named the twin. An escaped row
+now opens with `ESCAPED_MARK`, `[name holds a control character: rename it to sync it]`, and a space, before any
+other mark (a prefix: listed_folder_names would read a suffix as part of the name); `list_esc` puts it beside such a
+path in a NEXT: or the vanished listing, and a row with no control character prints byte for byte as before, a
+plain backslash too. Both list readers (listed_folder_lines with listed_folder_names, and
+setup_report.listed_folder_names through `_LIST_MARKS`) strip the escape mark and then one other, so an escaped
+synced row registers its whole name. The lost-block command is `shown_arg` of the real path (list_real), never the
+shown text, and for a folder `--source-local` would refuse (a look-alike twin beside it) the NEXT names no command:
+it is added again once renamed in its sync app and step 1 is run again, or its block is put back. `--source-local`
+refuses, as a usage error before anything is installed, a pasted argument holding the
+mark (checked before the `~` and relative expansion), and, when the name holds a control character, a `\` or a `?`,
+a folder whose escaped form is another folder's in the same parent, either way round (`find -print0` over the parent
+at depth 1, each through the same escape), with `--source-local <path>: step 1 shows this folder's name with a
+control character, and it cannot be told apart from another folder there; rename it in its sync app, then run step
+1 again` (a pasted row, which may have no twin: `this is a row step 1 marked <mark>: its shown name is not the
+folder's own; rename it in its sync app, then run step 1 again`); a missing path whose text is such
+a folder's shown name gets the same words, not `is not an existing folder`. The path in the error is escaped, so no
+raw newline starts a line. No escaped spelling is taken and no `$'...'` form offered; a folder with a control
+character and no look-alike, and a `?` or `\` folder with no twin, are added as given. Tests:
+`test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001` (newline and backslash-n, 0x01 and `?`,
+five different rows, a plain backslash byte for byte),
+`test_list_folders_names_the_real_folder_in_the_add_back_command_c1001` (with no twin the `$'..'` command decodes
+to the newline folder and --source-local takes it; with its twin beside it the NEXT names the rename, no command), `test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072` (the
+marked row and both sides of both pairs: rc 2, the words, nothing run),
+`test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002`,
+`test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072`,
+`test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001`, and in
+test_setup_report.py `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints` (four marks, the
+escape mark stripped first by both readers).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 

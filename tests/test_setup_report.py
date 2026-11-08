@@ -23904,13 +23904,23 @@ def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
 
 def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() -> None:
     """B13 round 9 K45: the J69 readers stripped "[synced] " only, so a folder printed "[inside a synced
-    folder]" was dropped and its name stayed in clear. Every mark install.sh defines is in both readers."""
+    folder]" was dropped and its name stayed in clear. Every mark install.sh defines is in both readers. B13
+    round 36 C1001: an escaped row opens with ESCAPED_MARK and may then carry one other mark, so both readers
+    strip it first and then one of the others, and an escaped synced row registers its whole name."""
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [escaped] = re.findall(r'^ESCAPED_MARK="(\[[^"]+\])"', script, flags=re.M)
     marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS)_MARK="(\[[^"]+\])"', script, flags=re.M)
-    assert len(marks) == 3 and len(re.findall(r'^[A-Z]+_MARK="', script, flags=re.M)) == 3, marks
-    assert sorted(setup_report._LIST_MARKS) == sorted(f"{m} " for m in marks)
-    [awk] = re.findall(r"list \{ sub\(/\^\\\[\(([^)]*)\)\\\] /", script)
+    assert len(marks) == 3 and len(re.findall(r'^[A-Z]+_MARK="', script, flags=re.M)) == 4, marks
+    assert setup_report._LIST_MARKS[0] == f"{escaped} "
+    assert sorted(setup_report._LIST_MARKS[1:]) == sorted(f"{m} " for m in marks)
+    [first] = re.findall(r"list \{ sub\(/\^\\\[([^(/]*)\\\] /, \"\"\)\n", script)
+    assert first == escaped.strip("[]"), first
+    [awk] = re.findall(r"^\t+sub\(/\^\\\[\(([^)]*)\)\\\] /", script, flags=re.M)
     assert sorted(awk.split("|")) == sorted(m.strip("[]") for m in marks), awk
+    home = "/Users/contoso"
+    cs = f"{home}/Library/CloudStorage/OneDrive-Contoso"
+    text = f"# run=1 2026-11-08T10:00:00Z install.sh --list-folders\n{escaped} [synced] {cs}/Line one\\nTwo\n"
+    assert setup_report.listed_folder_names(text, home) == (True, [("OneDrive-Contoso", 2, "Line one\\nTwo")])
 
 
 def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private(
