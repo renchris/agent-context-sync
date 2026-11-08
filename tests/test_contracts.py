@@ -493,6 +493,18 @@ def test_contracts_cites_the_guides_by_name_not_by_line_c1042() -> None:
     assert len(re.findall(r"^\| `<path>` \|", guide, flags=re.MULTILINE)) == 1
 
 
+def test_every_item_paragraph_opens_after_a_blank_line_c1043() -> None:
+    """B13 round 36 C1043: §16.232's C911 entry followed C937's last line with no blank line, so Markdown
+    rendered it inside C937's paragraph. Every `**<title>** (C<n>` entry opens after a blank line."""
+    lines = CONTRACTS.read_text(encoding="utf-8").splitlines()
+    glued = [
+        f"{n + 1}: {line[:60]}"
+        for n, line in enumerate(lines)
+        if n and re.match(r"\*\*[^*]+\*\* \(C\d+", line) and lines[n - 1].strip()
+    ]
+    assert glued == []
+
+
 def test_the_registry_stub_has_the_code_signatures() -> None:
     """B13 round 13 O55: §15's `Registry` stub still read `__init__(self, converters)`, `default(cls, cfg)`
     and eight converters, and had no `policy`, `without_ocr`, `without_speech`, `screen`,

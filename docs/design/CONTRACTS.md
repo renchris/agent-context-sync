@@ -38788,6 +38788,7 @@ the guide's words for that whole-read failure need no change. Lane RA's report r
 test_cli.py and test_setup_report.py that read status's real output move in this commit. Tests: those pins, among
 them `test_cli.py::test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check` and
 `::test_status_keeps_the_holds_it_read_beside_a_queue_or_hold_list_that_is_not_a_file`.
+
 **Status names the agent's chmod before the person's FAIL beside it** (C911; amends §16.226 C808). C808's order held
 only in install.sh: with the audit trail at 0000 beside a suppression list moved aside (rehearsal state TRAIL0),
 `agentsync status` led with the person's governance.suppressed line as `not a step for the agent`, so an agent
@@ -39749,6 +39750,12 @@ pointed at an unrelated legend row. It now names the row (setup-feedback.md's pl
 which does not go stale when lines are added above it; no dated line, since no scanner asks for one. Test:
 `test_contracts.py::test_contracts_cites_the_guides_by_name_not_by_line_c1042` (no `setup-feedback.md:<n>` citation in
 CONTRACTS.md, and the named row is there).
+
+**C911's paragraph in §16.232 opens on its own** (C1043; docs only). C937's paragraph ended on a line straight above
+`**Status names the agent's chmod before the person's FAIL beside it** (C911; ...`, with no blank line, so Markdown
+rendered C911 inside C937's paragraph; it was the only one of the file's `**...** (C<n>` entries not opened by a blank
+line. One blank line goes between them, and nothing else changes. Test:
+`test_contracts.py::test_every_item_paragraph_opens_after_a_blank_line_c1043`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
