@@ -321,7 +321,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v34). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v35). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -359,7 +359,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v34, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v35, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -422,11 +422,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 34", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 35", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
    report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
    connect to" message, but keeps a public host such as github.com; the role rule is for your own words), as a step 1
-   error, starting its what-text with prompt v34, <agent> and a colon (the same words as in step 1's command; write
+   error, starting its what-text with prompt v35, <agent> and a colon (the same words as in step 1's command; write
    no colon inside <agent>), and go to the report. If it exists and its output does not end so (or the command
    fails), that stop has no report either: tell me that the code on this Mac is not this prompt's version and that
    setup stopped before it could be updated, and
@@ -436,9 +436,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 34", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v34, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v34, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 35", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v35, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v35, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -449,8 +449,10 @@ the name in fix-request.md.
    says if it is a click for me (a sign-in is not one: only the first exception below waits for a sign-in), otherwise
    show it to me and go to step 3's report. Otherwise show me the folders and ask which to sync, suggesting project
    folders rather than a whole library, and tell me that online-only files in them are downloaded by each sync, up to
-   1 GiB per folder per run. If you cannot ask me (your tool runs unattended, or the question comes back unanswered),
-   do not choose folders for me: log a deviation, stop and wait for my answer. If the list's NEXT: line says a folder
+   1 GiB per folder per run. A row that opens with [name holds a control character: rename it to sync it] cannot be
+   chosen: if I want that folder, tell me to rename it in its sync app, then run step 1 again. If you cannot ask me
+   (your tool runs unattended, or the question comes back unanswered), do not choose folders for me: log a deviation,
+   stop and wait for my answer. If the list's NEXT: line says a folder
    or source is still mirrored but has no [[source]] block, tell me what it says (which folder, or how many sources)
    and the fix it names, and add that folder again only if I name it. If it says step 2 stops on something, tell me
    what it names and whose fix it says that is (mine, or the agent's: then it is yours once step 2 stops on it), and

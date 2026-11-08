@@ -38037,6 +38037,9 @@ version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, se
 K58). Tests: `test_the_prompt_text_changes_only_with_its_version`,
 `test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
 `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-08, §16.239 C1072: the prompt is v35, its one change step 1's sentence that a folder row opening with
+install.sh's `[name holds a control character: rename it to sync it]` mark cannot be chosen; no step moves, so v35 is
+read with v7's layout too.
 
 **Round 33's eight CI jobs are in CLAUDE.md and ci.yml's note** (C864; docs only). Jobs 7b23a0a7 to 4e0e8604 took 43:16
 to 57:17, all green on attempt 1, the slowest on b948dfa7 (7133 tests, pytest's step 56:47), 22:43 under the limit of
@@ -39639,6 +39642,25 @@ note under its cost table says Outlook folders use `deltaLink`. It now reads "On
 link has a change token: a OneDrive or SharePoint library, or an Outlook folder"; the next sentence, a folder on the Mac
 re-listed in full and a Teams channel or chat read back to the newest message seen, stays. Test:
 `test_the_readme_says_an_outlook_folder_keeps_a_change_token_too`, which reads the mail arm's own delta calls.
+
+**Setup prompt v35: a folder row step 1 shows escaped cannot be chosen** (C1072 with C1001 and C1116, ruling 113;
+amends §16.229 C823). `--list-folders` showed a folder whose name holds a control character escaped (a newline as
+backslash-n, a tab and a carriage return likewise, every other control character as `?`), so the row could not be
+pasted into `--source-local` (`--source-local is not an existing folder`), and beside a look-alike folder (a real
+backslash-n or `?` in another name in the same parent) it named that other folder, which step 2 synced with no
+warning. Lane RB's commit marks every escaped row with one fixed prefix, `[name holds a control character: rename it to
+sync it] ` (install.sh's `ESCAPED_MARK`, beside `SYNCED_MARK`, `INSIDE_MARK` and `CONTAINS_MARK`, never a suffix that
+`listed_folder_names` would read as part of the name), and `--source-local` refuses a pasted marked row and a look-alike
+clash with a usage error that says to rename the folder in its sync app; it never takes an escaped spelling silently
+and offers no `$'...'` form, which would be one more format the agent must copy byte for byte. The prompt adds one
+sentence to step 1, after the folder question: `A row that opens with [name holds a control character: rename it to
+sync it] cannot be chosen: if I want that folder, tell me to rename it in its sync app, then run step 1 again.` No step
+moves, so no layout changes. Version 35 everywhere the bump list names it (README block and its digest in `PROMPT`,
+`SETUP_PROMPT_COMPAT`, `setup_report.PROMPT_VERSION`, the form's placeholder, the version pins in
+tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback.md's version lines and K59), so round 37
+rehearses the prompt the operator will paste. Tests: `test_readme_step1_says_a_marked_row_cannot_be_chosen` (the mark
+read from install.sh's own constant), `test_the_prompt_text_changes_only_with_its_version`,
+`test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

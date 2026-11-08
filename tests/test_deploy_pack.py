@@ -1117,7 +1117,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (34, "84b338ecce0179e0b4e160df7333c85e186f091fcfd63ac28c1c67f5941c7955")
+PROMPT = (35, "af83aed07dae2440ffb335ba43f8d0bb10f9f592503422dbe56057cbc28b73c3")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3672,6 +3672,34 @@ does not carry (B13 round 22 Z30, Z71, one defect: round 21 Y23's NEXT had no re
 clause, which still applies, since the cut-off NEXT wraps this one ("either way"); no branch is named, as a
 branch's name can carry a work name, and the agent adds nothing and runs no report, the report being its last
 command."""
+
+
+ESCAPED_ROW_MARK = "[name holds a control character: rename it to sync it]"
+"""The mark --list-folders writes, with one space, before a folder row it shows escaped (lane RB's
+ESCAPED_MARK, B13 round 36 ruling 113)."""
+
+
+def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
+    """B13 round 36 C1072 (ruling 113, prompt v35): step 1 showed a folder whose name holds a control
+    character escaped (a newline shown as backslash-n, others as `?`), so its row could not be pasted into
+    --source-local, and beside a look-alike folder it named that other one, which step 2 synced. install.sh
+    now marks such a row and refuses it at --source-local; the prompt says, in one sentence, that a marked
+    row cannot be chosen and that the person renames that folder in its sync app before step 1 runs again.
+    The mark is the installer's own constant."""
+    step1 = _prompt_steps()[1]
+    said = (
+        f"A row that opens with {ESCAPED_ROW_MARK} cannot be chosen: if I want that folder, tell me to"
+        " rename it in its sync app, then run step 1 again."
+    )
+    assert said in step1
+    assert step1.index("Otherwise show me the folders and ask which to sync") < step1.index(said)
+    assert step1.index(said) < step1.index("Two exceptions.")
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    [mark] = re.findall(r"^ESCAPED_MARK=([\"'])(.*?)\1", script, flags=re.MULTILINE)
+    assert mark[1].rstrip(" ") == ESCAPED_ROW_MARK, mark
+    # a usage error, never a silent escaped spelling, and it says to rename the folder (lane RB's words)
+    assert "step 1 shows this folder's name with a control character" in script
+    assert "rename it in its sync app, then run step 1 again" in script
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -7593,7 +7621,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v34, <agent> and a colon")], "the prompt stays v34"
+    assert "Swift" not in prompt[: prompt.index("prompt v35, <agent> and a colon")], "the prompt stays v35"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
