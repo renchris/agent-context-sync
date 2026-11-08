@@ -51,7 +51,7 @@ from agentsync.cycle import (
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError, ManifestOpenError
 from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
-from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, _shown, empty_cloud_folders_held
+from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, _shown, empty_cloud_folders_held, empty_root_fix
 from agentsync.manifest import (
     LOST_MANIFEST,
     LOST_MANIFEST_EMPTY_UNREAD,
@@ -2916,13 +2916,15 @@ def _empty_root_fix(config: Config, src: SourceConfig, root: Path, image: Path) 
     """The fix for a cloud source root that lists 0 entries: Finder first, then each remedy on what Finder
     shows. A folder that is empty there too and is meant to be is paused, never sent to Full Disk Access,
     which a folder chosen empty does not need; files in Finder that this account does not list are a grant.
-    An inbox is never paused this way (B13 round 35 C938)."""
-    finder = f"open {_shell_path(root)} in Finder once"
-    grant = f"if Finder shows files: {_fda_fix(image)}"
-    if src.kind is SourceKind.INBOX:
-        return f"{finder}; {grant}"
-    pause = f'set state = "paused" in [[source]] id = "{src.id}" in {_shown(config.config_path)}'
-    return f"{finder}; if it is empty there too and is meant to be, {pause}; {grant}"
+    An inbox is never paused this way (B13 round 35 C938). The words are ``loop.empty_root_fix``'s, which the
+    loop's empty-root wait gives too (B13 round 36 C1004, C1120)."""
+    return empty_root_fix(
+        src.id,
+        inbox=src.kind is SourceKind.INBOX,
+        root=_shell_path(root),
+        config_shown=_shown(config.config_path),
+        grant=_fda_fix(image),
+    )
 
 
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:

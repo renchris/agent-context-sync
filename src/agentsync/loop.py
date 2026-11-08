@@ -53,6 +53,7 @@ from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.arm_local import (
+    UNKNOWN_EMPTY,
     UNKNOWN_MISSING,
     UNKNOWN_MODE,
     UNKNOWN_OTHER,
@@ -310,6 +311,39 @@ def fail_lines(names: Sequence[str]) -> str:
     if len(names) == 1:
         return f"the {names[0]} [FAIL] line is fixed"
     return f"the {', '.join(names[:-1])} and {names[-1]} [FAIL] lines are fixed"
+
+
+def empty_root_fix(sid: str, *, inbox: bool, root: str, config_shown: str, grant: str) -> str:
+    """The remedy for a cloud source root that lists 0 entries, one form for doctor's ``source.<id>.listable``
+    fix and the loop's wait: Finder first (``root`` as one shell word), then each remedy on what Finder shows.
+    A folder that is empty there too and is meant to be is paused (never an inbox); files in Finder that this
+    account does not list are ``grant`` (B13 round 35 C938; round 36 C1004, C1120, ruling 119)."""
+    finder = f"open {root} in Finder once"
+    granted = f"if Finder shows files: {grant}"
+    if inbox:
+        return f"{finder}; {granted}"
+    pause = f'set state = "paused" in [[source]] id = "{sid}" in {config_shown}'
+    return f"{finder}; if it is empty there too and is meant to be, {pause}; {granted}"
+
+
+def _empty_root_wait(config: Config, sid: str) -> str:
+    """The wait for a cloud source root whose last walk listed 0 entries (``UNKNOWN_EMPTY``): what it may be,
+    then :func:`empty_root_fix` with the folder named as ``the folder of <id>``, never its path (a wait keeps
+    no path, B13 round 5 F43, and the setup report copies the waits into its Loop line), and doctor's grant
+    named by the line that gives its path (B13 round 36 C1004, C1120; ruling 119)."""
+    src = next((s for s in config.sources if s.id == sid), None)
+    fix = empty_root_fix(
+        sid,
+        inbox=src is not None and src.kind is SourceKind.INBOX,
+        root=f"the folder of {sid}",
+        config_shown=_shown(config.config_path),
+        grant=f"grant Full Disk Access to agentsync's Python (the source.{sid}.listable [warn] line names "
+        "it)",
+    )
+    return (
+        f"the folder of {sid} itself lists 0 entries (a cloud folder its sync app has not filled yet, or a "
+        f"privacy refusal that reads as empty; another sync does not clear it): {fix}"
+    )
 
 
 def _sync_stops(config: Config) -> tuple[str, ...]:
@@ -1506,6 +1540,13 @@ def next_step(
                 "not clear it): check its owner and mode with `ls -ld`; to stop syncing it on purpose, "
                 f"{pause}"
             )
+        elif root_kinds.get(sid) == frozenset({UNKNOWN_EMPTY}):
+            # a cloud root that lists 0 entries: doctor's source.<id>.listable fix in its order and
+            # conditions, through one helper, so the two lines the report files as one item give one remedy
+            # (B13 round 36 C1004, C1120; ruling 119)
+            waits.append(_empty_root_wait(config, sid))
+            # the wait explains the root's own 0-entries warn too, so the report files it as yours (C938)
+            checks.append(f"source.{sid}.listable")
         else:
             waits.append(
                 f"the folder of {sid} itself could not be listed or is empty (an unmounted volume, a sync "
@@ -1513,8 +1554,9 @@ def next_step(
                 "or let the sync client fill it, or grant Files and Folders access; to stop syncing it on "
                 f"purpose, {pause}"
             )
-            # the wait explains the root's own 0-entries warn too, so the report files it as yours (C938)
-            checks.append(f"source.{sid}.listable")
+            if root_kinds.get(sid) is None:
+                # a walk from before C1004 stored no kind for an empty root: its warn keeps this wait (C938)
+                checks.append(f"source.{sid}.listable")
         checks.append(f"heartbeat.{sid}")
         names_source(sid)
     if blocked:

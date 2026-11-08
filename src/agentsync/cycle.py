@@ -4379,7 +4379,9 @@ class _Cycle:
         # in the walk's own order (P128), never sorted again
         other = [d for d in stats.unknown_dirs if d not in found and d != "."] if stats is not None else []
         why = stats.unknown_why if stats is not None else ()
-        kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY}
+        # an empty folder's kind is stored only for the root, which has its own wait (B13 round 36 C1004):
+        # the others are empty_cloud_dirs, and their waits never read a kind
+        kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY or u.name == "."}
         missing_state = ""
         if stats is None and root_missing:
             kinds = {".": UNKNOWN_MISSING}

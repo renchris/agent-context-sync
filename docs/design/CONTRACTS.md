@@ -13452,6 +13452,9 @@ empty, run `~/.local/bin/agentsync exclude-empty <id>` ...`; the command is buil
   lists 0 entries opens Finder first and makes each remedy conditional on what Finder shows: `open <root> in Finder
   once; if it is empty there too and is meant to be, set state = "paused" in [[source]] id = "<id>" in
   <sources.toml>; if Finder shows files: <the Full Disk Access fix>`, an inbox without the pause.
+  Amended 2026-11-08, §16.237 C1004: a root whose last walk listed 0 entries in a cloud tree (stored kind `empty`)
+  has its own wait, `the folder of <id> itself lists 0 entries (...)`, whose remedy is doctor's in the same order
+  and conditions; the wait above stays for every other root.
   Amended 2026-10-17, §16.113 Q6, Q11, Q34: a root that does not exist (stored `unlisted_kinds:<id>` `{".":
   "missing"}`) has its own wait, `the folder of <id> does not exist (...)`.
 
@@ -38772,6 +38775,9 @@ empty there too and is meant to be, set state = "paused" in [[source]] id = "<id
 shows files: <the Full Disk Access fix>`, the config shown as the loop's waits show it; an inbox gets no pause. Tests:
 `test_loop.py::test_an_empty_cloud_root_wait_explains_its_listing_warn_and_finder_comes_first_c938` (a local source
 and an inbox) and `::test_a_missing_or_refused_root_wait_names_no_listing_warn_c938`.
+Amended 2026-11-08, §16.237 C1004: the empty root's wait is its own, `the folder of <id> itself lists 0 entries`,
+built with doctor's fix by one helper, `loop.empty_root_fix`, and it adds `source.<id>.listable`; the `could not be
+listed or is empty` wait adds it only for a walk that stored no kind for its root.
 
 ### 16.233 Round 35: the converters: a helper's time-out, the log line's form and the late-stop tests (2026-11-04, wave B13 round 35 lane E)
 
@@ -39383,6 +39389,26 @@ one stop. A limit stays: a refused governance/ hides a refused file inside it, w
 chmod. Test: `test_loop.py::test_a_wait_beside_two_sync_stops_names_both_fail_lines_c1048` (the folder and the
 record: both lines, the first still governance.hold, the sync exits 1; after the folder's chmod the record's line
 alone; the lock as well: three; with none, the plain words and the sync exits 0).
+
+**An empty cloud root's wait and its warn give one remedy** (C1004 with C1120, one defect; ruling 119, makes worse
+True as found; amends §16.45 R102 and §16.232 C938). An empty folder chosen as a source got the generic `could not
+be listed or is empty` wait (mount it or let the sync client fill it, or grant Files and Folders access, the pause
+offered whatever Finder shows), while doctor's `source.<id>.listable` warn beside it, which the report files as the
+same item, opened Finder first and named Full Disk Access. Rewriting the generic wait, as found, would have offered
+a pause for an EPERM root, dropped `mount it` for an unmounted one and sent a local root to Finder, so it stays
+byte for byte. The empty root has its own branch before it, keyed on the root's stored kind `empty`
+(`arm_local.UNKNOWN_EMPTY`), which `cycle` now stores for the root alone (measured: it dropped every `empty` kind,
+so the branch the spec named could never match; the other empty folders are `empty_cloud_dirs` and their waits read
+no kind). Its wait, `the folder of <id> itself lists 0 entries (a cloud folder its sync app has not filled yet, or
+a privacy refusal that reads as empty; another sync does not clear it): <fix>`, and doctor's fix are built by one
+helper, `loop.empty_root_fix`: `open <root> in Finder once; if it is empty there too and is meant to be, set state =
+"paused" in [[source]] id = "<id>" in <sources.toml>; if Finder shows files: <grant>`, an inbox without the pause;
+doctor's root is the folder's shell path and its grant its Full Disk Access fix with the path, the wait's root `the
+folder of <id>` (a wait keeps no path, round 5 F43: the setup report copies it into its Loop line) and its grant
+`grant Full Disk Access to agentsync's Python (the source.<id>.listable [warn] line names it)`. `source.<id>.listable` moves into that branch's checks; the generic
+wait keeps it only for a walk that stored no kind for its root (one from before this change). Test:
+`test_loop.py::test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004` (the same steps in the same order and
+conditions, the same grant, no `mount it` and no Files and Folders), with C938's and R102's tests unchanged.
 
 ### 16.238 Round 36: the converters: a file's class follows its bytes, and a helper started at the deadline (2026-11-08, wave B13 round 36 lane E)
 

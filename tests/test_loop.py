@@ -3352,6 +3352,45 @@ def test_an_empty_cloud_root_wait_explains_its_listing_warn_and_finder_comes_fir
     assert "if still empty" not in warn.fix, warn.fix
 
 
+def test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1004 with C1120 (ruling 119): an empty cloud folder chosen as a source got the generic
+    `could not be listed or is empty` wait (mount it or let the sync client fill it, or grant Files and
+    Folders access, the pause offered whatever Finder shows), while doctor's warn beside it, which the report
+    files as the same item, opened Finder first and named Full Disk Access. The empty root has its own
+    branch, built by the helper doctor's fix uses: the same steps in the same order and conditions, the
+    same grant, only its path named by the warn line; the generic wait and its EPERM words stay."""
+    monkeypatch.setattr(arm_local, "file_provider_marker", lambda _p: "contoso-domain")
+    home = Path(os.environ["HOME"])
+    root = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Empty Project"
+    root.mkdir(parents=True)
+    config = _setup(tmp_path, local_source_table("empty-project", root))
+    cli.main(["sync", "--config", str(config.config_path)])
+    capsys.readouterr()
+    step = loop.next_step(config)
+    assert step is not None and "source.empty-project.listable" in step.checks, step
+    (wait,) = [w for w in step.waits if w.startswith("the folder of empty-project itself ")]
+    assert wait.startswith("the folder of empty-project itself lists 0 entries ("), wait
+    assert "mount it" not in wait and "Files and Folders" not in wait, wait
+    checked = doctor.run_checks(config, tcc_canary=False)
+    (warn,) = [r for r in checked if r.name == "source.empty-project.listable"]
+    assert warn.fix is not None
+    shows = "if Finder shows files: "
+    head, grant = warn.fix.split(shows)
+    wait_head, wait_grant = wait.split("another sync does not clear it): ", 1)[1].split(shows)
+    # the wait names the folder, never its path (a wait keeps no path: the report copies it, F43)
+    assert "~/" not in wait and str(root) not in wait, wait
+    named = head.replace(doctor._shell_path(root), "the folder of empty-project", 1)
+    assert wait_head == named, (wait_head, head)
+    assert head.startswith("open "), head
+    assert " in Finder once; if it is empty there too and is meant to be, set state = " in head, head
+    named = "the source.empty-project.listable [warn] line names it"
+    assert grant.startswith("grant Full Disk Access to ") and wait_grant == (
+        f"grant Full Disk Access to agentsync's Python ({named})"
+    ), (grant, wait_grant)
+
+
 def test_a_missing_or_refused_root_wait_names_no_listing_warn_c938(tmp_path: Path) -> None:
     """C938's negative: only the empty-root wait names the listing warn; a missing root's does not."""
     root = tmp_path / "Gone"
