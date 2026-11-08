@@ -38684,6 +38684,9 @@ governance item, for lane RA). Test:
 `test_cli.py::test_a_lost_sourceless_id_purge_needs_the_release_of_a_hold_on_the_source_its_id_reaches_c980` (a
 hold on another source conditional, an unreadable manifest conditional, a hold on the id's source in the release
 words and refusing the dry run, which runs once it is released).
+Amended 2026-11-08, §16.239 C1047: setup-feedback.md's `queue-maybe` sentence now says so too: for a purge by id whose
+id the manifest resolves (read-only) to the held source, that hold adds the release; every other hold still asks for
+the dry run, and an unreadable manifest keeps the dry run only.
 
 **The stop named beside a sync is the one it meets first** (C933; ruling 109). With governance/ and
 purge-record.json both refused, the waits and the heartbeat's note named governance.suppressed, the record's,
@@ -39661,6 +39664,17 @@ tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback.md'
 rehearses the prompt the operator will paste. Tests: `test_readme_step1_says_a_marked_row_cannot_be_chosen` (the mark
 read from install.sh's own constant), `test_the_prompt_text_changes_only_with_its_version`,
 `test_readme_prompt_compat_matches_the_installer`.
+
+**The guide says a sourceless id purge takes the release of the hold its id reaches** (C1047, ruling 116; amends
+§16.232 C980; docs only). setup-feedback.md's step 1 sentence said a lost purge with no source "asks for a dry run
+first and names no release", while C980 resolves a sourceless stable-id purge's rebuilt id through one read-only
+manifest open (`_lost_id_sources`) and moves a hold on the source it reaches to the known holds, so status names its
+release (`once the records owner decides to release`) and step 1 reads `queue-held`. The sentence now carries C980's
+limits, so it is read neither as replacing the dry run nor as covering every sourceless purge: only a purge by id,
+every other hold still asks for the dry run (the drop half stays unbuilt, gap I91), and an unreadable manifest keeps
+the dry run only; its citation adds C980. install.sh and governance.py are unchanged. Test:
+`test_the_guide_says_a_sourceless_id_purge_takes_the_release_of_the_hold_its_id_reaches_c1047`, which reads each
+limit from governance's own code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

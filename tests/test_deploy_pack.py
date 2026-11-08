@@ -9342,6 +9342,29 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     assert "`vanished=`, `config_err=`) are in" in row
 
 
+def test_the_guide_says_a_sourceless_id_purge_takes_the_release_of_the_hold_its_id_reaches_c1047() -> None:
+    """B13 round 36 C1047: the guide said a lost purge with no source asks for a dry run first and names no
+    release, but round 35's C980 (lane B) moves a hold on the source a sourceless stable-id purge's id
+    resolves to, read-only, into the known holds, so status names its release and step 1 reads `queue-held`.
+    The guide says so with C980's three limits: only a purge by id, every other hold still asks for the dry
+    run, and an unreadable manifest keeps the dry run only. Each limit is read from governance's own code."""
+    from agentsync import governance  # noqa: PLC0415
+
+    section = " ".join(_feedback_page().split())
+    assert (
+        "or, for a purge with no source, asks for a dry run first and names no release, except that for a"
+        " purge by id whose id the manifest resolves (read-only) to the held source, that hold adds the"
+        " release; every other hold still asks for the dry run, and an unreadable manifest keeps the dry run"
+        " only; and a hold on the purge's source, on all or in sources.toml adds the release"
+    ) in section
+    assert "round 35 ruling 104, C993, C980; round 36 C1047)" in section
+    ids = inspect.getsource(governance._lost_id_sources)
+    assert 'r.get("selector_kind") == "stable-id"' in ids and "open_read_only(db" in ids
+    assert "except (AgentSyncError, sqlite3.Error, OSError):\n        return {}" in ids
+    holds = inspect.getsource(governance._lost_queue_holds)
+    assert "resolved.get(n, [])" in holds and "if hold not in known and hold not in conditional" in holds
+
+
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
     `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list

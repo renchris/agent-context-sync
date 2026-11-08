@@ -996,9 +996,12 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   hold in force refuses it: step 1 reads status's own judgment, the queue's fix naming the records owner's release
   (the reader's last word, `queue-held`, then `queue-maybe` for a purge with no source that a hold on another source
   refuses only if it reaches that source or finds nothing, else `queue-free`), so a hold on another source keeps it
-  plain, or, for a purge with no source, asks for a dry run first and names no release, and a hold on the purge's
-  source, on all or in sources.toml adds the release, in the words below; an older build that says none of them keeps
-  the release only under a lost hold (B13 round 34 ruling 93, C840, C879, C871, C803; round 35 ruling 104, C993). When both lost one, the suppression list
+  plain, or, for a purge with no source, asks for a dry run first and names no release, except that for a purge by id
+  whose id the manifest resolves (read-only) to the held source, that hold adds the release; every other hold still
+  asks for the dry run, and an unreadable manifest keeps the dry run only; and a hold on the purge's source, on all or
+  in sources.toml adds the release, in the words below; an older build that says none of them keeps the release only
+  under a lost hold (B13 round 34 ruling 93, C840, C879, C871, C803; round 35 ruling 104, C993, C980; round 36 C1047).
+  When both lost one, the suppression list
   comes first, as status's `NEXT:` leads with it, since `governance.governance_lost` reads the suppression list first,
   and the queue's clause follows it opening `; the same stop names agentsync's purge queue`, logged
   `config_err=state-suppressed-lost,state-queue-lost` (B13 round 30 ruling 40, lane RB's dc266be78, C311; B13 round 31
