@@ -43,10 +43,12 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import sqlite3
 import stat
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -165,32 +167,143 @@ EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher
 
 # Commands by their full path, which works with ~/.local/bin off PATH (B13 round 6 G79, as §16.51 Q49); the
 # usage line keeps prog="agentsync".
-_EPILOG = f"""\
+# Every line fits 80 columns with loop.BIN expanded: the help formatter prints the epilog as written.
+_EXIT_CODES = f"""\
 exit codes:
   0   ok
-  1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a status check
-      failed, a purge/compaction was not verified, discovery was incomplete, or the state file cannot be
+  1   failed: a source failed, a blocking lint fired, curate found a blocking
+      finding, a status check failed, a purge/compaction was not verified,
+      discovery was incomplete, or the state file cannot be
       opened by this account (curate rows are not a failure)
   2   usage error (bad arguments)
-  65  the state file (manifest.sqlite) is no database or a damaged one: the person's to fix (the message
-      names the file and the fix; `{loop.BIN} status` prints it as state_dir.manifest)
-  75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
-      `sync` (not a LaunchAgent's run) first waits up to 10 minutes for it
-  77  sign-in required: a Graph source needs `{loop.BIN} graph login` (auth REAUTH_REQUIRED),
-      or Entra blocked sign-in (blocked: device|policy|consent|assignment, config-invalid; the message
-      names the fix)
-  78  configuration invalid: sources.toml or policy.toml is missing or wrong (the message names the key)
-  79  (LaunchAgent runs only) TCC_PENDING: the signed launcher's canary or watchdog timed out waiting for a
-      macOS privacy prompt; the cycle never ran or was stopped (see the job's .err.log,
+  65  the state file (manifest.sqlite) is no database or a damaged one: the
+      person's to fix (the message names the file and the fix;
+      `{loop.BIN} status` prints it as state_dir.manifest)
+  75  skipped: another agentsync cycle holds the single-writer lock
+      (EX_TEMPFAIL; launchd retries later); `sync` (not a LaunchAgent's run)
+      first waits up to 10 minutes for it
+  77  sign-in required: a Graph source needs
+      `{loop.BIN} graph login` (auth REAUTH_REQUIRED), or Entra
+      blocked sign-in (blocked: device|policy|consent|assignment,
+      config-invalid; the message names the fix)
+  78  configuration invalid: sources.toml or policy.toml is missing or wrong
+      (the message names the key)
+  79  (LaunchAgent runs only) TCC_PENDING: the signed launcher's canary or
+      watchdog timed out waiting for a macOS privacy prompt; the cycle never
+      ran or was stopped (see the job's .err.log,
       `{loop.BIN} status`)
+"""
 
+_EPILOG = f"""\
+{_EXIT_CODES}
 environment:
   AGENTSYNC_CONFIG  path to sources.toml (default ~/agent-context/sources.toml);
                     empty or unset uses the default
 
-files: ~/agent-context/sources.toml (config) · ~/agent-context/docs (the docs git repo) ·
-~/Library/Application Support/agentsync (manifest, lock, heartbeat, governance/) · ~/Library/Caches/agentsync
+files:
+  ~/agent-context/sources.toml (config) · ~/agent-context/docs (the docs git
+  repo) · ~/Library/Application Support/agentsync (manifest, lock, heartbeat,
+  governance/) · ~/Library/Caches/agentsync
+
+Learn more: {it_request.REPO_URL}
 """
+"""The root page's notes: exit codes, environment, files and where to read more."""
+
+_LEAF_POINTER = f"Every command, its files and environment: `{loop.BIN} --help`\n"
+
+_TASKS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Keep in sync", ("add-source", "sync", "adopt", "accept-deletions")),
+    ("Review", ("status", "curate")),
+    ("Delete", ("purge", "hold", "offboard")),
+)
+"""The root page lists each visible command once, under the task it serves (K69)."""
+
+_EXAMPLES: dict[str, tuple[tuple[str, str], ...]] = {
+    "": (
+        ("Sync a folder", "add-source <PATH>"),
+        ("Run one sync now", "sync"),
+        ("Check every source and what to do next", "status"),
+    ),
+    "add-source": (("Sync a folder", "add-source <PATH>"),),
+    "sync": (("Run one sync now", "sync"),),
+    "adopt": (("Copy a hand-made docs tree into topics/", "adopt <PATH>"),),
+    "accept-deletions": (("The deletion is real: apply it", "accept-deletions <SOURCE>"),),
+    "status": (
+        ("Check every source and what to do next", "status"),
+        ("The same check as one JSON document", "status --json"),
+    ),
+    "curate": (("List the curation work", "curate"),),
+    "purge": (
+        ("See what a purge would delete, changing nothing", "purge id=<STABLE_ID> --dry-run"),
+        ("Delete one item from the whole history", "purge id=<STABLE_ID>"),
+        ("Run every queued purge", "purge --queue"),
+    ),
+    "hold": (
+        ("Suspend purge and compaction", "hold <SCOPE> --reason <TEXT> --owner <NAME>"),
+        ("List active holds", "hold --list"),
+        ("Release a hold", "hold <SCOPE> --release --owner <NAME>"),
+    ),
+    "offboard": (
+        ("List every local copy, deleting nothing", "offboard --dry-run"),
+        ("Delete every local copy", "offboard --confirm <DOCS_REPO>"),
+    ),
+}
+"""Each help page's ``Examples:``, by command ("" is the root): one template per job, long options only,
+each a ``<UPPER_CASE>`` placeholder where the person fills in a value; tests parse every one."""
+
+
+def _examples(command: str) -> str:
+    lines = [f"  {job}:\n    {loop.BIN} {argv}\n" for job, argv in _EXAMPLES.get(command, ())]
+    return "Examples:\n" + "".join(lines) + "\n" if lines else ""
+
+
+class _HelpFormatter(argparse.HelpFormatter):
+    """Help at most 80 columns wide (fewer when the terminal is narrower): a one-line text (a description) is
+    wrapped, a text of several lines (an epilog) printed as written; the root's commands grouped by task."""
+
+    def __init__(self, prog: str, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("width", min(shutil.get_terminal_size().columns, 80) - 2)
+        super().__init__(prog, *args, **kwargs)
+
+    def _fill_text(self, text: str, width: int, indent: str) -> str:
+        if "\n" in text:
+            return "".join(indent + line for line in text.splitlines(keepends=True))
+        return super()._fill_text(text, width, indent)
+
+    def _split_lines(self, text: str, width: int) -> list[str]:
+        # a choice or path such as dlp-remediation stays whole, so a copied value is one that parses
+        return textwrap.wrap(" ".join(text.split()), width, break_on_hyphens=False)
+
+    @staticmethod
+    def _choices_in_help(action: argparse.Action) -> bool:
+        # an option's {a,b,...} is one token no wrap can break, so it shows NAME and lists them in its help
+        return bool(action.option_strings) and action.metavar is None and action.choices is not None
+
+    def _metavar_formatter(
+        self, action: argparse.Action, default_metavar: str
+    ) -> Callable[[int], tuple[str, ...]]:
+        if self._choices_in_help(action):
+            return lambda size: (default_metavar,) * size
+        return super()._metavar_formatter(action, default_metavar)
+
+    def _get_help_string(self, action: argparse.Action) -> str | None:
+        text = super()._get_help_string(action)
+        if text and self._choices_in_help(action):
+            text += f"; one of: {', '.join(map(str, action.choices or ()))}"
+        return text
+
+    def _format_action(self, action: argparse.Action) -> str:
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+        shown = {a.dest: a for a in action._get_subactions()}
+        parts = []
+        for title, names in _TASKS:
+            parts.append(f"{' ' * self._current_indent}{title}:\n")
+            self._indent()
+            parts.extend(super(_HelpFormatter, self)._format_action(shown[n]) for n in names if n in shown)
+            self._dedent()
+        return "".join(parts)
+
 
 _log = logging.getLogger("agentsync.cli")
 _TCC_TOKENS = ("TCC_PENDING", "TCC_DENIED")
@@ -289,8 +402,8 @@ def _refused(line: str, code: int, reason: clio.Reason = clio.Reason.usage) -> i
 
 
 def _common(sub_default: object) -> argparse.ArgumentParser:
-    """--config / -v, accepted before or after the subcommand. KISS K18: --config (another sources.toml,
-    default ~/agent-context/sources.toml) still parses but is hidden from help."""
+    """--config / -v / --json / --version, accepted before or after the subcommand. KISS K18: --config
+    (another sources.toml, default ~/agent-context/sources.toml) still parses but is hidden from help."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--config", type=Path, default=sub_default, metavar="PATH", help=argparse.SUPPRESS)
     p.add_argument(
@@ -301,6 +414,14 @@ def _common(sub_default: object) -> argparse.ArgumentParser:
         action="store_true",
         default=sub_default,
         help="status, curate and sync print one JSON document; an error is one JSON line on stderr",
+    )
+    # --version at any depth (R082): listed on the root page only
+    shown = "show program's version number and exit"  # argparse's own words
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"agentsync {__version__}",
+        help=argparse.SUPPRESS if sub_default is argparse.SUPPRESS else shown,
     )
     return p
 
@@ -329,21 +450,20 @@ def build_parser() -> argparse.ArgumentParser:
         prog="agentsync",
         description="Keep an agent-readable docs/ git repo in sync with OneDrive/SharePoint/Outlook/Teams "
         "and local sync-client folders, processing only what changed.",
-        epilog=_EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_examples("") + _EPILOG,
+        formatter_class=_HelpFormatter,
         parents=[_common(None)],
         allow_abbrev=False,
     )
-    parser.add_argument("--version", action="version", version=f"agentsync {__version__}")
     common = _common(argparse.SUPPRESS)
-    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND", title="commands")
 
     def add(name: str, help_text: str, handler: Handler, *, hidden: bool = False) -> argparse.ArgumentParser:
         kwargs: dict[str, Any] = {
             "description": help_text,
             "parents": [common],
-            "epilog": _EPILOG,
-            "formatter_class": argparse.RawDescriptionHelpFormatter,
+            "epilog": f"{_examples(name)}{_EXIT_CODES}\n{_LEAF_POINTER}",  # no examples on a hidden page
+            "formatter_class": _HelpFormatter,
             "allow_abbrev": False,  # each parser reads its own flag; parents do not pass it on
         }
         # A hidden command gets no ``help=``: argparse then lists no entry for it (``help=SUPPRESS`` would
@@ -351,6 +471,11 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, **kwargs) if hidden else sub.add_parser(name, help=help_text, **kwargs)
         p.set_defaults(handler=handler)
         return p
+
+    p = add(
+        "help", f"show a command's help: `{loop.BIN} help status` is `status --help`", _cmd_help, hidden=True
+    )
+    p.add_argument("path", nargs="*", help="the command, e.g. status or graph login")
 
     add(
         "init",
@@ -4010,6 +4135,16 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
                 "next": _inspect(args, "curate"),
             }
         )
+    return EXIT_OK
+
+
+def _cmd_help(args: argparse.Namespace) -> int:
+    """``help [COMMAND...]`` (R081): the page ``COMMAND... --help`` prints, from the same parser; ``help``
+    alone is the root page, on stdout with exit 0; an unknown command is argparse's usage error, exit 2."""
+    try:
+        build_parser().parse_args([*args.path, "--help"])
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
     return EXIT_OK
 
 

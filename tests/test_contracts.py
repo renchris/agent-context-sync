@@ -97,6 +97,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "refresh-queue": [],
         "doctor": [],
         "policy": ["action{show}"],
+        "help": ["path"],
     },
 }
 """The pinned CLI surface: subcommand -> its options (every spelling, ``a/b``) and positionals (dest, plus
@@ -165,7 +166,7 @@ def _cli_surface() -> tuple[list[str], dict[str, dict[str, list[str]]]]:
         if not isinstance(a, argparse._HelpAction | argparse._SubParsersAction)
     ]
     shown = {a.dest for a in sub._choices_actions if a.help is not argparse.SUPPRESS}
-    common = {"-h", "--help", "--config", "-v", "--verbose", "--json"}
+    common = {"-h", "--help", "--config", "-v", "--verbose", "--json", "--version"}
     surface: dict[str, dict[str, list[str]]] = {"visible": {}, "hidden": {}}
     for name, sp in sub.choices.items():
         entries = [_cli_entry(a) for a in sp._actions if not common & set(a.option_strings)]

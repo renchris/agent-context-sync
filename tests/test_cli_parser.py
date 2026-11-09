@@ -1,16 +1,19 @@
-"""The command line's usage layer (CONTRACTS §16.300.2): prefixes, conflicts first, legacy names, hints."""
+"""The command line's usage layer (CONTRACTS §16.300.2): prefixes, conflicts first, legacy names, hints;
+and its help and version (§16.300.8)."""
 
 from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import sqlite3
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from agentsync import cli, governance
+from agentsync import __version__, cli, governance, loop
 from agentsync.config import Config, load_config
 from agentsync.paths import expand
 
@@ -236,3 +239,92 @@ def test_purge_help_names_the_erasure(capsys: pytest.CaptureFixture[str]) -> Non
     assert cli.main(["purge", "--help"]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "permanently delete" in out and "remove items" not in out
+
+
+def _visible() -> list[str]:
+    sub = next(a for a in cli.build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    return [a.dest for a in sub._choices_actions]
+
+
+def _help(capsys: pytest.CaptureFixture[str], *path: str) -> str:
+    assert cli.main([*path, "--help"]) == cli.EXIT_OK, path
+    return capsys.readouterr().out
+
+
+def _parses(command: str) -> None:
+    """``command``, a printed agentsync command line, parses with no handler run."""
+    words = shlex.split(command)
+    assert words[0] == loop.BIN, command
+    try:
+        args = cli.build_parser().parse_args(words[1:])
+    except SystemExit:
+        pytest.fail(f"does not parse: {command}")
+    assert args.command == words[1], command
+
+
+def test_version_works_at_any_depth(capsys: pytest.CaptureFixture[str]) -> None:
+    for argv in (
+        ["--version"],
+        ["status", "--version"],
+        ["add-source", "--version"],
+        ["graph", "login", "--version"],
+    ):
+        assert cli.main(argv) == cli.EXIT_OK, argv
+        assert capsys.readouterr().out == f"agentsync {__version__}\n", argv
+    assert "--version" in _help(capsys)
+    assert "--version" not in _help(capsys, "status")  # listed once, on the root page
+
+
+def test_help_verb_matches_dash_h(capsys: pytest.CaptureFixture[str]) -> None:
+    for path in (["status"], ["purge"], ["graph"], []):
+        assert cli.main([*path, "-h"]) == cli.EXIT_OK
+        dash_h = capsys.readouterr().out
+        assert cli.main(["help", *path]) == cli.EXIT_OK, path
+        assert capsys.readouterr().out == dash_h, path
+    assert cli.main(["help", "sycn"]) == cli.EXIT_USAGE
+    assert "invalid choice" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("columns", ["80", "200"])
+def test_help_fits_80_columns(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, columns: str
+) -> None:
+    monkeypatch.setenv("COLUMNS", columns)
+    for path in ([], *([name] for name in _visible())):
+        long = [line for line in _help(capsys, *path).splitlines() if len(line) > 80]
+        assert not long, (path, long)
+
+
+def test_every_help_example_parses(capsys: pytest.CaptureFixture[str]) -> None:
+    for path in ([], *([name] for name in _visible())):
+        block = _help(capsys, *path).split("\nExamples:\n", 1)[1].split("\n\n", 1)[0]
+        commands = [line.strip() for line in block.splitlines() if line.startswith("    ")]
+        assert commands, path
+        for command in commands:
+            _parses(re.sub(r"<[A-Z_]+>", "x", command))
+
+
+def test_help_groups_each_visible_command_once(capsys: pytest.CaptureFixture[str]) -> None:
+    section = _help(capsys).split("\ncommands:\n", 1)[1].split("\n\n", 1)[0]
+    assert re.findall(r"(?m)^  (\S.*):$", section) == ["Keep in sync", "Review", "Delete"]
+    assert Counter(re.findall(r"(?m)^    (\S+)", section)) == Counter(_visible())
+
+
+def test_printed_recovery_commands_parse(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The commands ``clio.recovery`` prints today: a mismatched ``offboard --confirm`` and a stopped sync."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["offboard", "--confirm", "/not/it", "--purge-data", "--config", cfg]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err
+
+    def stopped(args: argparse.Namespace) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_cmd_sync", stopped)
+    assert cli.main(["sync", "--config", cfg]) == 130
+    err += capsys.readouterr().err
+    commands = [line.strip() for line in err.splitlines() if line.startswith(f"    {loop.BIN} ")]
+    assert [shlex.split(c)[1] for c in commands] == ["offboard", "status"], err
+    for command in commands:
+        _parses(command)

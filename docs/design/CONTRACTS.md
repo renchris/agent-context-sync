@@ -4890,7 +4890,7 @@ checks the two lines below against it: adding, hiding or removing a command is a
 same commit.
 
 - Visible: `sync`, `curate`, `status`, `add-source`, `accept-deletions`, `adopt`, `purge`, `hold`, `offboard`
-- Hidden: `init`, `exclude-empty`, `reconcile`, `doctor`, `policy`, `curate-queue`, `lint`, `refresh-queue`, `checkpoint`, `install-skill`, `materialise`, `migrate`, `compact-history`, `install-agent`, `uninstall-agent`, `graph`, `login`, `logout`, `whoami`, `discover`, `it-request`, `setup-report`
+- Hidden: `init`, `exclude-empty`, `reconcile`, `doctor`, `policy`, `curate-queue`, `lint`, `refresh-queue`, `checkpoint`, `install-skill`, `materialise`, `migrate`, `compact-history`, `install-agent`, `uninstall-agent`, `graph`, `login`, `logout`, `whoami`, `discover`, `it-request`, `setup-report`, `help`
 
 ### 16.11 Open contract gaps (recorded, not implemented)
 
@@ -40896,7 +40896,33 @@ rulings B67 and A91; the decision is filed.
 
 #### 16.300.8 U-C1: help and version
 
-Reserved.
+Help is laid out for a reader with 80 columns, and every exit code stays listed in it.
+
+- `--version` is a common option, added once in `cli._common`: it prints `agentsync <version>` and exits 0 before or
+  after any command (`agentsync status --version`), and `--version --json` still prints `{"version": "<version>"}`.
+  The root page lists it; a command's page does not. `tests/test_contracts.py` keeps it in `CLI_GLOBAL_OPTIONS` and
+  adds it to `_cli_surface`'s common set.
+- `help [COMMAND...]` is a hidden command (§16.10's Hidden line): it parses `COMMAND... --help` with the same parser,
+  so `agentsync help status` prints what `agentsync status -h` prints, on stdout with exit 0. `help` alone is the root
+  page; an unknown command is argparse's usage error, exit 2. A bare `agentsync` is unchanged: the root page on
+  stderr, exit 2.
+- `cli._HelpFormatter` wraps a one-line text (a description, an option's help) at the terminal's width but never past
+  80 columns, prints a text of several lines (an epilog) as written, never splits a word at its hyphen, and shows an
+  option with choices as its name (`--reason REASON`) with the choices listed in its help.
+- The root page lists each visible command once, under its task (`cli._TASKS`): Keep in sync (`add-source`, `sync`,
+  `adopt`, `accept-deletions`), Review (`status`, `curate`) and Delete (`purge`, `hold`, `offboard`). Then come its
+  `Examples:`, the `exit codes:` block with the same words, `environment:`, `files:` and `Learn more:` with
+  `it_request.REPO_URL`. Each line of the epilog fits 80 columns with the full command path.
+- A visible command's page has its own `Examples:` (`cli._EXAMPLES`: one template per job, long options only, a
+  `<UPPER_CASE>` placeholder where the person fills in a value), the same `exit codes:` block, and one line pointing
+  to the root page for every command, the files and the environment. A hidden command's page has no examples.
+- Not built (kept by decision): a bare `agentsync` printing help on stdout with exit 0, and an `Unknown command`
+  message for a mistyped command; the usage error keeps argparse's text.
+
+Tests: `tests/test_cli_parser.py`: `test_version_works_at_any_depth`, `test_help_verb_matches_dash_h`,
+`test_help_fits_80_columns`, `test_every_help_example_parses`, `test_help_groups_each_visible_command_once` and
+`test_printed_recovery_commands_parse`, which parses the `offboard --confirm` and `status` commands `clio.recovery`
+prints today.
 
 #### 16.300.9 U-C2a and U-C2b: consent for purge and compact-history
 
