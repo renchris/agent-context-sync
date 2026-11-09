@@ -53,12 +53,17 @@
 #                           not. A synced folder gone while its app is signed in (renamed, moved or deleted
 #                           there, or not synced on this Mac), or in a SharePoint library not synced on this Mac beside its
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
-#                           status names its fix. A folder whose name holds a control character is shown
-#                           escaped (\n, \t, \r, else ?) after "[name holds a control character: rename it
-#                           to sync it] " ("[name holds a control character] " before a synced one), and a
-#                           folder whose name reads as such a row's after "[name reads as another folder
-#                           there: rename one of them to sync it] "; --source-local refuses each such row,
-#                           and a folder it cannot show apart from another, until the folder is renamed
+#                           status names its fix. A folder whose name holds a control character, a bidi
+#                           control or a zero-width character is shown escaped (\n, \t, \r, else ?) after
+#                           "[name holds a control character: rename it to sync it] " ("[name holds a control
+#                           character] " before a synced one), and a folder whose name reads as such a row's
+#                           after "[name reads as another folder there: rename one of them to sync it] ";
+#                           --source-local refuses each such row, and a folder it cannot show apart from
+#                           another, until the folder is renamed
+#   -a, --all               with --list-folders: list every folder, with no "(N more)" line (the time limits
+#                           and the depth of 2 still hold)
+#   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; default 200), then
+#                           "(N more)"; when some are not listed, its NEXT: ends with the --all command
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -1584,6 +1589,9 @@ REPORT=1
 REPORT_ONLY=0
 NO_REPORT_SEEN=0
 LIST_FOLDERS=0
+LIST_OPT=""  # --all or --limit as given (never recorded: args=--list-folders stays); LIST_MAX is its value
+LIST_MAX=""  # empty for the cap of 200, "all", or a whole number of 1 or more
+LIST_ARG=""  # the same as a re-run of the list names it
 LAUNCHER_SRC=""
 SOURCE=""
 SOURCE_KIND="-"
@@ -9071,7 +9079,8 @@ sys.stdout.write("".join(w + "\n" for w in words))
 # A newline in a folder name travels in the list's files as RS (0x1e), so each folder is one line for wc, sort,
 # the cap and every loop (B13 round 35 C932): list_real gives the name back for a test on disk, and list_shown
 # prints rows, or list_esc one path, with a control character escaped in place (newline \n, tab \t, CR \r, any
-# other ?, a C1 control or U+2028/U+2029 ? too), the path prefix and its mark kept, so a name never starts a line
+# other ?, a C1 control, U+2028/U+2029 or a bidi or zero-width character ? too), the path prefix and its mark
+# kept, so a name never starts a line
 # of its own, a NEXT: line least of all. A name that itself holds RS reads as holding a newline. An escaped row
 # opens with $ESCAPED_MARK and a space, so it equals no other row, a raw backslash-n or ? twin's included (a row
 # with no control character prints byte for byte as before), and --source-local refuses it pasted, or a folder
@@ -9095,12 +9104,16 @@ LIST_ESC_AWK='function esc(s,    o, i, c) {
 		# a C1 control (U+0080-U+009F, NEL among them) and U+2028, U+2029: line breaks to Python\047s
 		# splitlines, which the report reads install.out with, though not to LC_ALL=C (C932 review)
 		else if (c == "\302" && substr(s, i + 1, 1) ~ /[\200-\237]/) { o = o "?"; i++ }
-		else if (c == "\342" && substr(s, i + 1, 2) ~ /^\200[\250\251]$/) { o = o "?"; i += 2 }
+		# and the bidi and zero-width ones, which reorder or hide what a path reads as: U+200B-U+200F,
+		# U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C (U-B11)
+		else if (c == "\342" && substr(s, i + 1, 2) ~ /^(\200[\213-\217\250-\256]|\201[\240\246-\251])$/) { o = o "?"; i += 2 }
+		else if (c == "\357" && substr(s, i + 1, 2) == "\273\277") { o = o "?"; i += 2 }
+		else if (c == "\330" && substr(s, i + 1, 1) == "\234") { o = o "?"; i++ }
 		else o = o c
 	}
 	return o
 }
-function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\250\251]/ }
+function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\213-\217\250-\256]|\342\201[\240\246-\251]|\357\273\277|\330\234/ }
 function kept(s) { return (synced != "" && index(s, synced) == 1) || (inside != "" && index(s, inside) == 1) }
 function bare(s) {
 	if (synced != "" && index(s, synced) == 1) return substr(s, length(synced) + 1)
@@ -9216,6 +9229,7 @@ list_folders() {
 	done
 	LC_ALL=C tr '\n\000' '\036\n' <"$tmp/list0" >"$tmp/list" # one folder a line, a newline in it as RS
 	total="$(wc -l <"$tmp/list" | tr -d ' ')"
+	case "$LIST_MAX" in '') ;; all) max="$total" ;; *) max="$LIST_MAX" ;; esac
 	sort "$tmp/list" | awk -v m="$max" 'NR <= m' >"$tmp/shown" # awk reads it all: no SIGPIPE for sort under pipefail
 	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
 	# list says which they are and nobody is asked again. Only with a config: without one the output is what
@@ -9719,6 +9733,12 @@ list_folders() {
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$vtail$ctail$kept"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog$clog"
 	fi
+	# the folders past the cap, on the NEXT line, never a line of their own (the list's line count holds)
+	if [ "$rc" -eq 0 ] && [ "$total" -gt "$max" ]; then
+		line="$((total - max)) folders past the first $max are"
+		[ $((total - max)) -ne 1 ] || line="1 folder past the first $max is"
+		NEXT_MSG="$NEXT_MSG; $line not listed: $SELF --list-folders --all"
+	fi
 	return "$rc"
 }
 
@@ -9753,8 +9773,8 @@ take_source() { # WORD: repeated, an error (a relative one after -- may start wi
 # its folder. A name like -foo stays a legal folder; --source-local=--help and ./--help name a folder called --help.
 option_name() { # WORD
 	case "$1" in
-	--confirm-install-agent | --report-only | --list-folders | --no-report | --log-start | --log | --log-end | \
-		--launcher | --source-local | --version | -h | --help | --) return 0 ;;
+	--confirm-install-agent | --report-only | --list-folders | --all | --limit | --no-report | --log-start | \
+		--log | --log-end | --launcher | --source-local | --version | -h | --help | --) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -9795,6 +9815,13 @@ while [ $# -gt 0 ]; do
 		;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
+	-a | --all) LIST_OPT="$1" LIST_MAX=all ;;
+	-n | --limit)
+		[ $# -ge 2 ] || usage_error "$1 needs a NUMBER"
+		LIST_OPT="$1" LIST_MAX="$2"
+		shift
+		;;
+	--limit=*) LIST_OPT=--limit LIST_MAX="${1#--limit=}" ;;
 	--no-report) NO_REPORT_SEEN=1 ;; # hidden, ignored: the old baseline prompt ran "install.sh --no-report && ... install-skill"
 	--log-start | --log | --log-end) usage_error "$1 must be the first argument and takes no other option" ;;
 	--launcher)
@@ -9848,6 +9875,20 @@ while [ $# -gt 0 ]; do
 	shift
 done
 [ "$NO_REPORT_SEEN" -eq 0 ] || warn "--no-report is deprecated and ignored: this run still writes the setup report; drop the option"
+# --all and --limit size the folder list only; past 9 digits a limit is every folder (no shell overflow)
+if [ -n "$LIST_OPT" ]; then
+	[ "$LIST_FOLDERS" -eq 1 ] || usage_error "$LIST_OPT goes with --list-folders only"
+	case "$LIST_MAX" in
+	all) LIST_ARG=" --all" ;;
+	'' | *[!0-9]*) usage_error "$LIST_OPT takes a whole NUMBER of 1 or more, got: $LIST_MAX" ;;
+	*)
+		while [ "${LIST_MAX#0}" != "$LIST_MAX" ]; do LIST_MAX="${LIST_MAX#0}"; done
+		[ -n "$LIST_MAX" ] || usage_error "$LIST_OPT takes a whole NUMBER of 1 or more, got: 0"
+		[ "${#LIST_MAX}" -le 9 ] || LIST_MAX=all
+		LIST_ARG=" --limit $LIST_MAX"
+		;;
+	esac
+fi
 # The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
 # them, as step 2 says to name only folders to add (B13 round 16 T22)
 RERUN_ARGS="$ORIG_SHOWN"
@@ -9879,7 +9920,7 @@ if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report; its writ
 	case "$LIST_TOTAL" in
 	'' | 0 | *[!0-9]*) usage_error "AGENTSYNC_LIST_TOTAL_SECONDS must be a whole number of seconds: $LIST_TOTAL" ;;
 	esac
-	RERUN="$SELF --list-folders"
+	RERUN="$SELF --list-folders$LIST_ARG"
 	ORIG_ARGS=" --list-folders" # for the log's start line
 	log_start
 	rc=0

@@ -41009,7 +41009,25 @@ Tests: `tests/test_install_parser.py`.
 
 #### 16.300.18 U-B11: install.sh folder list
 
-Reserved.
+`install.sh --list-folders` takes `-a`/`--all` (every folder, no `(N more)` line) and `-n`/`--limit NUMBER`
+(`--limit=NUMBER` too; at most NUMBER folders, default 200). A value that is not a whole number of 1 or more, or
+either option without `--list-folders`, is a usage error (exit 2). Neither is recorded in `ORIG_ARGS`, so the setup
+log's start line still ends `args=--list-folders`, and `--list-folders --source-local x` stays exit 2. The time
+limits (`AGENTSYNC_LIST_TIMEOUT`, `AGENTSYNC_LIST_TOTAL_SECONDS`) and `-maxdepth 2` still bound `--all`; a limit of
+more than 9 digits lists every folder. A re-run the list's NEXT names repeats the option.
+
+No new stdout line: the `(N more)` line is unchanged, and only when folders are left out does the exit-0 NEXT end
+with `; N folders past the first M are not listed: <install.sh> --list-folders --all` (`1 folder ... is`).
+
+The list's escape (`LIST_ESC_AWK`, one awk predicate under `LC_ALL=C` that bash 3.2 runs with no Python) also covers
+the bidi and zero-width characters U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069, U+FEFF and U+061C: such a
+row opens with `ESCAPED_MARK` and shows each as `?`, as it already did for C0, DEL and C1 controls and U+2028/U+2029;
+every other name, an accented one included, prints raw. The plan's `$'...'` form was not taken: the existing
+escaped-row form is pinned by test_install_oneshot's C932/C1001/C1072 tests and by `--source-local`'s refusal of
+such a row, so both install.out readers (`listed_folder_lines` and `setup_report.listed_folder_names`) keep
+registering the shown text, mark stripped, which is the text install.out holds. The text marks stay (R189 is a
+recorded conflict). Tests: tests/test_install_list.py, including one that holds the two readers equal on an odd
+list and a redaction round trip of an odd name.
 
 #### 16.300.19 U-B12: install.sh --json on the list
 
