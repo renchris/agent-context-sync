@@ -40830,7 +40830,29 @@ options named, nothing written.
 
 #### 16.300.6 U-B4 and U-B5: opt-in --json
 
-Reserved.
+`--json` is a common option, so it parses before or after any command; `tests/test_contracts.py` pins it in
+`CLI_GLOBAL_OPTIONS` and in `_cli_surface`'s common set, so `sync`, `curate` and `status` still show no option of their
+own (§16.10). Without it, every byte of stdout and stderr and every exit code is as before.
+
+- `_main` reads argv before parsing: `--json` turns `clio.set_json` on, so a usage error is one `usage` line on stderr
+  (exit 2), and `--version --json` prints `{"version": "<version>"}` unless `-h` or `--help` is also given, which wins.
+  No command with `--json` is a `usage` line too. `main` turns JSON mode off again on return.
+- Each arm of `_main`'s except-ladder keeps its human lines (no-ops in JSON mode) and calls `cli._json_error`, which
+  writes one `clio.error_doc` line: the reason from `_JSON_REASONS` (first match), else `failed`, or the arm's own when
+  its branch says more (a misplaced or refused file under a sqlite or governance error). The exit codes are unchanged,
+  77 and 78 included. `lock_held` and `rate_limited` carry `retryable: true` (`rate_limited` also `retryAfter`);
+  `login_required` and `sign_in_blocked` are `status: action_required` with `userActionRequired` and a `next` of
+  `graph login`; `api_error` carries `data.status`, `data.code` and `requestId`; `canceled` carries `data.remote`, `none`
+  for a read and `unknown` otherwise.
+- `status --json` prints `_Status.document()`: `{"status": {"checks": [{"id", "ok", "severity", "message", "fix"}],
+  "next", "waitingOnYou", "warnings"}}`. `curate --json` prints `{"findings": [{"code", "path", "message",
+  "blocking"}], "next", "waitingOnYou", "warnings"}`. `sync --json` prints `{"run": {"id", "mode", "commit",
+  "sources"}, "outcome": "committed" | "unchanged", "next", "waitingOnYou", "warnings"}`. `next` is
+  `[{"command", "argv", "when"}]` from the loop's NEXT lines (`cli._loop_doc`, the lines the text view prints), with
+  `~` expanded in argv and a null command for a step that quotes none; it ignores AGENTSYNC_NO_NEXT_HINT. An empty
+  list is `[]` and a known-absent value `null`.
+
+Tests: `tests/test_cli_json.py`.
 
 #### 16.300.7 U-B6: start-up time, measured
 

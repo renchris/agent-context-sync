@@ -37,6 +37,7 @@ import argparse
 import contextlib
 import dataclasses
 import errno
+import io
 import json
 import logging
 import os
@@ -104,6 +105,8 @@ from agentsync.errors import (
     AuthError,
     AuthRequiredError,
     ConfigError,
+    GraphError,
+    GraphThrottled,
     LockHeldError,
     LockNotAFileError,
     ManifestLostError,
@@ -113,7 +116,7 @@ from agentsync.errors import (
 )
 from agentsync.graph import auth as graph_auth  # the module, so a patch of MsalAuth holds (B67, as A91)
 from agentsync.graph.auth import TokenProvider
-from agentsync.graph.errors import AuthBlockedError
+from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError
 from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import (
     ACCESS_ERRNOS,
@@ -231,6 +234,40 @@ def _to_stderr(write: Callable[[], None]) -> None:
             os.close(devnull)
 
 
+_COMMAND_SPAN = re.compile(r"`([^`]+)`")
+
+
+def _argv(command: str) -> list[str]:
+    """``command`` as an argv a caller can exec: ``~`` in its program expanded, since no shell will."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:  # an unbalanced quote in the words: split on spaces, as written
+        argv = command.split()
+    return [str(Path(argv[0]).expanduser()), *argv[1:]] if argv else []
+
+
+def _step(text: str) -> dict[str, object]:
+    """One ``next`` entry of a JSON document: the first command ``text`` quotes, as typed and as an argv, and
+    ``text`` itself as ``when``. A step that quotes no command has a null command and an empty argv."""
+    found = _COMMAND_SPAN.search(text)
+    command = found.group(1) if found else None
+    return {"command": command, "argv": _argv(command) if command else [], "when": text}
+
+
+def _loop_doc(lines: Sequence[str]) -> dict[str, object]:
+    """The loop's NEXT, WAITING ON YOU and note lines as a document's ``next``, ``waitingOnYou`` and
+    ``warnings``: built from the lines the text view prints, so the two cannot drift."""
+
+    def after(prefix: str) -> list[str]:
+        return [line.removeprefix(prefix) for line in lines if line.startswith(prefix)]
+
+    return {
+        "next": [_step(step) for step in after(loop.NEXT_PREFIX)],
+        "waitingOnYou": after(loop.WAIT_PREFIX),
+        "warnings": [{"message": note} for note in after(loop.NOTE_PREFIX)],
+    }
+
+
 # ---------------------------------------------------------------------------------------------------------
 # parser
 # ---------------------------------------------------------------------------------------------------------
@@ -243,6 +280,12 @@ def _common(sub_default: object) -> argparse.ArgumentParser:
     p.add_argument("--config", type=Path, default=sub_default, metavar="PATH", help=argparse.SUPPRESS)
     p.add_argument(
         "-v", "--verbose", action="count", default=sub_default, help="more logging (-v info, -vv debug)"
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=sub_default,
+        help="status, curate and sync print one JSON document; an error is one JSON line on stderr",
     )
     return p
 
@@ -1371,11 +1414,45 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             if line.startswith(loop.WAIT_PREFIX):
                 _out(line)
         _record_sync_stop(args, said, config.state_paths.heartbeat)
+        _sync_document(config, report)
+        clio.error_doc(clio.Reason.state_refused, said)
         return report.exit_code or EXIT_FAILED
-    if hints:
+    if hints and not clio.json_mode():
         for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
             _out(line)
+    _sync_document(config, report)
     return report.exit_code
+
+
+def _sync_document(config: Config, report: CycleReport) -> None:
+    """``sync --json``'s one document (a no-op without it): the run, whether it committed, and the loop's
+    lines, whatever AGENTSYNC_NO_NEXT_HINT says."""
+    if not clio.json_mode():
+        return
+    sources = [
+        {
+            "id": s.source_id,
+            "kind": s.kind.value,
+            "pass": None if s.pass_kind is None else s.pass_kind.value,
+            "converted": s.converted,
+            "skipped": s.skipped_reason,
+            "errors": list(s.errors),
+        }
+        for s in report.sources
+    ]
+    lines = loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True)
+    clio.emit(
+        {
+            "run": {
+                "id": report.run_id,
+                "mode": report.mode.value,
+                "commit": report.commit_sha,
+                "sources": sources,
+            },
+            "outcome": "committed" if report.commit_sha else "unchanged",
+            **_loop_doc(lines),
+        }
+    )
 
 
 HEARTBEAT_REFUSED_STEP = (
@@ -1926,6 +2003,14 @@ class _Status:
 
     def lines(self) -> list[str]:
         return [*self.loop, self.line, *self.check_lines(), *self.detail]
+
+    def document(self) -> dict[str, object]:
+        """``status --json``: every check, and the loop lines the text view prints, as data."""
+        checks = [
+            {"id": r.name, "ok": r.ok, "severity": r.severity.value, "message": r.detail, "fix": r.fix}
+            for r in self.checks
+        ]
+        return {"status": {"checks": checks, **_loop_doc(self.loop)}}
 
 
 def _fail_step(result: doctor.CheckResult) -> str:
@@ -2524,7 +2609,7 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
             for r in checks
         ]
     next_lines: list[str] = []
-    if not hint_off:
+    if not hint_off or clio.json_mode():  # a document's next ignores the guidance setting
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
         elif (first := _state_stop_first(config, checks)) is not None:
@@ -2570,6 +2655,8 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
 def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:
     config = _config(args)
     status = _build_status(config, brief=brief)
+    if clio.json_mode():
+        clio.emit(status.document())
     for line in status.lines():
         _out(line)
     return EXIT_FAILED if status.failed else EXIT_OK
@@ -3828,8 +3915,14 @@ def _cmd_curate(args: argparse.Namespace) -> int:
     stopped = loop._sync_stopped_on(config)
     if stopped is not None:
         fixes.insert(0, curate_stop_fix(stopped))
-    for line in loop.next_lines(config, fixes=fixes):
+    next_lines = loop.next_lines(config, fixes=fixes, quiet=clio.json_mode())
+    for line in next_lines:
         _out(line)
+    if clio.json_mode():
+        found = [
+            {"code": f.code, "path": f.path, "message": f.message, "blocking": f.blocking} for f in findings
+        ]
+        clio.emit({"findings": found, **_loop_doc(next_lines)})
     return EXIT_FAILED if blocking else EXIT_OK
 
 
@@ -4767,6 +4860,80 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _main(argv)
     finally:
         os.umask(previous)
+        clio.set_json(False)  # a caller in this process (a test) gets text again
+
+
+_JSON_REASONS: tuple[tuple[type[BaseException] | tuple[type[BaseException], ...], clio.Reason], ...] = (
+    (LockHeldError, clio.Reason.lock_held),
+    (ConfigError, clio.Reason.config_invalid),
+    ((StateUnreadableError, sqlite3.DatabaseError), clio.Reason.state_unreadable),
+    (AuthBlockedError, clio.Reason.sign_in_blocked),
+    (AuthRequiredError, clio.Reason.login_required),
+    (ManifestSchemaError, clio.Reason.manifest_schema),
+    (AuthError, clio.Reason.sign_in_failed),
+    ((ManifestOpenError, PermissionError), clio.Reason.state_refused),
+    (
+        (ManifestPathError, FileExistsError, NotADirectoryError, LockNotAFileError),
+        clio.Reason.state_misplaced,
+    ),
+    (governance.GovernanceUnreadError, clio.Reason.governance_unreadable),
+    (GraphThrottled, clio.Reason.rate_limited),
+    (NetworkPolicyError, clio.Reason.network_policy),
+    (GraphError, clio.Reason.api_error),
+    (KeyboardInterrupt, clio.Reason.canceled),
+)
+"""The except-ladder's reasons, first match wins; any other error is ``failed``. The exit codes stay the
+ladder's own: ``GraphError`` and its kinds still reach ``except AgentSyncError``, told apart only here."""
+
+_ACTION_REQUIRED = frozenset({clio.Reason.login_required, clio.Reason.sign_in_blocked})
+
+
+def _json_error(
+    exc: BaseException, args: argparse.Namespace, message: str, reason: clio.Reason | None = None
+) -> None:
+    """The ladder's one JSON error line beside its human one; a no-op without ``--json``. ``reason`` is for
+    an arm whose branch says more than the exception's type (a refused or misplaced file under sqlite)."""
+    if not clio.json_mode():
+        return
+    if reason is None:
+        reason = next((r for kind, r in _JSON_REASONS if isinstance(exc, kind)), clio.Reason.failed)
+    login = f"{loop.BIN} graph login"
+    data: dict[str, object] | None = None
+    if reason is clio.Reason.canceled:  # a read takes no lock, so it touched nothing remote
+        data = {"remote": "none" if _is_read(args) else "unknown"}
+    elif reason is clio.Reason.api_error and isinstance(exc, GraphError):
+        data = {"status": exc.status, "code": exc.code}
+    clio.error_doc(
+        reason,
+        message,
+        status="action_required" if reason in _ACTION_REQUIRED else "error",
+        next=[{"command": login, "argv": _argv(login)}] if reason in _ACTION_REQUIRED else (),
+        data=data,
+        user_action_required=reason in _ACTION_REQUIRED,
+        retryable=True if reason in (clio.Reason.lock_held, clio.Reason.rate_limited) else None,
+        retry_after=exc.retry_after if isinstance(exc, GraphThrottled) else None,
+        request_id=exc.request_id if isinstance(exc, GraphError) else None,
+    )
+
+
+def _parse(
+    parser: argparse.ArgumentParser, argv: Sequence[str] | None, *, as_json: bool
+) -> argparse.Namespace:
+    """``parser.parse_args``; with ``--json`` in argv, a usage error is the ``usage`` JSON line instead of
+    argparse's usage text (exit 2 either way)."""
+    if not as_json:
+        return parser.parse_args(argv)
+    said = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(said):
+            return parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code:
+            lines = said.getvalue().strip().splitlines() or ["usage error"]
+            clio.error_doc(clio.Reason.usage, lines[-1].partition(": error: ")[2] or lines[-1])
+        else:
+            sys.stderr.write(said.getvalue())
+        raise
 
 
 _READ_COMMANDS = frozenset({"status", "doctor", "policy", "curate", "whoami", "discover"})
@@ -4784,15 +4951,29 @@ def _is_read(args: argparse.Namespace) -> bool:
 
 def _main(argv: Sequence[str] | None) -> int:
     net.inject_system_trust()  # idempotent; the module-top injection already ran (C15 req 32)
+    # argparse's version action cannot read --json and a usage error comes before args exist: argv says
+    given = list(sys.argv[1:] if argv is None else argv)
+    tokens = given[: given.index("--")] if "--" in given else given
+    clio.set_json("--json" in tokens)
+    if clio.json_mode() and "--version" in tokens:
+        if not {"-h", "--help"} & set(tokens):
+            clio.emit({"version": __version__})
+            return EXIT_OK
+        # --help wins (R086); argparse would act on whichever came first
+        argv = [t for t in tokens if t != "--version"] + given[len(tokens) :]
     parser = build_parser()
     try:
-        args = parser.parse_args(argv)
+        args = _parse(parser, argv, as_json=clio.json_mode())
     except SystemExit as exc:  # argparse exits 2 on usage errors, 0 on --help/--version
         return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
+    clio.set_json(bool(getattr(args, "json", False)))
     _setup_logging(int(getattr(args, "verbose", 0) or 0))
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
-        parser.print_help(sys.stderr)
+        if clio.json_mode():
+            clio.error_doc(clio.Reason.usage, "no command given")
+        else:
+            parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
         with clio.signals():
@@ -4806,6 +4987,7 @@ def _main(argv: Sequence[str] | None) -> int:
             _log.warning("skipped: lock held by %s", _lock_holder(exc.who))
         else:  # a terminal's or an agent's run: the line above already said it (B13 round 19 W13, W30)
             _log.debug("skipped: lock held by %s", _lock_holder(exc.who))
+        _json_error(exc, args, f"lock held by {_skip_holder(exc)}")
         return EXIT_LOCK_HELD
     except LockNotAFileError as exc:
         # a folder, fifo, socket or link at the lock, met by a command no guard covers (exclude-empty, a
@@ -4816,26 +4998,33 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(found[0])
         _misplaced_next(args, found[0], found[1])
+        _json_error(exc, args, found[0])
         return EXIT_FAILED
     except ConfigError as exc:
         _err(f"configuration error: {exc}")
+        _json_error(exc, args, str(exc))
         return EXIT_CONFIG
     except StateUnreadableError as exc:
         # for status (B13 round 19 W41), with the command whose read it was (B13 round 20 X54)
         doctor.record_unreadable(_state_db(args), exc.__cause__ or exc, getattr(args, "command", None))
         _err(f"state: {exc} (fix: {doctor.MANIFEST_FIX})")
+        _json_error(exc, args, f"{exc} (fix: {doctor.MANIFEST_FIX})")
         return EXIT_STATE
     except AuthBlockedError as exc:
         _err(f"sign-in blocked ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''}): {safe_text(str(exc))}")
+        _json_error(exc, args, str(exc))
         return EXIT_REAUTH
     except AuthRequiredError as exc:
         _err(f"sign-in required: {safe_text(str(exc))} — run `{loop.BIN} graph login`")
+        _json_error(exc, args, str(exc))
         return EXIT_REAUTH
     except ManifestSchemaError as exc:
         _err(f"manifest: {exc}")
+        _json_error(exc, args, str(exc))
         return EXIT_FAILED
     except AuthError as exc:
         _err(f"sign-in failed: {safe_text(str(exc))}")
+        _json_error(exc, args, str(exc))
         return EXIT_FAILED
     except ManifestOpenError as exc:
         # not 65: the file is not damaged, and MANIFEST_FIX's move-aside would throw good state away; exit 1,
@@ -4856,6 +5045,7 @@ def _main(argv: Sequence[str] | None) -> int:
         line = f"error: state: {exc}{why} (fix: {fix})"
         _err(line)
         _state_next(args, said=line, path=Path(named) if cut else _state_db(args))
+        _json_error(exc, args, line)
         return EXIT_FAILED
     except (ManifestPathError, FileExistsError, NotADirectoryError) as exc:
         # a state path that is not where or what it should be (a folder where the manifest belongs, a file
@@ -4867,6 +5057,7 @@ def _main(argv: Sequence[str] | None) -> int:
             if not isinstance(exc, ManifestPathError):
                 raise
             _err(f"error: {safe_text(str(exc))}")
+            _json_error(exc, args, str(exc))
             return EXIT_FAILED
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
@@ -4879,6 +5070,7 @@ def _main(argv: Sequence[str] | None) -> int:
         # none, while over a file at the state folder they did (B13 round 25 D44)
         reason = exc.reason if isinstance(exc, ManifestLostError) else None  # which lost kind (C210)
         _misplaced_next(args, said, where, kind="lost" if lost else None, lost=reason)
+        _json_error(exc, args, said)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read
@@ -4890,11 +5082,13 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
         _state_next(args, said=said, path=exc.filename)
+        _json_error(exc, args, said)
         return EXIT_FAILED
     except governance.GovernanceUnreadError as exc:
         # a governance file that is not a file, met inside a command: its status words, a NEXT (E43)
         _err(f"error: state: {exc}")
         _misplaced_next(args, f"error: state: {exc}", exc.path)
+        _json_error(exc, args, str(exc))
         return EXIT_FAILED
     except AgentSyncError as exc:
         said = _non_folder_said(args, exc)
@@ -4904,12 +5098,14 @@ def _main(argv: Sequence[str] | None) -> int:
             # fix or remove it by hand" over a path that does not exist (B13 round 24 B88, B89)
             _err(said)
             _misplaced_next(args, said)
+            _json_error(exc, args, said, clio.Reason.state_misplaced)
             return EXIT_FAILED
         # a governance file in the state folder this account cannot open (holds.json): the same line
         said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
         _err(said or f"error: {safe_text(str(exc))}")  # a Graph message is remote text
         if said:
             _state_next(args, said=said, path=getattr(exc.__cause__, "filename", None))
+        _json_error(exc, args, said or str(exc), clio.Reason.state_refused if said else None)
         return EXIT_FAILED
     except sqlite3.DatabaseError as exc:
         # the manifest is the one database agentsync opens: a command no _state_readable wraps (exclude-empty,
@@ -4918,6 +5114,7 @@ def _main(argv: Sequence[str] | None) -> int:
         if doctor.unreadable_code(exc) or doctor.manifest_unreadable(db) is not None:
             doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
+            _json_error(exc, args, f"{db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
         side = _side_said(args) if doctor.side_may_explain(exc) else None
         if side is not None:
@@ -4928,6 +5125,7 @@ def _main(argv: Sequence[str] | None) -> int:
             _log.debug("state: %s", exc, exc_info=True)
             _err(said)
             _misplaced_next(args, said, where)
+            _json_error(exc, args, said, clio.Reason.state_misplaced)
             return EXIT_FAILED
         said = (_refused_files(args) or _refused_folder(args)) if doctor.cannot_open(exc) else None
         if said is not None:
@@ -4937,6 +5135,7 @@ def _main(argv: Sequence[str] | None) -> int:
             _err(said)
             folder = said.startswith("error: state: the state folder ")
             _state_next(args, said=said, path=_state_root(args) if folder else None)
+            _json_error(exc, args, said, clio.Reason.state_refused)
             return EXIT_FAILED
         if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its
             raise  # traceback (U72); so does any code no one listed (B13 round 18 V59: an allowlist)
@@ -4945,6 +5144,7 @@ def _main(argv: Sequence[str] | None) -> int:
         # others tracebacks)
         _log.debug("database: %s", exc, exc_info=True)
         _err(f"error: {type(exc).__name__}: {exc}")
+        _json_error(exc, args, f"{type(exc).__name__}: {exc}", clio.Reason.failed)
         return EXIT_FAILED
     except KeyboardInterrupt as exc:  # Ctrl-C, or clio.Terminated for SIGTERM and SIGHUP
         if _is_read(args):
@@ -4952,6 +5152,7 @@ def _main(argv: Sequence[str] | None) -> int:
         else:  # a mutation may be part done, so never "nothing was changed" (R294)
             _err("interrupted: Stopped.")
             _recovery("See what the last pass committed", f"{loop.BIN} status")
+        _json_error(exc, args, "Canceled." if _is_read(args) else "Stopped.")
         return 128 + exc.signum if isinstance(exc, clio.Terminated) else 130
     if (clio.stdout_closed() or _stderr_closed) and _is_read(args):
         return (

@@ -49,7 +49,7 @@ def test_module_imports_and_is_in_contract(module_name: str) -> None:
     assert not missing, f"{module_name}: undocumented public names {missing}"
 
 
-CLI_GLOBAL_OPTIONS: list[str] = ["--config (hidden)", "-v/--verbose", "--version"]
+CLI_GLOBAL_OPTIONS: list[str] = ["--config (hidden)", "-v/--verbose", "--json", "--version"]
 """The pinned options of the root parser itself (-h/--help excluded)."""
 
 CLI_SURFACE: dict[str, dict[str, list[str]]] = {
@@ -159,7 +159,7 @@ def _cli_surface() -> tuple[list[str], dict[str, dict[str, list[str]]]]:
         if not isinstance(a, argparse._HelpAction | argparse._SubParsersAction)
     ]
     shown = {a.dest for a in sub._choices_actions if a.help is not argparse.SUPPRESS}
-    common = {"-h", "--help", "--config", "-v", "--verbose"}
+    common = {"-h", "--help", "--config", "-v", "--verbose", "--json"}
     surface: dict[str, dict[str, list[str]]] = {"visible": {}, "hidden": {}}
     for name, sp in sub.choices.items():
         entries = [_cli_entry(a) for a in sp._actions if not common & set(a.option_strings)]

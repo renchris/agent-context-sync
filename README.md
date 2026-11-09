@@ -93,6 +93,8 @@ or chat is read back to the newest message already seen.
    and the page rules: each page pins the mirror pages it cites in its `sources:` header and names its subject in
    `entity:`, and is written under a temporary `.agentsync-<name>.tmp` name, then renamed, so a sync never commits
    half a page.
+   With `--json`, `status`, `curate` and `sync` print one JSON document instead, with the same step in its `next`
+   list, and an error is one JSON line on stderr; without it, the lines above are unchanged.
 4. A sync commits the agent's pages and adds them to the citation map, so later source changes mark them stale.
    Once the session's pages are lint-clean, it also moves the `curated` checkpoint, and the next session's work
    list starts from the diff since that tag.
