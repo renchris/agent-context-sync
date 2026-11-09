@@ -1921,12 +1921,18 @@ limit_line() { printf '%s: stopped at its limit of %ss; %s status shows where it
 PROGRESS_SINCE=""
 WAIT_TICKER=""
 WAIT_WATCHDOG="" # start_pandoc_once's limit, which on_exit ends too
+# The command with_progress waits on and its label, while it waits: a signal ends this shell, never that
+# command (an asynchronous command ignores SIGINT with job control off), so on_exit stops it (stop_waited).
+WAIT_CHILD=""
+WAIT_LABEL=""
 with_progress() {
 	local label="$1" pid rc=0 t0=$SECONDS last="${PROGRESS_SINCE:-$SECONDS}"
 	PROGRESS_SINCE=""
 	shift
 	"$@" </dev/null &
 	pid=$!
+	WAIT_CHILD=$pid
+	WAIT_LABEL=$label
 	(
 		s="" turned=0
 		trap 'kill "$s" 2>/dev/null || :; exit 0' TERM
@@ -1947,10 +1953,54 @@ with_progress() {
 	) &
 	WAIT_TICKER=$!
 	wait "$pid" || rc=$?
+	WAIT_CHILD=""
 	kill "$WAIT_TICKER" 2>/dev/null || true
 	wait "$WAIT_TICKER" 2>/dev/null || true
 	WAIT_TICKER=""
 	return "$rc"
+}
+# PID and every process under it, the deepest first: the waited command is a wrapper (with_timeout, a
+# pipeline), and the tool it runs may sit two or three levels down.
+proc_tree() { # PID
+	local c
+	for c in $(pgrep -P "$1" 2>/dev/null); do proc_tree "$c"; done
+	printf '%s\n' "$1"
+}
+# Whether PID runs: a zombie, which kill -0 still finds, does not.
+proc_alive() { # PID
+	local s
+	s="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1
+	case "$s" in '' | *Z*) return 1 ;; esac
+}
+# A stopped run's waited command: TERM to every process under it, then up to about 3 s for them to end. One
+# still running is named in the NEXT, the deepest first, since the re-run then waits for its lock.
+stop_waited() {
+	local pids p n=15 left=""
+	pids="$(proc_tree "$WAIT_CHILD")"
+	WAIT_CHILD=""
+	for p in $pids; do kill -TERM "$p" 2>/dev/null; done
+	while :; do
+		left=""
+		for p in $pids; do
+			if proc_alive "$p"; then
+				left=$p
+				break
+			fi
+		done
+		[ -n "$left" ] && [ "$n" -gt 0 ] || break
+		sleep 0.2
+		n=$((n - 1))
+	done
+	[ -z "$left" ] || NEXT_MSG="${NEXT_MSG:+$NEXT_MSG; }$WAIT_LABEL (pid $left) may still be running, and the re-run waits for its lock"
+}
+# The stderr line of a run a signal stopped (code RC): SIGINT is a person who stopped waiting, so it says that
+# and the facts, not an error; the report still reads LAST_ERROR.
+stop_line() { # RC
+	if [ "$1" -eq 130 ]; then
+		printf 'Stopped waiting. install.sh received SIGINT%s.\n' "${STEP:+ in step $STEP}" >&2
+	else
+		printf 'error: %s\n' "$LAST_ERROR" >&2
+	fi
 }
 # Print "LINE, still running, <N>s" every $PROGRESS_EVERY s until killed, for the command the caller runs in
 # the foreground meanwhile (a stopped run still lets the one under way end before it exits, so a re-run never
@@ -7972,6 +8022,7 @@ on_exit() {
 	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
+	[ -z "${WAIT_CHILD:-}" ] || stop_waited # a signal ended the wait: the tool it waited on is stopped too
 	[ -z "${AGENTSYNC_PINS:-}" ] || rm -f "$AGENTSYNC_PINS" # a run stopped during step 2's reinstall
 	[ -z "$UV_TMP" ] || rm -rf "$UV_TMP" # step 1's download, after a failure or a stop
 	# a launcher swap that did not finish: the old bundle goes back where it was, unless the new one got there
@@ -8131,7 +8182,7 @@ on_exit() {
 		"this run was stopped "*) ;;
 		*)
 			LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$rc")) before it finished"
-			printf 'error: %s\n' "$LAST_ERROR" >&2
+			stop_line "$rc"
 			NEXT_MSG="this run was stopped while it wrote its report ($(rc_meaning "$rc")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}${NEXT_MSG:+; the run had said: $NEXT_MSG}"
 			;;
 		esac
@@ -8176,7 +8227,7 @@ on_signal() {
 		return 0
 	}
 	LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$1")) before it finished"
-	printf 'error: %s\n' "$LAST_ERROR" >&2
+	stop_line "$1"
 	NEXT_MSG="this run was stopped before it finished ($(rc_meaning "$1")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}"
 	# a SIGTERM to install.sh alone is acted on once the foreground uv run ends: one that ended 0 installed
 	# agentsync, so its step is done, not failed (on_exit; B13 round 36 C1119). The stamp is still not written,
@@ -11684,7 +11735,15 @@ WAIT_CODE=""          # the last background run's exit code
 WAIT_STATE=""
 WAIT_ERRLOG=""
 WAIT_CANARIES="" # the job's --canary paths, one per line
-kickstart() { "$LAUNCHCTL" kickstart "gui/$(id -u)/$POLL_LABEL" >/dev/null 2>&1 || true; }
+PRINT_RC=0 # the last launchctl print's exit code in the wait
+# One launchctl call; its code and stderr are kept, unsaid: a code that is not 0 may be normal against a
+# running job, so only the end of a wait that failed names it.
+KICK_RC=0
+KICK_ERR=""
+kickstart() {
+	KICK_RC=0
+	KICK_ERR="$("$LAUNCHCTL" kickstart "gui/$(id -u)/$POLL_LABEL" 2>&1 >/dev/null)" || KICK_RC=$?
+}
 tcc_lines() { # TCC_PENDING lines in the job's stderr log (the launcher's log)
 	if [ -n "$WAIT_ERRLOG" ] && [ -f "$WAIT_ERRLOG" ]; then
 		grep -c 'TCC_PENDING' "$WAIT_ERRLOG" 2>/dev/null || true
@@ -11749,7 +11808,8 @@ else
 	t0=$SECONDS
 	last=$SECONDS
 	while :; do
-		p="$(launchd_print || true)"
+		PRINT_RC=0
+		p="$(launchd_print)" || PRINT_RC=$?
 		WAIT_STATE="$(launchd_field "$p" state)"
 		runs="$(launchd_field "$p" runs)"
 		case "$runs" in '' | *[!0-9]*) runs=0 ;; esac
@@ -11818,7 +11878,17 @@ else
 		step_end failed "$WAIT_CODE"
 		;;
 	*)
-		LAST_ERROR="no background run exited 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}$([ -z "$WAIT_CODE" ] || { m="$(rc_meaning "$WAIT_CODE")"; [ "$m" = "exit $WAIT_CODE" ] || printf ', %s' "$m"; }); state: ${WAIT_STATE:-not loaded})"
+		# A print that failed is not a job that is not loaded (113, as the tests stub it); a refused kickstart is
+		# a fact the wait could not see, said once the job is not running.
+		state="${WAIT_STATE:-not loaded}"
+		[ -n "$WAIT_STATE" ] || [ "$PRINT_RC" -eq 0 ] || [ "$PRINT_RC" -eq 113 ] || state="unread (launchctl print exited $PRINT_RC)"
+		kick=""
+		if [ "$KICK_RC" -ne 0 ] && [ "$WAIT_STATE" != "running" ]; then
+			kick="; launchctl kickstart exited $KICK_RC"
+			m="$(printf '%s\n' "$KICK_ERR" | head -n 1)"
+			[ -z "$m" ] || kick="$kick: $m"
+		fi
+		LAST_ERROR="no background run exited 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}$([ -z "$WAIT_CODE" ] || { m="$(rc_meaning "$WAIT_CODE")"; [ "$m" = "exit $WAIT_CODE" ] || printf ', %s' "$m"; }); state: $state)$kick"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		step_end failed "${WAIT_CODE:-3}" "$WAIT_RESULT"
 		;;

@@ -27122,7 +27122,8 @@ provisional `end rc=0` of a run that exited 143 and a later report said it ended
 traps the three to `SIG_RC` (129, 130, 143); `on_signal` only records once `EXITING` is set. A run a signal already
 stopped says so on stderr just before the report, in one line: the report is being finished, up to about 120 s, and
 stopping again does not end it sooner (bash runs no trap inside the report's `$( )`, so it cannot be said later). The
-run finishes; then `rc` is the signal's, the error line `on_signal` prints is printed once, and the NEXT reads `this run was
+run finishes; then `rc` is the signal's, the stderr line `on_signal` prints (`stop_line`: `Stopped waiting.` and the
+facts for SIGINT, else the `error:` line) is printed once, and the NEXT reads `this run was
 stopped while it wrote its report (<rc_meaning>); it is safe to re-run: <command>; the run had said: <its NEXT>`
 (a NEXT `on_signal` set is kept). Corrected by measurement: the verifier's `stopped by <rc_meaning>` repeated
 "stopped by", which `rc_meaning` already says. The report child is not killed: bash runs no trap inside the
@@ -40918,7 +40919,28 @@ Tests: `tests/test_install_parser.py`.
 
 #### 16.300.17 U-B10: install.sh signals and swallowed failures
 
-Reserved.
+- **A stop reaches the running tool.** `with_progress` keeps the pid it waits on in `WAIT_CHILD` (and its label in
+  `WAIT_LABEL`) and clears it once the wait returns. A signal ends the shell, never that command: an asynchronous
+  command ignores SIGINT with job control off, and the first sync's chain is with_progress, a `with_timeout`
+  subshell, then agentsync (status adds a pipeline). So on_exit, beside the ticker kills, runs `stop_waited`:
+  `proc_tree` lists the pid and every process under it (`pgrep -P`, deepest first), each gets TERM, and it polls
+  for about 3 s (15 checks 0.2 s apart, no unbounded wait; `proc_alive` reads `ps -o stat=`, so a zombie is gone).
+  Only a process still running then appends `; <label> (pid N) may still be running, and the re-run waits for its
+  lock` to the NEXT, so a tool that dies on TERM leaves the NEXT exactly as before. Foreground helper builds and the
+  reinstall never set `WAIT_CHILD` and are left to finish. Exit codes 129, 130 and 143, the trap lines and the
+  `this run was stopped ` NEXT with its "safe to re-run" clause are unchanged.
+- **SIGINT says the person stopped waiting.** For rc 130 only, `stop_line` prints `Stopped waiting. install.sh
+  received SIGINT in step <step>.` (the step when one is open) in place of the `error:` line, from on_signal and from
+  on_exit's stop during the report; `LAST_ERROR` is still set for the report. HUP and TERM keep the `error:` line.
+  `Stopped waiting.` is never NEXT text.
+- **The wait names what it could not see.** `kickstart` makes one launchctl call in the main shell and keeps its
+  code and stderr in `KICK_RC` and `KICK_ERR`, saying nothing: a code that is not 0 may be normal against a running
+  job. When the wait ends in its `*)` arm (timeout or tcc) with `KICK_RC` not 0 and the job not running, the error
+  line gains `; launchctl kickstart exited <rc>: <first line of its stderr>` after the closing bracket; NEXT,
+  `WAIT_RESULT`, `WAIT_CODE`, the step note and the exit code are unchanged. The wait keeps each print's code in
+  `PRINT_RC`: an empty state with a code other than 0 and 113 (not loaded, as the tests stub it, unverified against
+  real launchctl) reads `state: unread (launchctl print exited <rc>)`, not `not loaded`.
+- Tests: `tests/test_install_signals.py`.
 
 #### 16.300.18 U-B11: install.sh folder list
 
