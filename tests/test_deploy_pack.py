@@ -8410,10 +8410,21 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     for said in (
         "not measured (xcode-select -p did not answer within 3.0s)",
         "not measured (the report's time limit was used up before xcode-select -p ran)",
-        "not measured (<command> did not answer within 3.0s)",
+        "not measured (<command> did not answer within <n>s)",
+        "not measured (<command> did not answer within the report's time limit)",
         "not measured (the report's time limit was used up before <command> ran)",
     ):
         assert f"`{said}`" in page, said
+    # B13 round 36 C1041: `profiles` waits 5.0s, so the generic form names the probe's own cap, and a wait the
+    # spent budget shortened names the report's time limit (lane RA's C1040), never fewer seconds
+    assert "`not measured (<command> did not answer within 3.0s)`" not in page
+    assert "where <n> is the probe's own cap (3.0s; 5.0s for `profiles`)" in page
+    assert (
+        '_probe_ended("`profiles`", rc, joined)' in source
+        and '"status", "-type", "enrollment"], 5.0)' in source
+    )
+    for cap in ('r.run(["/usr/bin/sw_vers"], 3.0)', 'r.run(["/usr/bin/xcode-select", "-p"], 3.0)'):
+        assert cap in source, cap
     assert "`not measured (<command> exited 124: <why>)`" not in page
     assert "`not measured (xcode-select -p ...)`" in page
     # B13 round 34 C852, C878: the Command Line Tools line carries no advice; round 35 C968: on a checkout the
@@ -8435,7 +8446,7 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     # B13 round 35 C923: the other Environment probes' cuts are ruled the same, on C905's words
     assert (
         "The macOS, MDM enrollment and uv lines and pandoc's last branch say a cut the same way (`not"
-        " measured (<command> did not answer within <n>)` or `not measured (the report's time limit was used"
+        " measured (<command> did not answer within <n>s)` or `not measured (the report's time limit was used"
         " up before <command> ran)`) and are ruled the same: each loses one fact its own line says is"
         " missing, and asks for no re-run (B13 round 35 C923)."
     ) in page
@@ -9575,6 +9586,25 @@ def test_the_helper_buckets_quotes_are_the_reports_words_ruling_114() -> None:
     assert (
         text.count("Amended 2026-11-08, §16.236 C1071: ") == 3 and text.count("(ruling 114; 298fa1f17)") == 2
     )
+
+
+def test_c918s_gitleaks_line_names_the_probes_own_cap_c1045() -> None:
+    """B13 round 36 C1045 (ruling 115): C918's dated line called the gitleaks version read's own 3 s time-out
+    the report's time limit. Q81's paragraph gives the forms printed now, inside C1020's one bracket; each is
+    what `_probe_ended` makes of the runner's three notes."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = text.split("Amended 2026-11-08, §16.239 C1045: ", 1)[1].split(" **", 1)[0]
+    for note in (
+        "timed out after 3.0s",
+        setup_report._SHORTENED,
+        "skipped: the report's time budget is used up",
+    ):
+        ended = setup_report._probe_ended("gitleaks version", 124, note).removeprefix("not measured (")
+        assert f"`gitleaks (version not measured, {ended.removesuffix(')')};" in line, ended
+    assert "`gitleaks (version unknown; ...)` stays for a gitleaks that answered" in line
+    assert "note = f\"version not measured, {ended.removesuffix(')')}; \"" in inspect.getsource(setup_report)
 
 
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:

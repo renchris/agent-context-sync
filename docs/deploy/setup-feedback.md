@@ -33,7 +33,9 @@ against the budget. Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one;
 a Status call the time limit cut says `Not run: the report's time budget was used up before status started.` or `Cut
 off: the status call did not finish within <n>s, the limit the report gives it.`, as Doctor does, and an Environment
-probe that did not answer says `not measured (<command> did not answer within 3.0s)`, or `not measured (the report's
+probe that did not answer says `not measured (<command> did not answer within <n>s)`, where <n> is the probe's own cap
+(3.0s; 5.0s for `profiles`), `not measured (<command> did not answer within the report's time limit)` when the spent
+budget shortened its wait (B13 round 36 C1041, C1040), or `not measured (the report's
 time limit was used up before <command> ran)` when the budget was spent before it ran, while a real exit 124 keeps `<command> exited 124: <its text>`; the secret scan's gitleaks version read says the
 same (B13 round 34 C820, round 35 C905 and C918). The pandoc line is the exception: its own run's time-out keeps
 `<pandoc> did not answer within <n>s (<why a start can be slow>)`, so only a budget spent before it ran takes the
@@ -1400,7 +1402,7 @@ advice and install.sh's NEXT asks for the re-run (a stopped copy says `this copy
 its NEXT adds nothing). A cut of the Environment read while the install source's read answered, or an install with
 no .git (a copied folder or a wheel, whose install source does not read `xcode-select`), has no Summary line naming
 it, so that cut by itself asks for no re-run (B13 round 34 C852, C878; round 35 C968). The macOS, MDM enrollment
-and uv lines and pandoc's last branch say a cut the same way (`not measured (<command> did not answer within <n>)`
+and uv lines and pandoc's last branch say a cut the same way (`not measured (<command> did not answer within <n>s)`
 or `not measured (the report's time limit was used up before <command> ran)`) and are ruled the same: each loses
 one fact its own line says is missing, and asks for no re-run (B13 round 35 C923). A Background runs
 line's `not measured (<why>; plist present|absent)` gives none: the Summary's background sync line carries it once,

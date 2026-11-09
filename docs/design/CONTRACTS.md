@@ -14820,6 +14820,12 @@ for a gitleaks that answered.
 Amended 2026-11-08, §16.235 C1020: the version's state goes inside the one path bracket, `gitleaks (version not
 measured, gitleaks version did not answer within 3.0s; <path>; shell and background runs)` or `gitleaks (version
 unknown; <path>; ...)`, never two brackets side by side.
+Amended 2026-11-08, §16.239 C1045: C918's line above called the probe's own 3 s cap the report's time limit. A
+version read that did not answer gives its own cap's seconds, `gitleaks (version not measured, gitleaks version did not
+answer within 3.0s; <path>; ...)`; one the spent budget shortened, `gitleaks (version not measured, gitleaks version
+did not answer within the report's time limit; ...)` (C1040); one the spent budget never started, `gitleaks (version
+not measured, the report's time limit was used up before gitleaks version ran; ...)`; `gitleaks (version unknown;
+...)` stays for a gitleaks that answered (762ac312b).
 
 ### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
 
@@ -37510,6 +37516,9 @@ Amended 2026-11-04, §16.230 C904, C919: beside `Not run: ... before status star
 Amended 2026-11-04, §16.230 C905: `_probe_ended` no longer says `exited 124` for a program the runner never
 answered for: `not measured (<cmd> did not answer within 3.0s)` or `not measured (the report's time limit was used
 up before <cmd> ran)`; the Command Line Tools read (C716) goes through it, and gitleaks' version read too (C918).
+Amended 2026-11-08, §16.239 C1041: the generic form is `did not answer within <n>s`, <n> the probe's own cap (3.0s;
+5.0s for `profiles`), and since C1040 (762ac312b) a wait the spent budget shortened reads `did not answer within the
+report's time limit`, never fewer seconds.
 Amended 2026-11-04, §16.234 C969: CORRECTED: the evidence line gives the advice only when its own parts were cut or
 found the state file held by a sync. A Status call cut with the budget left, whose parts were measured, reads `the 6
 parts at the end of Status were measured`, and no line of the report gives the advice; the Loop line's `not read
@@ -38312,6 +38321,10 @@ real 124), `test_the_command_line_tools_time_out_is_not_measured_c716`,
 Amended 2026-11-08, §16.235 C1020, C1040: the secret scan's cut reads `gitleaks (version not measured, <words>;
 <path>; ...)` and its answered-but-empty read `gitleaks (version unknown; <path>; ...)`, one bracket; a wait the spent
 budget made shorter than its cap reads `not measured (<cmd> did not answer within the report's time limit)`.
+Amended 2026-11-08, §16.239 C1041: `3.0s` is the cap of sw_vers, xcode-select, uv and gitleaks; `profiles` waits
+5.0s, so the generic form is `not measured (<cmd> did not answer within <n>s)`, <n> the probe's own cap, and a wait the
+spent budget shortened reads `not measured (<cmd> did not answer within the report's time limit)` (C1040,
+762ac312b).
 
 **C804's report test pins each half alone** (C944; tests only). The test passed with either half of C804 removed,
 since the other ended the child. It is parametrized `alone`: `deadline` stubs `doctor.end_children` (read by getattr at
@@ -39755,6 +39768,24 @@ report run that could not help. Lane RB moved the reader (298fa1f17); the guide 
 `_ROUND_36_D_PARAGRAPH_AMENDS`. Ruling 108's text stays as written. Test:
 `test_the_helper_buckets_quotes_are_the_reports_words_ruling_114` (the words read from `_helper_late_head` and
 install.sh's grep).
+
+**The guide's generic probe cut names the probe's own cap** (C1041, ruling 115; amends §16.225 C820 and §16.230 C905;
+docs only). setup-feedback.md and the two C905 passages gave every Environment probe's time-out as `not measured
+(<command> did not answer within 3.0s)`, but `profiles` (MDM enrollment) waits 5.0s, and the guide's own C923 sentence
+wrote `within <n>`. The generic form is now `not measured (<command> did not answer within <n>s)`, <n> the probe's own
+cap (3.0s; 5.0s for `profiles`); lane RA's C1040 (762ac312b) prints a wait the spent budget shortened as `did not
+answer within the report's time limit`, never fewer seconds, so the guide says that form too, and the C923 sentence
+takes `<n>s`. Each C905 passage gets a dated line. Test:
+`test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its 3.0s pin moved and each cap read from
+the code.
+
+**C918's line names the probe's own cap** (C1045, ruling 115; amends §16.52 Q81; docs only). C918's dated line called
+the gitleaks version read's own 3 s time-out "the report's time limit", which ruling 96 keeps for a spent budget. The
+line stays (history) and Q81's paragraph takes one more after lane RA's C1020 line: a read that did not answer gives
+its own cap's seconds, one the spent budget shortened `the report's time limit` (C1040), one it never started `the
+report's time limit was used up before gitleaks version ran`, all inside C1020's one bracket, and `version unknown`
+for a gitleaks that answered (762ac312b). Test: `test_c918s_gitleaks_line_names_the_probes_own_cap_c1045` (each form
+produced by `_probe_ended` on the three notes).
 
 **The lane brief says which signals a new signal test resets** (C1054; docs only; `docs/lanes/COMMON.md`'s
 Regressions paragraph). It said, as `Since C869 the two signal tests pass under nohup and `&``, then, in the lead's
