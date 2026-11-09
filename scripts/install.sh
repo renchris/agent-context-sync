@@ -26,7 +26,10 @@
 #                           the run writes no bring-back.md and prints no "bring back:" or issue link line
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
-#                           (the line step 1 of the setup prompt checks)
+#                           (the line step 1 of the setup prompt checks: R086's named exception, as README step 1
+#                           reads that line last); with --json, instead one JSON line with version (the commit, or
+#                           null), sourceCommit (as shown above, or null) and setupPromptCompat; with -h or --help,
+#                           in either order, the help
 #   --list-folders          only list the folders this Mac syncs, as candidates for --source-local: every
 #                           folder 1 or 2 levels inside each ~/Library/CloudStorage/<provider> (names only: no
 #                           file is opened; no dot folders), sorted, one full path per line, at most 200 then
@@ -1650,9 +1653,9 @@ CAPTURE_TARGET=/dev/null # where they copy it: install.out, or nowhere for a run
 JSON_RUN=0 # 1: fd 9 and fd 8 are the caller's stdout and stderr, and the human output stays off them (start_capture)
 JSON_OPEN=0 # 1 once start_capture has opened fd 9 and fd 8: on_exit then writes the run's one document (json_end)
 JSON_REASON="" JSON_MESSAGE="" # a usage error's reason and words, for json_end
-# The runs --json goes with, each by its option (json_goes_with). D15: the folder list only. U-B17 widens it by
-# adding " --version --help " here: their arms already ask, and the error names whatever this holds.
-JSON_WITH=" --list-folders "
+# The runs --json goes with, each by its option (json_goes_with): the folder list (D15) and --version (D17). Not
+# --help while D16 is open: the tested header is the help contract (KISS K17). The error names what this holds.
+JSON_WITH=" --list-folders --version "
 LIST_NOTE="" # the folder list's note word, for reason_for_list (step_end sets it)
 LIST_ROWS="" LIST_COUNT="" LIST_CUT=0 LIST_NEXT="" # what list_folders found, for json_end in a JSON run
 # --json is read before the option loop, so a usage error that loop raises is JSON too; after -- a word is SOURCE
@@ -1820,19 +1823,35 @@ unread_reason() { # DIR
 		printf 'no developer tools to run git, and its .git/HEAD names no commit'
 	fi
 }
+# VERSION_COMMIT: the commit --version shows, "<sha12>", "<sha12> dirty <fingerprint>" or "unknown (<why>)";
+# empty with no .git
+version_commit() {
+	VERSION_COMMIT=""
+	[ -e "$repo/.git" ] || return 0
+	git_ro_resolve
+	VERSION_COMMIT="$(checkout_commit "$repo")"
+	[ -n "$VERSION_COMMIT" ] || VERSION_COMMIT="$(git_head_file "$repo")"
+	[ -n "$VERSION_COMMIT" ] || VERSION_COMMIT="unknown ($(unread_reason "$repo"))"
+}
 show_version() { # the compat line last: step 1 of the setup prompt reads the last line of its output
-	local c
-	if [ -e "$repo/.git" ]; then
-		git_ro_resolve
-		c="$(checkout_commit "$repo")"
-		[ -n "$c" ] || c="$(git_head_file "$repo")"
-		[ -n "$c" ] || c="unknown ($(unread_reason "$repo"))"
-		case "$c" in
-		*" dirty "*) say "source commit: $c (local changes in this checkout; setup prompt step 1 keeps them on a local branch before it updates)" ;;
-		*) say "source commit: $c" ;;
-		esac
-	fi
+	version_commit
+	case "$VERSION_COMMIT" in
+	"") ;;
+	*" dirty "*) say "source commit: $VERSION_COMMIT (local changes in this checkout; setup prompt step 1 keeps them on a local branch before it updates)" ;;
+	*) say "source commit: $VERSION_COMMIT" ;;
+	esac
 	say "setup-prompt-compat $SETUP_PROMPT_COMPAT"
+}
+# --version --json: one line, {"version","sourceCommit","setupPromptCompat"}. version is the commit alone, null
+# with no .git or one git could not read; sourceCommit is what the plain run shows (null with no .git).
+show_version_json() {
+	local v=null s=null
+	version_commit
+	if [ -n "$VERSION_COMMIT" ]; then
+		s="$(json_str "$VERSION_COMMIT")"
+		case "$VERSION_COMMIT" in "unknown ("*) ;; *) v="$(json_str "${VERSION_COMMIT%% *}")" ;; esac
+	fi
+	printf '{"version":%s,"sourceCommit":%s,"setupPromptCompat":%s}\n' "$v" "$s" "$SETUP_PROMPT_COMPAT"
 }
 # A signal's exit (128 + N), standing alone: "stopped by SIG<NAME> (signal N)", the phrase ocr._ended gives a
 # converter that a signal stopped (B13 round 3 R81) and setup_report._closing_stopped gives a closing status; "exit
@@ -9980,9 +9999,28 @@ while [ $# -gt 0 ]; do
 		record_folder "$SAFE_WORD"
 		;;
 	--version)
+		shift
+		for a in "$@"; do # --help wins in either order: --help --version never reaches this arm
+			case "$a" in
+			--) break ;;
+			-h | --help)
+				json_goes_with --help
+				show_help || [ "$?" -eq 141 ]
+				exit 0
+				;;
+			esac
+		done
 		json_goes_with --version
-		show_version
-		exit 0
+		# In a subshell, so a reader that closed early (--version | head) ends it by SIGPIPE (141), not this shell
+		set +e
+		(
+			set -e
+			if [ "$JSON_RUN" -eq 1 ]; then show_version_json; else show_version; fi
+		)
+		a=$?
+		set -e
+		[ "$a" -ne 141 ] || a=0
+		exit "$a"
 		;;
 	-h | --help)
 		json_goes_with --help

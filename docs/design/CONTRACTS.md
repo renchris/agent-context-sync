@@ -41091,7 +41091,21 @@ The setup prompt does not use `--json`. D14 Option B: the default stdout stays b
 
 #### 16.300.20 U-B17: install.sh --version and machine help
 
-Reserved.
+`install.sh --version` (D17 Option B, the named exception to R086) keeps its bytes: `source commit: ...` when the
+checkout has a `.git`, then `setup-prompt-compat N` last, the line README step 1 reads. `version_commit` sets
+`VERSION_COMMIT`, which `show_version` and `show_version_json` share. `--version --json`, in either order, prints
+one line, `{"version","sourceCommit","setupPromptCompat"}`: `version` is the 12-digit commit, null with no `.git` or
+one git cannot read; `sourceCommit` is what the plain run shows after `source commit: ` (`<sha> dirty <fingerprint>`,
+or `unknown (<why>)` with its `~/` path through `json_str`), null with no `.git`; `setupPromptCompat` is read from
+`SETUP_PROMPT_COMPAT`, so the number has one literal. `JSON_WITH` is ` --list-folders --version `, so the usage error
+reads `--json works with --list-folders --version only`. The `--version` arm scans the words after it up to `--`:
+`-h` or `--help` prints the help and exits 0, so help wins in both orders (`--help --version` stops at the help arm
+first). The output runs in a subshell, as `--help`'s awk does (16.300.13's closed reader): a reader that closed
+early ends it by SIGPIPE, and the run exits 0. `-v` stays unassigned while D12 is open.
+
+Machine help (B-17.2) is not built while D16 is open: no `--help --json`, no `help --all --json` and no
+`help search`. `--help --json` stays the usage error of 16.300.19. The deviation is KISS K17: the tested header
+comment that `--help` prints is the help contract. Tests: tests/test_install_json.py.
 
 #### 16.300.21 U-B13: tenant-probes harness, dry run and parser
 
