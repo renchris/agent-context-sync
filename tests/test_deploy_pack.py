@@ -9506,6 +9506,32 @@ def test_a_blank_drawio_is_not_the_type_by_choice_c1034(tmp_path: Path) -> None:
         assert str(raised.value) == reason, name
 
 
+def test_the_helpers_signal_limit_is_stated_c1035() -> None:
+    """B13 round 36 C1035 (ruling 117): a signal to agentsync's pid alone does not reach a running helper,
+    which stays in its caller's group with no watcher, while §16.232 promises doctor's programs end on any
+    signal. C961's paragraph states the limit; the code it describes is read here: a plain Popen with no new
+    session or group, and no signal handler in the report."""
+    from agentsync import setup_report  # noqa: PLC0415
+    from agentsync.convert import ocr  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = text.split("Amended 2026-11-08, §16.239 C1035: ", 1)[1].split(" **", 1)[0]
+    assert line.startswith(
+        "a signal to agentsync's pid alone (install.sh's `with_timeout` watchdog `kill` at 120 s"
+    )
+    assert (
+        "A signal to the report's group, launchd's cleanup of a cycle and `end_helpers()` at the report's end"
+        in line
+    )
+    assert "no signal handler is built (ruling 117" in line
+    start = inspect.getsource(ocr._start)
+    assert "subprocess.Popen(" in start
+    assert "start_new_session" not in start and "process_group" not in start
+    assert "signal.signal(" not in inspect.getsource(setup_report)
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'with_timeout 120 "$bin" setup-report' in script and 'kill "$2"' in script
+
+
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
     `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list

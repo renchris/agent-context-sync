@@ -38861,6 +38861,12 @@ the group), with the four `subprocess.run` fakes in `test_ocr.py` and `test_medi
 Amended 2026-11-08, §16.238 C1067: `START_BY` alone left a helper free to start after a report a Ctrl+C ended
 before its limit; `end_helpers(gate)` now closes that report's `START_GATE` under the same lock before it copies
 `_LIVE`, and `_start` refuses a closed gate as it refuses a passed `START_BY`.
+Amended 2026-11-08, §16.239 C1035: a signal to agentsync's pid alone (install.sh's `with_timeout` watchdog `kill` at
+120 s on setup-report, or a `kill <pid>` by hand) does not reach a running helper: one that answers ends on its own,
+and a hung one runs on, re-parented to launchd. A signal to the report's group, launchd's cleanup of a cycle and
+`end_helpers()` at the report's end do reach it. Unlike doctor's programs (§16.232 C956), no watcher covers it, since
+the helper stays in the caller's group and a per-call watcher would cost every cycle's OCR, media and speech call a
+shell, and no signal handler is built (ruling 117; on lane E's 78d70c721).
 
 **A helper's `--version` that did not answer in time says so, never `not working`** (C915, ruling 108, makes worse
 True; `agentsync.ops.doctor`). A slow first start under load and a hung helper read the same from doctor, but the
@@ -39714,6 +39720,19 @@ compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history 
 [governance] archive or a hold. Push stays opt-in, so no body was published. Test:
 `test_c934s_old_commit_bodies_age_out_by_compaction_c1051`, which reads each figure, the command and both refusals from
 the code.
+
+**§16.233 states the helper's signal limit** (C1035, ruling 117; amends §16.233 C961; docs only). §16.233 named
+launchd's cleanup and a signal to the report's group as reaching a helper, while §16.232 C956 promises that a signal
+to agentsync, to its process or its group and SIGKILL included, leaves no doctor program running, so a reader took
+the helper to be covered the same way. It is not: `ocr._start` is a plain `Popen` with no new session and no watcher
+(C961 keeps the helper in its caller's group), setup_report installs no handler, and a SIGTERM to the report's pid
+alone left a fake hung helper alive, re-parented to launchd (the verifier's run). install.sh's `with_timeout 120`
+watchdog is such a sender, though the report's own 60 s clamp and START_BY make it reach a helper only when the
+report is wedged. The finder's watcher in `_start` is not built: it needs the helper in the watcher's process group,
+which inverts C961's ruling and its test, and adds a shell per call on the cycle's hot path; nor is a handler
+(ruling 117). C961's paragraph takes the dated line stating the limit, after lane E's C1067 line (78d70c721). Test:
+`test_the_helpers_signal_limit_is_stated_c1035` (the line, and `_start`'s plain `Popen` with no new session, read
+from the code).
 
 **The lane brief says which signals a new signal test resets** (C1054; docs only; `docs/lanes/COMMON.md`'s
 Regressions paragraph). It said, as `Since C869 the two signal tests pass under nohup and `&``, then, in the lead's
