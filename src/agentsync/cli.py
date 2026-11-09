@@ -268,6 +268,21 @@ def _loop_doc(lines: Sequence[str]) -> dict[str, object]:
     }
 
 
+def _inspect(args: argparse.Namespace, *words: str) -> list[dict[str, object]]:
+    """A mutation's ``next`` (R249): the one command that shows what it changed, under the same config."""
+    config = getattr(args, "config", None)
+    tail = f" --config {shlex.quote(str(config))}" if config is not None else ""
+    command = f"{loop.BIN} {' '.join(words)}{tail}"
+    return [{"command": command, "argv": _argv(command)}]
+
+
+def _refused(line: str, code: int, reason: clio.Reason = clio.Reason.usage) -> int:
+    """A handler's own refusal: its human line, or in JSON mode its one error line; ``code`` unchanged."""
+    _err(line)
+    clio.error_doc(reason, line.removeprefix("error: "))
+    return code
+
+
 # ---------------------------------------------------------------------------------------------------------
 # parser
 # ---------------------------------------------------------------------------------------------------------
@@ -1236,6 +1251,8 @@ def _ensure_setup(config: Config) -> int:
     _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, {remotes}; {scaffold})")
     for f in findings:
         _err(f"governance: {f}")
+    if findings:
+        clio.error_doc(clio.Reason.failed, "; ".join(f"governance: {f}" for f in findings))
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
     if any(s.kind is not SourceKind.INBOX for s in config.sources):
@@ -1331,17 +1348,16 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     raw: Path = args.path
     path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected
     if not path.exists():
-        _err(f"add-source {raw}: no such folder")
-        return EXIT_USAGE
+        return _refused(f"add-source {raw}: no such folder", EXIT_USAGE)
     if not path.is_dir():
-        _err(f"add-source {raw}: not a directory")
-        return EXIT_USAGE
+        return _refused(f"add-source {raw}: not a directory", EXIT_USAGE)
     docs = expand(config.docs_repo)
     # Compared as written and canonical: the source path is canonical, docs_repo is not (e.g. /var vs
     # /private/var, or a symlinked ~/agent-context).
     if any(is_under(path, d) or is_under(d, path) for d in {docs, canonical_source_root(docs)}):
-        _err(f"add-source {raw}: {path} and the docs repo {docs} must not contain each other")
-        return EXIT_USAGE
+        return _refused(
+            f"add-source {raw}: {path} and the docs repo {docs} must not contain each other", EXIT_USAGE
+        )
     # PATH is the inbox folder of a config with no inbox (one from before K05): the inbox first, so that
     # folder becomes kind "inbox", never a local source install.sh would count as a folder to sync.
     if path == canonical_source_root(docs.parent / "inbox") and not any(
@@ -1363,6 +1379,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             f"already configured: source {known.id!r} ({known.kind.value}, {known.state.value}) has path "
             f"{known.path} in {config.config_path}{same}"
         )
+        source, outcome = {"id": known.id, "path": str(known.path)}, "unchanged"
     else:
         sid = derive_source_id(path, {s.id for s in config.sources})
         table = local_source_table(sid, path)
@@ -1374,14 +1391,17 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             else:
                 config = append_to_config(config.config_path, table)  # validated before anything is written
         except ConfigError as exc:
-            _err(f"add-source {raw}: refused, sources.toml would not load: {exc}")
-            return EXIT_USAGE
+            return _refused(f"add-source {raw}: refused, sources.toml would not load: {exc}", EXIT_USAGE)
         # The folder as typed when the stored form differs (a link resolved, /tmp as /private/tmp), as the
         # inbox line says it (Q36; B13 round 5 F49): the table below names only the stored one.
         note = "" if typed == path else f" ({typed}, stored as {path})"
         _out(f"added source {sid!r} to {config.config_path}{note}:")
         _out(table.strip("\n"))
-    return _ensure_setup(config)
+        source, outcome = {"id": sid, "path": str(path)}, "created"
+    code = _ensure_setup(config)
+    if clio.json_mode() and code == EXIT_OK:
+        clio.emit({"source": source, "outcome": outcome, "next": _inspect(args, "status")})
+    return code
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:
@@ -1429,6 +1449,12 @@ def _sync_document(config: Config, report: CycleReport) -> None:
     lines, whatever AGENTSYNC_NO_NEXT_HINT says."""
     if not clio.json_mode():
         return
+    lines = loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True)
+    clio.emit(_run_doc(report) | _loop_doc(lines))
+
+
+def _run_doc(report: CycleReport) -> dict[str, object]:
+    """A cycle's ``run`` and ``outcome``, for sync's and accept-deletions' documents."""
     sources = [
         {
             "id": s.source_id,
@@ -1440,19 +1466,15 @@ def _sync_document(config: Config, report: CycleReport) -> None:
         }
         for s in report.sources
     ]
-    lines = loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True)
-    clio.emit(
-        {
-            "run": {
-                "id": report.run_id,
-                "mode": report.mode.value,
-                "commit": report.commit_sha,
-                "sources": sources,
-            },
-            "outcome": "committed" if report.commit_sha else "unchanged",
-            **_loop_doc(lines),
-        }
-    )
+    return {
+        "run": {
+            "id": report.run_id,
+            "mode": report.mode.value,
+            "commit": report.commit_sha,
+            "sources": sources,
+        },
+        "outcome": "committed" if report.commit_sha else "unchanged",
+    }
 
 
 HEARTBEAT_REFUSED_STEP = (
@@ -1495,8 +1517,7 @@ def _unavailable_steps(config: Config, report: CycleReport) -> list[str]:
 
 def _cmd_reconcile(args: argparse.Namespace) -> int:
     if (usage := _validate_usage(args)) is not None:
-        _err(usage)
-        return EXIT_USAGE
+        return _refused(usage, EXIT_USAGE)
     config = _config(args)
     if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
@@ -1519,7 +1540,7 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     config = _config(args)
     if _not_a_file_stop(args, config, manifest=False, lost=True):  # sync's guard (P43, P136; C172)
         return EXIT_FAILED
-    return _run(
+    report = _run_report(
         config,
         mode=CycleMode.RECONCILE,
         only=(args.source,),
@@ -1527,6 +1548,9 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
         wait_for_lock=True,
         recordings="none",
     )
+    if clio.json_mode():  # the run as sync's, whatever its code: a partial result is still the result
+        clio.emit({"source": {"id": args.source}, **_run_doc(report), "next": _inspect(args, "status")})
+    return report.exit_code
 
 
 def _cmd_exclude_empty(args: argparse.Namespace) -> int:
@@ -3772,6 +3796,7 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
         if said is not None:
             _err(said)
             _misplaced_next(args, said)
+            _stop_doc(args, said)
             return True
     db = expand(config.state_paths.db)
     lost = lost_words(db)
@@ -3783,8 +3808,14 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
         if said is not None:
             _err(said)
             _misplaced_next(args, said)
+            _stop_doc(args, said)
             return True
     return _not_a_file_stop(args, config)
+
+
+def _stop_doc(args: argparse.Namespace, said: str) -> None:
+    """A state guard's stop as its one JSON error line (a no-op without ``--json``): status names the fix."""
+    clio.error_doc(clio.Reason.state_misplaced, said.removeprefix("error: "), next=_inspect(args, "status"))
 
 
 def _open_state_or_raise(config: Config) -> None:
@@ -3837,6 +3868,7 @@ def _not_a_file_stop(
     said = f"error: state: {result.detail}{fix}"
     _err(said)
     _misplaced_next(args, said, where, kind=LOST_LIST_KIND if lost and _list_lost(config, where) else None)
+    _stop_doc(args, said)
     return True
 
 
@@ -3970,6 +4002,14 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
         f"{plural(len(created), 'page')} adopted; the next `{loop.BIN} sync` commits "
         + ("it" if len(created) == 1 else "them")
     )
+    if clio.json_mode():
+        clio.emit(
+            {
+                "pages": [str(rel) for rel in created],
+                "outcome": "created" if created else "unchanged",
+                "next": _inspect(args, "curate"),
+            }
+        )
     return EXIT_OK
 
 
@@ -4003,7 +4043,28 @@ def _cmd_graph(args: argparse.Namespace) -> int:
             f"cache {status.cache_backend}"
         )
         _out(f"scopes: {' '.join(status.scopes)}")
-        return EXIT_OK if status.signed_in else EXIT_REAUTH
+        account = {
+            "signedIn": status.signed_in,
+            "username": status.username if status.signed_in else None,
+            "tenantId": status.tenant_id or None,
+            "method": status.sign_in_method or None,
+            "cache": status.cache_backend,
+            "scopes": list(status.scopes),
+        }
+        if status.signed_in:
+            if clio.json_mode():
+                clio.emit({"account": account})
+            return EXIT_OK
+        login = f"{loop.BIN} graph login"
+        clio.error_doc(
+            clio.Reason.login_required,
+            "not signed in",
+            status="action_required",
+            next=[{"command": login, "argv": _argv(login)}],
+            data={"account": account},
+            user_action_required=True,
+        )
+        return EXIT_REAUTH
     else:
         return _discover(config, auth, urls=tuple(args.url), toml_only=bool(args.toml))
     return EXIT_OK
@@ -4044,7 +4105,25 @@ def _discover(config: Config, auth: TokenProvider, *, urls: Sequence[str], toml_
         ]
         clio.table(("kind", "name", "configured", "drive_id", "site", "note"), rows, to=_err)
         _err("")
-    _out(discover.render_sources_toml(report, known=config.sources).rstrip("\n"))
+    toml = discover.render_sources_toml(report, known=config.sources).rstrip("\n")
+    _out(toml)
+    if clio.json_mode():  # an incomplete discovery is still its result: the failures ride in the document
+        found = [
+            {
+                "kind": s.kind.value,
+                "name": s.name,
+                "configured": s.configured,
+                "driveId": s.drive_id,
+                "site": s.site,
+                "note": s.note,
+            }
+            for s in report.scopes
+        ]
+        failed = [
+            {"endpoint": f.endpoint, "status": f.status, "code": f.code, "action": f.action}
+            for f in report.failures
+        ]
+        clio.emit({"scopes": found, "toml": toml, "complete": report.complete, "failures": failed})
     if not report.complete:
         for f in report.failures:
             _err(f"discovery incomplete: {f.endpoint} -> HTTP {f.status} {safe_text(f.code)}: {f.action}")
@@ -4134,6 +4213,61 @@ def _print_purge(rep: governance.PurgeReport) -> None:
         _out(f"  note: {n}")
 
 
+def _purge_doc(rep: governance.PurgeReport) -> dict[str, object]:
+    """One purge report as ``purge --json``'s ``purge`` object: what ``_print_purge`` prints."""
+    return {
+        "selector": rep.selector,
+        "reason": rep.reason.value,
+        "dryRun": rep.dry_run,
+        "verified": rep.verified,
+        "notRun": rep.not_run or None,
+        "items": [{"source": source, "id": stable_id} for source, stable_id in rep.items],
+        "docsPaths": list(rep.docs_paths),
+        "takenPaths": list(rep.taken_paths),
+        "commitsRewritten": rep.commits_rewritten,
+        "blobsTargeted": rep.blobs_targeted,
+        "cacheEntriesRemoved": rep.cache_entries_removed,
+        "survivors": list(rep.survivors),
+        "unreachableLeft": rep.unreachable_left,
+        "citingPages": list(rep.citing_pages),
+        "remote": rep.remote,
+        "pushFailed": rep.push_failed,
+        "notes": list(rep.notes),
+    }
+
+
+def _purge_outcome(rep: governance.PurgeReport) -> str:
+    """``planned`` for a dry run, ``purged`` for one that ran (D36 kept the verb), ``unchanged`` for an entry
+    the queue kept on purpose."""
+    if rep.not_run:
+        return "unchanged"
+    return "planned" if rep.dry_run else "purged"
+
+
+def _queue_doc(reports: Sequence[governance.PurgeReport], queued: int) -> dict[str, object]:
+    """``purge --queue --json``'s bulk shape (R248, R253): one result per entry and a summary, written whole
+    whatever the exit code, with no error document. A failed push leaves the remote unknown."""
+    results: list[dict[str, object]] = []
+    summary = dict.fromkeys(("succeeded", "failed", "skipped", "unknown"), 0)
+    for rep in reports:
+        result: dict[str, object] = {"id": rep.selector}
+        if rep.not_run:
+            result |= {"outcome": "skipped", "error": rep.not_run}
+            summary["skipped"] += 1
+        elif rep.push_failed:
+            result |= {"outcome": "unknown", "error": rep.remote}
+            summary["unknown"] += 1
+        elif rep.dry_run or rep.verified:
+            result["outcome"] = _purge_outcome(rep)
+            summary["succeeded"] += 1
+        else:
+            survivors = plural(len(rep.survivors), "survivor")
+            result |= {"outcome": "failed", "error": f"not verified: {survivors}"}
+            summary["failed"] += 1
+        results.append(result)
+    return {"results": results, "summary": summary, "queued": queued}
+
+
 FOLDER_LOST_DONE = (
     "the old audit trail's loss is written first, to the new audit trail and to purge-record.json"
 )
@@ -4148,8 +4282,7 @@ this one writes none (B13 round 33 C743, C744; ruling 79)."""
 
 def _cmd_purge(args: argparse.Namespace) -> int:
     if (usage := _validate_usage(args)) is not None:
-        _err(usage)
-        return EXIT_USAGE
+        return _refused(usage, EXIT_USAGE)
     config = _config(args)
     if not args.dry_run:  # a preview writes nothing; a purge carries round 28's hold record first (C351)
         governance.carry_round28_record(config.state_paths.root)
@@ -4189,6 +4322,14 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"dry run: would accept the suppression list's loss of {what} ({said}); nothing written")
         else:
             _out(f"accepted the suppression list's loss of {what} (audited): {said}")
+        if clio.json_mode():
+            clio.emit(
+                {
+                    "purge": {"acceptLost": args.accept_lost, "lost": what, "message": said},
+                    "outcome": "planned" if args.dry_run else "accepted",
+                    "next": _inspect(args, "status"),
+                }
+            )
         return EXIT_OK
     if args.forget is not None:
         # the one audited way off the queue for an entry history names nothing of (B13 round 29 C173, C189)
@@ -4202,6 +4343,15 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"dry run: would take off the queue {what}; nothing written")
         else:
             _out(f"taken off the queue: {what} (audited; nothing erased)")
+        if clio.json_mode():
+            purge = {"id": q.selector.stable_id, "source": q.selector.source_id, "reason": q.reason.value}
+            clio.emit(
+                {
+                    "purge": purge,
+                    "outcome": "planned" if args.dry_run else "forgotten",
+                    "next": _inspect(args, "status"),
+                }
+            )
         return EXIT_OK
     if args.queue:
         dry_run = bool(args.dry_run)
@@ -4215,6 +4365,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             gone = governance.lost_queue_count_line(config.state_paths.root)  # never "0 queued" alone (C312)
             if gone is not None:
                 _out(gone)
+            if clio.json_mode():
+                clio.emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
             return EXIT_OK
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
@@ -4266,6 +4418,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             )
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
         passed = all((r.verified and not r.push_failed) or r.not_run for r in reports)
+        if clio.json_mode():
+            clio.emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
         return EXIT_OK if passed and not stuck else EXIT_FAILED
     # _purge_usage refused a purge with no selector, --queue or --accept-lost before the config loaded (C1303)
     assert args.selector, PURGE_NEEDS_SELECTOR
@@ -4278,9 +4432,12 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         push=bool(args.push),
     )
     _print_purge(rep)
-    if rep.dry_run:  # a guess at a lost queued purge's selector is checked before it runs (C312)
-        for line in governance.lost_queue_preview(config.state_paths.root, selector, rep):
-            _out(f"  lost from the queue: {line}")
+    lost_lines = governance.lost_queue_preview(config.state_paths.root, selector, rep) if rep.dry_run else []
+    for line in lost_lines:  # a guess at a lost queued purge's selector is checked before it runs (C312)
+        _out(f"  lost from the queue: {line}")
+    if clio.json_mode():  # a failed verify or push rides in the document, as the report's lines do
+        doc = _purge_doc(rep) | {"lostFromQueue": list(lost_lines)}
+        clio.emit({"purge": doc, "outcome": _purge_outcome(rep), "next": _inspect(args, "status")})
     # inspect, never a blind retry: the lease may refuse a second push if the first landed
     if rep.push_failed:
         _err(f"error: the local purge is done and recorded, but {rep.remote}")
@@ -4313,13 +4470,27 @@ def _cmd_compact(args: argparse.Namespace) -> int:
         )
     if rep.note:
         _out(f"  note: {rep.note}")
+    if clio.json_mode():  # a failed verify rides in the document (``verified``, ``survivors``)
+        compaction = {
+            "cutoff": rep.cutoff,
+            "dryRun": rep.dry_run,
+            "verified": rep.verified,
+            "squashed": rep.squashed,
+            "kept": rep.kept,
+            "newRoot": rep.new_root,
+            "survivors": list(rep.survivors),
+            "unreachableLeft": rep.unreachable_left,
+            "danglingRecoveryHints": rep.dangling_recovery_hints,
+            "note": rep.note or None,
+        }
+        outcome = "planned" if rep.dry_run else "compacted" if rep.squashed else "unchanged"
+        clio.emit({"compaction": compaction, "outcome": outcome, "next": _inspect(args, "status")})
     return EXIT_OK if rep.dry_run or rep.verified or rep.squashed == 0 else EXIT_FAILED
 
 
 def _cmd_hold(args: argparse.Namespace) -> int:
     if (usage := _validate_usage(args)) is not None:
-        _err(usage)
-        return EXIT_USAGE
+        return _refused(usage, EXIT_USAGE)
     config = _config(args)
     listing = args.list or (args.scope is None and not args.release)
     # a hold and its release write holds.json and the audit trail; the list only reads holds.json, whose own
@@ -4332,6 +4503,9 @@ def _cmd_hold(args: argparse.Namespace) -> int:
     root = config.state_paths.root
     if args.list or (args.scope is None and not args.release):
         holds = governance.active_holds(root, governance.load_governance(config.config_path))
+        if clio.json_mode():  # one page holds them all, so there is never a next one
+            clio.emit({"holds": [_hold_doc(h) for h in holds], "pagination": {"next": None}})
+            return EXIT_OK
         if not holds:  # a remark, not a result: stdout stays empty for `hold --list | wc -l`
             _err("No active holds.")
             return EXIT_OK
@@ -4343,9 +4517,30 @@ def _cmd_hold(args: argparse.Namespace) -> int:
         released = governance.release_hold(root, args.scope, owner=args.owner)
         what = "released" if released else "no state hold (config holds live in sources.toml)"
         _out(f"hold {args.scope}: {what}")
-        return EXIT_OK if released else EXIT_FAILED
-    _out(governance.set_hold(root, args.scope, reason=args.reason, owner=args.owner).describe())
+        if not released:
+            clio.error_doc(clio.Reason.failed, f"hold {args.scope}: {what}")
+            return EXIT_FAILED
+        if clio.json_mode():
+            gone = {"scope": args.scope, "owner": args.owner}
+            clio.emit({"hold": gone, "outcome": "released", "next": _inspect(args, "hold", "--list")})
+        return EXIT_OK
+    hold = governance.set_hold(root, args.scope, reason=args.reason, owner=args.owner)
+    _out(hold.describe())
+    if clio.json_mode():
+        clio.emit({"hold": _hold_doc(hold), "outcome": "created", "next": _inspect(args, "hold", "--list")})
     return EXIT_OK
+
+
+def _hold_doc(hold: governance.Hold) -> dict[str, object]:
+    """One hold as ``hold --json`` writes it: the fields ``Hold.describe`` words."""
+    return {
+        "scope": hold.scope,
+        "reason": hold.reason,
+        "owner": hold.owner,
+        "setAt": hold.set_at or None,
+        "origin": hold.origin,
+        "keptBy": list(hold.kept_by),
+    }
 
 
 def _cmd_offboard(args: argparse.Namespace) -> int:
@@ -4356,6 +4551,14 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
     if not dry and args.confirm != expected:
         _err("error: Can't offboard: --confirm doesn't match the docs repo path.")
         _recovery("To remove, run", f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}")
+        approved = f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}"
+        clio.error_doc(
+            clio.Reason.confirmation_required,
+            "Can't offboard: --confirm doesn't match the docs repo path.",
+            status="action_required",
+            next=[{"command": approved, "argv": _argv(approved), "when": "Only after a human approves"}],
+            user_action_required=True,
+        )
         return EXIT_FAILED
     rep = governance.offboard(config, purge_data=bool(args.purge_data), dry_run=dry, confirm=args.confirm)
     clio.table(
@@ -4370,6 +4573,21 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
         _out(f"manual: {m}")
     if rep.dry_run:
         _out(f"dry run: nothing removed; to remove, pass --confirm {shlex.quote(expected)}{purge}")
+    if clio.json_mode():  # its errors ride in the document, as a partial removal's result
+        locations = [
+            {"kind": loc.kind, "exists": loc.exists, "location": loc.location, "action": loc.action}
+            for loc in rep.locations
+        ]
+        clio.emit(
+            {
+                "locations": locations,
+                "removed": list(rep.removed),
+                "errors": list(rep.errors),
+                "manualSteps": list(rep.manual_steps),
+                "outcome": "planned" if rep.dry_run else "removed",
+                "next": [] if rep.dry_run else _inspect(args, "offboard", "--dry-run"),
+            }
+        )
     return EXIT_FAILED if rep.errors else EXIT_OK
 
 

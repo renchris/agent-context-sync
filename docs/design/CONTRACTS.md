@@ -40852,6 +40852,40 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   `~` expanded in argv and a null command for a step that quotes none; it ignores AGENTSYNC_NO_NEXT_HINT. An empty
   list is `[]` and a known-absent value `null`.
 
+U-B5's part, the documents for every other command. Each mutation's `next` is `[{"command", "argv"}]` naming the
+command that shows what it changed, with `--config` when the run had one (`cli._inspect`, R249).
+
+- `hold --list --json` prints `{"holds": [{"scope", "reason", "owner", "setAt", "origin", "keptBy"}], "pagination":
+  {"next": null}}`, `[]` when none. A hold set prints `{"hold": {...}, "outcome": "created"}`, a release `{"hold":
+  {"scope", "owner"}, "outcome": "released"}`, each with a `next` of `hold --list`. A release with no state hold is
+  a `failed` error line, exit 1.
+- `purge SELECTOR --json` prints `{"purge": {"selector", "reason", "dryRun", "verified", "notRun", "items",
+  "docsPaths", "takenPaths", "commitsRewritten", "blobsTargeted", "cacheEntriesRemoved", "survivors",
+  "unreachableLeft", "citingPages", "remote", "pushFailed", "notes", "lostFromQueue"}, "outcome": "planned" |
+  "purged" | "unchanged"}`; `purged` is the command's verb (D36 kept). `purge --queue --json` is the bulk shape:
+  `{"results": [{"id", "outcome", "error"?}], "summary": {"succeeded", "failed", "skipped", "unknown"}, "queued"}`,
+  where a result is `planned`, `purged`, `skipped` (kept queued, its reason as `error`), `failed` (not verified) or
+  `unknown` (its push failed). `--accept-lost` prints `{"purge": {"acceptLost", "lost", "message"}, "outcome":
+  "planned" | "accepted"}`, `--forget` `{"purge": {"id", "source", "reason"}, "outcome": "planned" | "forgotten"}`.
+- `compact-history --json` prints `{"compaction": {"cutoff", "dryRun", "verified", "squashed", "kept", "newRoot",
+  "survivors", "unreachableLeft", "danglingRecoveryHints", "note"}, "outcome": "planned" | "compacted" |
+  "unchanged"}`. `offboard --json` prints `{"locations": [{"kind", "exists", "location", "action"}], "removed",
+  "errors", "manualSteps", "outcome": "planned" | "removed"}`; a `--confirm` that does not match is a
+  `confirmation_required` error line (`status: action_required`, exit 1) whose `next` is the matching command.
+- `add-source --json` prints `{"source": {"id", "path"}, "outcome": "created" | "unchanged"}` with a `next` of
+  `status`; `accept-deletions --json` prints `{"source": {"id"}, "run", "outcome", "next"}`, the run as sync's
+  (`cli._run_doc`); `adopt --json` prints `{"pages": [...], "outcome": "created" | "unchanged"}` with a `next` of
+  `curate`.
+- `whoami --json` prints `{"account": {"signedIn", "username", "tenantId", "method", "cache", "scopes"}}`; signed out
+  it is a `login_required` error line (exit 77) carrying the account as `data.account`. `discover --json` prints
+  `{"scopes": [{"kind", "name", "configured", "driveId", "site", "note"}], "toml", "complete", "failures"}`.
+- A command whose own result carries its failure (purge's verify or push, compact-history's verify, offboard's
+  errors, an incomplete discover, accept-deletions' run) writes its document whatever its exit code and no error
+  line, as `sync --json` does. Any other refusal is one error line and an empty stdout, with the exit code unchanged:
+  a handler's usage refusal (`_validate_usage`, a purge with no selector, an add-source path) is `usage` (exit 2), a
+  state guard's stop (`_lost_state_stop`, `_not_a_file_stop`) `state_misplaced` with a `next` of `status`, and a
+  governance refusal of the docs repo's remote at setup `failed`.
+
 Tests: `tests/test_cli_json.py`.
 
 #### 16.300.7 U-B6: start-up time, measured

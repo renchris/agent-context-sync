@@ -1,15 +1,26 @@
-"""The opt-in ``--json`` (cli-conventions B-5, U-B4): one document on stdout for status, curate and sync, an
-error as one JSON line on stderr with the ladder's unchanged exit code, and ``--version --json``."""
+"""The opt-in ``--json`` (cli-conventions B-5): one document on stdout for status, curate and sync, an error
+as one JSON line on stderr with the ladder's unchanged exit code, and ``--version --json`` (U-B4); a document
+for every other command, with the inspect command as ``next`` after a mutation (U-B5)."""
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from agentsync import __version__, cli
+from agentsync import __version__, cli, governance
 from agentsync.config import Config, load_config
+from agentsync.graph import auth as graph_auth
+from agentsync.graph import discover
+from agentsync.graph.drive import DiscoveredScope
+from agentsync.manifest import Manifest
+from agentsync.model import SourceKind
+from test_cli import FakeAuth, _graph_config
 from test_contracts import CLI_SURFACE
 
 _POSITIONALS = {"add-source": ["src"], "accept-deletions": ["src"], "adopt": ["src"], "purge": ["src"]}
@@ -87,3 +98,215 @@ def test_no_ansi_and_clean_streams_in_json(
         assert {"id", "mode", "commit", "sources"} <= set(doc["run"])
     if verb == "curate":
         assert isinstance(doc["findings"], list)
+
+
+def _human(argv: Sequence[str], capsys: pytest.CaptureFixture[str]) -> int:
+    rc = cli.main(list(argv))
+    capsys.readouterr()
+    return rc
+
+
+def _doc(argv: Sequence[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, Any], str]:
+    """The run's code, its one document and its stderr."""
+    rc = cli.main([*argv, "--json"])
+    out, err = capsys.readouterr()
+    assert len(out.splitlines()) == 1, (out, err)
+    return rc, json.loads(out), err
+
+
+def _error(argv: Sequence[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, Any]]:
+    """The run's code and its one error line: nothing on stdout."""
+    rc = cli.main([*argv, "--json"])
+    out, err = capsys.readouterr()
+    assert out == "" and len(err.splitlines()) == 1, (out, err)
+    return rc, json.loads(err)
+
+
+def _synced(initialised: Config, capsys: pytest.CaptureFixture[str]) -> str:
+    cfg = str(initialised.config_path)
+    assert _human(["sync", "--config", cfg], capsys) == cli.EXIT_OK
+    return cfg
+
+
+def test_hold_json_shape(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    base = ["hold", "--config", str(initialised.config_path)]
+    assert _human([*base, "--list"], capsys) == cli.EXIT_OK
+    assert _doc([*base, "--list"], capsys) == (cli.EXIT_OK, {"holds": [], "pagination": {"next": None}}, "")
+    setting = [*base, "all", "--reason", "litigation", "--owner", "Contoso Legal"]
+    assert _human(setting, capsys) == cli.EXIT_OK
+    rc, doc, err = _doc(setting, capsys)
+    assert rc == cli.EXIT_OK and err == ""
+    assert (
+        doc["outcome"] == "created"
+        and doc["hold"]["scope"] == "all"
+        and doc["hold"]["owner"] == "Contoso Legal"
+    )
+    assert "hold --list --config " in doc["next"][0]["command"] and doc["next"][0]["argv"][1:3] == [
+        "hold",
+        "--list",
+    ]
+    rc, doc, err = _doc([*base, "--list"], capsys)
+    assert [h["scope"] for h in doc["holds"]] == ["all"] and doc["pagination"] == {"next": None}
+    release = [*base, "all", "--release", "--owner", "Contoso Legal"]
+    rc, doc, err = _doc(release, capsys)
+    assert (rc, doc["outcome"], err) == (cli.EXIT_OK, "released", "")
+    assert _human(release, capsys) == cli.EXIT_FAILED  # nothing left to release
+    assert _error(release, capsys)[0] == cli.EXIT_FAILED
+    rc, error = _error([*base, "--list", "all"], capsys)  # a handler's own usage refusal
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+
+
+def test_purge_json_shape(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = _synced(initialised, capsys)
+    with Manifest(initialised.state_paths.db) as m:
+        sid = next(r.stable_id for r in m.iter_items("source") if r.rel_path == "projects/sample.txt")
+    dry = ["purge", f"id={sid}", "--source", "source", "--dry-run", "--config", cfg]
+    human = _human(dry, capsys)
+    rc, doc, err = _doc(dry, capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["outcome"] == "planned" and doc["purge"]["dryRun"] is True
+    assert doc["purge"]["docsPaths"] == ["mirror/source/projects/sample.txt.md"]
+    rc, doc, err = _doc([*dry[:-3], "--reason", "erasure-request", "--config", cfg], capsys)  # a tmp repo
+    assert (rc, doc["outcome"], doc["purge"]["verified"], err) == (cli.EXIT_OK, "purged", True, "")
+    assert "status" in doc["next"][0]["argv"]
+    rc, error = _error(["purge", "--config", cfg], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+
+
+def test_purge_queue_json_shape(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = _synced(initialised, capsys)
+    queue = ["purge", "--queue", "--dry-run", "--config", cfg]
+    empty = {"succeeded": 0, "failed": 0, "skipped": 0, "unknown": 0}
+    assert _human(queue, capsys) == cli.EXIT_OK
+    rc, doc, err = _doc(queue, capsys)
+    assert (rc, doc["results"], doc["summary"], err) == (cli.EXIT_OK, [], empty, "")
+    with Manifest(initialised.state_paths.db) as m:
+        sid = next(r.stable_id for r in m.iter_items("source") if r.rel_path == "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(initialised.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    rc, doc, err = _doc(queue, capsys)
+    assert rc == cli.EXIT_OK and err == ""
+    assert [r["outcome"] for r in doc["results"]] == ["planned"] and doc["summary"]["succeeded"] == 1
+    assert doc["queued"] == 1 and "error" not in doc["results"][0]
+
+
+def test_compact_history_json_shape(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = _synced(initialised, capsys)
+    argv = ["compact-history", "--dry-run", "--config", cfg]
+    human = _human(argv, capsys)
+    rc, doc, err = _doc(argv, capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["outcome"] == "planned" and {"cutoff", "squashed", "kept", "verified"} <= set(
+        doc["compaction"]
+    )
+
+
+def test_a_guard_stop_is_one_json_line(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    """``_lost_state_stop``: a state folder that is a file stops compact-history before it reads anything."""
+    cfg = str(initialised.config_path)
+    root = initialised.state_paths.root
+    shutil.rmtree(root)
+    root.write_text("", encoding="utf-8")
+    human = _human(["compact-history", "--config", cfg], capsys)
+    rc, error = _error(["compact-history", "--config", cfg], capsys)
+    assert rc == human == cli.EXIT_FAILED
+    assert error["reason"] == "state_misplaced" and "status" in error["next"][0]["argv"]
+
+
+def test_offboard_json_shape(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0, "", "")  # the real Keychain is untouched
+
+    monkeypatch.setattr(governance, "_run", fake_run)
+    cfg = _synced(initialised, capsys)
+    human = _human(["offboard", "--config", cfg], capsys)
+    rc, doc, err = _doc(["offboard", "--config", cfg], capsys)  # no --confirm: a plan, nothing removed
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["outcome"] == "planned" and doc["removed"] == [] and doc["errors"] == []
+    assert {"kind", "exists", "location", "action"} == set(doc["locations"][0])
+    wrong = ["offboard", "--confirm", "/nope", "--config", cfg]
+    assert _human(wrong, capsys) == cli.EXIT_FAILED
+    rc, error = _error(wrong, capsys)
+    assert (rc, error["reason"], error["status"]) == (
+        cli.EXIT_FAILED,
+        "confirmation_required",
+        "action_required",
+    )
+    assert error["next"][0]["argv"][1:3] == ["offboard", "--confirm"]
+
+
+def test_add_source_json_shape(
+    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    again = ["add-source", str(local_source_dir), "--config", cfg]
+    human = _human(again, capsys)
+    rc, doc, err = _doc(again, capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["outcome"] == "unchanged" and doc["source"]["id"] == "source"
+    other = tmp_path / "notes"
+    other.mkdir()
+    rc, doc, err = _doc(["add-source", str(other), "--config", cfg], capsys)
+    assert (rc, doc["outcome"], err) == (cli.EXIT_OK, "created", "")
+    assert set(doc["source"]) == {"id", "path"} and "status" in doc["next"][0]["argv"]
+    missing = ["add-source", str(tmp_path / "gone"), "--config", cfg]
+    assert _human(missing, capsys) == cli.EXIT_USAGE
+    rc, error = _error(missing, capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+
+
+def test_accept_deletions_json_shape(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = _synced(initialised, capsys)
+    argv = ["accept-deletions", "source", "--config", cfg]
+    human = _human(argv, capsys)
+    rc, doc, err = _doc(argv, capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["source"] == {"id": "source"} and doc["outcome"] in ("committed", "unchanged")
+    assert doc["run"]["mode"] == "reconcile" and "status" in doc["next"][0]["argv"]
+
+
+def test_adopt_json_shape(initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = str(initialised.config_path)
+    for name in ("first", "second"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / f"{name.title()}.md").write_text(
+            f"# {name}\n\nWritten by hand.\n", encoding="utf-8"
+        )
+    human = _human(["adopt", str(tmp_path / "first"), "--config", cfg], capsys)
+    rc, doc, err = _doc(["adopt", str(tmp_path / "second"), "--config", cfg], capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert (doc["pages"], doc["outcome"]) == (["topics/Second.md"], "created")
+
+
+def test_whoami_json_shape(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(graph_auth, "MsalAuth", FakeAuth)
+    FakeAuth.calls, FakeAuth.blocked = [], False
+    cfg = _graph_config(initialised)
+    human = _human(["whoami", "--config", cfg], capsys)
+    rc, doc, err = _doc(["whoami", "--config", cfg], capsys)
+    assert rc == human == cli.EXIT_OK and err == ""
+    assert doc["account"]["signedIn"] is True and doc["account"]["username"] == "ada@contoso.com"
+    assert doc["account"]["method"] == "broker" and doc["account"]["scopes"] == ["User.Read"]
+
+
+def test_discover_json_shape(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(graph_auth, "MsalAuth", FakeAuth)
+    cfg = _graph_config(initialised)
+    scope = DiscoveredScope(SourceKind.GRAPH_DRIVE, "OneDrive", "b!abc", None, None, "your OneDrive")
+    denied = discover.DiscoveryFailure("/me/joinedTeams", 403, "Forbidden", "ask IT for Team.ReadBasic.All")
+
+    def fake_discover(client: Any, *, known: Any = ()) -> discover.DiscoveryReport:
+        return discover.DiscoveryReport((scope,), (denied,))
+
+    monkeypatch.setattr(discover, "discover_sources", fake_discover)
+    human = _human(["discover", "--config", cfg], capsys)
+    rc, doc, err = _doc(["discover", "--config", cfg], capsys)
+    assert rc == human == cli.EXIT_FAILED and err == ""  # incomplete: the failures ride in the document
+    assert doc["scopes"][0]["driveId"] == "b!abc" and "[[source]]" in doc["toml"]
+    assert doc["complete"] is False and doc["failures"][0]["status"] == 403
