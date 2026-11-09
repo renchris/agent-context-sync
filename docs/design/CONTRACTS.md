@@ -38619,6 +38619,9 @@ extra check). Lane RA writes the report-level cases on this sha.
 Amended 2026-11-08, §16.237 C1028: the not-run line's fix keeps its re-run and ends `if this line comes back:
 report it: the report's time limit ran out before this check could run, which says nothing about the program`,
 never `does not answer`.
+Amended 2026-11-08, §16.237 C1030: `checks_once` publishes the fixes and the first stop together under one lock, and
+none once `ReportHooks.doctor_abandoned` has run, so a cut that lands after `stop_past_deadline` hands back nothing
+either.
 
 **Every child the report's call starts ends with that call, and with agentsync** (C955; ruling 106; amends §16.227
 C804). gitops cannot import doctor (doctor imports gitops), so a report hook's git through `gitops._run`,
@@ -39445,6 +39448,17 @@ is never put on the page, since a build's failure reason can hold a path. Tests:
 `test_cycle.py::test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101` (the page, the stored
 reason, the TSV, the sync line, then a working helper reads it) and
 `::test_an_image_under_a_label_rule_keeps_its_words_while_the_helper_fails_c1101`.
+
+**An abandoned doctor publishes no fix after the report gave up** (C1030; ruling 117; amends §16.232 C953). C953's
+deadline check in `checks_once` ran before the hook's post-processing, so a doctor the report cut while it worked out
+`_fail_steps` and `_state_stop_first` still wrote them into the hooks' `fixes` and `manifest_first`, and the Loop line
+then named a [FAIL] line Doctor never printed. `checks_once` now works both out into locals and publishes them
+together under one lock, and only while the report has not given up; `cli._report_hooks` sets lane RA's optional
+`ReportHooks.doctor_abandoned`, which `setup_report._doctor` calls in its `TimeoutError` branch, to a closure that
+takes the same lock, marks the call abandoned and clears both, so `loop_next` keeps the loop's own step (C953's
+contract) whichever side wins the lock. Test:
+`test_cli.py::test_an_abandoned_doctor_publishes_no_fix_after_the_report_gave_up_c1030` (the cut lands while
+`_fail_steps` and while `_state_stop_first` runs; without the cut the fix reaches the Loop line).
 
 **A program is checked for, started and listed in one locked step** (C1065, with the deadline half of C1067;
 ruling 117; amends §16.232 C955). `deadline.run` and `doctor._run` checked the caller's deadline, then spawned and

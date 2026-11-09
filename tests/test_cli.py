@@ -14546,6 +14546,50 @@ def test_a_cut_off_doctor_hands_the_loop_line_no_fail_doctor_did_not_print_c953(
     capsys.readouterr()
 
 
+@pytest.mark.parametrize("held_in", ["_fail_steps", "_state_stop_first"])
+def test_an_abandoned_doctor_publishes_no_fix_after_the_report_gave_up_c1030(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], held_in: str
+) -> None:
+    """B13 round 36 C1030 (ruling 117): C953's deadline check ran before the hook's post-processing, so a
+    doctor the report cut while it worked out its fixes still handed them to the Loop line, which then named a
+    [FAIL] line Doctor never printed. The fixes and the first stop are published together under one lock, and
+    ReportHooks.doctor_abandoned, which the report calls when it cuts the call, drops them and every later
+    publish, so loop_next keeps the loop's own step; the cut lands while either is being worked out."""
+    _synced(initialised)
+    entered, go = threading.Event(), threading.Event()
+
+    def one_fail(_results: object) -> list[str]:
+        return ["the person runs the Contoso fix"]
+
+    monkeypatch.setattr(cli, "_fail_steps", one_fail)
+    real = getattr(cli, held_in)
+
+    def held(*a: object, **kw: object) -> object:
+        entered.set()
+        assert go.wait(30)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(cli, held_in, held)
+    for abandon in (False, True):
+        entered.clear()
+        go.clear()
+        hooks = cli._report_hooks()
+        assert hooks.doctor is not None and hooks.loop_next is not None
+        assert hooks.doctor_abandoned is not None
+        worker = threading.Thread(target=hooks.doctor, args=(initialised,), daemon=True)
+        worker.start()
+        assert entered.wait(60)
+        if abandon:
+            hooks.doctor_abandoned()
+        go.set()
+        worker.join(60)
+        assert not worker.is_alive()
+        step = hooks.loop_next(initialised)
+        words = step.step if isinstance(step, loop.NextStep) else " ".join(step)
+        assert ("Contoso fix" in words) != abandon, (abandon, words)
+    capsys.readouterr()
+
+
 def test_a_lost_sourceless_id_purge_needs_the_release_of_a_hold_on_the_source_its_id_reaches_c980(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

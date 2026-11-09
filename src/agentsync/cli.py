@@ -43,6 +43,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -3370,6 +3371,10 @@ def _report_hooks() -> setup_report.ReportHooks:
     L49), so a read that succeeds changes no line."""
     fixes: list[str] = []
     manifest_first: list[str] = []  # the state_dir.manifest FAIL's step, as status leads with it (D43)
+    # once the report gives up on the doctor call (its time limit), the abandoned thread publishes nothing:
+    # the fixes and the first stop go out together under this lock, or not at all (B13 round 36 C1030)
+    published = threading.Lock()
+    abandoned = [False]
     read: list[tuple[loop.NextStep | None, Exception | None]] = []
     seen: list[str] = []  # the check groups doctor started, the last the one a cut-off doctor was in (Y22)
 
@@ -3387,9 +3392,12 @@ def _report_hooks() -> setup_report.ReportHooks:
             doctor.saw_group("")  # every check has run: what is left names none (the report's "a check")
         results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root), config=config)
-        fixes[:] = _fail_steps(results)
+        new_fixes = _fail_steps(results)
         first = _state_stop_first(config, results)  # status's own lead (P23)
-        manifest_first[:] = [] if first is None else [first]
+        with published:  # C1030: both or neither, and never after the report gave up on this call
+            if not abandoned[0]:
+                fixes[:] = new_fixes
+                manifest_first[:] = [] if first is None else [first]
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
         # and none of a WAITING ON YOU line it does not hold (B13 round 35 C903)
@@ -3399,6 +3407,15 @@ def _report_hooks() -> setup_report.ReportHooks:
         }
         results = [dataclasses.replace(r, note=swaps[r.note]) if r.note in swaps else r for r in results]
         return doctor.format_results(results).splitlines()
+
+    def doctor_abandoned() -> None:
+        """The report gave up on the doctor call: nothing it publishes later counts, and what it already
+        published is dropped, so the Loop line takes the loop's own step (B13 round 36 C1030, C953's
+        contract)."""
+        with published:
+            abandoned[0] = True
+            fixes.clear()
+            manifest_first.clear()
 
     def loop_next(config: Config) -> loop.NextStep | list[str]:
         """:func:`loop_next_once` in one read-only build (C644)."""
@@ -3447,6 +3464,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         job_proxy=_job_proxy_urls,
         state_error=lambda: read[0][1] if read else None,
         doctor_at=lambda: seen[-1] if seen else None,
+        doctor_abandoned=doctor_abandoned,
     )
 
 
