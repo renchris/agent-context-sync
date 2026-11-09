@@ -111,6 +111,7 @@ import dataclasses
 import errno
 import functools
 import hashlib
+import importlib
 import importlib.metadata
 import itertools
 import json
@@ -135,7 +136,7 @@ import time
 import unicodedata
 import weakref
 from collections import Counter
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
@@ -18410,33 +18411,77 @@ def build_report(
         reads: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
     else:
         reads = read_only_reads()
+    gates = _open_start_gates()
     try:
         with reads:
             return _build_report(
                 config_path, hooks=hooks, friction_path=friction_path, now=now, budget_s=budget_s
             )
     finally:
-        _end_doctor_children()
+        _end_doctor_children({name: gate for name, gate, _var, _token in gates})
+        for _name, _gate, var, token in reversed(gates):
+            with contextlib.suppress(Exception):
+                var.reset(token)
 
 
-def _end_doctor_children() -> None:
+_GATED = ("agentsync.ops.deadline", "agentsync.convert.ocr")
+"""The two registries of programs a report's calls start, each with its own start gate (B13 round 36 ruling
+117: lane B's deadline.START_GATE for doctor's programs, lane E's ocr.START_GATE for the helpers)."""
+
+
+def _open_start_gates() -> list[tuple[str, Any, Any, Any]]:
+    """A fresh start gate for each of :data:`_GATED`, set in this report's context, as ``(module, gate,
+    ContextVar, token)``: :meth:`_Run.call` copies the context into each hook's thread, so a call the report
+    abandoned holds this report's gate, which :func:`_end_doctor_children` closes before it ends what runs,
+    and a program that thread starts after that is refused (B13 round 36 C1065, C1067, ruling 117). Per
+    report, never module-wide, which would refuse every later report's and sync's programs. Each read by
+    getattr: a build without one opens none."""
+    opened: list[tuple[str, Any, Any, Any]] = []
+    for name in _GATED:
+        with contextlib.suppress(Exception):
+            module = importlib.import_module(name)
+            var, gate_type = getattr(module, "START_GATE", None), getattr(module, "StartGate", None)
+            if var is not None and gate_type is not None:
+                gate = gate_type()
+                opened.append((name, gate, var, var.set(gate)))
+    return opened
+
+
+def _end_doctor_children(gates: Mapping[str, Any] | None = None) -> None:
     """End every doctor program a call the report's time limit abandoned left running, with its process group
     (``doctor.end_children``, lane B's half of B13 round 34 C804): a cut-off doctor's git otherwise outlived
     the report, past doctor's own limit. And every OCR, media or speech helper it started
     (``ocr.end_helpers``, lane E's half of B13 round 35 C961): the abandoned doctor thread's ocr check left
-    one running. Each read by getattr in its own guard: nothing from a build without it, and never a raise."""
+    one running. Each read by getattr in its own guard: nothing from a build without it, and never a raise.
+    B13 round 36 ruling 117 (C1065, C1067): ``gates``, this report's start gates by module
+    (:func:`_open_start_gates`), each closed under its registry's lock before the copy it ends, so a program
+    is on that copy or never starts; with none, the old calls, as an older build makes them."""
+    gates = gates or {}
     with contextlib.suppress(Exception):
-        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+        gate = gates.get("agentsync.ops.deadline")
+        if gate is not None:
+            from agentsync.ops import deadline  # noqa: PLC0415 - lazy: the report must import even if broken
 
-        end = getattr(doctor, "end_children", None)
-        if end is not None:
-            end()
+            deadline.end_children(gate)
+        else:
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if broken
+
+            end = getattr(doctor, "end_children", None)
+            if end is not None:
+                end()
     with contextlib.suppress(Exception):
         from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
         helpers = getattr(ocr, "end_helpers", None)
         if helpers is not None:
-            helpers()
+            gate = gates.get("agentsync.convert.ocr")
+            if gate is None:
+                helpers()
+            else:
+                try:
+                    helpers(gate)
+                except TypeError:  # a build whose end_helpers takes no gate
+                    helpers()
 
 
 def _build_report(

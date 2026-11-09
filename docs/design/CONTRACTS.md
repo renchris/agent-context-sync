@@ -39279,6 +39279,23 @@ only the lines holding the URL, so it now keeps that fixed line above the earlie
 `test_a_private_only_report_shows_no_issue_link_install_out_holds` (its public half),
 `tests/test_install_oneshot.py::test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
 
+**Each report's calls start nothing once it has ended** (C1065 and C1067, the report halves; ruling 117;
+`src/agentsync/setup_report.py`). A doctor program or an OCR, media or speech helper that a call the report abandoned
+started after the report's last `end_children` or `end_helpers` copy, or after a Ctrl+C, outlived the report.
+`build_report` opens a fresh start gate for each registry, lane B's `deadline.START_GATE` and lane E's
+`ocr.START_GATE` (`_open_start_gates`, each read by getattr), sets it in the report's context, which `_Run.call`
+copies into each hook's thread, and in its `finally` passes both to `_end_doctor_children`, which calls
+`deadline.end_children(gate)` and `ocr.end_helpers(gate)`: each closes the gate under its registry's lock before it
+copies what runs, so a program is on that copy or is refused. Then it resets both ContextVars, so a later report or
+a sync in the same process is never refused (never a module-wide flag). With no gate, an older build, the old calls
+are made (`doctor.end_children()`, `ocr.end_helpers()`), and an `end_helpers` that takes no gate is called bare.
+The report also pins lane B's C1101 phrase: `publish.OCR_DOWN_REASON` is no `no converter` page, no withheld page
+and no `no converter` class, so the report files such an image by its own OCR probe. Tests:
+`tests/test_setup_report.py::test_a_program_an_abandoned_call_starts_after_the_report_ends_never_starts_c1065_c1067`
+(a doctor hook blocked inside `_Run.call`, the main thread interrupted with `signal.pthread_kill(SIGINT)`, its handler
+reset; released after the report ended, neither `deadline.run` nor `ocr._start` starts its program),
+`test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101`.
+
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
 **An escaped folder row is marked, equals no other row and never adds another folder** (C1001, C1116, C1072, C1002;

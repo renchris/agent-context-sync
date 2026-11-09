@@ -23666,6 +23666,87 @@ def test_a_hung_helper_behind_a_blocked_doctor_hook_starts_nothing_c961(
     assert not pidfile.exists() and _helper_gone(pidfile), "the helper was started"
 
 
+def test_a_program_an_abandoned_call_starts_after_the_report_ends_never_starts_c1065_c1067(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 ruling 117 (C1065, C1067): a doctor or OCR program a call the report abandoned started
+    after the report's last end_children / end_helpers copy, a Ctrl+C included, so it outlived the report.
+    Each report puts a fresh deadline.START_GATE and ocr.START_GATE in its context, which _Run.call carries
+    into the hook's thread, and _end_doctor_children closes both before it ends what runs: interrupted with
+    SIGINT (pthread_kill, its handler reset here, as a detached land ignores it), the hook released after the
+    report ended starts neither program, and the gates are gone from the caller's context."""
+    import signal  # noqa: PLC0415
+
+    from agentsync.ops import deadline  # noqa: PLC0415
+
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    marker = tmp_path / "ran"
+    helper = tmp_path / "helper"
+    helper.write_text(f"#!/bin/sh\necho x > '{marker}'\n", encoding="utf-8")
+    helper.chmod(0o755)
+    entered, release, done = threading.Event(), threading.Event(), threading.Event()
+    seen: list[str] = []
+
+    def blocked(_config: object) -> list[str]:
+        entered.set()
+        release.wait(30)
+        try:
+            deadline.run([str(helper)], timeout=5.0)
+            seen.append("deadline: started")
+        except subprocess.TimeoutExpired:
+            seen.append("deadline: refused")
+        try:
+            ocr._start(helper, [], None, ocr._OCR)
+            seen.append("ocr: started")
+        except ocr.OcrError as exc:
+            seen.append(f"ocr: {exc}")
+        done.set()
+        return []
+
+    main = threading.get_ident()
+
+    def interrupt() -> None:
+        if entered.wait(30):
+            signal.pthread_kill(main, signal.SIGINT)
+
+    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        threading.Thread(target=interrupt, daemon=True).start()
+        with pytest.raises(KeyboardInterrupt):
+            setup_report.build_report(
+                fake_mac["config"], hooks=setup_report.ReportHooks(doctor=blocked), budget_s=60.0
+            )
+    finally:
+        release.set()
+        signal.signal(signal.SIGINT, previous)
+    assert done.wait(30), "the abandoned hook never went on"
+    assert seen == ["deadline: refused", "ocr: the OCR helper ran out of time"], seen
+    assert not marker.exists(), "a program started after the report ended"
+    assert deadline.START_GATE.get() is None and ocr.START_GATE.get() is None  # per report, never left set
+    # each report opens its own, so a later report or a sync is never refused by this one's
+    first, second = setup_report._open_start_gates(), setup_report._open_start_gates()
+    try:
+        assert [g.closed for _n, g, _v, _t in first + second] == [False] * 4
+        assert {id(g) for _n, g, _v, _t in first}.isdisjoint(id(g) for _n, g, _v, _t in second)
+    finally:
+        for _n, _g, var, token in reversed(first + second):
+            var.reset(token)
+    _report_threads_end()
+
+
+def test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101() -> None:
+    """B13 round 36 C1101 (ruling 117, the report's pin on lane B's phrase): an image the sync left while the
+    OCR helper does not work gets a page whose reason and summary say so (publish.OCR_DOWN_REASON), while its
+    row keeps `no converter for <suffix>`, the re-read key. The report reads such a page as neither a `no
+    converter` page nor a withheld one, so it falls back to its own OCR probe and files it under OCR."""
+    from agentsync import policy, publish  # noqa: PLC0415
+
+    reason = publish.OCR_DOWN_REASON
+    assert not reason.casefold().startswith(setup_report._NO_CONVERTER), reason
+    assert not policy.page_says_withheld(reason, f"refused: {reason}", ""), reason
+    assert setup_report.quarantine_class(reason) != "no converter"
+
+
 def test_a_helper_a_cut_call_started_does_not_outlive_the_report_c961(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -25693,6 +25774,7 @@ _NEVER_PRINTED_CAMELCASE = frozenset(
         "IOPlatformExpertDevice",
         "IOPlatformSerialNumber",
         "FrictionEvent",  # a type name in a cast
+        "StartGate",  # the start gate class _open_start_gates reads by getattr (B13 round 36 ruling 117)
         "CFBundleIdentifier",  # the environment variable whose value the Environment line prints
         "WarpTerminal",  # a TERM_PROGRAM the Environment line prints as Warp (_TERMINAL_APPS)
         # the speech engine's build names, which no report line prints
