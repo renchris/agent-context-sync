@@ -115,6 +115,7 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
         "-n",
         "--limit",
         "--limit=*",
+        "--json",
         "--no-report",
         "--log-start",
         "--log",

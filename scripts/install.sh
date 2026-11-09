@@ -64,6 +64,14 @@
 #                           and the depth of 2 still hold)
 #   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; default 200), then
 #                           "(N more)"; when some are not listed, its NEXT: ends with the --all command
+#   --json                  with --list-folders: stdout is one JSON document in place of the list, every folder
+#                           unless --limit is given: {"folders":[{"path","state"}],"total","pagination","next"},
+#                           state listed, synced, inside_synced or contains_synced; on exit 3 or 4 stdout is
+#                           empty and stderr is one JSON line, {"status":"action_required","reason","message",
+#                           "next","data":{"folders"}}, reason denied, tcc_pending, not_signed_in or no_folders,
+#                           and any other error is one JSON line there too. install.out and the setup log are
+#                           as they are without it. With an install run, --report-only, --version or --help it
+#                           is a usage error
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -1640,6 +1648,20 @@ OUT_MAX_LINES=2000 # install.out keeps this many lines
 TEE_PIDS=""        # the two tee processes copying this run's output to install.out
 CAPTURE_TARGET=/dev/null # where they copy it: install.out, or nowhere for a run that keeps no copy
 JSON_RUN=0 # 1: fd 9 and fd 8 are the caller's stdout and stderr, and the human output stays off them (start_capture)
+JSON_OPEN=0 # 1 once start_capture has opened fd 9 and fd 8: on_exit then writes the run's one document (json_end)
+JSON_REASON="" JSON_MESSAGE="" # a usage error's reason and words, for json_end
+# The runs --json goes with, each by its option (json_goes_with). D15: the folder list only. U-B17 widens it by
+# adding " --version --help " here: their arms already ask, and the error names whatever this holds.
+JSON_WITH=" --list-folders "
+LIST_NOTE="" # the folder list's note word, for reason_for_list (step_end sets it)
+LIST_ROWS="" LIST_COUNT="" LIST_CUT=0 LIST_NEXT="" # what list_folders found, for json_end in a JSON run
+# --json is read before the option loop, so a usage error that loop raises is JSON too; after -- a word is SOURCE
+for a in "$@"; do
+	case "$a" in
+	--) break ;;
+	--json) JSON_RUN=1 ;;
+	esac
+done
 # agentsync prints no "next:" hints of its own under this installer: its NEXT line is the only instruction.
 export AGENTSYNC_NO_NEXT_HINT=1
 # uv installs the agentsync binary into ~/.local/bin, the path every guide and NEXT line names (KISS K02).
@@ -1683,7 +1705,13 @@ fail() {
 	exit 1
 }
 usage_error() {
-	printf 'usage error: %s (see --help)\n' "$*" >&2
+	# a JSON run before the parse is done has no fd 8 yet and keeps no install.out: its one line is the JSON one
+	if [ "$JSON_RUN" -eq 1 ] && [ "$PARSED" -eq 0 ]; then
+		json_error error usage "$*" >&2
+	else
+		printf 'usage error: %s (see --help)\n' "$*" >&2
+	fi
+	JSON_REASON=usage JSON_MESSAGE="$*"
 	LAST_ERROR="usage error: ${USAGE_ERROR_REPORTED:-$*}"
 	if [ "$PARSED" -eq 1 ]; then
 		log_start
@@ -1876,6 +1904,89 @@ json_str() { # VALUE
 		for (i = 1; i <= n; i++) { c = substr(v, i, 1); out = out ((c in esc) ? esc[c] : c) }
 		printf "\"%s\"", out
 	}'
+}
+# One next step of a JSON document, the shape agentsync writes: {"command","argv"}, the command as a person
+# types it and argv the words a program runs
+json_step() { # COMMAND WORD...
+	local c="$1" a="" w
+	shift
+	for w in "$@"; do a="${a:+$a,}$(json_str "$w")"; done
+	printf '{"command":%s,"argv":[%s]}' "$(json_str "$c")" "$a"
+}
+# A JSON run's error as one line, as agentsync's clio.error_doc writes it; EXTRA is the keys after message
+json_error() { # STATUS REASON MESSAGE [EXTRA]
+	printf '{"status":%s,"reason":%s,"message":%s%s}\n' "$(json_str "$1")" "$(json_str "$2")" "$(json_str "$3")" "${4:-}"
+}
+# The folder list rows on stdin (synced_folders' rows: a mark, then the path, RS for a newline) as the JSON
+# folder array's elements, each path escaped as json_str escapes a value: one awk for the whole list
+list_rows_json() { # rows on stdin [TWINS: list_twins' file]
+	# a row the list shows with a first mark also carries it as "mark" (B13 round 37 ruling 121)
+	LC_ALL=C awk -v s="$SYNCED_MARK " -v i="$INSIDE_MARK " -v c="$CONTAINS_MARK " -v em="$ESCAPED_MARK" \
+		-v km="$ESCAPED_KEPT_MARK" -v tm="$TWIN_MARK" -v tf="${1:-}" "$LIST_ESC_AWK"'BEGIN {
+		if (tf != "") while ((getline l < tf) > 0) twin[l] = 1
+		for (k = 1; k < 32; k++) je[sprintf("%c", k)] = sprintf("\\u%04x", k)
+		je[sprintf("%c", 127)] = "\\u007f"
+		je["\\"] = "\\\\"
+		je["\""] = "\\\""
+	}
+	{
+		p = $0
+		st = "listed"
+		if (index(p, s) == 1) { st = "synced"; p = substr(p, length(s) + 1) }
+		else if (index(p, i) == 1) { st = "inside_synced"; p = substr(p, length(i) + 1) }
+		else if (index(p, c) == 1) { st = "contains_synced"; p = substr(p, length(c) + 1) }
+		out = ""
+		n = length(p)
+		for (k = 1; k <= n; k++) {
+			ch = substr(p, k, 1)
+			if (ch == "\036") ch = "\n"
+			out = out ((ch in je) ? je[ch] : ch)
+		}
+		kp = (st == "synced" || st == "inside_synced")
+		m = escd(p) ? (kp ? km : em) : ((p in twin) && !kp ? tm : "")
+		printf "%s{\"path\":\"%s\",\"state\":\"%s\"%s}", (NR > 1 ? "," : ""), out, st, (m != "" ? ",\"mark\":\"" m "\"" : "")
+	}'
+}
+# A JSON run's one document, at its exit (D15): the folder list on fd 9 when the list exits 0, else one error
+# line on fd 8. Its reason is the list branch's (reason_for_list of its note word, with the folders it could
+# list and the re-run), else the usage error's, a stop's, or failed. Nothing reaches stdout on an error.
+json_end() { # RC
+	local reason msg next="" step w page=null
+	local list=("$SELF_FILE" --list-folders)
+	for w in $LIST_ARG; do list+=("$w"); done
+	step="$(json_step "$SELF --list-folders$LIST_ARG --json" "${list[@]}" --json)"
+	if [ "$1" -eq 0 ] && [ -n "$LIST_COUNT" ]; then
+		for w in $LIST_NEXT; do
+			case "$w" in
+			keep) w="$(json_step "$SELF" "$SELF_FILE")" ;;
+			add) w="$(json_step "$SELF --source-local \"<folder>\"" "$SELF_FILE" --source-local "<folder>")" ;;
+			esac
+			next="${next:+$next,}$w"
+		done
+		[ "$LIST_CUT" -eq 0 ] ||
+			page="$(json_step "$SELF --list-folders --all --json" "$SELF_FILE" --list-folders --all --json)"
+		printf '{"folders":[%s],"total":%s,"pagination":{"next":%s},"next":[%s]}\n' \
+			"$LIST_ROWS" "$LIST_COUNT" "$page" "$next" >&9
+		return 0
+	fi
+	reason="$(reason_for_list "$LIST_NOTE")"
+	if [ -n "$reason" ]; then
+		json_error action_required "$reason" "$NEXT_MSG" ",\"next\":[$step],\"data\":{\"folders\":[$LIST_ROWS]}" >&8
+		return 0
+	fi
+	msg="${LAST_ERROR:-$NEXT_MSG}"
+	if [ -n "$JSON_REASON" ]; then
+		reason="$JSON_REASON" msg="$JSON_MESSAGE"
+	else
+		case "$1" in 129 | 130 | 143) reason=canceled ;; *) reason=failed ;; esac
+	fi
+	json_error error "$reason" "$msg" >&8
+}
+# --json beside a run it does not go with is a usage error: OPTION is the run's own (install for an install run)
+json_goes_with() { # OPTION
+	[ "$JSON_RUN" -eq 1 ] || return 0
+	case "$JSON_WITH" in *" $1 "*) return 0 ;; esac
+	usage_error "--json works with${JSON_WITH% } only"
 }
 # with_timeout's watchdog, and start_pandoc_once's limit: kills PID once LIMIT seconds have passed. It waits
 # on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11). It
@@ -2117,21 +2228,23 @@ open_install_out() {
 # every child would inherit that, and with stdout gone each say would fail under set -e.
 # A JSON run keeps its document out of every copy: fd 9 and fd 8 are the caller's stdout and stderr (not fd 3,
 # which uv_run takes), and the tees are handed /dev/null. Children inherit fd 8 and 9, and one that outlives the
-# run holds the caller's pipe open, so JSON_RUN is only for a run whose children are bounded.
+# run holds the caller's pipe open, so JSON_RUN is only for a run whose children are bounded; the tees, which
+# can outlive it by the 3 s of stop_capture or more, close both.
 start_capture() {
 	if [ "$JSON_RUN" -eq 1 ]; then
 		exec 9>&1 8>&2 >/dev/null 2>/dev/null
+		JSON_OPEN=1
 	fi
 	if open_install_out; then CAPTURE_TARGET="$INSTALL_OUT"; fi
 	exec > >(
 		trap '' INT TERM HUP PIPE
-		exec tee -a "$CAPTURE_TARGET" 2>/dev/null
+		exec tee -a "$CAPTURE_TARGET" 2>/dev/null 8>&- 9>&-
 	)
 	TEE_PIDS="$!"
 	# the order matters: its stdout goes to the real stderr first, then its own stderr to /dev/null
 	exec 2> >(
 		trap '' INT TERM HUP PIPE
-		exec tee -a "$CAPTURE_TARGET" >&2 2>/dev/null
+		exec tee -a "$CAPTURE_TARGET" >&2 2>/dev/null 8>&- 9>&-
 	)
 	TEE_PIDS="$TEE_PIDS $!"
 }
@@ -2161,6 +2274,7 @@ step_end() { # RESULT [RC] [NOTE]: close the open step (done | skipped | failed)
 	local text
 	[ -n "$STEP" ] || return 0
 	text="step=$STEP seconds=$((SECONDS - STEP_T0)) rc=${2:-0} result=$1${3:+ note=$3}"
+	[ "$STEP" != list-folders ] || LIST_NOTE="${3%% *}"
 	# the closing status a signal stopped, which the run's exit does not show (B13 round 27 P14)
 	[ "$STEP" != report ] || [ -z "${LOOP_STOPPED:-}" ] || text="$text closing_status=$LOOP_STOPPED"
 	if [ "$STEP" = "report" ] && [ -n "$END_LINE" ]; then
@@ -8207,6 +8321,7 @@ on_exit() {
 	[ -z "$LOOP_OUT" ] || rm -f "$LOOP_OUT"
 	[ -z "${HELD:-}" ] || rm -f "$HELD" # step 4 held line file, when the run ended inside the loop (J13)
 	[ -z "$NEXT_MSG" ] || say "NEXT: $NEXT_MSG$suffix"
+	[ "$JSON_OPEN" -eq 0 ] || json_end "$rc"
 	stop_capture
 	exit "$rc"
 }
@@ -9410,6 +9525,13 @@ list_folders() {
 		list_shown "$tmp/twins" <"$tmp/shown"
 	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
+	if [ "$JSON_RUN" -eq 1 ]; then # the rows printed above, marks and all, for json_end
+		if [ "${synced:-0}" -gt 0 ]; then
+			LIST_ROWS="$(tail -n +3 "$tmp/marked" | list_rows_json "$tmp/twins")"
+		else
+			LIST_ROWS="$(list_rows_json "$tmp/twins" <"$tmp/shown")"
+		fi
+	fi
 	rm -rf "$tmp"
 	# The words for those sources: a listed folder one --source-local adds back under the same id, else only
 	# the block put back; never "on disk" or "not signed in", the words the prompt's other step 1 cases read.
@@ -9739,6 +9861,13 @@ list_folders() {
 		[ $((total - max)) -ne 1 ] || line="1 folder past the first $max is"
 		NEXT_MSG="$NEXT_MSG; $line not listed: $SELF --list-folders --all"
 	fi
+	# json_end's next steps on exit 0: the run that keeps the synced folders, and the one that adds a folder
+	if [ "$JSON_RUN" -eq 1 ]; then
+		LIST_COUNT="$total"
+		[ "$total" -le "$max" ] || LIST_CUT=1
+		[ "${synced:-0}" -eq 0 ] && [ "$stuck" -eq 0 ] || LIST_NEXT="keep"
+		[ "$stuck" -eq 1 ] || [ "$total" -eq 0 ] || LIST_NEXT="$LIST_NEXT add"
+	fi
 	return "$rc"
 }
 
@@ -9773,7 +9902,7 @@ take_source() { # WORD: repeated, an error (a relative one after -- may start wi
 # its folder. A name like -foo stays a legal folder; --source-local=--help and ./--help name a folder called --help.
 option_name() { # WORD
 	case "$1" in
-	--confirm-install-agent | --report-only | --list-folders | --all | --limit | --no-report | --log-start | \
+	--confirm-install-agent | --report-only | --list-folders | --all | --limit | --json | --no-report | --log-start | \
 		--log | --log-end | --launcher | --source-local | --version | -h | --help | --) return 0 ;;
 	*) return 1 ;;
 	esac
@@ -9822,6 +9951,7 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	--limit=*) LIST_OPT=--limit LIST_MAX="${1#--limit=}" ;;
+	--json) ;; # JSON_RUN, read before this loop; never recorded, as the --list-folders guard reads what is
 	--no-report) NO_REPORT_SEEN=1 ;; # hidden, ignored: the old baseline prompt ran "install.sh --no-report && ... install-skill"
 	--log-start | --log | --log-end) usage_error "$1 must be the first argument and takes no other option" ;;
 	--launcher)
@@ -9850,14 +9980,17 @@ while [ $# -gt 0 ]; do
 		record_folder "$SAFE_WORD"
 		;;
 	--version)
+		json_goes_with --version
 		show_version
 		exit 0
 		;;
 	-h | --help)
+		json_goes_with --help
 		show_help || [ "$?" -eq 141 ] # 141: a reader that closed early (--help | head) took all it wanted
 		exit 0
 		;;
 	help) # the word for --help; a checkout folder named help stays reachable as ./help
+		json_goes_with --help
 		show_help || [ "$?" -eq 141 ]
 		exit 0
 		;;
@@ -9889,6 +10022,10 @@ if [ -n "$LIST_OPT" ]; then
 		;;
 	esac
 fi
+# --json goes with the folder list only (D15): an install run and --report-only are a usage error. A JSON list is
+# every folder unless --limit is given, so its pagination is null; LIST_ARG, which the re-run names, stays.
+if [ "$LIST_FOLDERS" -eq 1 ]; then json_goes_with --list-folders; else json_goes_with install; fi
+[ "$JSON_RUN" -eq 0 ] || [ -n "$LIST_MAX" ] || LIST_MAX=all
 # The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
 # them, as step 2 says to name only folders to add (B13 round 16 T22)
 RERUN_ARGS="$ORIG_SHOWN"

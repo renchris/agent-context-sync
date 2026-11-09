@@ -9586,7 +9586,7 @@ def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_
     listed as choosable and step 2 refused it, and a folder that already syncs was told to rename it to sync
     it. Both rows of a pair are now marked, the plain one with TWIN_MARK; an escaped [synced] or [inside a
     synced folder] row opens with ESCAPED_KEPT_MARK; a kept plain look-alike carries its kept marks alone; a
-    plain backslash with no twin prints byte for byte."""
+    plain backslash with no twin prints byte for byte; and the --json rows carry the same first marks."""
     lib = _cloud(env) / "OneDrive-Fabrikam"
     kept = lib / "Kept Board"
     for n in ("Contoso\nLine two", "Contoso\\nLine two", "Ctl\x01x", "Ctl?x", "Plain\\back"):
@@ -9613,6 +9613,13 @@ def test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_
     assert (
         "rename it to sync it] [synced]" not in cp.stdout and "rename it to sync it] [inside" not in cp.stdout
     )
+    cp = install_sh(env, "--list-folders", "--json")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    marks = {(f["path"], f.get("mark")) for f in json.loads(cp.stdout)["folders"]}
+    assert (f"{lib}/Contoso\nLine two", ESCAPED_MARK) in marks, marks
+    assert (f"{lib}/Contoso\\nLine two", TWIN_MARK) in marks, marks
+    assert (f"{lib}/Ctl?x", None) in marks and (f"{lib}/Plain\\back", None) in marks, marks
+    assert (f"{kept}/Tab\there", ESCAPED_KEPT_MARK) in marks, marks
 
 
 @pytest.mark.parametrize("twin", [True, False])

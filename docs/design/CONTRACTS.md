@@ -40195,7 +40195,7 @@ opens with `ESCAPED_KEPT_MARK`, `[name holds a control character]`, and so do th
 library and other-account clauses (`list_esc_kept`); a kept plain look-alike carries its kept marks alone; a plain row
 with neither prints byte for byte. The vanished paths keep their marks (a twin's included) in the twin clause and for
 more than one folder, and only the one no-twin add-back clause, the one that gives a command, names the folder as
-`list_name` shows it, with no mark. --source-local refuses a
+`list_name` shows it, with no mark. `--json` rows carry the same first mark as `"mark"`. --source-local refuses a
 pasted row with any of the three marks, each in its own words (`this is a row step 1 marked <mark>: ...`; the kept
 one: `that folder already syncs, so paste nothing for it`), and words the twin refusals by direction: a folder whose
 own name holds a control character keeps `step 1 shows this folder's name with a control character, and it cannot
@@ -41065,7 +41065,29 @@ list and a redaction round trip of an odd name.
 
 #### 16.300.19 U-B12: install.sh --json on the list
 
-Reserved.
+`install.sh --list-folders --json` (D15 Option B) writes one document to stdout on exit 0:
+`{"folders":[{"path","state"}],"total":N,"pagination":{"next":null},"next":[{"command","argv"}]}`, where `state` is
+`listed`, `synced`, `inside_synced` or `contains_synced` (the marks `SYNCED_MARK`, `INSIDE_MARK`, `CONTAINS_MARK`),
+`path` is the folder's real path (a newline in a name is `\n` inside one element, never a second row) and `next` is
+the run that keeps the synced folders and/or the `--source-local "<folder>"` run. A JSON list is every folder (the
+cap of 200 is lifted, so `pagination.next` is null) unless `--limit` is given; a list `--limit` cut names
+`--list-folders --all --json` there. Exits 3 and 4 keep their codes: stdout is empty and stderr holds exactly one
+line, `{"status":"action_required","reason","message","next","data":{"folders"}}`, its reason `reason_for_list` of
+the branch's note word (`denied`, `tcc_pending`, `not_signed_in`, `no_folders`; `step_end` records it as
+`LIST_NOTE`), its message the NEXT text and its next the list's re-run with `--json`. Any other error of a JSON
+run is one line too, `{"status":"error","reason","message"}`, reason `usage` (exit 2), `canceled` (a signal) or
+`failed`. JSON is written by `json_str`, `json_step`, `json_error` and `list_rows_json` (one awk over the rows)
+under `LC_ALL=C`, with no jq and no python3; `json_end` writes it last in `on_exit`, to fd 9 or fd 8.
+
+`--json` is read by a pre-scan before the option loop (`JSON_RUN`; a word after `--` is SOURCE), so a usage error
+the loop raises is the one JSON line too; its arm records nothing in `ORIG_ARGS`, so the `--list-folders` guard
+still holds. One check, `json_goes_with`, refuses `--json` beside an install run, `--report-only`, `--version`
+and `--help` (`--json works with --list-folders only`, exit 2). U-B17 widens it by adding `--version --help` to
+`JSON_WITH`: the `--version`, `-h`/`--help` and `help` arms already call it, and the message is built from that
+variable. install.out and install.log are what the same list writes without `--json` (with the whole list, as
+`--all` writes it), so `setup_report.listed_folder_names` still reads the human lines; the tees close fd 8 and 9.
+The setup prompt does not use `--json`. D14 Option B: the default stdout stays byte for byte, NEXT last
+(`test_default_stdout_keeps_next_last`). Tests: tests/test_install_json.py.
 
 #### 16.300.20 U-B17: install.sh --version and machine help
 
