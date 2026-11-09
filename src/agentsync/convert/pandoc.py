@@ -791,7 +791,11 @@ class PandocConverter:
         elif fmt == "odt":
             # zero bytes: one `empty` stub, never a failed conversion (B13 round 36 C1050); here only, not at
             # the top, where a zero-byte .rtf or .html is a page
-            if src.stat().st_size == 0:
+            try:
+                empty = src.stat().st_size == 0
+            except OSError:  # gone or unreadable: the container check below says so, as it always did
+                empty = False
+            if empty:
                 raise UnreadableSourceError(EMPTY_OUTPUT_REASON)
             _check_odf_container(src)
         placed, cut = 0, False

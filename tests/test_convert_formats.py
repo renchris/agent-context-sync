@@ -5143,6 +5143,8 @@ def test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050(tmp_pa
         PandocConverter(CFG).convert(_write(tmp_path, "blanks.odt", b" "), name="blanks.odt")
     with pytest.raises(ConversionError, match="invalid JSON"):
         TeamsMonthConverter(CFG).convert(_write(tmp_path, "b.teams.json", b" "), name="b.teams.json")
+    with pytest.raises(ConversionError, match="not an ODF package"):  # a staged file gone: as before C1050
+        PandocConverter(CFG).convert(tmp_path / "gone.odt", name="gone.odt")
     for name in ("x.rtf", "x.html"):
         try:
             PandocConverter(CFG).convert(_write(tmp_path, name, b""), name=name)

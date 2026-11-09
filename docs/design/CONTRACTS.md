@@ -39071,7 +39071,9 @@ converter now raises `UnreadableSourceError(policy.EMPTY_OUTPUT_REASON)` for zer
 it decodes, and `PandocConverter` in its odt branch only. Never at `screen_file`'s top or `PandocConverter.convert`'s,
 where a zero-byte `.rtf` or `.html` is a page. Only zero bytes: a `.eml` of blanks keeps `empty message file`, and
 blanks under the other names keep their words. The label decision still runs before any converter, so under
-`refuse_unlabelled` a zero-byte `.eml` stays the never-cached `label policy` refusal. No emitter bump, as for C930.
+`refuse_unlabelled` a zero-byte `.eml` stays the never-cached `label policy` refusal. A staged `.odt` that is gone or
+cannot be looked at skips the size test and still reads `not an ODF package`, as before, never a raw
+`FileNotFoundError` (found by this lane's review). No emitter bump, as for C930.
 Tests: `test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930` (five more
 names), `test_convert_family.py::test_a_zero_byte_eml_under_a_label_rule_keeps_its_label_refusal_c1050`,
 `test_convert_formats.py::test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050`, and the zero-byte
