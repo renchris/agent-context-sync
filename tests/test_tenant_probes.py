@@ -39,7 +39,7 @@ from types import SimpleNamespace
 
 import agentsync.graph.auth
 import agentsync.graph.client
-from agentsync.errors import AgentSyncError, AuthRequiredError
+from agentsync.errors import AgentSyncError, AuthRequiredError, GraphError
 from agentsync.graph.errors import AuthBlockedError, NetworkPolicyError
 
 SCENARIO = os.environ["PROBES_SCENARIO"]
@@ -88,12 +88,20 @@ class FakeClient:
             raise AgentSyncError("disk \\x1b[31mfull|now")
         if SCENARIO == "bug":
             raise ValueError("LINKTOKEN-in-a-message")
+        if SCENARIO == "offline":
+            raise GraphError(0, "network", "no route to host")
+        if SCENARIO == "forbidden" and path in ("/me/chats", "/sites/root/drive"):
+            raise GraphError(403, "accessDenied", "denied")
         if path.startswith("{LINK}"):
             self.tested += 1
             if SCENARIO == "loop-auth" and self.tested > 1:
                 raise AuthRequiredError("the token was revoked")
+            if SCENARIO == "forbidden":
+                raise GraphError(410, "resyncRequired", "gone")
             return {{}}
         if path.endswith("/root/delta"):
+            if SCENARIO == "no-deltalink":
+                return {{"value": []}}
             self.links += 1
             return {{"@odata.deltaLink": "{LINK}" + str(self.links)}}
         return {{"id": path, "value": []}}
@@ -101,6 +109,8 @@ class FakeClient:
     def iter_pages(self, path, params=None):
         if SCENARIO == "mid-run":
             raise AuthRequiredError("the token was revoked")
+        if SCENARIO == "policy-listing":
+            raise NetworkPolicyError("TLS", "intercepted")
         yield SimpleNamespace(value=ITEMS, next_link=None)
 
     def download(self, path, dest, max_bytes=None):
@@ -702,6 +712,87 @@ def test_a_loose_default_dir_is_tightened(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     assert proc.stderr == f"warning: {given} is mode 0755, open to other users; the files in it stay 0600\n"
     assert given.stat().st_mode & 0o777 == 0o755
+
+
+# ---- a probe that could not finish against one the tenant answered (D33) -----------------------------------
+
+
+def test_an_offline_run_is_not_exit_0(tmp_path: Path) -> None:
+    """Every read ends in status 0: exit 1 with the count on stderr and nothing on stdout. The due probe-9
+    link got no answer, so it is kept for the next run. Under --json the same run is one error document."""
+    import json  # noqa: PLC0415
+
+    out = tmp_path / "out"
+    store = _store(out, _due_links("1"))
+    proc = _probe(tmp_path, "offline")
+    assert (proc.returncode, proc.stdout) == (1, ""), proc.stderr
+    report = _only_report(out)
+    count, _, rest = proc.stderr.partition(" probes incomplete; see report ")
+    assert int(count) >= 9 and rest == f"{report}\n", proc.stderr
+    text = report.read_text(encoding="utf-8")
+    assert f"**{count} probes incomplete** (re-run once the cause clears)" in text
+    assert "skipped: joinedTeams returned 0 `network`" in text
+    assert "none in what was read; a drive listing did not complete" in text
+    assert "no Office/PDF file in what was read: a drive listing did not complete" in text
+    assert "not completed: 0 network; the link is kept for the next run" in text
+    (link,) = json.loads(store.read_text(encoding="utf-8"))["links"]
+    assert (link["link"], link["outcome"], link["tested_at"]) == (LINK + "1", None, None)
+    proc = _probe(tmp_path, "offline", "--output", str(tmp_path / "json"), "--json")
+    assert (proc.returncode, proc.stdout) == (1, ""), proc.stderr
+    doc = _one_line_doc(proc.stderr)
+    n = doc["data"]["incomplete"]  # type: ignore[index]
+    assert (doc["reason"], doc["message"]) == ("failed", f"{n} probes incomplete; see report")
+    assert doc["report"] == {"path": str(_only_report(tmp_path / "json"))}
+
+
+def test_a_403_is_a_measurement_and_exits_0(tmp_path: Path) -> None:
+    """A 403 on a read and on a drive, and a 410 on a due probe-9 link, are the tenant's answers: rows in the
+    report, exit 0, stdout unchanged, stderr empty."""
+    import json  # noqa: PLC0415
+
+    out = tmp_path / "out"
+    store = _store(out, _due_links("1"))
+    proc = _probe(tmp_path, "forbidden")
+    assert (proc.returncode, proc.stderr) == (0, ""), proc.stderr
+    report = _only_report(out)
+    assert proc.stdout == f"report: {report}\n"
+    text = report.read_text(encoding="utf-8")
+    assert "| `GET /me/chats` | `Chat.ReadBasic` | 403 `accessDenied` |" in text
+    assert "not readable: 403 `accessDenied`" in text
+    assert "410 resyncRequired: expired, full re-enumeration" in text
+    assert "incomplete" not in text
+    first = json.loads(store.read_text(encoding="utf-8"))["links"][0]
+    assert (first["link"], first["age_days"]) == (None, 40)
+
+
+def test_a_network_policy_failure_is_exit_1(tmp_path: Path) -> None:
+    """A TLS-inspecting proxy that first shows up on the drive listing is the documented exit 1, not a
+    stopped row in a run that exits 0."""
+    out = tmp_path / "out"
+    proc = _probe(tmp_path, "policy-listing")
+    assert (proc.returncode, proc.stdout) == (1, ""), proc.stderr
+    report = _only_report(out)
+    assert proc.stderr == (
+        f"failed: network-policy (TLS); see docs/deploy/README.md (TLS inspection / proxy); report {report}\n"
+    )
+    text = report.read_text(encoding="utf-8")
+    assert "**failed: network-policy (TLS)**" in text
+    assert "stopped: 0" not in text
+
+
+def test_a_missing_deltalink_says_so(tmp_path: Path) -> None:
+    """A delta response with no deltaLink stores nothing, says so in probe 9 and counts as incomplete."""
+    import json  # noqa: PLC0415
+
+    out = tmp_path / "out"
+    proc = _probe(tmp_path, "no-deltalink")
+    assert (proc.returncode, proc.stdout) == (1, ""), proc.stderr
+    report = _only_report(out)
+    assert proc.stderr == f"1 probe incomplete; see report {report}\n"
+    text = report.read_text(encoding="utf-8")
+    assert "not stored: response carried no deltaLink" in text
+    assert "**1 probe incomplete** (re-run once the cause clears): probe 9 new links: no deltaLink." in text
+    assert json.loads((out / "deltalinks.json").read_text(encoding="utf-8"))["links"] == []
 
 
 # ---- --dry-run writes nothing ----------------------------------------------------------------------------

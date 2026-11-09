@@ -41239,7 +41239,30 @@ Reserved.
 
 #### 16.300.29 U-C12: tenant-probes exit and stream contract
 
-Reserved.
+`scripts/tenant-probes.sh` (D33, Option A) sorts every probe result into a measurement or an incomplete probe. A
+measurement is the tenant's answer: HTTP 401, 403 or 404 on any read, and 410 on a probe-9 link; it is a row in the
+report and never changes the exit code. An incomplete probe is one that could not finish: status 0 (no network), 429,
+a 5xx or any other `GraphError` on a read, a drive or its listing, a failed probe-4b download, and a delta response
+with no deltaLink, which writes `not stored: response carried no deltaLink` and stores nothing. A
+`NetworkPolicyError` is neither: every handler re-raises it, so it always ends the run with exit 1 and reason
+`network_policy`.
+
+When the run otherwise ends 0 and anything is incomplete, it exits 1: the report gains `**<n> probes incomplete**`
+with the list, stderr is the one line `<n> probes incomplete; see report <path>`, and stdout is empty, as on every
+other failure. On exit 0 stdout is still `report: <path>` byte for byte (D32 is open). Under `--json` the same case is
+one error document on stderr, `{"status": "error", "reason": "failed", "message": "<n> probes incomplete; see
+report", "report": {"path": …}, "data": {"incomplete": <n>}}`; any other error document carries the same `data` when
+probes were also left incomplete, and none does when nothing was.
+
+A probe-9 link whose test got no answer (an incomplete result) keeps its link, `tested_at` and `outcome` unset, so the
+one-shot milestone is not spent; this run's row reads `not completed: …; the link is kept for the next run`. The
+channel and message rows of probe 2 always appear, as `skipped: joinedTeams returned <status>`, `skipped: no joined
+teams`, `skipped: channels returned <status>` or `skipped: no channels` when their read was not made. When a drive was
+unreadable or its listing stopped, probe 1's no-hash line and probe 4b's empty row say the listing did not complete
+instead of "none". `--max-downloads 0` skips probe 4b and its row reads `skipped: --max-downloads 0`. Exit 77 and 78
+keep their values, which match `EXIT_REAUTH` and `EXIT_CONFIG` (D10, Option B); `--python` with a bad path stays exit 1.
+Tests: `test_an_offline_run_is_not_exit_0`, `test_a_403_is_a_measurement_and_exits_0`,
+`test_a_network_policy_failure_is_exit_1` and `test_a_missing_deltalink_says_so` in `tests/test_tenant_probes.py`.
 
 #### 16.300.30 U-C13: the exceptions record
 

@@ -13,8 +13,8 @@
 #                             error line on stderr (not with --selftest)
 #   --max-bytes <NUMBER>      largest file probe 4b downloads, in bytes
 #                             (default: 20000000)
-#   --max-downloads <NUMBER>  probe 4b downloads up to --max-downloads files
-#                             twice each (default: 6)
+#   --max-downloads <NUMBER>  probe 4b downloads up to this many files twice
+#                             each; 0 skips probe 4b (default: 6)
 #   --max-pages <NUMBER>      delta pages probe 1 reads per drive
 #                             (default: 10, about 2,000 items)
 #   -o, --output <DIR>        where the report goes, mode 0700
@@ -39,7 +39,9 @@
 #   An option that takes a value also takes the --name=VALUE form, which is
 #   how to pass a value that is itself an option; a repeat takes the last.
 #   Probes 1, 2, 4b and 9 run; probe 9 needs re-runs at +30, +60 and +90 days.
-#   Exit status: 0 report written; 1 any other failure; 2 usage error;
+#   Exit status: 0 report written, every probe finished; 1 a probe could
+#   not finish (stderr counts them; a 401, 403, 404 or probe-9 410 is a
+#   measurement and finishes it) or any other failure; 2 usage error;
 #   77 not signed in or sign-in blocked (report written); 78 sources.toml
 #   invalid or no [graph] client_id; 130, 129 or 143 stopped by INT, HUP or
 #   TERM (a partial report once probing began).
@@ -300,22 +302,24 @@ def warn(text: str) -> None:
         print(f"warning: {text}", file=sys.stderr)
 
 
-def error_doc(reason: str, message: str, report: object = None) -> bytes:
+def error_doc(reason: str, message: str, report: object = None, data: dict[str, object] | None = None) -> bytes:
     """The one stderr line of a failure under --json, non-ASCII escaped."""
     assert reason in REASONS, reason
     doc: dict[str, object] = {"status": "error", "reason": reason, "message": message}
     if report is not None:
         doc["report"] = {"path": str(report)}
+    if data:
+        doc["data"] = data
     if WARNINGS:
         doc["warnings"] = [{"message": w} for w in WARNINGS]
     return (json.dumps(doc, separators=(",", ":")) + "\n").encode()
 
 
-def json_error(reason: str, message: str, report: object = None) -> bool:
+def json_error(reason: str, message: str, report: object = None, data: dict[str, object] | None = None) -> bool:
     """Under --json, the error document on stderr and True, so the caller skips its human line."""
     if JSON:
         sys.stdout.flush()
-        sys.stderr.buffer.write(error_doc(reason, message, report))
+        sys.stderr.buffer.write(error_doc(reason, message, report, data))
         sys.stderr.flush()
     return JSON
 
@@ -809,9 +813,17 @@ def graph_result(exc: GraphError | None = None) -> dict[str, object]:
 
 
 last_result: dict[str, object] = {}
+# what could not finish (a 0, a 429, a 5xx, a failed download, a delta page with no deltaLink); a 401, 403 or
+# 404, and a 410 on probe 9, is the tenant's answer and so a measurement
+incomplete: list[str] = []
 
 
-def status_of(path: str, params: dict | None = None) -> tuple[str, dict]:
+def measured(exc: BaseException, *, gone_counts: bool = False) -> bool:
+    return isinstance(exc, GraphError) and (exc.status in (401, 403, 404) or (gone_counts and exc.status == 410))
+
+
+def status_of(path: str, params: dict | None = None, label: str | None = None) -> tuple[str, dict]:
+    """A read's result cell and body; ``label`` names it in the incomplete list when the path holds ids."""
     global last_result
     try:
         body = client.get_json(path, params=params)
@@ -824,6 +836,8 @@ def status_of(path: str, params: dict | None = None) -> tuple[str, dict]:
         return f"401 {cell(exc, None)}", {}
     except GraphError as exc:
         last_result = graph_result(exc)
+        if not measured(exc):
+            incomplete.append(f"`GET {label or path}`: {exc.status}")
         return f"{exc.status} `{cell(exc.code)}`", {}
 
 
@@ -852,16 +866,27 @@ try:
     emit(f"| `GET /me/joinedTeams` | `Team.ReadBasic.All` | {st} |")
     reads.append({"path": "/me/joinedTeams", "permission": "Team.ReadBasic.All", **last_result})
     team_ids = sorted(str(t.get("id")) for t in teams.get("value", []))
+    # a read never made still gets its row, saying why
+    skipped = "" if team_ids else f"skipped: joinedTeams returned {st}" if st != "200" else "skipped: no joined teams"
+    chan_ids: list[str] = []
     if team_ids:
-        st, chans = status_of(f"/teams/{team_ids[0]}/channels", {"$select": "id"})
-        emit(f"| `GET /teams/{{first}}/channels` | `Channel.ReadBasic.All` | {st} |")
+        st, chans = status_of(f"/teams/{team_ids[0]}/channels", {"$select": "id"}, "/teams/{first}/channels")
         reads.append({"path": "/teams/{first}/channels", "permission": "Channel.ReadBasic.All", **last_result})
         chan_ids = sorted(str(ch.get("id")) for ch in chans.get("value", []))
-        if chan_ids:
-            st, _ = status_of(f"/teams/{team_ids[0]}/channels/{chan_ids[0]}/messages", {"$top": "1"})
-            emit(f"| `GET /teams/{{first}}/channels/{{first}}/messages?$top=1` (status only) | `ChannelMessage.Read.All` | {st} |")
-            reads.append({"path": "/teams/{first}/channels/{first}/messages", "permission": "ChannelMessage.Read.All",
-                          **last_result})
+    else:
+        reads.append({"path": "/teams/{first}/channels", "permission": "Channel.ReadBasic.All", "skipped": skipped})
+    emit(f"| `GET /teams/{{first}}/channels` | `Channel.ReadBasic.All` | {st if team_ids else skipped} |")
+    if team_ids and not chan_ids:
+        skipped = f"skipped: channels returned {st}" if st != "200" else "skipped: no channels"
+    if chan_ids:
+        st, _ = status_of(f"/teams/{team_ids[0]}/channels/{chan_ids[0]}/messages", {"$top": "1"},
+                          "/teams/{first}/channels/{first}/messages")
+        reads.append({"path": "/teams/{first}/channels/{first}/messages", "permission": "ChannelMessage.Read.All",
+                      **last_result})
+    else:
+        reads.append({"path": "/teams/{first}/channels/{first}/messages", "permission": "ChannelMessage.Read.All",
+                      "skipped": skipped})
+    emit(f"| `GET /teams/{{first}}/channels/{{first}}/messages?$top=1` (status only) | `ChannelMessage.Read.All` | {st if chan_ids else skipped} |")
     emit()
 
     emit("## Probe 1: hashes and cTag coverage (drive delta, first pages only)")
@@ -876,8 +901,13 @@ try:
     for src in graph_sources:
         try:
             targets.append((src.id, resolve_drive_id(client, src), "200", graph_result()))
+        except NetworkPolicyError:
+            raise
         except GraphError as exc:
             targets.append((src.id, None, f"{exc.status} `{cell(exc.code)}`", graph_result(exc)))
+            if not measured(exc):
+                incomplete.append(f"drive `{cell(src.id, 40)}`: {exc.status}")
+    listing_cut = False  # a drive unreadable or stopped: "none" below would claim more than was read
     candidates: list[tuple[str, str, str, int, str | None]] = []
     nohash_ext: dict[str, int] = {}
     seen_drives: set[str] = set()
@@ -885,6 +915,7 @@ try:
     records.append({"id": "1", "drives": drives})
     for name, drive_id, st, result in targets:
         if not drive_id:
+            listing_cut = True
             emit(f"| {name} | - | - | - | - | - | - | - | - | not readable: {st} |")
             drives.append({"name": name, "listing": "not-readable", "error": result})
             continue
@@ -923,15 +954,21 @@ try:
                     listing = f"sample: first {pages} pages"
                     drive["listing"] = "sample"
                     break
+        except NetworkPolicyError:
+            raise
         except GraphError as exc:
             listing = f"stopped: {exc.status} `{cell(exc.code)}`"
             drive.update(listing="stopped", error=graph_result(exc))
+            listing_cut = True
+            if not measured(exc):
+                incomplete.append(f"drive `{cell(name, 40)}` listing: {exc.status}")
         emit(f"| {name} | {n} | {files} | {qx} | {sha} | {none} | {ctag} | {zero} | {onenote} | {listing} |")
         drive.update(pages=pages, items=n, files=files, quickXorHash=qx, sha256Hash=sha, noHash=none, cTagOnFiles=ctag,
                      zeroSize=zero, oneNotePackages=onenote)
         drives.append(drive)
     emit()
-    emit("Files without any hash, by extension: " + (", ".join(f"`{cell(k, 32)}` {v}" for k, v in sorted(nohash_ext.items())) or "none") + ".")
+    unread = "none in what was read; a drive listing did not complete (see listing)"
+    emit("Files without any hash, by extension: " + (", ".join(f"`{cell(k, 32)}` {v}" for k, v in sorted(nohash_ext.items())) or (unread if listing_cut else "none")) + ".")
     emit("Not probed here: whether `cTag` lags right after an upload (needs a write; do it by hand in a scratch library).")
     emit()
 
@@ -947,7 +984,11 @@ try:
         for ext in sorted(by_ext):
             if by_ext[ext] and len(picked) < MAX_DOWNLOADS:
                 picked.append(by_ext[ext].pop(0))
-    if not picked:
+    if MAX_DOWNLOADS == 0:
+        emit("| - | skipped: --max-downloads 0 | | | | |")
+    elif not picked and listing_cut:
+        emit("| - | no Office/PDF file in what was read: a drive listing did not complete | | | | |")
+    elif not picked:
         emit("| - | no Office/PDF file within the size limit in the sampled pages | | | | |")
     downloads: list[dict[str, object]] = []
     records.append({"id": "4b", "files": downloads})
@@ -956,9 +997,13 @@ try:
         try:
             _, sha_a = client.download(f"/drives/{drive_id}/items/{item_id}/content", a, max_bytes=MAX_BYTES)
             _, sha_b = client.download(f"/drives/{drive_id}/items/{item_id}/content", b, max_bytes=MAX_BYTES)
+        except NetworkPolicyError:
+            raise
         except (GraphError, AgentSyncError) as exc:
             emit(f"| {n} | `{ext}` | {size} | - | download failed: {cell(exc, 80)} | - |")
             downloads.append({"n": n, "type": ext, "size": size, "error": f"download failed: {cell(exc, 80)}"})
+            if not measured(exc):
+                incomplete.append(f"probe 4b file {n}: download failed")
             continue
         labels_record: dict[str, object]
         try:
@@ -997,10 +1042,11 @@ try:
         failure = f"failed: probe 9 skipped: another run holds {out_dir}/.deltalinks.lock"
     else:
         probe9: dict[str, object] = {"id": "9"}  # ages and outcomes, never a link
+        unfinished: dict[int, str] = {}  # this run's cell for a test that could not finish; the link is kept
         try:
             data = load_store(store)
             try:
-                for entry in data["links"]:
+                for i, entry in enumerate(data["links"]):
                     obtained = dt.datetime.fromisoformat(entry["obtained_at"])
                     age = (NOW - obtained).days
                     if entry.get("link") and age >= entry["milestone_days"]:
@@ -1010,20 +1056,32 @@ try:
                         except NetworkPolicyError:
                             raise
                         except GraphError as exc:
+                            if not measured(exc, gone_counts=True):  # no answer about the link: it stays usable
+                                unfinished[i] = f"not completed: {exc.status} {cell(exc.code, None)}; the link is kept for the next run"
+                                incomplete.append(f"probe 9 {entry['milestone_days']}-day test: {exc.status}")
+                                continue
                             entry["outcome"] = f"{exc.status} {cell(exc.code, None)}" + (": expired, full re-enumeration" if exc.status == 410 else "")
                         entry["tested_at"], entry["age_days"], entry["link"] = NOW.isoformat(), age, None
                 if not any(e.get("link") for e in data["links"]):
                     for days in MILESTONES:
                         try:
                             page = client.get_json("/me/drive/root/delta", params={"token": "latest", "$select": "id"})
+                        except NetworkPolicyError:
+                            raise
                         except GraphError as exc:
                             emit(f"Couldn't get a deltaLink: {exc.status} `{cell(exc.code)}`.")
                             probe9["linkError"] = graph_result(exc)
+                            if not measured(exc):
+                                incomplete.append(f"probe 9 new links: {exc.status}")
                             break
                         link = page.get("@odata.deltaLink")
-                        if link:
-                            data["links"].append({"drive": "me", "obtained_at": NOW.isoformat(), "milestone_days": days,
-                                                  "link": link, "tested_at": None, "outcome": None, "age_days": None})
+                        if not link:
+                            emit("not stored: response carried no deltaLink")
+                            probe9["linkError"] = {"status": 200, "message": "not stored: response carried no deltaLink"}
+                            incomplete.append("probe 9 new links: no deltaLink")
+                            break
+                        data["links"].append({"drive": "me", "obtained_at": NOW.isoformat(), "milestone_days": days,
+                                              "link": link, "tested_at": None, "outcome": None, "age_days": None})
             finally:  # a link already tested is spent: keep its outcome even when the loop stopped early
                 atomic_write(store, json.dumps(data, indent=1, sort_keys=True))
         finally:
@@ -1031,12 +1089,13 @@ try:
         emit("| drive | obtained | test due | tested | age (days) | outcome |")
         emit("|---|---|---|---|---|---|")
         milestones: list[dict[str, object]] = []
-        for e in data["links"]:
+        for i, e in enumerate(data["links"]):
             due = (dt.datetime.fromisoformat(e["obtained_at"]) + dt.timedelta(days=e["milestone_days"])).date()
-            emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {cell(e.get('outcome') or 'pending')} |")
+            outcome = cell(unfinished.get(i) or e.get("outcome") or "pending")
+            emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {outcome} |")
             milestones.append({"drive": cell(e["drive"]), "obtained": e["obtained_at"][:10], "testDue": due.isoformat(),
                                "tested": (e.get("tested_at") or "")[:10] or None, "ageDays": e.get("age_days"),
-                               "outcome": cell(e.get("outcome") or "pending")})
+                               "outcome": outcome})
         probe9["milestones"] = milestones
         records.append(probe9)
         emit()
@@ -1081,6 +1140,10 @@ finally:
         signal.signal(_sig, signal.SIG_DFL)
     client.close()
 
+if incomplete:
+    probes_word = f"{len(incomplete)} probe{'s' if len(incomplete) != 1 else ''} incomplete"
+    emit()
+    emit(f"**{probes_word}** (re-run once the cause clears): {'; '.join(incomplete)}.")
 emit()
 emit("## Not probed by this script")
 emit()
@@ -1088,8 +1151,13 @@ emit("- Device-code block state (design §9 probe 2 extension): needs an interac
      "and only when IT has set `allow_device_code`; expect `blocked: policy` (AADSTS53003).")
 emit("- Token Protection, Teams channel delta, shared-mailbox delta, launchd matrix: C15 §8 probes 4, 6, 7 (manual).")
 report = write_report(out_dir)
-if rc and json_error(reason, failure, report):
+only_incomplete = rc == 0 and bool(incomplete)
+if only_incomplete:  # D33: a probe that could not finish is exit 1; a measured refusal is not
+    rc, reason, failure = 1, "failed", f"{probes_word}; see report"
+if rc and json_error(reason, failure, report, {"incomplete": len(incomplete)} if incomplete else None):
     pass
+elif only_incomplete:
+    print(f"{failure} {report}", file=sys.stderr)
 elif rc > 128:
     print(f"{failure} Partial report: {report}", file=sys.stderr)
 elif rc:

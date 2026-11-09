@@ -23,14 +23,18 @@ the `mkdir -p` above left it looser; a folder given with `--output` is yours, so
 
 | Exit | Meaning |
 |---|---|
-| 0 | report written |
+| 0 | report written, and every probe finished: a 401, 403 or 404, or a 410 on a probe-9 link, is the tenant's answer and a row in the report, not a failure |
 | 77 | not signed in, or sign-in blocked; the report names the state (for example `blocked: consent`, AADSTS65001) |
 | 78 | `sources.toml` invalid, or no `[graph] client_id` yet (IT request pending); a real run still writes its report, `--dry-run` writes nothing |
-| 1 | failed, e.g. `network-policy` (TLS inspection / PAC), see [README](README.md#install-one-command-no-admin); a damaged `deltalinks.json` (left as it was), another run holding probe 9, a report that cannot be written, or an interpreter without agentsync |
+| 1 | a probe could not finish (no network, a 429 or 5xx, a failed download, a delta response with no deltaLink): the report lists them and stderr says `<n> probes incomplete; see report <path>`; or failed, e.g. `network-policy` (TLS inspection / PAC), see [README](README.md#install-one-command-no-admin); a damaged `deltalinks.json` (left as it was), another run holding probe 9, a report that cannot be written, or an interpreter without agentsync |
 | 2 | usage error |
 | 130, 129, 143 | stopped by INT (Ctrl-C), HUP or TERM; temporary downloads are removed and, once probing began, a partial report is written |
 
-Limits: `--max-pages 10` (about 2,000 delta items per drive), `--max-downloads 6`, `--max-bytes 20000000`.
+77 and 78 are the same codes as `agentsync`'s `EXIT_REAUTH` and `EXIT_CONFIG` (`src/agentsync/cli.py`). A probe-9
+link whose test could not finish is kept for the next run, since each link is tested once.
+
+Limits: `--max-pages 10` (about 2,000 delta items per drive), `--max-downloads 6` (`0` skips probe 4b, and its row
+says so), `--max-bytes 20000000`.
 `--selftest` checks the offline helpers: 4 QuickXorHash vectors from rclone, a row-fold identity, and claim
 decoding. `--version` prints the commit of this checkout, or `unknown`, without running git. Every option that takes
 a value also takes the `=` form (`--max-pages=20`), which is how to pass a value that is itself an option; a repeat
@@ -51,7 +55,9 @@ line off a terminal, indented on one) and stderr nothing; `warnings` lists any w
 - A failure: stdout is empty and stderr is one line, `{"status": "error", "reason": …, "message": …, "report":
   {"path": …}}`, with `report` only when one was written. `reason` is one of `usage`, `not_signed_in`,
   `sign_in_blocked`, `config_invalid`, `client_id_unset`, `network_policy`, `failed`, `canceled` (stopped by a
-  signal) or `internal_error` (a bug; the partial report is named).
+  signal) or `internal_error` (a bug; the partial report is named). A run whose only fault is probes that could not
+  finish is `"reason": "failed"`, `"message": "<n> probes incomplete; see report"` and `"data": {"incomplete": <n>}`;
+  any other failure carries the same `data` when probes were also left incomplete.
 
 The document never holds a token or a deltaLink, names the signed-in account only by its domain, and gives probe 1
 as counts only.
