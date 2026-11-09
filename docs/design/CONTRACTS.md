@@ -41161,7 +41161,29 @@ embedded Python; nothing runs after the heredoc. An interpreter path must be a r
 
 #### 16.300.24 U-B16: tenant-probes --json
 
-Reserved.
+`scripts/tenant-probes.sh --json` is additive: without it every path prints the bytes it printed before, and the
+exit codes stay with it (0, 1, 2, 77, 78, 129, 130, 143). The parser reads `--json` from argv before its loop, up to
+`--`, so a usage error or `--help` that fires before the arm still knows the mode; a separated option value may not
+be `--json`. The flag reaches the heredoc as the argv after `MAX_BYTES`, then the `--out` alias flag, whose
+deprecation warning becomes a `warnings` entry instead of a stderr line. The refusal of `--output json`, `yaml`,
+`table` or `text` (exit 2) now says the report is written into the folder and that `--json` gives JSON output.
+
+- Success: one document on stdout, compact off a terminal and indented by two on one, non-ASCII escaped, stderr
+  empty. A real run is `{"report":{"path"},"outcome":"created","probes":[…]}`, built from records collected beside
+  each `emit` (the markdown is never parsed); `--dry-run --json` is `"outcome":"planned"` with each probe's requests,
+  `authority`, `requestedScopes` and `interpreter`, and writes nothing. `--version --json` is `{"version":…}`;
+  `--help --json` is `{"usage","options","text"}`, built by awk from the help text with no config, interpreter or
+  network. `--selftest --json` is a usage error (exit 2).
+- Failure: stdout empty and exactly one stderr line, `{"status":"error","reason","message"}` plus `report.path`
+  when a report was written and `warnings` when any. The script keeps its own registry rather than importing
+  `agentsync.clio` (the interpreter may hold an older build): `usage`, `not_signed_in` (77, before or mid-run),
+  `sign_in_blocked` (77), `config_invalid` (78), `client_id_unset` (78), `network_policy` (1), `failed` (1: any
+  other failure, a missing interpreter or module included), `canceled` (129, 130, 143: a stop by signal, with the
+  partial report once probing began), `internal_error` (1: the excepthook's bug report, naming the error type and
+  line and the partial report, never the exception's message).
+- Privacy: only what the report carries, less. No token, no deltaLink (probe 9 gives ages, due dates and outcomes),
+  the username only as its domain, probe 1 as per-drive counts with no file name or extension, Graph codes cleaned
+  by `cell`. `tests/test_tenant_probes.py::test_json_never_holds_a_delta_link` guards it.
 
 #### 16.300.25 U-C1b: machine-readable help and field selection
 

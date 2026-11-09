@@ -9,6 +9,8 @@
 #   --dry-run                 print what would be requested and exit; no
 #                             sign-in, no network, no writes
 #   -h, --help                print this help and exit, even with --version
+#   --json                    one JSON document: the result on stdout, or one
+#                             error line on stderr (not with --selftest)
 #   --max-bytes <NUMBER>      largest file probe 4b downloads, in bytes
 #                             (default: 20000000)
 #   --max-downloads <NUMBER>  probe 4b downloads up to --max-downloads files
@@ -58,26 +60,71 @@ PY="${AGENTSYNC_PYTHON:-}"
 MAX_PAGES=10
 MAX_DOWNLOADS=6
 MAX_BYTES=20000000
+JSON=0
+# --json is read before the parse loop: a usage error or --help can fire before its arm
+for arg in "$@"; do
+	case "$arg" in
+	--) break ;;
+	--json) JSON=1 ;;
+	esac
+done
 
+# $1 as the body of a JSON string: controls dropped, backslash and quote escaped
+json_text() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C sed 's/\\/\\\\/g; s/"/\\"/g'; }
+json_error() { printf '{"status":"error","reason":"%s","message":"%s"}\n' "$1" "$(json_text "$2")" >&2; }
 usage_error() {
-	printf 'usage error: %s (see --help)\n' "$*" >&2
+	if [ "$JSON" = 1 ]; then
+		json_error usage "$*"
+	else
+		printf 'usage error: %s (see --help)\n' "$*" >&2
+	fi
 	exit 2
 }
 # An error line: the mark on a terminal, the word Error: in a log or a pipe.
 error_line() {
-	if [ -t 2 ]; then
+	if [ "$JSON" = 1 ]; then
+		json_error failed "$*"
+	elif [ -t 2 ]; then
 		printf '✗ %s\n' "$*" >&2
 	else
 		printf 'Error: %s\n' "$*" >&2
 	fi
 }
-show_help() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
+show_help() {
+	if [ "$JSON" != 1 ]; then
+		awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+		return
+	fi
+	# one document from the same text: the usage line, each option as Options lists it, and the text whole
+	local tty=0
+	[ ! -t 1 ] || tty=1
+	awk -v tty="$tty" '
+	function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
+	NR > 1 && /^#/ {
+		sub(/^# ?/, "")
+		if ($0 == "") sec = ""
+		else if ($0 ~ /^[A-Z][a-z]*:$/) sec = $0
+		else if (sec == "Options:" && $0 ~ /^  -/) {
+			o = substr($0, 3)
+			sub(/  .*/, "", o)
+			opts = opts (n++ ? (tty ? ",\n    " : ",") : "") "\"" esc(o) "\""
+		}
+		if ($0 ~ /^Usage: /) usage = substr($0, 8)
+		text = text esc($0) "\\n"
+		next
+	}
+	NR > 1 { exit }
+	END {
+		if (tty) printf "{\n  \"usage\": \"%s\",\n  \"options\": [\n    %s\n  ],\n  \"text\": \"%s\"\n}\n", esc(usage), opts, text
+		else printf "{\"usage\":\"%s\",\"options\":[%s],\"text\":\"%s\"}\n", esc(usage), opts, text
+	}' "$0"
+}
 # The option a separated value must not be: --output --dry-run would set OUT and leave DRY_RUN=0, a live run
 # for someone asking for a dry one.
 need_value() {
 	[ "$1" -ge 2 ] || usage_error "$2 needs a value"
 	case "${3:-}" in
-	-h | --help | --version | --dry-run | --selftest | -- | --config | -o | --output | --out | --python | --max-pages | --max-downloads | --max-bytes | --config=* | --output=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*)
+	-h | --help | --version | --dry-run | --selftest | --json | -- | --config | -o | --output | --out | --python | --max-pages | --max-downloads | --max-bytes | --config=* | --output=* | --out=* | --python=* | --max-pages=* | --max-downloads=* | --max-bytes=*)
 		usage_error "$2 needs a value, got the option $3 (write ${2/#-o/--output}=$3 if that is the value)"
 		;;
 	esac
@@ -91,7 +138,7 @@ set_value() {
 		# the folder also holds deltalinks.json and the login files, so stdout cannot stand in for it
 		case "$2" in
 		-) usage_error "$1 needs a folder, not -: it also holds deltalinks.json and the login files" ;;
-		json | yaml | table | text) usage_error "$1 takes a folder, not a format: tenant-probes.sh has no JSON output yet" ;;
+		json | yaml | table | text) usage_error "$1 takes a folder, not a format: the report is written into it; --json gives JSON output" ;;
 		esac
 		OUT="$2"
 		;;
@@ -152,6 +199,7 @@ while [ $# -gt 0 ]; do
 	--dry-run) DRY_RUN=1 ;;
 	--selftest) SELFTEST=1 ;;
 	--version) SHOW_VERSION=1 ;;
+	--json) JSON=1 ;;
 	--config | -o | --output | --out | --python | --max-pages | --max-downloads | --max-bytes)
 		need_value $# "$1" "${2:-}"
 		set_value "$1" "$2"
@@ -172,13 +220,21 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
+[ "$SELFTEST$JSON" != 11 ] || usage_error "--selftest has no JSON output; drop --json"
 
 if [ "$SHOW_VERSION" = 1 ]; then
 	commit="$(git_head_file "$repo")"
-	printf '%s\n' "${commit:-unknown}"
+	if [ "$JSON" = 0 ]; then
+		printf '%s\n' "${commit:-unknown}"
+	elif [ -t 1 ]; then
+		printf '{\n  "version": "%s"\n}\n' "${commit:-unknown}"
+	else
+		printf '{"version":"%s"}\n' "${commit:-unknown}"
+	fi
 	exit 0
 fi
-[ "$OUT_ALIAS" = 0 ] || printf 'warning: --out is deprecated; use --output <DIR>\n' >&2
+# under --json the warning goes into the document instead
+[ "$OUT_ALIAS" = 0 ] || [ "$JSON" = 1 ] || printf 'warning: --out is deprecated; use --output <DIR>\n' >&2
 
 case "$CONFIG" in
 /*) ;;
@@ -218,10 +274,17 @@ if [ ! -f "$PY" ] || [ ! -x "$PY" ]; then
 fi
 
 # exec, so a signal sent to this pid reaches Python, which cleans up; nothing after the heredoc runs
-exec "$PY" -I -X utf8 - "$CONFIG" "$OUT" "$DRY_RUN" "$SELFTEST" "$MAX_PAGES" "$MAX_DOWNLOADS" "$MAX_BYTES" <<'PYTHON'
+exec "$PY" -I -X utf8 - "$CONFIG" "$OUT" "$DRY_RUN" "$SELFTEST" "$MAX_PAGES" "$MAX_DOWNLOADS" "$MAX_BYTES" "$JSON" "$OUT_ALIAS" <<'PYTHON'
+import json
 import os
 import signal
 import sys
+
+JSON = sys.argv[8:9] == ["1"]
+WARNINGS: list[str] = ["--out is deprecated; use --output <DIR>"] if JSON and sys.argv[9:10] == ["1"] else []
+# every reason an error document can carry
+REASONS = frozenset(("usage", "not_signed_in", "sign_in_blocked", "config_invalid", "client_id_unset",
+                     "network_policy", "failed", "canceled", "internal_error"))
 
 
 def fail_line(text: str) -> None:
@@ -229,9 +292,47 @@ def fail_line(text: str) -> None:
     print(("✗ " if sys.stderr.isatty() else "Error: ") + text, file=sys.stderr)
 
 
+def warn(text: str) -> None:
+    """A warning: a stderr line, or under --json an entry of the document's warnings."""
+    if JSON:
+        WARNINGS.append(text)
+    else:
+        print(f"warning: {text}", file=sys.stderr)
+
+
+def error_doc(reason: str, message: str, report: object = None) -> bytes:
+    """The one stderr line of a failure under --json, non-ASCII escaped."""
+    assert reason in REASONS, reason
+    doc: dict[str, object] = {"status": "error", "reason": reason, "message": message}
+    if report is not None:
+        doc["report"] = {"path": str(report)}
+    if WARNINGS:
+        doc["warnings"] = [{"message": w} for w in WARNINGS]
+    return (json.dumps(doc, separators=(",", ":")) + "\n").encode()
+
+
+def json_error(reason: str, message: str, report: object = None) -> bool:
+    """Under --json, the error document on stderr and True, so the caller skips its human line."""
+    if JSON:
+        sys.stdout.flush()
+        sys.stderr.buffer.write(error_doc(reason, message, report))
+        sys.stderr.flush()
+    return JSON
+
+
+def json_out(doc: dict[str, object]) -> None:
+    """The one result document on stdout: indented by two on a terminal, one compact line otherwise."""
+    if WARNINGS:
+        doc["warnings"] = [{"message": w} for w in WARNINGS]
+    tty = sys.stdout.isatty()
+    print(json.dumps(doc, indent=2) if tty else json.dumps(doc, separators=(",", ":")))
+
+
 def no_module(exc: ImportError) -> None:
-    fail_line(f"Can't import {exc.name} with {sys.executable}. Pass --python with the interpreter that has agentsync "
-              "installed, or run scripts/install.sh.")
+    message = (f"Can't import {exc.name} with {sys.executable}. Pass --python with the interpreter that has "
+               "agentsync installed, or run scripts/install.sh.")
+    if not json_error("failed", message):
+        fail_line(message)
     sys.exit(1)
 
 
@@ -247,9 +348,13 @@ class _Stopped(BaseException):
         self.signum = signum
 
 
+def stopped_line(text: str) -> bytes:
+    return error_doc("canceled", text) if JSON else f"{text}\n".encode()
+
+
 def on_signal(signum: int, _frame: object) -> None:
     if not PROBING:
-        os.write(2, b"Stopped. Nothing was downloaded; no report written.\n")
+        os.write(2, stopped_line("Stopped. Nothing was downloaded; no report written."))
         os._exit(128 + signum)
     raise _Stopped(signum)
 
@@ -265,7 +370,7 @@ def bug_report(kind: type[BaseException], exc: BaseException, tb: object) -> Non
     """D34: an unexpected error is a short bug report (its type and line, never its message, which can quote a
     path or a link). __AGENTSYNC_RAISE=1 prints the full trace instead."""
     if isinstance(exc, _Stopped):
-        os.write(2, b"Stopped. Temporary downloads may remain; no report written.\n")
+        os.write(2, stopped_line("Stopped. Temporary downloads may remain; no report written."))
         os._exit(128 + exc.signum)
     if issubclass(kind, KeyboardInterrupt) or os.environ.get("__AGENTSYNC_RAISE"):
         sys.__excepthook__(kind, exc, tb)  # type: ignore[arg-type]
@@ -283,6 +388,17 @@ def bug_report(kind: type[BaseException], exc: BaseException, tb: object) -> Non
         from agentsync.it_request import REPO_URL as repo_url
     except Exception:
         repo_url = "https://github.com/renchris/agent-context-sync"
+    if JSON:
+        partial = None
+        if "write_report" in globals() and "out_dir" in globals():
+            try:
+                emit(f"**failed: unexpected error**: {site}")
+                partial = write_report(out_dir, or_exit=False)
+            except BaseException:
+                pass
+        json_error("internal_error", f"Unexpected error in tenant-probes.sh: {site}. This is a bug in agentsync "
+                   f"{version}; report it at {repo_url}/issues/new", partial)
+        return
     fail_line("Unexpected error in tenant-probes.sh. This is a bug in agentsync.")
     host = f"macOS {platform.mac_ver()[0]}" if platform.mac_ver()[0] else platform.system()
     print(f"  Error: {site}", file=sys.stderr)
@@ -478,16 +594,20 @@ def ensure_out_dir(out_dir: Path) -> None:
     elif out_dir.stat().st_mode & 0o077 and not loose_warned:
         loose_warned = True
         mode = stat.S_IMODE(out_dir.stat().st_mode)
-        print(f"warning: {out_dir} is mode {mode:04o}, open to other users; the files in it stay 0600", file=sys.stderr)
+        warn(f"{out_dir} is mode {mode:04o}, open to other users; the files in it stay 0600")
 
 
-def write_report(out_dir: Path) -> Path:
+def write_report(out_dir: Path, *, or_exit: bool = True) -> Path:
     path = out_dir / f"tenant-probes-{NOW.strftime('%Y%m%dT%H%M%SZ')}.md"
     try:
         ensure_out_dir(out_dir)
         atomic_write(path, "\n".join(lines).rstrip() + "\n")
     except OSError as exc:
-        fail_line(f"Can't write the report under {out_dir}: {exc.strerror or exc}. Pass --output with a folder you can write.")
+        if not or_exit:
+            raise
+        message = f"Can't write the report under {out_dir}: {exc.strerror or exc}. Pass --output with a folder you can write."
+        if not json_error("failed", message):
+            fail_line(message)
         sys.exit(1)
     return path
 
@@ -541,7 +661,8 @@ def load_store(store: Path) -> dict:
 try:
     config = load_config(CONFIG)
 except ConfigError as exc:
-    fail_line(f"Configuration invalid: {exc}")
+    if not json_error("config_invalid", f"Configuration invalid: {exc}"):
+        fail_line(f"Configuration invalid: {exc}")
     sys.exit(78)
 
 out_dir = Path(OUT) if OUT else config.state_paths.root / "probes"
@@ -555,12 +676,14 @@ emit()
 
 if not config.graph.client_id:
     if DRY:
-        fail_line("Can't run the probes. [graph] client_id is unset. The dry run wrote nothing.")
+        if not json_error("client_id_unset", "Can't run the probes. [graph] client_id is unset. The dry run wrote nothing."):
+            fail_line("Can't run the probes. [graph] client_id is unset. The dry run wrote nothing.")
         sys.exit(78)
     emit("**Not run:** `[graph] client_id` is unset (the IT app registration is pending; docs/deploy/it-request.md).")
     report = write_report(out_dir)
-    fail_line("Can't run the probes. [graph] client_id is unset.")
-    print(f"Report: {report}", file=sys.stderr)
+    if not json_error("client_id_unset", "Can't run the probes. [graph] client_id is unset.", report):
+        fail_line("Can't run the probes. [graph] client_id is unset.")
+        print(f"Report: {report}", file=sys.stderr)
     sys.exit(78)
 
 try:
@@ -575,10 +698,30 @@ except ImportError as exc:
 try:
     settings = settings_from_config(config)
 except ConfigError as exc:
-    fail_line(f"Configuration invalid: {exc}")
+    if not json_error("config_invalid", f"Configuration invalid: {exc}"):
+        fail_line(f"Configuration invalid: {exc}")
     sys.exit(78)
 
 drives_planned = ["me (/me/drive)", "root-site (/sites/root/drive)"] + [f"{s.id} ({s.drive_id or s.site})" for s in graph_sources]
+PROBE2_READS = ["/me", "/me/drive", "/sites/root", "/me/followedSites", "/me/mailFolders", "/me/joinedTeams",
+                "/teams/{first}/channels", "/teams/{first}/channels/{first}/messages", "/me/chats"]
+if DRY and JSON:
+    json_out({
+        "report": {"path": f"{out_dir}/tenant-probes-<UTC timestamp>.md"},
+        "outcome": "planned",
+        "probes": [
+            {"id": "2", "requests": PROBE2_READS},
+            {"id": "1", "requests": ["/drives/{id}/root/delta"], "maxPages": MAX_PAGES, "drives": drives_planned},
+            {"id": "4b", "requests": ["/drives/{id}/items/{id}/content"], "maxDownloads": MAX_DOWNLOADS,
+             "maxBytes": MAX_BYTES, "types": list(PROBE_EXTS)},
+            {"id": "9", "requests": ["/me/drive/root/delta"], "store": f"{out_dir}/deltalinks.json",
+             "milestones": list(MILESTONES)},
+        ],
+        "authority": settings.authority,
+        "requestedScopes": list(config.graph_scopes()),
+        "interpreter": sys.executable,
+    })
+    sys.exit(0)
 if DRY:
     print(f"dry run: nothing is signed in, requested or written\ninterpreter: {sys.executable}")
     print(f"authority: {settings.authority}\nrequested scopes: {' '.join(config.graph_scopes())}")
@@ -600,7 +743,15 @@ emit(f"| cached account | {'yes' if status.signed_in else 'no'}; domain `{(statu
 emit(f"| sign-in method (last `agentsync graph login`) | `{status.sign_in_method or '-'}` |")
 emit(f"| token cache | `{status.cache_backend}` |")
 emit(f"| requested scopes | `{' '.join(config.graph_scopes())}` |")
-logins = sorted(out_dir.glob("login-*.txt")) if out_dir.is_dir() else []
+# the --json record of each probe, collected beside its rows; the username only as its domain
+username = status.username or ""
+probe2: dict[str, object] = {
+    "id": "2", "signedIn": bool(status.signed_in), "domain": username.rpartition("@")[2] if "@" in username else None,
+    "tenantId": status.tenant_id, "signInMethod": status.sign_in_method, "tokenCache": status.cache_backend,
+    "requestedScopes": list(config.graph_scopes()),
+}
+records: list[dict[str, object]] = [probe2]
+logins =sorted(out_dir.glob("login-*.txt")) if out_dir.is_dir() else []
 if logins:
     tail = [ln for ln in logins[-1].read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()][-3:]
     emit(f"| `{logins[-1].name}` (last lines) | {cell(' / '.join(tail))} |")
@@ -608,20 +759,26 @@ try:
     token = auth.get_token()
 except AuthBlockedError as exc:
     emit(f"| silent token | **{exc.state}** (`{cell(exc.aadsts or '-')}`): {cell(exc, None)} |")
-    print(f"sign-in blocked ({exc.state}): {cell(exc, None)}; report {write_report(out_dir)}", file=sys.stderr)
+    report = write_report(out_dir)
+    if not json_error("sign_in_blocked", f"sign-in blocked ({exc.state}): {cell(exc, None)}", report):
+        print(f"sign-in blocked ({exc.state}): {cell(exc, None)}; report {report}", file=sys.stderr)
     sys.exit(77)
 except AuthRequiredError as exc:
     emit(f"| silent token | **reauth-required**: {cell(exc, None)}. Run `agentsync graph login 2>&1 | tee \"{out_dir}/login-$(date +%Y%m%d).txt\"`, then re-run |")
-    print(f"not signed in; run `agentsync graph login`, then re-run; report {write_report(out_dir)}", file=sys.stderr)
+    report = write_report(out_dir)
+    if not json_error("not_signed_in", "not signed in; run `agentsync graph login`, then re-run", report):
+        print(f"not signed in; run `agentsync graph login`, then re-run; report {report}", file=sys.stderr)
     sys.exit(77)
 except AuthError as exc:  # a PAC-only network or a refresh that failed: not a sign-in state, so exit 1
     emit(f"| silent token | **failed**: {cell(exc, None)} |")
     report = write_report(out_dir)
-    fail_line(f"Can't get a token silently: {cell(exc, None)}; report {report}")
+    if not json_error("failed", f"Can't get a token silently: {cell(exc, None)}", report):
+        fail_line(f"Can't get a token silently: {cell(exc, None)}; report {report}")
     sys.exit(1)
 c = claims(token)
 del token
 emit(f"| token source (MSAL `token_source`) | `{auth.last_token_source or '-'}` |")
+probe2["tokenSource"] = auth.last_token_source
 if c:
     granted = {s.lower() for s in c["scp"]}
     missing = sorted(s for s in config.graph_scopes() if s.lower() not in granted)
@@ -630,8 +787,11 @@ if c:
     emit(f"| device identity claim (`deviceid`) | {'present (broker / device-bound sign-in)' if c['device_claim'] else 'absent'} |")
     emit(f"| authentication methods (`amr`) | `{' '.join(c['amr']) or '-'}` |")
     emit(f"| app id matches `[graph] client_id` | {c['appid'] == settings.client_id} |")
+    probe2.update(grantedScopes=c["scp"], missingScopes=missing, deviceClaim=c["device_claim"], authMethods=c["amr"],
+                  appIdMatches=c["appid"] == settings.client_id)
 else:
     emit("| token claims | opaque token (not a JWT); scopes not readable |")
+    probe2["opaqueToken"] = True
 emit()
 
 client = GraphClient(
@@ -643,19 +803,32 @@ client = GraphClient(
 )
 
 
+def graph_result(exc: GraphError | None = None) -> dict[str, object]:
+    """A read's outcome for the --json record: the status, and the Graph code of a failure."""
+    return {"status": 200} if exc is None else {"status": exc.status, "code": cell(exc.code)}
+
+
+last_result: dict[str, object] = {}
+
+
 def status_of(path: str, params: dict | None = None) -> tuple[str, dict]:
+    global last_result
     try:
-        return "200", client.get_json(path, params=params)
+        body = client.get_json(path, params=params)
+        last_result = graph_result()
+        return "200", body
     except NetworkPolicyError:
         raise
     except AuthRequiredError as exc:
+        last_result = {"status": 401, "message": cell(exc, None)}
         return f"401 {cell(exc, None)}", {}
     except GraphError as exc:
+        last_result = graph_result(exc)
         return f"{exc.status} `{cell(exc.code)}`", {}
 
 
 rc = 0
-failure = ""
+reason = failure = ""
 tmp_root: Path | None = None
 try:
     PROBING = True
@@ -670,47 +843,59 @@ try:
         ("/me/mailFolders", {"$select": "id", "$top": "1"}, "Mail.ReadBasic / Mail.Read"),
         ("/me/chats", {"$select": "id", "$top": "1"}, "Chat.ReadBasic"),
     ]
+    reads: list[dict[str, object]] = []
+    probe2["reads"] = reads
     for path, params, perm in checks:
         emit(f"| `GET {path}` | `{perm}` | {status_of(path, params)[0]} |")
+        reads.append({"path": path, "permission": perm, **last_result})
     st, teams = status_of("/me/joinedTeams")
     emit(f"| `GET /me/joinedTeams` | `Team.ReadBasic.All` | {st} |")
+    reads.append({"path": "/me/joinedTeams", "permission": "Team.ReadBasic.All", **last_result})
     team_ids = sorted(str(t.get("id")) for t in teams.get("value", []))
     if team_ids:
         st, chans = status_of(f"/teams/{team_ids[0]}/channels", {"$select": "id"})
         emit(f"| `GET /teams/{{first}}/channels` | `Channel.ReadBasic.All` | {st} |")
+        reads.append({"path": "/teams/{first}/channels", "permission": "Channel.ReadBasic.All", **last_result})
         chan_ids = sorted(str(ch.get("id")) for ch in chans.get("value", []))
         if chan_ids:
             st, _ = status_of(f"/teams/{team_ids[0]}/channels/{chan_ids[0]}/messages", {"$top": "1"})
             emit(f"| `GET /teams/{{first}}/channels/{{first}}/messages?$top=1` (status only) | `ChannelMessage.Read.All` | {st} |")
+            reads.append({"path": "/teams/{first}/channels/{first}/messages", "permission": "ChannelMessage.Read.All",
+                          **last_result})
     emit()
 
     emit("## Probe 1: hashes and cTag coverage (drive delta, first pages only)")
     emit()
     emit("| drive | items | files | quickXorHash | sha256Hash | no hash | cTag on files | zero-size | OneNote packages | listing |")
     emit("|---|---|---|---|---|---|---|---|---|---|")
-    targets: list[tuple[str, str | None, str]] = []
+    targets: list[tuple[str, str | None, str, dict[str, object]]] = []
     st, me = status_of("/me/drive", {"$select": "id"})
-    targets.append(("me", me.get("id"), st))
+    targets.append(("me", me.get("id"), st, last_result))
     st, root = status_of("/sites/root/drive", {"$select": "id"})
-    targets.append(("root-site", root.get("id"), st))
+    targets.append(("root-site", root.get("id"), st, last_result))
     for src in graph_sources:
         try:
-            targets.append((src.id, resolve_drive_id(client, src), "200"))
+            targets.append((src.id, resolve_drive_id(client, src), "200", graph_result()))
         except GraphError as exc:
-            targets.append((src.id, None, f"{exc.status} `{cell(exc.code)}`"))
+            targets.append((src.id, None, f"{exc.status} `{cell(exc.code)}`", graph_result(exc)))
     candidates: list[tuple[str, str, str, int, str | None]] = []
     nohash_ext: dict[str, int] = {}
     seen_drives: set[str] = set()
-    for name, drive_id, st in targets:
+    drives: list[dict[str, object]] = []  # counts only: never a file name, a drive id or a link
+    records.append({"id": "1", "drives": drives})
+    for name, drive_id, st, result in targets:
         if not drive_id:
             emit(f"| {name} | - | - | - | - | - | - | - | - | not readable: {st} |")
+            drives.append({"name": name, "listing": "not-readable", "error": result})
             continue
         if drive_id in seen_drives:
             emit(f"| {name} | same drive as above | | | | | | | | |")
+            drives.append({"name": name, "listing": "same-drive"})
             continue
         seen_drives.add(drive_id)
         n = files = qx = sha = none = ctag = zero = onenote = pages = 0
         listing = "complete"
+        drive: dict[str, object] = {"name": name, "listing": "complete"}
         try:
             for page in client.iter_pages(f"/drives/{drive_id}/root/delta", params={"$select": DRIVE_SELECT}):
                 pages += 1
@@ -736,10 +921,15 @@ try:
                         candidates.append((ext, drive_id, str(item["id"]), size, hashes.get("quickXorHash")))
                 if pages >= MAX_PAGES and page.next_link:
                     listing = f"sample: first {pages} pages"
+                    drive["listing"] = "sample"
                     break
         except GraphError as exc:
             listing = f"stopped: {exc.status} `{cell(exc.code)}`"
+            drive.update(listing="stopped", error=graph_result(exc))
         emit(f"| {name} | {n} | {files} | {qx} | {sha} | {none} | {ctag} | {zero} | {onenote} | {listing} |")
+        drive.update(pages=pages, items=n, files=files, quickXorHash=qx, sha256Hash=sha, noHash=none, cTagOnFiles=ctag,
+                     zeroSize=zero, oneNotePackages=onenote)
+        drives.append(drive)
     emit()
     emit("Files without any hash, by extension: " + (", ".join(f"`{cell(k, 32)}` {v}" for k, v in sorted(nohash_ext.items())) or "none") + ".")
     emit("Not probed here: whether `cTag` lags right after an upload (needs a write; do it by hand in a scratch library).")
@@ -759,6 +949,8 @@ try:
                 picked.append(by_ext[ext].pop(0))
     if not picked:
         emit("| - | no Office/PDF file within the size limit in the sampled pages | | | | |")
+    downloads: list[dict[str, object]] = []
+    records.append({"id": "4b", "files": downloads})
     for n, (ext, drive_id, item_id, size, qxh) in enumerate(picked, 1):
         a, b = tmp_root / f"{n}a{ext}", tmp_root / f"{n}b{ext}"
         try:
@@ -766,15 +958,23 @@ try:
             _, sha_b = client.download(f"/drives/{drive_id}/items/{item_id}/content", b, max_bytes=MAX_BYTES)
         except (GraphError, AgentSyncError) as exc:
             emit(f"| {n} | `{ext}` | {size} | - | download failed: {cell(exc, 80)} | - |")
+            downloads.append({"n": n, "type": ext, "size": size, "error": f"download failed: {cell(exc, 80)}"})
             continue
+        labels_record: dict[str, object]
         try:
             labels = read_labels(a, name=f"probe{ext}")
             lab = "error: " + cell(labels.error, 60) if labels.error else (
                 f"{len(labels.labels)} ({', '.join(sorted({lb.origin for lb in labels.labels}))})" if labels.labels else "none")
+            labels_record = {"error": cell(labels.error, 60)} if labels.error else {
+                "count": len(labels.labels), "origins": sorted({lb.origin for lb in labels.labels})}
         except Exception as exc:  # a reader defect is this file's cell, not the end of the run
             lab = "error: " + cell(type(exc).__name__, 60)
-        served = "n/a (no quickXorHash)" if not qxh else str(quickxor(a) == qxh)
+            labels_record = {"error": cell(type(exc).__name__, 60)}
+        matches = None if not qxh else quickxor(a) == qxh
+        served = "n/a (no quickXorHash)" if matches is None else str(matches)
         emit(f"| {n} | `{ext}` | {size} | {lab} | {sha_a == sha_b} | {served} |")
+        downloads.append({"n": n, "type": ext, "size": size, "labels": labels_record, "downloadsEqual": sha_a == sha_b,
+                          "servedMatchesHash": matches})
         a.unlink(missing_ok=True)
         b.unlink(missing_ok=True)
     emit()
@@ -793,8 +993,10 @@ try:
     if lock_fd < 0:
         emit("**Skipped:** another tenant-probes.sh run holds `.deltalinks.lock`; re-run probe 9 once it ends.")
         rc = 1
+        reason = "failed"
         failure = f"failed: probe 9 skipped: another run holds {out_dir}/.deltalinks.lock"
     else:
+        probe9: dict[str, object] = {"id": "9"}  # ages and outcomes, never a link
         try:
             data = load_store(store)
             try:
@@ -816,6 +1018,7 @@ try:
                             page = client.get_json("/me/drive/root/delta", params={"token": "latest", "$select": "id"})
                         except GraphError as exc:
                             emit(f"Couldn't get a deltaLink: {exc.status} `{cell(exc.code)}`.")
+                            probe9["linkError"] = graph_result(exc)
                             break
                         link = page.get("@odata.deltaLink")
                         if link:
@@ -827,27 +1030,37 @@ try:
             os.close(lock_fd)
         emit("| drive | obtained | test due | tested | age (days) | outcome |")
         emit("|---|---|---|---|---|---|")
+        milestones: list[dict[str, object]] = []
         for e in data["links"]:
             due = (dt.datetime.fromisoformat(e["obtained_at"]) + dt.timedelta(days=e["milestone_days"])).date()
             emit(f"| {e['drive']} | {e['obtained_at'][:10]} | {due} | {(e.get('tested_at') or '-')[:10]} | {e.get('age_days') if e.get('age_days') is not None else '-'} | {cell(e.get('outcome') or 'pending')} |")
+            milestones.append({"drive": cell(e["drive"]), "obtained": e["obtained_at"][:10], "testDue": due.isoformat(),
+                               "tested": (e.get("tested_at") or "")[:10] or None, "ageDays": e.get("age_days"),
+                               "outcome": cell(e.get("outcome") or "pending")})
+        probe9["milestones"] = milestones
+        records.append(probe9)
         emit()
         emit("A 410 is not an outage: the drive arm falls back to a full enumeration. The result sets the reconcile floor.")
 except _Stopped as exc:
     name = signal.Signals(exc.signum).name
     emit(f"**stopped: {name}**: the run was stopped before it finished; this report holds what ran before it.")
     rc = 128 + exc.signum
+    reason = "canceled"
     failure = "Stopped waiting. Nothing was written to the tenant; temporary downloads removed."
 except NetworkPolicyError as exc:
     emit(f"**failed: network-policy ({exc.policy})**: {cell(exc, None)}. See docs/deploy/README.md (TLS inspection / proxy).")
     rc = 1
+    reason = "network_policy"
     failure = f"failed: network-policy ({exc.policy}); see docs/deploy/README.md (TLS inspection / proxy)"
 except AuthRequiredError as exc:
     emit(f"**stopped: sign-in required mid-run**: {cell(exc, None)}. Run `agentsync graph login`, then re-run.")
     rc = 77
+    reason = "not_signed_in"
     failure = "stopped: sign-in required mid-run; run `agentsync graph login`, then re-run"
 except AgentSyncError as exc:
     emit(f"**failed**: {cell(exc, None)}")
     rc = 1
+    reason = "failed"
     if isinstance(exc, GraphError):
         failure = f"failed: {exc.status} {cell(exc.code)}"
     else:  # a store message is the repair, so it is never cut
@@ -856,6 +1069,7 @@ except OSError as exc:
     where = f" ({exc.filename})" if exc.filename else ""
     emit(f"**failed**: {cell(exc.strerror or exc, None)}{cell(where, None)}")
     rc = 1
+    reason = "failed"
     failure = f"failed: {cell(exc.strerror or exc, None)}{cell(where, None)}"
 finally:
     # the downloads go first, past a second signal; then a second signal ends the run at once
@@ -874,10 +1088,14 @@ emit("- Device-code block state (design §9 probe 2 extension): needs an interac
      "and only when IT has set `allow_device_code`; expect `blocked: policy` (AADSTS53003).")
 emit("- Token Protection, Teams channel delta, shared-mailbox delta, launchd matrix: C15 §8 probes 4, 6, 7 (manual).")
 report = write_report(out_dir)
-if rc > 128:
+if rc and json_error(reason, failure, report):
+    pass
+elif rc > 128:
     print(f"{failure} Partial report: {report}", file=sys.stderr)
 elif rc:
     print(f"{failure}; report {report}", file=sys.stderr)
+elif JSON:
+    json_out({"report": {"path": str(report)}, "outcome": "created", "probes": records})
 else:
     print(f"report: {report}")
 sys.exit(rc)

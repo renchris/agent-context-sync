@@ -36,6 +36,26 @@ decoding. `--version` prints the commit of this checkout, or `unknown`, without 
 a value also takes the `=` form (`--max-pages=20`), which is how to pass a value that is itself an option; a repeat
 takes the last value, an empty value is a usage error, and `--` ends the options.
 
+### JSON output
+
+`--json` keeps the exit codes above and changes only what is printed. On success stdout holds one document (one
+line off a terminal, indented on one) and stderr nothing; `warnings` lists any warning instead of a stderr line.
+
+- A real run: `{"report": {"path": …}, "outcome": "created", "probes": [{"id": "2", …}, {"id": "1", …}, {"id":
+  "4b", …}, {"id": "9", …}]}`, the same facts as the report: per-read statuses, drive counts, per-file booleans and
+  per-milestone outcomes. A row that failed stays a value in its row.
+- `--dry-run --json`: `"outcome": "planned"`, each probe's requests and limits, `authority`, `requestedScopes` and
+  `interpreter`; it writes nothing.
+- `--help --json` and `--version --json`: one document each, without reading the config or starting Python.
+  `--selftest --json` is a usage error.
+- A failure: stdout is empty and stderr is one line, `{"status": "error", "reason": …, "message": …, "report":
+  {"path": …}}`, with `report` only when one was written. `reason` is one of `usage`, `not_signed_in`,
+  `sign_in_blocked`, `config_invalid`, `client_id_unset`, `network_policy`, `failed`, `canceled` (stopped by a
+  signal) or `internal_error` (a bug; the partial report is named).
+
+The document never holds a token or a deltaLink, names the signed-in account only by its domain, and gives probe 1
+as counts only.
+
 ## What each probe records
 
 | # | Requests | Records | Decides |

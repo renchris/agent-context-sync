@@ -235,7 +235,10 @@ def _only_report(out: Path) -> Path:
         (["--frob"], "Unknown option --frob for tenant-probes.sh."),
         (["x"], "Unexpected positional argument x for tenant-probes.sh."),
         (["--output", "-"], "--output needs a folder, not -"),
-        (["-o", "json"], "-o takes a folder, not a format: tenant-probes.sh has no JSON output yet"),
+        (
+            ["-o", "json"],
+            "-o takes a folder, not a format: the report is written into it; --json gives JSON output",
+        ),
         (["--output=table"], "--output takes a folder, not a format"),
         (["-o", "--dry-run"], "-o needs a value, got the option --dry-run (write --output=--dry-run"),
         (["--max-pages", "abc"], "--max-pages needs a non-negative integer, got 'abc'"),
@@ -776,6 +779,113 @@ def test_output_is_the_name_and_out_an_alias_that_warns(tmp_path: Path) -> None:
     proc = _run(tmp_path, "--config", config, "--output", "-", "--dry-run")
     assert (proc.returncode, proc.stdout) == (2, "")
     assert proc.stderr.startswith("usage error: --output needs a folder, not -")
+
+
+# ---- --json ----------------------------------------------------------------------------------------------
+
+
+def _one_line_doc(text: str) -> dict[str, object]:
+    import json  # noqa: PLC0415
+
+    assert text.endswith("\n") and text.count("\n") == 1, text
+    doc = json.loads(text)
+    assert isinstance(doc, dict)
+    return doc
+
+
+def test_dry_run_json_is_one_document(tmp_path: Path) -> None:
+    """``--dry-run --json`` plans and writes nothing; ``--help --json`` and ``--version --json`` are one
+    document each, read before the config or the interpreter."""
+    config = _config(tmp_path)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "tmpdir").mkdir()
+    before = _tree(tmp_path)
+    proc = _run(tmp_path, "--config", str(config), "--json", "--out", str(tmp_path / "x"), "--dry-run")
+    assert (proc.returncode, proc.stderr) == (0, ""), proc.stderr
+    doc = _one_line_doc(proc.stdout)
+    assert doc["outcome"] == "planned"
+    assert doc["report"] == {"path": f"{tmp_path}/x/tenant-probes-<UTC timestamp>.md"}
+    assert [p["id"] for p in doc["probes"]] == ["2", "1", "4b", "9"]  # type: ignore[index, union-attr]
+    assert doc["interpreter"] == sys.executable and "requestedScopes" in doc and "authority" in doc
+    assert doc["warnings"] == [{"message": "--out is deprecated; use --output <DIR>"}]
+    assert _tree(tmp_path) == before
+    python, marker = _marker_python(tmp_path)
+    help_doc = _one_line_doc(_run(tmp_path, "--json", "help", python=python).stdout)
+    assert help_doc["text"] == _run(tmp_path, "--help").stdout
+    assert "--json" in help_doc["options"]  # type: ignore[operator]
+    version = _run(tmp_path, "--version", "--json", "--config", str(tmp_path / "none"), python=python)
+    assert version.returncode == 0 and set(_one_line_doc(version.stdout)) == {"version"}
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    ("args", "words"),
+    [
+        (["--json", "--frob"], "Unknown option --frob for tenant-probes.sh."),
+        (["--frob", "--json"], "Unknown option --frob for tenant-probes.sh."),
+        (["--selftest", "--json"], "--selftest has no JSON output; drop --json"),
+        (
+            ["--json", "--output", "--json"],
+            "--output needs a value, got the option --json (write --output=--json if that is the value)",
+        ),
+        # a quote and a backslash escaped, a tab dropped
+        (["--json", "--max-pages", 'x"\\\t'], "--max-pages needs a non-negative integer, got 'x\"\\'"),
+    ],
+)
+def test_usage_error_json_is_one_line(tmp_path: Path, args: list[str], words: str) -> None:
+    python, marker = _marker_python(tmp_path)
+    proc = _run(tmp_path, *args, python=python)
+    assert (proc.returncode, proc.stdout) == (2, "")
+    assert _one_line_doc(proc.stderr) == {"status": "error", "reason": "usage", "message": words}
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    ("scenario", "code", "reason"),
+    [
+        ("required", 77, "not_signed_in"),
+        ("blocked", 77, "sign_in_blocked"),
+        ("mid-run", 77, "not_signed_in"),
+        ("network", 1, "network_policy"),
+        ("other", 1, "failed"),
+        ("bug", 1, "internal_error"),
+    ],
+)
+def test_failure_json_has_empty_stdout(tmp_path: Path, scenario: str, code: int, reason: str) -> None:
+    """Every failure under --json: stdout empty, one stderr line naming its reason and the report it wrote."""
+    proc = _probe(tmp_path, scenario, "--output", str(tmp_path / "out"), "--json")
+    assert (proc.returncode, proc.stdout) == (code, ""), proc.stderr
+    doc = _one_line_doc(proc.stderr)
+    assert (doc["status"], doc["reason"]) == ("error", reason)
+    assert doc["report"] == {"path": str(_only_report(tmp_path / "out"))}
+    assert "LINKTOKEN" not in proc.stderr and "Traceback" not in proc.stderr
+    bad = tmp_path / "bad.toml"
+    bad.write_text("this is [not toml\n", encoding="utf-8")
+    proc = _run(tmp_path, "--json", "--config", str(bad))
+    assert (proc.returncode, proc.stdout) == (78, "")
+    assert _one_line_doc(proc.stderr)["reason"] == "config_invalid"
+
+
+def test_json_never_holds_a_delta_link(tmp_path: Path) -> None:
+    """A run that tests one due link and stores three new ones: the document carries the outcomes, never a
+    link or a token, the username only as its domain, and no file name."""
+    out = tmp_path / "out"
+    store = _store(out, _due_links("1"))
+    proc = _probe(tmp_path, "ok", "--output", str(out), "--json")
+    assert (proc.returncode, proc.stderr) == (0, ""), proc.stderr
+    doc = _one_line_doc(proc.stdout)
+    assert (doc["outcome"], doc["report"]) == ("created", {"path": str(_only_report(out))})
+    probes = {p["id"]: p for p in doc["probes"]}  # type: ignore[union-attr]
+    assert sorted(probes) == ["1", "2", "4b", "9"]
+    assert probes["2"]["domain"] == "contoso.com"
+    outcomes = [m["outcome"] for m in probes["9"]["milestones"]]
+    assert outcomes == ["200: still valid", "pending", "pending", "pending"]
+    assert store.read_text(encoding="utf-8").count("LINKTOKEN") == 3
+    for text in (proc.stdout, proc.stderr):
+        assert "LINKTOKEN" not in text and "token=" not in text and "graph.contoso.test" not in text
+        assert (
+            "owner@" not in text and FILE_NAME not in text and "opaque" not in text.replace("opaqueToken", "")
+        )
 
 
 # ---- --version and help ----------------------------------------------------------------------------------
