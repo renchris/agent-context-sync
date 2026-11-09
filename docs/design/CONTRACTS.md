@@ -38376,6 +38376,9 @@ NEXT; its time-limit grep no longer reads a doctor line but its cut forms (lane 
 `tests/test_setup_report.py::test_a_helper_that_did_not_answer_in_time_is_not_judged_c915`,
 `test_the_helper_bucket_reads_doctors_own_time_out_words_c915` (doctor's `_probe_timed_out` for each helper, lane
 E's 2fa5f9d66, matches `_HELPER_LATE_RE` on its own check).
+Amended 2026-11-08, §16.236 C1071: two or three helpers chain in the one bucket, `not judged (the <helper> and the
+<helper> ... did not answer in time: ...)`, and install.sh's `report_time_helps` now greps that form, the report's own
+words (ruling 114; 298fa1f17).
 
 **A report that gave up on doctor names the check it was in** (ruling 105's report-level case, on lane B's
 f1f777bb0; tests only). Through the real `cli._report_hooks()` and the whole report, a hung git check and a later
@@ -38481,6 +38484,11 @@ and `helper-timeout-and-doctor-cut` rows of
 `test_a_cut_loop_read_is_told_and_the_time_limit_named_only_where_it_helps_c821_c834`,
 `test_the_time_limit_grep_reads_the_reports_own_line_at_its_maximum_c929` (setup_report._time_limit's line at 60, 75.5
 and 1e2 matches the grep, at 59 and `x` not) and `test_the_cut_loop_grep_holds_the_reports_own_words_c821`.
+Amended 2026-11-08, §16.236 C1071: no build wrote `not judged (<OCR|media|speech> helper did not answer in time: ...)`:
+`_helper_late_head` has written `not judged (the <helper>[ and the <helper>]... did not answer in time: ...)` since
+C915, and `report_time_helps`' grep now reads that form, its `the` optional and two or three helpers chained, kept after
+the cut, Loop and budget checks, so a helper beside a real cut still names AGENTSYNC_REPORT_TIME_LIMIT=60 (ruling 114;
+298fa1f17).
 
 **The shell report reads lane B's governance folder stop** (C935's install.sh half; dated line at §16.179 D79;
 `scripts/install.sh`). Lane B's
@@ -38885,6 +38893,9 @@ three lines (`not judged`, ahead of unexpected) is lane RA's and install.sh's na
 (ruling 108), so this line never names AGENTSYNC_REPORT_TIME_LIMIT, which does not move the helper's fixed 5 s. Test:
 `test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (the three
 checks, with and without developer tools; the OCR helper ready once it answers).
+Amended 2026-11-08, §16.236 C1071: install.sh's time-limit grep now reads this bucket in the report's own words,
+which no build matched before ruling 114 (298fa1f17), so a hung helper's NEXT keeps the idle advice and names no
+variable.
 
 **A zero-byte or wrong-type file says so, once** (C930 and C927, makes worse True each; `agentsync.policy`,
 `agentsync.convert`; dated lines at §16.28 and §16.42). A zero-byte `.potx`, `.vsdx`, `.docx`, `.xlsx` or `.msg`
@@ -39733,6 +39744,17 @@ which inverts C961's ruling and its test, and adds a shell per call on the cycle
 (ruling 117). C961's paragraph takes the dated line stating the limit, after lane E's C1067 line (78d70c721). Test:
 `test_the_helpers_signal_limit_is_stated_c1035` (the line, and `_start`'s plain `Popen` with no new session, read
 from the code).
+
+**The helper bucket is quoted in the report's own words** (ruling 114, lane RB's C1071 with C1015, C1032, C1039,
+C1063 and C1106; docs only). setup-feedback.md's time-limit paragraph and §16.231's `report_time_helps` paragraph
+quoted the doctor line's bucket as `not judged (<helper> did not answer in time: ...)`, a form no build wrote:
+`_helper_late_head` has written `not judged (the <helper>[ and the <helper>]... did not answer in time: ...)` since
+C915, and install.sh's grep, which keyed on the quoted form, never matched it, so a hung helper's NEXT recommended a
+report run that could not help. Lane RB moved the reader (298fa1f17); the guide now quotes the report's words, and
+§16.230's, §16.231's and §16.233's C915 passages each take a dated line in RB's marker, pinned in
+`_ROUND_36_D_PARAGRAPH_AMENDS`. Ruling 108's text stays as written. Test:
+`test_the_helper_buckets_quotes_are_the_reports_words_ruling_114` (the words read from `_helper_late_head` and
+install.sh's grep).
 
 **The lane brief says which signals a new signal test resets** (C1054; docs only; `docs/lanes/COMMON.md`'s
 Regressions paragraph). It said, as `Since C869 the two signal tests pass under nohup and `&``, then, in the lead's

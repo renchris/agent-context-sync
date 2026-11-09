@@ -1417,7 +1417,8 @@ up)` or `not read (not started: ...)`; never `no loop hook`, a crash or `status 
 C904), and names `AGENTSYNC_REPORT_TIME_LIMIT=60` only where more time can help: a doctor line cut off or not started,
 an evidence or Loop line cut, or a line saying the report's own budget was spent, and never when the report already
 ran at 60 s, its most (its `- time limit: 60s` line; B13 round 35 C922, C929); a helper whose `--version` did not
-answer (the doctor line's `not judged (<helper> did not answer in time: ...)`) names none either (C915); when only
+answer (the doctor line's `not judged (the <helper>[ and the <helper>]... did not answer in time: ...)`, the
+report's own words, which install.sh's grep reads since B13 round 36 C1071) names none either (C915); when only
 git, xcode-select or launchctl print timed out on their fixed 3 s and 5 s caps (a line that names the seconds), it
 says to run the report again once the Mac is idle and names no variable, while an older build's install source words
 keep it (B13 round 34 ruling 97, C834; round 35 C976); a wait the report's spent budget made shorter than its cap

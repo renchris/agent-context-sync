@@ -6852,10 +6852,26 @@ _ROUND_36_D_PARAGRAPH_AMENDS = (
         "**A refused [governance] hides only what needs it, and the Loop line quotes status once**",
         "§16.239 C1044 (by §16.232 C937)",
     ),
+    (
+        "16.230",
+        "**A helper that did not answer in time is not judged** (C915's report half, ruling 108;",
+        "§16.236 C1071",
+    ),
+    (
+        "16.231",
+        "`report_time_helps` opens with `! LC_ALL=C grep -qE '^- time limit: 60s[,:] '",
+        "§16.236 C1071",
+    ),
+    (
+        "16.233",
+        "**A helper's `--version` that did not answer in time says so, never `not working`** (C915,",
+        "§16.236 C1071",
+    ),
 )
 """Round 36 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_35_D_PARAGRAPH_AMENDS`: C1044's at §16.134's V10 paragraph, in C857's form, whose quotes round
-35's C937 made stale (ruling 74: no quote rewritten)."""
+35's C937 made stale (ruling 74: no quote rewritten); and ruling 114's three lines, in lane RB's C1071 marker,
+at the helper bucket's quotes in §16.230, §16.231 and §16.233, which lane D writes on RB's sha."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
@@ -9530,6 +9546,35 @@ def test_the_helpers_signal_limit_is_stated_c1035() -> None:
     assert "signal.signal(" not in inspect.getsource(setup_report)
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert 'with_timeout 120 "$bin" setup-report' in script and 'kill "$2"' in script
+
+
+def test_the_helper_buckets_quotes_are_the_reports_words_ruling_114() -> None:
+    """B13 round 36 ruling 114 (C1071 is lane RB's): the guide and §16.231 quoted the helper bucket as
+    `not judged (<helper> did not answer in time: ...)`, a form no build wrote, and install.sh grepped it, so
+    a hung helper's NEXT never matched. RB's grep now reads the report's words; the guide quotes them as
+    `_helper_late_head` writes them, and §16.230, §16.231 and §16.233 carry dated lines on RB's sha."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    late = inspect.getsource(setup_report._helper_late_head)
+    assert (
+        'who = " and the ".join(helpers)' in late
+        and 'f"not judged (the {who} did not answer in time: ' in late
+    )
+    section = " ".join(_feedback_page().split())
+    assert "`not judged (<helper> did not answer in time: ...)`" not in section
+    assert (
+        "(the doctor line's `not judged (the <helper>[ and the <helper>]... did not answer in time: ...)`,"
+        " the report's own words, which install.sh's grep reads since B13 round 36 C1071)"
+    ) in section
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert (
+        "not judged \\((the )?(OCR|media|speech) helper( and the (OCR|media|speech) helper)* did not answer"
+        in script
+    )
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert (
+        text.count("Amended 2026-11-08, §16.236 C1071: ") == 3 and text.count("(ruling 114; 298fa1f17)") == 2
+    )
 
 
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
