@@ -837,10 +837,13 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     # (round 9 K33; round 10 L50); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
+    # an image whose OCR helper is built but not working, as its page says, never "no converter" (C1101)
+    ocr_down = sum(s.ocr_unread for s in report.sources)
     unread_tail = "".join(
         f"; {n} {what}"
         for n, what in (
             (withheld, f"withheld unread by the label rule ({_WITHHELD_WHY})"),
+            (ocr_down, OCR_WAIT_CLAUSE),
             (unread, "refused without a read (no converter for the type, or a rule that needs no bytes)"),
         )
         if n
@@ -2556,6 +2559,9 @@ def _check(
     return doctor.CheckResult(name, ok, detail, doctor.Severity.INFO if ok else severity, fix)
 
 
+OCR_WAIT_CLAUSE = "waiting for the OCR helper (it is not working; read once it does)"
+"""The sync line's clause for the images :attr:`SourceReport.ocr_unread` counts, after their number (B13 round
+36 C1101): their pages say ``publish.OCR_DOWN_REASON``."""
 _PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
 
 STATUS_PARTLY_UNREAD = "status: some of the state could not be read: "

@@ -19,6 +19,7 @@ from openpyxl import Workbook
 from agentsync import arm_local, cli, cycle, governance, lints
 from agentsync import materialise as mat
 from agentsync.config import Config
+from agentsync.convert import ocr as ocr_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, LintFinding, RowState
@@ -649,7 +650,7 @@ def test_a_run_without_the_gitleaks_of_the_last_screen_leaves_the_waiting_list(
 
 def _ocr(mp: pytest.MonkeyPatch, engine: Any) -> None:
     """Every cycle from now on finds ``engine`` (None: a Mac without the OCR helper)."""
-    mp.setattr(cycle.ocr, "engine", lambda _convert, _cache_dir: engine)
+    mp.setattr(cycle.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
 
 
 def test_a_picture_of_a_password_is_a_stub_again_after_a_run_without_ocr(
@@ -927,3 +928,9 @@ def test_an_unreadable_once_a_credential_record_is_rebuilt_from_the_manifest_and
     assert pair in once and queued_pair in once
     assert sorted(tuple(p) for p in stored) == sorted([pair, queued_pair])
     assert any("secret_once_credential is unreadable" in r.getMessage() for r in caplog.records)
+
+
+def _ocr_state(engine: Any) -> Any:
+    """``ocr.engine_state``'s answer for a cycle that finds ``engine`` (None: none, as switched off), since
+    the cycle looks once through it (B13 round 36 C1101)."""
+    return ocr_mod.EngineState("ready" if engine is not None else "off", "", engine)

@@ -2556,12 +2556,66 @@ SITE_PLAN = "projects/Contoso Site Plan.png"
 def _use_ocr(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **kw: Any) -> Any:
     """Every cycle from now on finds this fake OCR engine, as after an install that built the helper."""
     engine = fake_engine(tmp_path / "ocr-bin", **kw)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     return engine
 
 
 def _image_page(config: Config, rel: str, sid: str = SID) -> tuple[dict[str, Any], str]:
     return page(config.docs_repo, slug.mirror_rel_path(sid, rel))
+
+
+def test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101(
+    sample_config: Config,
+    local_source_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 36 C1101: with the OCR helper built but not working (its --version killed), every image the
+    sync read became a `no converter for .png` stub and the sync line said `no converter for the type`, though
+    the converter exists and only its helper failed. The page and the sync line say the helper is not
+    working; the stored reason, the converter and QUARANTINE.tsv keep `no converter for .png`, so the image is
+    read again once the helper works; a label rule keeps today's words."""
+    failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    report = run(sample_config)
+    assert report.exit_code == 0
+    (st,) = [s for s in report.sources if s.source_id == SID]
+    assert (st.ocr_unread, st.refused_unread) == (1, 0), st
+    fm, body = _image_page(sample_config, SITE_PLAN)
+    assert fm["reason"] == publish_mod.OCR_DOWN_REASON, fm
+    assert fm["summary"] == f"refused: {publish_mod.OCR_DOWN_REASON}", fm
+    assert "no converter" not in body, body
+    with Manifest(sample_config.state_paths.db) as m:
+        (row,) = [r for r in m.iter_items(SID) if r.rel_path == SITE_PLAN]
+    assert row.state_reason == f"{convert_mod.NO_CONVERTER_PREFIX}.png", row
+    tsv = (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    assert "no converter for .png" in tsv, tsv
+    capsys.readouterr()
+    cli._print_report(report)
+    said = capsys.readouterr().out
+    assert f"; 1 {cli.OCR_WAIT_CLAUSE}" in said and "refused without a read" not in said, said
+    # the helper works again: the same image is read, its page OCR's
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(sample_config).exit_code == 0
+    fm, _body = _image_page(sample_config, SITE_PLAN)
+    assert fm["converter"].startswith("image-ocr@"), fm
+
+
+def test_an_image_under_a_label_rule_keeps_its_words_while_the_helper_fails_c1101(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C1101's label-rule case: a [policy] label rule decides an image's words whatever the engine does, so
+    a failing helper leaves them as they were and counts nothing as waiting on it."""
+    failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    report = run(config)
+    assert sum(s.ocr_unread for s in report.sources) == 0, report.sources
+    fm, _body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] != publish_mod.OCR_DOWN_REASON, fm
 
 
 def test_an_image_on_this_mac_is_read_once_in_the_staging_folder(
@@ -2591,7 +2645,9 @@ def test_the_cycle_looks_for_the_engine_once_and_never_under_a_dry_run(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     looked: list[Path] = []
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, cache_dir: looked.append(cache_dir))
+    monkeypatch.setattr(
+        cycle_mod.ocr, "engine_state", lambda _convert, cache_dir: _ocr_state(looked.append(cache_dir))
+    )
     assert run(sample_config, mode=CycleMode.DRY_RUN).exit_code == 0 and looked == []
     assert run(sample_config).exit_code == 0 and looked == [sample_config.cache_dir]
 
@@ -2601,13 +2657,13 @@ def test_the_cycle_engine_is_what_ocr_engine_finds_and_none_when_ocr_is_off(
 ) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     helper = write_fake(ocr._helper_path(sample_config.cache_dir))
-    assert cycle_mod._cycle_ocr(sample_config) is None, "AGENTSYNC_OCR=0, the suite's own switch"
+    assert cycle_mod._cycle_ocr_state(sample_config)[0] is None, "AGENTSYNC_OCR=0, the suite's own switch"
     monkeypatch.delenv("AGENTSYNC_OCR")
-    found = cycle_mod._cycle_ocr(sample_config)
+    found = cycle_mod._cycle_ocr_state(sample_config)[0]
     assert found is not None and found.helper == helper and found.spent_s == 0.0
     assert found.identity == "ocr-paper-vision-r2-h0.3.0-l1"
     off = dataclasses.replace(sample_config, convert=dataclasses.replace(sample_config.convert, ocr=False))
-    assert cycle_mod._cycle_ocr(off) is None, "[convert] ocr = false"
+    assert cycle_mod._cycle_ocr_state(off)[0] is None, "[convert] ocr = false"
 
 
 def test_the_cycle_engine_adds_up_the_helper_time_of_reads_that_fail_too(
@@ -2667,7 +2723,7 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
     cycle, with its own OCR time, is that re-read."""
     assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(3)})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     ticks = itertools.count(0.0, 100.0)
     monkeypatch.setattr(cycle_mod, "_ocr_clock", lambda: next(ticks))
     (local_source_dir / "scans").mkdir()
@@ -2836,7 +2892,7 @@ def test_a_graph_document_waits_for_ocr_time_and_is_not_converted_without_it(
     bytes changed.  A Graph document whose converter reads with the engine is left for the next cycle
     before it is downloaded; a file OCR has nothing to do with is not held up."""
     engine = shade_engine(tmp_path / "ocr-bin", {90: ["Delivery note 7"]})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
     pages = [(["The cover page has a text layer of its own"], []), ([], [page_picture(90)])]
     scan = build_picture_pdf(tmp_path / "scan.pdf", pages).read_bytes()
@@ -3340,7 +3396,9 @@ def test_quarantine_tsv_keeps_the_wording_of_the_published_stub_whatever_this_ru
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
     for n, ready in enumerate(engines):
-        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d, e=engine if ready else None: e)
+        monkeypatch.setattr(
+            cycle_mod.ocr, "engine_state", lambda _c, _d, e=engine if ready else None: _ocr_state(e)
+        )
         report = run(config)
         assert report.exit_code == 0
         assert (report.commit_sha is not None) == (n == 0), f"run {n + 1}: only the first run commits"
@@ -3389,7 +3447,9 @@ def test_the_stub_re_render_keeps_the_wording_the_page_has_whatever_this_runs_oc
         if n == 2:
             with Manifest(config.state_paths.db) as m:
                 m.set_meta(cycle_mod._STUB_RENDER_META, "4")  # an install before this rendering version
-        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d, e=engine if ready else None: e)
+        monkeypatch.setattr(
+            cycle_mod.ocr, "engine_state", lambda _c, _d, e=engine if ready else None: _ocr_state(e)
+        )
         report = run(config)
         assert report.exit_code == 0 and (report.commit_sha is not None) == (n == 0), f"run {n + 1}"
         fm, _body = _image_page(config, rel)
@@ -3408,7 +3468,7 @@ def test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_s
     engine = fake_engine(tmp_path / "ocr-bin")
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(engine))
     with monkeypatch.context() as old:  # the rendering before G29: the page's reason: was the stored one
         old.setattr(publish_mod, "_withheld_reason", lambda suffix: f"no converter for {suffix}")
         assert run(config).exit_code == 0
@@ -3416,7 +3476,7 @@ def test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_s
     assert fm["reason"] == "no converter for .png" and "its content is withheld (content policy)" in body
     with Manifest(config.state_paths.db) as m:
         m.set_meta(cycle_mod._STUB_RENDER_META, "3")
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine if ready else None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(engine if ready else None))
     report = run(config)
     assert report.exit_code == 0 and report.commit_sha is not None
     fm, body = _image_page(config, SITE_PLAN)
@@ -3445,7 +3505,9 @@ def test_an_online_only_image_a_label_rule_refuses_keeps_its_stub_whatever_this_
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
 
     def use(ready: bool) -> None:
-        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine if ready else None)
+        monkeypatch.setattr(
+            cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(engine if ready else None)
+        )
 
     use(first)
     assert run(config).commit_sha is not None
@@ -3524,7 +3586,7 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     engine = fake_engine(tmp_path / "ocr-bin")
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(engine))
     assert run(config).exit_code == 0
     real, parsed = publish_mod.parse_frontmatter, []
 
@@ -3554,7 +3616,7 @@ def test_a_run_with_no_engine_reads_an_online_only_images_stub_without_a_yaml_pa
     J55 had taken out of QUARANTINE.tsv. The page's own lines are decoded now, as J55 does."""
     photo = picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(None))
     assert run(config).commit_sha is not None
     online, dataless = {photo.stat().st_ino}, materialise.is_dataless
 
@@ -3624,7 +3686,7 @@ def test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_t
     engine = fake_engine(tmp_path / "ocr-bin")
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: _ocr_state(engine))
     with monkeypatch.context() as old:  # the rendering before G29: the page's reason: was the stored one
         old.setattr(publish_mod, "_withheld_reason", lambda suffix: f"no converter for {suffix}")
         assert run(config).exit_code == 0
@@ -3951,7 +4013,7 @@ def test_a_helper_that_fails_on_everything_costs_no_image_its_reading(
     the next cycle would settle for good), the report says OCR stopped working, and no file's re-read is
     used up.  Once the helper works, each image is read."""
     failing = fake_engine(tmp_path / "failing", fail=True)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(failing))
     plans = [f"projects/Contoso Site Plan {n}.png" for n in range(3)]
     for n, rel in enumerate(plans):
         picture(local_source_dir / rel, f"Loading dock {n}")
@@ -4081,7 +4143,7 @@ def test_the_run_record_counts_what_was_converted_without_ocr_and_why(
     than the page limit, and a helper that stops working: each is a count in the run record."""
     assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(4)})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     monkeypatch.setattr(pdf_mod, "MAX_PAGES", 1)
     (local_source_dir / "scans").mkdir()
     cover = (["The cover page has a text layer of its own"], [])
@@ -4106,7 +4168,7 @@ def test_the_run_record_counts_what_was_converted_without_ocr_and_why(
     record = _run_record(sample_config)
     assert (record["reread"], record["converted"]) == (1, 0) and "reread_kept" not in record
     failing = fake_engine(tmp_path / "failing", fail=True)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(failing))
     for n in range(3):
         picture(local_source_dir / "projects" / f"Contoso Site Plan {n}.png", f"Loading dock {n}")
     assert run(sample_config).exit_code == 0
@@ -4489,7 +4551,7 @@ def test_a_converter_that_answers_after_failing_to_start_counts_no_ocr_failure(
     unread and the run record counted an OCR failure for an engine that never ran."""
     assert run(sample_config).exit_code == 0
     engine = fake_engine(tmp_path / "ocr-bin")
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     assert run(sample_config).exit_code == 0
     real = pandoc_mod._PandocRunner.version
     failed: list[bool] = []
@@ -4877,10 +4939,10 @@ def test_the_upgrades_retry_note_says_an_image_stubbed_for_want_of_its_engine_wa
     _settle_as_an_older_build(config, rel)
     broken[0] = False
     if case == "no engine":
-        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: None)
+        monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(None))
     elif case == "helper stops":
         failing = fake_engine(tmp_path / "failing", fail=True)
-        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+        monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(failing))
     else:
         config = config_with(tmp_path, local_source_dir, LABEL_RULE)
     capsys.readouterr()
@@ -5272,7 +5334,7 @@ def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
 
     said = {70: ["Loading dock"], 90: ["Delivery note 7"], 91: ["Signed in Rotterdam"]}
     engine = shade_engine(tmp_path / "ocr-bin", said)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     fetched = _fetches(monkeypatch)
     second = run(sample_config)
     [rep] = second.sources
@@ -5544,7 +5606,7 @@ def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
     before, head = _mirror_bytes(sample_config, SITE_PLAN), git(repo, "rev-parse", "HEAD")
     assert b"no converter for .png" in before[SITE_PLAN]
     engine = shade_engine(tmp_path / "ocr-bin", {70: "fail" if fault.startswith("the helper") else ["Dock"]})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     if fault.startswith("the converter"):
 
         def broken(self: Any, src: Path, *, name: str) -> Any:
@@ -6043,7 +6105,7 @@ def test_a_file_the_engine_fails_on_twice_is_given_up_and_an_engine_that_comes_b
     said = {91: ["Signed in Rotterdam"], 93: ["Counted in Antwerp"], 95: "fail"}
     engine = shade_engine(tmp_path / "ocr-bin", said)
     found: list[Any] = [engine]
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: found[0])
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(found[0]))
     fetched = _fetches(monkeypatch)
     unread = _mirror_bytes(sample_config, bad)
     second = run(sample_config)
@@ -6097,7 +6159,7 @@ def test_a_page_from_an_older_emitter_the_engine_fails_on_is_read_again_by_the_n
     with _before_comments(monkeypatch):
         assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {95: "fail"})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     fetched = _fetches(monkeypatch)
     assert run(sample_config).exit_code == 0 and fetched.count(bad) == 1
     bad_id = _file_rows(sample_config)[bad].stable_id
@@ -6118,7 +6180,7 @@ def test_a_field_build_image_the_engine_fails_on_once_gets_its_text_back_in_the_
     _shade_png(local_source_dir / SITE_PLAN, 70)
     good = shade_engine(tmp_path / "ocr-good", {70: ["Loading dock"]})
     found: list[Any] = [good]
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: found[0])
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(found[0]))
     with monkeypatch.context() as field:
         field.setattr(image_mod, "_EMITTER_VERSION", "1.0.0")
         assert run(sample_config).exit_code == 0
@@ -6208,7 +6270,7 @@ def test_a_file_given_up_is_read_again_once_its_bytes_have_changed(
     build_picture_pdf(local_source_dir / rel, [(cover, []), ([], [page_picture(95)])])
     assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {91: ["Signed in Rotterdam"], 95: "fail"})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     assert run(sample_config).exit_code == 0 and run(sample_config).exit_code == 0
     stable = _file_rows(sample_config)[rel].stable_id
     assert _reread_record(sample_config) == (True, [stable])
@@ -6305,7 +6367,7 @@ def test_a_file_a_materialise_run_converted_without_ocr_is_read_again_by_the_nex
     file it names, converted after the cycle's OCR time was used.  The source's record says so in that
     run, so the next sync looks although the run before it had found nothing left."""
     engine = shade_engine(tmp_path / "ocr-bin", {91: ["Signed in Rotterdam"], 93: ["Counted in Antwerp"]})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     rel = "scans/Contoso supply agreement.pdf"
     cover = ["The cover page has a text layer of its own"]
     (local_source_dir / "scans").mkdir()
@@ -6398,7 +6460,7 @@ def test_downloads_that_take_the_ocr_time_end_the_sync_again_note_and_a_sync_wit
     it does, and it ends."""
     assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(8)})
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(engine))
     assert run(sample_config).exit_code == 0 and _reread_notes(sample_config) == [], "the samples: read"
     (local_source_dir / "scans").mkdir()
     cover = (["The cover page has a text layer of its own"], [])
@@ -7143,7 +7205,7 @@ def test_no_recording_is_staged_once_either_helper_is_down(
     config = config_with(tmp_path, meetings)
     stub_recording(meetings / MEETING, 10)
     failing = fake_engine(tmp_path / "failing-ocr", fail=True)
-    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _convert, _cache_dir: _ocr_state(failing))
     picture(meetings / "shots" / "Contoso board.png", "Roadmap")  # the OCR helper fails on it, then a blank
     fetched = _fetches(monkeypatch)
     assert run(config).exit_code == 0
@@ -8266,3 +8328,9 @@ def test_the_commit_bodys_source_spellings_read_nothing_inside_the_cloud_tree_c1
     report = run(config)
     assert not [a for s in report.sources for a in s.alarms], report.sources
     assert gitops.head_sha(config.docs_repo) is not None
+
+
+def _ocr_state(engine: Any) -> Any:
+    """``ocr.engine_state``'s answer for a cycle that finds ``engine`` (None: none, as switched off), since
+    the cycle looks once through it (B13 round 36 C1101)."""
+    return ocr.EngineState("ready" if engine is not None else "off", "", engine)

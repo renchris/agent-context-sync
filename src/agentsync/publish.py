@@ -32,6 +32,7 @@ from typing import Any
 from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_ID, NO_CONVERTER_PREFIX, NO_CONVERTER_VERSION
+from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import label_withheld_suffixes, sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
@@ -597,6 +598,13 @@ def _withheld_on_page(text: str) -> bool | None:
     return policy.page_says_withheld(reason, found.get("summary"), body)
 
 
+OCR_DOWN_REASON = "the OCR helper is not working on this Mac: the image is read again once it works"
+"""The ``reason:`` and summary of an image's stub while the OCR helper is built but not working
+(:meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's own absence says, nor the label
+rule's ``withheld`` words; the stored reason, the converter and ``_sync/QUARANTINE.tsv`` (read from the
+manifest) keep ``no converter for <suffix>`` (B13 round 36 C1101)."""
+
+
 def _withheld_reason(suffix: str) -> str:
     """The reason a stub withheld by a label rule shows in its ``reason:`` and in ``_sync/QUARANTINE.tsv``.
     The stored reason stays ``no converter for <suffix>``: re-reads, stub identity and the setup report's
@@ -739,6 +747,8 @@ class Publisher:
         # Whether this cycle has an OCR engine (the cycle sets it): without one no image converter is
         # registered whatever the policy says, so an image's stub is not the label rule's (B13 round 3 R33).
         self.images_readable = False
+        # the OCR helper is built but not working this run (``ocr.engine_state`` ``failed``, C1101)
+        self.ocr_down = False
         # collision_key -> owner (source_id, stable_id) of paths allocated by THIS instance (one cycle)
         self._claimed: dict[str, tuple[str, str]] = {}
 
@@ -1161,6 +1171,18 @@ class Publisher:
         or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
         return self._withheld_eligible(reason, suffix) and (suffix == ".msg" or self.images_readable)
 
+    def ocr_waits(self, reason: str | None, suffix: str) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of an image while this run's OCR helper is
+        built but not working (:attr:`ocr_down`) and no label rule is on (one withholds an image whatever the
+        engine does): its page says :data:`OCR_DOWN_REASON`, the stored reason keeps ``no converter for
+        <suffix>``, which re-reads it once the helper works (B13 round 36 C1101)."""
+        return (
+            self.ocr_down
+            and not self._policy.labels_active
+            and reason == NO_CONVERTER_PREFIX + suffix
+            and suffix in ImageConverter.extensions
+        )
+
     def withheld(self, reason: str | None, suffix: str) -> bool:
         """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
@@ -1239,7 +1261,15 @@ class Publisher:
                 else withheld and self._withheld_eligible(result.reason, suffix)
             )
         )
-        summary_text = shown
+        # an image whose OCR helper is built but not working: the words say so, never "no converter"; the
+        # stored reason, the converter and the status stay, so it is read again once the helper works (C1101)
+        ocr_waits = (
+            status is ConversionStatus.REFUSED
+            and not refusal
+            and not withheld
+            and self.ocr_waits(result.reason, suffix)
+        )
+        summary_text = OCR_DOWN_REASON if ocr_waits else shown
         if withheld:
             # The summary says it too (B13 round 4 Q27): the mirror's CLAUDE.md has agents read summary: to
             # decide whether to open a page, and "no converter for .msg" there hid the route. The status, and
@@ -1266,6 +1296,11 @@ class Publisher:
                 f"agentsync did not convert this source: a [policy] label rule is set and the label of a "
                 f"{kind} cannot be read, so its content is withheld (content policy). {route}\n"
                 "The source exists: it is withheld, not absent. See `_sync/QUARANTINE.tsv`.\n"
+            )
+        elif ocr_waits:
+            text_lines = (
+                f"agentsync did not convert this source: {OCR_DOWN_REASON}.\n"
+                "The source exists: it waits for the OCR helper, not absent. See `_sync/QUARANTINE.tsv`.\n"
             )
         elif refusal:
             text_lines = (
@@ -1308,7 +1343,7 @@ class Publisher:
                 and not withheld
                 else None
             ),
-            reason=_withheld_reason(suffix) if withheld else reason,
+            reason=_withheld_reason(suffix) if withheld else OCR_DOWN_REASON if ocr_waits else reason,
             source_title=title,
             summary=f"{page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),

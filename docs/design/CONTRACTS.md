@@ -1024,6 +1024,7 @@ class SourceReport:
     label_unreadable: int = 0  # 2026-10-26 (§16.205 C326): of ``refused``, never withheld: its label unreadable
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
+    ocr_unread: int = 0  # 2026-11-08 (§16.237 C1101): an image waiting on an OCR helper that fails
     new: int = 0  # 2026-10-16 (§16.102 N39): of the changed files, those new this run (``changed=N (K new)``)
     converter_waiting: int = 0  # 2026-10-19 (§16.138 V13): files whose converter could not start, never in converted
     credential_stubbed: int = 0  # 2026-10-26 (§16.200 C145): of ``unreadable``, pages the secret scan stubbed
@@ -39428,6 +39429,22 @@ a held privacy prompt can hold without limit. `cycle._lexical_spellings` gives t
 a home reached through a symlink is still cut; `_commit` builds the cut only when some source has an alarm. Test:
 `test_cycle.py::test_the_commit_bodys_source_spellings_read_nothing_inside_the_cloud_tree_c1025` (no lstat at or
 below the provider folder, an alarm still committed as `<source folder>`, a commit with no alarm builds no cut).
+
+**An image whose OCR helper fails says so, and is read once it works** (C1101; ruling 119). With the OCR helper
+built but not working (its `--version` killed), every image the sync read became a `no converter for .png` stub and
+the sync line counted it `refused without a read (no converter for the type, ...)`, though the converter exists and
+only its helper failed. The cycle looks once through lane E's `ocr.engine_state` (`cycle._cycle_ocr_state`; one
+`--version` run) and sets `Publisher.ocr_down` when its state is `failed`. `Publisher.ocr_waits` is then true for an
+image's `no converter` refusal with no label rule on (a label rule decides an image's words whatever the engine
+does): its page's `reason:` and summary are `publish.OCR_DOWN_REASON`, `the OCR helper is not working on this Mac:
+the image is read again once it works`, and its body says the same; the stored reason, `none@0` and
+`_sync/QUARANTINE.tsv`, which reads the manifest, keep `no converter for <suffix>`, the key that reads it again once
+the helper works. `SourceReport.ocr_unread`, beside `refused_unread`, counts these rows, and the sync line says `;
+<N> waiting for the OCR helper (it is not working; read once it does)` (`cli.OCR_WAIT_CLAUSE`). The helper's detail
+is never put on the page, since a build's failure reason can hold a path. Tests:
+`test_cycle.py::test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101` (the page, the stored
+reason, the TSV, the sync line, then a working helper reads it) and
+`::test_an_image_under_a_label_rule_keeps_its_words_while_the_helper_fails_c1101`.
 
 **A program is checked for, started and listed in one locked step** (C1065, with the deadline half of C1067;
 ruling 117; amends §16.232 C955). `deadline.run` and `doctor._run` checked the caller's deadline, then spawned and

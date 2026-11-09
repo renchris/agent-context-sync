@@ -1863,15 +1863,19 @@ class _CycleOcr(OcrEngine):
         return True
 
 
-def _cycle_ocr(config: Config) -> _CycleOcr | None:
-    """The engine one cycle converts with, or None: no helper is built, ``[convert] ocr = false`` or
-    ``AGENTSYNC_OCR=0`` (``ocr.engine``, which never compiles and never raises)."""
-    found = ocr.engine(config.convert, config.cache_dir)
+def _cycle_ocr_state(config: Config) -> tuple[_CycleOcr | None, str]:
+    """The engine one cycle converts with, or None (no helper is built, ``[convert] ocr = false`` or
+    ``AGENTSYNC_OCR=0``), beside the helper's state from the same one look
+    (``ocr.engine_state``, which never compiles and never raises: one ``--version`` run): ``failed`` tells a
+    helper that is built but not working from no converter at all (B13 round 36 C1101)."""
+    looked = ocr.engine_state(config.convert, config.cache_dir)
+    found = looked.engine
     if found is None:
-        return None
-    return _CycleOcr(
+        return None, looked.state
+    engine = _CycleOcr(
         found.helper, name=found.name, revision=found.revision, helper_version=found.helper_version
     )
+    return engine, looked.state
 
 
 def _cycle_media(config: Config, engine: OcrEngine | None) -> MediaEngine | None:
@@ -1934,6 +1938,7 @@ class _SourceAcc:
     credential_stubbed: int = 0  # of unreadable: a page the secret scan stubbed this run (C145)
     refused_unread: int = 0
     withheld_unread: int = 0
+    ocr_unread: int = 0  # of refused_unread's kind: an image waiting on a helper that fails (C1101)
     breaker_tripped: bool = False
     live_rows: int = 0
     staged_cursor: bool = False
@@ -2005,6 +2010,7 @@ class _SourceAcc:
             label_unreadable=self.label_unreadable,
             credential_stubbed=self.credential_stubbed,
             refused_unread=self.refused_unread,
+            ocr_unread=self.ocr_unread,
             withheld_unread=self.withheld_unread,
             new=self.new,
             converter_waiting=self.converter_waiting,
@@ -2058,8 +2064,10 @@ class _Cycle:
         self.publisher = Publisher(config, manifest, clock=clock)
         # The OCR engine is looked for once per cycle, here, and never under a dry run: looking runs the
         # helper's --version. Without one every converter is what it was before OCR existed.
-        self.ocr = None if self.dry else _cycle_ocr(config)
+        self.ocr, ocr_state = (None, "") if self.dry else _cycle_ocr_state(config)
         self.publisher.images_readable = self.ocr is not None
+        # a helper built but not working: an image's stub says so, never "no converter" (C1101)
+        self.publisher.ocr_down = ocr_state == "failed"
         # The media helper likewise (its --version runs), beside an OCR engine only; the piece store is a
         # folder of the cache, created when a piece is first stored.
         self.media = _cycle_media(config, self.ocr)
@@ -6789,6 +6797,8 @@ class _Cycle:
             acc.settle(stable, Verdict.REFUSED)
             if unread and self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
                 acc.withheld_unread += 1
+            elif unread and self.publisher.ocr_waits(result.reason, Path(row.name).suffix.lower()):
+                acc.ocr_unread += 1  # its own clause on the sync line, as its page says (C1101)
             elif unread:
                 acc.refused_unread += 1
         elif result.status is ConversionStatus.FAILED:

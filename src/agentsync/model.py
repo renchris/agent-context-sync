@@ -448,6 +448,11 @@ class SourceReport:
     # in the source's REFUSED count, never in ``converted``, never in ``refused_unread`` (B13 round 8 J29,
     # round 9 K54; a .msg on this Mac is read, so a refused one is in ``refused``)
     withheld_unread: int = 0
+    # refused with no byte read, an image whose OCR helper is built but not working (``ocr.engine_state``
+    # ``failed``) with no label rule on: its page says the helper is not working, never ``no converter``, and
+    # it is read again once the helper works; in the source's REFUSED count, never in ``refused_unread`` (B13
+    # round 36 C1101)
+    ocr_unread: int = 0
     # of ``counts[CHANGED]``: files new this run (phase 1 counted them as created); the sync line reads
     # ``changed=N (K new)`` (B13 round 12 N39)
     new: int = 0
