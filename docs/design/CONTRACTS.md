@@ -38911,6 +38911,10 @@ Amended 2026-11-08, §16.238 C1050, C1117: the "Not built here" half is built: a
 `PandocConverter.convert`'s top; no emitter bump, for the same reason.
 Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
 another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
+Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice,
+departing from C927's verifier note (a blank `.drawio` to take empty-output): bytes that are no diagram are not the
+type their name says, as a blank `.docx` is `not-ooxml`, and only zero bytes are `empty-output` (on lane E's fa63c1d98
+and 0bd4aa961).
 
 **The engines' `-v` lines take the colon form** (C909; `agentsync.convert`; amends §16.221 C719). `engine()` in
 `convert/ocr.py`, `convert/media.py` and `convert/speech.py` logged `on-device OCR is failed: the OCR helper was
@@ -39764,6 +39768,18 @@ CONTRACTS.md, and the named row is there).
 rendered C911 inside C937's paragraph; it was the only one of the file's `**...** (C<n>` entries not opened by a blank
 line. One blank line goes between them, and nothing else changes. Test:
 `test_contracts.py::test_every_item_paragraph_opens_after_a_blank_line_c1043`.
+
+**A blank `.drawio` stays not the type its name says, by choice** (C1034 with C1118, ruling 118, makes worse True as
+the finders gave it; amends §16.233 C927; docs only). `diagram._drawio_pages` maps only zero bytes to
+`EMPTY_OUTPUT_REASON`; blanks or a byte order mark alone fail the parser, strip to nothing before any `<` and take
+`not-drawio`, though C927's verifier wrote that a blank `.drawio` should take empty-output. The finders' fix, `not
+data.strip(_BEFORE_MARKUP)` (or `.lstrip`), makes things worse: `_BEFORE_MARKUP` is a set of single bytes, so it would
+class a file of NULs (a half-written or preallocated download) or garbage such as `\xff\xff\xbb` as `empty`, hiding
+corruption that is `not-drawio` today, and with no emitter bump two identical blank files could show two classes. Both
+outcomes are one settled stub, never retried and never data lost, and the choice matches the Office family (a blank
+`.docx` is `not-ooxml`), so no code changes: C927's paragraph takes one dated line saying so, after lane E's C1033
+line (fa63c1d98 and 0bd4aa961). Test: `test_a_blank_drawio_is_not_the_type_by_choice_c1034` (blanks, a byte order mark
+alone and NULs read `not-drawio`, zero bytes `empty-output`, through `_drawio_pages`).
 
 **§16.134 V10 says the partly-unread head** (C1044; docs only). V10's paragraph says `cli._status_lines` loads
 governance in its own guard with "one `status: cannot read the state: ...` line", and its C638 line counts a read

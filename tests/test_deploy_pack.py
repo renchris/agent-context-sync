@@ -9480,6 +9480,32 @@ def test_c972s_summary_lines_give_c928s_forms_c1046() -> None:
         assert forms in " ".join(sections[section].split()), section
 
 
+def test_a_blank_drawio_is_not_the_type_by_choice_c1034(tmp_path: Path) -> None:
+    """B13 round 36 C1034 with C1118 (ruling 118, makes things worse as the finders gave it): a blank or
+    BOM-only .drawio takes not-drawio, not empty-output, by choice; a byte-set strip would class NULs or
+    garbage empty. C927's paragraph says so, and `_drawio_pages` is run on each kind of bytes."""
+    from agentsync.convert import diagram  # noqa: PLC0415
+    from agentsync.errors import UnreadableSourceError  # noqa: PLC0415
+    from agentsync.policy import EMPTY_OUTPUT_REASON  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    line = text.split("Amended 2026-11-08, §16.239 C1034, C1118: ", 1)[1].split(" **", 1)[0]
+    assert line.startswith("a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice")
+    assert "only zero bytes are `empty-output`" in line
+    for name, data, reason in (
+        ("zero", b"", EMPTY_OUTPUT_REASON),
+        ("blanks", b"  \r\n\t ", diagram._NOT_DRAWIO),
+        ("bom", b"\xef\xbb\xbf", diagram._NOT_DRAWIO),
+        ("nuls", b"\x00\x00\x00", diagram._NOT_DRAWIO),
+        ("garbage", b"\xff\xff\xbb", diagram._NOT_DRAWIO),
+    ):
+        src = tmp_path / f"Contoso {name}.drawio"
+        src.write_bytes(data)
+        with pytest.raises(UnreadableSourceError) as raised:
+            diagram._drawio_pages(src)
+        assert str(raised.value) == reason, name
+
+
 def test_the_guide_gives_step_1s_lost_list_tails_and_their_words() -> None:
     """B13 round 30 C315: round 29's step 1 tail for a hold the hold list lost (ruling 27), logged
     `config_err=state-hold-lost`, and lane RB's round 30 C311 tails for a purge queue and a suppression list
