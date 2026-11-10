@@ -1870,7 +1870,8 @@ def _cycle_ocr_state(config: Config) -> tuple[_CycleOcr | None, str]:
     """The engine one cycle converts with, or None (no helper is built, ``[convert] ocr = false`` or
     ``AGENTSYNC_OCR=0``), beside the helper's state from the same one look
     (``ocr.engine_state``, which never compiles and never raises: one ``--version`` run): ``failed`` tells a
-    helper that is built but not working from no converter at all (B13 round 36 C1101)."""
+    helper that fails (a failed build, an untrusted helper, or one that does not answer ``--version``) from no
+    converter at all (B13 round 36 C1101; one wording, round 37 C1271)."""
     looked = ocr.engine_state(config.convert, config.cache_dir)
     found = looked.engine
     if found is None:
@@ -2069,7 +2070,7 @@ class _Cycle:
         # helper's --version. Without one every converter is what it was before OCR existed.
         self.ocr, ocr_state = (None, "") if self.dry else _cycle_ocr_state(config)
         self.publisher.images_readable = self.ocr is not None
-        # a helper built but not working: an image's stub says so, never "no converter" (C1101)
+        # a helper that fails: an image's stub says so, never "no converter" (C1101, C1271)
         self.publisher.ocr_down = ocr_state == "failed"
         # a pending recording waits on the OCR helper alone only when the media helper is ready: one look
         # (its --version), nothing registered; otherwise its stub keeps "no converter" (B13 round 37 C1268)

@@ -838,7 +838,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     # (round 9 K33; round 10 L50); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
-    # an image whose OCR helper is built but not working, as its page says, never "no converter" (C1101)
+    # an image whose OCR helper fails, as its page says, never "no converter" (C1101, C1271)
     ocr_down = sum(s.ocr_unread for s in report.sources)
     unread_tail = "".join(
         f"; {n} {what}"

@@ -39626,6 +39626,9 @@ Amended 2026-11-10, §16.242 C1268: a recording on this Mac waits on the OCR hel
 ready (`Publisher.recordings_wait_ocr`): its page says `publish.OCR_DOWN_RECORDING_REASON`, chosen by suffix through
 `publish.ocr_down_reason`, and it counts in `ocr_unread`.
 
+Amended 2026-11-10, §16.242 C1271: `failed` also covers a build that failed (its `.failed` marker, no helper on
+disk) and a helper that may not be run.
+
 **An abandoned doctor publishes no fix after the report gave up** (C1030; ruling 117; amends §16.232 C953). C953's
 deadline check in `checks_once` ran before the hook's post-processing, so a doctor the report cut while it worked out
 `_fail_steps` and `_state_stop_first` still wrote them into the hooks' `fixes` and `manifest_first`, and the Loop line

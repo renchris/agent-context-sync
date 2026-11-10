@@ -610,15 +610,16 @@ def _withheld_on_page(text: str) -> bool | None:
 
 
 OCR_DOWN_REASON = "the OCR helper is not working on this Mac: the image is read again once it works"
-"""The ``reason:`` and summary of the stub of an image on this Mac while the OCR helper is built but not
-working (:meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's own absence says, nor the
-label rule's ``withheld`` words; the stored reason and the converter keep ``no converter for <suffix>``, the
-key that reads it again once the helper works (B13 round 36 C1101). ``_sync/QUARANTINE.tsv`` follows the page,
-never this run's helper state: it prints this reason for a row whose page says it, and ``no converter for
-<suffix>`` for one planned while no helper was built (B13 round 37 C1211, C1204; ``Publisher._stub_says``). An
-image whose read needs a download (a Graph item, an online-only file: :func:`read_needs_download`) keeps ``no
-converter for <suffix>`` on its page too: a working helper never reads it either, so its page promises no read
-(B13 round 37 C1257, C1265)."""
+"""The ``reason:`` and summary of the stub of an image on this Mac while the OCR helper fails this run
+(``ocr.engine_state`` ``failed``: its build failed, it may not be run, or it is built and does not answer
+``--version``; B13 round 37 C1271; :meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's
+own absence says, nor the label rule's ``withheld`` words; the stored reason and the converter keep ``no
+converter for <suffix>``, the key that reads it again once the helper works (B13 round 36 C1101).
+``_sync/QUARANTINE.tsv`` follows the page, never this run's helper state: it prints this reason for a row
+whose page says it, and ``no converter for <suffix>`` for one planned while no helper was built (B13 round 37
+C1211, C1204; ``Publisher._stub_says``). An image whose read needs a download (a Graph item, an online-only
+file: :func:`read_needs_download`) keeps ``no converter for <suffix>`` on its page too: a working helper never
+reads it either, so its page promises no read (B13 round 37 C1257, C1265)."""
 
 
 OCR_DOWN_RECORDING_REASON = (
@@ -788,7 +789,8 @@ class Publisher:
         # Whether this cycle has an OCR engine (the cycle sets it): without one no image converter is
         # registered whatever the policy says, so an image's stub is not the label rule's (B13 round 3 R33).
         self.images_readable = False
-        # the OCR helper is built but not working this run (``ocr.engine_state`` ``failed``, C1101)
+        # the OCR helper fails this run (``ocr.engine_state`` ``failed``: its build failed, it may not be run,
+        # or it is built and does not answer ``--version``; C1101, C1271)
         self.ocr_down = False
         # while :attr:`ocr_down`, the media helper is ready (``media.probe``), so a pending recording waits on
         # the OCR helper alone (B13 round 37 C1268); the cycle sets it
@@ -1217,7 +1219,7 @@ class Publisher:
 
     def ocr_waits(self, reason: str | None, suffix: str, *, local: bool) -> bool:
         """True when ``reason`` is the ``no converter`` refusal of an image on this Mac while this run's OCR
-        helper is built but not working (:attr:`ocr_down`) and no label rule is on (one withholds an image
+        helper fails (:attr:`ocr_down`; B13 round 37 C1271) and no label rule is on (one withholds an image
         whatever the engine does): its page says :data:`OCR_DOWN_REASON`, the stored reason keeps ``no
         converter for <suffix>``, which re-reads it once the helper works (B13 round 36 C1101).
 
@@ -1330,7 +1332,7 @@ class Publisher:
                 else withheld and self._withheld_eligible(result.reason, suffix)
             )
         )
-        # an image whose OCR helper is built but not working: the words say so, never "no converter"; the
+        # an image whose OCR helper fails (C1271): the words say so, never "no converter"; the
         # stored reason, the converter and the status stay, so it is read again once the helper works (C1101)
         ocr_waits = (
             status is ConversionStatus.REFUSED
