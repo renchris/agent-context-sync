@@ -298,6 +298,17 @@ QUEUE_REFUSED_NOTE_STATUS = f"{QUEUE_REFUSED_BARE}: the governance.purge_queue [
 """:data:`QUEUE_REFUSED_NOTE` in status's own output, which prints that [FAIL] line: never "run status" to a
 reader of status (B13 round 35 C959, ruling 109)."""
 
+EMPTY_ROOT_GRANT_STATUS = (
+    f"`{BIN} status`'s source.{{sid}}.listable [warn] line names the folder and the Python"
+)
+"""The pointer that closes the empty-root wait's grant, a template on ``{sid}``, as the sync's output and
+STATE.md print it: neither prints doctor's [warn] line, which alone gives the folder's path and the Python to
+grant, so the pointer names status, where that line prints (B13 round 37 C1243, C1258). Status maps it to
+:data:`EMPTY_ROOT_GRANT_BELOW` when its own checks print that [warn] line, else drops it."""
+EMPTY_ROOT_GRANT_BELOW = "the source.{sid}.listable [warn] line below names the folder and the Python"
+""":data:`EMPTY_ROOT_GRANT_STATUS` in status's own output, which prints its checks below the WAITING lines:
+never "run status" to a reader of status (B13 round 37 C1243, C1258; ruling 109)."""
+
 
 def _stops(stopped: str | Sequence[str] | None) -> tuple[str, ...]:
     """``stopped`` as the tuple of check names it holds: one name, several, or none."""
@@ -341,8 +352,8 @@ def _empty_root_wait(config: Config, sid: str) -> str:
         inbox=src is not None and src.kind is SourceKind.INBOX,
         root=f"the folder of {sid}",
         config_shown=_shown(config.config_path),
-        grant=f"grant Full Disk Access to agentsync's Python (the source.{sid}.listable [warn] line names "
-        "it)",
+        # the sync's and STATE.md's form for both in_state values; status maps it (B13 round 37 C1243, C1258)
+        grant=f"grant Full Disk Access to agentsync's Python ({EMPTY_ROOT_GRANT_STATUS.format(sid=sid)})",
     )
     return (
         f"the folder of {sid} itself lists 0 entries (a cloud folder its sync app has not filled yet, or a "

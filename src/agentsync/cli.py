@@ -2495,6 +2495,18 @@ def _build_status_once(config: Config, *, brief: bool = False) -> _Status:
     )
     refused = loop.NOTE_PREFIX + (loop.QUEUE_REFUSED_NOTE_STATUS if printed else loop.QUEUE_REFUSED_BARE)
     next_lines = [refused if ln == loop.NOTE_PREFIX + loop.QUEUE_REFUSED_NOTE else ln for ln in next_lines]
+    # the empty root's grant names status's [warn] line; status points at that line below, or drops the
+    # pointer when the folder filled since and no [warn] prints (B13 round 37 C1243, C1258)
+    for src in config.sources:
+        if not src.is_live:
+            continue
+        tail = f" ({loop.EMPTY_ROOT_GRANT_STATUS.format(sid=src.id)})"
+        warned = any(
+            r.name == f"source.{src.id}.listable" and not r.ok and r.severity is doctor.Severity.WARN
+            for r in checks
+        )
+        here = f" ({loop.EMPTY_ROOT_GRANT_BELOW.format(sid=src.id)})" if warned else ""
+        next_lines = [ln.replace(tail, here) if ln.startswith(loop.WAIT_PREFIX) else ln for ln in next_lines]
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)

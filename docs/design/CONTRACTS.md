@@ -39698,10 +39698,16 @@ helper, `loop.empty_root_fix`: `open <root> in Finder once; if it is empty there
 "paused" in [[source]] id = "<id>" in <sources.toml>; if Finder shows files: <grant>`, an inbox without the pause;
 doctor's root is the folder's shell path and its grant its Full Disk Access fix with the path, the wait's root `the
 folder of <id>` (a wait keeps no path, round 5 F43: the setup report copies it into its Loop line) and its grant
-`grant Full Disk Access to agentsync's Python (the source.<id>.listable [warn] line names it)`. `source.<id>.listable` moves into that branch's checks; the generic
+`grant Full Disk Access to agentsync's Python (<pointer>)`, the pointer `` `~/.local/bin/agentsync status`'s
+source.<id>.listable [warn] line names the folder and the Python`` in the sync's output and STATE.md, and `the
+source.<id>.listable [warn] line below names the folder and the Python` in status. `source.<id>.listable` moves into that branch's checks; the generic
 wait keeps it only for a walk that stored no kind for its root (one from before this change). Test:
 `test_loop.py::test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004` (the same steps in the same order and
 conditions, the same grant, no `mount it` and no Files and Folders), with C938's and R102's tests unchanged.
+Amended 2026-11-10, §16.242 C1243: the grant's pointer said `(the source.<id>.listable [warn] line names it)`,
+which neither sync's output nor STATE.md prints and whose "it" read as the Python only; it now names status's line
+as the one that gives the folder and the Python (`loop.EMPTY_ROOT_GRANT_STATUS`), and status maps it to
+`loop.EMPTY_ROOT_GRANT_BELOW`, or drops it when no such [warn] prints (C1258).
 
 ### 16.238 Round 36: the converters: a file's class follows its bytes, and a helper started at the deadline (2026-11-08, wave B13 round 36 lane E)
 

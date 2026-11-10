@@ -3496,7 +3496,7 @@ def test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004(
     root.mkdir(parents=True)
     config = _setup(tmp_path, local_source_table("empty-project", root))
     cli.main(["sync", "--config", str(config.config_path)])
-    capsys.readouterr()
+    synced = capsys.readouterr().out
     step = loop.next_step(config)
     assert step is not None and "source.empty-project.listable" in step.checks, step
     (wait,) = [w for w in step.waits if w.startswith("the folder of empty-project itself ")]
@@ -3508,16 +3508,46 @@ def test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004(
     shows = "if Finder shows files: "
     head, grant = warn.fix.split(shows)
     wait_head, wait_grant = wait.split("another sync does not clear it): ", 1)[1].split(shows)
-    # the wait names the folder, never its path (a wait keeps no path: the report copies it, F43)
-    assert "~/" not in wait and str(root) not in wait, wait
+    # the wait names the folder, never its path (a wait keeps no path: the report copies it, F43); the
+    # status command it names is the only "~/" it holds (B13 round 37 C1243, C1258)
+    status_cmd = f"`{loop.BIN} status`'s "
+    pathless = wait.replace(status_cmd, "", 1)
+    assert "~/" not in pathless and str(root) not in wait and doctor._shell_path(root) not in wait, wait
     named = head.replace(doctor._shell_path(root), "the folder of empty-project", 1)
     assert wait_head == named, (wait_head, head)
     assert head.startswith("open "), head
     assert " in Finder once; if it is empty there too and is meant to be, set state = " in head, head
-    named = "the source.empty-project.listable [warn] line names it"
+    # sync's output and STATE.md print no [warn] line: the grant points at status's, which names where the
+    # folder is and the Python to grant (B13 round 37 C1243, C1258)
+    named = (
+        "`~/.local/bin/agentsync status`'s source.empty-project.listable [warn] line names the folder and "
+        "the Python"
+    )
     assert grant.startswith("grant Full Disk Access to ") and wait_grant == (
         f"grant Full Disk Access to agentsync's Python ({named})"
     ), (grant, wait_grant)
+    assert str(root) in warn.detail and doctor._shell_path(root) in warn.fix, warn
+    assert loop.WAIT_PREFIX + wait in synced.splitlines(), synced
+    assert "[warn] source." not in synced, synced  # no check line: the pointer is the only "[warn]"
+    state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert f"({named})" in state and "[warn] source." not in state, state
+    # status prints that [warn] line below its WAITING line, so it points there, never at itself (ruling 109)
+    cli.main(["status", "--config", str(config.config_path)])
+    status = capsys.readouterr().out.splitlines()
+    below = "the source.empty-project.listable [warn] line below names the folder and the Python"
+    (waiting,) = [ln for ln in status if ln.startswith(loop.WAIT_PREFIX + "the folder of empty-project ")]
+    assert waiting.endswith(f"grant Full Disk Access to agentsync's Python ({below})"), waiting
+    assert not any("`~/.local/bin/agentsync status`'s" in ln for ln in status), status
+    (warned,) = [i for i, ln in enumerate(status) if "[warn] source.empty-project.listable" in ln]
+    assert warned > status.index(waiting), status
+    # the folder filled since the sync: no [warn] prints, so status drops the pointer rather than name a
+    # line that is not there
+    (root / "Contoso plan.docx").write_bytes(b"x")
+    cli.main(["status", "--config", str(config.config_path)])
+    status = capsys.readouterr().out.splitlines()
+    (waiting,) = [ln for ln in status if ln.startswith(loop.WAIT_PREFIX + "the folder of empty-project ")]
+    assert waiting.endswith("grant Full Disk Access to agentsync's Python"), waiting
+    assert not any("listable [warn]" in ln for ln in status), status
 
 
 def test_a_missing_or_refused_root_wait_names_no_listing_warn_c938(tmp_path: Path) -> None:
