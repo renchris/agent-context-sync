@@ -17552,6 +17552,9 @@ the Doctor section agree and the "re-run install.sh" fix is dropped. Test:
 **The first-sync line carries the refused-without-a-read count** (J39; dated line at §16.68 H32), and before it
 §16.77 J29's `W withheld unread by the label rule`, each only when above 0, named in the source tag. Test:
 `test_first_sync_clause_carries_the_read_again_count`.
+Amended 2026-11-10, §16.240 C1266: since round 36's C1101 the CLI's line carries `; O waiting for the OCR helper
+(...)` between W and Q, images whose OCR helper is built but not working, no longer in Q; the clause copies it there,
+without its bracket, each only when above 0, and the source tag names `the waiting-for-the-OCR-helper count`.
 
 **Repeat conversions says it counts options** (J30; dated line at §16.28 Repeat conversions). Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache`.
@@ -39983,6 +39986,16 @@ closing ` (see --help)` or its end, so blanks, quotes and that suffix inside a n
 --help)`. Lines an earlier run left in install.out are cut the same way. install.sh's own re-cut of a render
 (lane RB, §16.241) leaves a folder already ending in `<path>` as it is, so this render comes back byte for byte.
 Test: `test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299`.
+
+**The first-sync line keeps the images that wait on the OCR helper** (C1266 with C1260; ruling 122; dated line at
+§16.74 J39). Round 36's C1101 moved an image whose OCR helper is built but not working out of `refused without a
+read` into its own clause on the CLI's sync line, `; O waiting for the OCR helper (it is not working; read once it
+does)` (`cli.OCR_WAIT_CLAUSE`), between the withheld and the refused clauses, and the report read neither, so those
+images vanished from the Summary's first-sync line. `setup_report._OCR_WAITING_RE` fills `first_sync_ocr_waiting`,
+and the clause copies `; O waiting for the OCR helper` between W and Q, in the CLI's order, only when its converted
+count is the line's, tagged `the waiting-for-the-OCR-helper count`. setup-feedback.md's Summary row lists six parts.
+Tests: `test_first_sync_clause_carries_the_read_again_count` (its rows read the CLI's own constant) and
+`test_the_first_sync_row_names_every_clause_the_summary_adds` (three counted clauses).
 
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 

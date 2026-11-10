@@ -8846,7 +8846,7 @@ def test_the_guides_summary_sync_row_gives_the_new_starts_clause() -> None:
     assert "or kept a page for a file still settling, a clause" in row
     assert "`by the background sync` after `pages`" in row and "B13 round 27 P115" in row
     assert row.index(clause) < row.index("then status's count of sources with a complete baseline")
-    assert "the clause can add up to five parts" in row
+    assert "the clause can add up to six parts" in row  # B13 round 37 C1266: the OCR helper's wait
 
 
 def test_the_guide_gives_the_reports_step_2_state_outcomes() -> None:
@@ -10796,7 +10796,7 @@ def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:
         r'reread \+= f"; (of the converted): \{split\[1\]\} (unreadable), \{split\[2\]\} (failed)', code
     )
     counted = re.findall(r'\(r\.facts\.first_sync_\w+, "([^"]+)", "([^"]+)"\)', code)
-    assert first and split and len(counted) == 2, "the clause code moved"
+    assert first and split and len(counted) == 3, "the clause code moved"  # B13 round 37 C1266: the OCR wait
     assert f"`: F of them {first.group(1)[len('of them ') :]}`" in row
     assert f"`; {split.group(1)}: U {split.group(2)}, F {split.group(3)}`" in row
     for words, _tag in counted:

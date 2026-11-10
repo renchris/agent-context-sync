@@ -1278,6 +1278,9 @@ _WITHHELD_UNREAD_RE = re.compile(r"\b(\d+) withheld unread by the label rule\b")
 # and since B13 round 18 V13 "; W waiting for its/their converter (...)", files whose converter could not
 # start, after the split and before the two above (B13 round 19 W52)
 _CONVERTER_WAITING_RE = re.compile(r"\b(\d+) waiting for (?:its|their) converter\b")
+# and since B13 round 36 C1101 "; O waiting for the OCR helper (...)", images whose OCR helper is built but
+# not working, between the withheld and the refused clause (cli.OCR_WAIT_CLAUSE; B13 round 37 C1266, C1260)
+_OCR_WAITING_RE = re.compile(r"\b(\d+) waiting for the OCR helper\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -4379,6 +4382,8 @@ class _Facts:
     first_sync_withheld_unread: tuple[int, int] | None = None
     # its "W waiting for its/their converter" as (N, W); None: the line has none (B13 round 19 W52)
     first_sync_converter_waiting: tuple[int, int] | None = None
+    # its "O waiting for the OCR helper" as (N, O); None: the line has none (B13 round 37 C1266)
+    first_sync_ocr_waiting: tuple[int, int] | None = None
     # the CLI's new-start note printed before that line in the same run (B13 round 27 P115) as (N, pages,
     # written back, removed, deletion notices removed, by the background sync); None: none, or none removed
     first_sync_new_start: tuple[int, int, int, int, int, int, bool] | None = None
@@ -7322,6 +7327,9 @@ def _installer_output(r: _Run) -> list[str]:
         waiting = _CONVERTER_WAITING_RE.search(last.group("tail"))
         if waiting is not None:
             r.facts.first_sync_converter_waiting = (converted, int(waiting.group(1)))
+        ocr = _OCR_WAITING_RE.search(last.group("tail"))
+        if ocr is not None:
+            r.facts.first_sync_ocr_waiting = (converted, int(ocr.group(1)))
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
         if last.group("r1") is not None:  # the head says every one was a first read (B13 round 10 L34)
             r.facts.first_sync_first_read = (converted, again, again)
@@ -15809,6 +15817,8 @@ def _sync_line_end(
         # Summary's refused count disagreed with the per-source stub totals (B13 round 8 J39)
         for counted, words, tag in (
             (r.facts.first_sync_withheld_unread, "withheld unread by the label rule", "withheld-unread"),
+            # in the CLI's order, between the two: the images C1101 took out of Q (B13 round 37 C1266)
+            (r.facts.first_sync_ocr_waiting, "waiting for the OCR helper", "waiting-for-the-OCR-helper"),
             (r.facts.first_sync_refused_unread, "refused without a read", "refused-without-a-read"),
         ):
             if counted is not None and counted[0] == converted and counted[1]:

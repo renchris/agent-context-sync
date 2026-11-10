@@ -8621,6 +8621,22 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "(install.log; the waiting-for-its-converter count and the refused-without-a-read count: "
             "install.out)",
         ),
+        (  # B13 round 37 C1266 with C1260: C1101's images waiting on the OCR helper, in the CLI's order
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only; 1 withheld unread by the label rule (a file "
+            "whose label cannot be read: an image, or a .msg not on this Mac); "
+            f"2 {cli.OCR_WAIT_CLAUSE}; 5 refused without a read (no converter for the type, or a rule that "
+            "needs no bytes)",
+            "converted 4, deferred 0 online-only; 1 withheld unread by the label rule; 2 waiting for the OCR "
+            "helper; 5 refused without a read (install.log; the withheld-unread count and the "
+            "waiting-for-the-OCR-helper count and the refused-without-a-read count: install.out)",
+        ),
+        (  # ... and alone
+            "note=converted-4-deferred-0",
+            f"first sync: converted 4, deferred 0 online-only; 2 {cli.OCR_WAIT_CLAUSE}",
+            "converted 4, deferred 0 online-only; 2 waiting for the OCR helper (install.log; the "
+            "waiting-for-the-OCR-helper count: install.out)",
+        ),
         (  # the count alone, with no split
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only; 5 refused without a read (no converter for the "
