@@ -38,8 +38,9 @@ probe that did not answer says `not measured (<command> did not answer within <n
 budget shortened its wait (B13 round 36 C1041, C1040), or `not measured (the report's
 time limit was used up before <command> ran)` when the budget was spent before it ran, while a real exit 124 keeps `<command> exited 124: <its text>`; the secret scan's gitleaks version read says the
 same (B13 round 34 C820, round 35 C905 and C918). The pandoc line is the exception: its own run's time-out keeps
-`<pandoc> did not answer within <n>s (<why a start can be slow>)`, so only a budget spent before it ran takes the
-`not measured` form, and with a doctor the line is doctor's pandoc check's own words (`<pandoc> did not answer
+`<pandoc> did not answer within <n>s (<why a start can be slow>)`, or `<pandoc> did not answer within the report's
+time limit (<why a start can be slow>)` when the spent budget shortened its wait (B13 round 36 C1040; round 37
+C1255), so only a budget spent before it ran takes the `not measured` form, and with a doctor the line is doctor's pandoc check's own words (`<pandoc> did not answer
 within <n>s: ...`, `... within the report's time limit: ...` or `<pandoc> was not run: ...`, then `(doctor's pandoc
 check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when the doctor call was cut (B13 round 35 C971).
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by

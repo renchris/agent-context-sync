@@ -8472,9 +8472,15 @@ def test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get() -> No
     assert '_probe_ended(f"{exe} --version", rc, text)' in source and '_probe_ended(f"{exe}{which}"' in source
     # B13 round 35 C971: pandoc's own time-out keeps its words, and doctor's check fills the line
     assert 'return f"{exe}{which} did not answer within {secs} ({_slow_start(kind)})"' in source
+    # B13 round 37 C1255 with C1279: a wait the spent budget shortened names the report's time limit
+    assert "secs = _waited(text) if rc == 124 else None" in source
+    assert "_THE_REPORTS_TIME_LIMIT if note.startswith(_SHORTENED)" in inspect.getsource(setup_report._waited)
     assert (
         "The pandoc line is the exception: its own run's time-out keeps `<pandoc> did not answer within <n>s"
-        " (<why a start can be slow>)`, so only a budget spent before it ran takes the `not measured` form,"
+        " (<why a start can be slow>)`, or `<pandoc> did not answer within"
+        f" {setup_report._THE_REPORTS_TIME_LIMIT} (<why a start can be slow>)` when the spent budget"
+        " shortened its wait (B13 round 36 C1040; round 37 C1255), so only a budget spent before it ran takes"
+        " the `not measured` form,"
     ) in page
     assert "`(doctor's pandoc check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when" in page
     assert "(doctor's pandoc check: [{tag}]; its fix is in Doctor)\"" in source

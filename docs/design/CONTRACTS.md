@@ -39156,6 +39156,9 @@ lane E's 2fa5f9d66 (C915), all on origin/main). Six items, each read against the
   doctor's pandoc check's words (`did not answer within <n>s: ...`, `within the report's time limit: ...` or C917's
   `was not run: ...`, then `(doctor's pandoc check: [<tag>]; its fix is in Doctor)`), or `not checked: ...` when the
   doctor call was cut. The guide says so after lane RA's C905 sentence; the code is unchanged.
+  Amended 2026-11-10, §16.244 C1255: since C1040 the report's own run also reads `<pandoc> did not answer within
+  the report's time limit (<why a start can be slow>)` for a wait the spent budget shortened (`_waited`), and the
+  guide gives both forms.
 - C969: §16.225's `the evidence line carries it` and setup_report.py's comment beside `_status_section`'s cut said the
   evidence line gives the idle advice for a cut Status call, but it does so only when its own parts were cut or a
   sync held the state file; a Status call cut with the budget left, whose parts were measured, gets the advice from
@@ -40062,6 +40065,17 @@ citation passed. It is correct today only because nothing was inserted above it.
 text in `docs/lanes/COMMON.md` stays as written", and the ban covers both files as this item's own check, C1042's left
 as it is. Test: `test_contracts_cites_the_lanes_brief_by_ruling_not_by_line_c1284`, which also finds ruling 84 once in
 COMMON.md.
+
+**The guide's pandoc exception gives the shortened wait's form** (C1255 with C1279, one defect from two finders;
+`docs/deploy/setup-feedback.md`; dated line at §16.234 C971; docs only). The guide said the report's own pandoc
+time-out keeps `<pandoc> did not answer within <n>s (<why a start can be slow>)`, but since C1040 `pandoc()` computes
+`secs = _waited(text) if rc == 124 else None`, and `_waited` returns `the report's time limit` when the runner's note
+opens with `_SHORTENED`, so a wait the spent budget shortened prints `<pandoc> did not answer within the report's
+time limit (<why a start can be slow>)` (test_setup_report.py's 6-second-budget pandoc test accepts it). The guide
+gives that form beside the first, in the printed words, and C971's bullet gets a dated line; the code is unchanged.
+Test: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its pin moved to the new sentence with
+the time limit's words read from `setup_report._THE_REPORTS_TIME_LIMIT` and the branch read from `pandoc()` and
+`_waited`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
