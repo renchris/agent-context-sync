@@ -292,12 +292,22 @@ def parse_governance(doc: Mapping[str, Any], *, where: str = "sources.toml") -> 
     if not isinstance(prefixes_raw, list) or not all(isinstance(p, str) and p.strip() for p in prefixes_raw):
         raise ConfigError(f"{w}.remote_url_prefixes: expected a list of non-empty strings")
     for prefix in prefixes_raw:
-        parsed = _parse_remote(prefix)
+        # through _redact_url, never the raw prefix: a userinfo with no host printed its password (B13 round
+        # 37 C1261; ruling 124); still quoted, the form the setup report's Redactor (_REMOTE_VALUE_RE) and
+        # install.sh's match before "is not a remote URL", so a prefix with no "://" or "@" is never in clear
+        not_remote = (
+            f"{w}.remote_url_prefixes: {_redact_url(prefix)!r} is not a remote URL (scheme://host/path, "
+            "user@host:path or an absolute path)"
+        )
+        try:
+            parsed = _parse_remote(prefix)
+        except ValueError:
+            # a port that is not a number, a broken IPv6 host or a host NFKC changes: a ConfigError, so
+            # every reader agrees the table does not load and governance.config's FAIL prints, never "check
+            # crashed"; urllib's own words are left out: its NFKC error quotes the netloc, password and all
+            raise ConfigError(not_remote) from None
         if parsed is None or (parsed.scheme != "file" and not parsed.host):
-            raise ConfigError(
-                f"{w}.remote_url_prefixes: {prefix!r} is not a remote URL (scheme://host/path, "
-                "user@host:path or an absolute path)"
-            )
+            raise ConfigError(not_remote)
         if parsed.userinfo and ":" in parsed.userinfo:
             raise ConfigError(f"{w}.remote_url_prefixes: {_redact_url(prefix)} carries a password")
     cfg = GovernanceConfig(
@@ -2714,7 +2724,8 @@ def governance_or_none(config_path: Path) -> GovernanceConfig | None:
     33 C701)."""
     try:
         return load_governance(config_path)
-    except Exception:  # a ValueError from a remote prefix too: never lifts the guard around it
+    except Exception:  # whatever it raises (a remote prefix that does not parse is a ConfigError since B13
+        # round 37 C1261): never lifts the guard around it
         return None
 
 

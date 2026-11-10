@@ -37089,6 +37089,8 @@ so a shut hold record never drops the hold list's release clause. Tests:
 `test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701`,
 `test_a_hold_record_that_cannot_be_read_keeps_the_hold_lists_release_clause_c701` and
 `test_a_purge_record_that_cannot_be_read_never_hides_a_lost_queued_purge`.
+Amended 2026-11-10, §16.242 C1261: a remote prefix that does not parse is a ConfigError now, not a ValueError, its
+prefix named through `_redact_url`; `governance_or_none` still takes any error.
 
 **C722, C747 (ruling 81), C711 (not built).** The heartbeat listing note says what its FAIL says.
 `doctor.listing_state_governance_note` reads `has lost a purge that purge-record.json records: agentsync's governance

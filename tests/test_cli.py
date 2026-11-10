@@ -50,6 +50,7 @@ from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import (
     AgentSyncError,
     AuthError,
+    ConfigError,
     GitError,
     LockHeldError,
     LockNotAFileError,
@@ -3316,7 +3317,8 @@ def test_a_lost_queue_under_a_hold_names_the_records_owners_release_before_the_h
 
 @pytest.mark.parametrize(
     ("table", "raises"),
-    [('hold = "yes"', AgentSyncError), ('remote_url_prefixes = ["https://host:abc/x"]', ValueError)],
+    # a remote prefix that does not parse is a ConfigError since B13 round 37 C1261
+    [('hold = "yes"', AgentSyncError), ('remote_url_prefixes = ["https://host:abc/x"]', ConfigError)],
 )
 def test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701(
     initialised: Config, capsys: pytest.CaptureFixture[str], table: str, raises: type[Exception]
@@ -14927,6 +14929,64 @@ def test_a_state_hold_is_named_while_governance_does_not_load_c1247(
     (ok,) = [ln for ln in out if ln.startswith("[ok  ] governance.hold ")]
     assert ok.split(" — ", 1)[1].startswith("hold all (state): made-up litigation hold"), ok
     assert not [ln for ln in out if ln.startswith("[info] governance.hold ")], out
+
+
+def test_a_remote_prefix_that_does_not_parse_is_governance_configs_fail_c1261(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 37 C1261 (ruling 124): a remote_url_prefixes entry with a port that is not a number raised
+    ValueError out of parse_governance, so status printed `governance — check crashed` and no
+    governance.config line, while C1026's `see governance.config` pointed at it. It is a ConfigError now: the
+    FAIL prints, no check crashes, and every `see governance.config` names a printed line."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.ERASURE_REQUEST)
+    path = Path(cfg)
+    bad = '\n[governance]\nremote_url_prefixes = ["https://dev.azure.com:abc/contoso/"]\n'
+    path.write_text(path.read_text(encoding="utf-8") + bad, encoding="utf-8")
+    with pytest.raises(ConfigError, match="is not a remote URL"):
+        governance.load_governance(path)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
+    assert not [ln for ln in out if "check crashed" in ln or "ValueError" in ln], out
+    printed = {m.group(1) for ln in out if (m := re.match(r"\[\w+ *\] (\S+)", ln))}
+    named = {m.group(1) for ln in out for m in re.finditer(r"see (governance\.\w+)", ln)}
+    assert named and named <= printed, (named, printed, out)
+    assert _unresolved_fail_pointers(out) == [], out
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "https://ada:s3cret@git.contoso.com:abc/x",  # a port that is not a number
+        "https://ada:s3cret@git.contoso\uff0fcom/x",  # urllib's NFKC error quotes the whole netloc
+        "https://ada:s3cret@/x",  # a userinfo with no host: the old message printed the raw prefix
+    ],
+)
+def test_a_remote_prefix_that_does_not_parse_never_prints_its_password_c1261(
+    initialised: Config, capsys: pytest.CaptureFixture[str], prefix: str
+) -> None:
+    """B13 round 37 C1261 (ruling 124, makes worse True): the refusal names the prefix through _redact_url,
+    and never quotes urllib's ValueError, whose NFKC text carries the netloc, so no password prints in the
+    ConfigError, status or sync."""
+    cfg = _synced(initialised)
+    path = Path(cfg)
+    table = f'\n[governance]\nremote_url_prefixes = ["{prefix}"]\n'
+    path.write_text(path.read_text(encoding="utf-8") + table, encoding="utf-8")
+    with pytest.raises(ConfigError) as raised:
+        governance.load_governance(path)
+    assert "s3cret" not in str(raised.value) and "***@" in str(raised.value), raised.value
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
+    assert not [ln for ln in out if "s3cret" in ln], out
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG
+    said = capsys.readouterr()
+    assert "s3cret" not in said.out + said.err, said
 
 
 def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903(
