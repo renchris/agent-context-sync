@@ -25,7 +25,7 @@ the `mkdir -p` above left it looser; a folder given with `--output` is yours, so
 |---|---|
 | 0 | report written, and every probe finished: a 401, 403 or 404, or a 410 on a probe-9 link, is the tenant's answer and a row in the report, not a failure |
 | 77 | not signed in, or sign-in blocked; the report names the state (for example `blocked: consent`, AADSTS65001) |
-| 78 | `sources.toml` invalid, or no `[graph] client_id` yet (IT request pending); a real run still writes its report, `--dry-run` writes nothing |
+| 78 | configuration invalid (`sources.toml` or its `[graph]` settings): `Configuration invalid: ...` on stderr and no report; or no `[graph] client_id` yet (IT request pending): a real run writes a "Not run" report and names its path on stderr, `--dry-run` writes nothing |
 | 1 | a probe could not finish (no network, a 429 or 5xx, a failed download, a delta response with no deltaLink): the report lists them and stderr says `<n> probes incomplete; see report <path>`; or failed, e.g. `network-policy` (TLS inspection / PAC), see [README](README.md#install-one-command-no-admin); a damaged `deltalinks.json` (left as it was), another run holding probe 9, a report that cannot be written, or an interpreter without agentsync |
 | 2 | usage error |
 | 130, 129, 143 | stopped by INT (Ctrl-C), HUP or TERM; temporary downloads are removed and, once probing began, a partial report is written |
