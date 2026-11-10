@@ -233,10 +233,11 @@ def _named(
     or more ids have one alarm line each, joined with "and" (round 7 H50). The wait itself keeps a count and
     never a path (B13 round 5 F43). ``in_state``: the wait is written into STATE.md itself, which names no
     file it is already in: the
-    alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33). ``stopped``: the check
-    whose [FAIL] the sync's own guard stops on (:func:`_sync_stopped_on`), so no plain sync prints the alarm
-    until it is fixed (B13 round 31 C520); the ``in_state`` forms never get it, since only a sync that runs
-    writes STATE.md."""
+    alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33). ``stopped``: every check
+    whose [FAIL] the sync stops on (:func:`_sync_stops`: each of the guard's stops, the lock, and a policy or
+    [governance] that does not load; one name or several, normalized by :func:`_stops`), so no plain sync
+    prints the alarm until each is fixed (B13 round 31 C520; round 36 C1048; round 37 C1301, C1246, C1264);
+    the ``in_state`` forms never get it, since only a sync that runs writes STATE.md."""
     if in_state:
         if len(ids) == 1:
             return f"the alarm line under ## {ids[0]} below names {what} (a plain `{BIN} sync` prints it too)"
@@ -261,7 +262,8 @@ def _named_since(
     is from (B13 round 15 S32): that alarm still names them, up to five, and past five may hide the
     ``left`` ones behind its "+N more", so the pointer says it predates the exclude and that a plain sync
     prints it again with those left. It replaces :func:`_named`'s whole pointer, its "(a plain sync prints it
-    too)" as well, so sync is said once. ``in_state`` and ``stopped``: as :func:`_named`."""
+    too)" as well, so sync is said once. ``in_state`` and ``stopped``: as :func:`_named`, ``stopped`` every
+    check the sync stops on, each named (B13 round 36 C1048; round 37 C1246, C1264)."""
     again = f"a plain `{BIN} sync` prints it again with the {plural(left, 'folder')} left"
     stops = _stops(stopped)
     if stops and not in_state:
@@ -350,6 +352,7 @@ def _sync_stops(config: Config) -> tuple[str, ...]:
     """Every status check whose [FAIL] a sync stops on, in the order the sync meets them, each once: each of
     the guard's own stops (``doctor.state_stops``: the lock, heartbeat.json, then each governance file not a
     file, damaged, or a list that lost a purge; B13 round 37 C1301), the lock this account cannot open, the
+    config refusals the cycle exits 78 on (``policy``, then ``governance.config``: B13 round 37 C1246), the
     suppression list (a refused governance/ names governance.hold there), then the purge record
     (governance.suppressed). The
     order and the rule are :func:`_sync_stopped_on`'s (C933): the folder's X_OK test runs only after a
@@ -376,6 +379,17 @@ def _sync_stops(config: Config) -> tuple[str, ...]:
     except OSError as exc:
         if doctor.refused_state_path(config, "lock", exc) is not None:
             stops.append("lock")
+    # the refusals the cycle exits 78 on once it holds the lock, in its order: the Publisher's content policy,
+    # then [governance]; each is a [FAIL] line status prints, so a refused table never promises that a plain
+    # sync prints the alarm (B13 round 37 C1246; ruling 124)
+    from agentsync import policy as content_policy  # noqa: PLC0415 - lazily, as doctor's
+
+    try:
+        content_policy.load_policy(config)
+    except ConfigError:
+        stops.append("policy")
+    if governance.governance_or_none(config.config_path) is None:  # None only for a table that does not load
+        stops.append("governance.config")
     root = config.state_paths.root
     # the suppression list first: a refused governance/ is met there, so it names governance.hold, whose fix
     # is the folder's chmod, before a purge record refused inside it (B13 round 35 C933)
@@ -406,11 +420,14 @@ def _sync_stopped_on(config: Config) -> str | None:
     suppression list this account cannot open, which the sync stops on in its refused kind past that guard:
     governance.suppressed, the check that FAILs either, never holds.json, hold-record.json or audit.jsonl,
     which a sync runs over at 0000 (B13 round 32 C639; ruling 65). And the lock this account cannot open,
-    whose refusal stops the sync's acquire (B13 round 34 C863). In the order the sync meets them: the lock,
-    then the suppression list (a refused governance/ names governance.hold there), then the purge record; the
-    folder's X_OK test runs only after a refused read, so a missing governance/ is no stop (B13 round 35
-    C933). The first of :func:`_sync_stops`: its readers say no sync runs until it is fixed, which stays true
-    with more than one stop, while a wait that says what a fix brings names them all (B13 round 36 C1048)."""
+    whose refusal stops the sync's acquire (B13 round 34 C863). And a content policy or a [governance] that
+    does not load, which the cycle exits 78 on (policy, governance.config: B13 round 37 C1246). Each of the
+    guard's stops, not its first alone (``doctor.state_stops``: B13 round 37 C1301). In the order the sync
+    meets them: the guard, the lock, the policy and [governance], then the suppression list (a refused
+    governance/ names governance.hold there), then the purge record; the folder's X_OK test runs only after
+    a refused read, so a missing governance/ is no stop (B13 round 35 C933). The first of :func:`_sync_stops`:
+    its readers say no sync runs until it is fixed, which stays true with more than one stop, while a wait
+    that says what a fix brings names them all (B13 round 36 C1048)."""
     stops = _sync_stops(config)  # the first of them: "until it is fixed" stays true with more (C1048)
     return stops[0] if stops else None
 

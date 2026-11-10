@@ -38786,6 +38786,8 @@ chmod governance.suppressed, the sync exits 1; after the record's, none and the 
 Amended 2026-11-08, §16.237 C1048: the wait naming both lines is built. `loop._sync_stops` keeps this order and
 rule and names every stop, and the waits and exclude-empty say `the A and B [FAIL] lines are fixed`;
 `_sync_stopped_on` is its first, for the readers that say no sync runs until that line is fixed.
+Amended 2026-11-10, §16.242 C1246: the order has the config refusals the cycle exits 78 on between the lock and the
+reads: the guard's stops, the lock, `policy`, `governance.config`, then the suppression list and the purge record.
 
 **`governance_refuser` answers yes or no** (C960; ruling 109; amends §16.227 C832). Its folder return was never read:
 the four callers tested `is not None`, and `loop._sync_stopped_on` inlined the same `os.access` test. It returns a
@@ -39675,6 +39677,9 @@ Amended 2026-11-10, §16.242 C1301: the guard's part is every stop of it, not it
 name from `doctor.state_stops` (the lock, heartbeat.json, then each governance file not a file, damaged or a list
 that lost a purge, the damaged and lost reads only on regular files), whose first is `doctor.state_not_a_file`, so a
 folder at heartbeat.json beside one at purge-record.json names both lines.
+Amended 2026-11-10, §16.242 C1246: a content policy or a [governance] that does not load, which the cycle exits 78
+on, is a stop too, named `policy` and `governance.config` after the lock's and before the reads, so a refused table
+never promises that a plain sync prints the alarm.
 
 **An empty cloud root's wait and its warn give one remedy** (C1004 with C1120, one defect; ruling 119, makes worse
 True as found; amends §16.45 R102 and §16.232 C938). An empty folder chosen as a source got the generic `could not

@@ -498,6 +498,58 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_wait_says_the_sync_waits_on_
     assert wait().endswith(plain), wait()
 
 
+@pytest.mark.parametrize("which", ["governance", "policy"])
+def test_a_config_table_that_does_not_load_is_a_sync_stop_c1246(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], which: str
+) -> None:
+    """B13 round 37 C1246 (ruling 124): with [governance] history_days = "thirty", or a policy.toml that does
+    not load, every sync exits 78 before its alarm, but _sync_stops was empty, so the wait still said a plain
+    sync prints the alarm. The refusal is a stop: the wait names its [FAIL] line, as curate's fix and the
+    heartbeat clause do, and with the table restored the plain words come back."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    plain = f"which names the folder (a plain `{BIN} sync` prints it too)"
+
+    def wait_and_fails() -> tuple[str, set[str]]:
+        capsys.readouterr()
+        cli.main(["status", "--config", cfg])
+        out = capsys.readouterr().out.splitlines()
+        (line,) = [ln for ln in out if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        return line, {ln.split()[1] for ln in out if ln.startswith("[FAIL] ")}
+
+    table = config.config_path.read_text(encoding="utf-8")
+    policy = config.config_path.parent / "policy.toml"
+    check = "governance.config" if which == "governance" else "policy"
+    if which == "governance":
+        config.config_path.write_text(table + '\n[governance]\nhistory_days = "thirty"\n', encoding="utf-8")
+    else:
+        policy.write_text('[policy]\nrefuse_unlabelled = "maybe"\n', encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG, "the cycle exits 78 on it"
+    assert loop._sync_stops(config) == (check,)
+    assert loop._sync_stopped_on(config) == check
+    wait, fails = wait_and_fails()
+    assert wait.endswith(
+        f"which names the folder (once the {check} [FAIL] line is fixed, a plain `{BIN} sync` prints it too; "
+        "until then no sync runs)"
+    ), wait
+    assert check in fails, fails
+    assert f"no sync runs until the {check} [FAIL] line is fixed" in cli.curate_stop_fix(check)
+    assert (
+        doctor.stopped_listing_clause(check)
+        == f"no sync lists it again until the {check} [FAIL] line is fixed"
+    )
+    config.config_path.write_text(table, encoding="utf-8")
+    policy.unlink(missing_ok=True)
+    assert loop._sync_stops(config) == ()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    wait, _fails = wait_and_fails()
+    assert wait.endswith(plain), wait
+
+
 @pytest.mark.parametrize("which", ["purge-record.json", "governance/suppressed.json", "hold-record.json"])
 def test_a_governance_file_this_account_cannot_open_says_no_sync_runs_c639(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], which: str
@@ -807,8 +859,9 @@ def test_status_points_the_refused_queues_note_at_its_own_fail_line_c959(
 ) -> None:
     """B13 round 35 C959 (ruling 109): the refused queue's note told a reader of status to run status. Status
     maps it at its render to `the governance.purge_queue [FAIL] line below says why` when it prints that line
-    (a [governance] that does not load prints it too since C958), else to the bare clause; sync, curate and
-    STATE.md keep the constant."""
+    (a [governance] that does not load prints that line too since C958, but stops every sync, so the note is
+    not said there since round 37 C1246), else to the bare clause; sync, curate and STATE.md keep the
+    constant."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     config = _setup(tmp_path, local_source_table("work", root))
@@ -821,10 +874,13 @@ def test_status_points_the_refused_queues_note_at_its_own_fail_line_c959(
     assert governance.enqueue_purge(state, selector, governance.PurgeReason.ERASURE_REQUEST)
     queue = governance._queue_file(state)
     outs: list[str] = []
+    loaded = Path(cfg).read_text(encoding="utf-8")
     queue.chmod(0o000)
     try:
         for table in ("", '\n[governance]\nhold = "yes"\n', "no queue line"):
             if table == "no queue line":  # a status that prints no governance.purge_queue [FAIL] line
+                # over a table that loads: a refused one stops every sync, which says no note (C1246)
+                Path(cfg).write_text(loaded, encoding="utf-8")
                 real = cli._governance_checks
                 monkeypatch.setattr(
                     cli,
@@ -839,9 +895,14 @@ def test_status_points_the_refused_queues_note_at_its_own_fail_line_c959(
             outs.append(capsys.readouterr().out)
     finally:
         queue.chmod(0o600)
-    for out in outs[:2]:
-        assert loop.NOTE_PREFIX + loop.QUEUE_REFUSED_NOTE_STATUS in out.splitlines(), out
-        assert "[FAIL] governance.purge_queue" in out and loop.QUEUE_REFUSED_NOTE not in out, out
+    out = outs[0]
+    assert loop.NOTE_PREFIX + loop.QUEUE_REFUSED_NOTE_STATUS in out.splitlines(), out
+    assert "[FAIL] governance.purge_queue" in out and loop.QUEUE_REFUSED_NOTE not in out, out
+    # a [governance] that does not load stops every sync (exit 78), so the note, which speaks of a sync that
+    # runs over the refused queue, is not said; the queue's own [FAIL] line still is (B13 round 37 C1246)
+    out = outs[1]
+    assert "[FAIL] governance.config" in out and "[FAIL] governance.purge_queue" in out, out
+    assert loop.QUEUE_REFUSED_BARE not in out, out
     bare = outs[2]
     assert loop.NOTE_PREFIX + loop.QUEUE_REFUSED_BARE in bare.splitlines(), bare
     assert loop.QUEUE_REFUSED_NOTE_STATUS not in bare and loop.QUEUE_REFUSED_NOTE not in bare, bare
