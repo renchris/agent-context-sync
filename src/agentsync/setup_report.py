@@ -698,9 +698,10 @@ _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary f
 # ends are path characters (C1017); behind /Volumes/ the look-back runs over every byte on the line, quotes,
 # backticks, brackets, commas and semicolons included (C1016, C1064), to the first /Volumes/ no ASCII
 # letter, digit, "_", "." or "-" precedes; /Volumes/, /System/Volumes/Data and Users match in any case
-# (C1018); a provider folder's name runs over brackets, commas and semicolons to the next "/", stopping only
-# at a quote, a backtick, "):" or ", stored as ", the delimiters the added-source note's readers need
-# (C1069); and this home's own literal ends only where the table ends a component (Redactor._compile)
+# (C1018); a provider folder's name (after "/CloudStorage/" or opening "OneDrive - ", in any case since B13
+# round 37 C1285) runs over brackets, commas and semicolons to the next "/", stopping only at a quote, a
+# backtick, "):" or ", stored as ", the delimiters the added-source note's readers need (C1069); and this
+# home's own literal ends only where the table ends a component (Redactor._compile)
 _CUT_BYTES = {
     "blank": " \t",  # a cut goes on over the next word that holds a "/" and no "=" (C981)
     "end": "\n\r\f\v",  # a cut ends here
@@ -738,9 +739,12 @@ def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
         quoted += rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|"
     values = sorted({re.escape(v) for v in spaced}, key=len, reverse=True)
     char = rf"(?i:{'|'.join(values)})|[^/{_PATH_STOP}]|\\." if values else rf"[^/{_PATH_STOP}]|\\."
-    # a provider folder's own name: to the next "/", never past a quote (C912), "):" or ", stored as " (C1069)
+    # a provider folder's own name, its prefix in any case (C1285): to the next "/", never past a quote
+    # (C912), "):" or ", stored as " (C1069)
     stuck = r"(?:(?!\):|, stored as )[^/\n\"'`])*(?=/)"
-    tail = rf"(?:/(?:(?<=/CloudStorage/){stuck}|OneDrive - {stuck}|(?:{char})*))*"
+    tail = (
+        rf"(?:/(?:(?<=/(?i:CloudStorage)/){stuck}|(?i:OneDrive - ){stuck}|(?:{char})*))*"  # any case (C1285)
+    )
     blank = f"[{_cut_class('blank')}]"
     word = (  # C981: a word after an unquoted blank that holds a "/" goes on with the cut
         rf"(?:{blank}+(?![-/~])(?![^={_PATH_STOP}]*://)(?![0-9/]+(?![^{_PATH_STOP}]))"
@@ -1120,8 +1124,9 @@ _LEGEND = {
         "agentsync's own ~/agent-context/inbox) or an exclude entry, cut as its section says, or a path in "
         "another home, cut whole to /Users/<path> (/Volumes/<path> behind a volume, the prefixes in any "
         "case; in both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, "
-        "comma or semicolon, a provider folder's name running past a bracket, comma or semicolon to the "
-        "next /, and after a blank from the first word that holds no / or holds =, or that is an option, a "
+        "comma or semicolon, a provider folder's name, in any case, running past a bracket, comma or "
+        'semicolon to the next / but stopping at a quote, a backtick, "):" or ", stored as ", and after a '
+        "blank from the first word that holds no / or holds =, or that is an option, a "
         "URL, a path of its own or a number like 3/14; a blank right after this home ends it, so another "
         "home named as this one and a blank keeps what follows)"
     ),

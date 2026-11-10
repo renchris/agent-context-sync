@@ -39958,6 +39958,20 @@ unchanged: those code points' bytes in `STOP` would end a cut at `é` or `Å` (m
 Test: `test_a_line_break_code_point_in_a_path_is_cut_whole_through_the_report_c1249` (every `_separator_lines()`
 slot holding one of the six, through `build_report`, in the friction log and in install.out).
 
+**A provider folder's prefix matches in any case, and both legends name its stops** (C1285 with C1274, C1203; ruling
+120; privacy). `/Volumes/`, `/System/Volumes/Data` and `Users` matched in any case since C1018, but the provider
+folder's run did not: `/users/olga/library/cloudstorage/onedrive-contoso, ltd/fabrikam/x` printed `/Users/<path>,
+ltd/fabrikam/x`. The Python pattern's look-behind is now `(?<=/(?i:CloudStorage)/)` (still fixed width) and its
+second head `(?i:OneDrive - )`, and install.sh's `foreign_home_cut` compares through `tolower()` (lane RB, §16.241),
+so §16.235's and §16.236's "match only as written" sentences no longer hold. A longer cut is the only change: the
+run still stops at a quote, a backtick, `):` and `, stored as `. Both legends' provider clause now reads, word for
+word, `a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but stopping
+at a quote, a backtick, "):" or ", stored as "`, since the old one called the `):` row's kept tail cut (C1203), and
+setup-feedback.md's `<path>` row says `in any case` and scopes `the one limit left` to this home's own name.
+`_separator_lines()` gives each provider prefix as written, lowercase and uppercase, crossed with each case of
+`/Users/`. Tests: `test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112` (its rows and slots),
+`test_the_path_legend_names_the_provider_folders_case_and_its_stops_c1203`, and lane RB's both-reports test.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 Reserved for round 37 lane RB of B13.

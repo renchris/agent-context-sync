@@ -4772,6 +4772,13 @@ _RULING_112_ROWS = (  # B13 round 36 ruling 112: the specs' rows as both reports
     ),
     ("/Users/olga/Library/CloudStorage/OneDrive-Contoso, Inc./Docs/x", "/Users/<path>"),
     ("/Users/olga/Library/CloudStorage/OneDrive-Contoso (UK) Ltd/Docs/x", "/Users/<path>"),
+    # B13 round 37 C1285 with C1274: the provider folder's prefix in any case
+    ("/Users/olga/library/cloudstorage/onedrive-contoso, ltd/fabrikam/x", "/Users/<path>"),
+    ("/users/olga/library/cloudstorage/OneDrive-Contoso, Ltd/Fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/onedrive - contoso, ltd/fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/library/cloudstorage/OneDrive-Contoso; Ltd/Fabrikam/x", "/Users/<path>"),
+    ("/users/olga/onedrive - contoso (uk) ltd/x", "/Users/<path>"),
+    ("seen /USERS/OLGA/LIBRARY/CLOUDSTORAGE/ONEDRIVE-CONTOSO): kept/x", "seen /Users/<path>): kept/x"),
     ("/Users/olga/Client a=b/Board/x.docx", "/Users/<path> a=b/Board/x.docx"),  # C1019: the legend's "="
     ("/Users/dana old/Fabrikam/x", "~ old/Fabrikam/x"),  # the one limit left: a blank right after this home
 )
@@ -4782,10 +4789,11 @@ def _separator_lines() -> list[tuple[str, str]]:
     """B13 round 36 ruling 112's proof, as ``(line, cut)``: every separator byte (each code point 1 to 127 but
     ``/`` and the newline, each ``str.isspace()`` one, U+200B and U+FEFF) in each slot (a volume name, a
     provider folder's name, right after this login, inside another login, between two words after it), with
-    each prefix as written, lowercase and uppercase, and the line both reports print for HOME /Users/dana and
-    the login dana. ``olga``, ``Fabrikam`` and ``Contoso`` are absent from ``cut`` but where
-    :data:`setup_report._CUT_BYTES` makes the byte a stop or an end, or a blank right after this login, where
-    ``cut`` is the documented one. test_report_redaction.py runs the same lines through the shell report."""
+    each prefix (the provider folder's too, B13 round 37 C1285) as written, lowercase and uppercase, and the
+    line both reports print for HOME /Users/dana and the login dana. ``olga``, ``Fabrikam`` and ``Contoso``
+    are absent from ``cut`` in any case but where :data:`setup_report._CUT_BYTES` makes the byte a stop or an
+    end, or a blank right after this login, where ``cut`` is the documented one.
+    test_report_redaction.py runs the same lines through the shell report."""
     table = setup_report._CUT_BYTES
     chars = [chr(c) for c in range(1, 128) if chr(c) not in "/\n"]
     chars += [chr(c) for c in range(128, 0x110000) if chr(c).isspace()] + ["\u200b", "\ufeff"]
@@ -4800,10 +4808,14 @@ def _separator_lines() -> list[tuple[str, str]]:
             out.append((f"copied {vol}Con{c}toso/Users/olga/Fabrikam/x.docx", "copied /Volumes/<path>"))
         for users in cases("/Users/"):
             quote = c in "\"'`"
-            line = f"{users}olga/Library/CloudStorage/OneDrive-Contoso{c}Ltd/Fabrikam/x.docx"
-            out.append((line, f"/Users/<path>{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>"))
-            line = f"{users}olga/OneDrive - Contoso{c}Ltd/Fabrikam/x.docx"
-            out.append((line, f"/Users/<path> - Contoso{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>"))
+            for cloud in cases("Library/CloudStorage/OneDrive-Contoso"):  # in any case (C1285)
+                line = f"{users}olga/{cloud}{c}Ltd/Fabrikam/x.docx"
+                out.append((line, f"/Users/<path>{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>"))
+            for one in cases("OneDrive - Contoso"):
+                line = f"{users}olga/{one}{c}Ltd/Fabrikam/x.docx"
+                out.append(
+                    (line, f"/Users/<path>{one[8:]}{c}Ltd/Fabrikam/x.docx" if quote else "/Users/<path>")
+                )
             mine = c in ends or c in table["blank"]
             own = "~" if users == "/Users/" else f"{users}<user>"  # this home's literal is as written
             cut = f"{own}{c}Fabrikam/x.docx" if mine else "/Users/<path>"
@@ -4835,11 +4847,33 @@ def test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112() -> 
     assert not wrong, (len(wrong), wrong[:8])
     for line, cut in lines:  # a hidden name prints only where the table stops or ends the cut
         if not any(c in line for c in table["end"] + table["stop"] + table["blank"]):
-            assert not re.search("olga|Fabrikam|Contoso", cut), line
+            assert not re.search("(?i)olga|Fabrikam|Contoso", cut), line
     for line, cut in _RULING_112_ROWS:
         assert red.redact(line) == cut, line
     for line in _RULING_112_KEPT:
         assert red.redact(line) == line
+
+
+_PROVIDER_CLAUSE = (
+    "a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but "
+    'stopping at a quote, a backtick, "):" or ", stored as "'
+)
+"""B13 round 37 C1203 with C1285: both legends' provider clause, word for word (install.sh's legend says the
+same; test_report_redaction.py holds the two equal)."""
+
+
+def test_the_path_legend_names_the_provider_folders_case_and_its_stops_c1203() -> None:
+    """B13 round 37 C1203 (with C1285, ruling 120): the legend said a provider folder's name runs past a
+    bracket to the next ``/`` but not that it stops at ``):`` and ``, stored as `` (C1069), so it called text
+    cut that the report shows (the C1069 row of :data:`_RULING_112_ROWS`); nor that its prefix matches in any
+    case."""
+    assert _PROVIDER_CLAUSE in setup_report._LEGEND["path"]
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    assert red.redact("seen /Users/olga/Library/CloudStorage/OneDrive-Contoso): kept/plan.docx").endswith(
+        "): kept/plan.docx"
+    )
+    assert red.redact("/users/olga/library/cloudstorage/onedrive-contoso, ltd/fabrikam/x") == "/Users/<path>"
 
 
 _LINE_BREAKS = ("\u2028", "\u2029", "\x85", "\x1c", "\x1d", "\x1e")
