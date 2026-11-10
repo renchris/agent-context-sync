@@ -4,8 +4,10 @@ for every other command, with the inspect command as ``next`` after a mutation (
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import re
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -548,3 +550,104 @@ def test_a_warning_no_document_took_is_never_lost_c1484(
         "level": "warning",
         "logger": "agentsync.loop",
     }
+
+
+def _pages() -> list[tuple[list[str], argparse.ArgumentParser]]:
+    """The root page and every command's, visible or hidden, each with its argv path."""
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    return [([], parser), *(([name], page) for name, page in sub.choices.items())]
+
+
+def test_help_json_matches_the_parser(capsys: pytest.CaptureFixture[str]) -> None:
+    """C-1b (R106): each page's ``--help --json`` names exactly the options its text lists, and its visible
+    subcommands; ``--help`` alone still prints the text page."""
+    for path, page in _pages():
+        assert cli.main([*path, "--help", "--json"]) == cli.EXIT_OK, path
+        out, err = capsys.readouterr()
+        doc = json.loads(out)
+        assert (doc["path"], doc["summary"], err) == (page.prog, page.description, ""), path
+        # each option line's invocation (``-v, --verbose``), never the prose of a help text or an epilog
+        heads = re.findall(r"(?m)^  (-\S.*?)(?:  |$)", page.format_help())
+        listed = {w for head in heads for w in re.findall(r"(?<![\w-])(--?[A-Za-z][\w-]*)", head)}
+        named = {o["name"] for o in doc["options"]} | {o["short"] for o in doc["options"] if o["short"]}
+        assert named == listed, path
+        assert "--fields" not in named and "--config" not in named
+    root = json.loads(_help_text(capsys, "--help", "--json"))
+    assert {c["path"] for c in root["subcommands"]} == {f"agentsync {n}" for n in CLI_SURFACE["visible"]}
+    status = json.loads(_help_text(capsys, "status", "--help", "--json"))
+    assert status["result"] == {"fields": ["status"]} and status["lifecycle"] == "stable"
+    assert _help_text(capsys, "status", "--help").startswith("usage: agentsync status")
+
+
+def _help_text(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
+    assert cli.main(list(argv)) == cli.EXIT_OK, argv
+    return capsys.readouterr().out
+
+
+def test_help_all_lists_only_visible_commands(capsys: pytest.CaptureFixture[str]) -> None:
+    doc = json.loads(_help_text(capsys, "help", "--all", "--json"))
+    paths = [c["path"] for c in doc["commands"]]
+    assert sorted(paths) == sorted(f"agentsync {n}" for n in CLI_SURFACE["visible"])
+    assert all(c["lifecycle"] == "stable" and c["options"] for c in doc["commands"])
+    text = _help_text(capsys, "help", "--all")
+    listed = {line.split()[1] for line in text.splitlines()}
+    assert listed == set(CLI_SURFACE["visible"]) and not listed & set(CLI_SURFACE["hidden"])
+    rc, error = _error(["help", "status", "--all"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+
+
+def test_help_search_no_match_exits_0(
+    capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    assert _help_text(capsys, "help", "search", "zebra crossing") == 'No commands match "zebra crossing"\n'
+    assert json.loads(_help_text(capsys, "help", "search", "zebra", "--json")) == {"commands": []}
+    found = json.loads(_help_text(capsys, "help", "search", "purge", "--json"))["commands"]
+    assert found[0] == {"path": "agentsync purge", "summary": found[0]["summary"]} and len(found) <= 10
+    assert _help_text(capsys, "help", "search", "delete").splitlines()  # a summary's word, not a name
+    assert "zebra" not in caplog.text  # the query is never logged (R108)
+    rc, error = _error(["help", "search"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+
+
+def test_help_works_with_a_broken_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """R083, R411: the help document is built during the parse, so a config that will not load (here not
+    even TOML) never reaches it."""
+    cfg = tmp_path / "sources.toml"
+    cfg.write_text("this is [not toml\n", encoding="utf-8")
+    monkeypatch.setenv("AGENTSYNC_CONFIG", str(cfg))
+    for argv in (
+        ["status", "--help", "--json"],
+        ["--config", str(cfg), "purge", "--help", "--json"],
+        ["help", "hold", "--json"],
+        ["help", "--all", "--json"],
+    ):
+        rc = cli.main(argv)
+        out, err = capsys.readouterr()
+        assert (rc, err) == (cli.EXIT_OK, ""), argv
+        assert json.loads(out)
+    assert cli.main(["status", "--json"]) == 78  # the same config does stop a command that reads it
+    capsys.readouterr()
+
+
+def test_fields_keeps_only_named_fields(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    base = ["hold", "--list", "--config", str(initialised.config_path)]
+    assert _doc(base, capsys) == (cli.EXIT_OK, {"holds": [], "pagination": {"next": None}}, "")
+    assert _doc([*base, "--fields", "holds"], capsys) == (cli.EXIT_OK, {"holds": []}, "")
+    rc, doc, err = _doc(["--fields", "pagination, holds", *base], capsys)
+    assert (rc, list(doc), err) == (cli.EXIT_OK, ["holds", "pagination"], "")  # the document's own order
+    rc, doc, err = _doc(["status", "--config", str(initialised.config_path), "--fields", "status"], capsys)
+    assert list(doc) == ["status"] and err == ""
+
+
+def test_unknown_field_lists_the_valid_ones(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    base = ["hold", "--list", "--config", str(initialised.config_path)]
+    rc, error = _error([*base, "--fields", "holds,owner"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage")
+    assert "'owner'" in error["message"] and "holds, pagination, hold, outcome, next" in error["message"]
+    assert cli.main([*base, "--fields", "owner"]) == cli.EXIT_USAGE  # no --json: nothing to select from
+    assert "add --json" in capsys.readouterr().err
+    rc, error = _error(["init", "--config", str(initialised.config_path), "--fields", "x"], capsys)
+    assert (rc, error["reason"]) == (cli.EXIT_USAGE, "usage") and "no document" in error["message"]

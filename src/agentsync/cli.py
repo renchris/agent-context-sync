@@ -257,6 +257,40 @@ def _examples(command: str) -> str:
     return "Examples:\n" + "".join(lines) + "\n" if lines else ""
 
 
+_RESULT_FIELDS: dict[str, tuple[str, ...]] = {
+    "add-source": ("source", "outcome", "next"),
+    "sync": ("run", "outcome", "next", "waitingOnYou", "warnings"),
+    "accept-deletions": ("source", "run", "outcome", "next"),
+    "status": ("status",),
+    "curate": ("findings", "next", "waitingOnYou", "warnings"),
+    "adopt": ("pages", "outcome", "next"),
+    "purge": ("purge", "results", "summary", "queued", "outcome", "next"),
+    "hold": ("holds", "pagination", "hold", "outcome", "next"),
+    "offboard": ("locations", "removed", "errors", "manualSteps", "outcome", "next"),
+    "compact-history": ("compaction", "outcome", "next"),
+    "whoami": ("account",),
+    "discover": ("scopes", "toml", "complete", "failures"),
+}
+"""Each command's ``--json`` result schema (U-B4, U-B5): the top-level fields its documents carry, every
+variant's together. ``--help --json`` prints it and ``--fields`` selects from it; graph reads its action's."""
+
+
+class _JsonOptions:
+    """What argv asked of this process's JSON beyond ``--json``: help as a document, and ``--fields``."""
+
+    help = False
+    fields: tuple[str, ...] | None = None
+
+
+_json_options = _JsonOptions()
+
+
+def _emit(doc: Mapping[str, object]) -> None:
+    """``clio.emit``, keeping only the ``--fields`` fields when they were given (R252)."""
+    fields = _json_options.fields
+    clio.emit(doc if fields is None else {k: v for k, v in doc.items() if k in fields})
+
+
 class _HelpFormatter(argparse.HelpFormatter):
     """Help at most 80 columns wide (fewer when the terminal is narrower): a one-line text (a description) is
     wrapped, a text of several lines (an epilog) printed as written; the root's commands grouped by task."""
@@ -303,6 +337,117 @@ class _HelpFormatter(argparse.HelpFormatter):
             parts.extend(super(_HelpFormatter, self)._format_action(shown[n]) for n in names if n in shown)
             self._dedent()
         return "".join(parts)
+
+
+class _Parser(argparse.ArgumentParser):
+    """agentsync's parser: with ``--json`` in argv, ``--help`` prints the page as one document (R106), built
+    from the same actions, during the parse and so before any config is read."""
+
+    lifecycle = "stable"
+
+    def print_help(self, file: Any = None) -> None:
+        """The help page, or its document when argv asked for JSON."""
+        if _json_options.help and clio.json_mode():
+            clio.emit(_help_doc(self))
+        else:
+            super().print_help(file)
+
+
+def _json_value(value: object) -> object:
+    if value is argparse.SUPPRESS:
+        return None
+    if isinstance(value, list | tuple):
+        return [_json_value(v) for v in value]
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    return str(value)
+
+
+def _value_type(action: argparse.Action) -> str:
+    if action.nargs == 0:
+        return "count" if isinstance(action, argparse._CountAction) else "flag"
+    if action.type is int:
+        return "integer"
+    return "path" if action.type is Path else "string"
+
+
+def _repeatable(action: argparse.Action) -> bool:
+    return isinstance(action, argparse._AppendAction | argparse._CountAction) or action.nargs in ("*", "+")
+
+
+def _option_doc(action: argparse.Action) -> dict[str, object]:
+    longs = [s for s in action.option_strings if s.startswith("--")]
+    shorts = [s for s in action.option_strings if not s.startswith("--")]
+    return {
+        "name": (longs or shorts)[0],
+        "short": shorts[0] if shorts and longs else None,
+        "type": _value_type(action),
+        "valueHint": None if action.nargs == 0 else str(action.metavar or action.dest.upper()),
+        "default": _json_value(action.default),
+        "choices": _json_value(list(action.choices)) if action.choices else None,
+        "repeatable": _repeatable(action),
+        "deprecated": bool(getattr(action, "deprecated", False)),
+        "help": action.help,
+    }
+
+
+def _argument_doc(action: argparse.Action) -> dict[str, object]:
+    return {
+        "name": str(action.metavar or action.dest),
+        "type": _value_type(action),
+        "choices": _json_value(list(action.choices)) if action.choices else None,
+        "required": action.nargs not in ("?", "*"),
+        "repeatable": _repeatable(action),
+        "help": action.help,
+    }
+
+
+def _visible_commands(parser: argparse.ArgumentParser) -> list[_Parser]:
+    """``parser``'s subcommands that its help lists, in declaration order: a hidden one has no entry."""
+    sub = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
+    if sub is None:
+        return []
+    shown = {a.dest for a in sub._choices_actions}
+    return [p for name, p in sub.choices.items() if name in shown]
+
+
+def _help_doc(parser: _Parser) -> dict[str, object]:
+    """One help page as data: the actions its text lists (a suppressed one stays out), its examples, and the
+    result schema of the command's ``--json`` document."""
+    command = parser.prog.partition(" ")[2]
+    listed = [a for a in parser._actions if a.help is not argparse.SUPPRESS]
+    schema = _RESULT_FIELDS.get(command)
+    return {
+        "path": parser.prog,
+        "summary": parser.description,
+        "lifecycle": parser.lifecycle,
+        "subcommands": [{"path": p.prog, "summary": p.description} for p in _visible_commands(parser)],
+        "arguments": [
+            _argument_doc(a)
+            for a in listed
+            if not a.option_strings and not isinstance(a, argparse._SubParsersAction)
+        ],
+        "options": [_option_doc(a) for a in listed if a.option_strings],
+        "examples": [
+            {"job": job, "command": f"{loop.BIN} {argv}"} for job, argv in _EXAMPLES.get(command, ())
+        ],
+        "result": None if schema is None else {"fields": list(schema)},
+    }
+
+
+def _search(parser: argparse.ArgumentParser, query: str) -> list[_Parser]:
+    """The visible commands whose name, summary or examples hold every word of ``query``, a name match first;
+    at most 10. Offline, and the query is never logged (R108)."""
+    words = query.lower().split()
+    hits: list[tuple[bool, _Parser]] = []
+    for p in _visible_commands(parser):
+        name = p.prog.partition(" ")[2]
+        examples = " ".join(f"{job} {argv}" for job, argv in _EXAMPLES.get(name, ()))
+        text = f"{name} {p.description or ''} {examples}".lower()
+        if all(w in text for w in words):
+            hits.append((not any(w in name for w in words), p))
+    hits.sort(key=lambda hit: hit[0])
+    return [p for _, p in hits[:10]]
 
 
 _log = logging.getLogger("agentsync.cli")
@@ -435,6 +580,9 @@ def _common(sub_default: object) -> argparse.ArgumentParser:
         default=sub_default,
         help=JSON_HELP,
     )
+    # with --json, keep only these comma-separated top-level fields (R252); hidden, so every page keeps its
+    # bytes, and --help --json lists each command's fields as its result schema
+    p.add_argument("--fields", metavar="<FIELDS>", default=sub_default, help=argparse.SUPPRESS)
     # --version at any depth (R082): listed on the root page only
     shown = "show program's version number and exit"  # argparse's own words
     p.add_argument(
@@ -466,7 +614,7 @@ def _graph_options(p: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     """Return the argparse parser for every subcommand."""
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="agentsync",
         description="Keep an agent-readable docs/ git repo in sync with OneDrive/SharePoint/Outlook/Teams "
         "and local sync-client folders, processing only what changed.",
@@ -478,7 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     common = _common(argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", metavar="COMMAND", title="commands")
 
-    def add(name: str, help_text: str, handler: Handler, *, hidden: bool = False) -> argparse.ArgumentParser:
+    def add(name: str, help_text: str, handler: Handler, *, hidden: bool = False) -> _Parser:
         kwargs: dict[str, Any] = {
             "description": help_text,
             "parents": [common],
@@ -490,12 +638,15 @@ def build_parser() -> argparse.ArgumentParser:
         # print "==SUPPRESS==" on Python 3.11), yet it still parses.
         p = sub.add_parser(name, **kwargs) if hidden else sub.add_parser(name, help=help_text, **kwargs)
         p.set_defaults(handler=handler)
+        p.lifecycle = "hidden" if hidden else "stable"
         return p
 
     p = add(
         "help", f"show a command's help: `{loop.BIN} help status` is `status --help`", _cmd_help, hidden=True
     )
     p.add_argument("path", nargs="*", help="the command, e.g. status or graph login")
+    # every visible command, its page's document under --json; hidden so the page keeps its bytes
+    p.add_argument("--all", action="store_true", help=argparse.SUPPRESS)
 
     add(
         "init",
@@ -1547,7 +1698,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
         source, outcome = {"id": sid, "path": str(path)}, "created"
     code = _ensure_setup(config)
     if clio.json_mode() and code == EXIT_OK:
-        clio.emit({"source": source, "outcome": outcome, "next": _inspect(args, "status")})
+        _emit({"source": source, "outcome": outcome, "next": _inspect(args, "status")})
     return code
 
 
@@ -1597,7 +1748,7 @@ def _sync_document(config: Config, report: CycleReport) -> None:
     if not clio.json_mode():
         return
     lines = loop.next_lines(config, fixes=_unavailable_steps(config, report), quiet=True)
-    clio.emit(_run_doc(report) | _loop_doc(lines))
+    _emit(_run_doc(report) | _loop_doc(lines))
 
 
 def _run_doc(report: CycleReport) -> dict[str, object]:
@@ -1705,7 +1856,7 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
         recordings="none",
     )
     if clio.json_mode():  # the run as sync's, whatever its code: a partial result is still the result
-        clio.emit({"source": {"id": args.source}, **_run_doc(report), "next": _inspect(args, "status")})
+        _emit({"source": {"id": args.source}, **_run_doc(report), "next": _inspect(args, "status")})
     return report.exit_code
 
 
@@ -2872,7 +3023,7 @@ def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:
     config = _config(args)
     status = _build_status(config, brief=brief)
     if clio.json_mode():
-        clio.emit(status.document())
+        _emit(status.document())
     for line in status.lines():
         _out(line)
     return EXIT_FAILED if status.failed else EXIT_OK
@@ -4156,7 +4307,7 @@ def _cmd_curate(args: argparse.Namespace) -> int:
         found = [
             {"code": f.code, "path": f.path, "message": f.message, "blocking": f.blocking} for f in findings
         ]
-        clio.emit({"findings": found, **_loop_doc(next_lines)})
+        _emit({"findings": found, **_loop_doc(next_lines)})
     return EXIT_FAILED if blocking else EXIT_OK
 
 
@@ -4205,7 +4356,7 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
         + ("it" if len(created) == 1 else "them")
     )
     if clio.json_mode():
-        clio.emit(
+        _emit(
             {
                 "pages": [str(rel) for rel in created],
                 "outcome": "created" if created else "unchanged",
@@ -4217,7 +4368,28 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
 
 def _cmd_help(args: argparse.Namespace) -> int:
     """``help [COMMAND...]`` (R081): the page ``COMMAND... --help`` prints, from the same parser; ``help``
-    alone is the root page, on stdout with exit 0; an unknown command is argparse's usage error, exit 2."""
+    alone is the root page, on stdout with exit 0; an unknown command is argparse's usage error, exit 2.
+    ``help --all`` lists every visible command (with ``--json``, each page's document) and ``help search
+    QUERY`` the ones that match (R107, R108)."""
+    if args.all or args.path[:1] == ["search"]:
+        if args.all and args.path:
+            return _refused("error: help --all takes no command", EXIT_USAGE)
+        query = " ".join(args.path[1:])
+        if not args.all and not query.strip():
+            return _refused(
+                f"error: help search needs a query, e.g. `{loop.BIN} help search purge`", EXIT_USAGE
+            )
+        found = _visible_commands(build_parser()) if args.all else _search(build_parser(), query)
+        if clio.json_mode():
+            docs = [_help_doc(p) if args.all else {"path": p.prog, "summary": p.description} for p in found]
+            _emit({"commands": docs})
+            return EXIT_OK
+        if not found:
+            _out(f'No commands match "{query}"')
+        width = max((len(p.prog) for p in found), default=0)
+        for p in found:
+            _out(f"{p.prog:<{width}}  {p.description}")
+        return EXIT_OK
     try:
         build_parser().parse_args([*args.path, "--help"])
     except SystemExit as exc:
@@ -4284,7 +4456,7 @@ def _cmd_graph(args: argparse.Namespace) -> int:
         }
         if status.signed_in:
             if clio.json_mode():
-                clio.emit({"account": account})
+                _emit({"account": account})
             return EXIT_OK
         login = f"{loop.BIN} graph login{_config_tail(args)}"  # the install the person chose (C1486)
         clio.error_doc(
@@ -4354,7 +4526,7 @@ def _discover(config: Config, auth: TokenProvider, *, urls: Sequence[str], toml_
             {"endpoint": f.endpoint, "status": f.status, "code": f.code, "action": f.action}
             for f in report.failures
         ]
-        clio.emit({"scopes": found, "toml": toml, "complete": report.complete, "failures": failed})
+        _emit({"scopes": found, "toml": toml, "complete": report.complete, "failures": failed})
     if not report.complete:
         for f in report.failures:
             _err(f"discovery incomplete: {f.endpoint} -> HTTP {f.status} {safe_text(f.code)}: {f.action}")
@@ -4554,7 +4726,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         else:
             _out(f"accepted the suppression list's loss of {what} (audited): {said}")
         if clio.json_mode():
-            clio.emit(
+            _emit(
                 {
                     "purge": {"acceptLost": args.accept_lost, "lost": what, "message": said},
                     "outcome": "planned" if args.dry_run else "accepted",
@@ -4576,7 +4748,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"taken off the queue: {what} (audited; nothing erased)")
         if clio.json_mode():
             purge = {"id": q.selector.stable_id, "source": q.selector.source_id, "reason": q.reason.value}
-            clio.emit(
+            _emit(
                 {
                     "purge": purge,
                     "outcome": "planned" if args.dry_run else "forgotten",
@@ -4597,7 +4769,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             if gone is not None:
                 _out(gone)
             if clio.json_mode():
-                clio.emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
+                _emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
             return EXIT_OK
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
@@ -4650,7 +4822,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
         passed = all((r.verified and not r.push_failed) or r.not_run for r in reports)
         if clio.json_mode():
-            clio.emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
+            _emit(_queue_doc(reports, len(left)) | {"next": _inspect(args, "status")})
         return EXIT_OK if passed and not stuck else EXIT_FAILED
     # _purge_usage refused a purge with no selector, --queue or --accept-lost before the config loaded (C1303)
     assert args.selector, PURGE_NEEDS_SELECTOR
@@ -4668,7 +4840,7 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         _out(f"  lost from the queue: {line}")
     if clio.json_mode():  # a failed verify or push rides in the document, as the report's lines do
         doc = _purge_doc(rep) | {"lostFromQueue": list(lost_lines)}
-        clio.emit({"purge": doc, "outcome": _purge_outcome(rep), "next": _inspect(args, "status")})
+        _emit({"purge": doc, "outcome": _purge_outcome(rep), "next": _inspect(args, "status")})
     # inspect, never a blind retry: the lease may refuse a second push if the first landed
     if rep.push_failed:
         _err(f"error: the local purge is done and recorded, but {rep.remote}")
@@ -4715,7 +4887,7 @@ def _cmd_compact(args: argparse.Namespace) -> int:
             "note": rep.note or None,
         }
         outcome = "planned" if rep.dry_run else "compacted" if rep.squashed else "unchanged"
-        clio.emit({"compaction": compaction, "outcome": outcome, "next": _inspect(args, "status")})
+        _emit({"compaction": compaction, "outcome": outcome, "next": _inspect(args, "status")})
     return EXIT_OK if rep.dry_run or rep.verified or rep.squashed == 0 else EXIT_FAILED
 
 
@@ -4735,7 +4907,7 @@ def _cmd_hold(args: argparse.Namespace) -> int:
     if args.list or (args.scope is None and not args.release):
         holds = governance.active_holds(root, governance.load_governance(config.config_path))
         if clio.json_mode():  # one page holds them all, so there is never a next one
-            clio.emit({"holds": [_hold_doc(h) for h in holds], "pagination": {"next": None}})
+            _emit({"holds": [_hold_doc(h) for h in holds], "pagination": {"next": None}})
             return EXIT_OK
         if not holds:  # a remark, not a result: stdout stays empty for `hold --list | wc -l`
             _err("No active holds.")
@@ -4753,12 +4925,12 @@ def _cmd_hold(args: argparse.Namespace) -> int:
             return EXIT_FAILED
         if clio.json_mode():
             gone = {"scope": args.scope, "owner": args.owner}
-            clio.emit({"hold": gone, "outcome": "released", "next": _inspect(args, "hold", "--list")})
+            _emit({"hold": gone, "outcome": "released", "next": _inspect(args, "hold", "--list")})
         return EXIT_OK
     hold = governance.set_hold(root, args.scope, reason=args.reason, owner=args.owner)
     _out(hold.describe())
     if clio.json_mode():
-        clio.emit({"hold": _hold_doc(hold), "outcome": "created", "next": _inspect(args, "hold", "--list")})
+        _emit({"hold": _hold_doc(hold), "outcome": "created", "next": _inspect(args, "hold", "--list")})
     return EXIT_OK
 
 
@@ -4809,7 +4981,7 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
             {"kind": loc.kind, "exists": loc.exists, "location": loc.location, "action": loc.action}
             for loc in rep.locations
         ]
-        clio.emit(
+        _emit(
             {
                 "locations": locations,
                 "removed": list(rep.removed),
@@ -5319,6 +5491,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         os.umask(previous)
         clio.flush_log_warnings()  # under --json, no WARNING lost (B13 round 38 C1484)
         clio.set_json(False)  # a caller in this process (a test) gets text again
+        _json_options.help, _json_options.fields = False, None
 
 
 _JSON_REASONS: tuple[tuple[type[BaseException] | tuple[type[BaseException], ...], clio.Reason], ...] = (
@@ -5407,15 +5580,41 @@ def _is_read(args: argparse.Namespace) -> bool:
     return command in _READ_COMMANDS
 
 
+def _select_fields(args: argparse.Namespace) -> int | None:
+    """``--fields`` (R252, R454): the fields to keep, or a usage refusal (exit 2) when ``--json`` is not
+    given, the command prints no document, or a field is not in its result schema, which the line lists."""
+    raw: str | None = getattr(args, "fields", None)
+    if raw is None:
+        return None
+    if not clio.json_mode():
+        return _refused("error: --fields selects fields of the --json document: add --json", EXIT_USAGE)
+    command = args.action if args.command == "graph" else args.command
+    valid = _RESULT_FIELDS.get(command, ())
+    if not valid:
+        return _refused(f"error: --fields: `{command}` prints no document to select fields from", EXIT_USAGE)
+    asked = tuple(f.strip() for f in raw.split(",") if f.strip())
+    unknown = [f for f in asked if f not in valid] if asked else [raw]
+    if unknown:
+        return _refused(
+            f"error: --fields: unknown field {', '.join(map(repr, unknown))}; "
+            f"valid fields: {', '.join(valid)}",
+            EXIT_USAGE,
+        )
+    _json_options.fields = asked
+    return None
+
+
 def _main(argv: Sequence[str] | None) -> int:
     net.inject_system_trust()  # idempotent; the module-top injection already ran (C15 req 32)
     # argparse's version action cannot read --json and a usage error comes before args exist: argv says
     given = list(sys.argv[1:] if argv is None else argv)
     tokens = given[: given.index("--")] if "--" in given else given
     clio.set_json("--json" in tokens)
+    # --help --json is the page's document, except beside --version, where --help's text wins as before
+    _json_options.help = clio.json_mode() and "--version" not in tokens
     if clio.json_mode() and "--version" in tokens:
         if not {"-h", "--help"} & set(tokens):
-            clio.emit({"version": __version__})
+            _emit({"version": __version__})
             return EXIT_OK
         # --help wins (R086); argparse would act on whichever came first
         argv = [t for t in tokens if t != "--version"] + given[len(tokens) :]
@@ -5433,6 +5632,9 @@ def _main(argv: Sequence[str] | None) -> int:
         else:
             parser.print_help(sys.stderr)
         return EXIT_USAGE
+    refused = _select_fields(args)
+    if refused is not None:
+        return refused
     try:
         with clio.signals():
             code = handler(args)

@@ -41524,7 +41524,28 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
 
 #### 16.300.25 U-C1b: machine-readable help and field selection
 
-Reserved.
+- `agentsync <path> --help --json` (R106) prints one document on stdout, exit 0: `path`, `summary`, `lifecycle`
+  (`stable` for a listed command, `hidden` for one reached by name), `subcommands` (`path`, `summary`; listed ones
+  only), `arguments`, `options` (`name`, `short`, `type`, `valueHint`, `default`, `choices`, `repeatable`,
+  `deprecated`, `help`), `examples` (`job`, `command`) and `result` (`{"fields": [...]}`, or null for a command
+  that prints no document). `cli._Parser.print_help` builds it from the same actions the text page lists, so a
+  suppressed option or an unlisted command stays out of both. It runs inside the parse, so no config is read
+  (R083, R411). Beside `--version`, `--help` still prints the text page, as `--version --json --help` did before.
+- `--help` with no `--json` prints the same bytes as before: `--fields` and `help --all` are hidden options.
+- `agentsync help --all` lists every listed command, one per line; with `--json`, `{"commands": [...]}` holds
+  each command's page document (R107).
+- `agentsync help search QUERY` (R107, R108): the listed commands whose name, summary or examples hold every word
+  of the query, a name match first, at most 10, `path` and `summary` per line; with `--json`
+  `{"commands":[{"path","summary"}]}`. No match prints `No commands match "<query>"`, exit 0. It reads nothing
+  from the network or the config, and the query is never logged. `help search` with no query exits 2.
+- `--fields <FIELDS>` (R252, R454), in `_common` beside `--json`: comma-separated top-level fields of the command's
+  `--json` document; the document keeps only those, in its own order. `cli._RESULT_FIELDS` is the one table of
+  result schemas (the U-B4 and U-B5 shapes; graph reads its action's). Exit 2, as a `usage` error, when
+  `--json` is absent, the command prints no document, or a field is unknown; the last line lists the valid
+  fields. Without `--fields` every document is unchanged, and error documents are never filtered.
+- Tests: `tests/test_cli_json.py` `test_help_json_matches_the_parser`, `test_help_all_lists_only_visible_commands`,
+  `test_help_search_no_match_exits_0`, `test_help_works_with_a_broken_config`,
+  `test_fields_keeps_only_named_fields`, `test_unknown_field_lists_the_valid_ones`.
 
 #### 16.300.26 U-C9: install.sh conflicts and the consent spelling
 
