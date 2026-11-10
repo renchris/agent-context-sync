@@ -39283,6 +39283,10 @@ started: the report's time budget was used up`: the loop_next call, never status
 `docs/lanes/COMMON.md` stays as written. Test: `tests/test_setup_report.py::test_a_loop_read_never_started_says_its_next_was_not_started_c1109`
 (a live copy with the idle advice, a stopped one without).
 
+Amended 2026-11-10, §16.241 C1221: a stopped copy b781e539 rendered, which wrote this bracket with no subject, takes
+`its NEXT was not started:` from install.sh under `cp` alone, and a cut status's copy gets `it did not finish in time`
+in the same bracket (ruling 123).
+
 **The report tells the doctor hook it gave up** (C1030, the report half; ruling 117; `src/agentsync/setup_report.py`).
 A doctor call the time limit cut kept running and published its fixes and first state stop after the cut, which the
 Loop line's loop_next then read as the doctor's. `ReportHooks` takes an optional `doctor_abandoned`, which `_doctor`
@@ -39488,6 +39492,10 @@ shapes: every line in today's words, a `timed out after` line and the Doctor lin
 `test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108` (a current render byte for byte, and an uncut copy's
 Loop, gitleaks, `yours` and `unexpected` kept).
 
+Amended 2026-11-10, §16.241 C1224, C1225: the Xcode and gitleaks lines change only after an Environment line the
+budget skipped (`envskip`), never on the Status line alone; a cut status has its own flag (`cutst`, C1223), and the
+Loop line's rewrite sets `loopspent` for the doctor bracket (C1222), one `nsw` string serving every bracket (ruling 123).
+
 **A background wait the budget shortened names the report's time limit** (C1040's install.sh half; ruling 115;
 `scripts/install.sh`). Lane RA's report now words a launchctl print wait the spent budget cut below its 5 s cap
 `- <label>.poll: not measured (launchctl print did not answer within the report's time limit; plist ...)`, since
@@ -39536,6 +39544,9 @@ the NEXT is unchanged. No reader of the report parses Run metadata's lines, and 
 `test_run_metadata_names_the_build_that_rendered_the_report_c1103` (`[False]`: the line, after the agentsync line,
 once over two runs, with a cut Doctor; `[True]`, the same commit: none; the friction log's made-up folder in neither
 report nor bring-back file).
+
+Amended 2026-11-10, §16.241 C1215: the stopped copy included, after `stopped_report_note`, which writes that file
+again from the render (ruling 123).
 
 ### 16.237 Round 36: no purge a hold could refuse, a child started at the deadline, and the empty cloud root (2026-11-08, wave B13 round 36 lane B)
 
@@ -40126,7 +40137,8 @@ C1308, C1239, C1201, C1213, C1229, C1202, C1236, C1251, C1276, C1214, C1275; rul
 control-character member, so a plain look-alike (a literal `\n` or `?`) listed unmarked and step 2 refused it with
 words false for it, and a folder that already syncs was told to rename it to sync it. `list_twins` finds, for each
 row about to print whose bare path has no control character but holds a `\` or a `?`, a twin by `escaped_twin`'s own
-dir test over its whole parent (the test step 2 runs, never the rows inside the cap alone), and `list_shown` opens
+dir test over its whole parent (the test step 2 runs, never the rows inside the cap alone; not read while a
+provider was denied or is still asking, as the gone check is not), and `list_shown` opens
 such a row with `TWIN_MARK`, `[name reads as another folder there: rename one of them to sync it]`, in
 `ESCAPED_MARK`'s slot, so both rows of a pair are marked. An escaped `[synced]` or `[inside a synced folder]` row
 opens with `ESCAPED_KEPT_MARK`, `[name holds a control character]`, and so do the escaped paths of a NEXT's gone,
@@ -40153,6 +40165,37 @@ alternation and `_LIST_MARKS`, its three first marks before the others, with the
 NEXT), `test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002` (a tab folder and two folders
 that show as one text among them), `test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001`
 and `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+
+**A stopped copy an older build rendered is rewritten only on proof in its own text** (C1221, C1222, C1223, C1224,
+C1225, C1226, C1248, C1215; ruling 123; amends §16.235 C1109, §16.236 C1108 and §16.236 C1103; `scripts/install.sh`).
+Every rule in older_report_rewrite stays an exact-string rule under `cp && !det && !fence` with no new head-note
+trigger, each keyed on a flag the first pass sets from that copy's own lines: `spentst` as before; `cutst`, Status's
+anchored `_This section failed: TimeoutError: did not finish within <n>s_`, never an errno TimeoutError, under which
+Status reads `Cut off: the status call did not finish within <n>s, the limit the report gives it.`, the Loop line
+`not read (status did not finish in time); NEXT: not read (it did not finish in time)` and each heartbeat warn that
+holds deletions moves into `not judged (the Loop line was not read: it did not finish in time) k: ...` (C1223);
+`envskip`, the first Environment line holding ` exited 124: skipped: the report's time budget is used up` (either
+form an older build wrote), and only a line after it, the budget only shrinking, rewrites the Xcode `exited 124` line
+to `not measured (the report's time limit was used up before xcode-select -p ran)` and gitleaks' `version unknown;`
+to `version not measured, the report's time limit was used up before gitleaks version ran;`, a real time-out or empty
+answer keeping its words (C1224, C1225; makes worse True each for a `spentst` key, which proves nothing about the
+Environment, rendered first); and `loopspent`, set when the Loop line is rewritten, under which the doctor line's `(the
+Loop line was not read: it did not finish in time` takes the not-started words (C1222). One `nsw` string, `its NEXT
+was not started: the report's time budget was used up`, serves `hb_move`, which takes its bracket words as a parameter,
+and every doctor-bracket rule; b781e539's subject-less `(the Loop line was not read: not started: ` is rewritten under
+`cp` alone (C1221). The install line `no (install )?run during this attempt (N earlier in the install log)` counts step
+1's --list-folders runs L among the first N runs install.log holds (`older_report_facts`' OR_RUNKINDS: a run with a `step=list-folders` line, as `InstallRun.list_only` reads it) and takes `_install_line`'s words only when 0 < L <= N (C1226).
+The earlier-link line (`issue link (an earlier run's, not shown`, passed by -v as `gone` is) counts in `left()` and goes
+with the Send-it lines, EARLIER_LINK unchanged (C1248). `rendered_by_note` runs after `stopped_report_note` in both
+stopped branches, so a stopped copy names its renderer too (C1215). Tests:
+`test_a_stopped_copy_of_a_spent_budget_an_older_build_rendered_takes_todays_words_c1108` (now with the skipped Xcode
+and gitleaks words), `test_a_spent_copy_whose_earlier_probes_ran_keeps_its_xcode_and_gitleaks_words_c1224_c1225`,
+`test_the_doctor_brackets_older_builds_wrote_take_todays_words_c1221_c1222`,
+`test_a_stopped_copy_whose_status_was_cut_takes_todays_words_c1223` (and an errno TimeoutError kept),
+`test_a_stopped_copy_counts_step_1s_list_runs_apart_from_install_runs_c1226`,
+`test_the_real_report_of_a_stopped_copy_invites_no_bring_back` (C1248) and
+`test_a_stopped_copy_names_the_build_that_rendered_it_c1215`; `test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108`
+still holds a current render byte for byte.
 
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 

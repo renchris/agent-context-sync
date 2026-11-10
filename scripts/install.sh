@@ -6944,17 +6944,25 @@ REPORT_INSTALL_SH="~/src/agent-context-sync/scripts/install.sh"
 # own checkout went on another checkout's line); empty, OR_FETCH stays empty and the line keeps its undated words.
 older_report_facts() { # DIR
 	local d="$1" paths=() p rel common best="" bm=-1 m z
-	OR_LASTRUN="" OR_FETCH="" OR_FSSTART=""
+	OR_LASTRUN="" OR_FETCH="" OR_FSSTART="" OR_RUNKINDS=""
 	if [ -f "$SETUP_LOG" ]; then
-		IFS='|' read -r OR_LASTRUN OR_FSSTART < <(LC_ALL=C awk '
+		# OR_RUNKINDS: each run in log order, L for a --list-folders run (its step=list-folders line, as
+		# setup_report.InstallRun.list_only reads it), I for any other (B13 round 37 ruling 123, C1226)
+		IFS='|' read -r OR_LASTRUN OR_FSSTART OR_RUNKINDS < <(LC_ALL=C awk '
 			match($0, / run=[^ ]+ /) { r = substr($0, RSTART + 5, RLENGTH - 6) }
-			index($0, " start install.sh ") { st[r] = $0; at[r] = $1 }
+			index($0, " start install.sh ") {
+				st[r] = $0; at[r] = $1
+				if (!(r in seen)) { seen[r] = 1; ord[++nr] = r }
+			}
 			match($0, / step=[^ ]+ /) {
 				s = substr($0, RSTART + 6, RLENGTH - 7)
 				if (s != "report" && s != "list-folders") real = r
 				if (s == "first-sync") fs = r
+				if (s == "list-folders") lst[r] = 1
 			}
 			END {
+				kinds = ""
+				for (i = 1; i <= nr; i++) kinds = kinds (lst[ord[i]] ? "L" : "I")
 				w = ""
 				if (real != "" && (real in st)) {
 					c = v(st[real], "commit"); t = v(st[real], "tree")
@@ -6962,7 +6970,7 @@ older_report_facts() { # DIR
 					if (c == "-") w = "no commit read"
 					else if (c != "") w = "commit " c (t != "" ? " tree " t " (the SHA-256 prefix of `git diff HEAD` in that checkout)" : "")
 				}
-				printf "%s|%s\n", w, (fs != "" && (fs in at)) ? at[fs] : ""
+				printf "%s|%s|%s\n", w, (fs != "" && (fs in at)) ? at[fs] : "", kinds
 			}
 			function v(l, k) { if (!match(l, " " k "=[^ ]*")) return ""; return substr(l, RSTART + length(k) + 2, RLENGTH - length(k) - 2) }
 		' "$SETUP_LOG" 2>/dev/null) || true
@@ -7024,11 +7032,12 @@ older_report_rewrite() { # MODE
 	case "$named" in \~) named="$HOME" ;; \~/*) named="$HOME/${named#\~/}" ;; esac
 	[ -n "$named" ] && [ -d "$named" ] || named=""
 	older_report_facts "$named"
-	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" OR_LASTRUN="$OR_LASTRUN" OR_FETCH="$OR_FETCH" OR_FSSTART="$OR_FSSTART" awk \
+	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" OR_LASTRUN="$OR_LASTRUN" OR_FETCH="$OR_FETCH" OR_FSSTART="$OR_FSSTART" OR_RUNKINDS="$OR_RUNKINDS" awk \
 		-v cp="$cp" -v s1note="$note" -v s1apps="$apps" -v s1item="$item" -v inst="$REPORT_INSTALL_SH" \
 		-v s1cmd="$cmd" -v s1at="$at" -v s1fline="$fline" -v s1one="$one" \
 		-v s1cause="$cause" -v s1turns="$turns" -v w1="$STEP1_STOP_WARN" -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
 		-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
+		-v el="issue link (an earlier run's, not shown" -v nsw="its NEXT was not started: the report's time budget was used up" \
 		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 		-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
 		-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
@@ -7183,7 +7192,7 @@ older_report_rewrite() { # MODE
 			}
 			return 1
 		}
-		function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
+		function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 || index(line, el) == 1 }
 		function old(line) { return index(line, "[warn] install.commit \342\200\224 ") == 1 && index(line, ", but the checkout at ") > 0 && index(line, " (fix: ") > 0 }
 		function doctor_line(line, why,    k, p, i, j, a, m, items, rest, e, done) { # the Summary\047s, as c6aa4485 writes it
 			k = split(substr(line, 11), p, " \302\267 "); e = 0; done = 0
@@ -7391,8 +7400,9 @@ older_report_rewrite() { # MODE
 		}
 		# the Summary doctor line\047s heartbeat warns whose Doctor line says deletions held, out of its unexpected
 		# list and into the current renderer\047s not-judged part for a Loop line never read, before unexpected (C1109\047s
-		# words, a stopped copy\047s: no idle tail), the counts fixed as stop_bucket fixes them
-		function hb_move(line,    k, p, i, j, a, m, items, moved, nm, out, put) {
+		# words, a stopped copy\047s: no idle tail), the counts fixed as stop_bucket fixes them; its bracket words are
+		# the caller\047s: nsw for a spent budget, "it did not finish in time" for a cut status (B13 round 37 C1221, C1223)
+		function hb_move(line, why,    k, p, i, j, a, m, items, moved, nm, out, put) {
 			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
 			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
 				m = split(substr(p[i], index(p[i], ": ") + 2), a, ", "); items = ""
@@ -7406,7 +7416,7 @@ older_report_rewrite() { # MODE
 			if (!nm) return line
 			out = "- doctor: " p[1]; put = 0
 			for (i = 2; i <= k; i++) {
-				if (!put && p[i] ~ /^unexpected [0-9]+/) { out = out " \302\267 not judged (the Loop line was not read: its NEXT was not started: the report\047s time budget was used up) " nm ": " moved; put = 1 }
+				if (!put && p[i] ~ /^unexpected [0-9]+/) { out = out " \302\267 not judged (the Loop line was not read: " why ") " nm ": " moved; put = 1 }
 				out = out " \302\267 " p[i]
 			}
 			return out
@@ -7420,6 +7430,11 @@ older_report_rewrite() { # MODE
 			if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
 			# a status the spent budget never started, and the heartbeat warns that hold deletions (C1108)
 			if (sec == "## Status" && $0 == "_This section failed: TimeoutError: the report\047s time budget is used up_") spentst = 1
+			# a status call_with_timeout cut, never an errno TimeoutError (B13 round 37 ruling 123, C1223)
+			if (sec == "## Status" && $0 ~ /^_This section failed: TimeoutError: did not finish within [0-9]+(\.[0-9]+)?s_$/) cutst = 1
+			# the first Environment line whose probe the spent budget skipped, in either form an older build
+			# wrote: a probe after it was skipped too, the budget only shrinking (C1224, C1225)
+			if (!envskip && sec == "## Environment" && index($0, " exited 124: skipped: the report\047s time budget is used up")) envskip = FNR
 			if (sec == "## Doctor" && $0 ~ /^\[warn\] heartbeat\./ && index($0, "deletions held")) { split($0, hw, " "); hbk["heartbeat." substr(hw[2], 11) " warn"] = 1 }
 			# the jobs whose line is a cut read at exit 124, for the Summary line before it (C916)
 			if (cp && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && bg_cut(substr($0, RLENGTH + 1)) != "") {
@@ -7474,6 +7489,16 @@ older_report_rewrite() { # MODE
 		# C910)
 		cp && sec == "## Summary" && index($0, "- **outcome: ") == 1 && (j = index($0, "(computed: no install.sh run")) { $0 = substr($0, 1, j + 20) substr($0, j + 24) }
 		cp && sec == "## Summary" && index($0, "- install.sh: no run during this attempt") == 1 { $0 = "- install.sh: no install run during this attempt" substr($0, 41) }
+		# an older render counted step 1\047s --list-folders runs as install runs: L of the first N runs the log
+		# holds, in _install_line\047s words, only when 0 < L <= N (B13 round 37 ruling 123, C1226)
+		cp && !det && !fence && sec == "## Summary" && match($0, /^- install\.sh: no install run during this attempt \([0-9]+ earlier in the install log\)$/) {
+			n = substr($0, 51) + 0; lr = 0
+			for (i = 1; i <= n && i <= length(ENVIRON["OR_RUNKINDS"]); i++) lr += (substr(ENVIRON["OR_RUNKINDS"], i, 1) == "L")
+			if (lr > 0 && lr <= n && n <= length(ENVIRON["OR_RUNKINDS"])) {
+				if (n > lr) $0 = "- install.sh: no install run during this attempt (" (n - lr) " earlier in the install log, +" lr " --list-folders)"
+				else $0 = "- install.sh: no install run during this attempt (" lr " --list-folders run" (lr == 1 ? "" : "s") " earlier in the install log)"
+			}
+		}
 		# and the Loop line\047s bracket, plain or with its damage clause after (B13 round 36 C1107)
 		cp && sec == "## Summary" && index($0, "- Loop: ") == 1 && (j = index($0, " when this report was written; this attempt ran no install.sh")) { $0 = substr($0, 1, j + 30) "this attempt made no install run" substr($0, j + 61) }
 		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: no install(\.sh)? run with a first-sync step \(install\.log\)/ { j = nofs_at($0); $0 = substr($0, 1, j - 1) "no install run during this attempt (install.log)" substr($0, j + NOFS) }
@@ -7483,15 +7508,28 @@ older_report_rewrite() { # MODE
 		# exit, and the old line tells neither apart nor holds the seconds (B13 round 36 C1022, C905, ruling 107)
 		cp && !det && !fence && ((sec == "## Summary" && $0 ~ /^- (doctor|evidence|install source|background sync): /) || (sec == "## Doctor" && $0 ~ /^(Not run|Cut off): /)) { $0 = idle_off($0) }
 		cp && !det && !fence && sec == "## Summary" && index($0, "- background sync: ") == 1 { $0 = bg_line($0) }
+		cp && envskip && envskip < FNR && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" {
+			$0 = "- Xcode Command Line Tools: not measured (the report\047s time limit was used up before xcode-select -p ran)"
+		}
 		cp && !det && !fence && sec == "## Environment" && $0 == "- Xcode Command Line Tools: not installed (xcode-select -p exited 124)" { $0 = "- Xcode Command Line Tools: not measured (xcode-select -p did not answer in time)" }
 		cp && !det && !fence && sec == "## Background runs" && match($0, /^- [^ ]+\.(poll|reconcile): /) && (j = bg_cut(substr($0, RLENGTH + 1))) != "" {
 			$0 = substr($0, 1, RLENGTH) "not measured (launchctl print did not answer in time; plist " j ")"
 		}
 		cp && !det && !fence && sec == "## Environment" { $0 = env_spent($0) }
 		cp && spentst && !det && !fence && sec == "## Environment" && index($0, "- secret scan: ") == 1 { $0 = gl_one($0) }
+		cp && envskip && envskip < FNR && !det && !fence && sec == "## Environment" && index($0, "- secret scan: ") == 1 && (j = index($0, "gitleaks (version unknown; ")) {
+			$0 = substr($0, 1, j - 1) "gitleaks (version not measured, the report\047s time limit was used up before gitleaks version ran; " substr($0, j + 27)
+		}
 		cp && spentst && !det && !fence && sec == "## Status" && $0 == "_This section failed: TimeoutError: the report\047s time budget is used up_" { $0 = "Not run: the report\047s time budget was used up before status started." }
 		cp && spentst && !det && !fence && sec == "## Summary" && $0 == "- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)" {
 			$0 = "- Loop: not read (status not started: the report\047s time budget was used up); NEXT: not read (not started: the report\047s time budget was used up)"
+			loopspent = 1
+		}
+		cp && cutst && !spentst && !det && !fence && sec == "## Status" && match($0, /^_This section failed: TimeoutError: did not finish within [0-9]+(\.[0-9]+)?s_$/) {
+			$0 = "Cut off: the status call did not finish within " sprintf("%.1f", substr($0, 59, length($0) - 60) + 0) "s, the limit the report gives it."
+		}
+		cp && cutst && !spentst && !det && !fence && sec == "## Summary" && $0 == "- Loop: unknown (no status loop line); NEXT: not read (it did not finish in time)" {
+			$0 = "- Loop: not read (status did not finish in time); NEXT: not read (it did not finish in time)"
 		}
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
@@ -7533,7 +7571,17 @@ older_report_rewrite() { # MODE
 		}
 		c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0, cp ? w : w1) }
 		s1note != "" && sec == "## Summary" && index($0, "- doctor: ") == 1 && nmv { $0 = stop_bucket($0) }
-		cp && spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0) }
+		# b781e539 wrote the bracket with no subject: its words are this checkout\047s under cp alone (C1221)
+		cp && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 && (j = index($0, "(the Loop line was not read: not started: ")) {
+			$0 = substr($0, 1, j + 28) "its NEXT was " substr($0, j + 29)
+		}
+		# a Loop line this pass rewrote as not started: the doctor bracket that said its read did not finish
+		# says so too (C1222)
+		cp && spentst && loopspent && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 && (j = index($0, "(the Loop line was not read: it did not finish in time")) {
+			$0 = substr($0, 1, j + 28) nsw substr($0, j + 54)
+		}
+		cp && spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0, nsw) }
+		cp && cutst && !spentst && !det && !fence && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = hb_move($0, "it did not finish in time") }
 		# the stop of step 1 (B13 round 16 T11): its cause, as a renderer from N31 on writes it, and the turns
 		# v10\047s "ran (step 1))" reads "ran, in step 1" since 92b5fd13 (B13 round 17 U81)
 		s1cause != "" && sec == "## Summary" && index($0, "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran") == 1 && !index($0, "; it stopped: ") && ends($0, ")") {
@@ -7610,7 +7658,7 @@ older_report_rewrite() { # MODE
 		cp && sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
 		cp && sec == "## Doctor" && (j = index($0, heldr33)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldr33)) }
 		cp && (index($0, "Send it: ") == 1 || index($0, u) == 1) { next }
-		cp && (index($0, u) > 0 || index($0, "bring back: ") == 1) { if (shown++) next; $0 = gone }
+		cp && (index($0, u) > 0 || index($0, "bring back: ") == 1 || index($0, el) == 1) { if (shown++) next; $0 = gone }
 		cp && (j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
 		sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
 		tn { table() }
@@ -7969,9 +8017,11 @@ on_exit() {
 			suffix=" [setup report: $REPORT_PATH]"
 			if [ "$stopped" -eq 2 ]; then
 				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
+				[ "$REPORT_BY" != agentsync ] || rendered_by_note || warn "could not name the build that rendered $REPORT_PATH" # B13 round 37 C1215
 				NEXT_MSG="${NEXT_MSG:+$NEXT_MSG; }the last setup attempt was a copy of the prompt this installer stopped at step 1; its report is not to be sent, so paste the current prompt into a new session to report a setup"
 			elif [ "$stopped" -eq 1 ]; then
 				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
+				[ "$REPORT_BY" != agentsync ] || rendered_by_note || warn "could not name the build that rendered $REPORT_PATH" # B13 round 37 C1215
 				# What to do instead is the fix the stop logged: copy the prompt again, or, for a copy newer
 				# than a checkout that does not follow main, point the checkout there (B13 round 5 F17, F18).
 				# Only a fix this installer writes for a newer copy is repeated; any other text in that column

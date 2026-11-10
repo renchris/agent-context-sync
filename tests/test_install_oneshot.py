@@ -17205,6 +17205,37 @@ def test_a_missing_source_local_folder_stays_out_of_every_render_c1299_c1250(
         assert "is not an existing folder" in text, path.name
 
 
+@pytest.mark.parametrize("same", [False, True])
+def test_a_stopped_copy_names_the_build_that_rendered_it_c1215(
+    env: dict[str, str], tmp_path: Path, same: bool
+) -> None:
+    """B13 round 37 ruling 123 (C1215): C1103's rendered-by line ran only on the branch that was not
+    stopped, and stopped_report_note writes the stopped copy again from the render, so a stopped copy the
+    older installed agentsync rendered never said whose words it used. Both stopped branches run the note
+    after stopped_report_note: one line after the agentsync line, once over two runs, none for this build's
+    own render, and the NEXT is unchanged."""
+    head = _checkout_head()[:12]
+    e, _old = _rendered_by_home(env, tmp_path, head if same else "0123456789abcdef0123456789abcdef01234567")
+    assert install_sh(e, "--log-start", "x").returncode == 2
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    for _ in range(2):
+        cp = install_sh(e, "--report-only")
+        assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout + cp.stderr
+    lines = side.read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("> This report is of an attempt"), lines[0]
+    rendered = [ln for ln in lines if ln.startswith("- rendered by: ")]
+    if same:
+        assert rendered == [], rendered
+    else:
+        assert rendered == [
+            "- rendered by: the installed agentsync, installed from 0123456789ab; this checkout is at "
+            f"{head}, so this report uses that build's words (step 2 reinstalls agentsync)"
+        ], lines
+        at = next(i for i, ln in enumerate(lines) if ln.startswith("- agentsync: "))
+        assert lines.index(rendered[0]) == at + 1, lines
+    assert "rendered by" not in last_line(cp), "the NEXT is unchanged"
+
+
 def test_the_config_step_prints_progress_lines_while_it_runs_c1013(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
@@ -20421,20 +20452,163 @@ def test_a_stopped_copy_of_a_spent_budget_an_older_build_rendered_takes_todays_w
         "ran)",
         f"- uv: not measured ({_SPENT_LIMIT} ~/.local/bin/uv --version ran)",
         "- pandoc: ~/.local/bin/pandoc --version exited 124: timed out after 3.0s",
-        "- secret scan: builtin patterns + gitleaks (version unknown; ~/.local/bin/gitleaks; shell and "
-        "background runs); last re-screen: never",
+        # B13 round 37 ruling 123 (C1224, C1225): sw_vers and profiles were skipped before them, so the
+        # Xcode and gitleaks reads were skipped too, the budget only shrinking
+        f"- secret scan: builtin patterns + gitleaks (version not measured, {_SPENT_LIMIT} gitleaks version "
+        "ran; ~/.local/bin/gitleaks; shell and background runs); last re-screen: never",
         "Not run: the report's time budget was used up before status started.",
-        "- Xcode Command Line Tools: "
-        + (
-            "not measured (xcode-select -p did not answer in time)"
-            if renderer == "old"
-            else f"not measured ({_SPENT_LIMIT} xcode-select -p ran)"
-        ),
+        f"- Xcode Command Line Tools: not measured ({_SPENT_LIMIT} xcode-select -p ran)",
     ]
     assert [w for w in want if w not in lines] == [], lines
     for gone in ("skipped:", "TimeoutError", "no status loop line", "(version unknown) (", "unexpected 2"):
         assert not [ln for ln in lines if gone in ln], (gone, lines)
     assert _HB_HELD in lines, "the Doctor line itself is kept"
+
+
+def test_a_spent_copy_whose_earlier_probes_ran_keeps_its_xcode_and_gitleaks_words_c1224_c1225(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 37 ruling 123 (C1224, C1225; makes worse True for a spentst key): a spent Status proves
+    nothing about the Environment, which ran first, so an Xcode `exited 124` or a gitleaks `version unknown`
+    there may be a real time-out or an empty answer. Only a probe before them that the budget skipped (a
+    `skipped:` line above) lets them read as skipped; with sw_vers and profiles measured they keep their
+    words."""
+    copy = _spent_copy("old")
+    copy[9] = "- macOS: 15.1 (24B83)"
+    copy[10] = "- MDM enrollment (`profiles status -type enrollment`): not enrolled"
+    copy[12] = "- uv: ~/.local/bin/uv 0.9.0"
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+    assert "- Xcode Command Line Tools: not measured (xcode-select -p did not answer in time)" in lines, lines
+    assert (
+        "- secret scan: builtin patterns + gitleaks (version unknown; ~/.local/bin/gitleaks; shell and "
+        "background runs); last re-screen: never"
+    ) in lines, lines
+
+
+def test_the_doctor_brackets_older_builds_wrote_take_todays_words_c1221_c1222(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 37 ruling 123 (C1221, C1222): b781e539 wrote the Loop-line bracket with no subject, `(the
+    Loop line was not read: not started: ...)`, in a copy whose status was read, and a 4e0e8604 spent copy's
+    doctor line said the Loop read `did not finish in time` while the rewritten Loop line said status never
+    started. The first is rewritten under cp alone, the second only once its Loop line was rewritten, both
+    in one string; a copy whose Status was read keeps a real time-out's words."""
+    spent = "not started: the report's time budget was used up"
+    b781 = [
+        "# agentsync setup report",
+        "",
+        "## Summary",
+        "",
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} not judged (the Loop line was not read: {spent}) 1: "
+        f"heartbeat.<folder-1> warn {_DOT} unexpected 0",
+        "",
+        "## Status",
+        "",
+        "- <folder-1>: 12 files, last walk ok",
+        "",
+    ]
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(b781)).splitlines()
+    want = (
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} not judged (the Loop line was not read: its NEXT was "
+        f"{spent}) 1: heartbeat.<folder-1> warn {_DOT} unexpected 0"
+    )
+    assert want in lines, lines
+    for status, kept in ((_STATUS_SPENT, False), ("- <folder-1>: 12 files, last walk ok", True)):
+        copy = _spent_copy("4e0e", status=status)
+        copy[5] = (
+            f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} not judged (the Loop line was not read: it did not "
+            f"finish in time) 1: heartbeat.<folder-1> warn {_DOT} unexpected 0"
+        )
+        lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+        if kept:
+            assert copy[5] in lines, lines
+        else:
+            assert want in lines, lines
+
+
+@pytest.mark.parametrize("errno", [False, True])
+def test_a_stopped_copy_whose_status_was_cut_takes_todays_words_c1223(
+    env: dict[str, str], tmp_path: Path, errno: bool
+) -> None:
+    """B13 round 37 ruling 123 (C1223): an ed901cd3 copy cut after status started kept `TimeoutError: did not
+    finish within 20.0s`, `Loop: unknown` and a heartbeat warn that holds deletions under unexpected, since
+    the C1108 rules key on the spent-budget form alone. A cut status's own flag rewrites the Status and Loop
+    lines in the current renderer's words and moves the warn into the not-judged part with `it did not
+    finish in time`; an errno TimeoutError, a failure and no cut, keeps every line."""
+    status = (
+        "_This section failed: TimeoutError: [Errno 60] Operation timed out_"
+        if errno
+        else "_This section failed: TimeoutError: did not finish within 20.0s_"
+    )
+    copy = _spent_copy("old", status=status)
+    copy[9] = "- macOS: 15.1 (24B83)"
+    copy[10] = "- MDM enrollment (`profiles status -type enrollment`): not enrolled"
+    copy[12] = "- uv: ~/.local/bin/uv 0.9.0"
+    lines = _stopped_copy_of(env, tmp_path, "\n".join(copy)).splitlines()
+    if errno:
+        for kept in (status, copy[4], copy[5]):
+            assert kept in lines, (kept, lines)
+        return
+    assert "Cut off: the status call did not finish within 20.0s, the limit the report gives it." in lines
+    assert (
+        "- Loop: not read (status did not finish in time); NEXT: not read (it did not finish in time)"
+        in lines
+    )
+    assert (
+        f"- doctor: 0 FAIL, 2 warn (54 checks) {_DOT} expected 1: logs warn {_DOT} not judged (the Loop line "
+        f"was not read: it did not finish in time) 1: heartbeat.<folder-1> warn {_DOT} unexpected 1: tcc warn"
+    ) in lines, lines
+
+
+def _install_log_runs(env: dict[str, str], kinds: str) -> None:
+    """An install.log of one run for each letter of ``kinds``: L a --list-folders run, I an install run, A a
+    --list-folders run with no step line (one before fb9305f01, or one killed), which the renderer counts as
+    an install run too."""
+    log = Path(env["HOME"]) / "agent-context" / "setup" / "install.log"
+    log.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    rows = []
+    for n, kind in enumerate(kinds, 1):
+        at = f"2026-11-10T09:0{n}:00Z"
+        args = "--list-folders" if kind == "L" else "--source-local x"
+        step = "list-folders" if kind == "L" else "install"
+        args = "--list-folders" if kind == "A" else args
+        rows.append(f"{at} run=2026111009{n:02d}00Z-{n} start install.sh args={args} commit=- tree=-\n")
+        if kind != "A":
+            rows.append(f"{at} run=2026111009{n:02d}00Z-{n} step={step} done rc=0\n")
+    log.write_text("".join(rows), encoding="utf-8")
+    log.chmod(0o600)
+
+
+@pytest.mark.parametrize(
+    ("kinds", "said", "want"),
+    [
+        ("LI", "2 earlier in the install log", "1 earlier in the install log, +1 --list-folders"),
+        ("L", "1 earlier in the install log", "1 --list-folders run earlier in the install log"),
+        ("II", "2 earlier in the install log", "2 earlier in the install log"),
+        ("L", "3 earlier in the install log", "3 earlier in the install log"),
+        ("AI", "2 earlier in the install log", "2 earlier in the install log"),  # the renderer's own count
+    ],
+)
+def test_a_stopped_copy_counts_step_1s_list_runs_apart_from_install_runs_c1226(
+    env: dict[str, str], tmp_path: Path, kinds: str, said: str, want: str
+) -> None:
+    """B13 round 37 ruling 123 (C1226; C928 left over): an older render's stopped copy counted step 1's
+    --list-folders runs as install runs. The rewrite counts the list runs among the first N runs install.log
+    holds, as setup_report._install_line words them, only when 0 < L <= N: a log of install runs, or one
+    with fewer runs than the copy names, leaves the line as it is."""
+    _install_log_runs(env, kinds)
+    report = "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            f"- install.sh: no run during this attempt ({said})",
+            "",
+        ]
+    )
+    lines = _stopped_copy_of(env, tmp_path, report).splitlines()
+    assert f"- install.sh: no install run during this attempt ({want})" in lines, lines
 
 
 def test_a_current_or_uncut_copy_keeps_its_spent_budget_words_c1108(
@@ -20913,19 +21087,19 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     gone = "(earlier runs' bring-back and issue link lines are left out of this report)"
     lines = side.read_text().splitlines()
     assert lines.count(gone) == 1, side.read_text()
-    # B13 round 36 C1112: the report quotes the earlier link as one fixed line with no URL, which the copy
-    # keeps; it invites nothing, so the line above the NEXT still does not say otherwise
-    assert lines[lines.index(gone) + 1 : lines.index(gone) + 2] == [setup_report.EARLIER_LINK], (
-        side.read_text()
-    )
-    assert lines[lines.index(gone) + 2].startswith("NEXT: stop: "), (
+    # B13 round 37 ruling 123 (C1248): the report quotes the earlier link as one fixed line with no URL
+    # (C1112), which says links were left out and points to a last line the copy does not have: it is left
+    # out with the bring-back line and counted, so the line after the gone note is the earlier run's NEXT
+    assert setup_report.EARLIER_LINK not in side.read_text(), side.read_text()
+    assert lines[lines.index(gone) + 1].startswith("NEXT: stop: "), (
         "the earlier run's NEXT is kept, and the line above it does not say otherwise (B13 round 6 G14)"
     )
     head, fenced = _embed(side)
     found = re.search(
         r"the last (\d+) lines? of \S+ \(.*; (\d+) of them left out: the bring-back and issue ", head
     )
-    assert found is not None and int(found[1]) == len(fenced) - 1 + int(found[2]) == 5, (head, fenced)
+    assert found is not None and int(found[2]) == 2, (head, fenced)
+    assert int(found[1]) == len(fenced) - 1 + int(found[2]) == 5, (head, fenced)
     _backdate(real_env, 11)
     assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     real = install_sh(real_env, "--report-only")
