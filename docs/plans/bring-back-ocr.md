@@ -2529,6 +2529,44 @@ cluster), B 13 (C1026 first), E 6, D 17 (C1072's v35 commit, then C1068 and C107
 for round 37 (C1008 with its five, C1006, C1007, C1010, C1111, C1114, C1115, C1124) and its own housekeeping (C1052
 with C1055, C1053, C1057, C1059, C1060).
 
+### B13 round 36 landed (2026-11-09)
+
+All five lanes landed, and the prompt is v35 (`553a4724`, C1072, lane D's one commit). Notes `lanes/r36-<lane>.md`,
+lead notes `round29/lead-notes.md`. All 86 confirmed items are built: 67 in the lanes' 55 commits (`68ec1ff3..2d1e0ec9`
+with the CLI conventions wave's commits between them; every landed tip's CI green, read back by the lead) and the
+lead's 19. Two of the 67 are docs lines, as their verifiers' corrected fixes said: C1051 (scheduled compaction already
+clears the pre-C934 bodies) and C1118 (a looser strip would class a NUL-only file as empty). Of the lead's 19, the
+kit items are in round 37's script (`round37/tools/edit.py`, `harvest-lead.txt`, kit copies in `round37/tools/kit/`):
+a re-fired rehearsal slot gets a harness-chosen attempt number in its root name, earlier roots stay read-only, and no
+slot picks its own name (C1008 with C1005, C1009, C1011, C1012, C1014); limit-recover's half of C1008 landed in
+claude-infrastructure's `commands/limit-recover.md` (a slot whose root exists and report is missing is re-fired with
+its attempt raised). C1052 closed backlog row `17c8d7306ae8`; C1053 removed the two cold class-B
+worktrees; C1057 and C1060 need no change (C1060 stays the operator's allow rule). Decisions `b6a6b8eabfd6` and
+`ef4a5985f497` kept their courses.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `78d70c72..022ca877`, 6 commits |
+| RB | `fad8817a..11321664`, 12 commits (with RA's `55dfc867` under them) |
+| RA | `762ac312..4b5ff40f` (6), `2d1e0ec9` (ruling 117's gates) |
+| B | `14648432..f31f89ff` (12), `ea9d1e5b` (C1030) |
+| D | `ded08999..0c6b1207`, 17 commits (v35 at `553a4724`) |
+
+Learnings: from the fire (2026-11-08 09:4x) to the last land took about 32 hours, three times round 35's. Three of
+five lane fires were first refused by the machine's capacity gate and went out on a retry loop. The lanes landed under
+`/tmp/b13-r36-land.lock` while the CLI conventions wave landed under the repo's default lock, so each wave's push moved
+trunk under the other's running gate: lane E gated green three times and rebased each time, and after 7.5 hours no
+lane was on trunk. From 2026-11-08 17:5x the lanes landed with plain `scripts/ship-land.sh`, one lock for both waves,
+and every land after that pushed on its first green gate. While another wave lands on main, lanes take the default
+lock. Each gate took 1 to 2.5 hours at a load of 70 to 170 on 10 cores, and GitHub's API rate limit cut two read-backs
+(ship-land exit 9, read by hand). next2's weekly limit moved the lead to next on 2026-11-08; the lanes ran on.
+
+Round 37: the round 36 workflow (`round36/round36-workflow.js` through `round37/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's, backlog `8ed9dae0fbc0`)
+with the harvest list in `round37/tools/harvest-lead.txt`, on this section's landed tip, BASE `68ec1ff3`, ids C1201
+and up, prompt v35, outputs `round37/`. The stop rule names Codex and Gemini: a clean round without Gemini goes to the
+operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
