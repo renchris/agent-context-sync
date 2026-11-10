@@ -6627,13 +6627,15 @@ _AGENTSYNC_NOTE_WORDS = {
     "waited-for-a-background-sync": "waited for another sync to end",
     "waited-for-an-unrecorded-holder": "waited for the sync lock to be free",  # B13 round 20 X43
     "current": "already current, not reinstalled",  # B13 round 12 N33: "agentsync 0s, current" read as code
+    "stopped-after-install": "reinstalled, then the run was stopped by a signal",  # B13 round 37 C1252
 }
 """install.log's agentsync-step note -> the report's words (B13 round 9 K35): the note does not say who
 started the sync step 2 waited for (H33; install.sh's wait line names it only when the holder's sidecar says,
 B13 round 11 M43), so "background" claimed one. The token stays, in install.log and for its readers. A lock
 held with an empty body need not be held by a sync at all (``ops.lock.EMPTY_BODY_HOLDER``: install.sh's own
 lockf, a status or doctor check, a cycle starting), so its note, ``waited-for-an-unrecorded-holder``, names
-the lock and no sync (B13 round 20 X43)."""
+the lock and no sync (B13 round 20 X43). ``stopped-after-install`` is install.sh's on_exit note when a SIGTERM
+was acted on after the reinstall's uv run ended 0 (round 36 C1119), worded since B13 round 37 C1252."""
 
 
 def _agentsync_note(note: str) -> str:

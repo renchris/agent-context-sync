@@ -40021,6 +40021,13 @@ makes `_sync/QUARANTINE.tsv` follow the same page (§16.242). Test:
 `test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101` (rewritten: a `.png` row with an
 OCR-down page and a `.gif` with a `no converter` page, the probe ready and then gone).
 
+**The stopped-after-install note is words** (C1252). Round 36's C1119 has install.sh's on_exit log `step=agentsync
+... result=done note=stopped-after-install` when a SIGTERM was acted on after the reinstall's uv run ended 0, and
+`_agentsync_note` printed the token as it is, `done (stopped-after-install)` in the step table and `agentsync Ns,
+stopped-after-install` in the Summary, the raw form B13 round 9 K35 replaced. `_AGENTSYNC_NOTE_WORDS` maps it to
+`reinstalled, then the run was stopped by a signal`; install.log keeps the token. Test:
+`test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 **Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves

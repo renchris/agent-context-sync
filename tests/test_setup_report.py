@@ -5411,6 +5411,23 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
     assert "| done (waited for another sync to end) |" in table and "background" not in table, table
     assert re.search(r"\| done \(created\) +\|", table), table
     assert setup_report._agentsync_note("some-future-note") == "some-future-note"
+    # B13 round 37 C1252: round 36 C1119's on_exit note, in words in the table and the Summary
+    words = "reinstalled, then the run was stopped by a signal"
+    assert setup_report._agentsync_note("stopped-after-install") == words
+    signal_log = tmp_path / "install-signal.log"
+    signal_log.write_text(
+        f"2026-10-11T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout source=- args=\n"
+        f"2026-10-11T10:00:41Z run={run} step=agentsync seconds=41 rc=0 result=done "
+        "note=stopped-after-install\n"
+        f"2026-10-11T10:00:41Z run={run} end rc=143 seconds=41\n",
+        encoding="utf-8",
+    )
+    signalled = setup_report.read_install_runs(signal_log)
+    shown = "\n".join(setup_report._step_table(list(signalled[-1].steps)))
+    assert f"| done ({words}) |" in shown and "stopped-after-install" not in shown, shown
+    r.install_runs = signalled
+    assert f"agentsync 41s, {words}" in setup_report._install_line(r, signalled, scoped=False)
+    r.install_runs = runs
     # B13 round 10 L35: the two notes that carry a number read as words too, in the table and the Summary
     for token, words in (
         (
