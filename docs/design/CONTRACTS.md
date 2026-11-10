@@ -40107,6 +40107,13 @@ check's sed was read from the fixture's folder and the check reported all nine f
 `test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost` (C907's example kept beside the new clause)
 and `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`.
 
+**K59 gives each escape step 1 shows** (C1281; `docs/deploy/setup-feedback.md`; docs only). The guide's K59 row said
+step 1 shows a folder name's newline as `\n` and every other control character as `?`, but list_shown's escape
+(install.sh's `LIST_ESC_AWK`) shows a tab as `\t` and a carriage return as `\r` too, so a reader told only `?` would
+take a `\t` row for a real backslash and a t. K59 now says a newline, tab or carriage return shows as `\n`, `\t` or
+`\r` and other control characters as `?`, and its look-alike can hold any of the four. Test:
+`test_k59_gives_each_escape_step_1_shows_c1281`, which reads the three escapes and the `?` arm from `LIST_ESC_AWK`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

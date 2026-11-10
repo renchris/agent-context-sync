@@ -3761,6 +3761,25 @@ def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
     assert "rename it in its sync app, then run step 1 again" in script
 
 
+def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
+    """B13 round 37 C1281: K59 said step 1 shows a newline as `\\n` and every other control character as `?`,
+    but list_shown's escape (install.sh's LIST_ESC_AWK) shows a tab as `\\t` and a carriage return as `\\r`
+    too, so a reader told only `?` would take a `\\t` row for a real backslash. K59 names all three, and the
+    look-alike can hold any of them. The forms are read from the installer's own escape."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    awk = script.split("LIST_ESC_AWK='function esc(", 1)[1].split("function escd(", 1)[0]
+    shows = dict(re.findall(r'if \(c == "(\\036|\\t|\\r)"\) o = o "\\\\(\w)"', awk))
+    assert shows == {"\\036": "n", "\\t": "t", "\\r": "r"}
+    assert 'else if (c ~ /[[:cntrl:]]/) o = o "?"' in awk
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| K59 |")]
+    assert (
+        "a newline, tab or carriage return as `\\n`, `\\t` or `\\r` and other control characters as `?`"
+        " (B13 round 37 C1281)"
+    ) in row
+    assert "(a real `\\n`, `\\t`, `\\r` or `?` in another name)" in row
+    assert "a newline as `\\n` and other control characters as `?`" not in row
+
+
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
     tool ran unattended, the folder question came back unanswered, and step 1 said to stop and wait: a
