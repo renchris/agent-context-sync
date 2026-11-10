@@ -55,8 +55,10 @@
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
 #                           status names its fix. A folder whose name holds a control character is shown
 #                           escaped (\n, \t, \r, else ?) after "[name holds a control character: rename it
-#                           to sync it] "; --source-local refuses such a row, and a folder it cannot show
-#                           apart from another, until the folder is renamed
+#                           to sync it] " ("[name holds a control character] " before a synced one), and a
+#                           folder whose name reads as such a row's after "[name reads as another folder
+#                           there: rename one of them to sync it] "; --source-local refuses each such row,
+#                           and a folder it cannot show apart from another, until the folder is renamed
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -1647,6 +1649,7 @@ EXITING=0      # 1 once on_exit runs: a signal then only sets SIG_RC (B13 round 
 SIG_RC=""      # the exit code of a signal that came while on_exit ran (129, 130 or 143)
 LAST_ERROR=""  # the last error message, for the shell report
 USAGE_ERROR_REPORTED="" # the report's words for the next usage_error, when stderr's name a private folder
+USAGE_NEXT=""           # the next usage_error's NEXT, when the fix is not the corrected command (B13 round 37 C1214)
 BACK_WHY=""    # why write_bring_back wrote no bring-back.md, for its warning (B13 round 14 Q19)
 BACK_UNREAD=0  # the kept patches write_bring_back could not read, for the NEXT (B13 round 14 Q20, Q29)
 BACK_BRANCHES=0 # the local-work branches whose commits bring-back.md does not carry, for the NEXT (B13 round 21 Y23)
@@ -1676,7 +1679,7 @@ usage_error() {
 	LAST_ERROR="usage error: ${USAGE_ERROR_REPORTED:-$*}"
 	if [ "$PARSED" -eq 1 ]; then
 		log_start
-		NEXT_MSG="fix the usage error above (see $SELF --help), then run the corrected command"
+		NEXT_MSG="${USAGE_NEXT:-fix the usage error above (see $SELF --help), then run the corrected command}"
 	fi
 	exit 2
 }
@@ -2489,7 +2492,7 @@ listed_folder_lines() {
 	while IFS= read -r line; do
 		case "$line" in "$cs"/*/*) printf '%s\n' "$line" ;; esac
 	done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
-		list { sub(/^\[name holds a control character: rename it to sync it\] /, "")
+		list { sub(/^\[name (holds a control character(: rename it to sync it)?|reads as another folder there: rename one of them to sync it)\] /, "")
 			sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
 }
 # Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
@@ -8259,6 +8262,13 @@ CONTAINS_MARK="[contains a synced folder]"
 # A row list_shown printed with a control character escaped opens with this mark, before any other: two
 # folders can show as one escaped text, so such a row is never a folder to paste (B13 round 36 C1001, C1072)
 ESCAPED_MARK="[name holds a control character: rename it to sync it]"
+# A row with no control character whose name is another folder's escaped form there (a literal \n or ?, beside a
+# folder named with a newline or another control character) opens with this mark in the same slot, so both rows
+# of such a pair are marked and neither is choosable (B13 round 37 ruling 121, C1242, C1308, C1201, C1213, C1229)
+TWIN_MARK="[name reads as another folder there: rename one of them to sync it]"
+# An escaped row the config already keeps ([synced] or [inside a synced folder]) opens with this one instead,
+# ESCAPED_MARK's opening words with no rename, since that folder already syncs (C1202, C1236)
+ESCAPED_KEPT_MARK="[name holds a control character]"
 # The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
 # $1: prints their number, then how many of them the file $2 (one folder path per line) does not hold, then
 # each of those as "$SYNCED_MARK <path>" (the path the config has, sorted), then each line of the file, with
@@ -8965,7 +8975,9 @@ sys.stdout.write("".join(w + "\n" for w in words))
 # opens with $ESCAPED_MARK and a space, so it equals no other row, a raw backslash-n or ? twin's included (a row
 # with no control character prints byte for byte as before), and --source-local refuses it pasted, or a folder
 # whose escaped form is another folder's in the same parent, either way round (B13 round 36 C1001, C1116, C1072,
-# C1002). list_plain escapes the same way with no mark, for the comparison and for a path in an error.
+# C1002). list_plain escapes the same way with no mark, for the comparison and for a path in an error. Since B13
+# round 37 ruling 121 the plain member of such a pair opens with $TWIN_MARK (list_twins finds it over its whole
+# parent), a kept escaped row with $ESCAPED_KEPT_MARK, and a plain row with neither prints byte for byte as before.
 LIST_RS=$'\036'
 list_real() { # ROW: sets LIST_REAL
 	local nl=$'\n'
@@ -8988,16 +9000,51 @@ LIST_ESC_AWK='function esc(s,    o, i, c) {
 	return o
 }
 function escd(s) { return s ~ /[[:cntrl:]]|\302[\200-\237]|\342\200[\250\251]/ }
-function shown(s) { return escd(s) ? mark esc(s) : s }
+function kept(s) { return (synced != "" && index(s, synced) == 1) || (inside != "" && index(s, inside) == 1) }
+function bare(s) {
+	if (synced != "" && index(s, synced) == 1) return substr(s, length(synced) + 1)
+	if (inside != "" && index(s, inside) == 1) return substr(s, length(inside) + 1)
+	if (contains != "" && index(s, contains) == 1) return substr(s, length(contains) + 1)
+	return s
+}
+function shown(s) {
+	if (escd(s)) return ((keptmark != "" && kept(s)) ? keptmark : mark) esc(s)
+	return (twinmark != "" && !kept(s) && (bare(s) in twin)) ? twinmark s : s
+}
 '
-list_shown() { # rows on stdin
-	LC_ALL=C awk -v mark="$ESCAPED_MARK " "$LIST_ESC_AWK"'{ print shown($0) }'
+list_shown() { # rows on stdin [TWINS: a file of the rows list_twins found]
+	LC_ALL=C awk -v mark="$ESCAPED_MARK " -v keptmark="$ESCAPED_KEPT_MARK " -v twinmark="$TWIN_MARK " \
+		-v synced="$SYNCED_MARK " -v inside="$INSIDE_MARK " -v contains="$CONTAINS_MARK " -v tf="${1:-}" \
+		"$LIST_ESC_AWK"'BEGIN { if (tf != "") while ((getline l < tf) > 0) twin[l] = 1 } { print shown($0) }'
+}
+# The rows on stdin (marks allowed) whose bare path has no control character but holds a \ or a ?, and has a twin
+# by escaped_twin's own dir test over its whole parent, the test step 2 runs, never over the listed rows alone: the
+# plain rows list_shown marks $TWIN_MARK (B13 round 37 ruling 121, C1229, C1242). Only such a name lists its parent.
+list_twins() {
+	local p
+	while IFS= read -r p; do
+		! escaped_twin "$p" dir </dev/null || printf '%s\n' "$p"
+	done < <(LC_ALL=C awk -v synced="$SYNCED_MARK " -v inside="$INSIDE_MARK " -v contains="$CONTAINS_MARK " \
+		"$LIST_ESC_AWK"'{ s = bare($0); if (!escd(s) && (index(s, "\\") || index(s, "?"))) print s }')
 }
 list_plain() { # rows on stdin, escaped as list_shown escapes them, with no mark
 	LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'{ print shown($0) }'
 }
-list_esc() { # PATH
-	printf '%s\n' "$1" | list_shown
+list_esc() { # PATH: as its row shows, a twin's mark included
+	local t
+	t="$(printf '%s\n' "$1" | list_twins)"
+	printf '%s\n' "$1" | list_shown <(printf '%s\n' "$t")
+}
+list_esc_kept() { # PATH of a folder the config keeps: escaped as list_shown escapes it, with $ESCAPED_KEPT_MARK
+	printf '%s\n' "$1" | LC_ALL=C awk -v mark="$ESCAPED_KEPT_MARK " "$LIST_ESC_AWK"'{ print shown($0) }'
+}
+# 0 when the last part of the path $1 holds a character list_shown escapes
+name_escaped() {
+	local p="$1"
+	while [ "${#p}" -gt 1 ]; do # as escaped_twin cuts a trailing / or /. off (the lane's review)
+		case "$p" in */) p="${p%/}" ;; */.) p="${p%/.}" ;; *) break ;; esac
+	done
+	LIST_NAME="${p##*/}" LC_ALL=C awk "$LIST_ESC_AWK"'BEGIN { exit !escd(ENVIRON["LIST_NAME"]) }'
 }
 # A folder step 1 cannot show apart from another (B13 round 36 C1001, C1072, C1002): true when another folder
 # in the parent of the path $1 shows, once escaped as list_shown escapes it, as $1 itself does with $2 "dir" (a
@@ -9035,7 +9082,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list0"
@@ -9128,6 +9175,8 @@ list_folders() {
 						vpaths="${vpaths:+$vpaths; }$(list_esc "$line")"
 						list_real "$line"
 						vreal="$LIST_REAL" # the one folder's real path, for its command (B13 round 36 C1001)
+						# and as it shows with no mark, for the one clause that gives that command (C1251, C1276)
+						vplain="$(list_name "$vreal")"
 					done < <(sed -n '2,$p' "$tmp/vanished")
 					;;
 				esac
@@ -9188,7 +9237,11 @@ list_folders() {
 			fi
 			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first $first, then the list)"
 		fi
-		tail -n +3 "$tmp/marked" | list_shown
+		# not read while a provider was denied or is still asking, as the gone check below is not: its find over a
+		# parent could wait on the same prompt, past LIST_TOTAL (the lane's review)
+		: >"$tmp/twins"
+		[ -n "$denied$asking" ] || tail -n +3 "$tmp/marked" | list_twins >"$tmp/twins"
+		tail -n +3 "$tmp/marked" | list_shown "$tmp/twins"
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
 		# it: that folder gone with no other folder of its app beside it, or there and listing nothing, means the
 		# app is signed out (or not set up yet), so this list asks for the sign-in (B13 round 11 M4). A provider
@@ -9203,7 +9256,7 @@ list_folders() {
 			line="${line#"$SYNCED_MARK "}"
 			list_real "$line"
 			[ ! -e "$LIST_REAL" ] || continue
-			line="$(list_esc "$line")" # as the list shows it, for the NEXT
+			line="$(list_esc_kept "$line")" # as the list shows it, for the NEXT: a synced folder (C1202, C1236)
 			e="${LIST_REAL#"$cs/"}"
 			e="${e%%/*}"
 			rc=0
@@ -9237,7 +9290,9 @@ list_folders() {
 			esac
 		done <"$tmp/marked"
 	else
-		list_shown <"$tmp/shown"
+		: >"$tmp/twins"
+		[ -n "$denied$asking" ] || list_twins <"$tmp/shown" >"$tmp/twins"
+		list_shown "$tmp/twins" <"$tmp/shown"
 	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
 	rm -rf "$tmp"
@@ -9250,9 +9305,9 @@ list_folders() {
 	# A folder --source-local refuses, one step 1 cannot show apart from another, is added again only once it is
 	# renamed, so its words name the rename, never a command that stops (B13 round 36 C1001 review)
 	if [ "$vback" -eq 1 ] && escaped_twin "$vreal" dir; then
-		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again, once it is renamed in its sync app and step 1 is run again (step 1 cannot show its name apart from another folder there), or its [[source]] block is put back, as it was or retired"
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again, once it is renamed in its sync app and $SELF --list-folders is run again (step 1 cannot show its name apart from another folder there), or its [[source]] block is put back, as it was or retired"
 	elif [ "$vback" -eq 1 ]; then
-		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local $(shown_arg "$vreal")) or its [[source]] block is put back, as it was or retired"
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vplain. Step 2's status fails on it until it is added again (one --source-local $(shown_arg "$vreal")) or its [[source]] block is put back, as it was or retired"
 	elif [ "$vback" -gt 1 ]; then
 		vtail="; $vback folders in the list above are still mirrored but have no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on each until it is added again (one --source-local for each) or its [[source]] block is put back, as it was or retired"
 	fi
@@ -9773,16 +9828,36 @@ fi
 # is named for a rename, never taken in an escaped spelling (B13 round 36 C1001, C1072, C1002).
 # Each refusal's words reach the report with the name as <path> (B13 round 37 ruling 120, C1278): stderr names the
 # folder, but LAST_ERROR holds list_name's escaped spelling, which no redaction pair matches.
-twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, then run step 1 again"
-source_local_refused() { # SHOWN-NAME WORDS
+# Each refusal is worded for its own row and says to run --list-folders again, never step 1's whole command, which
+# opens a new attempt (B13 round 37 ruling 121, C1239, C1213, C1229, C1275); its NEXT leaves the rename to the
+# person and names no folder (C1214). A row step 1 marked $TWIN_MARK or $ESCAPED_KEPT_MARK is refused pasted too.
+again="then run $SELF --list-folders again"
+twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, $again"
+RENAME_NEXT="renaming that folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
+source_local_refused() { # SHOWN-NAME WORDS [NEXT]
 	USAGE_ERROR_REPORTED="--source-local <path>: $2"
+	USAGE_NEXT="${3:-$RENAME_NEXT}"
 	usage_error "--source-local $1: $2"
+}
+pasted_row() { # ROW MARK: the row's path, with its marks gone, as list_plain shows it
+	local g="${1#*"$2"}"
+	g="${g# }"
+	g="${g#"$SYNCED_MARK "}"
+	g="${g#"$INSIDE_MARK "}"
+	g="${g#"$CONTAINS_MARK "}"
+	list_name "$g"
 }
 for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	case "$f" in
 	*"$ESCAPED_MARK"*)
-		g="${f#*"$ESCAPED_MARK"}"
-		source_local_refused "$(list_name "${g# }")" "this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, then run step 1 again"
+		source_local_refused "$(pasted_row "$f" "$ESCAPED_MARK")" "this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, $again"
+		;;
+	*"$TWIN_MARK"*)
+		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: its name is step 1's escaped form of another folder there; rename one of them in its sync app, $again"
+		;;
+	*"$ESCAPED_KEPT_MARK"*)
+		source_local_refused "$(pasted_row "$f" "$ESCAPED_KEPT_MARK")" "this is a row step 1 marked $ESCAPED_KEPT_MARK: that folder already syncs, so paste nothing for it" \
+			"leave that --source-local out: the folder it names already syncs, and a re-run keeps it; then run the corrected command"
 		;;
 	esac
 	case "$f" in
@@ -9792,10 +9867,14 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	*) f="$PWD/$f" ;;
 	esac
 	if [ -d "$f" ]; then
-		! escaped_twin "$f" dir || source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
+		if escaped_twin "$f" dir && name_escaped "$f"; then
+			source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
+		elif escaped_twin "$f" dir; then
+			source_local_refused "$(list_name "$f")" "its name is step 1's escaped form of another folder there, whose name holds a control character; rename one of them in its sync app, $again"
+		fi
 		FOLDERS+=("$f")
 	elif escaped_twin "$f"; then
-		source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
+		source_local_refused "$(list_name "$f")" "this is how step 1 shows a folder whose name holds a control character, not a folder's own name; rename that folder in its sync app, $again"
 	else
 		BAD_FOLDERS+=("$f")
 	fi

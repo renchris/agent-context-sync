@@ -24571,21 +24571,37 @@ def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() ->
     """B13 round 9 K45: the J69 readers stripped "[synced] " only, so a folder printed "[inside a synced
     folder]" was dropped and its name stayed in clear. Every mark install.sh defines is in both readers. B13
     round 36 C1001: an escaped row opens with ESCAPED_MARK and may then carry one other mark, so both readers
-    strip it first and then one of the others, and an escaped synced row registers its whole name."""
+    strip it first and then one of the others, and an escaped synced row registers its whole name. B13 round
+    37 ruling 121 (lane RB): TWIN_MARK and ESCAPED_KEPT_MARK open a row in the same slot, so both readers take
+    all three first marks, the shell's as one alternation, before the others."""
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
-    [escaped] = re.findall(r'^ESCAPED_MARK="(\[[^"]+\])"', script, flags=re.M)
+    firsts = [
+        re.findall(rf'^{name}="(\[[^"]+\])"$', script, flags=re.M)[0]
+        for name in ("ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK")
+    ]
+    escaped = firsts[0]
     marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS)_MARK="(\[[^"]+\])"', script, flags=re.M)
-    assert len(marks) == 3 and len(re.findall(r'^[A-Z]+_MARK="', script, flags=re.M)) == 4, marks
-    assert setup_report._LIST_MARKS[0] == f"{escaped} "
-    assert sorted(setup_report._LIST_MARKS[1:]) == sorted(f"{m} " for m in marks)
-    [first] = re.findall(r"list \{ sub\(/\^\\\[([^(/]*)\\\] /, \"\"\)\n", script)
-    assert first == escaped.strip("[]"), first
+    assert len(marks) == 3 and len(re.findall(r'^[A-Z_]+_MARK="', script, flags=re.M)) == 6, marks
+    assert setup_report._LIST_MARKS[:3] == tuple(f"{m} " for m in firsts)
+    assert sorted(setup_report._LIST_MARKS[3:]) == sorted(f"{m} " for m in marks)
+    [first] = re.findall(r"list \{ sub\(/\^\\\[name \((.*)\)\\\] /, \"\"\)\n", script)
+    alternation = re.fullmatch(r"holds a control character\(: rename it to sync it\)\?\|(.*)", first)
+    assert alternation is not None, first
+    assert {f"name holds a control character{tail}" for tail in ("", ": rename it to sync it")} | {
+        f"name {alternation.group(1)}"
+    } == {m.strip("[]") for m in firsts}, first
     [awk] = re.findall(r"^\t+sub\(/\^\\\[\(([^)]*)\)\\\] /", script, flags=re.M)
     assert sorted(awk.split("|")) == sorted(m.strip("[]") for m in marks), awk
     home = "/Users/contoso"
     cs = f"{home}/Library/CloudStorage/OneDrive-Contoso"
     text = f"# run=1 2026-11-08T10:00:00Z install.sh --list-folders\n{escaped} [synced] {cs}/Line one\\nTwo\n"
     assert setup_report.listed_folder_names(text, home) == (True, [("OneDrive-Contoso", 2, "Line one\\nTwo")])
+    for mark, kept in ((firsts[1], ""), (firsts[2], "[inside a synced folder] ")):
+        text = f"# run=1 2026-11-10T10:00:00Z install.sh --list-folders\n{mark} {kept}{cs}/Look\\nAlike\n"
+        assert setup_report.listed_folder_names(text, home) == (
+            True,
+            [("OneDrive-Contoso", 2, "Look\\nAlike")],
+        )
 
 
 def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private(

@@ -3758,7 +3758,11 @@ def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
     assert mark[1].rstrip(" ") == ESCAPED_ROW_MARK, mark
     # a usage error, never a silent escaped spelling, and it says to rename the folder (lane RB's words)
     assert "step 1 shows this folder's name with a control character" in script
-    assert "rename it in its sync app, then run step 1 again" in script
+    # B13 round 37 C1275 (lane RB): --list-folders again, never step 1's whole command
+    assert (
+        "rename it in its sync app, $again" in script
+        and 'again="then run $SELF --list-folders again"' in script
+    )
 
 
 def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
@@ -9360,7 +9364,8 @@ def test_the_guide_gives_the_list_tail_for_a_mirrored_folder_whose_block_is_gone
     assert '[ $((vback + vother)) -eq 0 ] || vlog=" vanished=$((vback + vother))"' in script
     page = " ".join(_feedback_page().split())
     section = page.split("### A Mac that is already set up", 1)[1].split("### ", 1)[0]
-    words = one.replace("$CONFIG", "<config>").replace("$vpaths", "<folder>")
+    # B13 round 37 C1251, C1276: the clause that gives the command names the folder unmarked, as $vplain
+    words = one.replace("$CONFIG", "<config>").replace("$vplain", "<folder>")
     assert (
         "a folder still mirrored after its `[[source]]` block was deleted (the manifest still holds its id; "
         f"sources.toml no longer has it) drops `(none is needed)` from the `NEXT:` and adds `; {words}(one "

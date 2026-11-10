@@ -4265,13 +4265,16 @@ _LIST_RUN_RE = re.compile(r"^# run=\S+ \S+ install\.sh(?: .*)? --list-folders(?:
 
 _LIST_MARKS = (
     "[name holds a control character: rename it to sync it] ",
+    "[name reads as another folder there: rename one of them to sync it] ",
+    "[name holds a control character] ",
     "[synced] ",
     "[inside a synced folder] ",
     "[contains a synced folder] ",
 )
-"""install.sh's ``ESCAPED_MARK``, ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space
-the folder list puts after it (a test holds them equal to install.sh's). An escaped row opens with the first,
-then may carry one of the others, so they are stripped in this order (B13 round 36 C1001)."""
+"""install.sh's ``ESCAPED_MARK``, ``TWIN_MARK``, ``ESCAPED_KEPT_MARK``, ``SYNCED_MARK``, ``INSIDE_MARK`` and
+``CONTAINS_MARK``, each with the space the folder list puts after it (a test holds them equal to
+install.sh's). A row opens with at most one of the first three, then may carry one of the others, so they are
+stripped in this order (B13 round 36 C1001; round 37 ruling 121, lane RB)."""
 
 
 def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:

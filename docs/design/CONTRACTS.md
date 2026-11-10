@@ -38639,6 +38639,10 @@ half) and
 on one line in the real NEXT).
 
 Amended 2026-11-08, §16.236 C1072: the sentence said that one folder stops with no such folder; with a look-alike twin beside it (a backslash and n, or a `?`) the pasted row named the twin, which was then synced. An escaped row now opens with `[name holds a control character: rename it to sync it] `, and --source-local refuses that row, a folder whose escaped name is another folder's in the same parent, and a missing path that is such a folder's shown text (B13 round 36 ruling 113).
+Amended 2026-11-10, §16.241 C1202: the gone, other-account and library paths of the NEXT are synced folders, so an
+escaped one opens with `[name holds a control character]`, never the rename mark, and a [synced] or [inside a synced
+folder] row does too; a plain row whose name is another folder's escaped form there opens with `[name reads as
+another folder there: rename one of them to sync it]` (ruling 121).
 
 ### 16.232 Round 35: a source path kept out of commit history, doctor's deadline and its children, and the NEXT's pointers (2026-11-04, wave B13 round 35 lane B)
 
@@ -39387,6 +39391,12 @@ marked row and both sides of both pairs: rc 2, the words, nothing run),
 test_setup_report.py `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints` (four marks, the
 escape mark stripped first by both readers).
 
+Amended 2026-11-10, §16.241 C1239: a missing path that is step 1's escaped text of a folder now says `this is how
+step 1 shows a folder whose name holds a control character, not a folder's own name`, since no look-alike need
+exist; a plain look-alike says its name is step 1's escaped form of another folder there; each refusal ends `then run
+<installer> --list-folders again`, not `then run step 1 again`, and the plain member of a pair is marked too (ruling
+121).
+
 **The shell report cuts a path in another home whole whatever byte sits in it, as the agentsync report does**
 (C1016, C1064, and the shell halves of C1017, C1018, C1069 and C1123, on lane RA's table; ruling 112; privacy; data
 integrity; amends §16.231 C912; `scripts/install.sh`). `foreign_home_cut`'s volume look-back stopped at a quote, a
@@ -40109,6 +40119,40 @@ neither: step 1 listed two identical rows and --source-local took either, and a 
 offered a command for the newline one. With `dir`, two find rows that carry the path's own transported text are a
 twin too, each the other's, so both are refused both ways and the lost-block NEXT names the rename, not a command;
 a lone newline folder is still taken. Test: `test_a_newline_name_and_an_rs_name_in_one_parent_are_twins_c1300`.
+
+**A step 1 row is choosable exactly when step 2 takes it, and no mark's words are false for its row** (C1242,
+C1308, C1239, C1201, C1213, C1229, C1202, C1236, C1251, C1276, C1214, C1275; ruling 121, the round's turns; amends
+§16.231 C932 and §16.236 C1072; `scripts/install.sh`, `setup_report._LIST_MARKS`). Ruling 113 marked only a pair's
+control-character member, so a plain look-alike (a literal `\n` or `?`) listed unmarked and step 2 refused it with
+words false for it, and a folder that already syncs was told to rename it to sync it. `list_twins` finds, for each
+row about to print whose bare path has no control character but holds a `\` or a `?`, a twin by `escaped_twin`'s own
+dir test over its whole parent (the test step 2 runs, never the rows inside the cap alone), and `list_shown` opens
+such a row with `TWIN_MARK`, `[name reads as another folder there: rename one of them to sync it]`, in
+`ESCAPED_MARK`'s slot, so both rows of a pair are marked. An escaped `[synced]` or `[inside a synced folder]` row
+opens with `ESCAPED_KEPT_MARK`, `[name holds a control character]`, and so do the escaped paths of a NEXT's gone,
+library and other-account clauses (`list_esc_kept`); a kept plain look-alike carries its kept marks alone; a plain row
+with neither prints byte for byte. The vanished paths keep their marks (a twin's included) in the twin clause and for
+more than one folder, and only the one no-twin add-back clause, the one that gives a command, names the folder as
+`list_name` shows it, with no mark. --source-local refuses a
+pasted row with any of the three marks, each in its own words (`this is a row step 1 marked <mark>: ...`; the kept
+one: `that folder already syncs, so paste nothing for it`), and words the twin refusals by direction: a folder whose
+own name holds a control character keeps `step 1 shows this folder's name with a control character, and it cannot
+be told apart from another folder there`; a plain look-alike says `its name is step 1's escaped form of another
+folder there, whose name holds a control character`; a path with no folder says `this is how step 1 shows a folder
+whose name holds a control character, not a folder's own name` (no look-alike need exist). Each ends `rename ... in
+its sync app, then run <installer> --list-folders again`, never step 1's whole command, which opens a new attempt
+(C1275's install.sh half; the lost-block twin clause says it the same way), and takes `USAGE_NEXT`'s `renaming that
+folder is the person's, not a step for the agent, so show them the error and go on to the report; ...`, which names no folder (C1214); the kept refusal's NEXT says
+to leave that --source-local out. Every reader takes every mark: listed_folder_lines' first `sub()` as one
+alternation and `_LIST_MARKS`, its three first marks before the others, with their parity test. Tests:
+`test_list_folders_marks_both_rows_of_a_pair_and_tells_no_kept_row_to_rename_ruling_121`,
+`test_list_folders_shows_an_escaped_row_apart_from_its_look_alike_c1001`,
+`test_list_folders_names_the_real_folder_in_the_add_back_command_c1001`,
+`test_list_folders_marks_a_synced_folder_with_a_newline_in_its_name_c932`,
+`test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072` (seven rows, each refusal and
+NEXT), `test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002` (a tab folder and two folders
+that show as one text among them), `test_both_shell_readers_of_the_folder_list_take_an_escaped_synced_rows_whole_name_c1001`
+and `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
 
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 
