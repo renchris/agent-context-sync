@@ -39898,6 +39898,26 @@ since one no pin table held would turn `test_every_dated_line_from_round_11_on_i
 installs-only case and is right. Test: `test_c972s_summary_lines_give_c928s_forms_c1046` (both forms read from
 `_install_line`).
 
+### 16.240 Round 37: the report: home cuts across line breaks and letter case, a missing source folder's path, and OCR-down images (2026-11-10, wave B13 round 37 lane RA)
+
+Reserved for round 37 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 37").
+
+### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
+
+Reserved for round 37 lane RB of B13.
+
+### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
+
+Reserved for round 37 lane B of B13.
+
+### 16.243 Round 37: the converters: one spelling for odd-named folders, the slow-helper fix, and an empty caption's cache identity (2026-11-10, wave B13 round 37 lane E)
+
+Reserved for round 37 lane E of B13.
+
+### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
+
+Reserved for round 37 lane D of B13.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

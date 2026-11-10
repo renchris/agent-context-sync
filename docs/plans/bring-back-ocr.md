@@ -2567,6 +2567,48 @@ with the harvest list in `round37/tools/harvest-lead.txt`, on this section's lan
 and up, prompt v35, outputs `round37/`. The stop rule names Codex and Gemini: a clean round without Gemini goes to the
 operator before the loop closes.
 
+### B13 round 37: v35 rehearsal, cross-lane review, harvest, Codex beside Claude; Gemini not run (2026-11-10)
+
+Run `wf_05c45966-50b` on `e6577c15` (BASE `68ec1ff3`), codex-only, 126 agents with no errors: 98 confirmed (2 turns,
+19 wrongs, 77 small), 11 refuted (C1212, C1216, C1228, C1233, C1241, C1245, C1292, C1294, C1295, C1297, C1298). All six
+rehearsal scenarios passed on the role's path, and the kit's fresh root per re-fired slot (round 36's C1008) held. Both
+turns are ruling 113's own regression: a look-alike folder (a literal backslash-n or ?, no control character) whose
+control-character twin exists was listed unmarked, and step 2 refused it with words false for it (C1242 and C1308 with
+C1239, C1201, C1213 and C1229); a folder that already syncs was marked "rename it to sync it" (C1202 with C1236). Four
+items need prompt text (C1201, C1242, C1275, C1308), so the prompt goes to v36 in lane D's one commit and round 38
+rehearses the prompt the operator will paste. Twelve items are data integrity, seven of them privacy: ruling 112's cut
+failed in the Python report for line-break characters (C1249) and in both reports for a provider folder in another
+letter case (C1285 with C1274); a missing --source-local folder's path and the name the CLI conventions wave's
+`9e2ec5bd` hid in the shell report alone reached the Python report (C1299 with C1250); and a report run before step 2
+was rendered by the older installed agentsync, which printed a foreign home whole (C1210 with C1237, C1253, C1278).
+Codex's five finders ran and its second opinion gave 21 opinions, none disputed. Gemini did not run: the allow rule for
+`~/.claude/scripts/agy-review.sh` is still the operator's (backlog `8ed9dae0fbc0`). A triage workflow
+(`wf_cc806b31-813`) placed every item once.
+
+Lead rulings for round 37 (in `lanes/COMMON36.md`, mirrored in `docs/lanes/COMMON.md`): (120) both reports cut the
+same spellings, and a report an installed agentsync renders is cut again by this checkout, never left to the installed
+Python, completing ruling 112; (121) a step 1 row is choosable exactly when step 2 takes it and no mark's words are false
+for its row, amending ruling 113, and it takes the prompt to v36; (122) an image waiting on a failed OCR helper is told so
+only where it will be read, and QUARANTINE.tsv and the report take its class from its page, completing C1101; (123) a
+stopped copy an older build rendered is rewritten only on proof in its own text, completing ruling 115; (124) a sync's
+wait names every stop the cycle meets, completing ruling 116; (125) a usage error is decided before any config loads or
+any state is written, so `hold` with a reason and no scope is refused, never read as a list. Decision
+`ef4a5985f497` (round 36's rulings 113 to 119) keeps its course as amended by ruling 121, recorded on the packet. The
+calls under 90% are filed with their courses kept: decision `59f0f94499f9` (conviction 75), veto window to 2026-11-12.
+C1305 with C1282 (tenant-probes.md promises a report on exit 78, none is written) went to the CLI conventions wave's
+lead, whose queue rewrites that exit table; if that wave closes with the row still wrong, lane D builds it in round 38.
+
+Convergence: confirmed as before, then 76, then 90, then 86, then 98; turns as before, then 0, then 0, then 5 (4 of
+them the kit's), then 2; wrongs as before, then 17, then 23, then 10, then 19.
+
+Lanes (`--account auto`, CONTRACTS §16.240 to §16.244, plain `scripts/ship-land.sh` with the repo's own lock shared with
+the CLI conventions wave, scratch under `round37/`, back-channel pane 3 or its successor): RA 15 (C1249, C1285 with
+C1274, C1299 with C1250 first: privacy), RB 24 (C1210 with C1237, C1253 and C1278 first: privacy; then C1300; then the
+look-alike twin cluster, whose words go to lane D first), B 23 (C1262 with C1303 and C1286 first), E 4, D 15 (the v36
+commit: C1275 with C1309's prompt half, and the prompt words of C1201, C1242 and C1308). The lead holds 17: round 38's
+kit (C1206, C1208, C1209, C1217 with C1291, C1218, C1219, C1220 with C1234 and C1289, C1230, C1232, C1235, C1240,
+and C1296 split between them) and the hand-off of C1305 with C1282.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
