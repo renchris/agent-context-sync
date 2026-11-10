@@ -40102,6 +40102,14 @@ stub), `test_both_reports_cut_a_volume_past_a_skipped_home_and_a_provider_folder
 `test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks` (the C1253 and C1285 rows) and
 `test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278` (a twin, a marked row, a missing twin).
 
+**Two folders that travel as one text are twins** (C1300; ruling 121; data integrity; `scripts/install.sh`). A
+newline in a name travels in the list's files as RS (0x1e, §16.231 C932), so a folder named with a newline and one
+named with an RS became one text, and `escaped_twin`, which skipped every find row equal to the path's own, found
+neither: step 1 listed two identical rows and --source-local took either, and a lost [[source]] block of the RS one
+offered a command for the newline one. With `dir`, two find rows that carry the path's own transported text are a
+twin too, each the other's, so both are refused both ways and the lost-block NEXT names the rename, not a command;
+a lone newline folder is still taken. Test: `test_a_newline_name_and_an_rs_name_in_one_parent_are_twins_c1300`.
+
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 
 Reserved for round 37 lane B of B13.

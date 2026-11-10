@@ -9651,6 +9651,45 @@ def test_source_local_names_the_clash_for_a_shown_name_that_is_no_folder_c1002(
     assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == []
 
 
+@pytest.mark.parametrize("given", ["Contoso\nLine two", "Contoso\x1eLine two"])
+def test_a_newline_name_and_an_rs_name_in_one_parent_are_twins_c1300(env: dict[str, str], given: str) -> None:
+    """B13 round 37 ruling 121 (C1300; data integrity): a newline in a name travels in the list's files as
+    RS (0x1e), so a folder named with a newline and one named with an RS became one text, and the twin test,
+    which skipped every row equal to the path's own, found neither: both listed as one row and --source-local
+    took either. Two folders that travel as one text are twins, each the other's, so both are refused, and a
+    lost [[source]] block of one names the rename, not a command."""
+    lib = _cloud(env) / "OneDrive-Fabrikam"
+    for n in ("Contoso\nLine two", "Contoso\x1eLine two"):
+        (lib / n).mkdir(parents=True)
+    cp = install_sh(env, "--source-local", str(lib / given))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert (
+        cp.stderr.splitlines()[0]
+        == f"usage error: --source-local {lib}/Contoso\\nLine two: {TWIN_WORDS} (see --help)"
+    )
+    assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == []
+    # the lane's review: a trailing /. or // names the same folder and is refused the same way
+    for tail in ("/.", "//", "/./"):
+        cp = install_sh(env, "--source-local", f"{lib / given}{tail}")
+        assert cp.returncode == 2 and TWIN_WORDS in cp.stderr, (tail, cp.stderr)
+    if given != "Contoso\nLine two":
+        return
+    cs = _cloud(env)
+    alpha = cs / "OneDrive-Contoso" / "Project Alpha"
+    alpha.mkdir(parents=True)
+    odd = lib / given
+    _write_config(env, local_source_table("project-alpha", alpha), _inbox(env))
+    sid = derive_source_id(canonical_source_root(odd), {"project-alpha", "inbox"})
+    _manifest_rows(
+        env, ("project-alpha", "live", 3), (sid, "live", 4), roots={"project-alpha": alpha, sid: odd}
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "once it is renamed in its sync app" in last_line(cp), last_line(cp)
+    assert "(one --source-local" not in last_line(cp), last_line(cp)
+
+
 @pytest.mark.parametrize("name", ["Q?solo", "Ctl\x02solo", "Plain\\back"])
 def test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072(
     env: dict[str, str], name: str

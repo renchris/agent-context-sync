@@ -9002,10 +9002,15 @@ list_esc() { # PATH
 # A folder step 1 cannot show apart from another (B13 round 36 C1001, C1072, C1002): true when another folder
 # in the parent of the path $1 shows, once escaped as list_shown escapes it, as $1 itself does with $2 "dir" (a
 # folder that is there), or as the text $1 reads with no $2 (a path that is not). Only a name holding a control
-# character, a \ or a ? can have such a twin, so no other name lists its parent.
+# character, a \ or a ? can have such a twin, so no other name lists its parent. With "dir", two folders whose
+# names travel as one text (a newline and an RS) are twins too, each the other's, so both are refused (B13 round
+# 37 ruling 121, C1300).
 escaped_twin() {
 	local p="$1" parent name nl=$'\n'
-	while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+	# a trailing / or /. names the same folder, so it is cut off, never a way past the test (the lane's review)
+	while [ "${#p}" -gt 1 ]; do
+		case "$p" in */) p="${p%/}" ;; */.) p="${p%/.}" ;; *) break ;; esac
+	done
 	parent="${p%/*}" name="${p##*/}"
 	[ -n "$parent" ] || parent=/
 	[ -n "$name" ] && [ -d "$parent" ] || return 1
@@ -9014,8 +9019,9 @@ escaped_twin() {
 	find "$parent" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | LC_ALL=C tr '\n\0' '\036\n' |
 		LIST_SELF="${p//$nl/$LIST_RS}" LIST_DIR="${2:-}" LC_ALL=C awk -v mark="" "$LIST_ESC_AWK"'
 		BEGIN { self = ENVIRON["LIST_SELF"]; t = (ENVIRON["LIST_DIR"] == "dir" ? shown(self) : self) }
+		$0 == self { same++ }
 		$0 != self && shown($0) == t { found = 1 }
-		END { exit !found }'
+		END { exit !(found || (ENVIRON["LIST_DIR"] == "dir" && same > 1)) }'
 }
 list_name() { # PATH: as list_plain shows it, for an error
 	local nl=$'\n'
