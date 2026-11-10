@@ -1,18 +1,20 @@
 """``agentsync`` command line (owner: integrator).
 
-Subcommands: add-source PATH · init (hidden) · sync (hidden options: --once, --mode poll|reconcile|dry_run,
---materialise-budget BYTES) · accept-deletions SOURCE · status · curate · materialise [--budget BYTES]
+Subcommands: add-source <PATH> · init (hidden) · sync (hidden options: --once, --mode poll|reconcile|dry_run,
+--materialise-budget BYTES) · accept-deletions <SOURCE> · status · curate · materialise [--budget BYTES]
 [PATH ...] (hidden) · adopt SRC_DIR · migrate (hidden, a no-op) · graph login|logout|whoami|discover (also as
-top-level login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) ·
-install-agent (hidden) · uninstall-agent (hidden) · purge SELECTOR | --queue · compact-history [--keep-days N
-(at least 1)] (hidden) · hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report (hidden; hidden
---out PATH, default ~/agent-context/setup-report.md) · it-request --out PATH.
+top-level login · logout · whoami · discover; login [--device-code]; discover [--url <URL> ...] [--toml]) ·
+install-agent (hidden) · uninstall-agent (hidden) · purge <SELECTOR> | --queue · compact-history
+[--keep-days N (at least 1)] (hidden) · hold · offboard [--purge-data] [--confirm <DOCS_REPO>] · setup-report
+(hidden; hidden --out PATH, default ~/agent-context/setup-report.md) · it-request --out <PATH>.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
 ``sync`` without ``--mode`` ends with the loop's ``NEXT:`` line and any ``WAITING ON YOU:`` lines
 (:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
 and ``policy show`` are hidden aliases of it). ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops
 them from both.
-``AGENTSYNC_CONFIG`` is the one public environment variable (``--help`` documents it).
+``AGENTSYNC_CONFIG`` is the one public environment variable ``--help`` documents.
+``AGENTSYNC_REPORT_TIME_LIMIT`` is the install.sh-and-report interface variable the README prompt has the
+person set (B13 round 37 C1263).
 ``AGENTSYNC_NO_NEXT_HINT``, ``AGENTSYNC_QUIET_LOCK_WAIT``, ``AGENTSYNC_LOCK_WAIT_ANNOUNCED`` and
 ``AGENTSYNC_FRICTION_LOG`` are the install.sh-to-agentsync interface; ``--help`` leaves them out.
 ``setup-report`` ends with the issue link, never a hint.
@@ -397,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[r.value for r in governance.PurgeReason],
         help="recorded in the audit trail (default: operator)",
     )
-    p.add_argument("--queue", action="store_true", help="run every queued purge instead of SELECTOR")
+    p.add_argument("--queue", action="store_true", help="run every queued purge instead of <SELECTOR>")
     p.add_argument(
         "--forget",
         metavar="<SELECTOR>",
@@ -451,7 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("scope", nargs="?", metavar="<SCOPE>", help="'all' or a source id")
     p.add_argument("--reason", help="why (required to set)")
     p.add_argument("--owner", help="records/legal owner setting or releasing the hold")
-    p.add_argument("--release", action="store_true", help="release the hold on SCOPE")
+    p.add_argument("--release", action="store_true", help="release the hold on <SCOPE>")
     p.add_argument("--list", action="store_true", help="list active holds")
 
     p = add("offboard", "list (default) or delete every local copy agentsync made", _cmd_offboard)
@@ -511,12 +513,12 @@ ruling 125), in the help's own metavar (C1263)."""
 
 def _purge_usage(args: argparse.Namespace) -> str | None:
     if args.queue and args.selector:
-        return "purge: pass SELECTOR or --queue, not both"
+        return "purge: pass <SELECTOR> or --queue, not both"
     others = (args.queue, args.selector, args.forget is not None, args.source, args.reason, args.push)
     if args.accept_lost is not None and any(others):
-        return "purge: --accept-lost <at> goes alone (with --dry-run or --folder-lost)"
+        return "purge: --accept-lost <TIME> goes alone (with --dry-run or --folder-lost)"
     if args.folder_lost and args.accept_lost is None:
-        return "purge: --folder-lost goes with --accept-lost <at>"
+        return "purge: --folder-lost goes with --accept-lost <TIME>"
     if args.forget is not None and not args.queue:
         return "purge: --forget goes with --queue"
     if args.queue and args.source and args.forget is None:
@@ -534,7 +536,7 @@ def _purge_usage(args: argparse.Namespace) -> str | None:
 def _hold_usage(args: argparse.Namespace) -> str | None:
     if args.list:
         given = (
-            ("SCOPE", args.scope is not None),
+            ("<SCOPE>", args.scope is not None),
             ("--release", args.release),
             ("--reason", args.reason is not None),
             ("--owner", args.owner is not None),
@@ -566,7 +568,7 @@ def _validate_usage(args: argparse.Namespace) -> str | None:
     if args.command == "hold":
         return _hold_usage(args)
     if args.command == "reconcile" and args.accept_deletions and not args.source:
-        return f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE"
+        return f"--accept-deletions needs a source: run {loop.BIN} accept-deletions <SOURCE>"
     return None
 
 
@@ -3851,7 +3853,7 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
 def _cmd_migrate(args: argparse.Namespace) -> int:
     """KISS K13b: a no-op kept so older install.sh runs and scripts still exit 0; opening the manifest
     migrates it (with its pre-v<N> copy) in every command that uses it."""
-    _deprecated("migrate", "every command that changes state migrates the manifest")
+    _deprecated("migrate", "every command that opens the manifest migrates it")
     _out("migration is automatic: every agentsync command that opens the manifest migrates it")
     return EXIT_OK
 

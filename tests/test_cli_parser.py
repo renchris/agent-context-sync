@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -137,7 +138,7 @@ def test_usage_beats_an_unloadable_config(tmp_path: Path, capsys: pytest.Capture
     cfg = tmp_path / "sources.toml"
     cfg.write_text("this is [not toml\n", encoding="utf-8")
     assert cli.main(["purge", "--queue", "id=x", "--config", str(cfg)]) == cli.EXIT_USAGE
-    assert "purge: pass SELECTOR or --queue, not both" in capsys.readouterr().err
+    assert "purge: pass <SELECTOR> or --queue, not both" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -196,6 +197,39 @@ def test_visible_hints_come_from_the_allowed_list() -> None:
             seen.add(action.metavar)
             assert action.metavar in _ALLOWED_HINTS, (parser.prog, action.dest, action.metavar)
     assert seen == _ALLOWED_HINTS
+
+
+def test_help_errors_and_migrate_name_the_metavars_the_help_shows_c1263(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 37 C1263: the CLI conventions commit gave the options angle-bracket metavars, but help and
+    error text still said SELECTOR, SCOPE, SOURCE and ``<at>``, and migrate's warning said every command
+    that changes state migrates the manifest while its own line said every command that opens it does."""
+    words = re.compile(r"(?<![<\w])(SELECTOR|SCOPE|SOURCE)(?![>\w])|<at>")
+    for argv in (["purge", "--help"], ["hold", "--help"]):
+        assert cli.main(argv) == cli.EXIT_OK
+        out = capsys.readouterr().out
+        assert not words.search(out), out
+        assert ("instead of <SELECTOR>" if argv[0] == "purge" else "release the hold on <SCOPE>") in out, out
+    ns = argparse.Namespace
+    purge = {"queue": False, "selector": None, "forget": None, "source": None, "reason": None, "push": False}
+    clashes = [
+        ns(**(purge | {"queue": True, "selector": "id=x", "accept_lost": None, "folder_lost": False})),
+        ns(**(purge | {"accept_lost": "2026-11-10", "selector": "id=x", "folder_lost": False})),
+        ns(**(purge | {"accept_lost": None, "folder_lost": True})),
+    ]
+    for args in clashes:
+        said = cli._purge_usage(args)
+        assert said is not None and not words.search(said), said
+    hold = ns(list=True, scope="all", release=False, reason=None, owner=None)
+    said = cli._hold_usage(hold)
+    assert said == "hold: --list goes alone, not with <SCOPE>", said
+    said = cli._validate_usage(ns(command="reconcile", accept_deletions=True, source=None))
+    assert said is not None and said.endswith("accept-deletions <SOURCE>"), said
+    assert cli.main(["migrate", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    captured = capsys.readouterr()
+    assert "every command that opens the manifest migrates it" in captured.err, captured.err
+    assert "every agentsync command that opens the manifest migrates it" in captured.out
 
 
 def test_purge_help_names_the_erasure(capsys: pytest.CaptureFixture[str]) -> None:

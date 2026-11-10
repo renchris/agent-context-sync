@@ -1764,7 +1764,7 @@ def test_reconcile_accept_deletions_needs_a_source(
 ) -> None:
     assert cli.main(["reconcile", "--accept-deletions", "--config", str(initialised.config_path)]) == 2
     # B13 round 5 F95: by the binary's full path (~/.local/bin is not on PATH)
-    assert "run ~/.local/bin/agentsync accept-deletions SOURCE" in capsys.readouterr().err
+    assert "run ~/.local/bin/agentsync accept-deletions <SOURCE>" in capsys.readouterr().err
 
 
 def test_accept_deletions_clears_a_tripped_breaker(
