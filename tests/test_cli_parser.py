@@ -241,6 +241,32 @@ def test_purge_help_names_the_erasure(capsys: pytest.CaptureFixture[str]) -> Non
     assert "permanently delete" in out and "remove items" not in out
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [["purge", "id=nothing-here", "--dry-run"], ["compact-history", "--dry-run"]],
+    ids=["purge", "compact"],
+)
+def test_short_y_equals_long_yes(
+    initialised: Config, capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    """C-2 step 1 (R392): ``-y`` and ``--yes`` parse to the same namespace, and the flag changes nothing yet:
+    the run's exit code and both streams equal a run without it. Dry runs on a tmp docs repo only."""
+    cfg = _synced(initialised, capsys)
+    parser = cli.build_parser()
+    short, long = (parser.parse_args([*argv, flag, "--config", cfg]) for flag in ("-y", "--yes"))
+    assert short == long and short.yes is True
+    assert parser.parse_args([*argv, "--config", cfg]).yes is False
+    assert "does not ask for confirmation today" in " ".join(_help(capsys, argv[0]).split())
+    runs = []
+    for flag in ([], ["-y"], ["--yes"]):
+        rc = cli.main([*argv, *flag, "--config", cfg])
+        captured = capsys.readouterr()
+        # compact-history's cutoff is now minus the keep days, so its second ticks between runs
+        runs.append((rc, *(re.sub(r"\d{4}-\d\d-\d\dT[\d:]+Z", "<TIME>", s) for s in captured)))
+    assert runs[0][0] == cli.EXIT_OK
+    assert runs[1] == runs[0] and runs[2] == runs[0]
+
+
 def _visible() -> list[str]:
     sub = next(a for a in cli.build_parser()._actions if isinstance(a, argparse._SubParsersAction))
     return [a.dest for a in sub._choices_actions]

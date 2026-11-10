@@ -41632,7 +41632,17 @@ prints today.
 
 #### 16.300.9 U-C2a and U-C2b: consent for purge and compact-history
 
-Reserved.
+- `purge` and `compact-history` accept `-y, --yes` (R146, R392, R439) and ignore it: neither asks for confirmation
+  today, and the flag's help says so (`cli._YES_HELP`), so it promises no gate. A run with `-y` or `--yes` has the
+  same exit code and output as the same run without it. `tests/test_contracts.py::CLI_SURFACE` pins `-y/--yes` on
+  both commands.
+- Not built (kept by decision): printing ` --yes` in the `purge --queue` second commands that status, doctor,
+  STATE.md, WAITING ON YOU, the invitations and the setup report give (C-2 step 2), and U-C2b's gate, which would
+  turn a bare `purge` or `compact-history` into a preview with exit 2. `offboard --confirm DOCS_REPO` and
+  install.sh's `--confirm-install-agent` keep their spellings (D11).
+
+Tests: `tests/test_cli_parser.py::test_short_y_equals_long_yes`, on dry runs of `purge` and `compact-history`
+against a docs repo under the test's temporary folder.
 
 #### 16.300.10 U-C3: the bug report
 

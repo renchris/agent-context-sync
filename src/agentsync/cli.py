@@ -211,6 +211,11 @@ Learn more: {it_request.REPO_URL}
 
 _LEAF_POINTER = f"Every command, its files and environment: `{loop.BIN} --help`\n"
 
+_YES_HELP = (
+    "accepted and ignored: this command does not ask for confirmation today, so it runs the same without it"
+)
+"""The help of purge's and compact-history's ``-y, --yes`` (C-2 step 1): parsed, and it gates nothing."""
+
 _TASKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Keep in sync", ("add-source", "sync", "adopt", "accept-deletions")),
     ("Review", ("status", "curate")),
@@ -822,6 +827,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="report what would be purged; change nothing (an older manifest is still migrated first)",
     )
     p.add_argument("--push", action="store_true", help="force-push the rewrite to an allowed tenant remote")
+    p.add_argument("-y", "--yes", action="store_true", help=_YES_HELP)
 
     p = add(
         "compact-history",
@@ -833,6 +839,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-days", type=int, metavar="<NUMBER>", help=">= 1; default: [governance] history_days"
     )
     p.add_argument("--dry-run", action="store_true", help="report only")
+    p.add_argument("-y", "--yes", action="store_true", help=_YES_HELP)
 
     p = add("hold", "legal/records hold: suspend purge and compaction for a scope", _cmd_hold)
     p.add_argument("scope", nargs="?", metavar="<SCOPE>", help="'all' or a source id")
