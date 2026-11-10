@@ -39618,6 +39618,10 @@ Amended 2026-11-10, §16.242 C1257: `Publisher.ocr_waits` is true only for an im
 `local`, `not publish.read_needs_download(...)`); a Graph or online-only image, which a working helper never reads
 either, keeps `no converter for <suffix>` on its page and counts in `refused_unread`.
 
+Amended 2026-11-10, §16.242 C1211: `_sync/QUARANTINE.tsv` follows the page, never this run's helper state: it prints
+`publish.OCR_DOWN_REASON` for a row whose page says it, and `no converter for <suffix>` for one whose page does (one
+planned while no helper was built); the stored reason and `none@0` keep `no converter for <suffix>`.
+
 **An abandoned doctor publishes no fix after the report gave up** (C1030; ruling 117; amends §16.232 C953). C953's
 deadline check in `checks_once` ran before the hook's post-processing, so a doctor the report cut while it worked out
 `_fail_steps` and `_state_stop_first` still wrote them into the hooks' `fixes` and `manifest_first`, and the Loop line

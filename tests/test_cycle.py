@@ -2574,8 +2574,10 @@ def test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101
     """B13 round 36 C1101: with the OCR helper built but not working (its --version killed), every image the
     sync read became a `no converter for .png` stub and the sync line said `no converter for the type`, though
     the converter exists and only its helper failed. The page and the sync line say the helper is not
-    working; the stored reason, the converter and QUARANTINE.tsv keep `no converter for .png`, so the image is
-    read again once the helper works; a label rule keeps today's words."""
+    working; the stored reason and the converter keep `no converter for .png`, so the image is read again once
+    the helper works; a label rule keeps today's words. B13 round 37 C1211 (C1204, C1238, C1259, C1269): the
+    page sends the reader to QUARANTINE.tsv, whose row said `no converter for .png`; it follows the page now,
+    and the row leaves it once the image is read."""
     failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
     monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
     picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
@@ -2590,17 +2592,47 @@ def test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101
     with Manifest(sample_config.state_paths.db) as m:
         (row,) = [r for r in m.iter_items(SID) if r.rel_path == SITE_PLAN]
     assert row.state_reason == f"{convert_mod.NO_CONVERTER_PREFIX}.png", row
-    tsv = (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
-    assert "no converter for .png" in tsv, tsv
+    assert _quarantine_reason(sample_config, SITE_PLAN) == publish_mod.OCR_DOWN_REASON
     capsys.readouterr()
     cli._print_report(report)
     said = capsys.readouterr().out
     assert f"; 1 {cli.OCR_WAIT_CLAUSE}" in said and "refused without a read" not in said, said
-    # the helper works again: the same image is read, its page OCR's
+    # the helper works again: the same image is read, its page OCR's, and its row leaves QUARANTINE.tsv
     _use_ocr(monkeypatch, tmp_path)
     assert run(sample_config).exit_code == 0
     fm, _body = _image_page(sample_config, SITE_PLAN)
     assert fm["converter"].startswith("image-ocr@"), fm
+    tsv = (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    assert SITE_PLAN not in tsv, tsv
+
+
+def test_quarantine_tsv_follows_a_no_converter_page_while_the_ocr_helper_fails_c1211(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1211 (C1204, C1238): QUARANTINE.tsv follows the page, never this run's helper state
+    (round 7 H52). An image planned while no helper was built has a `no converter for .png` page; a run whose
+    helper fails does not plan it again, so its row keeps `no converter for .png` and that run commits
+    nothing; a working helper reads it and its row leaves the TSV."""
+    config = config_with(tmp_path, local_source_dir)
+    not_built = ocr.EngineState("not-built", "the OCR helper is not built", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: not_built)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    fm, _body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] == "no converter for .png", fm
+    assert _quarantine_reason(config, SITE_PLAN) == "no converter for .png"
+    _fail_ocr(monkeypatch)
+    report = run(config)
+    assert report.exit_code == 0 and report.commit_sha is None, report
+    fm, _body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] == "no converter for .png", fm
+    assert _quarantine_reason(config, SITE_PLAN) == "no converter for .png"
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config).exit_code == 0
+    fm, _body = _image_page(config, SITE_PLAN)
+    assert fm["converter"].startswith("image-ocr@"), fm
+    tsv = (config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    assert SITE_PLAN not in tsv, tsv
 
 
 OFFSITE_PHOTO = "projects/Contoso Offsite Photo.png"

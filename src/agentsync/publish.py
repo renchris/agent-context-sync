@@ -580,14 +580,11 @@ def _frontmatter_lines(text: str, keys: tuple[str, ...]) -> tuple[dict[str, str 
     return found, body
 
 
-def _withheld_on_page(text: str) -> bool | None:
-    """Whether a stub page says a label rule withheld its file (:func:`policy.page_says_withheld`: its
-    reason, its summary or its body), read from its frontmatter lines without a YAML parse, or None when the
-    reason line is missing or empty, or a reason or summary line does not decode, for the caller's parse. It
-    returns the verdict alone: both callers read only that (B13 round 12 N60, as round 11 M62 did for
-    ``Publisher._stub_says``). The cycle reads it for every online-only image stub a label rule may withhold
-    on each pass that has no OCR engine, where the parse cost about 1 s per 2000 stubs a poll (B13 round 10
-    L47), and ``_sync/QUARANTINE.tsv`` for each such stub every run (L54)."""
+def _stub_lines(text: str) -> tuple[str, str | None, str] | None:
+    """A stub page's reason, summary (None with no line) and body, read from its frontmatter lines without a
+    YAML parse, or None when the reason line is missing or empty, or a reason or summary line does not
+    decode, for the caller's parse: what :func:`policy.page_says_withheld` reads, and the reason
+    ``_sync/QUARANTINE.tsv`` follows for an image waiting on the OCR helper (B13 round 37 C1211)."""
     read = _frontmatter_lines(text, ("reason", "summary"))
     if read is None:
         return None
@@ -595,16 +592,32 @@ def _withheld_on_page(text: str) -> bool | None:
     reason = found.get("reason")
     if not reason or ("summary" in found and found["summary"] is None):
         return None
-    return policy.page_says_withheld(reason, found.get("summary"), body)
+    return reason, found.get("summary"), body
+
+
+def _withheld_on_page(text: str) -> bool | None:
+    """Whether a stub page says a label rule withheld its file (:func:`policy.page_says_withheld`: its
+    reason, its summary or its body), read from its frontmatter lines without a YAML parse
+    (:func:`_stub_lines`), or None when the reason line is missing or empty, or a reason or summary line does
+    not decode, for the caller's parse. It returns the verdict alone: the cycle reads only that (B13 round 12
+    N60), for every online-only image stub a label rule may withhold on each pass that has no OCR engine,
+    where the parse cost about 1 s per 2000 stubs a poll (B13 round 10 L47). ``_sync/QUARANTINE.tsv``
+    (``Publisher._stub_says``) reads the page's reason beside the verdict, from the same lines (L54; B13
+    round 37 C1211)."""
+    read = _stub_lines(text)
+    return None if read is None else policy.page_says_withheld(*read)
 
 
 OCR_DOWN_REASON = "the OCR helper is not working on this Mac: the image is read again once it works"
 """The ``reason:`` and summary of the stub of an image on this Mac while the OCR helper is built but not
 working (:meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's own absence says, nor the
-label rule's ``withheld`` words; the stored reason, the converter and ``_sync/QUARANTINE.tsv`` (read from the
-manifest) keep ``no converter for <suffix>`` (B13 round 36 C1101). An image whose read needs a download (a
-Graph item, an online-only file: :func:`read_needs_download`) keeps ``no converter for <suffix>`` on its page
-too: a working helper never reads it either, so its page promises no read (B13 round 37 C1257, C1265)."""
+label rule's ``withheld`` words; the stored reason and the converter keep ``no converter for <suffix>``, the
+key that reads it again once the helper works (B13 round 36 C1101). ``_sync/QUARANTINE.tsv`` follows the page,
+never this run's helper state: it prints this reason for a row whose page says it, and ``no converter for
+<suffix>`` for one planned while no helper was built (B13 round 37 C1211, C1204; ``Publisher._stub_says``). An
+image whose read needs a download (a Graph item, an online-only file: :func:`read_needs_download`) keeps ``no
+converter for <suffix>`` on its page too: a working helper never reads it either, so its page promises no read
+(B13 round 37 C1257, C1265)."""
 
 
 def read_needs_download(*, graph: bool, dataless: bool) -> bool:
@@ -1192,10 +1205,13 @@ class Publisher:
         online-only image is never read by a working helper either, so it keeps ``no converter for <suffix>``
         on its page and counts in the sync line's refused, as when the helper works (B13 round 37 C1257,
         C1265)."""
+        return local and self.ocr_down and self._ocr_wait_eligible(reason, suffix)
+
+    def _ocr_wait_eligible(self, reason: str | None, suffix: str) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of an image no label rule may withhold: a
+        row whose page may say :data:`OCR_DOWN_REASON`, whichever run planned it (B13 round 37 C1211)."""
         return (
-            local
-            and self.ocr_down
-            and not self._policy.labels_active
+            not self._policy.labels_active
             and reason == NO_CONVERTER_PREFIX + suffix
             and suffix in ImageConverter.extensions
         )
@@ -1205,37 +1221,43 @@ class Publisher:
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
         return self._withheld(reason, suffix)
 
-    def _stub_says(self, source_id: str, stable_id: str) -> bool | None:
-        """Whether the page of the stub published for one item says a label rule withheld the file
-        (:func:`policy.page_says_withheld`), or None when it has no reason on disk. (It was ``_stub_reason``,
-        the reason alone, until B13 round 10 L54, and gave the reason beside the verdict until round 11 M62:
-        no caller read it.)
+    def _stub_says(self, source_id: str, stable_id: str) -> tuple[str, bool] | None:
+        """The ``reason:`` of the page of the stub published for one item, and whether the page says a label
+        rule withheld the file (:func:`policy.page_says_withheld`), or None when it has no reason on disk.
+        (It was ``_stub_reason``, the reason alone, until B13 round 10 L54, and gave the reason beside the
+        verdict until round 11 M62, when no caller read it; ``_sync/QUARANTINE.tsv`` reads it again for an
+        image waiting on the OCR helper since B13 round 37 C1211, so each page is read once.)
 
         ``_sync/QUARANTINE.tsv`` follows the page for a row a label rule may withhold, as
         :func:`policy.page_says_withheld` reads it, the test the cycle and the setup report use (L54): a page
         from before its ``reason:`` said withheld (G29) says so in its body. Whether an image's stub
         says ``withheld by label rule`` was decided by the run that planned it (``images_readable``), and
         the TSV, rewritten every run, followed each run's OCR state instead, so a run whose engine missed
-        its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52).
+        its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52). An image no
+        label rule may withhold is the same: its page says :data:`OCR_DOWN_REASON` when the run that planned
+        it found the helper failing, and the TSV prints what the page says, never this run's ``ocr_down``
+        (C1211, C1204).
 
-        Every run reads it for each such stub, so the page's own ``reason:`` line is decoded first, as
-        ``render_frontmatter`` wrote it (one JSON string), and YAML parses only a page where that fails: the
-        parse was most of the cost, about 1.2 s per 2000 image stubs on every poll (B13 round 8 J55). The
-        verdict reads the summary line and the body of the text already read (B13 round 10 L54)."""
+        Every run reads it for each such stub, so the page's own ``reason:`` and ``summary:`` lines are
+        decoded first, as ``render_frontmatter`` wrote them (one JSON string each, :func:`_stub_lines`), and
+        YAML parses only a page where that fails: the parse was most of the cost, about 1.2 s per 2000 image
+        stubs on every poll (B13 round 8 J55). The verdict reads the summary line and the body of the text
+        already read (B13 round 10 L54)."""
         for out in self._manifest.outputs_for(source_id, stable_id):
             text = self._read_text(out.output_path)
             if text is None:
                 continue
-            if (said := _withheld_on_page(text)) is not None:
-                return said
-            try:
-                data, body = parse_frontmatter(text)
-            except FrontmatterError:
-                continue
-            reason, summary = data.get("reason"), data.get("summary")
-            if isinstance(reason, str) and reason:
-                summary = summary if isinstance(summary, str) else None
-                return policy.page_says_withheld(reason, summary, body)
+            read = _stub_lines(text)
+            if read is None:
+                try:
+                    data, body = parse_frontmatter(text)
+                except FrontmatterError:
+                    continue
+                reason, summary = data.get("reason"), data.get("summary")
+                if not isinstance(reason, str) or not reason:
+                    continue
+                read = (reason, summary if isinstance(summary, str) else None, body)
+            return read[0], policy.page_says_withheld(*read)
         return None
 
     def _plan_stub(
@@ -2171,13 +2193,19 @@ class Publisher:
                 reason = item.state_reason or item.state.value
                 suffix = Path(item.name).suffix.lower()
                 # the page's class, as the cycle and the setup report read it: a page from before its reason:
-                # said withheld says so in its body (B13 round 10 L54)
-                if (
-                    item.state is RowState.REFUSED
-                    and self._withheld_eligible(item.state_reason, suffix)
-                    and self._stub_says(source.id, item.stable_id)
-                ):
+                # said withheld says so in its body (B13 round 10 L54); an image no label rule may withhold
+                # prints the page's OCR_DOWN_REASON, never this run's helper state (H52; B13 round 37 C1211)
+                withheld = self._withheld_eligible(item.state_reason, suffix)
+                waits = self._ocr_wait_eligible(item.state_reason, suffix)
+                said = (
+                    self._stub_says(source.id, item.stable_id)
+                    if item.state is RowState.REFUSED and (withheld or waits)
+                    else None
+                )
+                if said is not None and withheld and said[1]:
                     reason = _withheld_reason(suffix)
+                elif said is not None and waits and said[0] == OCR_DOWN_REASON:
+                    reason = OCR_DOWN_REASON
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)
                 rows.add((source.id, _tsv_field(shown), _tsv_field(reason)))
         text = "\n".join([_QUARANTINE_HEADER, *("\t".join(r) for r in sorted(rows))]) + "\n"
