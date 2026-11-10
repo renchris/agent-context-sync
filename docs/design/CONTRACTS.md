@@ -39622,6 +39622,10 @@ Amended 2026-11-10, §16.242 C1211: `_sync/QUARANTINE.tsv` follows the page, nev
 `publish.OCR_DOWN_REASON` for a row whose page says it, and `no converter for <suffix>` for one whose page does (one
 planned while no helper was built); the stored reason and `none@0` keep `no converter for <suffix>`.
 
+Amended 2026-11-10, §16.242 C1268: a recording on this Mac waits on the OCR helper too while the media helper is
+ready (`Publisher.recordings_wait_ocr`): its page says `publish.OCR_DOWN_RECORDING_REASON`, chosen by suffix through
+`publish.ocr_down_reason`, and it counts in `ocr_unread`.
+
 **An abandoned doctor publishes no fix after the report gave up** (C1030; ruling 117; amends §16.232 C953). C953's
 deadline check in `checks_once` ran before the hook's post-processing, so a doctor the report cut while it worked out
 `_fail_steps` and `_state_stop_first` still wrote them into the hooks' `fixes` and `manifest_first`, and the Loop line

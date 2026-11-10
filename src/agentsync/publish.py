@@ -33,6 +33,7 @@ from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_ID, NO_CONVERTER_PREFIX, NO_CONVERTER_VERSION
 from agentsync.convert.image import ImageConverter
+from agentsync.convert.recording import RecordingConverter
 from agentsync.convert.registry import label_withheld_suffixes, sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
@@ -620,6 +621,22 @@ converter for <suffix>`` on its page too: a working helper never reads it either
 (B13 round 37 C1257, C1265)."""
 
 
+OCR_DOWN_RECORDING_REASON = (
+    "the OCR helper is not working on this Mac: the recording is read again once it works"
+)
+""":data:`OCR_DOWN_REASON` for a recording on this Mac (:meth:`Publisher.ocr_waits`), which the OCR helper
+reads beside the media helper: said only when this run found the media helper ready
+(:attr:`Publisher.recordings_wait_ocr`), so the page never promises a read the OCR helper's return alone
+would not bring. The stored reason, ``none@0`` and the re-read key keep ``no converter for <suffix>``, and
+``_sync/QUARANTINE.tsv`` follows the page, as for an image (B13 round 37 C1268)."""
+
+
+def ocr_down_reason(suffix: str) -> str:
+    """The words of the stub of a file waiting on the OCR helper, by its suffix: a recording's
+    (:data:`OCR_DOWN_RECORDING_REASON`) or an image's (:data:`OCR_DOWN_REASON`) (B13 round 37 C1268)."""
+    return OCR_DOWN_RECORDING_REASON if suffix in RecordingConverter.extensions else OCR_DOWN_REASON
+
+
 def read_needs_download(*, graph: bool, dataless: bool) -> bool:
     """True when reading an item means a download: any item of a Graph source, or an online-only (dataless)
     file. An image OCR would read is never downloaded for it, so such an image is refused by its name whatever
@@ -773,6 +790,9 @@ class Publisher:
         self.images_readable = False
         # the OCR helper is built but not working this run (``ocr.engine_state`` ``failed``, C1101)
         self.ocr_down = False
+        # while :attr:`ocr_down`, the media helper is ready (``media.probe``), so a pending recording waits on
+        # the OCR helper alone (B13 round 37 C1268); the cycle sets it
+        self.recordings_wait_ocr = False
         # collision_key -> owner (source_id, stable_id) of paths allocated by THIS instance (one cycle)
         self._claimed: dict[str, tuple[str, str]] = {}
 
@@ -1204,17 +1224,27 @@ class Publisher:
         ``local``: reading the image needs no download (``not`` :func:`read_needs_download`). A Graph or
         online-only image is never read by a working helper either, so it keeps ``no converter for <suffix>``
         on its page and counts in the sync line's refused, as when the helper works (B13 round 37 C1257,
-        C1265)."""
-        return local and self.ocr_down and self._ocr_wait_eligible(reason, suffix)
+        C1265).
+
+        A recording on this Mac waits on the OCR helper too, under a label rule as well (one never withholds
+        a recording), but only while this run found the media helper ready (:attr:`recordings_wait_ocr`):
+        its page says :data:`OCR_DOWN_RECORDING_REASON` (B13 round 37 C1268)."""
+        return (
+            local
+            and self.ocr_down
+            and self._ocr_wait_eligible(reason, suffix)
+            and (suffix not in RecordingConverter.extensions or self.recordings_wait_ocr)
+        )
 
     def _ocr_wait_eligible(self, reason: str | None, suffix: str) -> bool:
-        """True when ``reason`` is the ``no converter`` refusal of an image no label rule may withhold: a
-        row whose page may say :data:`OCR_DOWN_REASON`, whichever run planned it (B13 round 37 C1211)."""
-        return (
-            not self._policy.labels_active
-            and reason == NO_CONVERTER_PREFIX + suffix
-            and suffix in ImageConverter.extensions
-        )
+        """True when ``reason`` is the ``no converter`` refusal of an image no label rule may withhold, or of
+        a recording: a row whose page may say :func:`ocr_down_reason`, whichever run planned it (B13 round 37
+        C1211, C1268)."""
+        if reason != NO_CONVERTER_PREFIX + suffix:
+            return False
+        if suffix in RecordingConverter.extensions:
+            return True
+        return not self._policy.labels_active and suffix in ImageConverter.extensions
 
     def withheld(self, reason: str | None, suffix: str) -> bool:
         """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
@@ -1312,7 +1342,8 @@ class Publisher:
                 local=not read_needs_download(graph=source.kind.is_graph, dataless=item.dataless),
             )
         )
-        summary_text = OCR_DOWN_REASON if ocr_waits else shown
+        waits_reason = ocr_down_reason(suffix)  # a recording's words or an image's (C1268)
+        summary_text = waits_reason if ocr_waits else shown
         if withheld:
             # The summary says it too (B13 round 4 Q27): the mirror's CLAUDE.md has agents read summary: to
             # decide whether to open a page, and "no converter for .msg" there hid the route. The status, and
@@ -1342,7 +1373,7 @@ class Publisher:
             )
         elif ocr_waits:
             text_lines = (
-                f"agentsync did not convert this source: {OCR_DOWN_REASON}.\n"
+                f"agentsync did not convert this source: {waits_reason}.\n"
                 "The source exists: it waits for the OCR helper, not absent. See `_sync/QUARANTINE.tsv`.\n"
             )
         elif refusal:
@@ -1386,7 +1417,7 @@ class Publisher:
                 and not withheld
                 else None
             ),
-            reason=_withheld_reason(suffix) if withheld else OCR_DOWN_REASON if ocr_waits else reason,
+            reason=_withheld_reason(suffix) if withheld else waits_reason if ocr_waits else reason,
             source_title=title,
             summary=f"{page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),
@@ -2194,7 +2225,8 @@ class Publisher:
                 suffix = Path(item.name).suffix.lower()
                 # the page's class, as the cycle and the setup report read it: a page from before its reason:
                 # said withheld says so in its body (B13 round 10 L54); an image no label rule may withhold
-                # prints the page's OCR_DOWN_REASON, never this run's helper state (H52; B13 round 37 C1211)
+                # prints the page's OCR_DOWN_REASON, never this run's helper state (H52; B13 round 37 C1211),
+                # and a recording the page's OCR_DOWN_RECORDING_REASON (C1268)
                 withheld = self._withheld_eligible(item.state_reason, suffix)
                 waits = self._ocr_wait_eligible(item.state_reason, suffix)
                 said = (
@@ -2204,8 +2236,8 @@ class Publisher:
                 )
                 if said is not None and withheld and said[1]:
                     reason = _withheld_reason(suffix)
-                elif said is not None and waits and said[0] == OCR_DOWN_REASON:
-                    reason = OCR_DOWN_REASON
+                elif said is not None and waits and said[0] == ocr_down_reason(suffix):
+                    reason = said[0]
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)
                 rows.add((source.id, _tsv_field(shown), _tsv_field(reason)))
         text = "\n".join([_QUARANTINE_HEADER, *("\t".join(r) for r in sorted(rows))]) + "\n"

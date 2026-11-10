@@ -2574,7 +2574,8 @@ def _check(
 
 OCR_WAIT_CLAUSE = "waiting for the OCR helper (it is not working; read once it does)"
 """The sync line's clause for the images :attr:`SourceReport.ocr_unread` counts, after their number (B13 round
-36 C1101): their pages say ``publish.OCR_DOWN_REASON``."""
+36 C1101): their pages say ``publish.OCR_DOWN_REASON``; a recording it counts, while the media helper is
+ready, says ``publish.OCR_DOWN_RECORDING_REASON`` (B13 round 37 C1268)."""
 _PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
 
 STATUS_PARTLY_UNREAD = "status: some of the state could not be read: "

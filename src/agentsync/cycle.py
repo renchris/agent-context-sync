@@ -2071,6 +2071,13 @@ class _Cycle:
         self.publisher.images_readable = self.ocr is not None
         # a helper built but not working: an image's stub says so, never "no converter" (C1101)
         self.publisher.ocr_down = ocr_state == "failed"
+        # a pending recording waits on the OCR helper alone only when the media helper is ready: one look
+        # (its --version), nothing registered; otherwise its stub keeps "no converter" (B13 round 37 C1268)
+        self.publisher.recordings_wait_ocr = (
+            self.publisher.ocr_down
+            and config.convert.recordings
+            and media.probe(config.convert, config.cache_dir)[0] == "ready"
+        )
         # The media helper likewise (its --version runs), beside an OCR engine only; the piece store is a
         # folder of the cache, created when a piece is first stored.
         self.media = _cycle_media(config, self.ocr)

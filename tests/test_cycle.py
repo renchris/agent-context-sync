@@ -2635,6 +2635,45 @@ def test_quarantine_tsv_follows_a_no_converter_page_while_the_ocr_helper_fails_c
     assert SITE_PLAN not in tsv, tsv
 
 
+STANDUP = "projects/Contoso Standup.mp4"
+
+
+@pytest.mark.parametrize(
+    ("media_state", "waits"), [("ready", True), ("not-built", False)], ids=["media ready", "media not built"]
+)
+def test_a_pending_recording_waits_on_a_failed_ocr_helper_only_with_the_media_helper_ready_c1268(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    media_state: str,
+    waits: bool,
+) -> None:
+    """B13 round 37 C1268: an OCR helper that fails at the start of a cycle left a pending recording a `no
+    converter for .mp4` stub counted as refused, though a recording read for the same outage partway through a
+    cycle waits. With the media helper ready (``media.probe``), its page says the OCR helper is not working
+    and the recording is read again once it works, the sync line counts it waiting for the OCR helper and
+    QUARANTINE.tsv follows the page; the stored reason keeps `no converter for .mp4`. With no media helper the
+    OCR helper's return alone would not read it, so it keeps `no converter for .mp4`."""
+    _fail_ocr(monkeypatch)
+    monkeypatch.setattr(cycle_mod.media, "probe", lambda _c, _d: (media_state, ""))
+    (local_source_dir / STANDUP).write_bytes(b"\x00\x00\x00\x18ftypmp42 Contoso standup")
+    report = run(sample_config)
+    assert report.exit_code == 0
+    (st,) = [s for s in report.sources if s.source_id == SID]
+    assert (st.ocr_unread, st.refused_unread) == ((1, 0) if waits else (0, 1)), st
+    fm, body = _image_page(sample_config, STANDUP)
+    shown = publish_mod.OCR_DOWN_RECORDING_REASON if waits else "no converter for .mp4"
+    assert (fm["reason"], fm["summary"]) == (shown, f"refused: {shown}"), fm
+    assert ("no converter" in body) is not waits, body
+    assert _quarantine_reason(sample_config, STANDUP) == shown
+    assert _item(sample_config, STANDUP).state_reason == "no converter for .mp4"
+    capsys.readouterr()
+    cli._print_report(report)
+    said = capsys.readouterr().out
+    assert (f"; 1 {cli.OCR_WAIT_CLAUSE}" in said) is waits, said
+
+
 OFFSITE_PHOTO = "projects/Contoso Offsite Photo.png"
 
 
