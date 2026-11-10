@@ -385,10 +385,10 @@ _TIME_LIMIT_MAX_S = 60.0
 _REPO_SLUG = "renchris/agent-context-sync"
 ISSUE_URL = f"https://github.com/{_REPO_SLUG}/issues/new?template=setup-report.yml"
 ISSUE_LINK_LABEL = "issue link (review the report first):"
+"""What ``setup-report --out`` prints before the issue link, as its last stdout line."""
 EARLIER_LINK = "issue link (an earlier run's, not shown: this report's own link is its last line)"
 """An earlier run's issue link line as the Installer section's copy of install.out shows it: one fixed line
 for one line, with no URL, so a public report holds one issue link, its last line (B13 round 36 C1112)."""
-"""What ``setup-report --out`` prints before the issue link, as its last stdout line."""
 ISSUE_TITLE = "Setup report: "
 """The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
 ISSUE_FIELDS = {
@@ -12118,7 +12118,6 @@ def _background(r: _Run) -> list[str]:
         has_plist = plist.exists()
         rc, text = _launchctl_print(r.run, label)
         if _not_answered(rc, text):  # never `NOT loaded` or `not installed`: a job is not, at 113 (C720)
-            # B13 round 36 C1040: a wait the spent budget shortened names the report's time limit
             within = _waited(text)  # B13 round 36 C1040: a shortened wait names the report's time limit
             why = (
                 f"launchctl print did not answer within {within}"
@@ -14434,6 +14433,9 @@ def _reads_the_state_folder(name: str) -> bool:
 
 
 _GOVDIR_WORDS = "from agentsync's governance folder that is not a folder"
+"""The Doctor line's bucket for governance/ itself not a folder (lane B's round 28 I88, I89), the person's,
+the real governance folder put back first (B13 round 29 ruling 27: C103, C121, C137, C147, C152, C161,
+C208)."""
 _GOV_GONE = (
     "/ is missing, with the hold list, agentsync's audit trail, the purge queue and the suppression list in "
     "it: "
@@ -14463,9 +14465,6 @@ _GOVGONE_WORDS = "from agentsync's governance folder that is missing"
 B's C313 fix: ``the person puts agentsync's governance folder (<gov>) back whole from the copy kept``)."""
 _GOVGONE_CAUSE = " on agentsync's governance folder, which is missing: the person's to fix"
 """The status step's cause for :data:`_GOV_GONE`'s FAIL (:func:`_outcome_cause`)."""
-"""The Doctor line's bucket for governance/ itself not a folder (lane B's round 28 I88, I89), the person's,
-the real governance folder put back first (B13 round 29 ruling 27: C103, C121, C137, C147, C152, C161,
-C208)."""
 _LOST_HOLD_WORDS = "from a hold the hold list lost"
 """The bucket for governance.hold's FAIL of a hold the audit trail or the hold record keeps that holds.json
 lost (``governance.lost_holds``), the person's, in the person's kinds' words (lane RB); never its owner, its

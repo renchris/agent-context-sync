@@ -40028,6 +40028,13 @@ stopped-after-install` in the Summary, the raw form B13 round 9 K35 replaced. `_
 `reinstalled, then the run was stopped by a signal`; install.log keeps the token. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 
+**Each constant keeps its own docstring** (C1256 with C1283). Round 36's C1112 put `EARLIER_LINK` between
+`ISSUE_LINK_LABEL` and its attribute docstring, which then documented nothing, and `_GOVDIR_WORDS`'s docstring sat
+after `_GOVGONE_CAUSE`'s; one C1040 comment in `_background` said the same as the inline comment below it. Each
+docstring is back under its constant, the doubled comment is gone, and the M53 test now also asserts that every
+module-level string after the module docstring follows an assignment, as test_cycle.py's P48 test does for
+cycle.py. Test: `test_each_stopped_copy_constant_keeps_its_own_docstring`.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 **Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves

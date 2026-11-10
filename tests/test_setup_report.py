@@ -24711,6 +24711,28 @@ def test_each_stopped_copy_constant_keeps_its_own_docstring() -> None:
             docs[node.targets[0].id] = doc
     assert str(docs["_STOPPED_COPY_WARN"]).startswith("Why ``install.commit`` warns on a stopped copy")
     assert str(docs["_STOPPED_COPY_BEYOND"]).startswith('What follows "nothing for this setup to do"')
+    # B13 round 37 C1256 with C1283: C1112 put EARLIER_LINK between ISSUE_LINK_LABEL and its docstring, and a
+    # bucket's docstring was left after _GOVGONE_CAUSE's; every module-level string follows an assignment now
+    assert str(docs["ISSUE_LINK_LABEL"]).startswith(
+        "What ``setup-report --out`` prints before the issue link"
+    )
+    assert str(docs["EARLIER_LINK"]).startswith("An earlier run's issue link line")
+    assert str(docs["_GOVDIR_WORDS"]).startswith(
+        "The Doctor line's bucket for governance/ itself not a folder"
+    )
+    stray = [
+        node.lineno
+        for prev, node in itertools.pairwise(tree.body[1:])
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and not isinstance(prev, ast.Assign | ast.AnnAssign)
+    ]
+    assert stray == [], stray
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    assert (
+        "# B13 round 36 C1040: a wait the spent budget shortened names the report's time limit" not in source
+    )
 
 
 @pytest.mark.usefixtures("clean_doctor")
