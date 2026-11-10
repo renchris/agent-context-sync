@@ -5417,7 +5417,7 @@ def test_a_transcript_mirrored_as_plain_text_is_read_again_once_as_turns(
     assert again.sources[0].converted == 0, "the same bytes are no new conversion"
     assert [c.path for c in again.changes] == [slug.mirror_rel_path(SID, vtt)]
     fm, body = _mirror_page(sample_config, vtt)
-    assert fm["converter"].startswith("vtt-turns@1.0.0+")
+    assert fm["converter"].startswith("vtt-turns@1.0.1+")
     assert "\n[00:00:07] SAID Sam Roe: Thanks, I will check them.\n" in body
     assert _mirror_page(sample_config, "projects/sample.txt")[0]["converter"].startswith("text-plain@")
     assert _reread_record(sample_config) == (True, [])

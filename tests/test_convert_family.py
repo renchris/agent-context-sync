@@ -19,6 +19,7 @@ from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file
 from agentsync.convert import _common as common_mod
 from agentsync.convert import pptx as pptx_mod
+from agentsync.convert import vtt as vtt_mod
 from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.pptx import PptxConverter
 from agentsync.convert.registry import Registry
@@ -284,6 +285,39 @@ def test_a_zero_byte_file_under_a_typed_name_is_one_empty_stub_c930(
     row = _row(config, name)
     assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
     assert quarantine_class(row.state_reason) == "empty"
+
+
+def test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1304: before C1050 a zero-byte ``.vtt`` was a cached UNREADABLE ``not a WebVTT
+    transcript`` (classed ``other``), and C1050 changed the converter's answer without its emitter version,
+    so an upgraded Mac served every new zero-byte transcript (one canonical hash) that cached answer while a
+    fresh one said ``empty``. vtt's emitter is 1.0.1: an older build's result, cached under 1.0.0, is never
+    read, and a new empty transcript is ``empty``, as on a fresh Mac. The row the older build settled keeps
+    its class until its bytes change (C930's rule: no re-read)."""
+    config, src = make_env(tmp_path)
+    real = vtt_mod.VttConverter.convert
+
+    def older(self: vtt_mod.VttConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
+        if not path.read_bytes():  # the build before C1050: zero bytes fail the WEBVTT line test
+            raise UnreadableSourceError(vtt_mod._NOT_VTT)
+        return real(self, path, name=name)
+
+    with monkeypatch.context() as old:  # an older build's sync: emitter 1.0.0, its zero-byte answer cached
+        old.setattr(vtt_mod, "_EMITTER_VERSION", "1.0.0")
+        old.setattr(vtt_mod.VttConverter, "convert", older)
+        (src / "Contoso earlier.vtt").write_bytes(b"")
+        assert run(config).exit_code == 0
+    assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT
+    (src / "Contoso zero.vtt").write_bytes(b"")
+    (src / "Contoso standup.vtt").write_bytes(b"WEBVTT\n\n00:00.000 --> 00:01.000\n<v Ana>Hello\n")
+    assert run(config).exit_code == 0
+    row = _row(config, "Contoso zero.vtt")
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert quarantine_class(row.state_reason) == "empty"
+    assert _row(config, "Contoso standup.vtt").state is RowState.LIVE, "a transcript still converts"
+    assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT, "settled: kept, no re-read"
 
 
 @pytest.mark.parametrize(

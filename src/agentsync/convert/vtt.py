@@ -23,7 +23,9 @@ from agentsync.model import RenderedUnit, UnitKind
 from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import UNPRINTABLE_RE, plural
 
-_EMITTER_VERSION = "1.0.0"
+# 1.0.1: zero bytes are `empty` (C1050), so an older build's cached `not a WebVTT transcript` for them is
+# never read again (B13 round 37 C1304); its settled rows keep their class until their bytes change
+_EMITTER_VERSION = "1.0.1"
 _TURN_PAUSE_MS = 1000  # a pause of this much or more between two cues of one speaker starts a new turn
 _NOT_VTT = "not a WebVTT transcript (no WEBVTT first line)"
 _NO_CUE = "a WebVTT transcript with no cue"

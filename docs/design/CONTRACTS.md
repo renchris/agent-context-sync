@@ -38949,6 +38949,9 @@ one try), `test_convert_family.py::test_a_drawio_that_is_no_diagram_is_one_stub_
 Amended 2026-11-08, §16.238 C1050, C1117: the "Not built here" half is built: a zero-byte `.pdf`, `.eml`, `.odt`,
 `.teams.json` or `.vtt` is one `empty-output` stub too, raised inside each converter, never at `screen_file`'s or
 `PandocConverter.convert`'s top; no emitter bump, for the same reason.
+Amended 2026-11-10, §16.243 C1304: `.vtt` is the exception to `no emitter bump`: its zero-byte result before C1050
+was a cached UNREADABLE, not an uncached failure, so vtt's emitter is 1.0.1 and a new zero-byte transcript is
+`empty` on an upgraded Mac too.
 Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
 another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
 Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice,
@@ -39666,6 +39669,8 @@ Tests: `test_convert_family.py::test_a_zero_byte_file_under_a_typed_name_is_one_
 names), `test_convert_family.py::test_a_zero_byte_eml_under_a_label_rule_keeps_its_label_refusal_c1050`,
 `test_convert_formats.py::test_zero_bytes_are_empty_in_each_converter_and_only_zero_bytes_c1050`, and the zero-byte
 case of `test_convert_formats.py::test_vtt_that_is_not_a_transcript_is_a_fixed_stub` moved to `empty-output`.
+Amended 2026-11-10, §16.243 C1304: `no emitter bump` holds for all but `.vtt`, whose zero-byte answer before this
+was a cached UNREADABLE (`not a WebVTT transcript`), never an uncached FAILED: vtt's emitter is 1.0.1.
 
 **A Word, Excel or PowerPoint package named `.vsdx` is one stub of its type** (C1033, ruling 118;
 `agentsync.convert.diagram`; amends §16.233 C927). C927's words said a wrong-type `.vsdx` is one stub at first read, but only bytes that are no
@@ -39945,6 +39950,22 @@ the rebuild. The `agentsync status` form and the no-developer-tools form are unc
 keys on the detail's head, which is unchanged. Test:
 `test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (now also under
 install.sh: install.sh named once, `builds the <helper> again` once, no `_STILL_NO_ANSWER`).
+
+**An empty transcript is `empty` after an older build's cached answer too** (C1304; `agentsync.convert.vtt`; amends
+§16.233 C930 and §16.238 C1050). C1050 made a zero-byte `.vtt` raise `empty-output` where it had raised `not a
+WebVTT transcript (no WEBVTT first line)`, without moving vtt's emitter version, and UNREADABLE is cached under an
+action key made of the converter id, version, options, unit and canonical hash, which every zero-byte file shares.
+So on a Mac that synced one before the upgrade, every new zero-byte transcript was served the cached `other`
+answer, while a fresh Mac said `empty` (the verifier's two builds over one cache). vtt's `_EMITTER_VERSION` is
+1.0.1; `KEY_SCHEMA_VERSION` stays, since the key's makeup does not change. Only `.vtt`: the other C1050 types
+failed before, and FAILED is never cached. No re-read rule: re-reads follow explicit `outdated` rules only, so a
+settled `not a WebVTT transcript` stub keeps its class until its bytes change (C930's ruling), and newly converted
+transcripts miss the cache once, a cheap text parse, as pptx's 1.0.1 did. Not built here: a zero-byte `.msg` and the
+Office names `_GuardedConverter.convert` screens were also a cached UNREADABLE (`not the type its name says`) before
+C930, whose keys did not move either. Test:
+`test_convert_family.py::test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304` (an older
+build's sync at 1.0.0 caches `not a WebVTT transcript`; a new zero-byte transcript is then `empty`, a real one
+converts, and the settled row keeps its class).
 
 ### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
 
