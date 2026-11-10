@@ -161,7 +161,9 @@ def _xcrun_git(timeout: float = _XCRUN_TIMEOUT_S) -> Path | None:
     if _shim_git is not None:
         return _shim_git
     try:
-        cp = subprocess.run(
+        # a caller's deadline and start gate refuse or end it, as they do git itself (C955, C1065): a lookup
+        # they refuse or end raises TimeoutExpired, returns None and is not kept (B13 round 37 C1302, C1277)
+        cp = deadline.run(
             [_XCRUN, "--find", "git"],
             stdin=subprocess.DEVNULL,
             capture_output=True,

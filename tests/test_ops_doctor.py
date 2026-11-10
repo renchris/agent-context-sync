@@ -294,6 +294,38 @@ def test_git_line_names_the_git_xcrun_resolved(
     assert r.ok and r.detail == f"git version 2.50.1 (Apple Git-155) at {exe}"
 
 
+def test_doctors_git_path_starts_no_xcrun_after_the_reports_cut_c1277(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1277, C1302: doctor._git_path reaches gitops' xcrun lookup, which a plain
+    subprocess.run ran even after the report's end_children had closed its gate, so an abandoned doctor
+    thread started xcrun after the cut. Through deadline.run it starts nothing then and names /usr/bin/git,
+    not kept; with no deadline and no gate the lookup runs and is kept, as before."""
+    exe = tmp_path / "CommandLineTools" / "usr" / "bin" / "git"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\n", encoding="utf-8")
+    exe.chmod(0o755)
+    marker = tmp_path / "xcrun-ran"
+    xcrun = tmp_path / "xcrun"
+    xcrun.write_text(f"#!/bin/sh\ntouch {marker}\necho {exe}\n", encoding="utf-8")
+    xcrun.chmod(0o755)
+    monkeypatch.setattr(gitops, "_XCRUN", str(xcrun))
+    monkeypatch.setattr(gitops, "_git", None)
+    monkeypatch.setattr(gitops, "_shim_git", None)
+    monkeypatch.setattr(gitops, "_usr_bin_git_usable", lambda: True)
+    monkeypatch.setattr(gitops.sys, "platform", "darwin")
+    gate = deadline.StartGate()
+    ctx = contextvars.Context()
+    ctx.run(deadline.START_GATE.set, gate)
+    ctx.run(deadline.end_children, gate)
+    assert gate.closed
+    assert ctx.run(REAL_GIT_PATH) == Path("/usr/bin/git")
+    assert not marker.exists(), "xcrun started after the report's gate closed"
+    assert gitops._shim_git is None and gitops._git is None
+    assert REAL_GIT_PATH() == exe
+    assert marker.exists() and gitops._shim_git == exe and gitops._git == exe
+
+
 def test_pandoc_configured_but_missing(sample_config: Config, tmp_path: Path) -> None:
     cfg = dataclasses.replace(
         sample_config, convert=dataclasses.replace(sample_config.convert, pandoc_path=tmp_path / "nope")

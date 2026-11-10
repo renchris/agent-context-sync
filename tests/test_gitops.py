@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 import subprocess
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,6 +15,7 @@ import pytest
 from agentsync import gitops
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange
+from agentsync.ops import deadline
 
 
 def git(repo: Path, *args: str) -> str:
@@ -91,6 +95,71 @@ def test_git_executable_asks_xcrun_once_and_runs_its_git(
     assert [gitops.git_executable() for _ in range(5)] == [exe] * 5
     assert gitops.usr_bin_git() == exe
     assert xcrun.calls == 1
+
+
+@pytest.mark.usefixtures("shim")
+@pytest.mark.parametrize("cut", ["gate-closed", "deadline-passed"])
+def test_a_cold_xcrun_lookup_starts_nothing_after_the_reports_cut_c1302(
+    cut: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1302, C1277: the xcrun lookup was a plain subprocess.run that gitops._run reached before
+    its own deadline.run, so a report's closed start gate or passed deadline still started ``xcrun --find
+    git``, unregistered and with its own 10 s. It goes through deadline.run: refused, nothing starts, the
+    git run is refused as before (GitError 124) and the lookup is not kept."""
+    started: list[list[str]] = []
+
+    def popen(argv: list[str], *args: object, **kwargs: object) -> subprocess.Popen[str]:
+        started.append(list(argv))
+        raise OSError("no program may start here")
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    ctx = contextvars.Context()
+    gate = deadline.StartGate()
+    gate.closed = cut == "gate-closed"
+    ctx.run(deadline.START_GATE.set, gate)
+    if cut == "deadline-passed":
+        ctx.run(deadline.RUN_DEADLINE.set, time.monotonic() - 1.0)
+    with pytest.raises(GitError) as refused:
+        ctx.run(gitops.run_git, tmp_path, "--version")
+    assert refused.value.returncode == 124
+    assert started == []
+    assert gitops._shim_git is None and gitops._git is None
+
+
+@pytest.mark.usefixtures("shim")
+def test_a_hung_xcrun_lookup_is_registered_and_ended_with_the_reports_children_c1302(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1302: under an open gate the lookup is registered while it runs, so the report's
+    end_children ends a hung xcrun rather than leave it to its own 10 s; the ended lookup is not kept."""
+    pidfile = tmp_path / "xcrun.pid"
+    xcrun = tmp_path / "xcrun"
+    xcrun.write_text(f"#!/bin/sh\nprintf '%s;' $$ > {pidfile}\nexec /bin/sleep 600\n", encoding="utf-8")
+    xcrun.chmod(0o755)
+    monkeypatch.setattr(gitops, "_XCRUN", str(xcrun))
+    gate = deadline.StartGate()
+    out: list[object] = []
+
+    def body() -> None:
+        deadline.START_GATE.set(gate)
+        out.append(gitops._xcrun_git(timeout=600))
+
+    worker = threading.Thread(target=lambda: contextvars.Context().run(body), daemon=True)
+    worker.start()
+    end = time.monotonic() + 30
+    while not (pidfile.exists() and pidfile.read_text(encoding="utf-8").endswith(";")):
+        assert time.monotonic() < end, "the stub xcrun never started"
+        time.sleep(0.05)
+    pid = int(pidfile.read_text(encoding="utf-8")[:-1])
+    try:
+        assert deadline._LIVE_CHILDREN.get(pid) is False, "the lookup is registered, in the caller's group"
+        assert deadline.end_children(gate) >= 1
+        worker.join(30)
+        assert not worker.is_alive(), "end_children did not end the lookup"
+    finally:
+        deadline.end(pid, group=False)  # a failed run leaves no sleeper behind
+    assert out == [None] and gitops._shim_git is None
+    assert pid not in deadline._LIVE_CHILDREN and gate.closed
 
 
 @pytest.mark.usefixtures("shim")
