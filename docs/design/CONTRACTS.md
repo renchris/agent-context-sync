@@ -40231,7 +40231,171 @@ still holds a current render byte for byte.
 
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 
-Reserved for round 37 lane B of B13.
+**A Graph or online-only image keeps its `no converter` words while the OCR helper fails** (C1257 with C1265;
+ruling 122; amends §16.237 C1101). While the helper failed, a Graph-source image or an online-only (dataless) image
+got the OCR-down page, `publish.OCR_DOWN_REASON`, and was counted in `ocr_unread`, though a working helper never
+reads it either: reading it needs a download, which OCR never makes. `Publisher.ocr_waits` takes a required keyword
+`local` and is false when it is false. One module function, `publish.read_needs_download(*, graph, dataless)`,
+decides "reading this needs a download" for `_plan_stub`'s `ocr_waits` call, the cycle's `ocr_unread` count in
+`_publish`, `Cycle._no_converter` and `Cycle._stub_settled`, so the four cannot drift; the last two behave as before.
+Such a stub keeps `no converter for <suffix>` on its page, its summary and the sync line, and counts in
+`refused_unread`, exactly as when the helper works; an image on this Mac beside it still says `OCR_DOWN_REASON` and
+counts in `ocr_unread`. Tests:
+`test_cycle.py::test_an_online_only_image_keeps_no_converter_while_the_ocr_helper_fails_c1257` (an online-only and a
+local image under a failed helper: counts 1 and 1, the pages, the sync line; then a working helper reads the local
+one only and leaves the online-only page byte for byte) and
+`::test_a_graph_image_keeps_no_converter_while_the_ocr_helper_fails_c1257` (a Graph image: counts 0 and 1, no OCR
+clause on the sync line, never downloaded, its page unchanged once the helper works).
+
+**An unchanged image keeps its OCR page while the helper fails** (C1286; ruling 122). While the helper fails the
+registry holds no image converter, so `_no_converter` refused an image by its name and `_keeps_page` declined it: an
+unchanged image whose mtime moved lost its `image-ocr` page and its text to the OCR-down stub until the helper worked
+again. `Cycle._keeps_ocr_page`, tried first in `_process`'s refusal branch, keeps the page when `ocr_waits(reason,
+suffix, local=True)` holds (the helper down, no label rule, an image's `no converter` refusal), the row's live
+outputs are all OK, intact (`_pages_intact`) and made by `image-ocr`, and the row still holds `canonical_sha256` (a
+row a re-screen forgot is never kept). A Graph or online-only image keeps the page unread and is settled as
+`_keeps_page` settles it (`_settle_kept_online`: `DATALESS` or published, and its `materialise PATH` alarm). An image
+on this Mac is read through `arm.fetch` with a probe budget of its own, `ByteBudget(0, 1)` as the re-read does (no
+download, and none of the source's `max_files`: a cycle past its file cap must not cost the image its page), its
+canonical hash and the suppression lists checked as `_after_fetch` does, and is kept only when `classify_content`
+says `TOUCHED_NOT_CHANGED`: `set_content` with the same hashes, the page path brought up to the row
+(`_rewrite_if_moved`), and `TOUCHED_NOT_CHANGED` settled in the manifest and the source's counts; the staged copy is
+discarded in a `finally`. An image evicted since the walk (the probe raises `BudgetExhaustedError` or
+`DatalessRefusedError`) is never hydrated to compare: its page is kept unread, as a download case. An inbox drop the
+name-and-size duplicate rule refuses (`_inbox_name_size_duplicate`) is left to that rule. Any other fetch or hash
+error, or changed bytes, falls through to the OCR-down stub, its stored reason still `no converter for <suffix>`.
+Tests: `test_cycle.py::test_an_unchanged_image_keeps_its_ocr_page_while_the_helper_fails_c1286` (working, then
+failed with an mtime-only touch: the page byte for byte and its text, the row `TOUCHED_NOT_CHANGED`, nothing counted;
+then working again), `::test_an_unchanged_image_keeps_its_ocr_page_past_the_file_cap_while_the_helper_fails_c1286`
+(every other file touched too, `max_files = 1`), `::test_an_image_evicted_after_the_walk_keeps_its_ocr_page_unread_while_the_helper_fails_c1286`
+(the read sees it online-only, the walk does not: nothing copied, the page kept),
+`::test_a_changed_image_gets_the_ocr_down_stub_and_is_read_once_the_helper_works_c1286`,
+`::test_a_new_label_rule_never_keeps_ocr_text_while_the_helper_fails_c1286` and
+`::test_an_online_only_image_keeps_its_ocr_page_unread_while_the_helper_fails_c1286` (a `materialise PATH` run
+names the evicted image: nothing fetched, the page kept, the row `DATALESS`).
+
+**QUARANTINE.tsv follows an image's OCR-down page** (C1211 with C1204, C1238, C1259, C1269; ruling 122; amends
+§16.237 C1101). While the OCR helper fails, an image's page says `publish.OCR_DOWN_REASON` and sends the reader to
+`_sync/QUARANTINE.tsv`, whose row said `no converter for .png`, the words C1101 took off the page. `Publisher.write_quarantine`
+now follows the page, as it already did for a withheld row (L54): for a REFUSED row whose stored reason is `no
+converter for <suffix>`, an image suffix, with no label rule (`Publisher._ocr_wait_eligible`), it reads the stub's
+`reason:` and prints `OCR_DOWN_REASON` when the page says it. It never keys on this run's `ocr_down` (round 7 H52):
+a page planned while no helper was built keeps `no converter for <suffix>` in the TSV, and a run whose helper fails
+does not plan that stub again and makes no TSV-only commit. `Publisher._stub_says` returns the page's reason
+beside the withheld verdict, decoded through `publish._stub_lines` (the one-line JSON decode `_withheld_on_page`
+uses; YAML only where it fails), so each page is read once. The stored reason, `none@0` and the re-read key are
+unchanged. Cost (J55): `write_quarantine` over 2000 no-converter image stubs with OCR-down pages, at a machine load
+of about 350 on 10 cores, median 0.14 to 0.18 s before and 0.48 to 0.64 s after, against 6.3 s with the YAML
+fallback forced. Tests:
+`test_cycle.py::test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101` (the TSV row's reason
+is `OCR_DOWN_REASON`, the stored reason stays `no converter for .png`, and the row leaves the TSV once the image is
+read) and `::test_quarantine_tsv_follows_a_no_converter_page_while_the_ocr_helper_fails_c1211` (the H52 shape).
+
+**A pending recording waits on a failed OCR helper when the media helper is ready** (C1268; ruling 122). An OCR
+helper that failed at the start of a cycle left a pending recording a `no converter for .mp4` stub counted as
+refused, but a recording read during an outage that starts partway through a cycle waits. When the OCR helper
+is `failed`, `[convert] recordings` is on and the run is not dry, `Cycle.__init__` looks once at the media helper
+(`media.probe`, lane E's, read only: one `--version`, nothing registered) and sets
+`Publisher.recordings_wait_ocr` when its state is `ready`. `Publisher.ocr_waits` (still keyed on `local`) is then
+also true for a recording's `no converter` refusal on this Mac, under a label rule too, since a label rule never
+withholds a recording. Its page's `reason:`, summary and body say
+`publish.OCR_DOWN_RECORDING_REASON`, `the OCR helper is not working on this Mac: the recording is read again once
+it works`, chosen by suffix through `publish.ocr_down_reason`. The sync line counts it in `ocr_unread`
+(`cli.OCR_WAIT_CLAUSE` still fits), and `_sync/QUARANTINE.tsv` follows the page for recordings as for images. The
+stored reason, `none@0` and the re-read key keep `no converter for <suffix>`. When the media helper is not ready,
+a working OCR helper alone would not read the recording, so its stub keeps `no converter for <suffix>`. Test:
+`test_cycle.py::test_a_pending_recording_waits_on_a_failed_ocr_helper_only_with_the_media_helper_ready_c1268`
+(media ready; media not built).
+
+**One wording for a failed OCR helper** (C1271; ruling 122). Comments and docstrings called `ocr.engine_state`'s
+`failed` a helper "built but not working". `ocr._look` returns `failed` for that case and also for a build that
+failed (its `.failed` marker, with no helper on disk), for a helper that may not be run (untrusted), and for a
+cache that cannot be looked up. Every such comment and docstring in `src/agentsync` (publish, model, cycle, cli)
+now says "the OCR helper fails this run (`ocr.engine_state` `failed`: its build failed, it may not be run, or it
+is built and does not answer `--version`)", or "a helper that fails" for short. §16.237's C1101 paragraph has a
+dated line. `OCR_DOWN_REASON`'s text, the stored reason and the sync-line clause are unchanged. Test: none
+(comments only).
+
+**A sync's wait names every stop the cycle meets** (C1301 with C1246; ruling 124, completing ruling 116; amends
+§16.237 C1048 and §16.232 C933). `_sync_stops` took the guard's first stop alone, so with a folder at heartbeat.json
+and one at purge-record.json the wait said a plain sync prints the alarm once the heartbeat line is fixed, and after
+that `rmdir` the sync still stopped on the record; and a [governance] or policy.toml that does not load, which the
+cycle exits 78 on, was no stop at all, so the wait promised the alarm from a sync that refuses. `doctor.state_stops`
+yields each independent stop in the guard's order: every -wal or -shm side, the manifest, the lock, heartbeat.json,
+then each governance file that is not a file (`governance.governance_not_files`, the every-file form of
+`governance_not_a_file`: governance/ itself, else each file in it, then the hold record and the purge record, which
+are judged whatever governance/ is), each regular one that is damaged (`governance.governance_damages`, which reads a
+file only when its own stat finds a regular file, a link to one or nothing, never past a fifo or a folder nor inside
+a governance/ that is not a folder), and, only when no governance file stopped, a list that lost a purge
+(`governance_lost`). `state_not_a_file`, `governance_not_a_file` and `governance_damaged` are the first of each, the
+never-raises wrapper kept, so every caller is unchanged and reads nothing past the first stop. `_sync_stops` takes
+every name, then the lock's probe, then `policy` (the content policy raises ConfigError) and `governance.config`
+(`governance_or_none` is None, only for a table that does not load), then the refused reads, deduplicated by
+`dict.fromkeys`. Under a refused table the refused-queue note is no longer said, since it speaks of a sync that runs.
+Tests: `test_loop.py::test_a_wait_beside_two_guard_stops_names_both_fail_lines_c1301` (heartbeat and purge record:
+both lines and the sync exits 1; after the `rmdir` the record's alone, still 1; with the record aside the plain words
+and 0; a folder at heartbeat.json beside a malformed purge-queue.json: both),
+`test_cli.py::test_state_not_a_file_is_the_first_of_state_stops_c1301`,
+`test_cli.py::test_state_not_a_file_keeps_its_answer_beside_a_later_stop_c1301` (14 states, each its earlier answer by
+value), `test_loop.py::test_a_config_table_that_does_not_load_is_a_sync_stop_c1246` (governance, policy: exit 78,
+the stopped form, curate's fix and the heartbeat clause name the check; restored: the plain words and exit 0),
+`test_loop.py::test_status_points_the_refused_queues_note_at_its_own_fail_line_c959`.
+
+**A hold is named while [governance] does not load** (C1247; ruling 124). A hold the state lists was an [ok] row, which
+the refused table's not-ok filter dropped, so status said nothing of a hold in force. In `cli._governance_lines`, with
+`gov is None`, each state hold is `[info] governance.hold — <hold>; ` + `_HOLD_NOT_JUDGED` ("the config's own hold is
+not judged: [governance] does not load; see governance.config"), not ok and with no fix, so it adds no FAIL and no
+NEXT; with a table that loads it is the [ok] line as before. Test:
+`test_cli.py::test_a_state_hold_is_named_while_governance_does_not_load_c1247`.
+
+**A remote prefix that does not parse is governance.config's FAIL, its password never printed** (C1261; ruling 124,
+makes worse True). `_parse_remote` raised ValueError out of `parse_governance` for a port that is not a number, a
+broken IPv6 host or a host NFKC changes, so status printed `governance — check crashed` and no governance.config
+line, while C1026's `see governance.config` pointed at it. `parse_governance` turns it into a ConfigError, and both it
+and the existing `is not a remote URL` message name the prefix through `_redact_url`, never `{prefix!r}`, which
+printed the password of a userinfo with no host. urllib's own text is left out: its NFKC error quotes the netloc,
+password and all. `_parse_remote` never swallows the ValueError. Tests:
+`test_cli.py::test_a_remote_prefix_that_does_not_parse_is_governance_configs_fail_c1261`,
+`test_cli.py::test_a_remote_prefix_that_does_not_parse_never_prints_its_password_c1261` (a bad port, an NFKC host, a
+userinfo with no host: not in the ConfigError, status or sync),
+`test_cli.py::test_a_refused_governance_table_never_lifts_a_lost_queues_stop_c701` (now ConfigError).
+
+**Stale docstrings** (C1264; no behavior change): `cycle._UNLISTED_KINDS_META` says the root's UNKNOWN_EMPTY is stored
+too (C1004), `loop._named`'s and `_named_since`'s `stopped` is every check the sync stops on, and `_empty_root_wait`'s
+inbox argument keeps its computed value, with a comment that it is never true today and why it stays (C938).
+
+**xcrun's git lookup starts nothing after the report's cut** (C1302 with C1277; ruling 117 extended: a closed start
+gate or a passed deadline starts no child, and `deadline.end_children` ends a running one; lane D writes C1049's dated line on this commit).
+`gitops._xcrun_git` ran `xcrun --find git` with a plain `subprocess.run`, reached by
+`gitops._run`'s `git_executable()` before its own `deadline.run` and by `doctor._git_path` (the git and
+docs_repo.symlinks checks). So a report whose start gate had closed, or whose deadline had passed, still started it:
+unregistered, so `end_children` could not end it, and with its own 10 s limit. A failed lookup is not kept, so each
+later git call from a thread the cut abandoned asked xcrun again. The lookup now goes through `deadline.run` with the
+same argv, `stdin=DEVNULL`, `capture_output`, `text`, `timeout` and `check=False`. Refused before the spawn or ended by
+`end_children`, it raises `TimeoutExpired`, which the existing `except (OSError, SubprocessError, ValueError)` turns
+into None: the caller falls back to `/usr/bin/git`, not kept (`_shim_git` and `_git` stay None), and a later sync
+still resolves Apple's git. Under an open gate the lookup is registered in the caller's process group while it runs.
+With no deadline and no gate `deadline.run` is exactly `subprocess.run`, so a sync and standalone doctor are
+unchanged. With this change, `_CatFile` is the one program that stays outside `deadline.run`, as C1049's line says.
+`test_gitops.py::test_a_cold_xcrun_lookup_starts_nothing_after_the_reports_cut_c1302` (a closed gate, and a passed
+deadline with the gate open: `run_git` raises GitError 124 and no Popen is called),
+`test_gitops.py::test_a_hung_xcrun_lookup_is_registered_and_ended_with_the_reports_children_c1302`,
+`test_ops_doctor.py::test_doctors_git_path_starts_no_xcrun_after_the_reports_cut_c1277`.
+
+**The empty root's grant points at a line its reader can see, which names the folder and the Python** (C1243 with
+C1258; the lead's combined ruling; amends §16.237 C1004, dated line there). The empty-root wait's grant ended
+`(the source.<id>.listable [warn] line names it)`: neither the sync's output nor STATE.md prints that line, and its
+"it" read as the Python alone, while the line is also the only place the folder's path is (the wait keeps none,
+round 5 F43). The grant now ends with `loop.EMPTY_ROOT_GRANT_STATUS`, `` `~/.local/bin/agentsync status`'s
+source.<id>.listable [warn] line names the folder and the Python``, in the sync's output and STATE.md alike. Status,
+which prints its checks below its WAITING lines, maps that tail per live source to `loop.EMPTY_ROOT_GRANT_BELOW`,
+`the source.<id>.listable [warn] line below names the folder and the Python`, when its own checks hold that [warn],
+and drops the pointer when they do not (the folder filled since the sync, so the check reads `is listable`): never
+"run status" to a reader of status (ruling 109), as `QUEUE_REFUSED_NOTE_STATUS` and `LOST_HOLD_WAITS_STATUS` do.
+The wait's root, `the folder of <id>`, is unchanged, so its head still equals doctor's with the path swapped. Test:
+`test_loop.py::test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004` (the status form in sync's stdout and
+STATE.md, no folder path and no "~/" but the command's, the below form in status above its [warn] line and never
+`` `~/.local/bin/agentsync status`'s ``, and the bare grant once the folder fills).
 
 ### 16.243 Round 37: the converters: one spelling for odd-named folders, the slow-helper fix, and an empty caption's cache identity (2026-11-10, wave B13 round 37 lane E)
 
