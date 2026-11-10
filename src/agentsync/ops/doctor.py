@@ -3002,9 +3002,14 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             hint = " (drop files you save by hand here)" if src.path == kept else ""
             out.append(_ok(f"{base}.listable", f"{root} is empty{hint}"))
         elif first is None:
+            # the walk's own test (``arm_local.zero_children_unknown``): a cloud folder outside every File
+            # Provider domain reads as complete to the walk, which stores no empty root and so no wait, so
+            # doctor calls it plainly empty, with no Finder-and-grant fix the walk never asks for (B13 round
+            # 37 C1205); look_fix and sync_app stay keyed on ``cloud``, as it still sits under a sync app
+            unknown = cloud and arm_local.zero_children_unknown(root)
             why = (
                 "a File Provider folder that has not been enumerated, or a TCC denial reading as empty"
-                if cloud
+                if unknown
                 else "the folder is empty"
             )
             out.append(
@@ -3012,7 +3017,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                     f"{base}.listable",
                     f"{root} lists 0 entries ({why})",
                     Severity.WARN,
-                    fix=_empty_root_fix(config, src, root, image) if cloud else None,
+                    fix=_empty_root_fix(config, src, root, image) if unknown else None,
                 )
             )
         else:

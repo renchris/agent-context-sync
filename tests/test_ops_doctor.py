@@ -2555,6 +2555,33 @@ def test_empty_inbox_is_ok_unless_it_is_a_cloud_folder(sample_config: Config, tm
         assert ("drop files you save by hand here" in listable.detail) is ok, listable.detail
 
 
+@pytest.mark.parametrize("domain", [False, True], ids=["outside-a-domain", "in-a-domain"])
+def test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_the_walk_does_c1205(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, domain: bool
+) -> None:
+    """B13 round 37 C1205: an empty folder under ~/Library/CloudStorage outside every File Provider domain got
+    doctor's "a File Provider folder that has not been enumerated" warn and its Finder-and-grant fix, while
+    the walk read it as complete and stored no empty root, so no wait explained the warn. Doctor's listable
+    line now takes the walk's own test, ``arm_local.zero_children_unknown``."""
+    monkeypatch.setattr(arm_local, "_is_domain", lambda provider: domain)
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Fabrikam" / "Empty Project"
+    root.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=None)
+    listable = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+        "source.local-fixture.listable"
+    ]
+    assert not listable.ok and listable.severity is doctor.Severity.WARN
+    _, stats = arm_local.walk(root, source_id="local-fixture", volume="v", include=["**"], exclude=[])
+    assert stats.empty_cloud_root is domain, "the walk's own verdict"
+    if domain:
+        unknown = "(a File Provider folder that has not been enumerated, or a TCC denial reading as empty)"
+        assert listable.detail.endswith(unknown), listable.detail
+        assert listable.fix is not None and "Finder" in listable.fix
+    else:
+        assert listable.detail == f"{root} lists 0 entries (the folder is empty)", listable.detail
+        assert listable.fix is None
+
+
 def test_only_the_kept_inbox_is_called_the_drop_folder(sample_config: Config, tmp_path: Path) -> None:
     """Field report 2026-10-08: a Mac with inbox sources the person added (a bridge folder another tool
     writes) beside the inbox agentsync keeps. Both are empty and both are OK, but only the kept one, the

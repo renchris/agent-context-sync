@@ -40368,6 +40368,8 @@ userinfo with no host: not in the ConfigError, status or sync),
 too (C1004), `loop._named`'s and `_named_since`'s `stopped` is every check the sync stops on, and `_empty_root_wait`'s
 inbox argument keeps its computed value, with a comment that it is never true today and why it stays (C938).
 
+**Doctor and the walk agree on an empty cloud folder outside a File Provider domain** (C1205). An empty folder under `~/Library/CloudStorage` outside every File Provider domain got doctor's `source.<id>.listable` warn `a File Provider folder that has not been enumerated, or a TCC denial reading as empty` and its Finder-and-grant fix (`_empty_root_fix`), while the walk read it as complete and stored no empty root, so no wait explained the warn. `doctor._check_local_source` now takes the walk's own test, lane E's `arm_local.zero_children_unknown` (whose commit also moved the sentinel line onto it): outside a domain the line is the plain `<root> lists 0 entries (the folder is empty)` warn with no fix, as for a local folder; `look_fix` and the sync-app words stay keyed on the cloud path. Test: `test_ops_doctor.py::test_an_empty_cloud_folder_outside_a_file_provider_domain_reads_as_empty_as_the_walk_does_c1205` (outside and inside a domain, each beside the walk's own `empty_cloud_root`).
+
 **xcrun's git lookup starts nothing after the report's cut** (C1302 with C1277; ruling 117 extended: a closed start
 gate or a passed deadline starts no child, and `deadline.end_children` ends a running one; lane D writes C1049's dated line on this commit).
 `gitops._xcrun_git` ran `xcrun --find git` with a plain `subprocess.run`, reached by
