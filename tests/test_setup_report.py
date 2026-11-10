@@ -4842,6 +4842,46 @@ def test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112() -> 
         assert red.redact(line) == line
 
 
+_LINE_BREAKS = ("\u2028", "\u2029", "\x85", "\x1c", "\x1d", "\x1e")
+"""The code points ``str.splitlines()`` ends a line at that the shell report does not (B13 round 37 C1249)."""
+
+
+def test_a_line_break_code_point_in_a_path_is_cut_whole_through_the_report_c1249(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 37 C1249 (ruling 120; privacy; data integrity): ruling 112's proof ran the redactor on whole
+    lines, but the report split install.out and the friction log with ``str.splitlines()``, which ends a line
+    at U+2028, U+2029, U+0085 and ``\\x1c`` to ``\\x1e``: the path reached the redactor in two pieces and its
+    tail printed on a line of its own. Every :func:`_separator_lines` slot holding one of the six now goes
+    through build_report, in the friction log and in install.out, and prints the line Redactor.redact prints;
+    the friction log's attempt spans and line count read the same split."""
+    rows = [(line, cut) for line, cut in _separator_lines() if any(c in line for c in _LINE_BREAKS)]
+    assert len(rows) >= 6 * 24
+    head = V6_HAPPY.rstrip("\n").split("\n")
+    write_friction(fake_mac, "\n".join([*head, *(line for line, _cut in rows)]) + "\r\n")
+    shown = [f"error: cannot read /Users/olga/Client{c}AlphaX/Board/Fabrikam.docx" for c in _LINE_BREAKS]
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\n" + "\r\n".join(shown) + "\n",
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    friction = section(text, "Agent friction log")
+    assert f"{setup_report._plural(len(head) + len(rows), 'line')}, last modified" in friction
+    listed = [ln for ln in friction.split("\n") if re.match(r" *\d+  ", ln)]
+    assert len(listed) == len(head) + len(rows)
+    wrong = [
+        (got, f"{n:>3}  {cut}")
+        for n, (got, (_l, cut)) in enumerate(zip(listed[len(head) :], rows, strict=True), len(head) + 1)
+    ]
+    wrong = [w for w in wrong if w[0] != w[1]]
+    assert not wrong, (len(wrong), wrong[:6])
+    installer = section(text, "Installer")
+    assert installer.count("error: cannot read /Users/<path>\n") == len(_LINE_BREAKS), installer
+    for part in (friction, installer):
+        assert not re.search("(?i)olga|Fabrikam|AlphaX", part)
+        assert not any(c in part for c in _LINE_BREAKS)
+
+
 def test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123() -> None:
     """B13 round 36 C1123 (ruling 112): in a /tmp HOME the inbox note's two forms collapse to one, which was
     cut to `~/<path>`, while a /private HOME printed `~/agent-context/inbox`: agentsync's own inbox showed two

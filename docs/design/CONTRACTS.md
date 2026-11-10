@@ -39944,7 +39944,19 @@ installs-only case and is right. Test: `test_c972s_summary_lines_give_c928s_form
 
 ### 16.240 Round 37: the report: home cuts across line breaks and letter case, a missing source folder's path, and OCR-down images (2026-11-10, wave B13 round 37 lane RA)
 
-Reserved for round 37 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 37").
+Lane RA of B13 round 37 (`docs/plans/bring-back-ocr.md`, "B13 round 37"): ruling 120's Python half (privacy;
+data integrity), ruling 122's report half and the report's other words.
+
+**A line-break code point stays inside the path it sits in** (C1249; ruling 120; privacy; data integrity). Ruling
+112's proof ran `Redactor.redact` on whole lines, but the report read install.out, every log tail and the friction
+log with `str.splitlines()`, which also ends a line at U+2028, U+2029, U+0085 and `\x1c` to `\x1e`: the path reached
+the redactor in two pieces, and the Installer section and the friction listing printed its tail on a line of its own.
+`setup_report._text_lines` splits at `\n` alone, one trailing `\r` taken off each line, as the shell report does,
+and `_tail_cut`, `parse_friction`, `Friction.line_count`, the numbered friction listing and `listed_folder_names` all
+read through it, so the attempt spans still match the listing's numbers. `_CUT_BYTES` and install.sh's `STOP` are
+unchanged: those code points' bytes in `STOP` would end a cut at `é` or `Å` (makes worse True for that option).
+Test: `test_a_line_break_code_point_in_a_path_is_cut_whole_through_the_report_c1249` (every `_separator_lines()`
+slot holding one of the six, through `build_report`, in the friction log and in install.out).
 
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 

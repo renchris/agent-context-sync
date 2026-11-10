@@ -2389,8 +2389,8 @@ class Friction:
 
     @property
     def line_count(self) -> int:
-        """Lines embedded."""
-        return len(self.text.splitlines())
+        """Lines embedded, split as :func:`_text_lines` splits them (B13 round 37 C1249)."""
+        return len(_text_lines(self.text))
 
 
 _FRICTION_ITEM_RE = re.compile(r"^\s*(?:[-*]\s+)?\**(F\d+)\**\s*\|(.*)$")
@@ -2555,7 +2555,7 @@ def parse_friction(text: str) -> Friction:
             "stated": {},
         }
 
-    for n, line in enumerate(text.splitlines(), start=1):
+    for n, line in enumerate(_text_lines(text), start=1):
         if (strict := _SHELL_STEP1_RE.match(line)) is not None:
             shell_step1[n] = strict.group("kind")
         attempt = _ATTEMPT_RE.match(line)
@@ -4206,7 +4206,7 @@ def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int
     out: list[tuple[str, int, str]] = []
     heads = (f"{home.rstrip('/')}/Library/CloudStorage/", "~/Library/CloudStorage/")
     listing = False
-    for line in text.splitlines():
+    for line in _text_lines(text):  # install.out, split as the Installer section reads it (C1249)
         if line.startswith("# run="):
             listing = _LIST_RUN_RE.match(line) is not None
             continue
@@ -4676,6 +4676,19 @@ def _fence(lines: Iterable[str]) -> list[str]:
     return ["~~~text", *body, "~~~"] if body else ["_(none)_"]
 
 
+def _text_lines(text: str) -> list[str]:
+    """``text``'s lines, split at ``\\n`` alone with one trailing ``\\r`` taken off each, as the shell
+    report splits them. ``str.splitlines()`` also ends a line at U+2028, U+2029, U+0085 and ``\\x1c`` to
+    ``\\x1e``, so a path holding one reached the redactor in two pieces and its tail printed whole (B13 round
+    37 C1249, ruling 120); :data:`_CUT_BYTES` and install.sh's ``STOP`` stay as they are, since those code
+    points' bytes in ``STOP`` would end a cut at ``é`` or ``Å``. install.out, every log tail and the friction
+    log (its attempt spans, its line count and its numbered listing alike) are read through this one split."""
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return [ln[:-1] if ln.endswith("\r") else ln for ln in lines]
+
+
 def _tail_cut(path: Path, limit: int = _TAIL_BYTES) -> tuple[list[str], bool]:
     """``path``'s last ``limit`` bytes as lines (the first, partial one dropped when the file is longer)
     and whether it is longer: one open file answers both, so a rotation in between cannot split them."""
@@ -4683,7 +4696,7 @@ def _tail_cut(path: Path, limit: int = _TAIL_BYTES) -> tuple[list[str], bool]:
         size = fh.seek(0, os.SEEK_END)
         fh.seek(max(0, size - limit))
         data = fh.read(limit)
-    lines = data.decode("utf-8", errors="replace").splitlines()
+    lines = _text_lines(data.decode("utf-8", errors="replace"))
     return (lines[1:], True) if size > limit else (lines, False)
 
 
@@ -13020,7 +13033,7 @@ def _friction_section(r: _Run) -> list[str]:
     if fr.truncated:
         out.append(f"Only the first {FRICTION_MAX_BYTES // 1024} KiB are shown.")
     out.append(f"Each line is shown with its line number{_F_IDS_MARK}")
-    body = [f"{n:>3}  {ln}" for n, ln in enumerate(fr.text.rstrip("\n").splitlines(), start=1)]
+    body = [f"{n:>3}  {ln}" for n, ln in enumerate(_text_lines(fr.text.rstrip("\n")), start=1)]
     return [*out, "", *_fence(body)]
 
 
