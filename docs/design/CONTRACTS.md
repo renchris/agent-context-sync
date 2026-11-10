@@ -40042,6 +40042,23 @@ test read `Not run: ... before doctor started` instead of `Cut off` (twice, in t
 `_status_section` keeps it so (with the old constants that delay fails the test). No code changes. Test:
 `test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030`.
 
+**A volume that reaches no home is passed once** (C1254; ruling 120). Since C1016 and C1064 the unquoted volume
+look-back, `(?i:/Volumes/)[^\n]*?` inside the other-home pattern, ran over every byte to the line's end from each
+`/Volumes/` that reached no `/Users/` head, so `'"/Volumes/x" ' * 4000` took 10.8 s (0.35 s before C1016) and
+`'[/Volumes/x] ' * 4000` 2.4 s. The cut keeps its meaning and is one forward scan (`Redactor._sub`, which
+`redact` and `scrub`, the issue link's, both run) in `re.sub`'s leftmost order: the pattern's next match and the
+next volume cut are found from the same point and the earlier wins, so a quoted path that opens before a volume
+is still the pattern's, whole. The first `/Volumes/` no letter, digit, `_`, `.` or `-` precedes
+opens a cut at the first `/Users/` head after it, not after a blank or a `/`, that a path component follows, and
+runs as that home's path runs (`_home_rest`, the pattern's own tail); when no head after the first volume does, none
+after a later one on that line can. At a volume's own start the pattern's match (a registered value, such as this
+home on a volume, or a quoted head, whose look-back stops at its quote) wins, as the alternation ranked them. A
+differential run of the old and new redactors over 31,000 generated lines, three configurations, `redact` and
+`scrub`, differed only where the prefix is in another case and on a long s (`ſ`), which both cut whole. A bound on the look-back was not built: it leaks the login behind a long volume name
+(`/Volumes/Contoso Backup/` and 300 bytes before `/Users/dana/`), makes worse True. The same three lines take 0.1 to
+0.3 s. Test: `test_a_volume_that_reaches_no_home_is_passed_once_c1254` (its bound under `AGENTSYNC_TIMING=1`), with
+the ruling 102 and 112 rows and slots unchanged.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 **Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves

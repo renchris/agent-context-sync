@@ -724,19 +724,29 @@ _OTHER_HOME_HEAD = (  # the /Users part: the case of "Users" and its slashes fre
     r"(?i:/Users)/+(?!Shared" + _PATH_END + r")(?!<(?:user|path)>" + _PATH_END + ")"
 )
 _SYSTEM_DATA = r"(?:(?i:/System/Volumes/Data))?"  # this home's volume, in any case (C1018)
-_VOLUMES_ANY_DEPTH = rf"(?i:/Volumes/)[^\n]*?{_NOT_AFTER_BLANK}"  # any byte, to a /Users/ not after a blank
+_VOLUME_AT_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?i:/Volumes/)")  # a volume a path cut can open at
+_VOLUME_HOME_RE = re.compile(f"{_NOT_AFTER_BLANK}{_OTHER_HOME_HEAD}")  # a /Users/ head a volume reaches
 
 
 def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
     """:data:`_PATH_END`'s comment: the pattern of a path in another home, ``logins`` left alone outside
-    /Volumes/, each of ``spaced`` (registered values holding a blank) taken whole as path characters."""
+    /Volumes/, each of ``spaced`` (registered values holding a blank) taken whole as path characters. An
+    unquoted home behind a volume is cut beside this pattern, by :meth:`Redactor._sub`, in one
+    pass over the line (B13 round 37 C1254: as part of this pattern its look-back ran to the line's end from
+    every /Volumes/ that reached no home, so a line of thousands of them took seconds)."""
     login = "".join(f"(?!{re.escape(u)}{_PATH_END})" for u in logins)
-    home = rf"(?:{_VOLUMES_ANY_DEPTH}{_OTHER_HOME_HEAD}|{_SYSTEM_DATA}{_OTHER_HOME_HEAD}{login})"
+    home = rf"(?:{_SYSTEM_DATA}{_OTHER_HOME_HEAD}{login})"
     quoted = ""
     for q in ('"', "'", "`"):
         volume = rf"(?i:/Volumes/)(?:[^{q}\n\\]|\\.)*?{_NOT_AFTER_BLANK}"
         head = rf"(?:{volume}{_OTHER_HOME_HEAD}|{_SYSTEM_DATA}{_OTHER_HOME_HEAD}{login})"
         quoted += rf"(?<={q}){head}(?:[^{q}\n\\]|\\.)+(?={q})|"
+    return rf"{quoted}(?<![A-Za-z0-9_.-]){home}{_home_rest(spaced)}"
+
+
+def _home_rest(spaced: Iterable[str] = ()) -> str:
+    """The pattern of a path in another home after its /Users/ head: its components, a provider folder's name
+    to the next "/", and each later word after a blank that holds a "/" (:data:`_PATH_END`'s comment)."""
     values = sorted({re.escape(v) for v in spaced}, key=len, reverse=True)
     char = rf"(?i:{'|'.join(values)})|[^/{_PATH_STOP}]|\\." if values else rf"[^/{_PATH_STOP}]|\\."
     # a provider folder's own name, its prefix in any case (C1285): to the next "/", never past a quote
@@ -750,7 +760,7 @@ def _other_home_re(logins: Iterable[str], spaced: Iterable[str] = ()) -> str:
         rf"(?:{blank}+(?![-/~])(?![^={_PATH_STOP}]*://)(?![0-9/]+(?![^{_PATH_STOP}]))"
         rf"(?:[^/={_PATH_STOP}]|\\[^=])*/(?:[^={_PATH_STOP}]|\\[^=])*(?![^{_PATH_STOP}]))*"
     )
-    return rf"{quoted}(?<![A-Za-z0-9_.-]){home}(?:{char})+{tail}{word}"
+    return rf"(?:{char})+{tail}{word}"
 
 
 _GENERIC_FOLDERS = frozenset(
@@ -2108,6 +2118,7 @@ class Redactor:
             # after the literals, so this home's own literal wins (B13 round 34 C822)
             spaced = {f for v, _m in self._literals for f in _forms(v) if " " in f or "\t" in f}
             alts.append(f"(?P<otherhome>{_other_home_re(sorted(self._logins), spaced)})")
+            self._volume_rest = re.compile(_home_rest(spaced))
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
             self._regex = re.compile("|".join([f"(?P<hold>{_HELD_RE})", *alts]))
@@ -2182,7 +2193,67 @@ class Redactor:
         if not self.enabled or not text:
             return text
         text = _cut_purge_ids(_cut_holds(text))  # by pattern, first (B13 round 23 A8; round 30 ruling 35)
-        return self._compile().sub(self._replace, text)
+        return self._sub(text)
+
+    def _sub(self, text: str) -> str:
+        """The pattern's replacements over ``text``, with each home behind a volume cut to ``/Volumes/<path>``
+        where :func:`_other_home_re`'s volume branch cut it before B13 round 37 C1254, in one forward scan
+        that keeps ``re.sub``'s leftmost order: the pattern's next match and the next volume cut are found
+        from the same point, the earlier one wins and a match at the volume's own start (a registered value
+        such as this home on a volume, a quoted head) wins there, as the alternation ranked them. A volume
+        cut opens at the first /Volumes/ no letter, digit, "_", "." or "-" precedes, at the first /Users/
+        head after it on its line (over any byte, the head not after a blank or a "/") that a path component
+        follows, running as that home's path runs. When no head after a volume does, none after a later
+        volume on that line can (their heads are a subset), and each head is tried once: linear, never a
+        bound on the look-back, which would leak the login a long volume name hides. Uncounted, as every
+        ``<path>`` cut is."""
+        regex = self._compile()
+        if _VOLUME_AT_RE.search(text) is None:
+            return regex.sub(self._replace, text)
+        heads = list(_VOLUME_HOME_RE.finditer(text))
+        out: list[str] = []
+        pos = h = 0
+        found: re.Match[str] | None = None
+        cut: tuple[int, int] | None = None  # the next volume cut at or after pos, as (start, end)
+        volumes_from = 0  # no volume cut opens before this point
+        while pos <= len(text):
+            if found is None or found.start() < pos:
+                found = regex.search(text, pos)
+            if cut is not None and cut[0] < pos:
+                cut = None
+            while cut is None and volumes_from <= len(text):
+                v = _VOLUME_AT_RE.search(text, max(pos, volumes_from))
+                if v is None:
+                    volumes_from = len(text) + 1
+                    break
+                line_end = text.find("\n", v.end())
+                line_end = len(text) if line_end < 0 else line_end
+                while h < len(heads) and heads[h].start() < v.end():
+                    h += 1
+                k = h
+                while k < len(heads) and heads[k].start() < line_end:
+                    rest = self._volume_rest.match(text, heads[k].end())
+                    if rest is not None:
+                        cut = (v.start(), rest.end())
+                        break
+                    k += 1
+                    h = k  # a head no component follows serves no volume
+                if cut is None:
+                    volumes_from = line_end + 1  # no later volume on this line reaches a home either
+            if found is None and cut is None:
+                break
+            if cut is not None and (found is None or cut[0] < found.start()):
+                out += [text[pos : cut[0]], "/Volumes/<path>"]
+                pos = cut[1]
+                continue
+            assert found is not None
+            out += [text[pos : found.start()], self._replace(found)]
+            if found.end() == found.start():  # an empty match: copy one character, as re.sub moves on
+                out.append(text[found.end() : found.end() + 1])
+                pos = found.end() + 1
+            else:
+                pos = found.end()
+        return "".join([*out, text[pos:]])
 
     def note(self, kind: str) -> None:
         """Count one replacement of an unnumbered ``kind`` made outside the redaction pass
@@ -2236,7 +2307,7 @@ class Redactor:
             return text
         self._counting = False
         try:
-            return self._compile().sub(self._replace, _cut_purge_ids(text))
+            return self._sub(_cut_purge_ids(text))  # the volume cut too (C1254)
         finally:
             self._counting = True
 

@@ -4859,6 +4859,48 @@ def test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112() -> 
         assert red.redact(line) == line
 
 
+def test_a_volume_that_reaches_no_home_is_passed_once_c1254() -> None:
+    """B13 round 37 C1254: the volume look-back ran to the line's end from every /Volumes/ that reached no
+    home (C1016, C1064 widened it over quotes), so a line of thousands took seconds. One forward pass gives
+    the same cuts: a volume after a 300-byte name still hides the login a bound would leak, this home on a
+    volume keeps its own literal, and a quoted volume still stops at its quote."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    assert red.redact("/Volumes/Contoso Backup/" + "a" * 300 + "/Users/dana/notes.txt") == "/Volumes/<path>"
+    assert red.redact('"/Volumes/b x/users/olga/F" /Volumes/Con,toso;(x)/Users/olga/Fabrikam/x') == (
+        '"/Volumes/<path>" /Volumes/<path>'
+    )
+    assert red.redact("x/volumes/Backup/Users/olga/y and /Volumes/y /Users/olga/z") == (
+        "x/volumes/Backup/Users/olga/y and /Volumes/y /Users/<path>"
+    )
+    # a quoted path that starts before a volume is the pattern's, whole; scrub (the issue link) cuts it too
+    for line, cut in (
+        (
+            'mv "/Users/bob/Q3 report, Fabrikam /Volumes/x" /Volumes/Ext/Users/bob/y',
+            'mv "/Users/<path>" /Volumes/<path>',
+        ),
+        (
+            '"/Users/bob/Client, Fabrikam/a (/Volumes/x)" /Volumes/Ext/Users/bob/y',
+            '"/Users/<path>" /Volumes/<path>',
+        ),
+        ("cp '/Users/bob/a b' /Volumes/Ext/Users/bob/c", "cp '/Users/<path>' /Volumes/<path>"),
+        ("/Volumes/Ext/Users/dana/f", "/Volumes/<path>"),
+        ("/Volume\u017f/Secret/Users/bob/f", "/Volumes/<path>"),  # a long s matches as the pattern does
+    ):
+        assert red.redact(line) == cut, line
+        assert red.scrub(line) == cut, line
+    elsewhere = setup_report.Redactor()
+    elsewhere.add("home", "/Volumes/Contoso/Users/dana")
+    assert elsewhere.redact("source=/Volumes/Contoso/Users/dana/x") == "source=~/x"
+    for line in ('"/Volumes/x" ' * 4000, "[/Volumes/x] " * 4000, "/Volumes/x " * 4000):
+        start = time.monotonic()
+        assert red.redact(line) == line
+        took = time.monotonic() - start
+        if os.environ.get("AGENTSYNC_TIMING") == "1":  # 10.8 s and 2.4 s before the pass (C1254)
+            assert took < 1.0, (line[:14], took)
+
+
 _PROVIDER_CLAUSE = (
     "a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but "
     'stopping at a quote, a backtick, "):" or ", stored as "'
