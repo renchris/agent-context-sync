@@ -497,6 +497,18 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------------------------------------
 
 
+PURGE_NEEDS_SELECTOR = (
+    "purge: <SELECTOR> (id=<stable_id> | path=<glob> | docs=<glob>), --queue or --accept-lost <TIME> "
+    "is required"
+)
+"""A ``purge`` with no selector, ``--queue`` or ``--accept-lost``: a usage error decided before any config
+loads or any state is written (B13 round 37 C1303; ruling 125), in the help's own metavars (C1263)."""
+HOLD_NEEDS_SCOPE = "hold: <SCOPE> ('all' or a source id) is required"
+"""A ``hold`` that would set or release a hold with no scope, ``--reason`` or ``--owner`` given included: a
+usage error that writes no holds.json, so no one reads the bare listing as a hold set (B13 round 37 C1262;
+ruling 125), in the help's own metavar (C1263)."""
+
+
 def _purge_usage(args: argparse.Namespace) -> str | None:
     if args.queue and args.selector:
         return "purge: pass SELECTOR or --queue, not both"
@@ -511,6 +523,11 @@ def _purge_usage(args: argparse.Namespace) -> str | None:
         return "purge: --queue runs every queued purge, so --source goes with it only beside --forget"
     if args.queue and args.push:  # governance.run_purge_queue takes no push: it was dropped without a word
         return "purge: --queue does not push: pass --queue or --push, not both"
+    if not args.queue and not args.selector and args.accept_lost is None:
+        # after the specific checks, so theirs win; before any config loads or round 28's hold record is
+        # carried, so a bare purge exits 2 on a malformed config and writes nothing (B13 round 37 C1303;
+        # ruling 125)
+        return PURGE_NEEDS_SELECTOR
     return None
 
 
@@ -527,9 +544,13 @@ def _hold_usage(args: argparse.Namespace) -> str | None:
     if args.release and args.reason is not None:
         return "hold: --release takes no --reason: pass --release or --reason, not both"
     if args.scope is None and not args.release:
+        if args.reason is not None or args.owner is not None:
+            # a hold's words with no scope set no hold: a usage error, never a listing that reads as one set,
+            # and no holds.json written (B13 round 37 C1262; ruling 125)
+            return HOLD_NEEDS_SCOPE
         return None  # the bare list
     if args.scope is None:
-        return "hold: SCOPE ('all' or a source id) is required"
+        return HOLD_NEEDS_SCOPE
     if not args.owner:
         return "hold: --owner (the records/legal owner) is required"
     if not args.release and not args.reason:
@@ -4115,9 +4136,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
             _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
         passed = all((r.verified and not r.push_failed) or r.not_run for r in reports)
         return EXIT_OK if passed and not stuck else EXIT_FAILED
-    if not args.selector:
-        _err("purge: SELECTOR (id=<stable_id> | path=<glob> | docs=<glob>) or --queue is required")
-        return EXIT_USAGE
+    # _purge_usage refused a purge with no selector, --queue or --accept-lost before the config loaded (C1303)
+    assert args.selector, PURGE_NEEDS_SELECTOR
     selector = governance.PurgeSelector.parse(args.selector, source_id=args.source)
     rep = governance.purge(
         config,

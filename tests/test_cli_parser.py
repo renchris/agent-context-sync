@@ -88,6 +88,51 @@ def test_hold_list_with_release_is_usage(initialised: Config, capsys: pytest.Cap
     assert governance._state_holds(expand(initialised.state_paths.root)) == []
 
 
+@pytest.mark.parametrize(
+    "words", [["--reason", "Contoso matter", "--owner", "Records team"], ["--owner", "o"], ["--reason", ""]]
+)
+def test_a_hold_with_its_words_and_no_scope_is_usage_and_writes_nothing_c1262(
+    initialised: Config, capsys: pytest.CaptureFixture[str], words: list[str]
+) -> None:
+    """B13 round 37 C1262 (ruling 125): ``hold --reason R --owner O`` with the scope left out exited 0 as the
+    bare listing, so a person read it as a hold set; it is a usage error that writes no holds.json."""
+    root = expand(initialised.state_paths.root)
+    before = sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+    assert cli.main(["hold", *words, "--config", str(initialised.config_path)]) == cli.EXIT_USAGE
+    assert cli.HOLD_NEEDS_SCOPE in capsys.readouterr().err
+    assert not (root / "governance" / "holds.json").exists()
+    assert sorted(p.relative_to(root).as_posix() for p in root.rglob("*")) == before
+    assert cli.main(["hold", "--config", str(initialised.config_path)]) == cli.EXIT_OK  # the bare list stays
+
+
+@pytest.mark.parametrize("extra", [[], ["--dry-run"], ["--source", "local-fixture"], ["--push"]])
+def test_a_bare_purge_is_usage_before_the_config_loads_c1303(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: list[str]
+) -> None:
+    """B13 round 37 C1303 (ruling 125): a purge with no selector, --queue or --accept-lost failed only after
+    the config loaded and round 28's hold record was carried; it is refused first, so a malformed config
+    still exits 2."""
+    cfg = tmp_path / "sources.toml"
+    cfg.write_text("this is [not toml\n", encoding="utf-8")
+    assert cli.main(["purge", *extra, "--config", str(cfg)]) == cli.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert cli.PURGE_NEEDS_SELECTOR in err and "configuration error" not in err
+
+
+@pytest.mark.parametrize("extra", [[], ["--source", "local-fixture"], ["--push"]])
+def test_a_bare_purge_carries_no_round_28_hold_record_c1303(
+    initialised: Config, capsys: pytest.CaptureFixture[str], extra: list[str]
+) -> None:
+    """B13 round 37 C1303: a heartbeat.json still holding round 28's ``holds`` list and no hold-record.json:
+    a bare purge is a usage error and carries nothing, so hold-record.json stays absent."""
+    root = expand(initialised.state_paths.root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "heartbeat.json").write_text('{"holds": ["all"]}\n', encoding="utf-8")
+    assert cli.main(["purge", *extra, "--config", str(initialised.config_path)]) == cli.EXIT_USAGE
+    assert cli.PURGE_NEEDS_SELECTOR in capsys.readouterr().err
+    assert not (root / "hold-record.json").exists()
+
+
 def test_usage_beats_an_unloadable_config(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = tmp_path / "sources.toml"
     cfg.write_text("this is [not toml\n", encoding="utf-8")
