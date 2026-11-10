@@ -40035,6 +40035,13 @@ docstring is back under its constant, the doubled comment is gone, and the M53 t
 module-level string after the module docstring follows an assignment, as test_cycle.py's P48 test does for
 cycle.py. Test: `test_each_stopped_copy_constant_keeps_its_own_docstring`.
 
+**The C1030 test no longer depends on what ran before Doctor** (C1288; tests only). With a 4 s budget and the 1 s
+`_LOOP_FLOOR_S`, doctor's share was `max(1, left - 3)`, so under load the sections before Doctor used it up and the
+test read `Not run: ... before doctor started` instead of `Cut off` (twice, in two gates). The test sets
+`_LOOP_FLOOR_S` to 26 and a 30 s budget, so doctor's share is about 1 s whatever ran before it, and a 3 s
+`_status_section` keeps it so (with the old constants that delay fails the test). No code changes. Test:
+`test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030`.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 **Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves

@@ -22417,8 +22417,20 @@ def test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030(
     """B13 round 36 C1030 (ruling 117): a doctor call the time limit cut kept running and published its fixes
     and first state stop after the cut, which loop_next then read as the doctor's. The report tells the hook
     it gave up (the optional ReportHooks.doctor_abandoned, lane B's to set) in the TimeoutError branch, before
-    the Loop line is read; a hook that raises changes nothing, and a build without it reads as before."""
+    the Loop line is read; a hook that raises changes nothing, and a build without it reads as before.
+    B13 round 37 C1288: with a 4 s budget, doctor's share was what the sections before it left, so under load
+    they used it up and doctor was "not run" instead of cut off (twice, in two gates). A 30 s budget with a
+    26 s Loop floor gives doctor about 1 s whatever ran before it: a 3 s section before Doctor changes
+    nothing."""
     monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+    monkeypatch.setattr(setup_report, "_LOOP_FLOOR_S", 26.0)  # doctor's share: max(1, left - 28), about 1 s
+    status = setup_report._status_section
+
+    def late_status(r: Any) -> list[str]:  # what a loaded Mac spends before Doctor (C1288)
+        time.sleep(3.0)
+        return status(r)
+
+    monkeypatch.setattr(setup_report, "_status_section", late_status)
     release = threading.Event()
 
     def slow(config: Config) -> list[str]:
@@ -22438,7 +22450,7 @@ def test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030(
 
     try:
         hooks = setup_report.ReportHooks(doctor=slow, doctor_abandoned=abandoned, loop_next=loop_next)
-        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=30.0)
         assert told == ["abandoned"] and order[0] == "abandoned", order
         assert "Cut off: the doctor call did not finish" in section(text, "Doctor")
 
@@ -22446,7 +22458,7 @@ def test_a_doctor_the_report_cut_off_is_told_it_was_abandoned_c1030(
             raise RuntimeError("x")
 
         hooks = setup_report.ReportHooks(doctor=slow, doctor_abandoned=boom)
-        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=30.0)
         assert "Cut off: the doctor call did not finish" in section(text, "Doctor")
         assert setup_report.ReportHooks().doctor_abandoned is None
     finally:
