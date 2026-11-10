@@ -2818,6 +2818,9 @@ hashes are for the pipeline.  `status: deleted` pages are tombstones (the source
 Cite a page from docs/topics/ with its `rendered_sha256`.  Check docs/_sync/STATE.md before trusting a
 negative result.
 """
+# SUPERSEDED (2026-09-29, §16.6; 2026-10-04, §14 item 12 KISS K07; noted 2026-11-10, §16.244 C1287): MIRROR_CLAUDE_MD
+# opens "# mirror/ — GENERATED, DO NOT EDIT — UNTRUSTED THIRD-PARTY DATA", then policy.BOUNDARY_TEXT, then these lines
+# with docs-repo-relative paths (topics/, _sync/STATE.md)
 
 TOPICS_CLAUDE_MD = """\
 # docs/topics — curated synthesis
@@ -2829,16 +2832,23 @@ current.  Run the refresh queue (docs/README.md) before trusting a STALE page.
 Read docs/_sync/STATE.md first: incomplete sources mean a negative answer is "not found in docs/,
 and source X was incomplete", never a bare "nothing found".
 """
+# SUPERSEDED (2026-10-04, §14 item 12 KISS K07; noted 2026-11-10, §16.244 C1287): TOPICS_CLAUDE_MD is the 2-line pointer
+# "# topics/ — curated synthesis" / "The procedure and the authoring rules are in ../CLAUDE.md (and ../AGENTS.md);
+# follow them here."
 
 ROOT_CLAUDE_MD = """\
 docs/INDEX.md is the map; read docs/_sync/STATE.md first.
 docs/mirror/ is generated (never edit it); docs/topics/ is curated.
 What changed: git -C docs log --since=<date> --stat -- mirror topics
 """
+# SUPERSEDED (2026-10-04, §14 item 12 KISS K07; noted 2026-11-10, §16.244 C1287): ROOT_CLAUDE_MD removed; the root
+# CLAUDE.md and AGENTS.md are publish.root_guide(archive=, inbox=)
 
 GITIGNORE = "_sync/STATE.md\n_manifest/cache/\n.sync.lock\n"
 
 GITATTRIBUTES = "* text=auto eol=lf\n*.png binary\n*.jsonl -merge\nCHANGELOG/*.md merge=union\n"
+# SUPERSEDED (2026-10-07, §16.34; noted 2026-11-10, §16.244 C1287): GITATTRIBUTES gains '*.jpg binary' after
+# '*.png binary'
 
 STALE_BANNER_PREFIX = "> ⚠ STALE — sources changed since "
 
@@ -3036,6 +3046,7 @@ GENERATED_PATHSPECS: tuple[str, ...] = (
     "_sync/STATE.snapshot.md",
 )
 """Paths the pipeline owns and may reset on recovery."""
+# SUPERSEDED (2026-10-02, §16.18; noted 2026-11-10, §16.244 C1287): GENERATED_PATHSPECS gains 'archive' after 'mirror'
 
 COMMIT_PATHSPECS: tuple[str, ...] = (
     *GENERATED_PATHSPECS,
@@ -3047,6 +3058,8 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
     ".gitattributes",
 )
 """Paths a cycle commit stages (``git add -A -- <these>``); ``_sync/STATE.md`` is gitignored."""
+# SUPERSEDED (2026-09-29, §16.6 and §16.12; 2026-10-03, §16.19; 2026-10-07, §16.31; noted 2026-11-10, §16.244 C1287):
+# COMMIT_PATHSPECS gains '_eval' (§16.19), '_rubrics' (§16.31), 'AGENTS.md' (§16.6) and '.claude/settings.json' (§16.12)
 
 PUBLISHED_TAG = "published"
 
@@ -3312,6 +3325,8 @@ DRIVE_SELECT = (
     "createdDateTime,webUrl,remoteItem,publication"
 )
 """$select for drive delta: ``file`` MUST be present or quickXorHash is dropped for every item."""
+# SUPERSEDED (2026-09-29, §16.5; noted 2026-11-10, §16.244 C1287): DRIVE_SELECT gains 'pendingOperations', 'malware' and
+# 'lastModifiedBy'
 
 DELTA_HEADERS: dict[str, str] = {"Prefer": "deltaExcludeParent"}
 # SUPERSEDED (2026-09-29, §16.5): DELTA_HEADERS == {"deltaExcludeParent": "true"}
@@ -40022,6 +40037,23 @@ text in `docs/lanes/COMMON.md` stays as written (rulings 120 to 125 amend ruling
 lines), and C1051's line is kept, not rewritten. Test:
 `test_compaction_runs_only_in_a_reconcile_whose_land_gate_passes_c1306`, which reads the reconcile branch, its place
 after the land gate, both early returns, the squash's cut, the hourly default and the overdue state from the code.
+
+**Every §15 snapshot equals the code or says what superseded it** (C1287; docs only). C1038 fixed §15's canonical
+stub and left seven stale snapshots as a later round's item, though the file's own rule (the opening of §16) keeps
+replaced text in place and marks it SUPERSEDED: publish's `MIRROR_CLAUDE_MD` (now headed `# mirror/ — GENERATED, DO
+NOT EDIT — UNTRUSTED THIRD-PARTY DATA` with `policy.BOUNDARY_TEXT`, §16.6 and K07), `TOPICS_CLAUDE_MD` (K07's 2-line
+pointer), `ROOT_CLAUDE_MD` (removed by K07: the root guides are `publish.root_guide`) and `GITATTRIBUTES` (`*.jpg
+binary`, §16.34); gitops' `GENERATED_PATHSPECS` (`archive`, §16.18); and drive's `DRIVE_SELECT` (§16.5's three
+fields), `DELTA_HEADERS` already carrying its note. The verifier found an eighth that a literal_eval misses behind its
+starred element, gitops' `COMMIT_PATHSPECS` (`_eval` §16.19, `_rubrics` §16.31, `AGENTS.md` §16.6,
+`.claude/settings.json` §16.12). Each old stub stays, and one dated comment under it, `# SUPERSEDED (<date>,
+<section>; noted 2026-11-10, §16.244 C1287): <NAME> ...`, gives today's value or what changed, in the form §15
+already uses for `DELTA_HEADERS` and C1038's canonical note. C1038's check read only the canonical block; the new one
+reads every §15 module block, a truncated `# ... (see source)` line read as `NAME = ...` and named in
+`_SECTION_15_TRUNCATED` (frontmatter, manifest, graph.mail and curate, the four blocks that do not parse whole), a
+starred element resolved against the block's own earlier constants. Test:
+`test_every_section_15_constant_is_the_codes_or_says_what_superseded_it_c1287`, which reads each note's additions,
+the mirror heading, the topics pointer and the removed name from the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

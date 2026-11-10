@@ -477,6 +477,137 @@ def test_the_office_suffix_snapshots_say_policys_eleven_c1038() -> None:
     assert f"§16.239 C1038 (by §16.34 and §16.35):** `Registry.default(cfg, *, {params})`" in flat
 
 
+_SECTION_15_TRUNCATED = frozenset(
+    {
+        ("agentsync.frontmatter", "MIRROR_KEY_ORDER"),
+        ("agentsync.manifest", "SCHEMA_SQL"),
+        ("agentsync.graph.mail", "MAIL_SELECT"),
+        ("agentsync.curate", "REFRESH_QUEUE_SH"),
+    }
+)
+"""§15's stubs that print only an assignment's first line and `# ... (see source)`: the four blocks that do
+not parse as Python, each named so no block is skipped unseen."""
+
+
+def _section_15_constants() -> list[tuple[str, str, object, str]]:
+    """(module, name, value, the comment lines right after it) for every literal top-level constant in a §15
+    module block; a truncated stub line is read as `NAME = ...` and must be in :data:`_SECTION_15_TRUNCATED`,
+    and a starred name resolves against the block's earlier constants."""
+    text = CONTRACTS.read_text(encoding="utf-8")
+    start = text.index("\n## 15. Module reference")
+    s15 = text[start : text.index("\n## 16. ", start)]
+    found: list[tuple[str, str, object, str]] = []
+    truncated: set[tuple[str, str]] = set()
+    blocks = 0
+    for head in re.finditer(r"^### `(agentsync[\w.]*)`(.*?)(?=^### |\Z)", s15, re.S | re.M):
+        module = head.group(1)
+        for block in re.findall(r"```python\n(.*?)\n```", head.group(2), re.S):
+            blocks += 1
+            lines = block.split("\n")
+            for n, line in enumerate(lines):
+                cut = re.match(r"(\w+)(?::[^=]*)? = .*# \.\.\. \(see source\)$", line)
+                if cut:
+                    truncated.add((module, cut.group(1)))
+                    lines[n] = f"{cut.group(1)} = ..."
+            tree = ast.parse("\n".join(lines))  # every block parses once its truncated lines are cut
+            env: dict[str, object] = {}
+            for node in tree.body:
+                if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
+                    continue
+                [target] = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+                if not isinstance(target, ast.Name) or (
+                    isinstance(node.value, ast.Constant) and (node.value.value is Ellipsis)
+                ):
+                    continue
+                try:
+                    value = eval(
+                        compile(ast.Expression(node.value), "<§15>", "eval"), {"__builtins__": {}}, dict(env)
+                    )
+                except NameError:  # a call or a pattern, not a snapshot of a value
+                    continue
+                env[target.id] = value
+                after = []
+                for line in lines[node.end_lineno :]:
+                    if not line.startswith("#") and not line.startswith('"""'):
+                        break
+                    after.append(line.removeprefix("#").strip())
+                found.append((module, target.id, value, " ".join(after)))
+    assert truncated == _SECTION_15_TRUNCATED and blocks >= 35, "the scan is broken"
+    return found
+
+
+def test_every_section_15_constant_is_the_codes_or_says_what_superseded_it_c1287() -> None:
+    """B13 round 37 C1287: C1038 fixed §15's canonical stub and left seven stale snapshots as "a later round's
+    item": publish's MIRROR_CLAUDE_MD, TOPICS_CLAUDE_MD and GITATTRIBUTES, its removed ROOT_CLAUDE_MD,
+    gitops' GENERATED_PATHSPECS and drive's DRIVE_SELECT (DELTA_HEADERS had its note), and C1038's
+    literal_eval missed gitops' COMMIT_PATHSPECS behind its starred element. §16 keeps replaced text, so each
+    stays as history with a dated SUPERSEDED note. Every literal constant in every §15 block (one block at a
+    time, truncated stubs named) equals the module's, or a SUPERSEDED note naming it follows it, and each
+    note's facts are read from the code."""
+    from agentsync import gitops, policy, publish  # noqa: PLC0415
+    from agentsync.graph import drive  # noqa: PLC0415
+
+    noted: dict[tuple[str, str], str] = {}
+    checked = 0
+    for module, name, value, after in _section_15_constants():
+        mod = importlib.import_module(module)
+        checked += 1
+        if hasattr(mod, name) and getattr(mod, name) == value:
+            continue
+        assert "SUPERSEDED (" in after and f"): {name} " in after, f"{module}.{name}"
+        noted[(module, name)] = after
+    assert checked >= 60, "the scan is broken"
+    assert sorted(noted) == [
+        ("agentsync.gitops", "COMMIT_PATHSPECS"),
+        ("agentsync.gitops", "GENERATED_PATHSPECS"),
+        ("agentsync.graph.drive", "DELTA_HEADERS"),
+        ("agentsync.graph.drive", "DRIVE_SELECT"),
+        ("agentsync.publish", "GITATTRIBUTES"),
+        ("agentsync.publish", "MIRROR_CLAUDE_MD"),
+        ("agentsync.publish", "ROOT_CLAUDE_MD"),
+        ("agentsync.publish", "TOPICS_CLAUDE_MD"),
+    ]
+    ours = "noted 2026-11-10, §16.244 C1287): "
+    assert all(ours in note for key, note in noted.items() if key[1] != "DELTA_HEADERS")
+    delta = noted[("agentsync.graph.drive", "DELTA_HEADERS")].split("DELTA_HEADERS == ", 1)[1]
+    assert ast.literal_eval(delta) == drive.DELTA_HEADERS
+
+    def gains(module: str, name: str) -> list[str]:
+        return re.findall(r"'([^']+)'", noted[(module, name)].split(f"): {name} gains ", 1)[1])
+
+    assert set(gains("agentsync.graph.drive", "DRIVE_SELECT")) == (
+        set(drive.DRIVE_SELECT.split(",")) - set(dict(_section_15_values())["DRIVE_SELECT"].split(","))
+    )
+    gen = gains("agentsync.gitops", "GENERATED_PATHSPECS")
+    assert gen == ["archive", "mirror"] and gitops.GENERATED_PATHSPECS[:2] == ("mirror", "archive")
+    stub = dict(_section_15_values())
+    own = gitops.COMMIT_PATHSPECS[len(gitops.GENERATED_PATHSPECS) :]  # past the starred element
+    assert gitops.COMMIT_PATHSPECS[: len(gitops.GENERATED_PATHSPECS)] == gitops.GENERATED_PATHSPECS
+    added = [p for p in own if p not in stub["COMMIT_PATHSPECS"]]
+    assert sorted(added) == sorted(gains("agentsync.gitops", "COMMIT_PATHSPECS"))
+    attrs = gains("agentsync.publish", "GITATTRIBUTES")
+    assert attrs == ["*.jpg binary", "*.png binary"]
+    assert (
+        stub["GITATTRIBUTES"].replace("*.png binary\n", "*.png binary\n*.jpg binary\n")
+        == publish.GITATTRIBUTES
+    )
+    mirror = noted[("agentsync.publish", "MIRROR_CLAUDE_MD")]
+    [heading] = re.findall(r'opens "(# mirror/[^"]+)"', mirror)
+    assert publish.MIRROR_CLAUDE_MD.startswith(heading + "\n\n" + policy.BOUNDARY_TEXT)
+    assert "then policy.BOUNDARY_TEXT" in mirror
+    topics = noted[("agentsync.publish", "TOPICS_CLAUDE_MD")]
+    pointer = re.findall(r'"([^"]+)"', topics.split("2-line pointer ", 1)[1])
+    assert "\n".join(pointer) + "\n" == publish.TOPICS_CLAUDE_MD
+    assert not hasattr(publish, "ROOT_CLAUDE_MD") and hasattr(publish, "root_guide")
+    root = noted[("agentsync.publish", "ROOT_CLAUDE_MD")]
+    assert "ROOT_CLAUDE_MD removed;" in root and "publish.root_guide(archive=, inbox=)" in root
+    assert list(inspect.signature(publish.root_guide).parameters) == ["archive", "inbox"]
+
+
+def _section_15_values() -> list[tuple[str, object]]:
+    return [(name, value) for _, name, value, _ in _section_15_constants()]
+
+
 def test_contracts_cites_the_guides_by_name_not_by_line_c1042() -> None:
     """B13 round 36 C1042: §16.230 cited `setup-feedback.md:94` for the legend's `<path>` row, which lines
     added above it moved to 100, so the citation pointed at another row. The guide grows every round:
