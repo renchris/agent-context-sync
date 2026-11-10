@@ -1407,13 +1407,16 @@ probe that adds a made-up folder (for example `Project Alpha/Contoso Empty 2`) n
 home's folder check passes only when those lines are the only extra lines; any other extra or missing line stops the
 run (round 33 C774). Both dirs.txt and manifest.sha256 are the fixture's, under
 ~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks run from the
-folder that holds them (round 32 C664). A rehearsal that crosses local midnight checks every step after it again: an
+folder that holds them (round 32 C664). So `<copy>` in the shasum check is the copy's absolute path (`cd <copy> &&
+pwd -P`), never one relative to the root, which the check would read from the fixture's folder and report every file
+missing, and never one holding `|`, `&`, `\` or a newline, which the sed replacement takes unescaped (round 37 C1231). A rehearsal that crosses local midnight checks every step after it again: an
 empty-folder alarm or wait gone just after 00:00 local (the parent folder's mtime says when) is the cleaner's doing,
 not agentsync's. The Bash tool's shell here is zsh, while sb and the kit scripts are /bin/bash. Outside sb,
 `${PIPESTATUS[0]}` is empty and a pipe's `$?` is its last stage's, so to keep a command's exit code, send its output
 to a file and read `$?` straight after: `sb '<cmd>' > logs/x.log 2>&1; rc=$?; echo "rc=$rc"` (not `status=`, which
 zsh holds read-only). Quote any word that starts with `=` (`echo '====='`, never `echo =====` or `[ a == b ]`): zsh
-reads it as a command name, stops with `= not found`, and skips the rest of the command. The diff and shasum checks
+reads it as a command name, stops with `= not found`, and skips the rest of the command; to mark the parts of a
+read's output, use dashes (`echo '--- notes ---'`), which neither shell expands (round 37 C1207). The diff and shasum checks
 above end in the checker, so their `$?` is right as written (round 35 C907). Build any file list inside a kit script
 (/bin/bash) and run that script by path. Never use zsh parameter-expansion flags in the Bash tool, such as
 `${(f)"$(...)"}` or any `${(...)...}`: Claude Code's removal check refuses them as `could not be checked for dangerous

@@ -40092,6 +40092,21 @@ removing it would leave the §16 lines that name it stale, rewrite thirteen call
 `test_section_16_26_names_the_cycles_one_look_through_engine_state_c1270`, which reads `_cycle_ocr_state`'s call,
 `ocr.engine`'s body and the absence of `_cycle_ocr` and of any src call of `ocr.engine(` from the code.
 
+**The kit note marks a read's parts with dashes, and `<copy>` is an absolute path** (C1207 and C1231; the lanes
+brief, `docs/lanes/COMMON.md`, which the rehearsal brief is built from; docs only). C1207 (makes worse True): a
+rehearsal twice typed `echo =====RA` in the Bash tool, whose zsh stopped the command at `= not found`, against C907's
+rule it already had. The finder's fix, changing C907's example to dashes, makes things worse, measured by the
+verifier: the pinned example `(`echo '====='`, never `echo =====` ...)` would fail its test and no longer show the
+rule, since `---` starts with no `=`. C907's sentence stays word for word and one clause is appended to it: to mark
+the parts of a read's output, use dashes (`echo '--- notes ---'`), which neither shell expands. C1231: the note says
+both checks run from the folder that holds dirs.txt and manifest.sha256, so a relative `<copy>` in the shasum
+check's sed was read from the fixture's folder and the check reported all nine files missing (a false
+`SHA-BAD 0/9`); the note now says `<copy>` is the copy's absolute path (`cd <copy> && pwd -P`), and never one holding
+`|`, `&`, `\` or a newline, which the replacement takes unescaped. The pinned command is unchanged; the kit's own
+`pwd -P`, the refusal of those characters and the duplicate-keeping folder-list comparison are the lead's. Tests:
+`test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost` (C907's example kept beside the new clause)
+and `test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it`.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units

@@ -455,6 +455,11 @@ def test_the_kit_note_says_the_bash_tool_runs_zsh_so_a_pipes_status_is_lost() ->
         in note
     )
     assert "(`echo '====='`, never `echo =====` or `[ a == b ]`)" in note
+    # B13 round 37 C1207 (makes worse True for a new example): C907's example stays, one dashes clause added
+    assert (
+        "skips the rest of the command; to mark the parts of a read's output, use dashes (`echo '--- notes"
+        " ---'`), which neither shell expands (round 37 C1207)."
+    ) in note
     assert "The diff and shasum checks above end in the checker, so their `$?` is right as written" in note
     # B13 round 36 C1113: a zsh expansion flag set off the removal check though the command held no rm
     flags = note.split("Tools CI lacks", 1)[0]
@@ -8163,6 +8168,13 @@ def test_the_lane_brief_reruns_every_copys_shasum_check_and_no_probe_breaks_it(t
         " ~/.cache/agentsync-bring-back/fixtures/v1/ (or copied beside <root>/fixture/tree), and both checks"
         " run from the folder that holds them (round 32 C664)."
     )
+    # B13 round 37 C1231: run from the fixture's folder, a relative <copy> found no file (a false 0/9)
+    assert (
+        "So `<copy>` in the shasum check is the copy's absolute path (`cd <copy> && pwd -P`), never one"
+        " relative to the root, which the check would read from the fixture's folder and report every file"
+        " missing, and never one holding `|`, `&`, `\\` or a newline, which the sed replacement takes"
+        " unescaped (round 37 C1231)."
+    ) in note
     assert note.count(where) == 1
     assert all(where not in span for span in re.findall(r"`[^`]*`", note))
     # B13 round 33 C774: a probe's made-up folder is named, and its lines are the only ones the check allows
