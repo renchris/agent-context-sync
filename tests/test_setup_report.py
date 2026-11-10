@@ -701,6 +701,33 @@ def test_recent_errors_name_their_window(fake_mac: dict[str, Path], tmp_path: Pa
     assert "poll 2999 unstable" in errors
 
 
+def test_a_job_crash_still_lists_under_recent_errors(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """C-3 K10: a crash is main's bug report now, not a bare traceback; in a LaunchAgent job its
+    headline (``error:``) and the ERROR line with the traceback still reach the err.log, and
+    ``_LEVEL_RE`` lists them."""
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "run_cycle", boom)
+    monkeypatch.setattr(cli, "_in_job", lambda _args: True)
+    monkeypatch.delenv("__AGENTSYNC_RAISE", raising=False)
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == cli.EXIT_FAILED
+    said = capsys.readouterr().err
+    assert "Traceback (most recent call last):" in said and "ERROR agentsync.cli: unexpected error" in said
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(log.read_text(encoding="utf-8") + said, encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    errors = section(text, "Recent errors")
+    assert "error: Unexpected error in agentsync sync. This is a bug in agentsync." in errors, errors
+    assert "ERROR agentsync.cli: unexpected error in agentsync sync" in errors, errors
+
+
 @pytest.mark.usefixtures("mac_zone")
 def test_log_times_in_the_report_are_utc(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     """Field report 2026-10-07 (C12): ``logging`` writes the Mac's local time with no zone, and beside the

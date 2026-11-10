@@ -4302,6 +4302,7 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(cli, "run_cycle", boom)
+    monkeypatch.setenv("__AGENTSYNC_RAISE", "1")  # C-3: else main's bug report, exit 1
     with pytest.raises(RuntimeError):
         cli.main(["sync", "--config", cfg])
     assert "WARNING agentsync.arm_local: x: source root missing: gone" in capsys.readouterr().err
@@ -4826,6 +4827,7 @@ def test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_the
         err = capsys.readouterr().err.splitlines()
         assert err == ["error: OperationalError: database is locked"], err
     else:
+        monkeypatch.setenv("__AGENTSYNC_RAISE", "1")  # C-3: else main's bug report, exit 1
         with pytest.raises(sqlite3.IntegrityError if kind == "integrity" else sqlite3.OperationalError):
             cli.main(argv)
 
@@ -6331,6 +6333,7 @@ def test_a_permission_error_outside_the_state_folder_keeps_its_traceback(
 
     monkeypatch.setattr(cli, "_status_lines", refused)
     monkeypatch.setattr(cli, "_build_status", refused)
+    monkeypatch.setenv("__AGENTSYNC_RAISE", "1")  # C-3: else main's bug report, exit 1
     with pytest.raises(PermissionError):
         cli.main(["status", "--config", str(initialised.config_path)])
 

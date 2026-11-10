@@ -170,6 +170,7 @@ def test_init_leaves_no_partial_sources_toml(tmp_path: Path, monkeypatch: pytest
         raise OSError(errno.EIO, "the disk said no")
 
     monkeypatch.setattr(os, "replace", refuse)
+    monkeypatch.setenv("__AGENTSYNC_RAISE", "1")  # C-3: else main's bug report, exit 1
     with pytest.raises(OSError, match="the disk said no"):
         cli.main(["init", "--config", str(cfg)])
     assert not cfg.exists()

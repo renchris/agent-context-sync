@@ -3,6 +3,7 @@ traceback, and SIGTERM or SIGHUP during a sync runs Ctrl-C's cleanup and exits 1
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import signal
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, governance, loop
+from agentsync import cli, governance, it_request, loop
 from agentsync import cycle as cycle_mod
 from agentsync.config import Config, load_config
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -123,3 +124,26 @@ def test_an_interrupted_purge_says_stopped_not_nothing_changed(
     tail = f" --config {shlex.quote(str(initialised.config_path))}"  # B13 round 38 C1486
     assert "interrupted: Stopped." in err and f"    {loop.BIN} status{tail}" in err.splitlines(), err
     assert "Nothing was changed" not in err, err
+
+
+def test_an_unexpected_error_is_a_bug_report(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C-3 K10 (R283, R295): an error no arm handles is a short bug report, exit 1, with no message, path or
+    traceback; under --json one ``internal_error`` document is all stderr carries."""
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("/Users/x/secret")
+
+    monkeypatch.setattr(cli, "run_cycle", boom)
+    monkeypatch.delenv("__AGENTSYNC_RAISE", raising=False)
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert err.startswith("error: Unexpected error in agentsync sync."), err
+    assert "secret" not in out + err and "Traceback" not in err, err
+    assert f"{it_request.REPO_URL}/issues/new" in err, err
+    assert cli.main(["sync", "--json", "--config", str(initialised.config_path)]) == cli.EXIT_FAILED
+    out, err = capsys.readouterr()
+    docs = [json.loads(line) for line in err.splitlines()]
+    assert [d["reason"] for d in docs] == ["internal_error"], err
+    assert docs[0]["status"] == "error" and "secret" not in out + err, err

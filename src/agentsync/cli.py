@@ -290,6 +290,15 @@ class _JsonOptions:
 _json_options = _JsonOptions()
 
 
+class _Running:
+    """The parsed command line of this process's run, once parsed: the catch-all in ``main`` names it."""
+
+    args: argparse.Namespace | None = None
+
+
+_running = _Running()
+
+
 def _emit(doc: Mapping[str, object]) -> None:
     """``clio.emit``, keeping only the ``--fields`` fields when they were given (R252)."""
     fields = _json_options.fields
@@ -5494,11 +5503,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     previous = os.umask(0o077)
     try:
         return _main(argv)
+    except Exception as exc:
+        return _unexpected(exc)
     finally:
         os.umask(previous)
         clio.flush_log_warnings()  # under --json, no WARNING lost (B13 round 38 C1484)
         clio.set_json(False)  # a caller in this process (a test) gets text again
         _json_options.help, _json_options.fields = False, None
+        _running.args = None
+
+
+def _unexpected(exc: Exception) -> int:
+    """C-3 K10 (R283, R295): an error no arm of ``_main``'s ladder handles is a defect in agentsync. The
+    person gets ``clio.bug_report`` (no message, path or argv), or one ``internal_error`` document under
+    ``--json``, and exit 1, the code an uncaught exception gave. The traceback goes to the log at debug
+    (``-vv``), and at error in a LaunchAgent job, whose err.log is a log, not a terminal, so the setup
+    report's Recent errors still lists the crash. ``__AGENTSYNC_RAISE=1`` re-raises it."""
+    if os.environ.get("__AGENTSYNC_RAISE") == "1":
+        raise exc
+    args = _running.args
+    command: str | None = getattr(args, "command", None)
+    where = f"agentsync {command}" if command else "agentsync"
+    if args is not None and _in_job(args):
+        _log.error("unexpected error in %s", where, exc_info=exc)
+    else:  # a person's or an agent's run: the traceback only at -vv
+        _log.debug("unexpected error in %s", where, exc_info=exc)
+    clio.bug_report(exc, command, version=__version__, issues_url=it_request.REPO_URL)
+    clio.error_doc(
+        clio.Reason.internal_error,
+        f"Unexpected error in {where}. This is a bug in agentsync. Report: {it_request.REPO_URL}/issues/new",
+    )
+    return EXIT_FAILED
 
 
 _JSON_REASONS: tuple[tuple[type[BaseException] | tuple[type[BaseException], ...], clio.Reason], ...] = (
@@ -5630,6 +5665,7 @@ def _main(argv: Sequence[str] | None) -> int:
         args = _parse(parser, argv, as_json=clio.json_mode())
     except SystemExit as exc:  # argparse exits 2 on usage errors, 0 on --help/--version
         return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
+    _running.args = args
     clio.set_json(bool(getattr(args, "json", False)))
     _setup_logging(int(getattr(args, "verbose", 0) or 0))
     handler: Handler | None = getattr(args, "handler", None)
@@ -5717,8 +5753,9 @@ def _main(argv: Sequence[str] | None) -> int:
     except (ManifestPathError, FileExistsError, NotADirectoryError) as exc:
         # a state path that is not where or what it should be (a folder where the manifest belongs, a file
         # where the state folder belongs): the fix of the status line that FAILs it and a NEXT naming status;
-        # a path no line FAILs (a full disk) keeps its one line, and a raw error elsewhere its traceback (B13
-        # round 22 Z51: no fix and no NEXT, and a sync's lock over a state folder that is a file a traceback)
+        # a path no line FAILs (a full disk) keeps its one line, and a raw error elsewhere is main's bug
+        # report (C-3), its traceback in the log (B13 round 22 Z51: no fix and no NEXT, and a sync's lock
+        # over a state folder that is a file a traceback)
         said = _misplaced(args, exc)
         if said is None:
             if not isinstance(exc, ManifestPathError):
@@ -5742,7 +5779,7 @@ def _main(argv: Sequence[str] | None) -> int:
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read
         # ended sync, poll and curate on a raw traceback, one call site each (B13 round 20 X73). Only a path
-        # in the state folder: any other keeps its traceback
+        # in the state folder: any other is main's bug report (C-3), its traceback in the log
         said = _state_refused(args, exc)
         if said is None:
             raise
@@ -5804,8 +5841,11 @@ def _main(argv: Sequence[str] | None) -> int:
             _state_next(args, said=said, path=_state_root(args) if folder else None)
             _json_error(exc, args, said, clio.Reason.state_refused)
             return EXIT_FAILED
-        if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its
-            raise  # traceback (U72); so does any code no one listed (B13 round 18 V59: an allowlist)
+        # a code defect (IntegrityError, a missing column) is main's bug report (C-3), its traceback in
+        # the log at -vv and in a job's err.log (U72); so is any code no one listed (B13 round 18 V59: an
+        # allowlist)
+        if not doctor.environmental(exc):
+            raise
         # a locked or busy database, a full disk, a read-only or failing volume, a file that will not
         # open: one line, its traceback at -vv (B13 round 16 T12; round 18 V59: U72 had made the
         # others tracebacks)

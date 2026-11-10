@@ -41646,7 +41646,31 @@ against a docs repo under the test's temporary folder.
 
 #### 16.300.10 U-C3: the bug report
 
-Reserved.
+An error that no arm of `cli._main`'s ladder handles is a defect in agentsync, and the person gets a short report
+instead of a traceback (R283, R295).
+
+- `cli.main` catches `Exception` around `_main`, inside the umask try, and `cli._unexpected` handles it:
+  `clio.bug_report(exc, command, version=__version__, issues_url=it_request.REPO_URL)` on stderr (the headline
+  `error: Unexpected error in agentsync <command>. This is a bug in agentsync.`, then the exception's type and its
+  innermost agentsync module and line, the versions and the issues link; never the message, a path or argv), and
+  exit 1, the code an uncaught exception gave, so install.sh's `status-error` reading is unchanged.
+- Under `--json`, `clio.bug_report` writes nothing, so the one error document on stderr has reason
+  `internal_error`, status `error` and a message with the same headline and the issues link.
+- The traceback goes to the `agentsync.cli` log: at DEBUG (shown at `-vv`) in a person's or an agent's run, and at
+  ERROR in a LaunchAgent job (`cli._in_job`), whose err.log is a log, not a terminal. `setup_report._LEVEL_RE` is
+  unchanged: it lists the `error:` headline, the ERROR line, and `^Traceback ` lines from older logs.
+- The ladder's deliberate re-raises (the U72 code defect, the V59 allowlist, a `PermissionError` outside the
+  state folder, a raw `FileExistsError` or `NotADirectoryError` no status line FAILs) reach this handler.
+  `KeyboardInterrupt` and `SystemExit` are not `Exception` and keep their own paths.
+- `__AGENTSYNC_RAISE=1` (an internal variable, R079) re-raises the exception unchanged; tests that assert the raw
+  raise set it.
+
+Tests: `tests/test_cli_streams.py::test_an_unexpected_error_is_a_bug_report` and
+`tests/test_setup_report.py::test_a_job_crash_still_lists_under_recent_errors`; `tests/test_cli.py`'s
+`test_a_cycle_that_raises_still_logs_the_alarms_it_held`,
+`test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_their_traceback` and
+`test_a_permission_error_outside_the_state_folder_keeps_its_traceback`, and
+`tests/test_cli_conventions.py::test_init_leaves_no_partial_sources_toml`, set `__AGENTSYNC_RAISE=1`.
 
 #### 16.300.11 U-C4a and U-C4b: stdout carries the result
 
