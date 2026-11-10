@@ -3045,15 +3045,11 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     elif cloud:
         # add-source writes the sentinel as a commented recommendation, and the walk already holds back
         # deletions for a cloud folder it cannot list, or finds empty inside a File Provider domain (the
-        # walk's own test, ``in_domain``: a missing provider folder counts as one): optional, so not a warn
-        # to chase. agentsync is the subject: "a folder ... holds deletions" read as the folder holding them
-        # (B13 round 5 F3), and an empty folder outside a domain holds nothing back (F50).
-        provider = arm_local.cloud_provider_root(root)
-        held = (
-            "is empty or cannot be listed"
-            if provider is None or arm_local._is_domain(provider)
-            else ("cannot be listed")
-        )
+        # walk's own test, ``arm_local.zero_children_unknown``: a missing provider folder counts as one, B13
+        # round 37 C1205): optional, so not a warn to chase. agentsync is the subject: "a folder ... holds
+        # deletions" read as the folder holding them (B13 round 5 F3), and an empty folder outside a domain
+        # holds nothing back (F50).
+        held = "is empty or cannot be listed" if arm_local.zero_children_unknown(root) else "cannot be listed"
         out.append(
             _ok(
                 f"{base}.sentinel",

@@ -39912,7 +39912,19 @@ Reserved for round 37 lane B of B13.
 
 ### 16.243 Round 37: the converters: one spelling for odd-named folders, the slow-helper fix, and an empty caption's cache identity (2026-11-10, wave B13 round 37 lane E)
 
-Reserved for round 37 lane E of B13.
+Round 37's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 37"; specs `round37/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's rulings 120 to 125 settle it). A dated line this round writes reads
+`Amended 2026-11-10, §16.243 C<n>`.
+
+**The walk and doctor ask one question of an empty cloud folder** (for lane B's C1205; `agentsync.arm_local`).
+Whether a folder that lists zero children is unknown rather than empty was the walk's private `in_domain`, and
+doctor's sentinel line kept a copy of it without the `..` case. `arm_local.zero_children_unknown(path)` is that
+test made public: false outside every cloud root, true under a cloud root with no provider folder above the path or
+with a `..` in it (the provider folder it names may not be the one it is in), else `_is_domain` of its provider
+folder. The walk's `in_domain` calls it with the walk's own provider cache, and the sentinel line's `is empty or
+cannot be listed` keys on it; lane B's C1205 moves doctor's listable line onto it. Test:
+`test_arm_local.py::test_zero_children_unknown_is_the_walks_own_test` (a plain provider folder, a cloud root, a `..`
+path and a path outside, each read by the walk as the helper reads it, then a domain).
 
 ### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
 

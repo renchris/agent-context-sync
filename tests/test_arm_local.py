@@ -422,6 +422,26 @@ def test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule()
     assert al._is_domain(cloud / "OneDrive-Loop")
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="off macOS the attribute read fails: a domain")
+@pytest.mark.usefixtures("real_domain_check")
+def test_zero_children_unknown_is_the_walks_own_test(tmp_path: Path) -> None:
+    """B13 round 37 C1205: one public test, the walk's, for whether a folder with zero children is unknown
+    rather than empty, so doctor's lines answer as the walk does: outside every cloud root no, a cloud root
+    itself or a ``..`` path yes, else whether the provider folder is a File Provider domain."""
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage"
+    plain = cloud / "OneDrive-Fabrikam" / "Contoso Empty"
+    plain.mkdir(parents=True)
+    outside = tmp_path / "Contoso Elsewhere"
+    outside.mkdir()
+    dot_dot = cloud / ".." / "CloudStorage" / "OneDrive-Fabrikam" / "Contoso Empty"
+    assert not al.zero_children_unknown(outside) and not al.zero_children_unknown(plain)
+    assert al.zero_children_unknown(cloud) and al.zero_children_unknown(dot_dot)
+    for root in (outside, plain, dot_dot):  # the walk reads each empty root as the helper does
+        assert _walk(root)[1].empty_cloud_root is al.zero_children_unknown(root), root
+    file_provider_domain(cloud / "OneDrive-Fabrikam")
+    assert al.zero_children_unknown(plain) and _walk(plain)[1].empty_cloud_root
+
+
 @pytest.mark.usefixtures("real_domain_check")
 def test_a_home_reached_through_a_symlink_keeps_the_rule(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

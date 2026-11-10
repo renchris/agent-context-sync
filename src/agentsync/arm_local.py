@@ -465,6 +465,29 @@ def _linked_is_domain(provider: Path) -> bool:
     return True if real is None else _is_domain(real)
 
 
+def _zero_children_unknown(path: Path, roots: Sequence[Path], domains: dict[Path, bool]) -> bool:
+    """:func:`zero_children_unknown` over the cloud roots ``roots``, each provider folder's
+    :func:`_is_domain` read once into ``domains`` (the walk keeps one such cache a walk)."""
+    if not _is_cloud_tree(path, roots):
+        return False
+    provider = _provider_folder(path, roots)
+    if provider is None or ".." in expand(path).parts:
+        return True
+    if (known := domains.get(provider)) is None:
+        known = domains[provider] = _is_domain(provider)
+    return known
+
+
+def zero_children_unknown(path: Path) -> bool:
+    """Whether a folder at ``path`` that lists zero children is unknown rather than empty: it lies in a
+    File Provider domain, where its children may simply not be listed yet. False outside every cloud root;
+    True under a cloud root with no provider folder above it, or with a ``..`` in the path (the provider
+    folder it names may not be the one it is in); else :func:`_is_domain` of its provider folder. The one
+    test the walk and doctor's lines share, so a folder the walk reads as complete is never told it may not
+    be enumerated (B13 round 37 C1205)."""
+    return _zero_children_unknown(path, _cloud_roots(), {})
+
+
 def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:
     """True when a directory matches an exclude glob; ``name/`` (directory-only) patterns match the dir."""
     for pattern in exclude:
@@ -695,17 +718,8 @@ def walk(
     domains: dict[Path, bool] = {}  # provider folder -> _is_domain, read once a walk
 
     def in_domain(dir_path: Path) -> bool:
-        """Whether a zero-child ``dir_path`` lies in a File Provider domain, where its children may simply
-        not be listed yet; under a cloud root with no provider folder above it, or with a ``..`` in the path
-        (the provider folder it names may not be the one it is in), the rule stands."""
-        if not _is_cloud_tree(dir_path, cloud_roots):
-            return False
-        provider = _provider_folder(dir_path, cloud_roots)
-        if provider is None or ".." in expand(dir_path).parts:
-            return True
-        if (known := domains.get(provider)) is None:
-            known = domains[provider] = _is_domain(provider)
-        return known
+        """:func:`zero_children_unknown` with this walk's cloud roots and provider cache."""
+        return _zero_children_unknown(dir_path, cloud_roots, domains)
 
     included = _file_matcher(include, exclude)
     root_dev = root_st.st_dev
