@@ -336,6 +336,8 @@ def _empty_root_wait(config: Config, sid: str) -> str:
     src = next((s for s in config.sources if s.id == sid), None)
     fix = empty_root_fix(
         sid,
+        # never true today: an inbox whose root lists 0 entries goes to inbox_partial before root_unlisted
+        # (next_step); kept so a reroute never advises pausing an inbox (C938; B13 round 37 C1264)
         inbox=src is not None and src.kind is SourceKind.INBOX,
         root=f"the folder of {sid}",
         config_shown=_shown(config.config_path),

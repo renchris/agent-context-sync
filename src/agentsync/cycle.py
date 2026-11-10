@@ -368,11 +368,13 @@ to its root ("" when there were none). ``loop.next_step`` gives a source whose w
 folders the could-not-be-listed wait beside theirs, on the first sync, not after exclude-empty and another
 (B13 round 10 L68)."""
 _UNLISTED_KINDS_META = "unlisted_kinds:"
-"""Manifest meta ``unlisted_kinds:<source id>``: the folders the source's last walk could not list for a cause
-other than an empty cloud folder ("." for the root), each with its kind (``arm_local.UNKNOWN_PRIVACY`` for
-EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``; ``UNKNOWN_MISSING`` for a root that does not exist,
-B13 round 14 Q34), a JSON object ("" when there were none). ``loop.next_step`` words the fix of a
-could-not-be-listed wait by it; a folder it does not hold (state from before B13 round 11 M42) keeps the
+"""Manifest meta ``unlisted_kinds:<source id>``: the folders the source's last walk could not list, each with
+its kind ("." for the root), for a cause other than an empty cloud folder, except the root, whose
+``UNKNOWN_EMPTY`` is stored too (B13 round 36 C1004; round 37 C1264): an empty folder below it is in
+empty_cloud_dirs instead. The kinds: ``arm_local.UNKNOWN_PRIVACY`` for EPERM, ``UNKNOWN_MODE`` for EACCES,
+``UNKNOWN_OTHER``, ``UNKNOWN_MISSING`` for a root that does not exist (B13 round 14 Q34), and
+``UNKNOWN_EMPTY`` for "." alone; a JSON object ("" when there were none). ``loop.next_step`` words the fix of
+a could-not-be-listed wait by it; a folder it does not hold (state from before B13 round 11 M42) keeps the
 generic words."""
 _ROOT_MISSING_STATE_META = "root_missing_state:"
 """Manifest meta ``root_missing_state:<source id>``: for a root the source's last walk found missing under
