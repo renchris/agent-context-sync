@@ -39967,6 +39967,16 @@ C930, whose keys did not move either. Test:
 build's sync at 1.0.0 caches `not a WebVTT transcript`; a new zero-byte transcript is then `empty`, a real one
 converts, and the settled row keeps its class).
 
+**A test kills its helper through the helper's own Popen, never a bare pid** (C1272; `tests/test_ocr.py`). The C961
+test's `finally` (C1036's red-run cleanup) sent SIGKILL to the helper's bare pid after its green path had asserted
+the helper reaped, so the pid was free and the system could have handed it to another process (the verifier's probe
+logged it free each run), against ocr.py's own rule that a reaped pid never names a reused one. The test now takes
+its helper's Popen from `ocr._LIVE` under `_LIVE_LOCK`, the lock `_start` lists it under, asserts it is there, and
+its `finally` calls `proc.kill()`, which polls first and skips a reaped helper. Not `if not gone(pid)`: that waits
+10 s on a red path and still signals the bare pid. Test:
+`test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` (every signal sent is
+recorded: only end_helpers' one SIGKILL while the helper ran, none to a reaped helper).
+
 ### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
 
 Reserved for round 37 lane D of B13.

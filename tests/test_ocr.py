@@ -864,7 +864,11 @@ def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c
 
     B13 round 36 C1036: the helper's own ``--version`` wait is pinned to 60 s, as the setup-report twin's is,
     so a start stalled past the 5 s default on a loaded Mac is still ended by end_helpers and never by that
-    wait; a red run kills the helper itself, so it never sleeps out its 120 s past the test."""
+    wait; a red run kills the helper itself, so it never sleeps out its 120 s past the test.
+
+    B13 round 37 C1272: that kill goes through the helper's own Popen, as ocr.py's does, never its bare pid,
+    which the green path has already reaped and the system may hand to another process: Popen.send_signal
+    skips a helper it has reaped."""
     monkeypatch.setattr(ocr, "_VERSION_TIMEOUT_S", 60.0)  # only end_helpers can end it in the window below
     pidfile = tmp_path / "helper.pid"
     hung_helper(tmp_path, pidfile)
@@ -873,7 +877,19 @@ def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c
     started = time.monotonic()
     thread.start()
     pid = helper_pid(pidfile)
+    with ocr._LIVE_LOCK:  # _start lists the Popen under this lock as it starts it, so it is listed by now
+        mine = [proc for proc in ocr._LIVE if proc.pid == pid]
+    sent: list[tuple[int, int, bool]] = []  # each signal to this pid, and whether the helper was reaped
+    real_kill = os.kill
+
+    def kill(to: int, sig: int) -> None:
+        if sig and to == pid:  # another thread's signal to another process is not this test's
+            sent.append((to, sig, any(proc.returncode is not None for proc in mine)))
+        real_kill(to, sig)
+
+    monkeypatch.setattr(os, "kill", kill)
     try:
+        assert mine, "the helper is on the live list"
         assert group_of(pid) == group_of(os.getpid()), "the helper is in its caller's process group"
         ocr.end_helpers()
         thread.join(10)
@@ -882,8 +898,10 @@ def test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c
         assert gone(pid) and not ocr._LIVE, "reaped and off the list"
         ocr.end_helpers()  # nothing left to end, and never a raise
     finally:
-        with contextlib.suppress(OSError):
-            os.kill(pid, signal.SIGKILL)  # a red run leaves no helper behind
+        for proc in mine:  # a red run leaves no helper behind; a reaped one is skipped, its pid unsignalled
+            proc.kill()
+    assert [(to, sig) for to, sig, reaped in sent if reaped] == [], "a reaped helper's pid is never signalled"
+    assert sent == [(pid, signal.SIGKILL, False)], "end_helpers' one kill, while the helper ran"
 
 
 def test_a_probe_that_reaches_the_helper_after_its_reports_end_starts_nothing_c1067(tmp_path: Path) -> None:
