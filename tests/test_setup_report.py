@@ -4921,6 +4921,47 @@ def test_a_line_break_code_point_in_a_path_is_cut_whole_through_the_report_c1249
         assert not any(c in part for c in _LINE_BREAKS)
 
 
+def test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 37 C1299 with C1250 (ruling 120; privacy): install.out is a tee of install.sh's stderr, which
+    names a missing ``--source-local`` folder for the person, and the report cut a folder only right after
+    ``--source-local `` (the word ``is`` here), so the Installer section printed it whole a line below a run
+    header that cut it. The folder after ``is not an existing folder: `` is cut by ``_cut_path``, running to
+    `` (see --help)`` or the line's end, blanks, quotes and that suffix inside included, and counted."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    red.add("org", ORG)
+    said = "usage error: --source-local is not an existing folder: "
+    for folder, cut in (
+        ("/Users/dana/Tailspin Merger", "~/<path>"),
+        (
+            "/Users/dana/Library/CloudStorage/OneDrive-Contoso/Northwind Secret Plan",
+            "~/Library/CloudStorage/OneDrive-<org-1>/<path>",
+        ),
+        ('/Users/dana/Projects/acq "north" (see --help) x', "~/Projects/<path>"),
+        ("/Users/dana/Projects/tailspin-merger", "~/Projects/<path>"),
+    ):
+        for end in (" (see --help)", ""):
+            assert setup_report._redact_lines(red, [said + folder + end]) == said + cut + end
+    assert red.counts["path"] == 8
+    home = str(Path.home())
+    cloud = f"{home}/Library/CloudStorage/OneDrive-{ORG}"
+    folders = (f"{cloud}/Northwind Secret Plan", f"{home}/Projects/tailspin-merger")
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh "
+        f"--source-local {folders[0]} --source-local {folders[1]}\n"
+        f"{said}{folders[0]} (see --help)\n{said}{folders[1]} (see --help)\n",
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    installer = section(text, "Installer")
+    assert f"{said}~/Library/CloudStorage/OneDrive-<org-1>/<path> (see --help)" in installer, installer
+    assert f"{said}~/Projects/<path> (see --help)" in installer
+    assert not re.search("(?i)northwind|tailspin", text)
+
+
 def test_agentsyncs_own_inbox_is_never_cut_as_a_typed_folder_c1123() -> None:
     """B13 round 36 C1123 (ruling 112): in a /tmp HOME the inbox note's two forms collapse to one, which was
     cut to `~/<path>`, while a /private HOME printed `~/agent-context/inbox`: agentsync's own inbox showed two

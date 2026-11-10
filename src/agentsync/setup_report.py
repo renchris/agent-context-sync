@@ -18071,6 +18071,28 @@ def _shell_unquote(word: str) -> str:
     return re.sub(r"[\x00-\x1f\x7f]", " ", text)
 
 
+NOT_A_FOLDER_SAID = "is not an existing folder: "
+"""install.sh's own words before a missing ``--source-local`` folder, in its per-folder lines and its usage
+error (``usage error: --source-local is not an existing folder: <folder> (see --help)``)."""
+_NOT_A_FOLDER_RE = re.compile(rf"({re.escape(NOT_A_FOLDER_SAID)})(?P<path>.+?)(?=(?: \(see --help\))?$)")
+"""B13 round 37 C1299 with C1250 (ruling 120; privacy): the folder after :data:`NOT_A_FOLDER_SAID`, running to
+the line's closing `` (see --help)`` or its end, so a name with blanks, quotes or that suffix inside is
+taken whole. install.out is a tee of install.sh's stderr, which names the folder for the person, and
+:data:`_SOURCE_LOCAL_RE` reads only the word after ``--source-local `` (here ``is``), so the report printed a
+folder no config names."""
+
+
+def _not_a_folder_shown(red: Redactor, m: re.Match[str]) -> str:
+    """:data:`_NOT_A_FOLDER_RE`'s folder, already redacted, cut by :func:`_cut_path` as the run header's
+    ``--source-local`` argument is, so one folder never shows two ways (ruling 49), and counted as a
+    ``<path>`` replacement in the Redaction section."""
+    path = m.group("path")
+    cut = _cut_path(path)
+    if cut != path:
+        red.note("path")
+    return m.group(1) + cut
+
+
 def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     """One ``--source-local`` argument as the report shows it. The line is already redacted; the argument is
     unquoted and redacted once more (a name ``printf %q`` wrote as ``$'Z\\303\\274rich'`` only matches once
@@ -18196,6 +18218,8 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
             line = _ADDED_TYPED_RE.sub(_typed_cut, _SAME_STORED_RE.sub(r"(\1)", line))
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)
+        if NOT_A_FOLDER_SAID in line:  # install.sh's missing --source-local folder (C1299 with C1250)
+            line = _NOT_A_FOLDER_RE.sub(functools.partial(_not_a_folder_shown, red), line)
         return (
             _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line or "add-source " in line else line
         )

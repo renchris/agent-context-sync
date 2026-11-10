@@ -39972,6 +39972,18 @@ setup-feedback.md's `<path>` row says `in any case` and scopes `the one limit le
 `/Users/`. Tests: `test_a_path_in_another_home_is_cut_whatever_byte_sits_in_it_ruling_112` (its rows and slots),
 `test_the_path_legend_names_the_provider_folders_case_and_its_stops_c1203`, and lane RB's both-reports test.
 
+**A missing `--source-local` folder is cut in the Installer section too** (C1299 with C1250; ruling 120; privacy).
+install.sh names a missing folder on stderr for the person (`usage error: --source-local is not an existing folder:
+<folder> (see --help)`, once per folder up to 5), and install.out is a tee of stderr; `USAGE_ERROR_REPORTED` reached
+only the shell report's `LAST_ERROR`, and the Python report cut a folder only after `--source-local ` (the word `is`
+here), so its Installer section printed the folder whole a line below a run header that cut it. `_redact_lines`
+now takes the text after `setup_report.NOT_A_FOLDER_SAID` (`is not an existing folder: `), running to the line's
+closing ` (see --help)` or its end, so blanks, quotes and that suffix inside a name are taken whole, through
+`_cut_path`, as the run header's argument is, and counts it as a `<path>` replacement: `~/Projects/<path> (see
+--help)`. Lines an earlier run left in install.out are cut the same way. install.sh's own re-cut of a render
+(lane RB, §16.241) leaves a folder already ending in `<path>` as it is, so this render comes back byte for byte.
+Test: `test_a_missing_source_local_folder_is_cut_in_the_installer_section_c1299`.
+
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
 **Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves
