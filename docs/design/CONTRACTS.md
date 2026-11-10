@@ -39260,8 +39260,8 @@ which round 13's O14 and V11, V54 rule out. The state now opens the path bracket
 `docs/deploy/setup-feedback.md`). `_loop_unread_head` printed `not judged (the Loop line was not read: not started:
 the report's time budget was used up)`, two colons and no subject. For `_NOT_STARTED` it now prints `its NEXT was not
 started: the report's time budget was used up`: the loop_next call, never status, which may have been read.
-`_NOT_STARTED`, Status's words and the idle test are unchanged, as install.sh keys on them; ruling 84's own text at
-COMMON.md:677 stays as written. Test: `tests/test_setup_report.py::test_a_loop_read_never_started_says_its_next_was_not_started_c1109`
+`_NOT_STARTED`, Status's words and the idle test are unchanged, as install.sh keys on them; ruling 84's own text in
+`docs/lanes/COMMON.md` stays as written. Test: `tests/test_setup_report.py::test_a_loop_read_never_started_says_its_next_was_not_started_c1109`
 (a live copy with the idle advice, a stopped one without).
 
 **The report tells the doctor hook it gave up** (C1030, the report half; ruling 117; `src/agentsync/setup_report.py`).
@@ -40054,6 +40054,14 @@ reads every §15 module block, a truncated `# ... (see source)` line read as `NA
 starred element resolved against the block's own earlier constants. Test:
 `test_every_section_15_constant_is_the_codes_or_says_what_superseded_it_c1287`, which reads each note's additions,
 the mirror heading, the topics pointer and the removed name from the code.
+
+**CONTRACTS cites the lanes brief by ruling, never by line** (C1284; docs only). §16.235's C1109 entry placed ruling
+84's text by its line number in COMMON.md, the citation form C1042 retired for setup-feedback.md because a
+guide grows every round, and `docs/lanes/COMMON.md` grows every round too; C1042's ban read only the guide, so the
+citation passed. It is correct today only because nothing was inserted above it. The entry now says "ruling 84's own
+text in `docs/lanes/COMMON.md` stays as written", and the ban covers both files as this item's own check, C1042's left
+as it is. Test: `test_contracts_cites_the_lanes_brief_by_ruling_not_by_line_c1284`, which also finds ruling 84 once in
+COMMON.md.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

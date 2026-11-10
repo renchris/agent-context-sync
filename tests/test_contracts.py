@@ -624,6 +624,19 @@ def test_contracts_cites_the_guides_by_name_not_by_line_c1042() -> None:
     assert len(re.findall(r"^\| `<path>` \|", guide, flags=re.MULTILINE)) == 1
 
 
+def test_contracts_cites_the_lanes_brief_by_ruling_not_by_line_c1284() -> None:
+    """B13 round 37 C1284: §16.235's C1109 entry cited ruling 84's text as `COMMON.md:677`, the citation form
+    C1042 retired for the guide, and C1042's check read only setup-feedback.md. `docs/lanes/COMMON.md` grows
+    every round too: CONTRACTS.md names a ruling there by its number, never a line, and the ruling it names
+    is there once."""
+    text = CONTRACTS.read_text(encoding="utf-8")
+    assert re.findall(r"(?:setup-feedback|COMMON)\.md:\d+", text) == []
+    flat = " ".join(text.split())
+    assert "ruling 84's own text in `docs/lanes/COMMON.md` stays as written." in flat
+    lanes = (CONTRACTS.parent.parent / "lanes" / "COMMON.md").read_text(encoding="utf-8")
+    assert len(re.findall(r"^\(84\) ", lanes, flags=re.MULTILINE)) == 1
+
+
 def test_every_item_paragraph_opens_after_a_blank_line_c1043() -> None:
     """B13 round 36 C1043: §16.232's C911 entry followed C937's last line with no blank line, so Markdown
     rendered it inside C937's paragraph. Every `**<title>** (C<n>` entry opens after a blank line."""
