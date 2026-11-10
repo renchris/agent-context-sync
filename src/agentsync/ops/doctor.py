@@ -27,7 +27,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -1171,13 +1171,26 @@ def _probe_timed_out(name: str, kind: ocr.Helper, wait_s: float) -> CheckResult:
     line is (never a FAIL), never ``not working``.  Its fix is the run again (:func:`_again_fix`), then, if
     the line comes back, install.sh again without --report-only, which builds the helper again since its
     ``--version`` failed; or, with no developer tools, :data:`_OCR_DEVTOOLS_FIX`, since nothing can be built
-    then.  Convert's words are untouched: ``probe`` still says ``failed``, and only this check reads them."""
-    if _devtools_missing():
-        fallback = _OCR_DEVTOOLS_FIX
-    else:
-        fallback = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
+    then.  Convert's words are untouched: ``probe`` still says ``failed``, and only this check reads them.
+
+    Under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) with developer tools, the run again is already
+    install.sh's plain run, which builds the helper again, so the fix names it once, and its fallback is what
+    is left when the line comes back from a run on an idle Mac: report it (B13 round 37 C1227: it named the
+    same plain run twice).  Never ``write the report again``: doctor cannot tell a --report-only run from a
+    plain one, and that step is the report's own bucket's, which says it first; never
+    :data:`_STILL_NO_ANSWER`, which claims too much of a helper that may only be slow."""
     exc = subprocess.TimeoutExpired(["--version"], wait_s)
-    return _timed_out(name, exc, Severity.WARN, what=f"the {kind.name} --version", fallback=fallback)
+    what = f"the {kind.name} --version"
+    if _devtools_missing():
+        return _timed_out(name, exc, Severity.WARN, what=what, fallback=_OCR_DEVTOOLS_FIX)
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        fix = (
+            f"{AGAIN_UNDER_INSTALL_SH}, and it builds the {kind.name} again; if this line comes back from a "
+            "run when this Mac is idle, the helper is slow or hung: report it"
+        )
+        return replace(_timed_out(name, exc, Severity.WARN, what=what), fix=fix)
+    fallback = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
+    return _timed_out(name, exc, Severity.WARN, what=what, fallback=fallback)
 
 
 _RETRY_CLAUSE = HELPER_RETRY_CLAUSE

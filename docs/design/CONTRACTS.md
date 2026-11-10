@@ -38915,6 +38915,10 @@ checks, with and without developer tools; the OCR helper ready once it answers).
 Amended 2026-11-08, §16.236 C1071: install.sh's time-limit grep now reads this bucket in the report's own words,
 which no build matched before ruling 114 (298fa1f17), so a hung helper's NEXT keeps the idle advice and names no
 variable.
+Amended 2026-11-10, §16.243 C1227: under install.sh with developer tools the fix is `run <install.sh> again
+without --report-only, since a --report-only run builds nothing; a plain run keeps the folders already synced, and
+it builds the <helper> again; if this line comes back from a run when this Mac is idle, the helper is slow or hung:
+report it`, naming the plain run once; the `agentsync status` and no-developer-tools forms are as above.
 
 **A zero-byte or wrong-type file says so, once** (C930 and C927, makes worse True each; `agentsync.policy`,
 `agentsync.convert`; dated lines at §16.28 and §16.42). A zero-byte `.potx`, `.vsdx`, `.docx`, `.xlsx` or `.msg`
@@ -39925,6 +39929,22 @@ folder. The walk's `in_domain` calls it with the walk's own provider cache, and 
 cannot be listed` keys on it; lane B's C1205 moves doctor's listable line onto it. Test:
 `test_arm_local.py::test_zero_children_unknown_is_the_walks_own_test` (a plain provider folder, a cloud root, a `..`
 path and a path outside, each read by the walk as the helper reads it, then a domain).
+
+**The slow-helper fix names install.sh's plain run once** (C1227, makes worse True for the finder's options;
+`agentsync.ops.doctor`; amends §16.233 C915). Under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`, set for a plain run and a
+`--report-only` run alike) a helper whose `--version` did not answer in time got `_again_fix`'s install.sh form,
+which already is the plain run, then the C915 fallback, the same plain run again: `run <install.sh> again without
+--report-only, since ...; if this line comes back: run <install.sh> again without --report-only, which builds the
+OCR helper again`. With developer tools, `_probe_timed_out` now gives that run once, saying it builds the helper
+again, then `if this line comes back from a run when this Mac is idle, the helper is slow or hung: report it`. Not
+the finder's options: doctor cannot tell a `--report-only` run from a plain one (both set the one variable it
+reads), so `write the report again when the Mac is idle` would reach a plain run's doctor output, and that step is
+the report's bucket's, which says it first; and dropping the fallback ends in `_STILL_NO_ANSWER`, `the program does
+not answer on this Mac, and no setup step clears that`, too strong for a helper that may only be slow, and without
+the rebuild. The `agentsync status` form and the no-developer-tools form are unchanged, and the report's bucket
+keys on the detail's head, which is unchanged. Test:
+`test_ops_doctor.py::test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915` (now also under
+install.sh: install.sh named once, `builds the <helper> again` once, no `_STILL_NO_ANSWER`).
 
 ### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
 

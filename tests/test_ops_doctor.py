@@ -4259,16 +4259,23 @@ def _real_speech(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
 
 
+@pytest.mark.parametrize("under", ["status", "install.sh"])
 @pytest.mark.parametrize("missing", [False, True], ids=["devtools", "no-devtools"])
 @pytest.mark.parametrize("check", ["ocr", "media", "speech"])
 def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c915(
-    sample_config: Config, monkeypatch: pytest.MonkeyPatch, check: str, missing: bool
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, check: str, missing: bool, under: str
 ) -> None:
     """B13 round 35 C915: a helper whose ``--version`` did not answer within its wait (a slow first start
     under load, or a hung helper; the same from here) said ``not working``, with no fix, in a report that
     called the helper ready. It is the check's ran-out-of-time line now, a WARN (the helpers are optional:
     never a FAIL), its fix the run again, then install.sh, which builds the helper again, or with no
-    developer tools their install. Convert's words stay: probe still says ``failed``."""
+    developer tools their install. Convert's words stay: probe still says ``failed``. B13 round 37 C1227:
+    under install.sh the run again is already its plain run, which builds the helper again, so the fix
+    names that run once, then says to report a line that comes back on an idle Mac."""
+    if under == "install.sh":
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    else:
+        monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
     module, kind, real = {
         "ocr": (ocr, ocr._OCR, _real_ocr),
         "media": (media, media.MEDIA, _real_media),
@@ -4294,7 +4301,18 @@ def test_a_helper_whose_version_did_not_answer_in_time_is_a_warn_that_says_so_c9
     )
     rebuild = f"run {INSTALL_SH} again without --report-only, which builds the {kind.name} again"
     fallback = f"xcode-select --install, then run {INSTALL_SH} again" if missing else rebuild
-    assert r.fix == f"run {BIN} status again as it is; if this line comes back: {fallback}"
+    if under == "status":
+        assert r.fix == f"run {BIN} status again as it is; if this line comes back: {fallback}"
+    elif missing:  # the no-devtools path is as it was: nothing can be built until they are installed
+        assert r.fix == f"{doctor.AGAIN_UNDER_INSTALL_SH}; if this line comes back: {fallback}"
+    else:
+        assert r.fix == (
+            f"{doctor.AGAIN_UNDER_INSTALL_SH}, and it builds the {kind.name} again; if this line comes back "
+            "from a run when this Mac is idle, the helper is slow or hung: report it"
+        )
+        assert r.fix.count(INSTALL_SH) == 1 and r.fix.count(f"builds the {kind.name} again") == 1
+        assert "--report-only run builds nothing" in r.fix and "write the report" not in r.fix
+        assert doctor._STILL_NO_ANSWER not in r.fix, "a helper that may only be slow"
     assert "not working" not in r.detail and "failed" not in r.detail
     assert errors(results) == [], "an optional helper: never a FAIL"
     if check == "ocr":  # once it answers, the same check says ready
