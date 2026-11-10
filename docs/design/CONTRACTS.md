@@ -41528,7 +41528,20 @@ Reserved.
 
 #### 16.300.26 U-C9: install.sh conflicts and the consent spelling
 
-Reserved.
+- The uv pin (C-9.2, D22 Option A). `UV_INSTALLER_URL` is the column-0 literal
+  `https://astral.sh/uv/0.12.17/install.sh`, the uv version that setup-uv pins in ci.yml, diagrams.yml and
+  download-hosts.yml, and `UV_INSTALLER_SHA256` is that file's SHA-256, measured when it was pinned. Step 1
+  hashes the download with install.sh's `sha256` helper before `/bin/sh` runs it. A mismatch fails with exit 1,
+  `error: the uv installer from <url> is not the pinned one (changed or intercepted); not run`, and one NEXT
+  line, and the downloaded file is never run. A match prints nothing. The dry run's stdout keeps its lines;
+  only its URL text is the pinned one. A republished installer stops new installs until the hash is bumped. A
+  bump changes the version in install.sh and the three workflows together, along with the hash.
+- The synopsis gives `scripts/install.sh --report-only` its own line (C-9.1 sub-item 3). The rest of C-9.1
+  (rejecting what `--report-only` ignores, and an empty `--launcher`) and C-9.3 are not built, so exit codes
+  stay as they were.
+- Tests: `tests/test_install_parser.py` (`test_a_changed_installer_is_refused` through the `__AGENTSYNC_CURL`
+  seam with no network, `test_the_pinned_url_is_literal_for_the_hosts_check`,
+  `test_the_pinned_uv_is_the_version_the_workflows_use`).
 
 #### 16.300.27 U-C10: install.sh standard options
 

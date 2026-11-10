@@ -4,11 +4,18 @@ or wheel that must be agentsync. Every run is /bin/bash 3.2, through test_instal
 
 from __future__ import annotations
 
+import importlib.util
+import re
+import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+import exec_stub
 from test_install_oneshot import (  # noqa: F401  (fixtures)
+    INSTALL_SH,
+    REPO,
     calls,
     env,
     folder,
@@ -196,3 +203,65 @@ def test_a_single_quoted_name_is_accepted(
     mine = _checkout(tmp_path / "mine", "[project]\nname = 'agentsync'\n")
     cp = install_sh(env, str(mine), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
+
+
+# ---- U-C9 (C-9.2, D22 Option A): the uv installer is pinned to one version and its SHA-256 ----
+
+PINNED_URL = "https://astral.sh/uv/0.12.17/install.sh"
+BASE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+
+def _download_hosts() -> Any:
+    spec = importlib.util.spec_from_file_location("download_hosts", REPO / "scripts" / "download_hosts.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_changed_installer_is_refused(env: dict[str, str], tmp_path: Path) -> None:  # noqa: F811
+    """A download whose bytes are not the pinned installer's fails step 1 with exit 1, and is never run."""
+    if shutil.which("uv", path=BASE_PATH):
+        pytest.skip("a system uv is on the base PATH")
+    bin_dir = tmp_path / "nouv"
+    bin_dir.mkdir()
+    exec_stub.write(bin_dir / "scutil", "#!/bin/bash\nexit 0\n")
+    ran = tmp_path / "installer-ran"
+    curl = exec_stub.write(
+        tmp_path / "curl-stub",
+        "#!/bin/bash\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        f'  [ "$1" != -o ] || {{ printf "#!/bin/sh\\ntouch {ran}\\n" > "$2"; exit 0; }}\n'
+        "  shift\n"
+        "done\n"
+        "exit 2\n",
+    )
+    cp = install_sh({**env, "PATH": f"{bin_dir}:{BASE_PATH}", "__AGENTSYNC_CURL": str(curl)})
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert (
+        f"error: the uv installer from {PINNED_URL} is not the pinned one (changed or intercepted); not run"
+        in cp.stderr
+    )
+    assert not ran.exists(), "a changed installer was run"
+    assert one_next(cp), cp.stdout + cp.stderr
+
+
+def test_the_pinned_url_is_literal_for_the_hosts_check() -> None:
+    """download_hosts.py reads the URL with a column-0 regex, so the weekly check follows the pinned URL
+    itself; the hash beside it is one SHA-256."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    assert _download_hosts().uv_installer_url(script) == PINNED_URL
+    assert f'\nUV_INSTALLER_URL="{PINNED_URL}"\n' in script, "a literal, not built from a variable"
+    assert re.search(r"^UV_INSTALLER_SHA256='[0-9a-f]{64}'$", script, re.MULTILINE)
+
+
+def test_the_pinned_uv_is_the_version_the_workflows_use() -> None:
+    """D22: the installer's version is the one setup-uv pins in ci.yml, diagrams.yml and
+    download-hosts.yml."""
+    url = _download_hosts().uv_installer_url(INSTALL_SH.read_text(encoding="utf-8"))
+    m = re.fullmatch(r"https://astral\.sh/uv/([0-9][0-9.]*)/install\.sh", url)
+    assert m is not None, url
+    for name in ("ci.yml", "diagrams.yml", "download-hosts.yml"):
+        text = (REPO / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        pins = re.findall(r'uses: astral-sh/setup-uv@\S+.*\n\s+with:\n\s+version: "([^"]+)"', text)
+        assert pins == [m.group(1)], f"{name} pins uv {pins}, the installer {m.group(1)}"

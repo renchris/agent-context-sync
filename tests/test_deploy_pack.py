@@ -156,7 +156,7 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
     assert ("github.com", end) == speech.FETCH_HOSTS, "doctor's fetch fix names the page's release host"
     assert set(speech.FETCH_HOSTS) <= hosts.named_hosts(bullet)
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    assert hosts.uv_installer_url(script) == "https://astral.sh/uv/install.sh"
+    assert hosts.uv_installer_url(script) == "https://astral.sh/uv/0.12.17/install.sh"
     installer = (
         'if [ -n "${UV_DOWNLOAD_URL:-}" ]; then\n    ARTIFACT_DOWNLOAD_URLS="$UV_DOWNLOAD_URL"\nelse\n'
         '    ARTIFACT_DOWNLOAD_URLS="https://releases.astral.sh/github/uv/releases/download/0.13.0 '

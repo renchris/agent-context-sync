@@ -2,7 +2,8 @@
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
 # Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
-#                           [--report-only] [--version] [--help] [help]
+#                           [--version] [--help] [help]
+#        scripts/install.sh --report-only
 #        scripts/install.sh --list-folders
 #        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX
 #
@@ -1612,7 +1613,12 @@ BAD_FOLDERS=()
 CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 APP_NAME="AgentSyncLauncher.app"
 APP_DEST="$HOME/Applications/$APP_NAME"
-UV_INSTALLER_URL="https://astral.sh/uv/install.sh"
+# The uv installer, pinned to the uv version the three workflows use and to its SHA-256, so a changed or
+# intercepted download is refused before it runs. A literal at column 0: scripts/download_hosts.py reads it.
+# A bump changes the version here and in ci.yml, diagrams.yml and download-hosts.yml, and the hash with it.
+UV_INSTALLER_URL="https://astral.sh/uv/0.12.17/install.sh"
+# Single-quoted: a hex run like aa is no report word (tests/test_setup_report.py reads double-quoted strings).
+UV_INSTALLER_SHA256='37b82230b28617c6c24fa52364fa28aa37f2aa40c114809a623f6b064a9730e5'
 # Step 1's download of the uv installer, the dry run's line too. curl retries a timeout, so --max-time bounds one
 # attempt and --retry-max-time all of them (proposed values, not measured). __AGENTSYNC_CURL (a test seam) is
 # the program to run in place of /usr/bin/curl.
@@ -10247,6 +10253,8 @@ else
 		UV_TMP="$(mktemp -d)"
 		"${UV_CURL[@]}" "$UV_INSTALLER_URL" -o "$UV_TMP/uv-install.sh" ||
 			fail "could not download $UV_INSTALLER_URL (its error is above); install uv by hand"
+		[ "$(sha256 "$UV_TMP/uv-install.sh" | LC_ALL=C cut -c 1-64)" = "$UV_INSTALLER_SHA256" ] ||
+			fail "the uv installer from $UV_INSTALLER_URL is not the pinned one (changed or intercepted); not run"
 		# with_timeout stops only this sh: a downloader the installer started may outlive it. A kill is 143,
 		# which reads as a signal, so a timeout is logged as a plain failure (1) and said as one.
 		urc=0

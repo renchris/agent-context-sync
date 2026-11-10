@@ -41,7 +41,7 @@ CURL_FLAGS = [
     "--retry-max-time",
     "300",
 ]
-URL = "https://astral.sh/uv/install.sh"
+URL = "https://astral.sh/uv/0.12.17/install.sh"
 
 
 def _exe(path: Path, text: str) -> str:

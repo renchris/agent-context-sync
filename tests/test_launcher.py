@@ -655,7 +655,7 @@ def test_install_sh_dry_run_installs_uv_when_absent(stubs: dict[str, str]) -> No
         pytest.skip("a system uv is on the base PATH")
     cp = install_sh(env)
     assert cp.returncode == 0, cp.stderr
-    assert "https://astral.sh/uv/install.sh" in cp.stdout
+    assert "https://astral.sh/uv/0.12.17/install.sh" in cp.stdout
     assert "UV_NO_MODIFY_PATH=1" in cp.stdout and f"UV_INSTALL_DIR={stubs['HOME']}/.local/bin" in cp.stdout
     assert list(Path(stubs["HOME"]).iterdir()) == []
 
