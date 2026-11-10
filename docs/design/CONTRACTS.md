@@ -39671,6 +39671,10 @@ one stop. A limit stays: a refused governance/ hides a refused file inside it, w
 chmod. Test: `test_loop.py::test_a_wait_beside_two_sync_stops_names_both_fail_lines_c1048` (the folder and the
 record: both lines, the first still governance.hold, the sync exits 1; after the folder's chmod the record's line
 alone; the lock as well: three; with none, the plain words and the sync exits 0).
+Amended 2026-11-10, §16.242 C1301: the guard's part is every stop of it, not its first: `_sync_stops` takes each
+name from `doctor.state_stops` (the lock, heartbeat.json, then each governance file not a file, damaged or a list
+that lost a purge, the damaged and lost reads only on regular files), whose first is `doctor.state_not_a_file`, so a
+folder at heartbeat.json beside one at purge-record.json names both lines.
 
 **An empty cloud root's wait and its warn give one remedy** (C1004 with C1120, one defect; ruling 119, makes worse
 True as found; amends §16.45 R102 and §16.232 C938). An empty folder chosen as a source got the generic `could not

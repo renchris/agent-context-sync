@@ -864,46 +864,79 @@ def governance_not_a_file(state_dir: Path, *, record: bool = True) -> Governance
     """The first governance file that is not a regular file, by its stat (``doctor.state_file_kind``, which
     opens nothing, so a fifo never blocks), as the error its readers raise; None when each is a file, a link
     to one or missing (B13 round 26 E43; ruling 13). governance/ itself first (:func:`governance_dir_error`),
-    so every command refuses over it in its own words, init included (B13 round 28 I88, I89)."""
+    so every command refuses over it in its own words, init included (B13 round 28 I88, I89). The first of
+    :func:`governance_not_files` (B13 round 37 C1301)."""
+    return next(governance_not_files(state_dir, record=record), None)
+
+
+def governance_not_files(state_dir: Path, *, record: bool = True) -> Iterator[GovernanceNotAFileError]:
+    """Every governance file that is not a regular file, in :func:`governance_not_a_file`'s order, each by its
+    stat alone: governance/ itself, else each file in it, then the hold record and the purge record beside it
+    (outside governance/, so judged whatever governance/ is). A governance/ that is not a folder hides the
+    files in it, which have no kind of their own there, so none of them is named past it. A sync's wait names
+    each, never one fix that leaves the sync stopped on the next (B13 round 37 C1301; ruling 124)."""
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
 
     folder = governance_dir_error(state_dir)
     if folder is not None:
-        return folder
-    for name, role in GOVERNANCE_ROLES.items():
-        path = governance_dir(state_dir) / name
-        kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
+        yield folder
+    else:
+        for name, role in GOVERNANCE_ROLES.items():
+            path = governance_dir(state_dir) / name
+            kind = doctor.governance_file_kind(path)  # a link to nothing too (B13 round 27 P131)
+            if kind is not None:
+                yield GovernanceNotAFileError(path, kind, role)
+    if not record:
+        # ``record=False``: a hold, which sets each hold again as the hold record's own fix asks first (B13
+        # round 30 C382; ruling 34); the purge record beside it is passed too, as a hold only adds
+        return
+    # outside governance/, the person's as the rest (B13 round 29 C199); the purge record beside it (B13 round
+    # 30 C381; ruling 34)
+    for path, role in (
+        (hold_record_file(state_dir), HOLD_RECORD_ROLE),
+        (purge_record_file(state_dir), PURGE_RECORD_ROLE),
+    ):
+        kind = doctor.governance_file_kind(path)
         if kind is not None:
-            return GovernanceNotAFileError(path, kind, role)
-    # outside governance/, the person's as the rest (B13 round 29 C199); ``record=False``: a hold, which sets
-    # each hold again as the hold record's own fix asks first (B13 round 30 C382; ruling 34)
-    held = hold_record_file(state_dir)
-    kind = doctor.governance_file_kind(held) if record else None
-    if kind is not None:
-        return GovernanceNotAFileError(held, kind, HOLD_RECORD_ROLE)
-    purged = purge_record_file(state_dir)  # beside it (B13 round 30 C381; ruling 34); a hold only adds
-    kind = doctor.governance_file_kind(purged) if record else None
-    return None if kind is None else GovernanceNotAFileError(purged, kind, PURGE_RECORD_ROLE)
+            yield GovernanceNotAFileError(path, kind, role)
 
 
 def governance_damaged(state_dir: Path, *, record: bool = True) -> GovernanceDamagedError | None:
     """The first governance file that is a regular file agentsync cannot read (damaged JSON, empty, or the
     wrong shape: :class:`GovernanceDamagedError`), the hold list first; None when each reads, or another
-    error stops the read (its own line says that). Read only after :func:`governance_not_a_file` passed, so
-    each is a regular file and a fifo never blocks: sync's guard refuses over it in status's words, never a
-    traceback and never an exit 0 (B13 round 28 I90)."""
-    reads: list[Callable[[Path], object]] = [_state_holds, pending_purges, load_suppressions]
+    error stops the read (its own line says that). The first of :func:`governance_damages`, which reads only
+    regular files, so a fifo never blocks: sync's guard refuses over it in status's words, never a traceback
+    and never an exit 0 (B13 round 28 I90; round 37 C1301)."""
+    return next(governance_damages(state_dir, record=record), None)
+
+
+def governance_damages(state_dir: Path, *, record: bool = True) -> Iterator[GovernanceDamagedError]:
+    """Every governance file that is a regular file agentsync cannot read, in :func:`governance_damaged`'s
+    order, each read alone and only when its own stat finds a regular file, a link to one or nothing there
+    (``doctor.governance_file_kind``), never past a fifo or a folder at that path nor inside a governance/
+    that is not a folder: so it reads beside a file :func:`governance_not_files` names and never blocks, and
+    a sync's wait names each stop (B13 round 37 C1301; ruling 124). ``record=False``: never the hold record
+    or the purge record, for a hold, which only adds protection (C382)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module (through cycle)
+
+    inside = governance_dir_error(state_dir) is None
+    reads: list[tuple[Callable[[Path], object], Path, bool]] = [
+        (_state_holds, _holds_file(state_dir), inside),
+        (pending_purges, _queue_file(state_dir), inside),
+        (load_suppressions, _suppress_file(state_dir), inside),
+    ]
     if record:  # never for a hold, which only adds protection: the hold record's fix sets them first (C382)
-        reads[1:1] = [_record_scopes]
-        reads.append(recorded_purges)
-    for read in reads:
+        reads[1:1] = [(_record_scopes, hold_record_file(state_dir), True)]
+        reads.append((recorded_purges, purge_record_file(state_dir), True))
+    for read, path, reachable in reads:
+        if not reachable or doctor.governance_file_kind(path) is not None:
+            continue  # its own not-a-file stop, never read past it
         try:
             read(state_dir)
         except GovernanceDamagedError as exc:
-            return exc
+            yield exc
         except Exception:  # another error: its own handlers
             continue
-    return None
 
 
 def _not_a_file_error(path: Path, mode: int | None = None) -> GovernanceError | None:

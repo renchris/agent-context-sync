@@ -14,6 +14,7 @@ import ctypes
 import enum
 import errno
 import functools
+import itertools
 import json
 import logging
 import os
@@ -2177,54 +2178,74 @@ def state_not_a_file(
     commands that publish as it does) adds a suppression list or a purge queue that lost a purge the audit
     trail records (``governance.governance_lost``; B13 round 29 C172); a hold or a purge is never stopped on
     it, so the person can run each purge again. ``record=False`` (a hold being set) passes a hold record that
-    cannot be read, whose own fix sets each hold again first (B13 round 30 C382; ruling 34)."""
+    cannot be read, whose own fix sets each hold again first (B13 round 30 C382; ruling 34). The first of
+    :func:`state_stops`, the one each command prints (B13 round 37 C1301)."""
     try:
-        sp = config.state_paths
-        if state_root_not_folder(config) is not None:
-            return None
-        db = expand(sp.db)
-        # every side, the -wal first, past an openable -wal fifo only (P49): a -shm folder beside one was
-        # never judged, so init passed it and step 1's "stops at its config step" was false (B13 round 28 I16)
-        for bad_side in sides_not_a_file_at(db) if manifest else []:
-            if not _openable_wal_fifo(bad_side):
-                found = _side_fail(config, bad_side)
-                if found is not None:
-                    return found
-        if (
-            manifest
-            and os.path.lexists(db)
-            # a link to nothing in a usable folder is a missing manifest, lost or a first start, never a
-            # file that is not a file: hold and release are not refused over it (B13 round 27 P41)
-            and (state_file_kind(db) is not None or dangling_into_unusable(db) is not None)
-        ):
-            named = f"{db} is "
-            for r in _check_state_dir(config):
-                if r.name == "state_dir.manifest" and not r.ok and r.detail.startswith(named):
-                    return db, r
-        lock = expand(sp.lock)
-        kind = own_kind(lock)
-        if kind is not None:
-            return lock, lock_not_a_file(config, kind)
-        folder = heartbeat_not_a_file(config)
-        if folder is not None:
-            return expand(sp.heartbeat), folder
-        from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
-
-        odd: governance.GovernanceUnreadError | None = governance.governance_not_a_file(
-            expand(sp.root), record=record
-        )
-        if odd is None and damaged:  # the commands' guard: a damaged or wrong-shaped one too, read only once
-            # each is a regular file (B13 round 28 I90); install.sh's probe asks for the kinds alone
-            odd = governance.governance_damaged(expand(sp.root), record=record)
-        if odd is None and lost:
-            odd = governance.governance_lost(
-                expand(sp.root), governance.governance_or_none(config.config_path)
-            )
-        if odd is not None:
-            return odd.path, _bad(governance_check(odd.path), odd.detail, fix=odd.fix)
+        return next(state_stops(config, manifest=manifest, damaged=damaged, lost=lost, record=record), None)
     except Exception:  # the error path: never a second error over the first
         return None
-    return None
+
+
+def state_stops(
+    config: Config, *, manifest: bool = True, damaged: bool = False, lost: bool = False, record: bool = True
+) -> Iterator[tuple[Path, CheckResult]]:
+    """Each independent stop of :func:`state_not_a_file`'s guard, with its flags, in the guard's order: every
+    -wal or -shm side, the manifest, the lock, heartbeat.json, then each governance file that is not a file
+    (``governance.governance_not_files``), each regular one that is damaged (``governance_damages``, which
+    reads only a regular file, never past a fifo or a folder at that path) and, only when neither found one,
+    a list that lost a purge (``governance_lost``, which reads the suppression list, the queue, the audit
+    trail and the purge record: one beside a stop of its own is never judged). Nothing when the state folder
+    itself is not a folder (its own guard). A sync's wait names each, never one fix that leaves the sync
+    stopped on the next (B13 round 37 C1301; ruling 124). It may raise: :func:`state_not_a_file` is the
+    never-raises form."""
+    sp = config.state_paths
+    if state_root_not_folder(config) is not None:
+        return
+    db = expand(sp.db)
+    # every side, the -wal first, past an openable -wal fifo only (P49): a -shm folder beside one was
+    # never judged, so init passed it and step 1's "stops at its config step" was false (B13 round 28 I16)
+    for bad_side in sides_not_a_file_at(db) if manifest else []:
+        if not _openable_wal_fifo(bad_side):
+            found = _side_fail(config, bad_side)
+            if found is not None:
+                yield found
+    if (
+        manifest
+        and os.path.lexists(db)
+        # a link to nothing in a usable folder is a missing manifest, lost or a first start, never a
+        # file that is not a file: hold and release are not refused over it (B13 round 27 P41)
+        and (state_file_kind(db) is not None or dangling_into_unusable(db) is not None)
+    ):
+        named = f"{db} is "
+        for r in _check_state_dir(config):
+            if r.name == "state_dir.manifest" and not r.ok and r.detail.startswith(named):
+                yield db, r
+                break
+    lock = expand(sp.lock)
+    kind = own_kind(lock)
+    if kind is not None:
+        yield lock, lock_not_a_file(config, kind)
+    folder = heartbeat_not_a_file(config)
+    if folder is not None:
+        yield expand(sp.heartbeat), folder
+    from agentsync import governance  # noqa: PLC0415 - governance imports this module lazily
+
+    root = expand(sp.root)
+    # lazily, so state_not_a_file reads nothing past the first stop, as it always did
+    unread: Iterator[governance.GovernanceUnreadError] = iter(
+        governance.governance_not_files(root, record=record)
+    )
+    if damaged:  # the commands' guard: a damaged or wrong-shaped one too, each read only as a regular file
+        # (B13 round 28 I90; round 37 C1301); install.sh's probe asks for the kinds alone
+        unread = itertools.chain(unread, governance.governance_damages(root, record=record))
+    judged = False
+    for odd in unread:
+        judged = True
+        yield odd.path, _bad(governance_check(odd.path), odd.detail, fix=odd.fix)
+    if not judged and lost:  # its reads beside a stop of their own would judge an artifact of it
+        gone = governance.governance_lost(root, governance.governance_or_none(config.config_path))
+        if gone is not None:
+            yield gone.path, _bad(governance_check(gone.path), gone.detail, fix=gone.fix)
 
 
 def _no_manifest_yet(config: Config) -> str:

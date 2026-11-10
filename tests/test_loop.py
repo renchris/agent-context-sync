@@ -640,6 +640,74 @@ def test_a_wait_beside_two_sync_stops_names_both_fail_lines_c1048(
     assert wait.endswith(f"which names the folder (a plain `{BIN} sync` prints it too)"), wait
 
 
+def test_a_wait_beside_two_guard_stops_names_both_fail_lines_c1301(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 37 C1301 (ruling 124): _sync_stops took the guard's first stop alone, so with a folder at
+    heartbeat.json and one at purge-record.json the wait said a plain sync prints the alarm once the
+    heartbeat line is fixed, and after that rmdir the sync still stopped on the record. Every stop of the
+    guard is named, each a [FAIL] line status prints; with none left the plain words come back. A damaged
+    governance file beside a not-a-file stop is named too."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    cfg = str(config.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state = expand(config.state_paths.root)
+    heartbeat = expand(config.state_paths.heartbeat)
+    record = governance.purge_record_file(state)
+
+    def wait_and_fails() -> tuple[str, set[str]]:
+        capsys.readouterr()
+        cli.main(["status", "--config", cfg])
+        out = capsys.readouterr().out.splitlines()
+        (line,) = [ln for ln in out if ln.startswith("WAITING ON YOU") and "empty cloud" in ln]
+        return line, {ln.split()[1] for ln in out if ln.startswith("[FAIL] ")}
+
+    def stopped(*names: str) -> str:
+        return (
+            f"which names the folder (once {loop.fail_lines(names)}, a plain `{BIN} sync` prints it too; "
+            "until then no sync runs)"
+        )
+
+    heartbeat.unlink()
+    heartbeat.mkdir()
+    record.unlink(missing_ok=True)
+    record.mkdir()
+    assert loop._sync_stops(config) == ("heartbeat", "governance.suppressed")
+    assert loop._sync_stopped_on(config) == "heartbeat"
+    assert doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True) == next(
+        doctor.state_stops(config, manifest=False, damaged=True, lost=True)
+    )
+    wait, fails = wait_and_fails()
+    assert wait.endswith(stopped("heartbeat", "governance.suppressed")), wait
+    assert "the heartbeat and governance.suppressed [FAIL] lines are fixed" in wait, wait
+    assert {"heartbeat", "governance.suppressed"} <= fails, fails
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    heartbeat.rmdir()
+    assert loop._sync_stops(config) == ("governance.suppressed",)
+    wait, fails = wait_and_fails()
+    assert wait.endswith(stopped("governance.suppressed")), wait
+    assert "governance.suppressed" in fails, fails
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    record.rename(state / "purge-record.json.aside")
+    assert loop._sync_stops(config) == ()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    wait, _fails = wait_and_fails()
+    assert wait.endswith(f"which names the folder (a plain `{BIN} sync` prints it too)"), wait
+    # a not-a-file stop beside a damaged governance file: the damaged read runs on the regular file alone
+    queue = governance.governance_dir(state) / "purge-queue.json"
+    queue.parent.mkdir(mode=0o700, exist_ok=True)
+    queue.write_text("{not json\n", encoding="utf-8")
+    heartbeat.unlink()
+    heartbeat.mkdir()
+    assert loop._sync_stops(config) == ("heartbeat", "governance.purge_queue")
+    wait, fails = wait_and_fails()
+    assert wait.endswith(stopped("heartbeat", "governance.purge_queue")), wait
+    assert {"heartbeat", "governance.purge_queue"} <= fails, fails
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 @pytest.mark.parametrize("mode", [0o000, 0o600])
 def test_a_governance_folder_this_account_cannot_search_keeps_the_wait_and_statuss_lines_c829(

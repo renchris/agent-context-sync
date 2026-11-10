@@ -14058,6 +14058,109 @@ def test_a_fifo_at_the_wal_this_account_cannot_open_stops_every_command_first(
         wal.unlink()
 
 
+def test_state_not_a_file_is_the_first_of_state_stops_c1301(initialised: Config) -> None:
+    """B13 round 37 C1301 (ruling 124): doctor.state_stops yields each independent stop in the guard's order,
+    the damaged reads only on regular files (a fifo at holds.json is never read, so this never blocks), and
+    state_not_a_file's answer is unchanged: the first of them."""
+    _synced(initialised)
+    sp = initialised.state_paths
+    db, state = expand(sp.db), expand(sp.root)
+    shm = db.with_name(db.name + "-shm")
+    shm.unlink(missing_ok=True)
+    shm.mkdir()
+    heartbeat = expand(sp.heartbeat)
+    heartbeat.unlink(missing_ok=True)
+    heartbeat.mkdir()
+    gov = governance.governance_dir(state)
+    gov.mkdir(mode=0o700, exist_ok=True)
+    holds = gov / "holds.json"
+    holds.unlink(missing_ok=True)
+    os.mkfifo(holds, 0o600)
+    (gov / "suppressed.json").write_text("[]\n", encoding="utf-8")  # the wrong shape: damaged
+    record = governance.purge_record_file(state)
+    record.unlink(missing_ok=True)
+    record.mkdir()
+    flags = {"damaged": True, "lost": True}
+    stops = list(doctor.state_stops(initialised, **flags))
+    assert [p for p, _ in stops] == [shm, heartbeat, holds, record, gov / "suppressed.json"], stops
+    assert [r.name for _, r in stops][2:] == [
+        "governance.hold",
+        "governance.suppressed",
+        "governance.suppressed",
+    ]
+    assert doctor.state_not_a_file(initialised, **flags) == stops[0]
+    assert doctor.state_not_a_file(initialised) == stops[0]
+    without = [p for p, _ in doctor.state_stops(initialised)]  # the kinds alone: no damaged read
+    assert without == [shm, heartbeat, holds, record], without
+    assert doctor.state_not_a_file(initialised, manifest=False, **flags) == stops[1]
+
+
+@pytest.mark.parametrize(
+    ("where", "kind", "check"),
+    [
+        ("lock", "folder", "lock"),
+        ("lock", "fifo", "lock"),
+        ("lock", "link", "lock"),
+        ("heartbeat", "folder", "heartbeat"),
+        ("governance", "file", "governance.hold"),
+        ("governance", "fifo", "governance.hold"),
+        ("governance", "link", "governance.hold"),
+        ("holds", "folder", "governance.hold"),
+        ("holds", "fifo", "governance.hold"),
+        ("holds", "link", "governance.hold"),
+        ("queue", "folder", "governance.purge_queue"),
+        ("queue", "fifo", "governance.purge_queue"),
+        ("queue", "link", "governance.purge_queue"),
+        ("holds", "damaged", "governance.hold"),
+    ],
+)
+def test_state_not_a_file_keeps_its_answer_beside_a_later_stop_c1301(
+    initialised: Config, where: str, kind: str, check: str
+) -> None:
+    """B13 round 37 C1301's review: state_not_a_file is the first of state_stops, pinned by value: each
+    state's (path, check) is the one the guard named before, with a later stop (a folder at
+    purge-record.json) beside it, which state_stops names too and state_not_a_file never does."""
+    _synced(initialised)
+    sp = initialised.state_paths
+    state = expand(sp.root)
+    gov = governance.governance_dir(state)
+    gov.mkdir(mode=0o700, exist_ok=True)
+    path = {
+        "lock": expand(sp.lock),
+        "heartbeat": expand(sp.heartbeat),
+        "governance": gov,
+        "holds": gov / "holds.json",
+        "queue": gov / "purge-queue.json",
+    }[where]
+    if path.is_dir():
+        path.rename(path.with_name(path.name + ".aside"))  # governance/ itself: kept, never removed
+    else:
+        path.unlink(missing_ok=True)
+    if kind == "folder":
+        path.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(path, 0o600)
+    elif kind == "link":
+        path.symlink_to(path.with_name("gone-nowhere"))
+    elif kind == "file":
+        path.write_text("{}\n", encoding="utf-8")
+    else:  # damaged: the wrong shape
+        path.write_text("[]\n", encoding="utf-8")
+    record = governance.purge_record_file(state)
+    if kind != "damaged":  # every not-a-file stop comes before a damaged read, as it always did
+        record.unlink(missing_ok=True)
+        record.mkdir()
+    flags = {"manifest": False, "damaged": True, "lost": True}
+    found = doctor.state_not_a_file(initialised, **flags)
+    assert found is not None and (found[0], found[1].name) == (path, check), found
+    stops = list(doctor.state_stops(initialised, **flags))
+    assert stops[0] == found, stops
+    if kind == "damaged":  # the kinds alone: a damaged file is no stop without damaged=True
+        assert stops == [found] and doctor.state_not_a_file(initialised) is None, stops
+    else:
+        assert stops[-1][0] == record, stops
+
+
 def test_a_stale_lock_of_a_job_under_the_default_prefix_names_its_log(initialised: Config) -> None:
     """B13 round 27 P50: with the config's label prefix changed and the job still under the default one, the
     stale-lock fix named no log though com.agentsync.poll.err.log was there. The config's prefix first, then

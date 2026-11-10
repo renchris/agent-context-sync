@@ -347,9 +347,11 @@ def _empty_root_wait(config: Config, sid: str) -> str:
 
 
 def _sync_stops(config: Config) -> tuple[str, ...]:
-    """Every status check whose [FAIL] a sync stops on, in the order the sync meets them, each once: the
-    guard's own stop (``doctor.state_not_a_file``), the lock this account cannot open, the suppression list
-    (a refused governance/ names governance.hold there), then the purge record (governance.suppressed). The
+    """Every status check whose [FAIL] a sync stops on, in the order the sync meets them, each once: each of
+    the guard's own stops (``doctor.state_stops``: the lock, heartbeat.json, then each governance file not a
+    file, damaged, or a list that lost a purge; B13 round 37 C1301), the lock this account cannot open, the
+    suppression list (a refused governance/ names governance.hold there), then the purge record
+    (governance.suppressed). The
     order and the rule are :func:`_sync_stopped_on`'s (C933): the folder's X_OK test runs only after a
     refused read, never an ``os.access`` ahead of the reads; nothing returns early, so a wait that names
     these says every line it waits on, never one fix that leaves the sync stopped on the next (B13 round 36
@@ -358,9 +360,11 @@ def _sync_stops(config: Config) -> tuple[str, ...]:
     from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
 
     stops: list[str] = []
-    found = doctor.state_not_a_file(config, manifest=False, damaged=True, lost=True)  # never raises
-    if found is not None:
-        stops.append(found[1].name)
+    # every stop of the guard, never its first alone: a folder at heartbeat.json beside one at
+    # purge-record.json waits on both lines (B13 round 37 C1301; ruling 124)
+    with contextlib.suppress(Exception):  # the guard's error path: the stops found before it stand
+        for _, r in doctor.state_stops(config, manifest=False, damaged=True, lost=True):
+            stops.append(r.name)
     # the open a sync's acquire makes, as doctor's lock check makes it: a lock this account cannot open stops
     # every sync, so the waits and the heartbeat's note say none runs until the lock [FAIL] line is fixed,
     # never "another full walk lists it" (B13 round 34 C863, ruling 87's third gap). First, as the sync meets
