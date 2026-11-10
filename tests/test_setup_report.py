@@ -16196,8 +16196,9 @@ def test_a_reason_is_reported_as_one_of_the_fixed_classes(reason: str | None) ->
     the text does: a duplicate's mirror path or a label's name that says "too large" is still what it is."""
     assert setup_report.quarantine_class(reason) == REASONS[reason]
     assert REASONS[reason] in setup_report.QUARANTINE_CLASSES
-    # "withheld by label rule" is given only while a label rule is on (B13 round 2 R33): its own test.
-    rule_only = {"withheld by label rule"}
+    # "withheld by label rule" is given only while a label rule is on (B13 round 2 R33), and "waiting for the
+    # OCR helper" only by an image's stub page (B13 round 37 C1267): each has its own test.
+    rule_only = {"withheld by label rule", "waiting for the OCR helper"}
     assert set(REASONS.values()) | rule_only == set(setup_report.QUARANTINE_CLASSES), "every class has a case"
 
 
@@ -23870,17 +23871,69 @@ def test_a_program_an_abandoned_call_starts_after_the_report_ends_never_starts_c
     _report_threads_end()
 
 
-def test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101() -> None:
-    """B13 round 36 C1101 (ruling 117, the report's pin on lane B's phrase): an image the sync left while the
-    OCR helper does not work gets a page whose reason and summary say so (publish.OCR_DOWN_REASON), while its
-    row keeps `no converter for <suffix>`, the re-read key. The report reads such a page as neither a `no
-    converter` page nor a withheld one, so it falls back to its own OCR probe and files it under OCR."""
+@pytest.mark.usefixtures("roomy_calls")
+def test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 36 C1101, corrected by B13 round 37 C1267 with C1273 (ruling 122): an image the sync left
+    while the OCR helper does not work gets a page whose reason says so (publish.OCR_DOWN_REASON), while its
+    row keeps `no converter for <suffix>`, the re-read key. The old pin checked the constant alone and passed
+    whatever the report printed, which read no page with no label rule and classed the row `no converter`,
+    `.png` in the by-type line. Through build_report, over a manifest row and its page, the row now takes the
+    page's class, `waiting for the OCR helper`, in the Quarantine table and the OCR part's image line, and
+    leaves the by-type line; a `no converter` page beside it keeps its class; neither follows the report's own
+    OCR probe."""
     from agentsync import policy, publish  # noqa: PLC0415
 
     reason = publish.OCR_DOWN_REASON
     assert not reason.casefold().startswith(setup_report._NO_CONVERTER), reason
     assert not policy.page_says_withheld(reason, f"refused: {reason}", ""), reason
-    assert setup_report.quarantine_class(reason) != "no converter"
+    cfg = fake_mac["config"]
+    docs = load_config(cfg).docs_repo
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    pages = {
+        reason: seed.item(
+            one, "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
+        ),
+        "no converter for .gif": seed.item(
+            one, "Northwind chart.gif", reason="no converter for .gif", state="refused", page="refused"
+        ),
+    }
+    seed.close()
+    for said, stable in pages.items():
+        page = docs / "mirror" / one / f"{stable}.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(f"---\nreason: {json.dumps(said)}\nstatus: refused\n---\nstub\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    for ready in (True, False):  # the class is the page's, whatever this report's probe finds
+        helper = ocr._helper_path(load_config(cfg).cache_dir)
+        if ready:
+            write_fake(helper)
+        else:
+            helper.unlink()
+        rows, part = quarantine_rows(fake_mac)
+        assert sorted(rows) == [["no converter", "1"], ["waiting for the OCR helper", "1"]], (ready, rows)
+        assert [ln for ln in part.splitlines() if ", no converter by type: " in ln] == [
+            "- <folder-2>, no converter by type: .gif 1"
+        ], part
+        ocr_part = status_parts(fake_mac)[1]["OCR"]
+        assert (
+            "- images: 2 files: 1 no-converter stub on this Mac · 1 waiting-for-the-OCR-helper stub\n"
+            in ocr_part
+        ), ocr_part
+    # a page query that fails with no label rule sends no stub to the probe, so no label-rule note follows
+    for active in (False, True):
+        mirror = setup_report._Mirror(load_config(cfg).state_paths.db, 5.0, labels_active=active)
+
+        def failing(*_args: object, **_kwargs: object) -> list[tuple[Any, ...]]:
+            raise sqlite3.OperationalError("interrupted")
+
+        mirror.rows = failing  # type: ignore[method-assign]
+        with pytest.raises(sqlite3.OperationalError):
+            mirror.read_image_pages(docs)
+        assert mirror.pages_failed is active
 
 
 def test_a_helper_a_cut_call_started_does_not_outlive_the_report_c961(

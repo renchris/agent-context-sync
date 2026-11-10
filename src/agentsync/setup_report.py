@@ -8279,6 +8279,7 @@ EVIDENCE_TITLES = (
 the ``## `` headings stay :data:`SECTION_TITLES`)."""
 QUARANTINE_CLASSES = (
     "no converter",
+    "waiting for the OCR helper",  # B13 round 37 C1267: its stub page says so (publish.OCR_DOWN_REASON)
     "no text layer (OCR not run)",
     "no text layer (OCR found no text)",
     "no text layer (over the OCR page limit)",
@@ -8378,17 +8379,21 @@ unreadable``, tried before the generic ``refused: `` of ``label policy``, as the
 refusals apart from K (B13 round 30 C326)."""
 
 
-def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> str:
+def quarantine_class(reason: str | None, *, withheld: Collection[str] = (), ocr_waits: bool = False) -> str:
     """The fixed class (one of :data:`QUARANTINE_CLASSES`) of a manifest row's ``state_reason``. A reason is
     free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
     so the report prints the class and never the reason. A file with no converter whose suffix is in
     ``withheld`` is ``withheld by label rule``: the suffixes a label rule now leaves without one
     (:data:`_LABEL_WITHHELD`; an image when its stub page says so, and by this report's OCR probe only when
     the page could not be read or says neither withheld nor no converter, B13 round 8 J52, J54; round 11 M79;
-    round 12 N59: :meth:`_Mirror.withheld_for`)."""
+    round 12 N59: :meth:`_Mirror.withheld_for`). ``ocr_waits``: the row's stub page says the OCR helper is not
+    working (:meth:`_Mirror.page_waits`), so a ``no converter`` row is ``waiting for the OCR helper``, as the
+    page and the sync line say, never by this report's own probe (B13 round 37 C1267 with C1273)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
+    if ocr_waits and text.startswith(_NO_CONVERTER):
+        return "waiting for the OCR helper"
     if withheld and text.startswith(_NO_CONVERTER) and text[len(_NO_CONVERTER) :] in withheld:
         return "withheld by label rule"
     starts = (
@@ -8468,13 +8473,15 @@ _REFUSED_BARE = "no extension"
 _TYPES_SHOWN = 12
 
 
-def _refused_type(reason: str | None, *, withheld: Collection[str] = ()) -> str | None:
+def _refused_type(
+    reason: str | None, *, withheld: Collection[str] = (), ocr_waits: bool = False
+) -> str | None:
     """What a ``no converter`` reason says the file is: its suffix when that is one of
     :data:`_REFUSED_TYPES`, ``no extension``, else ``other``. None for a reason of any other class
     (:func:`quarantine_class` reads the text the same way, so the two agree on which rows these are, a file
-    withheld by a label rule included)."""
+    withheld by a label rule, and one waiting for the OCR helper, included)."""
     text = " ".join((reason or "").split()).casefold()
-    if not text.startswith(_NO_CONVERTER):
+    if ocr_waits or not text.startswith(_NO_CONVERTER):
         return None
     tail = text[len(_NO_CONVERTER) :]
     if tail in withheld:
@@ -8718,6 +8725,9 @@ class _Mirror:
         self.labels_active = labels_active
         self.withheld: set[str] = set(_LABEL_WITHHELD.difference(_IMAGE_SUFFIXES)) if labels_active else set()
         self.image_pages: dict[tuple[str, str], bool] = {}
+        # the image stubs whose page says the OCR helper is not working (publish.OCR_DOWN_REASON), read with
+        # or without a label rule: their class is the page's (B13 round 37 C1267 with C1273)
+        self.ocr_waiting: set[tuple[str, str]] = set()
         self.images_by_probe = False
         self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read or says neither
         self.pages_failed = False  # the query for those stubs failed: every one goes by the probe
@@ -8795,10 +8805,18 @@ class _Mirror:
             conn = opened
             conn.set_progress_handler(self._tick, _STEP_TICK)
             conn.create_function(
-                "reason_class", 3, lambda r, s, i: quarantine_class(r, withheld=self.withheld_for(r, s, i))
+                "reason_class",
+                3,
+                lambda r, s, i: quarantine_class(
+                    r, withheld=self.withheld_for(r, s, i), ocr_waits=self.page_waits(r, s, i)
+                ),
             )
             conn.create_function(
-                "refused_type", 3, lambda r, s, i: _refused_type(r, withheld=self.withheld_for(r, s, i))
+                "refused_type",
+                3,
+                lambda r, s, i: _refused_type(
+                    r, withheld=self.withheld_for(r, s, i), ocr_waits=self.page_waits(r, s, i)
+                ),
             )
             conn.create_function("refused_shape", 1, _refused_shape, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
@@ -8816,24 +8834,37 @@ class _Mirror:
         page = self.image_pages.get((str(source_id), str(stable_id)))
         return {*self.withheld, tail} if (self.images_by_probe if page is None else page) else self.withheld
 
+    def page_waits(self, reason: str | None, source_id: object, stable_id: object) -> bool:
+        """Whether one row's ``no converter for <image suffix>`` stub page says the OCR helper is not working
+        (:attr:`ocr_waiting`, read by :meth:`read_image_pages`)."""
+        text = " ".join((reason or "").split()).casefold()
+        return (
+            text.startswith(_NO_CONVERTER)
+            and text[len(_NO_CONVERTER) :] in _IMAGE_SUFFIXES
+            and (str(source_id), str(stable_id)) in self.ocr_waiting
+        )
+
     def read_image_pages(self, docs: Path) -> None:
-        """While a label rule is on, read the ``reason:`` of each image stub page whose row says ``no
-        converter for <image suffix>``: whether it says withheld was decided by the run that planned the stub
-        (``Publisher.images_readable``), and the page and ``_sync/QUARANTINE.tsv`` keep that, so the report
-        classes the row by it, never by its own OCR probe, which disagreed with both whenever the engine came
-        or went after the stub (B13 round 8 J52, J54). The page says withheld as the cycle's re-render reads
-        it (``policy.page_says_withheld``: its ``reason:``, its summary or its body, so a page from before its
-        ``reason:`` said so is read alike, B13 round 9 K48). Pages are read in a fixed order, the first
-        :data:`_PAGE_HEAD_BYTES` of each, under ``docs`` only, for at most a quarter of the evidence time
-        left and :data:`_PAGES_S` (B13 round 9 K58: a fixed count of 400 sent every later stub to the probe;
-        the parts after the OCR part keep the rest); a page that is missing, a
-        symlink, past that time or neither ``no converter`` nor withheld is counted in :attr:`pages_unread`
-        and goes by the probe, and a query that fails sets :attr:`pages_failed`. Only the class is kept: the
-        reason's text is never shown."""
-        if not self.labels_active:
-            return
-        from agentsync import policy  # noqa: PLC0415 - lazy, only with a label rule
+        """Read the ``reason:`` of each image stub page whose row says ``no converter for <image suffix>``.
+        A page that says ``publish.OCR_DOWN_REASON`` (written while the OCR helper fails, with no label rule)
+        puts the row in :attr:`ocr_waiting`, with or without a label rule now: the report follows the page,
+        as ``_sync/QUARANTINE.tsv`` does, never its own probe, which disagrees with it whenever the helper
+        came back or broke after the stub (B13 round 37 C1267 with C1273, ruling 122); with no label rule a
+        page not read keeps the row's stored class. While a label rule is on: whether it says withheld was
+        decided by the run that planned the stub (``Publisher.images_readable``), and the page and
+        ``_sync/QUARANTINE.tsv`` keep that, so the report classes the row by it, never by its own OCR probe,
+        which disagreed with both whenever the engine came or went after the stub (B13 round 8 J52, J54). The
+        page says withheld as the cycle's re-render reads it (``policy.page_says_withheld``: its ``reason:``,
+        its summary or its body, so a page from before its ``reason:`` said so is read alike, B13 round 9
+        K48). Pages are read in a fixed order, the first :data:`_PAGE_HEAD_BYTES` of each, under ``docs``
+        only, for at most a quarter of the evidence time left and :data:`_PAGES_S` (B13 round 9 K58: a fixed
+        count of 400 sent every later stub to the probe; the parts after the OCR part keep the rest); a page
+        that is missing, a symlink, past that time or neither ``no converter`` nor withheld is counted in
+        :attr:`pages_unread` and goes by the probe, and a query that fails sets :attr:`pages_failed`. Only the
+        class is kept: the reason's text is never shown."""
+        from agentsync import policy  # noqa: PLC0415 - lazy: only the evidence parts read pages
         from agentsync.frontmatter import parse_frontmatter, split_frontmatter  # noqa: PLC0415
+        from agentsync.publish import OCR_DOWN_REASON  # noqa: PLC0415
 
         marks = ", ".join("?" for _ in _IMAGE_SUFFIXES)
         try:
@@ -8845,12 +8876,13 @@ class _Mirror:
                 [_NO_CONVERTER + suffix for suffix in _IMAGE_SUFFIXES],
             )
         except Exception:
-            self.pages_failed = True
+            self.pages_failed = self.labels_active  # with no label rule no stub goes by the probe (C1267)
             raise
         root = docs.resolve()
         stop = time.monotonic() + min(max(self.left(), 0.0) / 4, _PAGES_S)
         for sid, stable, rel in found:
             says: bool | None = None
+            waits = False
             if isinstance(rel, str) and rel and time.monotonic() < stop:
                 with contextlib.suppress(Exception):
                     path = docs / rel
@@ -8863,11 +8895,19 @@ class _Mirror:
                             data = parse_frontmatter(head)[0]
                             said = (data.get("reason"), data.get("summary"))
                         shown, summary = (v if isinstance(v, str) else None for v in said)
-                        if policy.page_says_withheld(shown, summary, body):
+                        if shown is not None and shown.strip() == OCR_DOWN_REASON:
+                            waits = True
+                        elif not self.labels_active:
+                            pass
+                        elif policy.page_says_withheld(shown, summary, body):
                             says = True
                         elif shown is not None and shown.casefold().startswith(_NO_CONVERTER):
                             says = False
-            if says is None:
+            if waits:
+                self.ocr_waiting.add((str(sid), str(stable)))
+            elif not self.labels_active:
+                continue
+            elif says is None:
                 self.pages_unread += 1
             else:
                 self.image_pages[(str(sid), str(stable))] = says
@@ -9405,6 +9445,7 @@ _IMAGE_OUTCOMES = (
     "not-readable stub",
     "not-on-this-Mac stub",
     "no-converter stub on this Mac",
+    "waiting-for-the-OCR-helper stub",  # B13 round 37 C1267: its page says so; read once the helper works
     "deferred on this Mac",
     "deferred online-only",
     "not converted yet",
@@ -9425,6 +9466,7 @@ def _image_outcome(state: str, away: bool, verdict: str, cls: str, page: int) ->
         return "not converted yet"
     stubs = {
         "no converter": "not-on-this-Mac stub" if away else "no-converter stub on this Mac",
+        "waiting for the OCR helper": "waiting-for-the-OCR-helper stub",
         "no text in image": "no-text stub",
         "image not readable": "not-readable stub",
         "too large": "not-readable stub",
@@ -9462,7 +9504,7 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
         if remote:
             absent[0 if dataless else 1] += int(files)
             absent[2] += int(size)
-        if outcome == "no-converter stub on this Mac" and not label_rule:
+        if outcome in ("no-converter stub on this Mac", "waiting-for-the-OCR-helper stub") and not label_rule:
             waiting[str(sid)] += int(files)
     # count first, as the document lines put it ("1 with a page", never "page 1": B13 round 4 Q4)
     shown = " · ".join(f"{outcomes[name]} {name}" for name in _IMAGE_OUTCOMES if outcomes[name])

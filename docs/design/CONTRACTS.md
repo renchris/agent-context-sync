@@ -8631,6 +8631,7 @@ decides before a word inside the text does.
 |---|---|
 | `withheld by label rule` | starts `no converter for ` and the suffix after it is in the report's withheld set: `_LABEL_WITHHELD` (`.msg` and the image suffixes) while a `[policy]` label rule is on, with images counted only when the OCR part reads `ready` (§16.47 R33); tried before every prefix |
 | `no converter` | starts `no converter for ` (`NO_CONVERTER_PREFIX`) |
+| `waiting for the OCR helper` | starts `no converter for <image suffix>`, and the row's stub page's `reason:` is `publish.OCR_DOWN_REASON` |
 | `label unreadable` | starts `refused: sensitivity label unreadable` (`cycle._LABEL_UNREADABLE_HEAD`), tried before `label policy` |
 | `label policy` | starts `refused: ` (`policy.REFUSED_PREFIX`) |
 | `credential` | `contains a credential` |
@@ -8663,6 +8664,9 @@ Amended 2026-11-04, §16.233 C927, C930: the not-the-type row also takes `not-dr
 draw.io diagram), and a zero-byte file under an Office, Outlook or draw.io name is `empty-output`, so `empty`.
 Amended 2026-11-08, §16.238 C1050, C1117: so is a zero-byte `.pdf`, `.eml`, `.odt`, `.teams.json` or `.vtt`, each
 converter saying so for zero bytes itself.
+Amended 2026-11-10, §16.240 C1267: the class `waiting for the OCR helper`, after `no converter` in
+`QUARANTINE_CLASSES`, for an image whose stub page says the OCR helper is not working, read from the page with or
+without a label rule (`_Mirror.read_image_pages`), never from the report's own OCR probe.
 Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld` reads it (its
 `reason:`, its summary less `refused: `, or the body marker), not by its `reason:` alone, so a page from before its
 `reason:` said withheld (§16.66 G29) is withheld under `reason: no converter for <suffix>`, as its
@@ -39341,6 +39345,10 @@ and no `no converter` class, so the report files such an image by its own OCR pr
 (a doctor hook blocked inside `_Run.call`, the main thread interrupted with `signal.pthread_kill(SIGINT)`, its handler
 reset; released after the report ended, neither `deadline.run` nor `ocr._start` starts its program),
 `test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101`.
+Amended 2026-11-10, §16.240 C1267: the report did not file such an image by its OCR probe: with no label rule, the
+only case where the page is written, it read no page, and its stored reason classed the row `no converter`, `.png` in
+the by-type line, while the pin checked the constant alone. The report now reads the page's `reason:` and classes the
+row `waiting for the OCR helper`; the pin runs `build_report` over a manifest row and its page.
 
 ### 16.236 Round 36: the installer: the shell cut of another home, an escaped folder row, and the helper time-out NEXT (2026-11-08, wave B13 round 36 lane RB)
 
@@ -39996,6 +40004,22 @@ and the clause copies `; O waiting for the OCR helper` between W and Q, in the C
 count is the line's, tagged `the waiting-for-the-OCR-helper count`. setup-feedback.md's Summary row lists six parts.
 Tests: `test_first_sync_clause_carries_the_read_again_count` (its rows read the CLI's own constant) and
 `test_the_first_sync_row_names_every_clause_the_summary_adds` (three counted clauses).
+
+**An image waiting on the OCR helper takes its page's class** (C1267 with C1273; ruling 122; dated lines at §16.28
+and §16.235 C1101). Round 36's C1101 writes an image's stub page with `publish.OCR_DOWN_REASON` while the OCR helper
+fails, with no label rule, and keeps the row's `no converter for <suffix>`; §16.235 said the report files such an
+image by its own OCR probe, but with no label rule `_Mirror.read_image_pages` returned at once, so the Quarantine
+table said `no converter`, the by-type line counted `.png`, and the OCR part said `no-converter stub on this Mac`.
+`read_image_pages` now reads no-converter image stubs with or without a label rule, within `_PAGES_S` and a quarter
+of the evidence time, and a page whose `reason:` is `OCR_DOWN_REASON` puts the row in `_Mirror.ocr_waiting`:
+`reason_class` and `refused_type` then give the class `waiting for the OCR helper` (new in `QUARANTINE_CLASSES`,
+after `no converter`) and no by-type count, and the OCR part's image line counts it as a `waiting-for-the-OCR-helper
+stub`, among the files waiting for a read. With no label rule a page not read keeps the stored class; with one, the
+J52 rules are unchanged. The class follows the page, never the report's probe, which disagrees with the page
+whenever the helper came back or broke after the stub (makes worse True for the probe-keyed option); lane B's C1211
+makes `_sync/QUARANTINE.tsv` follow the same page (§16.242). Test:
+`test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101` (rewritten: a `.png` row with an
+OCR-down page and a `.gif` with a `no converter` page, the probe ready and then gone).
 
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
