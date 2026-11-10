@@ -2,6 +2,7 @@
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
 # Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
+#                           [--timeout DURATION] [--cwd DIR] [--debug] [--non-interactive]
 #                           [--version] [--help] [help]
 #        scripts/install.sh --report-only
 #        scripts/install.sh --list-folders
@@ -15,8 +16,21 @@
 #                           (agentsync install-agent) and wait for the first background run (steps 3, 6-8)
 #   --launcher PATH         with --confirm-install-agent: use this prebuilt, signed AgentSyncLauncher.app
 #                           instead of building one; given twice, the last one wins
-#   --source-local=FOLDER, --launcher=PATH
+#   --timeout DURATION      one limit for the first sync (default 3600 s), the wait for the first background run
+#                           (default 180 s) and step 2's wait for a running sync (default 120 s): 30s, 5m or a
+#                           whole number of seconds, 1 or more; given twice, the last one wins. It beats
+#                           AGENTSYNC_WAIT_SECONDS and AGENTSYNC_REINSTALL_WAIT_SECONDS, which set those two
+#                           waits alone without it; the uv installer keeps its own limits
+#   --cwd DIR               change to DIR before anything else is read, so a relative path (a checkout, a
+#                           wheel, a --source-local folder, $AGENTSYNC_CONFIG) is read from DIR
+#   --debug                 also print the run's settings (the folder it runs in, what it installs, the config
+#                           and the limits) on stderr, each line starting "debug: ", the home written as ~
+#   --non-interactive       accepted and ignored: the installer never asks a question
+#   --source-local=FOLDER, --launcher=PATH, --timeout=DURATION, --cwd=DIR
 #                           the same options; a folder named like an option needs this form or ./ before its name
+#   A NEXT: line's re-run leaves out --timeout, --cwd, --debug and --non-interactive; after --cwd it names a
+#   relative checkout, wheel, launcher or folder as the absolute path read from DIR. --log-start, --log and
+#   --list-folders take none of the four (R061's carve-out: those three take no other option).
 #   --                      ends the options: the next word is not read as one
 #   --report-only          only write the setup report (step 9), then exit; installs and logs nothing, except
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
@@ -1601,6 +1615,9 @@ REBUILD=0
 REPORT=1
 REPORT_ONLY=0
 NO_REPORT_SEEN=0
+DEBUG_RUN=0  # --debug: the run's settings on stderr (debug_line)
+RUN_DIR=""   # --cwd DIR, entered after the option loop
+STD_OPT=""   # the first of --timeout, --cwd, --debug and --non-interactive given, which --list-folders refuses
 LIST_FOLDERS=0
 LIST_OPT=""  # --all or --limit as given (never recorded: args=--list-folders stays); LIST_MAX is its value
 LIST_MAX=""  # empty for the cap of 200, "all", or a whole number of 1 or more
@@ -1705,6 +1722,12 @@ ACTION_SHOWN=0 # the ACTION line is printed once
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
+debug_line() { # NAME VALUE: under --debug, one line on stderr (install.out keeps it), the home written as ~
+	[ "$DEBUG_RUN" -eq 1 ] || return 0
+	local v="$2" tilde='~'
+	case "$HOME" in /?*) v="${v//"$HOME"/$tilde}" ;; esac
+	printf 'debug: %s %s\n' "$1" "$v" >&2
+}
 fail() {
 	local rc=$? # the failed command's status (every caller is `cmd || fail ...`)
 	[ "$rc" -ne 0 ] || rc=1
@@ -10120,14 +10143,31 @@ list_folders() {
 # What the loop below records for a re-run, in one pass, always in the space form: the scrub registry, its awk and
 # setup_report's _without_folders tokenize on the word --source-local, so an = folder would escape all three.
 # --report-only, --no-report, --list-folders, --version and help record nothing: NEXT is for the real run.
-record_arg() { # WORD: a word a re-run repeats, in the re-run once the folders are in the config too
-	ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$1")"
-	ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$1")"
-	BASE_ARGS="$BASE_ARGS $(printf '%q' "$1")"
-}
-record_folder() { # FOLDER: a --source-local, which that later re-run leaves out
-	ORIG_ARGS="$ORIG_ARGS --source-local $(printf '%q' "$1")"
-	ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$1")"
+# The words wait in RECORDED until record_flush, after --cwd is entered: a re-run is not run from DIR, so under
+# --cwd it names a relative path or folder as the absolute one this run read.
+RECORDED=() # each "a:WORD" (a word), "p:PATH" (a path) or "f:FOLDER" (a --source-local folder)
+record_arg() { RECORDED+=("a:$1"); }    # WORD: a word a re-run repeats, in the re-run once the folders are in the config too
+record_path() { RECORDED+=("p:$1"); }   # PATH: the same, a checkout, wheel or launcher
+record_folder() { RECORDED+=("f:$1"); } # FOLDER: a --source-local, which that later re-run leaves out
+record_flush() { # ORIG_ARGS, ORIG_SHOWN and BASE_ARGS from RECORDED, in the order given
+	local r w
+	for r in ${RECORDED[@]+"${RECORDED[@]}"}; do
+		w="${r#?:}"
+		if [ -n "$RUN_DIR" ] && [ "${r%%:*}" != a ]; then
+			case "$w" in /* | \~ | \~/*) ;; *) w="$PWD/${w#./}" ;; esac # a ~ folder is the home, not DIR
+		fi
+		case "$r" in
+		f:*)
+			ORIG_ARGS="$ORIG_ARGS --source-local $(printf '%q' "$w")"
+			ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$w")"
+			;;
+		*)
+			ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$w")"
+			ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$w")"
+			BASE_ARGS="$BASE_ARGS $(printf '%q' "$w")"
+			;;
+		esac
+	done
 }
 dash_safe() { # WORD: SAFE_WORD is it, written ./-x when it starts with a dash, so a recorded re-run still parses
 	SAFE_WORD="$1"
@@ -10136,20 +10176,43 @@ dash_safe() { # WORD: SAFE_WORD is it, written ./-x when it starts with a dash, 
 take_launcher() { # PATH: repeated, the last one wins
 	LAUNCHER_SRC="$1"
 	record_arg --launcher
-	record_arg "$1"
+	record_path "$1"
 }
 take_source() { # WORD: repeated, an error (a relative one after -- may start with a dash; cd reads that as an option)
 	[ -z "$SOURCE" ] || usage_error "only one SOURCE is accepted"
 	dash_safe "$1"
 	SOURCE="$SAFE_WORD"
-	record_arg "$SAFE_WORD"
+	record_path "$SAFE_WORD"
+}
+# --timeout DURATION (30s, 5m or whole seconds) as whole seconds, set over the three limits its variables set: it
+# beats them. Never recorded, nor are the other three below, so a re-run and the scrub registry read as before.
+take_timeout() { # DURATION
+	local n="$1" unit=1
+	STD_OPT="${STD_OPT:---timeout}"
+	case "$n" in
+	*s) n="${n%s}" ;;
+	*m) n="${n%m}" unit=60 ;;
+	esac
+	while [ "${n#0}" != "$n" ]; do n="${n#0}"; done
+	case "$n" in
+	'' | *[!0-9]*) usage_error '--timeout takes a DURATION of 1 or more (30s, 5m or whole seconds), got:' "$1" ;;
+	esac
+	[ "${#n}" -le 9 ] || usage_error '--timeout takes a DURATION of at most 9 digits, got:' "$1"
+	n=$((n * unit))
+	FIRST_SYNC_LIMIT="$n" WAIT_SECONDS="$n" REINSTALL_WAIT="$n"
+}
+take_cwd() { # DIR: entered after the option loop, before any relative path is read; the last one wins
+	[ -n "$1" ] || usage_error '--cwd needs a folder'
+	STD_OPT="${STD_OPT:---cwd}"
+	RUN_DIR="$1"
 }
 # The option names a space-separated --launcher or --source-local value may not be: "--source-local --help" lost
 # its folder. A name like -foo stays a legal folder; --source-local=--help and ./--help name a folder called --help.
 option_name() { # WORD
 	case "$1" in
 	--confirm-install-agent | --report-only | --list-folders | --all | --limit | --json | --no-report | --log-start | \
-		--log | --log-end | --launcher | --source-local | --version | -h | --help | --) return 0 ;;
+		--log | --log-end | --launcher | --source-local | --timeout | --cwd | --debug | --non-interactive | --version | \
+		-h | --help | --) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -10190,6 +10253,21 @@ while [ $# -gt 0 ]; do
 		;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
+	--timeout)
+		[ $# -ge 2 ] || usage_error '--timeout needs a DURATION'
+		take_timeout "$2"
+		shift
+		;;
+	--timeout=*) take_timeout "${1#--timeout=}" ;;
+	--cwd)
+		[ $# -ge 2 ] || usage_error '--cwd needs a folder'
+		! option_name "$2" || usage_error '--cwd needs a folder, got the option' "$2"
+		take_cwd "$2"
+		shift
+		;;
+	--cwd=*) take_cwd "${1#--cwd=}" ;;
+	--debug) DEBUG_RUN=1 STD_OPT="${STD_OPT:-$1}" ;;
+	--non-interactive) STD_OPT="${STD_OPT:-$1}" ;; # accepted, nothing to change: no run asks a question
 	-a | --all) LIST_OPT="$1" LIST_MAX=all ;;
 	-n | --limit)
 		[ $# -ge 2 ] || usage_error "$1 needs a NUMBER"
@@ -10292,6 +10370,13 @@ fi
 # every folder unless --limit is given, so its pagination is null; LIST_ARG, which the re-run names, stays.
 if [ "$LIST_FOLDERS" -eq 1 ]; then json_goes_with --list-folders; else json_goes_with install; fi
 [ "$JSON_RUN" -eq 0 ] || [ -n "$LIST_MAX" ] || LIST_MAX=all
+# --cwd: entered before SOURCE, a --source-local folder and the config are made absolute below. A leading ./ keeps
+# cd from reading a name that starts with a dash as an option, and keeps CDPATH out.
+if [ -n "$RUN_DIR" ]; then
+	case "$RUN_DIR" in /*) ;; *) RUN_DIR="./$RUN_DIR" ;; esac
+	cd "$RUN_DIR" 2>/dev/null || usage_error '--cwd is not a folder this run can enter:' "${RUN_DIR#./}"
+fi
+record_flush
 # The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
 # them, as step 2 says to name only folders to add (B13 round 16 T22)
 RERUN_ARGS="$ORIG_SHOWN"
@@ -10314,7 +10399,7 @@ case "$CONFIG" in
 esac
 if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report; its writes are in the header (--list-folders)
 	REPORT=0
-	if [ -n "$ORIG_ARGS" ] || [ "$REPORT_ONLY" -eq 1 ]; then
+	if [ -n "$ORIG_ARGS" ] || [ "$REPORT_ONLY" -eq 1 ] || [ -n "$STD_OPT" ]; then
 		usage_error "--list-folders takes no other option or SOURCE"
 	fi
 	case "$LIST_TIMEOUT" in
@@ -10360,6 +10445,13 @@ WAIT_EVERY=$((PROGRESS_EVERY - wp))
 if [ -z "$SOURCE" ]; then
 	SOURCE="$repo"
 	resolve_source
+fi
+if [ "$DEBUG_RUN" -eq 1 ]; then
+	debug_line cwd "$PWD"
+	debug_line source "$SOURCE_KIND $SOURCE"
+	debug_line config "$CONFIG"
+	printf -v dbg 'first-sync=%ss first-run-wait=%ss lock-wait=%ss' "$FIRST_SYNC_LIMIT" "$WAIT_SECONDS" "$REINSTALL_WAIT"
+	debug_line limits "$dbg"
 fi
 if [ -n "$LAUNCHER_SRC" ]; then
 	[ "$INSTALL_AGENT" -eq 1 ] || usage_error "--launcher only applies with --confirm-install-agent (the launcher is for background sync)"

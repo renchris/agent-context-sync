@@ -4089,7 +4089,8 @@ def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> 
         assert line in flat[at:nxt], section
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert 'one --source-local $(shown_arg "$vreal")' in script
-    assert 'ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$1")"' in script
+    # U-C10's record_flush builds it after --cwd is entered, one recorded word "$w" at a time
+    assert 'ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$w")"' in script
     [body] = re.findall(r"^shown_arg\(\) \{\n(.*?)\n\}", script, flags=re.MULTILINE | re.DOTALL)
     assert "printf '%q'" in body and "\\$\\'*" in body
 

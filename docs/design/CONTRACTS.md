@@ -42391,7 +42391,32 @@ deprecation warning becomes a `warnings` entry instead of a stderr line. The ref
 
 #### 16.300.27 U-C10: install.sh standard options
 
-Reserved.
+`scripts/install.sh` accepts four standard options (C-10.1, K31 and K34's `--timeout`), each pinned in
+`tests/test_contracts.py::INSTALL_OPTIONS`:
+
+- `--timeout DURATION` (and `--timeout=DURATION`): `30s`, `5m` or whole seconds, 1 or more, at most 9 digits; any
+  other word exits 2. It sets the first sync's limit (default 3600 s), the wait for the first background run
+  (`AGENTSYNC_WAIT_SECONDS`, default 180 s) and step 2's lock wait (`AGENTSYNC_REINSTALL_WAIT_SECONDS`, default
+  120 s) to that many seconds, in the option loop, so the option beats the variable and the variable beats the
+  default. The assignments of those variables are unchanged text, and the variables stay whole seconds (`2m` in
+  one is still a usage error). It adds no limit on the uv installer (D23 kept, Option B).
+- `--cwd DIR` (and `--cwd=DIR`): entered after the option loop, before SOURCE, each `--source-local` folder and a
+  relative `AGENTSYNC_CONFIG` are made absolute; a folder it cannot enter exits 2 and writes nothing.
+- `--debug`: after the arguments are checked, an install run prints `debug: cwd`, `debug: source`, `debug: config`
+  and `debug: limits` lines on stderr, the home written as `~`. stdout gets no line; install.out keeps the stderr
+  copy, and the report's own redaction reads it as it reads every install.out line.
+- `--non-interactive`: accepted and ignored, as no run asks a question.
+
+None of the four is recorded in `ORIG_ARGS`, `ORIG_SHOWN` or `BASE_ARGS`: a NEXT's re-run, install.log's `args=`
+and the scrub registry read as they did without them. The words a re-run repeats wait in `RECORDED` until
+`record_flush`, after `--cwd` is entered: under `--cwd` a relative SOURCE, `--launcher` path or `--source-local`
+folder is recorded as the absolute path read from DIR (a `~` folder stays as given), because a re-run is not
+run from DIR (`test_cwd_rerun_names_absolute_folders`). R061's carve-out, in the header: `--log-start`, `--log` and
+`--list-folders` take no other option, these four included (`--list-folders` with one exits 2). `--dry-run` and
+`--config` stay unknown options that exit 2 (D21 kept, Option B). Tests: `tests/test_install_parser.py`
+(`test_timeout_accepts_a_duration_and_rejects_a_word`, `test_option_beats_the_variable`,
+`test_new_options_stay_out_of_the_rerun`, `test_non_interactive_is_a_no_op`,
+`test_cwd_applies_before_relative_paths`).
 
 #### 16.300.28 U-C11: install.sh short help
 

@@ -24,6 +24,7 @@ from test_install_oneshot import (  # noqa: F401  (fixtures)
     last_line,
     one_next,
     report_path,
+    steps,
     wheel,
 )
 
@@ -265,3 +266,182 @@ def test_the_pinned_uv_is_the_version_the_workflows_use() -> None:
         text = (REPO / ".github" / "workflows" / name).read_text(encoding="utf-8")
         pins = re.findall(r'uses: astral-sh/setup-uv@\S+.*\n\s+with:\n\s+version: "([^"]+)"', text)
         assert pins == [m.group(1)], f"{name} pins uv {pins}, the installer {m.group(1)}"
+
+
+# ---- U-C10: --timeout, --cwd, --debug and --non-interactive ----------------------------------------------
+
+
+def _limits(cp: Any) -> str:
+    return next(ln for ln in cp.stderr.splitlines() if ln.startswith("debug: limits "))
+
+
+@pytest.mark.parametrize(
+    ("argv", "seconds"),
+    [
+        (["--timeout", "90"], 90),
+        (["--timeout", "30s"], 30),
+        (["--timeout", "5m"], 300),
+        (["--timeout=2m"], 120),
+        (["--timeout", "5m", "--timeout", "007"], 7),
+        (["--timeout", "soon"], None),
+        (["--timeout", "2h"], None),
+        (["--timeout", "1.5m"], None),
+        (["--timeout", "0"], None),
+        (["--timeout", "0m"], None),
+        (["--timeout", "-5"], None),
+        (["--timeout="], None),
+        (["--timeout", "1234567890"], None),
+        (["--timeout"], None),
+    ],
+    ids=lambda v: " ".join(v) if isinstance(v, list) else str(v),
+)
+def test_timeout_accepts_a_duration_and_rejects_a_word(
+    env: dict[str, str],  # noqa: F811
+    folder: Path,  # noqa: F811
+    wheel: Path,  # noqa: F811
+    argv: list[str],
+    seconds: int | None,
+) -> None:
+    """30s, 5m and bare seconds are one limit in whole seconds over the first sync, the first background run's
+    wait and step 2's lock wait; any other word is a usage error before anything is written."""
+    before = _listing(env)
+    cp = install_sh(env, str(wheel), "--source-local", str(folder), *argv, "--debug")
+    if seconds is None:
+        assert cp.returncode == 2, cp.stdout + cp.stderr
+        assert "usage error: --timeout " in cp.stderr, cp.stderr
+        assert _listing(env) == before
+        return
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        _limits(cp) == f"debug: limits first-sync={seconds}s first-run-wait={seconds}s lock-wait={seconds}s"
+    )
+
+
+def test_option_beats_the_variable(env: dict[str, str], folder: Path, wheel: Path) -> None:  # noqa: F811
+    """The variable beats the default, and --timeout beats the variable: the wait for the first background run
+    counts to the option's seconds while AGENTSYNC_WAIT_SECONDS says 60. The option adds no limit on uv."""
+    e = {
+        **env,
+        "AGENTSYNC_PROGRESS_SECONDS": "1",
+        "STUB_LC_RUNNING": "1",
+        "AGENTSYNC_WAIT_SECONDS": "60",
+        "AGENTSYNC_REINSTALL_WAIT_SECONDS": "60",
+    }
+    cp = install_sh(
+        e, str(wheel), "--source-local", str(folder), "--confirm-install-agent", "--timeout", "6s", "--debug"
+    )
+    assert cp.returncode == 3, cp.stdout + cp.stderr
+    wait = [ln for ln in cp.stdout.splitlines() if re.fullmatch(r"wait: \d+s of \d+s, .*", ln)]
+    assert wait and all(" of 6s, " in ln for ln in wait), cp.stdout
+    assert _limits(cp) == "debug: limits first-sync=6s first-run-wait=6s lock-wait=6s"
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'WAIT_SECONDS="${AGENTSYNC_WAIT_SECONDS:-180}"' in script
+    assert 'REINSTALL_WAIT="${AGENTSYNC_REINSTALL_WAIT_SECONDS:-120}"' in script
+    assert "UV_INSTALL_LIMIT=900 " in script, "D23: --timeout sets no uv limit"
+    # a variable that is no whole number is still a usage error alone, and the option replaces it
+    bad = {**env, "AGENTSYNC_WAIT_SECONDS": "2m"}
+    alone = install_sh(bad, str(wheel), "--source-local", str(folder))
+    assert alone.returncode == 2 and "AGENTSYNC_WAIT_SECONDS must be a whole number" in alone.stderr
+    beaten = install_sh(bad, str(wheel), "--source-local", str(folder), "--timeout", "2m")
+    assert beaten.returncode == 0, beaten.stdout + beaten.stderr
+
+
+def test_new_options_stay_out_of_the_rerun(env: dict[str, str], wheel: Path, tmp_path: Path) -> None:  # noqa: F811
+    """None of the four is recorded: the NEXT's re-run and install.log's args= are a run's without them, the
+    debug lines are on stderr only (install.out keeps them), with the home as ~, and --list-folders takes none
+    of them (R061's carve-out)."""
+    four = [
+        "--timeout",
+        "5m",
+        "--cwd",
+        str(tmp_path),
+        "--debug",
+        "--non-interactive",
+        "--timeout=90",
+        f"--cwd={tmp_path}",
+    ]
+    cp = install_sh(env, str(wheel), *four)
+    assert one_next(cp), cp.stdout + cp.stderr
+    next_line = last_line(cp)
+    assert f" {wheel} --source-local " in next_line, next_line
+    for opt in ("--timeout", "--cwd", "--debug", "--non-interactive"):
+        assert opt not in next_line and opt not in _start_args(env), opt
+    assert _start_args(env) == str(wheel)
+    assert "debug:" not in cp.stdout
+    assert "debug: config ~/agent-context/sources.toml" in cp.stderr.splitlines(), cp.stderr
+    assert "debug: limits first-sync=90s first-run-wait=90s lock-wait=90s" in cp.stderr.splitlines()
+    out = (Path(env["HOME"]) / "agent-context" / "setup" / "install.out").read_text()
+    assert "debug: limits first-sync=90s" in out
+    for opt in (["--debug"], ["--non-interactive"], ["--timeout", "5m"], ["--cwd", str(tmp_path)]):
+        listed = install_sh(env, "--list-folders", *opt)
+        assert listed.returncode == 2, opt
+        assert "usage error: --list-folders takes no other option or SOURCE" in listed.stderr, opt
+
+
+def test_non_interactive_is_a_no_op(env: dict[str, str], folder: Path, wheel: Path) -> None:  # noqa: F811
+    """A re-run with --non-interactive does what the same re-run without it does: the same steps, results and
+    NEXT, and nothing on stderr names the option."""
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    runs = []
+    for extra in ([], ["--non-interactive"]):
+        mark = len(install_log(env))
+        cp = install_sh(env, str(wheel), *extra)
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        assert "--non-interactive" not in cp.stdout + cp.stderr
+        runs.append((last_line(cp), [s[:3] for s in steps(install_log(env)[mark:])]))
+    assert runs[0] == runs[1]
+
+
+def test_cwd_applies_before_relative_paths(
+    env: dict[str, str],  # noqa: F811
+    folder: Path,  # noqa: F811
+    wheel: Path,  # noqa: F811
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--cwd is entered before SOURCE and each --source-local folder are made absolute: the same relative
+    words fail from elsewhere and install from DIR. A folder it cannot enter is a usage error that writes
+    nothing."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    source = str(wheel.relative_to(tmp_path))
+    local = str(folder.relative_to(tmp_path))
+    before = _listing(env)
+    gone = install_sh(env, "--cwd", str(tmp_path / "nowhere"), source)
+    assert gone.returncode == 2
+    assert f"usage error: --cwd is not a folder this run can enter: {tmp_path / 'nowhere'}" in gone.stderr
+    assert _listing(env) == before
+    lost = install_sh(env, source, "--source-local", local)
+    assert lost.returncode == 2, lost.stdout + lost.stderr
+    cp = install_sh(env, source, "--source-local", local, "--cwd", str(tmp_path), "--debug")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert f"debug: source wheel {wheel}" in cp.stderr.splitlines(), cp.stderr
+    config = (Path(env["HOME"]) / "agent-context" / "sources.toml").read_text()
+    assert f'path = "{folder}"' in config, config
+    assert any(c.startswith("agentsync add-source ") and str(folder) in c for c in calls(env)), calls(env)
+
+
+def test_cwd_rerun_names_absolute_folders(
+    env: dict[str, str],  # noqa: F811
+    folder: Path,  # noqa: F811
+    wheel: Path,  # noqa: F811
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A re-run is not run from --cwd's DIR, so it names a relative SOURCE and --source-local folder as the
+    absolute paths this run read, and never --cwd itself: install.log's args= and a NEXT's re-run both."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    source = str(wheel.relative_to(tmp_path))
+    local = str(folder.relative_to(tmp_path))
+    bare = install_sh(env, "--cwd", str(tmp_path), f"./{source}")  # no folder yet: its NEXT names the re-run
+    assert one_next(bare), bare.stdout + bare.stderr
+    assert f" {wheel} --source-local " in last_line(bare), last_line(bare)
+    assert "--cwd" not in last_line(bare) and f"./{source}" not in last_line(bare)
+    cp = install_sh(env, "--cwd", str(tmp_path), source, f"--source-local={local}")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    args = [ln.split(" args=", 1)[1] for ln in install_log(env) if " start install.sh " in ln]
+    assert args[-1] == f"{wheel} --source-local " + str(folder).replace(" ", "\\ "), args
