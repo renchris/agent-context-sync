@@ -2603,6 +2603,88 @@ def test_an_image_whose_ocr_helper_fails_says_so_and_is_read_once_it_works_c1101
     assert fm["converter"].startswith("image-ocr@"), fm
 
 
+OFFSITE_PHOTO = "projects/Contoso Offsite Photo.png"
+
+
+def test_an_online_only_image_keeps_no_converter_while_the_ocr_helper_fails_c1257(
+    sample_config: Config,
+    local_source_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 37 C1257, C1265: an online-only image is never downloaded for OCR, so a working helper never
+    reads it either. While the helper fails its page said the helper is not working and it was counted as
+    waiting for it, a read that never comes. It keeps `no converter for .png` and counts as refused, as when
+    the helper works; the image on this Mac beside it still says the helper is not working."""
+    failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    online = picture(local_source_dir / OFFSITE_PHOTO, "Room 4", "Fabrikam visit")
+    _mark_online_only(monkeypatch, online)
+    report = run(sample_config)
+    assert report.exit_code == 0
+    (st,) = [s for s in report.sources if s.source_id == SID]
+    assert (st.ocr_unread, st.refused_unread) == (1, 1), st
+    fm, _body = _image_page(sample_config, OFFSITE_PHOTO)
+    assert (fm["reason"], fm["summary"]) == ("no converter for .png", "refused: no converter for .png"), fm
+    local, _body = _image_page(sample_config, SITE_PLAN)
+    assert local["reason"] == publish_mod.OCR_DOWN_REASON, local
+    capsys.readouterr()
+    cli._print_report(report)
+    said = capsys.readouterr().out
+    assert f"; 1 {cli.OCR_WAIT_CLAUSE}" in said, said
+    before = (sample_config.docs_repo / slug.mirror_rel_path(SID, OFFSITE_PHOTO)).read_bytes()
+    # the helper works again: the image on this Mac is read, the online-only one is not, its page unchanged
+    engine = _use_ocr(monkeypatch, tmp_path)
+    assert run(sample_config).exit_code == 0
+    assert not any(OFFSITE_PHOTO.rsplit("/", 1)[1] in p for r in reads(engine.helper) for p in r)
+    assert (sample_config.docs_repo / slug.mirror_rel_path(SID, OFFSITE_PHOTO)).read_bytes() == before
+    local, _body = _image_page(sample_config, SITE_PLAN)
+    assert local["converter"].startswith("image-ocr@"), local
+
+
+def test_a_graph_image_keeps_no_converter_while_the_ocr_helper_fails_c1257(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 37 C1257: a Graph image is never downloaded for OCR, so its stub during a helper outage says
+    `no converter for .png` and counts as refused, with no OCR-helper clause on the sync line, and a working
+    helper leaves the page byte for byte as it was."""
+    failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
+    drive = FakeDrive(
+        {"I1": ("notes.md", b"# Notes\n"), "I2": ("Contoso Site Plan.png", picture_bytes("Loading dock"))}
+    )
+    rel = "mirror/drive/projects/contoso-site-plan.png.md"
+    with GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    ) as client:
+        report = run(config, client=client, only=["drive"])
+        assert report.exit_code == 0
+        (st,) = report.sources
+        assert (st.ocr_unread, st.refused_unread) == (0, 1), st
+        fm, _body = page(config.docs_repo, rel)
+        assert (fm["reason"], fm["summary"]) == ("no converter for .png", "refused: no converter for .png"), (
+            fm
+        )
+        capsys.readouterr()
+        cli._print_report(report)
+        said = capsys.readouterr().out
+        assert cli.OCR_WAIT_CLAUSE not in said, said
+        before = (config.docs_repo / rel).read_bytes()
+        engine = _use_ocr(monkeypatch, tmp_path)
+        assert run(config, client=client, only=["drive"]).exit_code == 0
+    assert not any("I2" in entry for entry in drive.log), drive.log
+    assert (config.docs_repo / rel).read_bytes() == before and reads(engine.helper) == []
+
+
 def test_an_image_under_a_label_rule_keeps_its_words_while_the_helper_fails_c1101(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

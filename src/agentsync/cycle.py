@@ -186,6 +186,7 @@ from agentsync.publish import (
     _withheld_on_page,
     archive_path,
     notice_gone_why,
+    read_needs_download,
     render_tombstone,
     sidecar_rel,
 )
@@ -3783,7 +3784,7 @@ class _Cycle:
             return True
         graph = any(s.kind.is_graph for s in self.config.sources if s.id == row.source_id)
         engine_only = suffix in ImageConverter.extensions or suffix in RecordingConverter.extensions
-        return engine_only and (graph or row.dataless)
+        return engine_only and read_needs_download(graph=graph, dataless=row.dataless)  # C1257
 
     def _rescreen_left(self) -> int:
         """The [policy] re-screen's backlog after this run, as STATE.md's line counts it (mail only under
@@ -5844,7 +5845,7 @@ class _Cycle:
         text, but a binary one, the common kind, can never be screened, and the page it had before the rule
         must not stay up until its bytes can be fetched (one the OS refuses to hydrate gets the stub when its
         fetch is refused: ``_process``).  One on this Mac is read."""
-        download = src.kind.is_graph or row.dataless
+        download = read_needs_download(graph=src.kind.is_graph, dataless=row.dataless)  # C1257
         forced = row.rel_path in self.forced_paths.get(src.id, ())
         if self.registry.for_name(row.name) is not None and not (
             (self._ocr_image(row) and download) or (self._msg_withheld(row) and download and not forced)
@@ -6797,8 +6798,14 @@ class _Cycle:
             acc.settle(stable, Verdict.REFUSED)
             if unread and self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
                 acc.withheld_unread += 1
-            elif unread and self.publisher.ocr_waits(result.reason, Path(row.name).suffix.lower()):
-                acc.ocr_unread += 1  # its own clause on the sync line, as its page says (C1101)
+            elif unread and self.publisher.ocr_waits(
+                result.reason,
+                Path(row.name).suffix.lower(),
+                local=not read_needs_download(graph=src.kind.is_graph, dataless=row.dataless),
+            ):
+                # its own clause on the sync line, as its page says (C1101); a Graph or online-only image,
+                # never read by a working helper either, counts as refused, as its page says (C1257)
+                acc.ocr_unread += 1
             elif unread:
                 acc.refused_unread += 1
         elif result.status is ConversionStatus.FAILED:

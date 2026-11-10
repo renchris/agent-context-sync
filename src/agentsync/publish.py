@@ -599,10 +599,21 @@ def _withheld_on_page(text: str) -> bool | None:
 
 
 OCR_DOWN_REASON = "the OCR helper is not working on this Mac: the image is read again once it works"
-"""The ``reason:`` and summary of an image's stub while the OCR helper is built but not working
-(:meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's own absence says, nor the label
-rule's ``withheld`` words; the stored reason, the converter and ``_sync/QUARANTINE.tsv`` (read from the
-manifest) keep ``no converter for <suffix>`` (B13 round 36 C1101)."""
+"""The ``reason:`` and summary of the stub of an image on this Mac while the OCR helper is built but not
+working (:meth:`Publisher.ocr_waits`): never ``no converter``, which the converter's own absence says, nor the
+label rule's ``withheld`` words; the stored reason, the converter and ``_sync/QUARANTINE.tsv`` (read from the
+manifest) keep ``no converter for <suffix>`` (B13 round 36 C1101). An image whose read needs a download (a
+Graph item, an online-only file: :func:`read_needs_download`) keeps ``no converter for <suffix>`` on its page
+too: a working helper never reads it either, so its page promises no read (B13 round 37 C1257, C1265)."""
+
+
+def read_needs_download(*, graph: bool, dataless: bool) -> bool:
+    """True when reading an item means a download: any item of a Graph source, or an online-only (dataless)
+    file. An image OCR would read is never downloaded for it, so such an image is refused by its name whatever
+    the engine (``Cycle._no_converter``), its stub is never read again (``Cycle._stub_settled``), and its page
+    and the sync line never say it waits for the OCR helper (:meth:`Publisher.ocr_waits`). The one test those
+    places share, so they cannot drift apart (B13 round 37 C1257, C1265)."""
+    return graph or dataless
 
 
 def _withheld_reason(suffix: str) -> str:
@@ -1171,13 +1182,19 @@ class Publisher:
         or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
         return self._withheld_eligible(reason, suffix) and (suffix == ".msg" or self.images_readable)
 
-    def ocr_waits(self, reason: str | None, suffix: str) -> bool:
-        """True when ``reason`` is the ``no converter`` refusal of an image while this run's OCR helper is
-        built but not working (:attr:`ocr_down`) and no label rule is on (one withholds an image whatever the
-        engine does): its page says :data:`OCR_DOWN_REASON`, the stored reason keeps ``no converter for
-        <suffix>``, which re-reads it once the helper works (B13 round 36 C1101)."""
+    def ocr_waits(self, reason: str | None, suffix: str, *, local: bool) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of an image on this Mac while this run's OCR
+        helper is built but not working (:attr:`ocr_down`) and no label rule is on (one withholds an image
+        whatever the engine does): its page says :data:`OCR_DOWN_REASON`, the stored reason keeps ``no
+        converter for <suffix>``, which re-reads it once the helper works (B13 round 36 C1101).
+
+        ``local``: reading the image needs no download (``not`` :func:`read_needs_download`). A Graph or
+        online-only image is never read by a working helper either, so it keeps ``no converter for <suffix>``
+        on its page and counts in the sync line's refused, as when the helper works (B13 round 37 C1257,
+        C1265)."""
         return (
-            self.ocr_down
+            local
+            and self.ocr_down
             and not self._policy.labels_active
             and reason == NO_CONVERTER_PREFIX + suffix
             and suffix in ImageConverter.extensions
@@ -1267,7 +1284,11 @@ class Publisher:
             status is ConversionStatus.REFUSED
             and not refusal
             and not withheld
-            and self.ocr_waits(result.reason, suffix)
+            and self.ocr_waits(
+                result.reason,
+                suffix,
+                local=not read_needs_download(graph=source.kind.is_graph, dataless=item.dataless),
+            )
         )
         summary_text = OCR_DOWN_REASON if ocr_waits else shown
         if withheld:
