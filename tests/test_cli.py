@@ -14898,6 +14898,37 @@ def test_a_refused_governance_table_invites_no_purge_run_c1026(
     assert not [ln for ln in out if "purge --queue" in ln or "purge id=" in ln], out
 
 
+def test_a_state_hold_is_named_while_governance_does_not_load_c1247(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 37 C1247 (ruling 124): under a [governance] that did not load, a hold the state lists was an
+    [ok] row the refused table's filter dropped, so status said nothing of a hold in force. It is named as an
+    [info] line ending _HOLD_NOT_JUDGED, with no fix and no [ok] line, every pointer resolved; with the table
+    restored the [ok] line comes back."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    governance.set_hold(root, "all", reason="made-up litigation hold", owner="Contoso Legal")
+    path = Path(cfg)
+    table = path.read_text(encoding="utf-8")
+    path.write_text(table + "\n[governance]\nhold = true\n", encoding="utf-8")  # refused: no hold_reason
+    with pytest.raises(AgentSyncError):
+        governance.load_governance(path)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
+    (held,) = [ln for ln in out if ln.startswith("[info] governance.hold ")]
+    assert held.split(" — ", 1)[1].startswith("hold all (state): made-up litigation hold"), held
+    assert held.endswith(f"; {cli._HOLD_NOT_JUDGED}") and "(fix: " not in held, held
+    assert not [ln for ln in out if ln.startswith("[ok  ] governance.hold")], out
+    assert _unresolved_fail_pointers(out) == [], out
+    path.write_text(table, encoding="utf-8")
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    (ok,) = [ln for ln in out if ln.startswith("[ok  ] governance.hold ")]
+    assert ok.split(" — ", 1)[1].startswith("hold all (state): made-up litigation hold"), ok
+    assert not [ln for ln in out if ln.startswith("[info] governance.hold ")], out
+
+
 def test_the_reports_purge_warn_names_no_waiting_on_you_line_it_does_not_hold_c903(
     initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
