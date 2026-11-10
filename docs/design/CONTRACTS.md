@@ -38639,6 +38639,11 @@ Amended 2026-11-08, §16.239 C1051: bodies committed before C934 keep their text
 them, within history_days plus compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history
 --keep-days N`, never under [governance] archive or a hold, where keeping the history is intended; no decision packet
 asks the operator, and no rewrite of the docs history is offered.
+Amended 2026-11-10, §16.244 C1306: the 30 + 7 days start a compaction and bound no body's age: compaction runs
+only in a reconcile (hourly by default) whose land gate passes, once any commit is older than history_days plus
+compaction_slack_days, and it squashes every commit older than history_days, so a running install drops them by
+about day 37, sometimes from day 30; a stopped install, a blocked land gate or a failed compaction leaves them, and
+status shows compaction overdue.
 
 **C967, lane B's half (ruling 104; data integrity).** Step 1 read a lost hold beside a lost queue as the only hold
 refusing the queue's hand purge, though sources.toml's hold or a hold the hold list still names refused it too, so
@@ -39778,6 +39783,11 @@ compaction_slack_days (30 + 7 by default), sooner by `agentsync compact-history 
 [governance] archive or a hold. Push stays opt-in, so no body was published. Test:
 `test_c934s_old_commit_bodies_age_out_by_compaction_c1051`, which reads each figure, the command and both refusals from
 the code.
+Amended 2026-11-10, §16.244 C1306: the 30 + 7 days start a compaction and bound no body's age: compaction runs
+only in a reconcile (hourly by default) whose land gate passes, once any commit is older than history_days plus
+compaction_slack_days, and it squashes every commit older than history_days, so a running install drops them by
+about day 37, sometimes from day 30; a stopped install, a blocked land gate or a failed compaction leaves them, and
+status shows compaction overdue.
 
 **§16.233 states the helper's signal limit** (C1035, ruling 117; amends §16.233 C961; docs only). §16.233 named
 launchd's cleanup and a signal to the report's group as reaching a helper, while §16.232 C956 promises that a signal
@@ -39996,6 +40006,22 @@ rule (about 20 minutes above the slowest) `timeout-minutes` is 90, 23:46 above 6
 set, and `tests/test_convert_recording.py`'s docstring names 90, as does a dated line on §16.144's W70 paragraph. A
 higher limit only lets a hung job run 10 minutes longer; a runner wait still does not count against it. Tests:
 `test_claude_md_gives_cis_time_and_its_limit` and `test_the_recording_tests_limit_names_cis_own_limit`.
+
+**The 30 + 7 days start a compaction; they bound no body's age** (C1306; amends §16.232 C934 and §16.239 C1051; docs
+only). C1051's line at C934's paragraph, its own entry and ruling 119 said the bodies committed before C934 go "within
+history_days plus compaction_slack_days (30 + 7 by default)", read as a deadline, while `cycle._retention` runs only
+under `if self.mode is CycleMode.RECONCILE:` in the branch a passing land gate takes, returns with only a STATE line on
+a failed due check, an active hold (`SUSPENDED by hold`) or a failed compaction (`compaction FAILED`), and
+`compact_history` then squashes every commit older than `history_days` alone; `compaction_state` has an `overdue`
+state for exactly the missed run. C1051's test read the sum from `compaction_due` and found `compact_history(` anywhere
+in cycle's source, so it passed for the wrong reason. Both C1051 lines get a dated line: the days start a compaction,
+which runs in a reconcile (hourly by default, `reconcile_interval_s` 3600) whose land gate passes and squashes every
+commit older than history_days, so a running install drops them by about day 37, sometimes from day 30, and a stopped
+install, a blocked land gate or a failed compaction leaves them, with status showing compaction overdue. Ruling 119's
+text in `docs/lanes/COMMON.md` stays as written (rulings 120 to 125 amend rulings 112 to 119 only by their CONTRACTS
+lines), and C1051's line is kept, not rewritten. Test:
+`test_compaction_runs_only_in_a_reconcile_whose_land_gate_passes_c1306`, which reads the reconcile branch, its place
+after the land gate, both early returns, the squash's cut, the hourly default and the overdue state from the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

@@ -9484,6 +9484,49 @@ def test_c934s_old_commit_bodies_age_out_by_compaction_c1051() -> None:
     assert '"compact-history"' in cli_text and '"--keep-days"' in cli_text
 
 
+def test_compaction_runs_only_in_a_reconcile_whose_land_gate_passes_c1306() -> None:
+    """B13 round 37 C1306: C1051's lines said the bodies committed before C934 go "within history_days plus
+    compaction_slack_days (30 + 7 by default)", a deadline, and its test passed on the sum and on
+    `compact_history(` anywhere in cycle's source. The sum only starts a compaction, which runs in a reconcile
+    whose land gate passes and squashes every commit older than history_days, and a stopped install, a blocked
+    gate, a hold or a failed compaction leaves the bodies, status saying overdue. Both C1051 lines carry a
+    dated line saying so, and each claim is read from the code."""
+    import dataclasses  # noqa: PLC0415
+
+    from agentsync import cli, config, cycle, governance  # noqa: PLC0415
+
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    tails = text.split("Amended 2026-11-10, §16.244 C1306: ")[1:]
+    assert len(tails) == 2
+    for tail in tails:
+        line = tail.split(" Amended ", 1)[0].split(" **", 1)[0]
+        assert line.startswith("the 30 + 7 days start a compaction and bound no body's age:")
+        assert "only in a reconcile (hourly by default) whose land gate passes" in line
+        assert "it squashes every commit older than history_days" in line
+        assert "by about day 37, sometimes from day 30" in line
+        assert "a stopped install, a blocked land gate or a failed compaction leaves them" in line
+        assert line.endswith("status shows compaction overdue.")
+    c934 = " ".join(_contracts_section("Amended 2026-11-08, §16.239 C1051: ", "\n\n").split())
+    assert "Amended 2026-11-10, §16.244 C1306: " in c934
+    # the reconcile branch sits in the arm a passing land gate takes, and retention is called only there
+    body = inspect.getsource(cycle._Cycle)
+    gate = body.index("blocked = any(f.blocking for f in self.findings)")
+    arm = body.index("if self.mode is CycleMode.RECONCILE:", gate)
+    assert body.index("else:", gate) < arm < body.index("commit_sha = self._retention(commit_sha)", arm)
+    assert body.count("self._retention(") == 1
+    retention = inspect.getsource(cycle._Cycle._retention)
+    assert "compaction check failed" in retention and "SUSPENDED by hold" in retention
+    assert "compaction FAILED" in retention
+    squash = inspect.getsource(governance.compact_history)
+    assert "gov.history_days if keep_days is None else keep_days" in squash
+    defaults = {f.name: f.default for f in dataclasses.fields(config.Config)}
+    assert defaults["reconcile_interval_s"] == 3600
+    assert '_int(a, "reconcile_interval_s", aw, 3600,' in inspect.getsource(config)
+    state = inspect.getsource(governance.compaction_state)
+    assert '"overdue"' in state
+    assert 'f"{state}: {detail}"' in inspect.getsource(cli)
+
+
 def test_v10s_dated_line_says_the_heads_status_prints_c1044() -> None:
     """B13 round 36 C1044: §16.134's V10 paragraph quotes `status: cannot read the state:` as the refused
     [governance]'s one line, which round 35's C937 changed to the partly-unread head, and its C638 line counts
