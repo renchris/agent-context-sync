@@ -6889,6 +6889,13 @@ _ROUND_36_D_PARAGRAPH_AMENDS = (
 :data:`_ROUND_35_D_PARAGRAPH_AMENDS`: C1044's at §16.134's V10 paragraph, in C857's form, whose quotes round
 35's C937 made stale (ruling 74: no quote rewritten); and ruling 114's three lines, in lane RB's C1071 marker,
 at the helper bucket's quotes in §16.230, §16.231 and §16.233, which lane D writes on RB's sha."""
+_ROUND_37_D_PARAGRAPH_AMENDS = (
+    ("16.26", "**One engine per cycle.**", "§16.244 C1270 (by §16.237 C1101)"),
+    ("16.26", "`_cycle_ocr` against a helper in `<cache_dir>/ocr`", "§16.244 C1270 (by §16.237 C1101)"),
+)
+"""Round 37 lane D's dated lines at a section its claims name with no item, as
+:data:`_ROUND_36_D_PARAGRAPH_AMENDS`: C1270's two at §16.26, its one-engine bullet and its test list, in
+C1101's form, since round 36's C1101 replaced `cycle._cycle_ocr` with `_cycle_ocr_state`."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),
@@ -7158,6 +7165,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_34_D_PARAGRAPH_AMENDS,
         *_ROUND_35_D_PARAGRAPH_AMENDS,
         *_ROUND_36_D_PARAGRAPH_AMENDS,
+        *_ROUND_37_D_PARAGRAPH_AMENDS,
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,
@@ -9531,6 +9539,36 @@ def test_compaction_runs_only_in_a_reconcile_whose_land_gate_passes_c1306() -> N
     state = inspect.getsource(governance.compaction_state)
     assert '"overdue"' in state
     assert 'f"{state}: {detail}"' in inspect.getsource(cli)
+
+
+def test_section_16_26_names_the_cycles_one_look_through_engine_state_c1270() -> None:
+    """B13 round 37 C1270: §16.26 said `_Cycle.__init__` asks `ocr.engine(...)` once (`cycle._cycle_ocr`) and
+    its test list named `_cycle_ocr`, but round 36's C1101 made it `_cycle_ocr_state` over
+    `ocr.engine_state`, and no src module calls `ocr.engine(` now. Both places carry a dated line in C1101's
+    form; `ocr.engine()` is kept as `engine_state(...).engine`, which the OCR tests and media and speech's
+    shared shape use."""
+    from agentsync import cycle  # noqa: PLC0415
+    from agentsync.convert import ocr  # noqa: PLC0415
+
+    blocks = " ".join(
+        _contracts_section("- **One engine per cycle.**", "- **Where the helper works**").split()
+    )
+    assert (
+        "Amended 2026-11-10, §16.244 C1270 (by §16.237 C1101): the cycle looks once through"
+        " `ocr.engine_state` (`cycle._cycle_ocr_state`), which returns the helper's state with the engine"
+        " (`failed` sets `Publisher.ocr_down`); `ocr.engine()` is its `.engine`, kept for"
+        " `tests/test_ocr.py` and called from no src module"
+    ) in blocks
+    tests = " ".join(_contracts_section("`_cycle_ocr` against a helper in", "\n\n").split())
+    assert "§16.244 C1270 (by §16.237 C1101): `_cycle_ocr` above is `cycle._cycle_ocr_state` now." in tests
+    state = inspect.getsource(cycle._cycle_ocr_state)
+    assert "ocr.engine_state(config.convert, config.cache_dir)" in state
+    assert 'self.publisher.ocr_down = ocr_state == "failed"' in inspect.getsource(cycle._Cycle.__init__)
+    assert not hasattr(cycle, "_cycle_ocr")
+    assert "return engine_state(cfg, cache_dir).engine" in inspect.getsource(ocr.engine)
+    src = ROOT / "src" / "agentsync"
+    callers = [p for p in src.rglob("*.py") if "ocr.engine(" in p.read_text(encoding="utf-8")]
+    assert callers == []
 
 
 def test_v10s_dated_line_says_the_heads_status_prints_c1044() -> None:

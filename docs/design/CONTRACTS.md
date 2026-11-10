@@ -7805,6 +7805,10 @@ for the fake helper of `tests/test_ocr.py`.
   (`cycle._cycle_ocr`) and hands the result to `Registry.default(..., ocr=)`. A dry run never asks: looking
   for the engine runs the helper's `--version`. No engine (no helper built, `[convert] ocr = false`,
   `AGENTSYNC_OCR=0`, not macOS) leaves the registry as it was before OCR existed.
+  Amended 2026-11-10, §16.244 C1270 (by §16.237 C1101): the cycle looks once through `ocr.engine_state`
+  (`cycle._cycle_ocr_state`), which returns the helper's state with the engine (`failed` sets
+  `Publisher.ocr_down`); `ocr.engine()` is its `.engine`, kept for `tests/test_ocr.py` and called from no src
+  module; the dry-run and one-`--version` rules are unchanged.
 - **Where the helper works** (plan D13). In the staged file's own folder, `<staging>/<key>/`, which the cycle
   removes after each file and wipes at the start of every cycle. The helper, every page image and every
   copy of a picture stay there, and none of them is written to `$TMPDIR`. One thing OCR read is: the text
@@ -7890,6 +7894,7 @@ on the blank image, one alarm, no file tried, and each read once the helper work
 an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
 image's text: a `contains a credential` stub, the key in no committed object)
 and `tests/test_e2e.py` (without an engine a `.png` is refused unread, as a `.mp4` is).
+Amended 2026-11-10, §16.244 C1270 (by §16.237 C1101): `_cycle_ocr` above is `cycle._cycle_ocr_state` now.
 
 **A label rule and the pages from before it** (amends §16.6, "Content policy"). `cycle._LABEL_CAPABLE` also
 holds the image suffixes, so the `[policy]` re-screen covers images. `Manifest.mark_for_rescreen` marks
@@ -40076,6 +40081,16 @@ gives that form beside the first, in the printed words, and C971's bullet gets a
 Test: `test_the_guide_says_what_the_report_prints_for_a_read_it_did_not_get`, its pin moved to the new sentence with
 the time limit's words read from `setup_report._THE_REPORTS_TIME_LIMIT` and the branch read from `pandoc()` and
 `_waited`.
+
+**§16.26 names the cycle's one look as it is now** (C1270; dated lines at §16.26; docs only). §16.26's "One engine
+per cycle" bullet said `_Cycle.__init__` asks `ocr.engine(config.convert, config.cache_dir)` once (`cycle._cycle_ocr`),
+and its test list named `_cycle_ocr`, but round 36's C1101 replaced that with `cycle._cycle_ocr_state`, which calls
+`ocr.engine_state` and sets `Publisher.ocr_down` on `failed`; no src module calls `ocr.engine()` now, and no
+`_cycle_ocr` exists. Both places get a dated line in the C1101 form. `ocr.engine()` is kept, as the verifier measured:
+removing it would leave the §16 lines that name it stale, rewrite thirteen calls in `tests/test_ocr.py` and break the
+`engine()` shape `media` and `speech` share. Test:
+`test_section_16_26_names_the_cycles_one_look_through_engine_state_c1270`, which reads `_cycle_ocr_state`'s call,
+`ocr.engine`'s body and the absence of `_cycle_ocr` and of any src call of `ocr.engine(` from the code.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
