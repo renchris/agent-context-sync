@@ -2685,6 +2685,170 @@ def test_a_graph_image_keeps_no_converter_while_the_ocr_helper_fails_c1257(
     assert (config.docs_repo / rel).read_bytes() == before and reads(engine.helper) == []
 
 
+def _fail_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every cycle from now on finds the OCR helper built but not working (its --version killed)."""
+    failed = ocr.EngineState("failed", "the OCR helper was stopped by SIGKILL", None)
+    monkeypatch.setattr(cycle_mod.ocr, "engine_state", lambda _c, _d: failed)
+
+
+def _touch(path: Path) -> None:
+    """Move ``path``'s mtime only: the same bytes, pending work for the next sync."""
+    later = path.stat().st_mtime + 120
+    os.utime(path, (later, later))
+
+
+def _item(config: Config, rel: str) -> Any:
+    with Manifest(config.state_paths.db) as m:
+        (row,) = [r for r in m.iter_items(SID) if r.rel_path == rel]
+    return row
+
+
+def test_an_unchanged_image_keeps_its_ocr_page_while_the_helper_fails_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: while the OCR helper fails, an image on this Mac whose mtime alone moved lost the
+    page OCR made of it to the OCR-down stub until the helper worked again. Its bytes are read (no download),
+    and an equal canonical hash keeps the page and its text and settles the row."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)
+    before = path.read_bytes()
+    _fail_ocr(monkeypatch)
+    _touch(image)
+    report = run(config)
+    assert report.exit_code == 0
+    assert path.read_bytes() == before
+    fm, body = _image_page(config, SITE_PLAN)
+    assert fm["converter"].startswith("image-ocr@") and "Loading dock" in body, fm
+    row = _item(config, SITE_PLAN)
+    assert row.last_verdict is Verdict.TOUCHED_NOT_CHANGED and row.state is RowState.LIVE, row
+    assert sum(s.ocr_unread + s.refused_unread for s in report.sources) == 0, report.sources
+    # the helper works again: the page is the one it always was
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config).exit_code == 0
+    assert path.read_bytes() == before
+
+
+def test_an_unchanged_image_keeps_its_ocr_page_past_the_file_cap_while_the_helper_fails_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: the keep path's read is a probe of its own, never the source's ``max_files``: a
+    cycle whose file cap other files used up still keeps the touched image's page."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)
+    before = path.read_bytes()
+    _fail_ocr(monkeypatch)
+    for other in sorted(f for f in local_source_dir.rglob("*") if f.is_file() and f != image):
+        _touch(other)  # pending work the queue reads before the image: one of them spends the cap of 1
+    _touch(image)
+    capped = dataclasses.replace(
+        config, sources=tuple(dataclasses.replace(s, max_files=1) for s in config.sources)
+    )
+    assert run(capped).exit_code == 0
+    assert path.read_bytes() == before
+    assert _item(config, SITE_PLAN).last_verdict is Verdict.TOUCHED_NOT_CHANGED
+
+
+def test_an_image_evicted_after_the_walk_keeps_its_ocr_page_unread_while_the_helper_fails_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: an image the walk saw on this Mac and the provider evicted before its read is never
+    hydrated to compare its hash: its page is kept unread, as an online-only image's is."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)
+    before = path.read_bytes()
+    _fail_ocr(monkeypatch)
+    _touch(image)
+    evicted, real_dataless, real_materialise = {image.stat().st_ino}, materialise.is_dataless, al.materialise
+    copied: list[str] = []
+
+    def is_dataless(st: Any) -> bool:  # the read sees it online-only; the walk (arm_local's) does not
+        return st.st_ino in evicted or real_dataless(st)
+
+    def copy(src: Path, dest: Path, budget: Any, **kw: Any) -> Any:
+        result = real_materialise(src, dest, budget, **kw)
+        copied.append(src.name)
+        return result
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "materialise", copy)
+    assert run(config).exit_code == 0
+    assert image.name not in copied, copied
+    assert path.read_bytes() == before
+
+
+def test_a_changed_image_gets_the_ocr_down_stub_and_is_read_once_the_helper_works_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: the keep path keeps only bytes OCR read. New bytes while the helper fails get the
+    OCR-down stub, its stored reason `no converter for .png`, and a working helper reads them."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    _fail_ocr(monkeypatch)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: open")
+    report = run(config)
+    assert report.exit_code == 0
+    fm, body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] == publish_mod.OCR_DOWN_REASON and "North gate" not in body, fm
+    assert _item(config, SITE_PLAN).state_reason == f"{convert_mod.NO_CONVERTER_PREFIX}.png"
+    assert sum(s.ocr_unread for s in report.sources) == 1, report.sources
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config).exit_code == 0
+    fm, body = _image_page(config, SITE_PLAN)
+    assert fm["converter"].startswith("image-ocr@") and "North gate: open" in body, fm
+
+
+def test_a_new_label_rule_never_keeps_ocr_text_while_the_helper_fails_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: a label rule withholds an image whatever the engine does, so a rule added while
+    the helper fails takes the OCR text off the page; the keep path never holds it."""
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
+    _fail_ocr(monkeypatch)
+    _touch(image)
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    assert run(labelled).exit_code == 0
+    fm, body = _image_page(labelled, SITE_PLAN)
+    assert fm["converter"] == "none@0" and "Loading dock" not in body, (fm, body)
+
+
+def test_an_online_only_image_keeps_its_ocr_page_unread_while_the_helper_fails_c1286(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 37 C1286: an image read while it was on this Mac that is now online-only keeps its page
+    while the helper fails, as it does when the helper works (``_keeps_page``): a ``materialise PATH`` run
+    that names it makes it pending work, and it is never downloaded."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert run(config).exit_code == 0
+    _mark_online_only(monkeypatch, image)
+    image.chmod(0o600)  # an eviction changes the file's flags, so its change time: the walk sees the row move
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)
+    before = path.read_bytes()
+    assert b"North gate: closed" in before
+    _fail_ocr(monkeypatch)
+    fetched = _fetches(monkeypatch)
+    named = run(config, materialise_paths=[image], budget_bytes=10_000_000)
+    assert (named.exit_code, fetched) == (0, [])
+    assert path.read_bytes() == before
+    row = _item(config, SITE_PLAN)
+    assert (row.state, row.last_verdict) == (RowState.DATALESS, Verdict.DATALESS), row
+
+
 def test_an_image_under_a_label_rule_keeps_its_words_while_the_helper_fails_c1101(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

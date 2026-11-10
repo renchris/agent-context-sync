@@ -5897,13 +5897,99 @@ class _Cycle:
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         if not any(o.status is OutputStatus.OK for o in outs) or not _pages_intact(self.repo, outs):
             return False
+        self._settle_kept_online(row, acc)
+        return True
+
+    def _settle_kept_online(self, row: ItemRow, acc: _SourceAcc) -> None:
+        """Settle ``row``, an image whose page is kept because reading it would be a download, as the
+        online-only file it is (``_keeps_page``, ``_keeps_ocr_page``)."""
         settled = Verdict.DATALESS if row.dataless else _SETTLED_PUBLISHED
         self.manifest.set_verdict(row.source_id, row.stable_id, settled)
         if self.forced_paths and not self._recording(row.name):
             acc.alarms.append(
                 f"{row.rel_path}: an online-only image is not downloaded for OCR; its page is kept as it was"
             )
-        return True
+
+    def _keeps_ocr_page(
+        self,
+        src: SourceConfig,
+        arm: SourceArm,
+        row: ItemRow,
+        refused: ConversionResult,
+        acc: _SourceAcc,
+    ) -> bool:
+        """True when ``row`` is an image whose OCR helper fails (``refused`` is its ``no converter`` refusal
+        while :attr:`Publisher.ocr_down`) and whose page OCR made of it stands: the page is kept, nothing is
+        published.  Without this, an unchanged image whose mtime moved during the outage lost its OCR text
+        to the OCR-down stub until the helper worked again (B13 round 37 C1286).
+
+        Only with no label rule on (:meth:`Publisher.ocr_waits`; one withholds an image whatever the engine
+        does), live outputs all OK, intact and made by the image converter, and a row that still holds its
+        canonical hash (a row a re-screen forgot is never kept).  An image whose read needs a download keeps
+        the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is read through
+        ``arm`` with a probe budget of its own (no download, and none of the source's ``max_files``: a cycle
+        past its file cap must not cost the image its page, nor this read take a later one's place), its
+        canonical hash and the suppression lists checked as ``_after_fetch`` does, and the page is kept only
+        when ``classify_content`` says TOUCHED_NOT_CHANGED.  One evicted since the walk is never hydrated to
+        compare: its page is kept unread, as a download case.  A drop the inbox duplicate rule refuses is
+        left to that rule.  Any other fetch or hash error, or changed bytes, returns False: the caller
+        publishes the OCR-down stub, whose stored reason keeps ``no converter for <suffix>``."""
+        suffix = Path(row.name).suffix.lower()
+        if not self.publisher.ocr_waits(refused.reason, suffix, local=True) or row.canonical_sha256 is None:
+            return False
+        if self._inbox_name_size_duplicate(src, row) is not None:  # the Graph arm is authoritative
+            return False
+        outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if (
+            not live
+            or any(o.status is not OutputStatus.OK for o in live)
+            or any(o.converter_id != ImageConverter.converter_id for o in live)
+            or not _pages_intact(self.repo, outs)
+        ):
+            return False
+        if read_needs_download(graph=src.kind.is_graph, dataless=row.dataless):
+            self._settle_kept_online(row, acc)
+            return True
+        sid, stable = row.source_id, row.stable_id
+        item = _item_from_row(row)
+        try:
+            fetched = arm.fetch(item, self.staging, ByteBudget(0, 1))
+        except (BudgetExhaustedError, DatalessRefusedError):  # evicted since the walk: never hydrated for OCR
+            self._settle_kept_online(row, acc)
+            return True
+        except AuthRequiredError:
+            raise
+        except Exception as exc:  # the stub says the helper fails, as without this path
+            log.info("%s: %s not read while the OCR helper fails: %s", sid, row.rel_path, exc)
+            return False
+        try:
+            try:
+                h1 = canonical_hash(fetched.path, suffix=item.suffix)
+            except Exception as exc:
+                log.info("%s: %s not hashed while the OCR helper fails: %s", sid, row.rel_path, exc)
+                return False
+            listed, audited = self.suppressions.matches_content, self.audited.matches_content
+            if any(listed(h) or audited(h) for h in (h1.sha256, fetched.content_sha256)):
+                self._suppress_purged_content(src, row, acc)
+                return True
+            if classify_content(row, h1).verdict is not Verdict.TOUCHED_NOT_CHANGED:
+                return False
+            self.manifest.set_content(
+                sid,
+                stable,
+                content_sha256=fetched.content_sha256,
+                canonical_sha256=h1.sha256,
+                canonical_method=h1.method,
+                canonical_parts=h1.parts,
+            )
+            fresh = self.manifest.get_item(sid, stable) or row
+            if self._rewrite_if_moved(src, fresh, outs, acc):
+                acc.settle(stable, Verdict.TOUCHED_NOT_CHANGED)
+                self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
+            return True
+        finally:
+            _discard_staged(fetched, self.staging)
 
     def _stub_stands(self, src: SourceConfig, row: ItemRow, refused: ConversionResult) -> bool:
         """True when ``row`` has the very stub ``refused`` would publish, intact and at the path it has
@@ -5975,7 +6061,12 @@ class _Cycle:
             self.manifest.set_state(sid, stable, row.state, None)  # re-decided below: only a new refusal
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
-            if not self._keeps_page(row, acc) and not self._stub_stands(src, row, refused):
+            # an image whose OCR helper fails keeps the page OCR made of its unchanged bytes (C1286)
+            if (
+                not self._keeps_ocr_page(src, arm, row, refused, acc)
+                and not self._keeps_page(row, acc)
+                and not self._stub_stands(src, row, refused)
+            ):
                 self._publish(src, row, refused, acc, unread=True)
             return
         screening = self.publisher.policy_refusal(row)
