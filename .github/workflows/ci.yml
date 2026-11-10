@@ -55,7 +55,10 @@ name: ci
 # them; runner waits reached 9:49 (b028de91), not counted against timeout-minutes (B13 round 35 C985). Round 35's
 # eleven jobs (d8385ef6 to b781e539) took 44:12 to 59:43, all green on attempt 1 (the slowest d62ac148, pytest's step
 # 59:16 at 7580 tests), so 80 stays 20:17 above them; runner waits reached 21:01 (d8385ef6), not counted against
-# timeout-minutes (B13 round 36 C1056).
+# timeout-minutes (B13 round 36 C1056). Round 36's eighteen jobs (7c4f775e to e6577c15) took 41:17 to 66:14, all
+# green on attempt 1, sixteen past 50 and six past 60 (the slowest 4b5ff40f, pytest's step 65:38 at 7706 tests),
+# which left 80 only 13:46 above it, so it is 90: 23:46 above it; runner waits reached 24:50 (820c69dd) and 16:28
+# (0c6b1207), not counted against timeout-minutes (B13 round 37 C1290, C1293).
 on:
   workflow_dispatch:
   push:
@@ -72,7 +75,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 80
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

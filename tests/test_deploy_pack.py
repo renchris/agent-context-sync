@@ -248,7 +248,12 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     test and its rerun was green: the range is 18 to 62, the guides and the note add the twelve, the note
     alone gives the 9:49 runner wait, and the 80 stays. B13 round 36 C1056: round 35's eleven jobs (d8385ef6
     to b781e539) took 44:12 to 59:43, all green on attempt 1, 20:17 under the limit, and d8385ef6 waited 21:01
-    for a runner: the guide and the note add the eleven and the wait, and the 18 to 62 and the 80 stay."""
+    for a runner: the guide and the note add the eleven and the wait, and the 18 to 62 and the 80 stay. B13
+    round 37 C1290 with C1293: round 36's eighteen jobs (7c4f775e to e6577c15) took 41:17 to 66:14, all
+    green on attempt 1, the slowest, 4b5ff40f, past the headline's 62 and only 13:46 under the limit, and
+    runs waited 24:50 and 16:28 for a runner: the range is 18 to 67, the guides and the note add the
+    eighteen and the waits, and by C571's rule (about 20 minutes above the slowest) the limit is 90; C571's
+    sentence keeps the 80 it set."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
@@ -259,9 +264,10 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert "about 18 to 33 minutes" not in guide and "about 18 to 37 minutes" not in guide
     assert "about 18 to 40 minutes" not in guide and "about 18 to 45 minutes" not in guide
     assert "about 18 to 52 minutes" not in guide and "about 18 to 60 minutes" not in guide
+    assert "about 18 to 62 minutes" not in guide
     assert "(one waited 21 minutes, another 17)" not in guide
     assert (
-        "`ci` takes about 18 to 62 minutes once its job starts (measured October and November 2026; 24 at"
+        "`ci` takes about 18 to 67 minutes once its job starts (measured October and November 2026; 24 at"
         " 5120 tests, and the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs"
         " from eaed1034 to fcafd734 took 18:05 to 28:34; the nine from fcafd734 to 7a54f938 took 19:29 to"
         " 31:21; the thirteen from ed901cd3 to b1f4a087 took 24:34 to 32:18; the ten from c93fcd96 to"
@@ -281,15 +287,18 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " slowest on dacdf5ba, 7292 tests and pytest's step 60:36, and one attempt failed a test at 36:27 and"
         " its rerun was green at 46:36; the eleven after those, from d8385ef6 to b781e539, took 44:12 to"
         " 59:43, nine past 50, all green on attempt 1, the slowest on d62ac148, 7580 tests and pytest's step"
-        " 59:16; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner,"
+        " 59:16; the eighteen after those, from 7c4f775e to e6577c15, took 41:17 to 66:14, sixteen past 50"
+        " and six past 60, all green on attempt 1, the slowest on 4b5ff40f, 7706 tests and pytest's step"
+        " 65:38; one run took 34 on a runner loaded 5 to 8 per core), plus any wait for a macOS runner,"
         " counted from the run appearing to its job starting (one waited 63 minutes, on ef12f28f, another 50,"
-        " one 21, on d8385ef6, and earlier ones 48 and 46); the job's limit is"
+        " one 21, on d8385ef6, one 25, on 820c69dd, one 16, on 0c6b1207, and earlier ones 48 and 46); the"
+        " job's limit is"
         f" {limit} minutes (`timeout-minutes` in ci.yml), and a wait does not count against it."
     ) in guide
-    assert int(limit) - 62 >= 10 and int(limit) == 80  # 10 minutes above the slowest job seen, 61:22
+    assert int(limit) - 67 >= 20 and int(limit) == 90  # about 20 minutes above the slowest job seen, 66:14
     lanes = _page("docs/lanes/COMMON.md")
     assert (
-        "CI takes 18 to 62 minutes a run (the slowest, 61:22, in round 34), and a run can wait over an hour"
+        "CI takes 18 to 67 minutes a run (the slowest, 66:14, in round 36), and a run can wait over an hour"
         " for a macOS runner first (63:27 in round 31); its limit is"
         f" {limit} "
     ) in lanes
@@ -307,7 +316,8 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         and "18 to 45 minutes" not in lanes
         and "18 to 52 minutes" not in lanes
         and "18 to 60 minutes" not in lanes
-        and "round 30 C372, round 31 C571, round 32 C662, round 35 C985)" in lanes
+        and "18 to 62 minutes" not in lanes
+        and "round 30 C372, round 31 C571, round 32 C662, round 35 C985, round 37 C1290)" in lanes
         and f"its limit is {limit} " in lanes
     )
     # the workflow's own note gives the job's times, and pytest's step only as such
@@ -352,6 +362,13 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
         " slowest d62ac148, pytest's step 59:16 at 7580 tests), so 80 stays 20:17 above them; runner waits"
         " reached 21:01 (d8385ef6), not counted against timeout-minutes (B13 round 36 C1056)."
     ) in note
+    # B13 round 37 C1290 with C1293: round 36's eighteen, past the old headline; the limit is 90
+    assert (
+        "Round 36's eighteen jobs (7c4f775e to e6577c15) took 41:17 to 66:14, all green on attempt 1, sixteen"
+        " past 50 and six past 60 (the slowest 4b5ff40f, pytest's step 65:38 at 7706 tests), which left 80"
+        " only 13:46 above it, so it is 90: 23:46 above it; runner waits reached 24:50 (820c69dd) and 16:28"
+        " (0c6b1207), not counted against timeout-minutes (B13 round 37 C1290, C1293)."
+    ) in note
     assert "(measured October 2026;" not in guide
     assert "Round 24's ten jobs (c93fcd96 to 3ec66a92) took 30:06 to 36:24, all green on attempt 1" in note
     assert "which left 45 only 8:36 above them" in note
@@ -371,7 +388,7 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     assert (
         "(e4945ad5's first attempt lost its runner at 46:01, its rerun 50:19), four past 50 (the slowest"
         " 2919a7b9, pytest's step 59:08 at 6468 tests), which left 70 only 10:17 above it, and the slowest"
-        f" rose 8:33 in one round, so it is {limit}: about {int(limit) - 60} minutes above it"
+        " rose 8:33 in one round, so it is 80: about 20 minutes above it"
         " (B13 round 31 C571)"
     ) in note
     recording = " ".join((ROOT / "tests" / "test_convert_recording.py").read_text(encoding="utf-8").split())
