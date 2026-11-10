@@ -39974,7 +39974,46 @@ setup-feedback.md's `<path>` row says `in any case` and scopes `the one limit le
 
 ### 16.241 Round 37: the installer: the cut over an older build's render, a look-alike folder twin, and the stopped copy's lines (2026-11-10, wave B13 round 37 lane RB)
 
-Reserved for round 37 lane RB of B13.
+**Every report agentsync renders is cut again by this checkout** (C1210 with C1237, C1253, C1278, the shell halves
+of C1285 and C1203, C1299 with C1250's end-to-end test; ruling 120; privacy; `scripts/install.sh`). Before step 2
+reinstalls agentsync, the report is the installed build's, which may predate the cut of a path in another home
+(§16.225 C822 onward): it printed such a path whole in setup-report.md, bring-back.md's section 1 and the stopped
+copy, and C1103's rendered-by line only said whose words they were. Right after any agentsync render, before
+bring-back.md, the issue link or the stopped copy reads it, `write_report` runs `report_recut` over
+`$REPORT_PATH`, with no build-differs condition: `foreign_home_cut recut`, then a fixed-word cut that turns the text
+after install.sh's own `is not an existing folder: ` (up to its last ` (see --help)`, else the line's end) into
+`<path>` unless it already ends in `<path>`; in place (mktemp beside it, chmod 600, cmp, mv), never the whole
+redact_stream, whose pairs would cut the placeholders again. With `recut`, a `/Volumes/<path>` an older cut left
+followed by a path byte (not STOP, `/` or the end) is cut on as a cut's tail is; a `/Users/<path>` so followed is a
+component other than `<path>` and already cut. With `recut`, `volume()` never takes a `/Volumes/<path>` a cut printed
+as a volume, nor looks back past one, and a name already cut (`<path>` before a stop byte, a `|` or the end) keeps
+what follows, so a current render comes back byte for byte (the lane's review). A pass that fails, or a render it does
+not keep, is removed before the fallback is written, so no uncut render stays in the report's place. A pass that fails gives
+`warning: could not cut paths in another home from the agentsync setup-report` and the shell fallback report
+(`this checkout could not cut the agentsync setup-report again`), never an uncut one; and a render by another build
+(`report_build_other`: rendered_by_note's test, a missing or unreadable install stamp counted as another build) is
+replaced by the fallback when install.out or friction.md holds U+2028, U+2029, U+0085 or a byte 0x1C to 0x1E, which
+such a build splits a line on (C1249), with `warning: agentsync setup-report was not kept: <what>` and the fallback's
+`the installed agentsync, another build, splits a line that holds <what>`. foreign_home_cut keeps a skipped `/users/`
+in the text the next one's volume look-back reads, from an offset each cut resets (C1253), so
+`/Volumes/Backup/Users/Shared/old/Users/olga/x` is `/Volumes/<path>` in both reports while a volume an earlier cut used
+is never looked back to again (`/Volumes/A/Users/olga/f;x/Users/kim/g` keeps `;x/Users/kim/g`); it matches the
+provider folder after `CloudStorage` or opening `OneDrive - ` in any case (C1285), and the shell legend's provider
+clause reads lane RA's words: `a provider folder's name, in any case, running past a bracket, comma or semicolon to
+the next / but stopping at a quote, a backtick, "):" or ", stored as "` (C1203). Every --source-local refusal goes
+through `source_local_refused`, which sets USAGE_ERROR_REPORTED to its words with `<path>` for the name (C1278), so
+a twin's escaped spelling, which no redaction pair matches, stays out of the shell report's last-error lines while
+stderr names the folder; a missing folder's name is printed as `list_name` shows it, so a newline in it never splits
+the line the cut reads. Tests: `test_a_report_an_older_agentsync_rendered_is_cut_again_by_this_checkout_c1210_c1237`
+(the report and bring-back.md, and the stopped copy), `test_a_current_render_comes_back_from_the_checkouts_cut_byte_for_byte_c1237`,
+`test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237` (a build_report render with ruling 102's
+paths, and an older cut's forms),
+`test_a_line_break_an_older_build_splits_on_takes_the_fallback_report_c1210` (another build and this one),
+`test_a_failed_cut_of_the_agentsync_report_takes_the_fallback_report_c1237`,
+`test_a_missing_source_local_folder_stays_out_of_every_render_c1299_c1250` (this checkout's agentsync and an older
+stub), `test_both_reports_cut_a_volume_past_a_skipped_home_and_a_provider_folder_in_any_case_ruling_120`,
+`test_the_shell_report_cuts_another_home_behind_a_volume_and_over_its_blanks` (the C1253 and C1285 rows) and
+`test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278` (a twin, a marked row, a missing twin).
 
 ### 16.242 Round 37: OCR-down image pages, a hold with no scope, simultaneous stops, and git's lookup at the deadline (2026-11-10, wave B13 round 37 lane B)
 
@@ -40381,8 +40420,9 @@ Tests: `tests/test_install_parser.py`.
 - **uv's failures guess no cause.** The installer's download and run say `its error is above`; `uv tool install failed`
   keeps the HTTPS_PROXY / UV_SYSTEM_CERTS=1 advice as a condition, not a question.
 - **`install.sh --log got 1 argument` or `got N arguments`,** not `argument(s)`.
-- **A missing `--source-local` folder keeps its name out of the shell report.** Stderr names it for the person; the
-  report's last-error lines read `--source-local is not an existing folder: <path>`.
+- **A missing `--source-local` folder keeps its name out of the shell report,** and so does every other
+  `--source-local` refusal (B13 round 37 C1278, §16.241). Stderr names it for the person; the report's last-error
+  lines read `--source-local is not an existing folder: <path>`, or the refusal's words after `--source-local <path>: `.
 - Tests: `tests/test_install_help.py`.
 
 #### 16.300.16 U-B9: install.sh bounds and the atomic launcher

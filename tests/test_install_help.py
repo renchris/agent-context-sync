@@ -9,9 +9,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from test_install_oneshot import (  # noqa: F401  (env, wheel and folder are fixtures)
+    ESCAPED_MARK,
     REPO,
     STUB_TOOL_PYTHON,
+    _cloud,
     _write_exe,
     env,
     folder,
@@ -145,3 +149,30 @@ def test_a_missing_folder_name_stays_out_of_the_report(env: dict[str, str]) -> N
     report = report_path(env).read_text(encoding="utf-8")
     assert "acquisition-northwind" not in report, report
     assert "is not an existing folder" in report
+
+
+@pytest.mark.parametrize("given", ["twin", "marked", "missing twin"])
+def test_a_refused_source_local_folder_name_stays_out_of_the_report_c1278(
+    env: dict[str, str],  # noqa: F811
+    given: str,
+) -> None:
+    """B13 round 37 ruling 120 (C1278; privacy): a folder step 1 shows with a control character and a
+    look-alike beside it was refused with list_name's escaped spelling in LAST_ERROR, which no redaction pair
+    matches, so the shell report's last-error and Recent errors lines named it. Every --source-local refusal
+    now gives the report its words with <path>, while stderr still names the folder."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for name in ("Northwind Board\nMinutes", "Northwind Board\\nMinutes"):
+        (lib / name).mkdir(parents=True)
+    arg = {
+        "twin": str(lib / "Northwind Board\nMinutes"),
+        "marked": f"{ESCAPED_MARK} {lib}/Northwind Board\\nMinutes",
+        "missing twin": str(lib / "Northwind Board\x01Minutes").replace("\x01", "?"),
+    }[given]
+    if given == "missing twin":
+        (lib / "Northwind Board\x01Minutes").mkdir()
+    cp = install_sh(env, "--source-local", arg)
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert "Northwind Board" in cp.stderr, "the person still reads it"
+    report = report_path(env).read_text(encoding="utf-8")
+    assert "Board" not in report and "Minutes" not in report, report
+    assert "--source-local <path>: " in report, report

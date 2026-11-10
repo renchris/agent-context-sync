@@ -4202,14 +4202,21 @@ redact_stream() {
 # after a blank or a `/`) prints `/Volumes/<path>`, the login cut too; the guard reads the byte before the volume.
 # Right after a quote or a backtick the path runs to the same mark's next one on the line; else one component, a
 # `\` taking the byte after it (printf %q), then each `/` component, a component after `CloudStorage` or opening
-# `OneDrive - ` running to the next `/` when one follows, never past a quote, a backtick, `):` or `, stored as `
-# (C912, C1069), each other one up to a byte of STOP: a blank, an end or a stop of setup_report._CUT_BYTES, one
+# `OneDrive - ` (either in any case: B13 round 37 ruling 120, C1285) running to the next `/` when one follows, never
+# past a quote, a backtick, `):` or `, stored as ` (C912, C1069), each other one up to a byte of STOP: a blank, an end
+# or a stop of setup_report._CUT_BYTES, one
 # table for both reports (ruling 112, C1017). After an unquoted blank the cut goes on over each blank-separated
 # word that holds a `/`, has no `=` or `://`, does not open with `-`, `/` or `~` and is not digits and `/` alone
 # (C981); the first other word, and anything after a quote, a backtick, a bracket, `,` or `;`, is left as it is
-# (the legend's limit, C946). Byte-wise, no regex lookahead (BSD has none).
+# (the legend's limit, C946). Byte-wise, no regex lookahead (BSD has none). A skipped `/users/` stays in the text the
+# next one's volume look-back reads, from an offset each cut resets, so a volume before a skipped `Shared`, `<user>`
+# or `<path>` is found and one an earlier cut used never is, as setup_report's matches never overlap (B13 round 37
+# ruling 120, C1253). With `recut` (report_recut, over a report agentsync rendered): a `/Volumes/<path>` an older
+# cut left followed by a path byte (not STOP, `/` or the end) is cut on as a cut's tail is, a `/Users/<path>` so
+# followed being a component other than `<path>` already; a current render has neither, so it comes back byte for
+# byte (C1210, C1237).
 foreign_home_cut() {
-	LC_ALL=C awk '
+	LC_ALL=C RECUT="${1:-}" awk '
 	function upto(s, k, slash,    ch) { # the first byte at or after k that ends the path (slash: "/" ends it too)
 		while (k <= length(s)) {
 			ch = substr(s, k, 1)
@@ -4222,6 +4229,8 @@ foreign_home_cut() {
 	function volume(s, i,    j, at, v, low) { # where a /Volumes/ prefix of the /users/ at i starts, else 0
 		if (i < 2 || substr(s, i - 1, 1) ~ /[ \t\/]/) return 0
 		at = 1; low = tolower(s)
+		# recut: a /Volumes/<path> a cut printed is no volume, and none before it is looked back to
+		if (recut) while ((j = index(substr(low, at, i - at), "/volumes/<path>")) > 0) at += j + 14
 		while ((j = index(substr(low, at, i - at), "/volumes/")) > 0) {
 			v = at + j - 1
 			if (!(v > 1 && substr(s, v - 1, 1) ~ /[A-Za-z0-9_.-]/)) return v
@@ -4232,10 +4241,42 @@ foreign_home_cut() {
 	function more(w) { # C981: a word after an unquoted blank that carries the cut on
 		return w != "" && index(w, "/") && !index(w, "=") && !index(w, "://") && substr(w, 1, 1) !~ /[-\/~]/ && w !~ /^[0-9\/]+$/
 	}
+	function rest(s, k, last,    c, r, q, e) { # where a cut whose first part ends at k ends: its / parts, then C981
+		while (substr(s, k, 1) == "/") {
+			c = k + 1; r = substr(s, c)
+			if ((tolower(last) == "cloudstorage" || tolower(substr(r, 1, 11)) == "onedrive - ") && (q = index(r, "/")) && substr(r, 1, q - 1) !~ /["\047`]/ &&
+				!index(substr(r, 1, q - 1), "):") && !index(substr(r, 1, q - 1), ", stored as ")) {
+				last = substr(r, 1, q - 1); k = c + q - 1; continue
+			}
+			k = upto(s, c, 1); last = substr(s, c, k - c)
+		}
+		while (substr(s, k, 1) ~ /[ \t]/) {
+			c = k
+			while (substr(s, c, 1) ~ /[ \t]/) c++
+			e = upto(s, c, 0)
+			if (!more(substr(s, c, e - c))) break
+			k = e
+		}
+		return k
+	}
+	function older(s,    out, j, b, k) { # recut: a /Volumes/<path> an older cut left before a path byte, cut on
+		out = ""
+		while ((j = index(tolower(s), "/volumes/<path>")) > 0) {
+			b = substr(s, j + 15, 1)
+			if (b == "" || b == "/" || index(STOP, b) || (j > 1 && substr(s, j - 1, 1) ~ /[A-Za-z0-9_.-]/)) {
+				out = out substr(s, 1, j + 14); s = substr(s, j + 15); continue
+			}
+			k = rest(s, upto(s, j + 15, 1), "")
+			out = out substr(s, 1, j + 14); s = substr(s, k)
+		}
+		return out s
+	}
 	BEGIN { STOP = " \t\r\f\v\"\047`()[]{},;" }
 	{
-		s = $0; out = ""
-		while ((i = index(tolower(s), "/users/")) > 0) {
+		recut = (ENVIRON["RECUT"] == "recut")
+		s = recut ? older($0) : $0; out = ""; from = 1
+		while ((i = index(tolower(substr(s, from)), "/users/")) > 0) {
+			i += from - 1
 			h = i + 6
 			while (substr(s, h + 1, 1) == "/") h++
 			k = upto(s, h + 1, 1); comp = substr(s, h + 1, k - h - 1)
@@ -4244,27 +4285,11 @@ foreign_home_cut() {
 			else if ((v = volume(s, i)) > 0) { ps = v; vol = 1 }
 			pre = (ps > 1) ? substr(s, ps - 1, 1) : substr(out, length(out), 1)
 			if (comp == "" || comp == "Shared" || comp == "<path>" || (comp == "<user>" && !vol) || pre ~ /[A-Za-z0-9_.-]/) {
-				out = out substr(s, 1, h); s = substr(s, h + 1); continue
+				from = h + 1; continue
 			}
 			out = out substr(s, 1, ps - 1) (vol ? "/Volumes/<path>" : "/Users/<path>")
-			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); continue }
-			last = comp
-			while (substr(s, k, 1) == "/") {
-				c = k + 1; r = substr(s, c)
-				if ((last == "CloudStorage" || substr(r, 1, 11) == "OneDrive - ") && (q = index(r, "/")) && substr(r, 1, q - 1) !~ /["\047`]/ &&
-					!index(substr(r, 1, q - 1), "):") && !index(substr(r, 1, q - 1), ", stored as ")) {
-					last = substr(r, 1, q - 1); k = c + q - 1; continue
-				}
-				k = upto(s, c, 1); last = substr(s, c, k - c)
-			}
-			while (substr(s, k, 1) ~ /[ \t]/) {
-				c = k
-				while (substr(s, c, 1) ~ /[ \t]/) c++
-				e = upto(s, c, 0)
-				if (!more(substr(s, c, e - c))) break
-				k = e
-			}
-			s = substr(s, k)
+			if (pre != "" && index("\"\047`", pre) && (q = index(substr(s, h + 1), pre))) { s = substr(s, h + q); from = 1; continue }
+			s = substr(s, rest(s, k, comp)); from = 1
 		}
 		print out s
 	}'
@@ -5803,19 +5828,20 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		# 21 Y8); any other is cut to <path>, as the Python report cuts it (round 22 Z2, Z13, Z29, Z42, Z77)
 		# and an added source's typed folder, cut as the argument is (B13 round 31 ruling 49: C529, lane RA's words);
 		# a path in another home, foreign_home_cut's (B13 round 34 ruling 91, C822), with the limit lane RA's legend
-		# words (B13 round 35 ruling 102, C946)
+		# words (B13 round 35 ruling 102, C946), the provider folder in any case and C1069's stops in its words too
+		# (B13 round 37 ruling 120, C1285, C1203)
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
 		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
 		say "  there or as an added source's typed folder (never agentsync's own ~/agent-context/inbox), cut at its first part"
 		say "  that is not a fixed macOS folder or one every home or drive has; a path in another home (/Users/ and any folder"
 		say "  but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume, the prefixes in any"
 		say "  case; in both reports, an unquoted path keeps its tail after the first quote, backtick, bracket, comma or"
-		say "  semicolon, a provider folder's name running past a bracket, comma or semicolon to the next /, and after a blank"
-		say "  from the first word that holds no / or holds =, or that is an option, a URL, a path of its own or a number like"
-		say "  3/14; a blank right after this home ends it, so another home named as this one and a blank keeps what follows);"
-		say "  and every word bash wrote in its dollar-quote form (\$'...'), which install.log uses for a name with a tab or"
-		say "  another control character, a curly apostrophe, an en dash or an accent (under the C locale, any character outside"
-		say "  ASCII)"
+		say "  semicolon, a provider folder's name, in any case, running past a bracket, comma or semicolon to the next / but"
+		say "  stopping at a quote, a backtick, \"):\" or \", stored as \", and after a blank from the first word that holds no / or"
+		say "  holds =, or that is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends"
+		say "  it, so another home named as this one and a blank keeps what follows); and every word bash wrote in its"
+		say "  dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control character, a curly"
+		say "  apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
@@ -6556,6 +6582,65 @@ write_bring_back() {
 		warn "$up in $SETUP_DIR/local-work could not be read, so $out does not hold $uthem"
 	fi
 }
+# The commit the installed agentsync was installed from, read from the stamp beside the binary (uv links
+# ~/.local/bin/agentsync into its tool folder, which holds .agentsync-install-source); empty when none is read.
+installed_build_commit() {
+	local b t
+	b="$(report_agentsync || true)"
+	[ -n "$b" ] || return 0
+	t="$(readlink "$b" 2>/dev/null || true)"
+	if [ -n "$t" ]; then case "$t" in /*) b="$t" ;; *) b="${b%/*}/$t" ;; esac; fi
+	LC_ALL=C sed -n 's/^commit=\([0-9a-f][0-9a-f]*\)[^ ]* source=.*/\1/p' "${b%/*/*}/.agentsync-install-source" 2>/dev/null | LC_ALL=C head -n 1 || true
+}
+# 0 when the agentsync that renders the report is not this checkout's build, or no stamp says which build it is
+# (B13 round 37 ruling 120, C1237): rendered_by_note's test, a missing or unreadable stamp counted as another build.
+report_build_other() {
+	local a h
+	a="$(installed_build_commit)"
+	h="$(git_head_file "$repo")"
+	[ "${#a}" -ge 12 ] && [ "${#h}" -ge 12 ] && [ "${a:0:12}" = "${h:0:12}" ] && return 1
+	return 0
+}
+# 0, with SPLIT_WHY set, when install.out or friction.md holds a code point an agentsync before B13 round 37 C1249
+# splits a line on (U+2028, U+2029, U+0085, or the bytes 0x1C to 0x1E): that build cuts the line's head alone.
+SPLIT_WHY=""
+report_split_lines() {
+	local f
+	for f in "$INSTALL_OUT" "$(friction_file)"; do
+		[ -f "$f" ] || continue
+		if LC_ALL=C grep -q -e $'\xe2\x80\xa8' -e $'\xe2\x80\xa9' -e $'\xc2\x85' -e $'[\x1c-\x1e]' "$f" 2>/dev/null; then
+			SPLIT_WHY="a Unicode line or paragraph separator, a next-line character or an information separator in ${f##*/}"
+			return 0
+		fi
+	done
+	return 1
+}
+# The report agentsync rendered, cut again by this checkout in place (B13 round 37 ruling 120, C1210, C1237): a path
+# in another home by foreign_home_cut recut, and the folder named after install.sh's own `is not an existing
+# folder: ` (up to its last ` (see --help)`, else the line's end) to <path> unless it ends in <path> already (C1299
+# with C1250). Never the whole redact_stream, whose pairs would cut the placeholders again. A current render comes
+# back byte for byte; 1 when the pass fails, so write_report falls back to the shell report, never an uncut one.
+report_recut() {
+	local tmp
+	tmp="$(mktemp "${REPORT_PATH%/*}/.report-cut.XXXXXX" 2>/dev/null)" || return 1
+	if foreign_home_cut recut <"$REPORT_PATH" | LC_ALL=C awk -v m="is not an existing folder: " -v t=" (see --help)" '
+		(i = index($0, m)) > 0 {
+			r = substr($0, i + length(m)); j = 0; o = 0; p = r
+			while ((x = index(p, t)) > 0) { j = o + x; o += x; p = substr(p, x + 1) }
+			name = j ? substr(r, 1, j - 1) : r; tail = j ? substr(r, j) : ""
+			# a name already cut ends in <path>, or is <path> before a stop byte (a table cell, a clause after it)
+			if (index(r, "<path>") == 1 && (length(r) == 6 || index(" \t\r\f\v\"\047`()[]{},;|", substr(r, 7, 1)))) { print; next }
+			if (length(name) < 6 || substr(name, length(name) - 5) != "<path>") { print substr($0, 1, i + length(m) - 1) "<path>" tail; next }
+		}
+		{ print }' >"$tmp" && [ -s "$tmp" ]; then
+		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
+		chmod 600 "$tmp" 2>/dev/null || true
+		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -6568,13 +6653,23 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode.
 		# AGENTSYNC_REPORT_RUN: the run's NEXT: line comes after the report, which counts it as still to come.
 		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
-		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
+		# B13 round 37 ruling 120 (C1210, C1237): every render is cut again by this checkout, since the installed
+		# build may predate its cut, and a render by another build is replaced by the fallback when a line it
+		# reads holds a separator such a build splits a line on, whose tail no shell cut can follow.
+		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && report_build_other && report_split_lines; then
+			warn "agentsync setup-report was not kept: $SPLIT_WHY"
+			rm -f "$REPORT_PATH" # never left in the report's place, should the fallback fail too
+			why="the installed agentsync, another build, splits a line that holds $SPLIT_WHY"
+		elif [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ] && ! report_recut; then
+			warn "could not cut paths in another home from the agentsync setup-report"
+			rm -f "$REPORT_PATH"
+			why="this checkout could not cut the agentsync setup-report again"
+		elif [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
 			REPORT_BY=agentsync
 			say "report: $REPORT_PATH (agentsync setup-report)"
 			step_end "done" 0 agentsync
 			return 0
-		fi
-		if [ "$src" -eq 0 ]; then
+		elif [ "$src" -eq 0 ]; then
 			warn "agentsync setup-report exited 0 but wrote no $REPORT_PATH"
 			why="agentsync setup-report wrote no report"
 		else
@@ -7675,12 +7770,8 @@ step1_report_note() {
 # tool folder, which holds .agentsync-install-source), and the checkout from its files, never git; whatever the
 # Doctor section holds, so a timed-out doctor hides nothing. Once per report; the NEXT is unchanged.
 rendered_by_note() {
-	local b t a h tmp line
-	b="$(report_agentsync || true)"
-	[ -n "$b" ] || return 0
-	t="$(readlink "$b" 2>/dev/null || true)"
-	if [ -n "$t" ]; then case "$t" in /*) b="$t" ;; *) b="${b%/*}/$t" ;; esac; fi
-	a="$(LC_ALL=C sed -n 's/^commit=\([0-9a-f][0-9a-f]*\)[^ ]* source=.*/\1/p' "${b%/*/*}/.agentsync-install-source" 2>/dev/null | LC_ALL=C head -n 1 || true)"
+	local a h tmp line
+	a="$(installed_build_commit)"
 	h="$(git_head_file "$repo")"
 	[ "${#a}" -ge 12 ] && [ "${#h}" -ge 12 ] && [ "${a:0:12}" != "${h:0:12}" ] || return 0
 	! LC_ALL=C grep -q '^- rendered by: ' "$REPORT_PATH" 2>/dev/null || return 0
@@ -9630,12 +9721,18 @@ fi
 # $ESCAPED_MARK is refused as pasted (it is not absolute, so before the expansion), and so is a folder step 1
 # cannot show apart from another, either way round, and a missing path that is such a folder's shown text: each
 # is named for a rename, never taken in an escaped spelling (B13 round 36 C1001, C1072, C1002).
+# Each refusal's words reach the report with the name as <path> (B13 round 37 ruling 120, C1278): stderr names the
+# folder, but LAST_ERROR holds list_name's escaped spelling, which no redaction pair matches.
 twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, then run step 1 again"
+source_local_refused() { # SHOWN-NAME WORDS
+	USAGE_ERROR_REPORTED="--source-local <path>: $2"
+	usage_error "--source-local $1: $2"
+}
 for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	case "$f" in
 	*"$ESCAPED_MARK"*)
 		g="${f#*"$ESCAPED_MARK"}"
-		usage_error "--source-local $(list_name "${g# }"): this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, then run step 1 again"
+		source_local_refused "$(list_name "${g# }")" "this is a row step 1 marked $ESCAPED_MARK: its shown name is not the folder's own; rename it in its sync app, then run step 1 again"
 		;;
 	esac
 	case "$f" in
@@ -9645,10 +9742,10 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	*) f="$PWD/$f" ;;
 	esac
 	if [ -d "$f" ]; then
-		! escaped_twin "$f" dir || usage_error "--source-local $(list_name "$f"): step 1 shows this folder's name with a control character, $twin_tail"
+		! escaped_twin "$f" dir || source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
 		FOLDERS+=("$f")
 	elif escaped_twin "$f"; then
-		usage_error "--source-local $(list_name "$f"): step 1 shows this folder's name with a control character, $twin_tail"
+		source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
 	else
 		BAD_FOLDERS+=("$f")
 	fi
@@ -9657,16 +9754,18 @@ done
 bad_total=${#BAD_FOLDERS[@]}
 bad_shown=0
 while [ "$bad_shown" -lt 5 ] && [ "$((bad_shown + 1))" -lt "$bad_total" ]; do
-	printf 'usage error: --source-local is not an existing folder: %s (see --help)\n' "${BAD_FOLDERS[$bad_shown]}" >&2
+	printf 'usage error: --source-local is not an existing folder: %s (see --help)\n' "$(list_name "${BAD_FOLDERS[$bad_shown]}")" >&2
 	bad_shown=$((bad_shown + 1))
 done
 if [ "$bad_total" -gt 5 ]; then
 	usage_error "--source-local: $((bad_total - 5)) more folders are not existing folders"
 elif [ "$bad_total" -gt 0 ]; then
-	# The person reads the name on stderr; the report words it without: its scrub cuts a folder's name only right
-	# after --source-local, and this folder is in no config for a pair to name it.
+	# The person reads the name on stderr; the shell report words it without, since this folder is in no config
+	# for a pair to name it. The agentsync report cuts the name its install.out tail copies from stderr after
+	# `is not an existing folder: ` (B13 round 37 C1299 with C1250, lane RA), and report_recut cuts it again in
+	# a render by an older build (ruling 120).
 	USAGE_ERROR_REPORTED="--source-local is not an existing folder: <path>"
-	usage_error "--source-local is not an existing folder: ${BAD_FOLDERS[$bad_shown]}"
+	usage_error "--source-local is not an existing folder: $(list_name "${BAD_FOLDERS[$bad_shown]}")"
 fi
 
 if [ "$SOURCE_KIND" = "checkout" ] && [ "$DRY_RUN" -eq 0 ] && [ -e "$SOURCE/.git" ]; then

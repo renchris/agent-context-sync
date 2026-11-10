@@ -5,6 +5,7 @@ Every case is tested in both, with made-up names (B13 round 3, CONTRACTS §16.46
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 import unicodedata
 from pathlib import Path
@@ -14,6 +15,8 @@ import pytest
 from agentsync import cli, net, setup_report
 from agentsync.config import load_config
 from test_install_oneshot import (  # noqa: F401  (fixture)
+    _C1253_ROWS,
+    _C1285_ROWS,
     BASH32,
     INSTALL_SH,
     _shell_cut_stdout,
@@ -25,6 +28,7 @@ from test_install_oneshot import (  # noqa: F401  (fixture)
 )
 from test_setup_report import (  # noqa: F401  (fixtures)
     _REAL_FULL_NAME,
+    _RULING_102_LEAKS,
     V5_HAPPY,
     _separator_lines,
     fake_mac,
@@ -1088,3 +1092,91 @@ def test_both_reports_cut_a_path_in_another_home_alike_whatever_byte_sits_in_it_
         if not any(c in line for c in marks):
             assert not re.search("olga|Fabrikam|Contoso", got), (line, got)
     assert not wrong, (len(wrong), wrong[:8])
+
+
+def test_both_reports_cut_a_volume_past_a_skipped_home_and_a_provider_folder_in_any_case_ruling_120(
+    tmp_path: Path,
+) -> None:
+    """B13 round 37 ruling 120 (C1253, C1285; privacy): the shell's scan moved a skipped `/Users/Shared`,
+    `<path>` or `<user>` into its output, so a volume before it was never looked back to and the next home on
+    the line printed whole, where setup_report cut it to /Volumes/<path>; and both reports matched the
+    provider folder after `CloudStorage` or opening `OneDrive - ` in its own case only, so a lowercase one
+    kept its tail past a comma. Each row, ruling 102's rows among them, goes through the shell's redact_stream
+    and setup_report.Redactor for HOME /Users/dana: the two print the same, the documented line, and a
+    volume an earlier cut used is never looked back to again."""
+    rows = [*_RULING_102_LEAKS, *_C1253_ROWS, *_C1285_ROWS]
+    red = setup_report.Redactor()
+    red.add("home", "/Users/dana")
+    red.add("user", "dana")
+    shell = _shell_cut_stdout(tmp_path, "/Users/dana", [line for line, _ in rows], login="dana").split("\n")
+    assert shell[-1] == "" and len(shell) == len(rows) + 1, (len(shell), len(rows))
+    wrong = [(line, got, red.redact(line), cut) for (line, cut), got in zip(rows, shell[:-1], strict=True)]
+    wrong = [w for w in wrong if not (w[1] == w[2] == w[3])]
+    assert not wrong, wrong
+
+
+def _report_recut_harness(tmp_path: Path, report: Path) -> subprocess.CompletedProcess[bytes]:
+    """install.sh's report_recut over ``report`` (REPORT_PATH), with foreign_home_cut beside it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "\n".join(
+        m.group(0) for m in re.finditer(r"(?ms)^(?:foreign_home_cut|report_recut)\(\) \{\n.*?^\}$", text)
+    )
+    return subprocess.run(
+        [BASH32, "-c", f"set -euo pipefail\n{fns}\nREPORT_PATH={shlex.quote(str(report))}\nreport_recut"],
+        capture_output=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TMPDIR": str(tmp_path)},
+    )
+
+
+def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
+    fake_mac: dict[str, Path],  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    """B13 round 37 ruling 120 (C1237): a report this checkout's setup_report renders, with ruling 102's paths
+    in its install.out tail and friction log, is already cut, so install.sh's second cut gives back every
+    byte; an older cut's /Volumes/<path> before a path byte is cut on, and install.sh's own missing-folder
+    diagnostic is cut after `is not an existing folder: `."""
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20261110T100000Z-4242 2026-11-10T10:00:00Z install.sh --source-local x\n"
+        + "".join(f"{line}\n" for line, _cut in _RULING_102_LEAKS)
+        + "usage error: --source-local is not an existing folder: ~/Projects/<path> (see --help)\n"
+        # the lane's review: a cut volume before a later /users/, and a cut name before a stop byte
+        + "cp /Volumes/Backup/x/Users/olga/y; https://graph.microsoft.com/v1.0/users/me/drive\n"
+        + "see /Volumes/Backup/Users/olga/x) then api/users/42/x\n"
+        + "cp /Volumes/USB/stuff /tmp/y ; x/Volumes/Backup/Users/olga/y ; https://graph.microsoft.com/v1.0/users/me\n",
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    report = tmp_path / "setup-report.md"
+    report.write_text(text, encoding="utf-8")
+    before = report.read_bytes()
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    assert report.read_bytes() == before
+    # a Python cut's placeholders are no volume to the second cut, and a name already cut keeps what follows
+    kept = (
+        b"cp /Volumes/<path>; https://graph.microsoft.com/v1.0/users/me/drive\n"
+        b"/Volumes/<path>;x/Users/kim/g\n"
+        b"see /Volumes/<path>) then api/users/42/x\n"
+        b"cp /Volumes/<path> ; https://graph.microsoft.com/v1.0/users/me\n"
+        b"| 3 | error | --source-local is not an existing folder: <path> |\n"
+        b"- error: --source-local is not an existing folder: <path>; retried\n"
+    )
+    report.write_bytes(kept)
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    assert report.read_bytes() == kept
+    report.write_bytes(
+        b"x /Volumes/<path>\xc2\xa0Drive/Users/olga/Fabrikam y\n"
+        b"usage error: --source-local is not an existing folder: ~/Projects/acquisition-northwind"
+        b" (see --help)\n"
+        b"- last error: usage error: --source-local is not an existing folder: ~/Tailspin Merger\n"
+    )
+    cp = _report_recut_harness(tmp_path, report)
+    assert cp.returncode == 0, cp.stderr
+    assert report.read_bytes() == (
+        b"x /Volumes/<path> y\n"
+        b"usage error: --source-local is not an existing folder: <path> (see --help)\n"
+        b"- last error: usage error: --source-local is not an existing folder: <path>\n"
+    )

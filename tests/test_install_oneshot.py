@@ -3780,8 +3780,9 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         "drive has; a path in another home (/Users/ and any "
         "folder but Shared or this login's), cut whole to /Users/<path> (/Volumes/<path> behind a volume, "
         "the prefixes in any case; in both reports, an unquoted path keeps its tail after the first quote, "
-        "backtick, bracket, comma or semicolon, a provider folder's name running past a bracket, comma or "
-        "semicolon to the next /, and after a blank from the first word that holds no / or holds =, or that "
+        "backtick, bracket, comma or semicolon, a provider folder's name, in any case, running past a "
+        'bracket, comma or semicolon to the next / but stopping at a quote, a backtick, "):" or ", stored as '
+        '", and after a blank from the first word that holds no / or holds =, or that '
         "is an option, a URL, a path of its own or a number like 3/14; a blank right after this home ends "
         "it, so another home named as this one and a blank keeps what follows); and every word bash wrote "
         "in its dollar-quote form ($'...'),"
@@ -3789,7 +3790,8 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
         item
     )  # B13 round 31 ruling 49 (C529): an added source's typed folder named; round 34 C822; round 35 C946;
     # round 36 ruling 112: lane RA's shared limit words, from "(/Volumes/<path> behind a volume" on, and
-    # C1123's own inbox, never cut
+    # C1123's own inbox, never cut; round 37 ruling 120 (C1285, C1203): the provider folder in any case, and
+    # C1069's stops, in lane RA's words
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
@@ -4196,6 +4198,31 @@ def test_this_homes_literal_wins_only_where_the_home_ends(tmp_path: Path) -> Non
 
 
 # B13 round 35 ruling 102: lane RA's cases for setup_report.Redactor, as the shell cuts them (home /Users/kxy)
+# B13 round 37 ruling 120 (C1253): a volume before a skipped Shared, <path> or <user> component is the
+# cut's, and one an earlier cut used is never looked back to again, as setup_report's matches never overlap
+_C1253_ROWS = (
+    ("/Volumes/Backup/Users/Shared/old/Users/olga/Fabrikam/x.docx", "/Volumes/<path>"),
+    ("/Volumes/Backup/Users/Shared/Users/olga/Fabrikam/x.docx", "/Volumes/<path>"),
+    ("/Volumes/Backup/Users/<path>/x/Users/olga/Fabrikam/x.docx", "/Volumes/<path>"),
+    ("/Volumes/Backup/a /Users/<user>/x/Users/olga/Fabrikam/y", "/Volumes/<path>"),
+    ('"/Volumes/Backup/Users/Shared/old/Users/olga/Fabrikam/x.docx" tail', '"/Volumes/<path>" tail'),
+    ("/Volumes/Backup/Users/Shared/a b/Users/olga/Fabrikam", "/Volumes/<path>"),
+    ("/Volumes/A/Users/olga/f;x/Users/kim/g", "/Volumes/<path>;x/Users/kim/g"),
+    ("/System/Volumes/Data/Users/Shared/x/Users/olga/y", "/System/Volumes/Data/Users/Shared/x/Users/olga/y"),
+)
+# B13 round 37 ruling 120 (C1285): the provider folder after CloudStorage or opening "OneDrive - ", any case
+_C1285_ROWS = (
+    ("/Users/olga/Library/CloudStorage/OneDrive-Contoso, Ltd/Fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/library/cloudstorage/onedrive-contoso, ltd/fabrikam/x", "/Users/<path>"),
+    ("/users/olga/library/cloudstorage/OneDrive-Contoso, Ltd/Fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/onedrive - contoso, ltd/fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/ONEDRIVE - Contoso; Ltd/Fabrikam/x", "/Users/<path>"),
+    ("/Users/olga/library/CLOUDSTORAGE/OneDrive-Contoso; Ltd/Fabrikam/x", "/Users/<path>"),
+    (
+        "seen /Users/olga/library/cloudstorage/onedrive-contoso): kept/plan.docx",
+        "seen /Users/<path>): kept/plan.docx",
+    ),
+)
 _OTHER_HOME_CASES = (
     (
         "source=/System/Volumes/Data/Users/olga/Library/CloudStorage/OneDrive-Fabrikam/x",
@@ -4274,6 +4301,8 @@ _OTHER_HOME_CASES = (
         "(/Users/olga/Library/CloudStorage/OneDrive-Contoso, stored as /Users/olga/x/y): 3 files",
         "(/Users/<path>, stored as /Users/<path>): 3 files",
     ),
+    *_C1253_ROWS,
+    *_C1285_ROWS,
 )
 
 
@@ -16848,6 +16877,188 @@ def test_run_metadata_names_the_build_that_rendered_the_report_c1103(
     for path in (report_path(env), report_path(env).parent / "bring-back.md"):
         assert "Contoso Secret Project" not in path.read_text(encoding="utf-8"), path.name
     assert "rendered by" not in last_line(cp), "the NEXT is unchanged"
+
+
+OLDER_RENDERER = r"""#!/bin/bash
+# an agentsync from before B13 round 34's cut: its setup-report copies install.out's tail and the friction log
+# with this home as ~ and a run header's arguments cut (as builds since round 22 do); every other command
+# is the stub's
+if [ "${1:-}" = setup-report ]; then
+  out=""
+  while [ $# -gt 0 ]; do [ "$1" = --out ] && out="$2"; shift; done
+  setup="$HOME/agent-context/setup"
+  mkdir -p "$(dirname "$out")"
+  {
+    printf '# agentsync setup report\n\nolder stub render\n\n## Installer\n\n```\n'
+    tail -n 6 "$setup/install.out" 2>/dev/null
+    printf '```\n\n## Friction\n\n'
+    cat "${AGENTSYNC_FRICTION_LOG:-$setup/friction.md}" 2>/dev/null
+  } | LC_ALL=C sed -e "s#$HOME#~#g" -e '/^# run=/s/ --source-local .*/ --source-local <path>/' > "$out"
+  echo "wrote $out (0 value(s) redacted)"
+  exit 0
+fi
+exec "$STUB_AGENTSYNC" "$@"
+"""
+
+
+def _renderer_home(env: dict[str, str], renderer: str, stamp: str | None = None) -> dict[str, str]:
+    """``env`` with ~/.local/bin/agentsync as ``renderer`` renders the report: ``older`` (OLDER_RENDERER) or
+    ``stub`` (the stub, which copies STUB_REPORT_FILE), each uv's link into its tool folder, stamped
+    ``commit=<stamp>`` when ``stamp`` is given; or ``checkout`` (this checkout's agentsync, run by the Python
+    these tests run under, with no stamp, no OCR helper and no Time Machine call)."""
+    home = Path(env["HOME"])
+    tool = home / ".local" / "share" / "uv" / "tools" / "agentsync"
+    (tool / "bin").mkdir(parents=True, exist_ok=True)
+    (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    if renderer == "checkout":
+        _write_exe(
+            home / ".local" / "bin" / "agentsync", f'#!/bin/sh\nexec "{sys.executable}" -m agentsync "$@"\n'
+        )
+        return {**env, "AGENTSYNC_OCR": "0", "AGENTSYNC_TM_EXCLUDE": "0"}
+    if renderer == "stub":
+        exec_stub.copy(env["STUB_AGENTSYNC"], tool / "bin" / "agentsync")
+    else:
+        _write_exe(tool / "bin" / "agentsync", OLDER_RENDERER)
+    (home / ".local" / "bin" / "agentsync").symlink_to(tool / "bin" / "agentsync")
+    if stamp is not None:
+        (tool / ".agentsync-install-source").write_text(f"commit={stamp} source={REPO}\n", encoding="utf-8")
+    return env
+
+
+def _checkout_head() -> str:
+    return subprocess.run(
+        ["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+@pytest.mark.parametrize("stopped", [False, True])
+def test_a_report_an_older_agentsync_rendered_is_cut_again_by_this_checkout_c1210_c1237(
+    env: dict[str, str], tmp_path: Path, stopped: bool
+) -> None:
+    """B13 round 37 ruling 120 (C1210, C1237; privacy): a report rendered before step 2 by the older installed
+    agentsync, whose redaction has no cut for another home, printed a path in another home whole in
+    setup-report.md, bring-back.md's section 1 and the stopped copy, and only its rendered-by line said whose
+    words they were. install.sh now cuts every render again with its own foreign_home_cut, with no
+    build-differs condition (this stub has no stamp), so each shows /Users/<path> and /Volumes/<path>."""
+    env = _renderer_home(env, "older")
+    if stopped:
+        assert install_sh(env, "--log-start", "x").returncode == 2
+    else:
+        friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+        friction_path(env).write_text(
+            f"Attempt: 2026-11-10T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n", encoding="utf-8"
+        )
+    with friction_path(env).open("a", encoding="utf-8") as f:
+        f.write(
+            "2026-11-10T10:00:01Z | step 1 | error | cat /Users/contoso2/x y/z.txt exited 1 | -\n"
+            "2026-11-10T10:00:02Z | step 1 | deviation | a copied note named "
+            "/Volumes/Data/Users/contoso2/a.txt | -\n"
+        )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout + cp.stderr
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    paths = [side] if stopped else [report_path(env), report_path(env).parent / "bring-back.md"]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert "contoso2" not in text, (path.name, text)
+        assert "cat /Users/<path> exited 1" in text and "named /Volumes/<path> |" in text, (path.name, text)
+
+
+def test_a_current_render_comes_back_from_the_checkouts_cut_byte_for_byte_c1237(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 37 ruling 120 (C1237): the cut install.sh runs over every render leaves a report already in
+    this checkout's cut as it was: /Users/<user>/, /Users/Shared, an already cut /Users/<path> or
+    /Volumes/<path>, a URL's /users/ and a cut --source-local diagnostic are kept, byte for byte."""
+    env = _renderer_home(env, "stub", stamp=_checkout_head())
+    kept = tmp_path / "current.md"
+    kept.write_text(
+        "# agentsync setup report\n\n## Installer\n\n```\n"
+        "usage error: --source-local is not an existing folder: ~/Projects/<path> (see --help)\n"
+        "- last error: usage error: --source-local is not an existing folder: <path>\n```\n\n"
+        "- moved /Users/<user>/x and /Users/Shared/y, `/Users/<path>`, /Volumes/<path> and 2 files\n"
+        "- GET https://graph.microsoft.com/v1.0/users/me/drive x/Users/<path>/y /Users/<path>/z\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(kept)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert report_path(env).read_bytes() == kept.read_bytes()
+
+
+@pytest.mark.parametrize("same", [False, True])
+def test_a_line_break_an_older_build_splits_on_takes_the_fallback_report_c1210(
+    env: dict[str, str], tmp_path: Path, same: bool
+) -> None:
+    """B13 round 37 ruling 120 (C1210 with C1237, C1249): an agentsync before C1249 splits install.out and the
+    friction log on U+2028, U+2029, U+0085 and 0x1C to 0x1E, so a path holding one is cut to its head and its
+    tail prints on a line of its own, where no shell cut can follow it. A render by another build (here
+    stamped with another commit) is replaced by the shell fallback when either file holds one; this build's
+    render is kept."""
+    env = _renderer_home(env, "older", stamp=_checkout_head() if same else "0123456789ab" * 3)
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-11-10T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
+        "2026-11-10T10:00:01Z | step 1 | error | "
+        "cat /Users/contoso2/a\u2028Tailspin Files/z.txt exited 1 | -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    if same:
+        assert "(agentsync setup-report)" in cp.stdout and "older stub render" in text, cp.stdout
+    else:
+        assert (
+            "(shell fallback: the installed agentsync, another build, splits a line that holds" in cp.stdout
+        )
+        assert (
+            "warning: agentsync setup-report was not kept: a Unicode line or paragraph separator" in cp.stderr
+        )
+        assert "older stub render" not in text, "the stub's render is replaced"
+    assert "Tailspin" not in text and "contoso2" not in text, text
+
+
+def test_a_failed_cut_of_the_agentsync_report_takes_the_fallback_report_c1237(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 37 ruling 120 (C1237): a cut that cannot run (here its temporary file is refused) never keeps
+    the render it did not cut: the shell fallback report is written in its place, and a warn says why."""
+    env = _renderer_home(env, "older")
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "mktemp",
+        '#!/bin/bash\ncase "$*" in *.report-cut.*) exit 1 ;; esac\nexec /usr/bin/mktemp "$@"\n',
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "warning: could not cut paths in another home from the agentsync setup-report" in cp.stderr
+    assert "(shell fallback: this checkout could not cut the agentsync setup-report again)" in cp.stdout
+
+
+@pytest.mark.parametrize("renderer", ["checkout", "older"])
+def test_a_missing_source_local_folder_stays_out_of_every_render_c1299_c1250(
+    env: dict[str, str], tmp_path: Path, renderer: str
+) -> None:
+    """B13 round 37 ruling 120 (C1299 with C1250; privacy): a missing --source-local folder's name was kept
+    out of the shell report only, while install.out, a copy of stderr, carried it into the agentsync report's
+    Installer section, whose scrub cut a folder only right after `--source-local `. Rendered by this
+    checkout's agentsync or by an older one, setup-report.md and bring-back.md now name neither folder (two
+    missing, one with blanks under a provider folder, one lowercase), and still say what was refused."""
+    env = _renderer_home(env, renderer)
+    home = Path(env["HOME"])
+    one = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Northwind Secret Plan"
+    two = home / "Projects" / "acquisition-northwind"
+    three = home / "Projects" / "Northwind\nMinutes"  # the review: a newline never splits the cut's line
+    cp = install_sh(env, "--source-local", str(one), "--source-local", str(two), "--source-local", str(three))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert f"--source-local is not an existing folder: {two}" in cp.stderr, "the person still reads it"
+    assert "(agentsync setup-report)" in cp.stdout, cp.stdout
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for name in ("Northwind", "Secret", "northwind", "Minutes"):
+            assert name not in text, (path.name, name, text)
+        assert "is not an existing folder" in text, path.name
 
 
 def test_the_config_step_prints_progress_lines_while_it_runs_c1013(

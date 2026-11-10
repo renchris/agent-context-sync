@@ -4684,6 +4684,11 @@ _RULING_102_LEAKS = (  # B13 round 35 ruling 102: each spelling of a path in ano
     ("source=/Users/dana\\ 1/Library/CloudStorage/OneDrive-Fabrikam/x", "source=/Users/<path>"),
     ("/Users/dana\\(1\\)/Fabrikam /Users/dana\\'s/Fabrikam", "/Users/<path> /Users/<path>"),
     ("/Users/<value>/Fabrikam /Users/<org-1>/Fabrikam /Users/<user>.old/F", " ".join(["/Users/<path>"] * 3)),
+    # B13 round 37 ruling 120 (C1253, lane RB): a volume before a skipped Shared, <path> or <user> component
+    ("/Volumes/Backup/Users/Shared/old/Users/olga/Fabrikam/x.docx", "/Volumes/<path>"),
+    ("/Volumes/Backup/Users/<path>/x/Users/olga/Fabrikam/x.docx", "/Volumes/<path>"),
+    ("/Volumes/Backup/a /Users/<user>/x/Users/olga/Fabrikam/y", "/Volumes/<path>"),
+    ('"/Volumes/Backup/Users/Shared/old/Users/olga/Fabrikam/x.docx" tail', '"/Volumes/<path>" tail'),
 )
 _RULING_102_KEPT = (  # never cut: this home, Shared, a placeholder kept whole, a word that is no home
     "kept /Users/olga/a /Users/Shared/drop ~/x https://example.com/a/b 3/14 files",
