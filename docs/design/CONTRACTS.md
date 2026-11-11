@@ -41694,7 +41694,16 @@ Tests: `tests/test_cli_streams.py::test_an_unexpected_error_is_a_bug_report` and
 
 #### 16.300.11 U-C4a and U-C4b: stdout carries the result
 
-Reserved.
+C-4's stream moves are not built: KISS K1 is kept, so receipts, progress, NEXT and login text stay where they print
+today, and no `AGENTSYNC_COMPAT_STDOUT` switch exists. `tests/test_cli_modes.py` pins that layout instead.
+`test_the_transcript_is_the_same_at_40_80_and_120_columns` runs `sync`, `status` and `hold --list` over a source whose
+folder name is long and not ASCII at `COLUMNS` 40, 80 and 120 and finds each stream unchanged (no output is wrapped to
+the terminal); `test_sync_prints_its_report_on_stdout_and_nothing_on_stderr`,
+`test_status_prints_the_long_folder_whole_on_one_stdout_line` and
+`test_hold_list_prints_each_hold_and_the_count_on_stdout` pin each stream on its own (the whole transcript on stdout,
+stderr empty); and `test_no_color_variable_puts_an_escape_byte_in_the_output` finds no `\x1b` byte in either stream,
+help included, under `FORCE_COLOR=1`, `TERM=dumb` or `NO_COLOR=1`. A closed pipe and a signal are
+`tests/test_cli_streams.py`'s (16.300.5).
 
 #### 16.300.12 U-C5: login without a terminal
 
