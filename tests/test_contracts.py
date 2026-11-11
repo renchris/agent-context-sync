@@ -954,3 +954,30 @@ def test_the_plain_text_reference_says_what_text_py_does() -> None:
     assert "``.vtt`` is not here: it routes to ``vtt-turns`` (§16.35); ``.url`` joined per §16.42." in flat
     said = "decoded (UTF-8/UTF-16 BOM first, then strict UTF-8, then cp1252, else latin-1)"
     assert " ".join(raw.split()).count(said) == 2
+
+
+def test_every_exception_names_rule_reason_impact_and_a_test() -> None:
+    """U-C13 (R422): each row of §16.300.30's exceptions record names the guideline rule the repo or a
+    caller won against, the reason, what a person or a script sees, and tests that a scan of tests/
+    finds, so a kept conflict is never recorded without the test that holds it."""
+    raw = CONTRACTS.read_text(encoding="utf-8")
+    start = raw.index("#### 16.300.30 ")
+    end = raw.find("\n#", start + 1)
+    block = raw[start:] if end == -1 else raw[start:end]
+    rows = [line for line in block.splitlines() if line.startswith("|")]
+    assert rows[:2] == ["| Rule | Reason | User impact | Test |", "|---|---|---|---|"]
+    assert len(rows) > 2, "the record has no rows"
+    tests_dir = Path(__file__).resolve().parent
+    for row in rows[2:]:
+        cells = [cell.strip() for cell in row.strip("|").split(" | ")]
+        assert len(cells) == 4, row
+        rule, reason, impact, test = cells
+        assert re.fullmatch(r"R\d{3}(?:, R\d{3})*", rule), row
+        assert reason and impact, row
+        named = re.findall(r"`tests/([\w/]+\.py)::(test_\w+)`", test)
+        assert named and len(named) == test.count("`") // 2, row
+        for file, name in named:
+            path = tests_dir / file
+            assert path.is_file(), f"{file} in: {row}"
+            found = re.search(rf"^\s*(?:async )?def {name}\(", path.read_text(encoding="utf-8"), re.MULTILINE)
+            assert found, f"tests/{file}::{name} is not a test under tests/"
