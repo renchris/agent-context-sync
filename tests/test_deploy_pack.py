@@ -7050,10 +7050,14 @@ at the helper bucket's quotes in §16.230, §16.231 and §16.233, which lane D w
 _ROUND_37_D_PARAGRAPH_AMENDS = (
     ("16.26", "**One engine per cycle.**", "§16.244 C1270 (by §16.237 C1101)"),
     ("16.26", "`_cycle_ocr` against a helper in `<cache_dir>/ocr`", "§16.244 C1270 (by §16.237 C1101)"),
+    ("16.232", "`launchctl getenv` now go through `deadline.run`;", "§16.242 C1277"),
+    ("16.237", "**The proxy, launchctl and volume probes end with the report** (C1049;", "§16.242 C1277"),
 )
 """Round 37 lane D's dated lines at a section its claims name with no item, as
 :data:`_ROUND_36_D_PARAGRAPH_AMENDS`: C1270's two at §16.26, its one-engine bullet and its test list, in
-C1101's form, since round 36's C1101 replaced `cycle._cycle_ocr` with `_cycle_ocr_state`."""
+C1101's form, since round 36's C1101 replaced `cycle._cycle_ocr` with `_cycle_ocr_state`. C1049's two, at
+§16.232 C955's dated C1049 line and §16.237's C1049 paragraph, in lane B's C1277 marker: lane D writes them on
+lane B's C1302 commit, which runs `xcrun --find git` through `deadline.run`."""
 
 _ROUND_35_RB_PARAGRAPH_AMENDS = (
     ("16.41", "Residuals: a cycle longer than the wait still meets the rebuild", "§16.231 C926"),

@@ -38741,6 +38741,9 @@ Amended 2026-11-08, §16.237 C1065: the check, the spawn and the registration ar
 registry's lock, and a report's `StartGate`, closed by `end_children`, starts nothing after it.
 Amended 2026-11-08, §16.237 C1049: `scutil`, `df`, `diskutil` and `launchctl getenv` now go through `deadline.run`;
 `_CatFile` alone stays outside it, a write path no report hook reaches.
+Amended 2026-11-10, §16.242 C1277: gitops' `xcrun --find git` lookup (`_xcrun_git`, reached by `gitops._run` and
+`doctor._git_path`) stayed outside it too until C1302, which runs it through `deadline.run`; `_CatFile` is now the one
+program outside it.
 
 **A signal to agentsync leaves no doctor program running** (C906 with C956; ruling 106; amends §16.227 C804). C804
 put each `doctor._run` program in a process group of its own, so a SIGTERM, SIGHUP or SIGKILL to agentsync or to its
@@ -39668,6 +39671,9 @@ keeping its arguments and except clauses, and `_launchctl_env` stops at its firs
 the other names. `governance._CatFile` stays as it is: its callers are write paths no report hook reaches, and
 killing its reader would abort a write. Test:
 `test_ops_doctor.py::test_the_proxy_launchctl_and_volume_probes_start_nothing_past_the_callers_deadline_c1049`.
+Amended 2026-11-10, §16.242 C1277: one more probe a report reaches started through a plain `subprocess.run`, gitops'
+`xcrun --find git` lookup, and C1302 runs it through `deadline.run` with the same arguments, a refused or ended lookup
+falling back to `/usr/bin/git` unkept; `governance._CatFile` stays the one program outside it.
 
 **doctor names no registry of its own** (C1031; ruling 117). `doctor._LIVE_CHILDREN` was an alias of deadline's
 registry that only tests read; it is gone, the tests read `deadline._LIVE_CHILDREN`, and §16.232 C955's line names
@@ -40643,6 +40649,14 @@ line, never a rewrite (ruling 110): a refusal offers no `$'...'` spelling, and t
 commands carry `shown_arg`'s form of the real path. install.sh and its tests are unchanged: dropping the form from the
 add-back would bring back C1001 (a command that named the twin, or none). Test:
 `test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307`.
+
+**C1049's lines name xcrun's git lookup, which lane B's C1302 runs through `deadline.run`** (C1049's dated lines, on
+lane B's C1302 with C1277; ruling 117 extended; docs only). §16.232 C955's dated C1049 line said `_CatFile` alone stays
+outside `deadline.run`, and §16.237's C1049 paragraph listed the probes moved under it, while `gitops._xcrun_git`
+started `xcrun --find git` through a plain `subprocess.run`, reached by `gitops._run` and `doctor._git_path` under a
+report. Lane B's C1302 commit runs it through `deadline.run`; each passage takes a dated line in lane B's C1277 marker
+saying so, and `_CatFile` stays the one program outside it. Test:
+`test_every_dated_line_from_round_11_on_is_held_by_a_test`, through two rows in `_ROUND_37_D_PARAGRAPH_AMENDS`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
