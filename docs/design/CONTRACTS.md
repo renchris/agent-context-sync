@@ -38788,6 +38788,7 @@ chmod governance.suppressed, the sync exits 1; after the record's, none and the 
 Amended 2026-11-08, §16.237 C1048: the wait naming both lines is built. `loop._sync_stops` keeps this order and
 rule and names every stop, and the waits and exclude-empty say `the A and B [FAIL] lines are fixed`;
 `_sync_stopped_on` is its first, for the readers that say no sync runs until that line is fixed.
+Amended 2026-11-10, §16.242 C1301: the guard's part of that order is every stop of it, not its first (`doctor.state_stops`: the sides, the manifest, the lock, heartbeat.json, then each governance file), so a folder at heartbeat.json beside one at purge-record.json names both lines.
 Amended 2026-11-10, §16.242 C1246: the order has the config refusals the cycle exits 78 on between the lock and the
 reads: the guard's stops, the lock, `policy`, `governance.config`, then the suppression list and the purge record.
 
@@ -39617,15 +39618,12 @@ reason, the TSV, the sync line, then a working helper reads it) and
 Amended 2026-11-10, §16.242 C1257: `Publisher.ocr_waits` is true only for an image on this Mac (its required keyword
 `local`, `not publish.read_needs_download(...)`); a Graph or online-only image, which a working helper never reads
 either, keeps `no converter for <suffix>` on its page and counts in `refused_unread`.
-
 Amended 2026-11-10, §16.242 C1211: `_sync/QUARANTINE.tsv` follows the page, never this run's helper state: it prints
 `publish.OCR_DOWN_REASON` for a row whose page says it, and `no converter for <suffix>` for one whose page does (one
 planned while no helper was built); the stored reason and `none@0` keep `no converter for <suffix>`.
-
 Amended 2026-11-10, §16.242 C1268: a recording on this Mac waits on the OCR helper too while the media helper is
 ready (`Publisher.recordings_wait_ocr`): its page says `publish.OCR_DOWN_RECORDING_REASON`, chosen by suffix through
 `publish.ocr_down_reason`, and it counts in `ocr_unread`.
-
 Amended 2026-11-10, §16.242 C1271: `failed` also covers a build that failed (its `.failed` marker, no helper on
 disk) and a helper that may not be run.
 

@@ -6973,6 +6973,16 @@ _ROUND_36_B_PARAGRAPH_AMENDS = (
 """Round 36 lane B's dated line at a section its claims name with no item, as
 :data:`_ROUND_35_B_PARAGRAPH_AMENDS`: C1028's own re-run clause at §15's doctor reference, beside
 C917's line."""
+_ROUND_37_B_PARAGRAPH_AMENDS = (
+    ("16.220", "**The lane's review of C741, C701 and C733.**", "§16.242 C1261"),
+    ("16.232", "**The stop named beside a sync is the one it meets first** (C933;", "§16.242 C1246"),
+    ("16.237", "Amended 2026-11-10, §16.242 C1257: `Publisher.ocr_waits` is true only", "§16.242 C1268"),
+    ("16.237", "Amended 2026-11-10, §16.242 C1257: `Publisher.ocr_waits` is true only", "§16.242 C1271"),
+    ("16.237", "**A wait beside two sync stops names both [FAIL] lines** (C1048;", "§16.242 C1246"),
+)
+"""Round 37 lane B's dated lines no claim of §16.242 reads alone: C1261's at C701's review paragraph,
+C1246's beside C1301's at C933's and C1048's paragraphs (one paragraph's claim holds one line), and C1268's
+and C1271's in the dated block after §16.237's C1101 paragraph, beside C1257's and C1211's."""
 _ROUND_32_B_PARAGRAPH_AMENDS = (
     ("16.200", "**C112, C125, C146, C155, C177, C178, C139, C141, C145, C210: status", "§16.215 C624"),
     ("16.205", "C381 (ruling 34): what governance/ keeps survives the folder's loss", "§16.215 C632"),
@@ -7205,6 +7215,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_34_B_PARAGRAPH_AMENDS,
         *_ROUND_35_B_PARAGRAPH_AMENDS,
         *_ROUND_36_B_PARAGRAPH_AMENDS,
+        *_ROUND_37_B_PARAGRAPH_AMENDS,
         *_ROUND_35_RB_PARAGRAPH_AMENDS,
         *_REVIEW_BACKTEST_PARAGRAPH_AMENDS,
     )
