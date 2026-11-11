@@ -3872,6 +3872,41 @@ def test_the_guides_name_every_mark_a_folder_row_opens_with_c1280() -> None:
         assert "is such a folder already kept: nothing to rename and nothing to paste" in text
 
 
+def test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307() -> None:
+    """B13 round 37 C1307: §16.236 said "no `$'...'` form offered" and §16.239 that --source-local "offers
+    no `$'...'` form", while the no-twin lost-block clause and a NEXT's re-run print shown_arg's `$'...'`
+    form of the real path. Each sentence keeps its words and takes a dated line (ruling 110) saying the
+    refusal offers no such spelling and the installer's own commands carry it; the commands are read from
+    install.sh, so a change that drops the form there fails here too."""
+    sections = dict(_contracts_numbered_sections())
+    for section, said, line in (
+        (
+            "16.236",
+            "No escaped spelling is taken and no `$'...'` form offered",
+            "Amended 2026-11-10, §16.244 C1307: \"no `$'...'` form offered\" holds for a refusal, whose words"
+            " name only the rename and suggest no `$'...'` spelling. The installer's own commands for a"
+            " folder with a control character and no look-alike, the lost-block `one --source-local` and a"
+            " NEXT's re-run (`ORIG_SHOWN`), carry `shown_arg`'s `$'...'` form of the real path",
+        ),
+        (
+            "16.239",
+            "and offers no `$'...'` form, which would be one more format",
+            "Amended 2026-11-10, §16.244 C1307: \"offers no `$'...'` form\" is the refusal's: it offers no"
+            " `$'...'` spelling of the marked row, whose shown text is not the folder's name. A `$'...'`"
+            " argument appears only in a command the installer builds with `shown_arg` from the real path",
+        ),
+    ):
+        flat = " ".join(sections[section].split())
+        at = flat.index(said)
+        nxt = flat.find("**", flat.index("Tests:", at) if "Tests:" in flat[at:] else at)
+        assert line in flat[at:nxt], section
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'one --source-local $(shown_arg "$vreal")' in script
+    assert 'ORIG_SHOWN="$ORIG_SHOWN --source-local $(shown_arg "$1")"' in script
+    [body] = re.findall(r"^shown_arg\(\) \{\n(.*?)\n\}", script, flags=re.MULTILINE | re.DOTALL)
+    assert "printf '%q'" in body and "\\$\\'*" in body
+
+
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
     tool ran unattended, the folder question came back unanswered, and step 1 said to stop and wait: a

@@ -39405,6 +39405,10 @@ step 1 shows a folder whose name holds a control character, not a folder's own n
 exist; a plain look-alike says its name is step 1's escaped form of another folder there; each refusal ends `then run
 <installer> --list-folders again`, not `then run step 1 again`, and the plain member of a pair is marked too (ruling
 121).
+Amended 2026-11-10, §16.244 C1307: "no `$'...'` form offered" holds for a refusal, whose words name only the rename and
+suggest no `$'...'` spelling. The installer's own commands for a folder with a control character and no look-alike, the
+lost-block `one --source-local` and a NEXT's re-run (`ORIG_SHOWN`), carry `shown_arg`'s `$'...'` form of the real path,
+which bash decodes to that folder, as `test_list_folders_names_the_real_folder_in_the_add_back_command_c1001` reads.
 
 **The shell report cuts a path in another home whole whatever byte sits in it, as the agentsync report does**
 (C1016, C1064, and the shell halves of C1017, C1018, C1069 and C1123, on lane RA's table; ruling 112; privacy; data
@@ -39848,6 +39852,9 @@ the rename runs `install.sh --list-folders` again, never `step 1 again`, whose c
 new attempt; a row that opens with `[name holds a control character]` is a kept folder; and a NEXT's own
 `--source-local` command for a marked folder is run as given (ruling 121). No step moves, so v36 is read with v7's
 layout too.
+Amended 2026-11-10, §16.244 C1307: "offers no `$'...'` form" is the refusal's: it offers no `$'...'` spelling of the
+marked row, whose shown text is not the folder's name. A `$'...'` argument appears only in a command the installer
+builds with `shown_arg` from the real path of a folder with no look-alike: the lost-block add-back and a NEXT's re-run.
 
 **The guide says a sourceless id purge takes the release of the hold its id reaches** (C1047, ruling 116; amends
 §16.232 C980; docs only). setup-feedback.md's step 1 sentence said a lost purge with no source "asks for a dry run
@@ -40606,6 +40613,16 @@ added as shown, `--source-local` refuses both, and after the rename the next ste
 not the whole of step 1 (C1275). The "read twice" reason stays for the three containment marks. Test:
 `test_the_guides_name_every_mark_a_folder_row_opens_with_c1280`, which reads each mark from install.sh's own constant
 and fails without either guide's sentences.
+
+**The `$'...'` sentences say a refusal offers no such spelling, and the installer's own commands do** (C1307; amends
+§16.236 C1001 and §16.239 C1072; docs only). §16.236 said "No escaped spelling is taken and no `$'...'` form offered",
+and §16.239 that `--source-local` "offers no `$'...'` form", while install.sh's no-twin lost-block clause prints `one
+--source-local $(shown_arg "$vreal")` and a NEXT's re-run builds `ORIG_SHOWN` through `shown_arg`, both of which print
+bash's `$'...'` form for a name with a control character, as §16.236's own test list says. Each sentence takes a dated
+line, never a rewrite (ruling 110): a refusal offers no `$'...'` spelling, and the installer's own add-back and re-run
+commands carry `shown_arg`'s form of the real path. install.sh and its tests are unchanged: dropping the form from the
+add-back would bring back C1001 (a command that named the twin, or none). Test:
+`test_the_dollar_quote_sentences_name_the_installers_own_commands_c1307`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
