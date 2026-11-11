@@ -40399,7 +40399,7 @@ and drops the pointer when they do not (the folder filled since the sync, so the
 The wait's root, `the folder of <id>`, is unchanged, so its head still equals doctor's with the path swapped. Test:
 `test_loop.py::test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004` (the status form in sync's stdout and
 STATE.md, no folder path and no "~/" but the command's, the below form in status above its [warn] line and never
-`` `~/.local/bin/agentsync status`'s ``, and the bare grant once the folder fills).
+`` `~/.local/bin/agentsync status`'s ``, and the bare grant once the folder fills). The setup report's Loop line, which copies the waits, says `Doctor's source.<id>.listable [warn] line names the folder and the Python` when its Doctor section prints that [warn], else `status's source.<id>.listable [warn] line names the folder and the Python`, with no `~/` path either way (a fix is never copied): `setup_report._empty_root_grant_in_report`, keyed per source on both loop forms, landed in this lane's commit jointly with lane RA (the lead's ruling; RA's review). Test: `test_setup_report.py::test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258` (Doctor showing the warn and not), with `::test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft`.
 
 ### 16.243 Round 37: the converters: one spelling for odd-named folders, the slow-helper fix, and an empty caption's cache identity (2026-11-10, wave B13 round 37 lane E)
 

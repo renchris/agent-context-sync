@@ -12284,6 +12284,26 @@ def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_d
     assert "IT draft" not in summary, "no friction log reads as v7, which has no IT request step"
 
 
+@pytest.mark.parametrize("shown", [True, False], ids=["doctor-shows-the-warn", "no-warn-shown"])
+def test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258(shown: bool) -> None:
+    """B13 round 37 C1258 (built with lane RA's review): the empty-root wait's grant names
+    `` `~/.local/bin/agentsync status` ``'s listable [warn] line in sync and STATE.md, and status's own line
+    below it in status. The Loop line copies the wait: it names Doctor's line when Doctor's section prints
+    it, else status's, with no ``~/`` path either way (a fix is never copied)."""
+    grant = "grant Full Disk Access to agentsync's Python ({})"
+    line = "WAITING ON YOU: the folder of contoso-plans itself lists 0 entries: " + "; ".join(
+        grant.format(form.format(sid="contoso-plans"))
+        for form in (loop.EMPTY_ROOT_GRANT_STATUS, loop.EMPTY_ROOT_GRANT_BELOW)
+    )
+    problems = [("warn", "source.contoso-plans.listable", "lists 0 entries")] if shown else []
+    run = types.SimpleNamespace(facts=types.SimpleNamespace(doctor_problems=problems))
+    out = setup_report._empty_root_grant_in_report(run, line)  # type: ignore[arg-type]
+    whose = "Doctor's" if shown else "status's"
+    pointer = f"{whose} source.contoso-plans.listable [warn] line names the folder and the Python"
+    assert out.count(grant.format(pointer)) == 2, out
+    assert "~/" not in out and "below" not in out, out
+
+
 def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

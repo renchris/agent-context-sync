@@ -16178,6 +16178,50 @@ _LOST_HOLD_IN_DOCTOR = "Doctor's governance.hold [FAIL] line gives the person's 
 the line pairs with it, never says "run status" (B13 round 31 C508; ruling 60). Only when Doctor's section
 prints that [FAIL] line (:func:`_doctor_fail_shown`): else the sync's own words stay, true of status, which
 prints it (B13 round 32 C636; ruling 67)."""
+
+
+@functools.cache
+def _empty_root_grant_re() -> re.Pattern[str] | None:
+    """The empty-root wait's grant pointer, the sync's form (``loop.EMPTY_ROOT_GRANT_STATUS``, naming
+    `` `~/.local/bin/agentsync status` ``) or status's (``loop.EMPTY_ROOT_GRANT_BELOW``), any source id; None
+    when loop cannot be imported or lacks the forms (the report must import even if it is broken)."""
+    try:
+        from agentsync import loop  # noqa: PLC0415 - lazy, as the Loop line's other reads
+
+        forms = (loop.EMPTY_ROOT_GRANT_STATUS, loop.EMPTY_ROOT_GRANT_BELOW)
+    except Exception:  # no pointer to swap
+        return None
+    parts = [form.split("{sid}") for form in forms]
+    return re.compile(
+        "|".join(
+            f"{re.escape(head)}(?P<sid{n}>\\S+?){re.escape(tail)}" for n, (head, tail) in enumerate(parts)
+        )
+    )
+
+
+_EMPTY_ROOT_GRANT_IN_DOCTOR = "Doctor's source.{sid}.listable [warn] line names the folder and the Python"
+"""That pointer as the Loop line says it when the report's Doctor section prints the source's listable
+[warn] line: the report holds that line (B13 round 37 C1258, built with lane RA's review; ruling 67's
+pattern, as :data:`_LOST_HOLD_IN_DOCTOR`)."""
+_EMPTY_ROOT_GRANT_IN_STATUS = "status's source.{sid}.listable [warn] line names the folder and the Python"
+"""The pointer when Doctor's section does not print that line: status's, with no path, since the Loop line
+copies no command's ``~/`` path (a fix is never copied; B13 round 37 C1258)."""
+
+
+def _empty_root_grant_in_report(r: _Run, line: str) -> str:
+    """``line`` with each empty-root grant pointer naming the line the report prints, per source: Doctor's
+    source.<id>.listable [warn] line when its section prints it, else status's, path-free (B13 round 37
+    C1258; lane RA's review)."""
+
+    def swap(m: re.Match[str]) -> str:
+        sid = next(g for g in m.groups() if g is not None)
+        shown = any(t == "warn" and n == f"source.{sid}.listable" for t, n, _ in r.facts.doctor_problems)
+        return (_EMPTY_ROOT_GRANT_IN_DOCTOR if shown else _EMPTY_ROOT_GRANT_IN_STATUS).format(sid=sid)
+
+    rx = _empty_root_grant_re()
+    return line if rx is None else rx.sub(swap, line)
+
+
 _FAIL_STEP_RE = re.compile(r"^NEXT: the (\S+) check failed: ")
 """How rule 1's NEXT opens (``cli._fail_step``): the check's name follows "the"."""
 _FAIL_BELOW = (
@@ -16313,7 +16357,9 @@ def _loop_line(r: _Run) -> str:
         text = _one_bracket(text, f"status when this report was written; {ran}")
     in_doctor = _doctor_fail_shown(r, "governance.hold")  # B13 round 32 C636
     waits = [
-        ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR) if in_doctor else ln
+        _empty_root_grant_in_report(
+            r, ln.replace(_LOST_HOLD_RUN_STATUS, _LOST_HOLD_IN_DOCTOR) if in_doctor else ln
+        )
         for ln in lines
         if ln.startswith("WAITING ON YOU: ")
     ]
