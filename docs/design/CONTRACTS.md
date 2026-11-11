@@ -42504,8 +42504,8 @@ under `LC_ALL=C`, with no jq and no python3; `json_end` writes it last in `on_ex
 `--json` is read by a pre-scan before the option loop (`JSON_RUN`; a word after `--` is SOURCE), so a usage error
 the loop raises is the one JSON line too; its arm records nothing in `ORIG_ARGS`, so the `--list-folders` guard
 still holds. One check, `json_goes_with`, refuses `--json` beside an install run, `--report-only`, `--version`
-and `--help` (`--json works with --list-folders only`, exit 2). U-B17 widens it by adding `--version --help` to
-`JSON_WITH`: the `--version`, `-h`/`--help` and `help` arms already call it, and the message is built from that
+and `--help` (`--json works with --list-folders only`, exit 2). U-B17 widens it by adding `--version` to
+`JSON_WITH` (`--help` stays out while D16 is open): the `--version`, `-h`/`--help` and `help` arms already call it, and the message is built from that
 variable. install.out and install.log are what the same list writes without `--json` (with the whole list, as
 `--all` writes it), so `setup_report.listed_folder_names` still reads the human lines; the tees close fd 8 and 9.
 Amended 2026-11-13, §16.246 C1456: a marked row also carries `"mark"`, its first mark (escaped, kept or twin, as
@@ -42557,7 +42557,7 @@ wrapper that drops `-I -X utf8 -` and runs the real interpreter on a shim file, 
 `scripts/tenant-probes.sh` names its report folder `-o, --output <DIR>` (and `--output=DIR`). `--out` still works
 with any value, prints `warning: --out is deprecated; use --output <DIR>` once on stderr, and is left out of the help.
 `--output -` is a usage error (the folder also holds `deltalinks.json` and the login files), and so is
-`--output json`, `yaml`, `table` or `text` (the script has no JSON output yet). `--config` keeps its name; there is
+`--output json`, `yaml`, `table` or `text` (`--json` gives the JSON output). `--config` keeps its name; there is
 no `-v`. Exit codes are unchanged, 77 and 78 included.
 
 `--help` is the header comment, every line at most 80 columns: `Usage:`, a one-line summary, Options sorted by long
@@ -42821,7 +42821,7 @@ reason, an impact and tests that a scan of tests/ finds.
 | R046, R423 | K47 (B-8.2): install.sh keeps its pinned "the agent" strings and other nouns, and a glossary names each concept instead of a rename. | Two words can name one concept; docs/design/glossary.md says which. | `tests/test_install_help.py::test_glossary_lists_meaning_identity_and_banned_synonyms` |
 | R343 | Found checking the critic's "pagination is N/A" note: `hold --list` is a short local list, so it has no `--limit` or paging. | Every hold prints. | `tests/test_cli_modes.py::test_hold_list_prints_each_hold_and_the_count_on_stdout` |
 | R146, R002, R148 | K4, kept by the keep packet's consent spellings: purge, `purge --queue` and compact-history ask nothing, and `-y, --yes` is accepted with no effect; C-2's gate is not built. | A purge runs with no prompt; `--dry-run` is the preview. | `tests/test_cli_parser.py::test_short_y_equals_long_yes` |
-| R172 | K12, kept by the keep packet's exit codes: login has no refusal when no terminal is attached, since one would change its exit in such a run; it gains only `--no-open` and a broker deadline. | A login run with no terminal still tries the browser. Pins: login runs the sign-in ladder with no terminal check. | `tests/test_cli.py::test_login_runs_the_sign_in_ladder_and_reports_the_method` |
+| R172 | K12, kept by the keep packet's exit codes: login has no refusal when no terminal is attached, since one would change its exit in such a run; it gains only `--no-open`. | A login run with no terminal still tries the browser. Pins: login runs the sign-in ladder with no terminal check. | `tests/test_cli.py::test_login_runs_the_sign_in_ladder_and_reports_the_method` |
 | R326 | K66 and D37, undecided, kept by the keep packet's exit codes: `hold --release` of nothing still exits 1 with a failed error line. | A script that releases twice sees exit 1 the second time. | `tests/test_cli_json.py::test_hold_json_shape` |
 | R244 | D15, ruled Option B on 2026-11-07: `--json` works on `--list-folders` and `--version` only; an install run and `--report-only` answer usage_error, because the heartbeat that keeps coding tools from stopping a silent command needs stdout. | `install.sh --json` on an install run exits 2. | `tests/test_install_json.py::test_json_elsewhere_is_a_usage_error` |
 | R015, R064 | D18, ruled Option B on 2026-11-07: a stray SOURCE writes nothing, but `--source-local`, `--launcher` and environment-value usage errors still write the report, so a bad folder's field report is kept. | Those usage errors leave a report and a NEXT line behind. | `tests/test_install_parser.py::test_every_bad_source_local_is_named` |
@@ -42836,3 +42836,5 @@ reason, an impact and tests that a scan of tests/ finds.
 | R070, R074, R344 | C-12.3 Part 2 and C-12.4's rejections not built under the keep packet's exit codes: tenant-probes' bad `--python` stays exit 1, and `--dry-run --selftest`, `--max-pages 0` and `--max-bytes 0` are accepted. | A wrong `--python` reads as a run failure, not a usage error. | `tests/test_tenant_probes.py::test_two_interpreter_failures_have_two_messages` |
 | R050 | Caller kept in U-B1a: `doctor` prints no deprecation line under install.sh's NEXT hint variable, which a pinned test holds silent; B-1.3 asked every hidden legacy name to warn. | Under install.sh, doctor says nothing about being a legacy name. | `tests/test_cli.py::test_status_honours_no_next_hint` |
 | R079 | Caller kept in U-B1a: the root help's `environment:` block names `AGENTSYNC_CONFIG` without "--config wins", because `--config` is pinned hidden from root help. | Root help does not say the option beats the variable. | `tests/test_cli.py::test_graph_verbs_it_request_and_config_are_hidden_but_parse` |
+| R019 | Caller kept in U-C5 (K12): the broker rung's deadline is not built, since it would move every default sign-in's broker call onto a background thread and the macOS broker dialog may need the main thread; only a run against a real broker could show that safe. | A broker dialog left open has no deadline of login's own; `--no-open` skips the broker. Pins: `--no-open` prints the URL only and skips the broker rung. | `tests/test_graph_auth.py::test_no_open_prints_the_url_only` |
+| R087 | Caller kept in U-C11 (K43): install.sh's short help opens with its one-line summary and then Usage, not Usage first, because the deploy-pack test pins help stdout's first line. | `--help` starts `agentsync installer`, with Usage on the lines after it. | `tests/test_deploy_pack.py::test_install_help_exits_zero` |

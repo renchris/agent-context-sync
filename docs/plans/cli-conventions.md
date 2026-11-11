@@ -587,6 +587,10 @@ until U-B12 calls them.
   - `hold: --owner (the records/legal owner) is required` (:4036)
   - `hold: --reason is required to set a hold`
   - `--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE` (:1295)
+  - SUPERSEDED (2026-11-12): B13 round 37 C1263 (a130f74c2) renamed the metavars these texts quote, so the code now
+    reads `<SELECTOR>`, `<TIME>`, `<SCOPE>` and `<SOURCE>` (`purge: pass <SELECTOR> or --queue, not both`,
+    `hold: <SCOPE> ('all' or a source id) is required`, `accept-deletions <SOURCE>`); C1262 with C1303 (97bf4344c)
+    made purge's late no-selector check an assert behind `_purge_usage`. The quotes above are the 2026-11-07 texts.
 - Add these conflicts, each naming both options:
   - `hold --list` with SCOPE, `--release`, `--reason` or `--owner`
   - `hold --release` with `--reason`
@@ -2580,3 +2584,117 @@ claim, the row says so. Helper files written, all under `/tmp/cli-bp/`: `acs_r2_
 - New units: U-A2, U-B7 to U-B17, U-C1b, U-C8b, U-C9 to U-C13, U-C14a, U-C14b, U-C15 to U-C17. Split: U-A1. Folded: K70 into U-B2, K66 into U-C6.
 - New decisions: D10-D39, with decisions 2, 3 and 9 of the round 1 list corrected.
 - Size (estimated): ~10,900 LOC recommended (round 1: ~4,375), and ~14,530 with every option (round 1: ~5,785). Every unit is under 500.
+
+## 8. Execution record (2026-11-06 to 2026-11-11)
+
+Built by in-session teammates, one worktree per unit, landed by the lead with `scripts/ship-land.sh`. "queued" means
+built and gate-green on the stacked branch but not yet on trunk; the lead fills its sha when it lands. Wave C was
+triaged under decision packet ad226c7513ea, whose default (keep) governed it: exit codes, JSON shapes, consent
+spellings, preview-by-default, default stdout and error prefixes stay unless a ruling chose the change. New opt-in
+verbs and options were treated as additive, and help text as editable.
+
+| Unit | Status | Sha | Note |
+|---|---|---|---|
+| U-0 | landed | 2837f4594 | CONTRACTS §16.300 stubs reserved, with the plan. |
+| U-A1a | landed | b972ac91c | clio's stream, mode and signal layer. |
+| U-A1b | landed | 820c69dd | clio's JSON documents, `confirm` and `bug_report`. |
+| U-A2 | landed | 7c4f775e6 | install.sh's closed-stdout handling and JSON routing layer (fd 9/8 behind `JSON_RUN`). |
+| U-B1a | landed | 9393c37b | Usage checked first, abbreviations refused, hints name their noun. |
+| U-B1b | queued | | cli.py on clio: signals, closed pipes, runnable fixes; "Nothing was changed" only for reads, other interrupted commands say "Stopped." (R294). |
+| U-B2 | landed | feedd8ef | fsutil, atomic writes, locked holds file; carries its CLI half, so a failed push never exits 0. |
+| U-B3 | landed | b76ce5f21 | Remote text sanitized at its source; one login-hint spelling. |
+| U-B4 | queued | | Opt-in `--json` for errors, status, curate and sync. |
+| U-B5 | queued | | `--json` documents for every other command. |
+| U-B6 | done, no code | | K15 measured: `--version` 0.28 to 0.97 s under load, `import agentsync.cli` 838 ms; over 200 ms, kept (packet 23118d0a47d3). |
+| U-B7 | landed | 798fa709 | install.sh help, `=` forms, `--` terminator, a checkout that must be agentsync. |
+| U-B8 | landed | 9e2ec5bd | install.sh help names no test seam; glossary; what the list writes. |
+| U-B9 | queued | | Bounded downloads and syncs (first sync 3600 s, status 900 s, uv installer 900 s); launcher swap keeps the old one. |
+| U-B10 | queued | | A stop reaches the whole running tree; a refused kickstart is named. |
+| U-B11 | queued | | Folder list takes `--all` and `--limit`; odd names print escaped. |
+| U-B12 | queued | | `--json` on the folder list. |
+| U-B13 | landed | fb399c59 | tenant-probes test harness, a dry run that writes nothing, `=` forms, `--version`. |
+| U-B14 | landed | cacd160e | tenant-probes help that fits, rewritten error lines, remote text cleaned. |
+| U-B15 | queued | | tenant-probes one-line failures, clean stop on signals, atomic locked store; about 606+/81- (past the 500 sizing), kept as one green commit. |
+| U-B16 | queued | | tenant-probes `--json` for every outcome. |
+| U-B17 | queued | | install.sh `--version --json`; `--help` wins in either order. B-17.2 not built: D16 open (KISS K17). |
+| U-C1 | queued, narrowed | | Built (b) `help` verb, (c) `--version` at any depth, (e) 80-column help, K69 grouping and examples. Skipped (a) and (d): keep packet and D13. |
+| U-C1b | queued | | `--help --json`, `help --all --json`, `help search`, hidden `--fields`. |
+| U-C2a | queued, narrowed | | `-y/--yes` on purge and compact-history, accepted and ignored; step 2 skipped (it rewrites default output for a flag with no effect). |
+| U-C2b | skipped | | K4's consent gate changes purge's exit code; kept out by the keep packet (K4 not chosen). |
+| U-C3 | queued | | Catch-all bug report instead of a traceback; job log keeps the traceback (D34 A). |
+| U-C4a/b | queued, narrowed | | Tests only: output modes and widths pinned as they are. Stream moves not built: K1 open. |
+| U-C5 | queued, narrowed | | `login --no-open` only. Broker-rung deadline not built (see Conflicts); non-interactive refusal skipped: K12 open. |
+| U-C6 | skipped | | K6 option (b) already on trunk; K66 is D37, open. |
+| U-C7 | skipped | | D13 open, kept B. |
+| U-C8 | skipped | | K16 open (frozen surface). |
+| U-C8b | skipped | | D36 open, kept B. |
+| U-C9 | queued, narrowed | | uv installer pinned to 0.12.17 with its SHA-256 (D22 A), synopsis line for `--report-only`; no dry-run hash line (D14 B); C-9.1 rejections and C-9.3 skipped. |
+| U-C10 | queued | | install.sh `--timeout`, `--debug`, `--cwd`, `--non-interactive` (D21 B); `--dry-run` and `--config` stay usage errors. |
+| U-C11 | queued | | install.sh short help ending at `# -- end of help --` (D29 B re-point). |
+| U-C12 | queued, narrowed | | C-12.2 with D33 A (an unfinished probe exits 1), C-12.3 Part 1 doc line, `--max-downloads 0` text. C-12.1 (D32), C-12.3 Part 2 and C-12.4 rejections skipped. |
+| U-C13 | queued, lands last | | §16.300.30 exceptions record and its test, one row per kept conflict; R151 row dropped (C-2 gate not built). |
+| U-C14a | skipped | | D14 ruled B. |
+| U-C14b | skipped | | D28 ruled B. |
+| U-C15 | skipped | | D38 open, kept B. |
+| U-C16 | skipped | | D10 open, kept B. |
+| U-C17 | skipped | | D17 ruled B; D20 open. |
+| U-docs | queued | | This section and two current CONTRACTS lines. |
+
+Wave C triage: 5 built, 6 narrowed, 10 skipped.
+
+**Conflicts recorded** (a caller, a pinned test or a repo rule won; each also has a row in CONTRACTS §16.300.30 where
+it keeps a guideline rule):
+- U-A2: fd 9/8 routing sits behind `JSON_RUN=0`, because an unconditional exec would hand caller pipes to every
+  child; U-B12 turns it on. `--version` had the same closed-stdout exposure as `--help` (closed in U-B17).
+- U-B2: the dataclass stub scanner forced one `PurgeReport` line outside §16.300.3; `record_holds` re-reads
+  holds.json after the lock instead of taking a possibly stale list; `_holds_lock` takes no lock when the folder cannot
+  be opened, so existing error words stay. A new SKILL.md or info/exclude is now mode 0600.
+- U-B7: a launcher test forbids "SOURCE " in help, so the header says "a path that is no agentsync checkout or wheel";
+  `--source-local=F` is canonicalized because bash 3.2's `%q` can quote the whole word; a help line was rewrapped
+  because a line starting `[FAIL]` trips a oneshot test.
+- U-B1a: "--config wins" left out of root help (`--config` is pinned hidden); `doctor` stays silent under the NEXT
+  hint (pinned); `purge --queue --push` refused; `hold --reason`/`--owner` keep no metavar.
+- U-B14: B-14.4 and B-14.5 disagreed on stdout at failure; B-14.5 followed (nothing on stdout, D32 keeps the exit 0
+  `report:` line). U-B13's own new tests re-pinned for the rewritten messages.
+- U-B9: README.md:526 is setup-prompt text, so the command-timeout sentence went only into install.sh's header (lead
+  ruling). `with_timeout` waits with stderr at /dev/null and passes the caller's stderr on fd 4, so bash 3.2 prints no
+  "Terminated: 15".
+- U-B8 against a trunk test: the longer header moved a sentence out of a fixed line window; the test now reads the
+  whole header comment block (caller kept, window made robust).
+- U-B11: steps 4-5's `$'...'` form lost to B13 round 36's escaped form (about 15 assertions); its predicate was widened
+  to bidi and zero-width code points instead.
+- U-C1: purge `--reason`'s choices were one 87-column token, so options with choices show a metavar and list the
+  choices in their help; leaf pages keep the full exit codes block; one pinned line break in `_EPILOG` kept.
+- U-C5: the broker-rung deadline (`acquire_token_interactive` on a daemon thread, R019) was not built: it moves every
+  default sign-in off the main thread, the macOS broker dialog may need it, and only a real broker run could verify it.
+- U-C11: a deploy-pack test pins help stdout starting `agentsync installer`, so the one-line summary stays first, then
+  Usage (the plan said Usage first).
+
+**Notes** (what a later reader should expect):
+- clio: `result` flushes every line; `signals()` leaves an already-ignored signal alone and does nothing off the main
+  thread; `confirm` takes `noun="target"`; `bug_report` writes through `say`, so it prints nothing in JSON mode and
+  callers write `error_doc(internal_error)` themselves.
+- `_first_line` in graph/auth.py is sanitized for all its callers, not only the one B-3 named.
+- install.sh's last error reads `usage error: --source-local is not an existing folder: <path>`; stderr still names it.
+- `--json`: `--help` beats `--version` only with `--json`; `data.remote` is none for reads; a command whose result
+  carries its own failure (purge verify or push, compact verify, offboard errors, incomplete discover, accept-deletions
+  run) writes its document at any exit and no error line, as sync does; `whoami` signed out is `login_required`.
+- tenant-probes `--json` reasons: usage, not_signed_in, sign_in_blocked, config_invalid, client_id_unset,
+  network_policy, failed, canceled, internal_error; `--help --json` is `{usage, options, text}`.
+- install.sh `-v` stays unassigned (D12); `JSON_WITH` is ` --list-folders --version `.
+- A stop under `WAIT_CHILD` sends TERM to the whole process tree, since agentsync sits two levels down.
+- `--fields` is hidden and in `CLI_GLOBAL_OPTIONS`; D12's open list of globals does not name it.
+- U-C3's `_in_job` counts a run whose config does not load as a job run, so an `init` that crashes early also logs
+  the traceback.
+- install.sh `--list-folders` refuses `--timeout`, `--cwd`, `--debug` and `--non-interactive` (exit 2, the R061
+  carve-out); with `--cwd`, a relative SOURCE, `--launcher` or `--source-local` is recorded as absolute.
+- A setup-report doctor test failed on trunk alone at load about 285; it was load, not U-B7, and the retry passed.
+- Rulings of 2026-11-07 used here: D14 B, D15 B, D17 B, D18 B, D22 A, D24 B, D26 B, D27 A, D28 B, D29 B, D31 B,
+  D33 A, D34 A, K6 (b).
+- B13 round 37 sent its shas for the usage-error quotes above: C1263 a130f74c2, C1262 with C1303 97bf4344c (marked
+  SUPERSEDED there).
+
+**Fixed:** docs/deploy/tenant-probes.md's exit-78 row (from U-B13, fb399c59) promised a report for an invalid config;
+it now says which case writes one (B13 round 37 C1305, C1282), queued after U-C12.
+
+**Keep packets:** 32 class-B packets kept each open decision's current behavior: K1 aff24873e5fd, K6 1847a8d7ae06, K12 d98daba8a445, K15 23118d0a47d3, K16 2e273b5a0bfa, D12 82c28db9db8b, D14 fe07a24a5f6c, D15 1d441d4c0ad9, D16 0511eb7c21ca, D17 f942238b393e, D18 832e74c191fe, D19 ecb6b272824f, D20 2f98944b1c99, D21 7d888497ce27, D22 054e35ab3b13, D23 215abbfc453b, D24 c7c970c9410f, D25 bf02646937ea, D26 0753c1840df2, D27 92b20b392ec1, D28 d7e1555a1e58, D29 c7a6a0ca9ea2, D30 3ea8732fe46c, D31 1c76ea199d90, D32 36ae7c47d7d0, D33 6c36b7d4998f, D34 501065c79222, D35 98b81c267b92, D36 fcfdd1da235e, D37 753c36ed4382, D38 00e3a4cf9890, D39 b3df9e7f4b12; decision packet ad226c7513ea's default (keep) governed Wave C.
