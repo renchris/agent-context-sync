@@ -42278,7 +42278,20 @@ help included, under `FORCE_COLOR=1`, `TERM=dumb` or `NO_COLOR=1`. A closed pipe
 
 #### 16.300.12 U-C5: login without a terminal
 
-Reserved.
+`graph login` and the hidden `login` take `--no-open` (only those two: `logout`, `whoami` and `discover` do not
+sign in, so `_graph_options` is unchanged and a login-only `_login_options` adds it). It calls
+`MsalAuth.login(_out, open_browser=False)`, which skips the broker rung and builds no broker app, prints no "Opening
+the system browser" line, and runs the loopback rung with an `auth_uri_callback` that prints only `Open this URL in a
+browser on this Mac to sign in (waiting up to <N>s): <url>` through login's current printer (`_out`; C-4 is not
+built). MSAL calls that callback only when `webbrowser.open` reports that no browser opened, so for the length of the
+loopback call a context manager makes `webbrowser.open` return False, and its `finally` block puts the real function
+back. The success line stays last and unchanged. C-5's broker deadline (`acquire_token_interactive` on a thread
+joined with `interactive_timeout_s`) is not built: it would move every default sign-in's broker call off the main
+thread, the macOS broker dialog may need the main thread, and only a run against a real broker could show a
+background thread is safe, so the broker call stays on the main thread as before. The non-interactive refusal (exit
+77) and a URL line on the default loopback rung are not built either: K12 is kept. Test:
+`tests/test_graph_auth.py::test_no_open_prints_the_url_only`; the `graph` and `login` entries of `CLI_SURFACE` in
+`tests/test_contracts.py` pin `--no-open`.
 
 #### 16.300.13 U-A2: install.sh stream layer
 

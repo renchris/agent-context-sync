@@ -15,6 +15,7 @@ import logging
 import ssl
 import stat
 import tomllib
+import webbrowser
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1009,6 +1010,38 @@ def test_broker_redirect_uri_missing_falls_through_to_loopback(
     status = auth.login(lambda m: None)
     assert status.sign_in_method == "loopback"
     assert any(BROKER_REDIRECT_URI in r.getMessage() for r in caplog.records)
+
+
+def test_no_open_prints_the_url_only(
+    apps: list[FakeApp], settings: AuthSettings, broker_ok: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``login --no-open``: no broker app is built, no browser opens, and the sign-in URL is the only line;
+    ``webbrowser.open`` is itself again afterwards."""
+    opened: list[str] = []
+
+    def browser(url: str, new: int = 0, autoraise: bool = True) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", browser)
+    auth = MsalAuth(settings)
+    loopback = auth._app()
+    faked = loopback.acquire_token_interactive
+    uri = f"https://login.microsoftonline.com/{TID}/oauth2/v2.0/authorize?prompt=select_account"
+
+    def like_msal(scopes: list[str], **kwargs: Any) -> dict[str, Any]:
+        if not webbrowser.open(uri):  # msal.oauth2cli.authcode: the callback runs only when no browser opened
+            kwargs["auth_uri_callback"](uri)
+        return faked(scopes, **kwargs)
+
+    monkeypatch.setattr(loopback, "acquire_token_interactive", like_msal)
+    emitted: list[str] = []
+    status = auth.login(emitted.append, open_browser=False)
+    assert [a.broker for a in apps] == [False]
+    assert opened == []
+    assert emitted == [f"Open this URL in a browser on this Mac to sign in (waiting up to 5s): {uri}"]
+    assert status.sign_in_method == "loopback"
+    assert webbrowser.open("https://example.com/") and opened == ["https://example.com/"]
 
 
 def test_msal_disabling_the_broker_falls_through(

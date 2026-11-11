@@ -648,6 +648,15 @@ def _graph_options(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _login_options(p: argparse.ArgumentParser) -> None:
+    """Options only the parsers that sign in carry (`graph` and the hidden `login` alias)."""
+    p.add_argument(
+        "--no-open",
+        action="store_true",
+        help="login: skip the broker and open no browser; print the sign-in URL to open on this Mac",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Return the argparse parser for every subcommand."""
     parser = _Parser(
@@ -786,6 +795,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("graph", "Microsoft Graph sign-in: login | logout | whoami | discover", _cmd_graph, hidden=True)
     p.add_argument("action", choices=["login", "logout", "whoami", "discover"])
     _graph_options(p)
+    _login_options(p)
     for name, text in (
         ("login", "sign in to Microsoft Graph: broker, then browser (PKCE), then device code if allowed"),
         ("logout", "remove the cached Graph sign-in (same as `graph logout`)"),
@@ -794,6 +804,7 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         _graph_options(add(name, text, _cmd_graph, hidden=True))
         sub.choices[name].set_defaults(action=name)
+    _login_options(sub.choices["login"])
 
     # KISS K11a: background sync is optional and operator-owned (docs/deploy), so both are hidden; the
     # intervals come from sources.toml and the Time Machine exclusions always apply.
@@ -4487,7 +4498,12 @@ def _cmd_graph(args: argparse.Namespace) -> int:
     config = _config(args)
     auth = graph_auth.MsalAuth(graph_auth.settings_from_config(config))
     if action == "login":
-        status = auth.login_device_code(_out) if args.device_code else auth.login(_out)
+        if args.device_code:
+            status = auth.login_device_code(_out)
+        elif args.no_open:
+            status = auth.login(_out, open_browser=False)
+        else:
+            status = auth.login(_out)
         _out(
             f"signed in as {status.username} (tenant {status.tenant_id}; method "
             f"{status.sign_in_method or 'unknown'}; token source {auth.last_token_source or '-'}; cache "

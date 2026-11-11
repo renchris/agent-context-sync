@@ -45,7 +45,9 @@ import logging
 import platform
 import re
 import sys
-from collections.abc import Callable, Iterable, Mapping
+import webbrowser
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -633,6 +635,22 @@ class _FallThrough(Exception):  # noqa: N818 - internal control flow for the sig
     """A sign-in rung could not run; the ladder tries the next one."""
 
 
+@contextmanager
+def _no_browser() -> Iterator[None]:
+    """``login --no-open``: MSAL calls ``auth_uri_callback`` only when ``webbrowser.open`` reports that no
+    browser opened, so for the length of the loopback call it reports exactly that; restored afterwards."""
+    real = webbrowser.open
+
+    def refuse(url: str, new: int = 0, autoraise: bool = True) -> bool:
+        return False
+
+    webbrowser.open = refuse
+    try:
+        yield
+    finally:
+        webbrowser.open = real
+
+
 class MsalAuth:
     """TokenProvider backed by ``msal.PublicClientApplication`` and a persisted token cache."""
 
@@ -738,9 +756,11 @@ class MsalAuth:
 
     # -- interactive sign-in ----------------------------------------------------------------------------
 
-    def login(self, emit: Callable[[str], None]) -> AuthStatus:
+    def login(self, emit: Callable[[str], None], *, open_browser: bool = True) -> AuthStatus:
         """Interactive sign-in ladder: broker, then loopback auth code + PKCE, then device code (only when
         ``allow_device_code``).  ``emit`` receives user-facing progress lines; blocks until done.
+        ``open_browser=False`` (``login --no-open``) skips the broker and opens no browser: the loopback
+        rung only emits the sign-in URL.
 
         Raises AuthBlockedError / AuthRequiredError / AuthError with the AADSTS code and its action.
         """
@@ -750,7 +770,7 @@ class MsalAuth:
             (SIGN_IN_LOOPBACK, self._loopback_rung),
         ):
             try:
-                app, result = rung(emit)
+                app, result = rung(emit, open_browser)
             except _FallThrough as why:
                 logger.warning("sign-in: %s rung skipped: %s", method, why)
                 skipped.append(f"{method}: {why}")
@@ -766,8 +786,10 @@ class MsalAuth:
         emit("Falling back to device-code sign-in ([graph] allow_device_code = true).")
         return self._device_code(emit)
 
-    def _broker_rung(self, emit: Callable[[str], None]) -> tuple[Any, dict[str, Any]]:
+    def _broker_rung(self, emit: Callable[[str], None], open_browser: bool) -> tuple[Any, dict[str, Any]]:
         """Rung 1: the macOS broker (Company Portal SSO extension)."""
+        if not open_browser:
+            raise _FallThrough("skipped by --no-open")
         reason = self.broker_unavailable_reason()
         if reason is not None:
             raise _FallThrough(reason)
@@ -796,20 +818,24 @@ class MsalAuth:
             raise _FallThrough(_describe_error(result, during="broker sign-in"))
         raise _error_for(result, during="broker sign-in", consent_url=self._consent_url())
 
-    def _loopback_rung(self, emit: Callable[[str], None]) -> tuple[Any, dict[str, Any]]:
-        """Rung 2: auth code + PKCE in the system browser, redirect http://localhost:<port>."""
+    def _loopback_rung(self, emit: Callable[[str], None], open_browser: bool) -> tuple[Any, dict[str, Any]]:
+        """Rung 2: auth code + PKCE in the system browser, redirect http://localhost:<port>; with
+        ``open_browser=False`` no browser is opened and the URL is only emitted."""
         app = self._app(broker=False)  # unreachable identity platform: device code would fail too -> raise
-        emit(f"Opening the system browser to sign in (redirect {LOOPBACK_REDIRECT_URI})...")
         timeout = self._settings.interactive_timeout_s
+        if open_browser:
+            emit(f"Opening the system browser to sign in (redirect {LOOPBACK_REDIRECT_URI})...")
+            told = "No browser could be opened; visit this URL on this Mac: "
+        else:
+            told = f"Open this URL in a browser on this Mac to sign in (waiting up to {timeout}s): "
         try:
-            result: dict[str, Any] = app.acquire_token_interactive(
-                list(self._settings.scopes),
-                prompt="select_account",
-                timeout=timeout,
-                auth_uri_callback=lambda uri: emit(
-                    f"No browser could be opened; visit this URL on this Mac: {uri}"
-                ),
-            )
+            with nullcontext() if open_browser else _no_browser():
+                result: dict[str, Any] = app.acquire_token_interactive(
+                    list(self._settings.scopes),
+                    prompt="select_account",
+                    timeout=timeout,
+                    auth_uri_callback=lambda uri: emit(told + uri),
+                )
         except RuntimeError as exc:  # BrowserInteractionTimeoutError, "Timeout. No auth response arrived."
             raise _FallThrough(
                 f"the browser sign-in did not complete within {timeout}s ({_first_line(exc)})"

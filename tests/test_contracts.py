@@ -83,8 +83,14 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
     },
     "hidden": {
         "setup-report": ["--out (hidden)"],
-        "graph": ["action{login,logout,whoami,discover}", "--device-code (hidden)", "--url", "--toml"],
-        "login": ["--device-code (hidden)", "--url", "--toml"],
+        "graph": [
+            "action{login,logout,whoami,discover}",
+            "--device-code (hidden)",
+            "--url",
+            "--toml",
+            "--no-open",
+        ],
+        "login": ["--device-code (hidden)", "--url", "--toml", "--no-open"],
         "logout": ["--device-code (hidden)", "--url", "--toml"],
         "whoami": ["--device-code (hidden)", "--url", "--toml"],
         "discover": ["--device-code (hidden)", "--url", "--toml"],
