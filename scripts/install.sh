@@ -334,7 +334,7 @@
 # Dry run: AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something and changes nothing (no
 # log, no install.out, no report, no friction-log line); its NEXT: line says to re-run without it. With
 # --log-start or --log it prints one "dry run:" line instead, and exits 0.
-SETUP_PROMPT_COMPAT=35 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=36 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log

@@ -39842,6 +39842,12 @@ tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback.md'
 rehearses the prompt the operator will paste. Tests: `test_readme_step1_says_a_marked_row_cannot_be_chosen` (the mark
 read from install.sh's own constant), `test_the_prompt_text_changes_only_with_its_version`,
 `test_readme_prompt_compat_matches_the_installer`.
+Amended 2026-11-10, §16.244 C1275: the prompt is v36. Step 1's sentence names both rename marks, `[name holds a control
+character: rename it to sync it]` and `[name reads as another folder there: rename one of them to sync it]`, and after
+the rename runs `install.sh --list-folders` again, never `step 1 again`, whose command ends in `--log-start` and opens a
+new attempt; a row that opens with `[name holds a control character]` is a kept folder; and a NEXT's own
+`--source-local` command for a marked folder is run as given (ruling 121). No step moves, so v36 is read with v7's
+layout too.
 
 **The guide says a sourceless id purge takes the release of the hold its id reaches** (C1047, ruling 116; amends
 §16.232 C980; docs only). setup-feedback.md's step 1 sentence said a lost purge with no source "asks for a dry run
@@ -40560,6 +40566,33 @@ step 1 shows a folder name's newline as `\n` and every other control character a
 take a `\t` row for a real backslash and a t. K59 now says a newline, tab or carriage return shows as `\n`, `\t` or
 `\r` and other control characters as `?`, and its look-alike can hold any of the four. Test:
 `test_k59_gives_each_escape_step_1_shows_c1281`, which reads the three escapes and the `?` arm from `LIST_ESC_AWK`.
+
+**Setup prompt v36: a step 1 row is choosable exactly when step 2 takes it** (C1275 with C1201, C1242, C1308 and C1309,
+ruling 121; amends §16.239 C1072). Lane RB's ruling 121 commit marks both rows of a twin pair, the plain one with
+install.sh's `TWIN_MARK`, `[name reads as another folder there: rename one of them to sync it]`, and opens an escaped
+kept row with `ESCAPED_KEPT_MARK`, `[name holds a control character]`, which tells no one to rename; v35's step 1 named
+only `ESCAPED_MARK`, so a twin's plain row read as choosable and a kept row as one to rename (C1242, C1308, C1201). v35
+also said to run step 1 again after the rename: step 1's one command ends in `--log-start`, which opens a new attempt
+every time, so the report split one session in two and judged the first as stopped at step 1 (C1275). Step 1 now says a
+row that opens with either rename mark cannot be chosen; if the person wants that folder, the agent tells them to rename
+it in its sync app (for the twin mark, it or the other folder it reads as) and, once they say it is renamed, runs
+`~/src/agent-context-sync/scripts/install.sh --list-folders` again, never step 1's whole command, and goes by what it
+prints; a row that opens with the kept mark and then [synced] or [inside a synced folder] is a folder this Mac already
+syncs. Step 1's whole command runs again only where its chain broke before `--log-start` (the three git recoveries) and
+where `--log-start` refused the pasted copy and so left no attempt open (`run it again once, exactly as written here`;
+install.sh's two `as the prompt writes it` lines). C1309: the rule that a marked row cannot be chosen read as forbidding
+the `--source-local $'...'` command step 1's NEXT gives for a marked folder whose [[source]] block is gone, which
+restores the source under its old id; the prompt now says that command is the fix, run as given if the person names that
+folder, never the marked row pasted. Dropping the installer's command instead makes things worse (a rename can give the
+folder another source id), so install.sh's add-back clause, `one --source-local $(shown_arg "$vreal")`, stays. Version
+36 everywhere the bump list names it (README block and its digest in `PROMPT`, `SETUP_PROMPT_COMPAT`,
+`setup_report.PROMPT_VERSION`, the form's placeholder, the version pins in tests/test_install_oneshot.py and
+tests/test_setup_report.py, setup-feedback.md's version lines and K60), so round 38 rehearses the prompt the operator
+will paste; `CUT_OFF_TOLD` names no version and is unchanged. Tests:
+`test_readme_step1_says_a_marked_row_cannot_be_chosen` (all three marks read from install.sh's own constants, and the
+refusals' `--list-folders again`), `test_only_the_closed_prompt_copy_path_reruns_step_1_after_its_log_start_c1275`,
+`test_readme_lets_a_nexts_own_add_back_command_take_a_marked_folder_c1309`,
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 

@@ -1176,7 +1176,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (35, "af83aed07dae2440ffb335ba43f8d0bb10f9f592503422dbe56057cbc28b73c3")
+PROMPT = (36, "5c8aa8b23fb8a9761e45930d855c1940ddce02f094c00a6ef6cdd91ecc1acfde")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3614,12 +3614,15 @@ RB's C834); "if this Mac was busy", "I may" and "do not run it again yourself" s
 MIRRORED_NO_BLOCK = (
     "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
     " me what it says (which folder, or how many sources) and the fix it names, and add that folder again"
-    " only if I name it."
+    " only if I name it: if that line gives a --source-local command for a folder whose row is marked, that"
+    " command is the fix, so run it as given if I name that folder, and never paste the marked row."
 )
 """Step 1's words, since v25, for the list's tail on a source the manifest still mirrors whose [[source]]
 block is gone (B13 round 16 T6, T30): v24 had none, and the list said "(none is needed)" while step 2's
 status FAILed on it. Before the two exceptions, so both lists' tails reach it; the re-add stays the
-person's to choose, since deleting a block may have been a deliberate stop."""
+person's to choose, since deleting a block may have been a deliberate stop. Since v36 (B13 round 37
+C1309, ruling 121) the NEXT's own --source-local command for a marked folder is the fix, never the marked
+row pasted."""
 
 CONFIG_STOP_TOLD = (
     "If it says step 2 stops on something, tell me what it names and whose fix it says that is (mine, or the"
@@ -3736,33 +3739,95 @@ command."""
 ESCAPED_ROW_MARK = "[name holds a control character: rename it to sync it]"
 """The mark --list-folders writes, with one space, before a folder row it shows escaped (lane RB's
 ESCAPED_MARK, B13 round 36 ruling 113)."""
+TWIN_ROW_MARK = "[name reads as another folder there: rename one of them to sync it]"
+"""The mark before a plain row whose name is another folder's escaped form there (lane RB's TWIN_MARK, B13
+round 37 ruling 121)."""
+KEPT_ROW_MARK = "[name holds a control character]"
+"""The mark before an escaped row already kept, [synced] or [inside a synced folder] (lane RB's
+ESCAPED_KEPT_MARK, B13 round 37 ruling 121)."""
+V36_RENAME = (
+    f"A row that opens with {ESCAPED_ROW_MARK} or {TWIN_ROW_MARK} cannot be chosen: if I want that folder,"
+    " tell me to rename it in its sync app (for the second mark, it or the other folder it reads as); once"
+    f" I say it is renamed, run {INSTALL_SH} --list-folders again (not step 1's whole command, which opens a"
+    " new attempt) and go by what it prints."
+)
+"""Step 1's v36 sentence on the two rename marks (B13 round 37 ruling 121: C1201, C1242, C1308, C1275)."""
 
 
 def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
     """B13 round 36 C1072 (ruling 113, prompt v35): step 1 showed a folder whose name holds a control
     character escaped (a newline shown as backslash-n, others as `?`), so its row could not be pasted into
     --source-local, and beside a look-alike folder it named that other one, which step 2 synced. install.sh
-    now marks such a row and refuses it at --source-local; the prompt says, in one sentence, that a marked
-    row cannot be chosen and that the person renames that folder in its sync app before step 1 runs again.
-    The mark is the installer's own constant."""
+    marks such a row and refuses it at --source-local. B13 round 37 ruling 121 (prompt v36: C1201, C1242,
+    C1308 with C1275): a plain look-alike of such a folder was listed unmarked and refused with words false
+    for it, and a kept folder was told to rename. Both rename marks are named as rows that cannot be chosen,
+    a rename is followed by --list-folders alone, never step 1's whole command, and the kept mark reads as a
+    kept folder. The marks are the installer's own constants."""
     step1 = _prompt_steps()[1]
-    said = (
-        f"A row that opens with {ESCAPED_ROW_MARK} cannot be chosen: if I want that folder, tell me to"
-        " rename it in its sync app, then run step 1 again."
+    kept = (
+        f"A row that opens with {KEPT_ROW_MARK} and then [synced] or [inside a synced folder] is a folder"
+        " this Mac already syncs, kept as the first exception below says."
     )
-    assert said in step1
-    assert step1.index("Otherwise show me the folders and ask which to sync") < step1.index(said)
-    assert step1.index(said) < step1.index("Two exceptions.")
+    assert V36_RENAME in step1 and kept in step1
+    assert step1.index("Otherwise show me the folders and ask which to sync") < step1.index(V36_RENAME)
+    assert step1.index(V36_RENAME) < step1.index(kept) < step1.index("Two exceptions.")
+    assert "then run step 1 again" not in step1
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    [mark] = re.findall(r"^ESCAPED_MARK=([\"'])(.*?)\1", script, flags=re.MULTILINE)
-    assert mark[1].rstrip(" ") == ESCAPED_ROW_MARK, mark
-    # a usage error, never a silent escaped spelling, and it says to rename the folder (lane RB's words)
+    for name, words in (
+        ("ESCAPED_MARK", ESCAPED_ROW_MARK),
+        ("TWIN_MARK", TWIN_ROW_MARK),
+        ("ESCAPED_KEPT_MARK", KEPT_ROW_MARK),
+    ):
+        [mark] = re.findall(rf"^{name}=([\"'])(.*?)\1", script, flags=re.MULTILINE)
+        assert mark[1].rstrip(" ") == words, name
+    # a usage error, never a silent escaped spelling; each refusal says the prompt's next step (lane RB's)
     assert "step 1 shows this folder's name with a control character" in script
-    # B13 round 37 C1275 (lane RB): --list-folders again, never step 1's whole command
+    assert 'again="then run $SELF --list-folders again"' in script
+    assert "rename it in its sync app, $again" in script
+    assert "rename one of them in its sync app, $again" in script
+    assert "that folder already syncs, so paste nothing for it" in script
+    assert "then run step 1 again" not in script
+
+
+def test_only_the_closed_prompt_copy_path_reruns_step_1_after_its_log_start_c1275() -> None:
+    """B13 round 37 C1275 (ruling 121, prompt v36): v35 told the agent to run step 1 again after the person
+    renamed a marked folder, and step 1's one command ends in `--log-start`, which opens a new attempt every
+    time, so the report split one session in two and judged the first as stopped at step 1. After a rename the
+    prompt and the installer run --list-folders alone. Step 1's whole command runs again only where its chain
+    broke before --log-start (the git recoveries), and where --log-start refused the pasted copy and so
+    closed no attempt it opened (`as the prompt writes it`)."""
+    again = re.compile(r"(?:run|then)\s+step 1(?:'s\s+(?:whole\s+|one\s+)?command)?\s+again", re.IGNORECASE)
+    prompt = _one_prompt_block()
+    flat = " ".join(prompt.split())
+    listed = flat.index("If --list-folders printed no folder paths")
+    hits = [m.start() for m in again.finditer(flat)]
+    assert len(hits) == 3 and all(at < listed for at in hits), hits  # the three git recoveries
+    for at in hits:
+        before = flat[max(0, at - 1500) : at]
+        assert "git" in before, flat[at - 200 : at + 40]
+    rerun = f"run {INSTALL_SH} --list-folders again (not step 1's whole command, which opens a new attempt)"
+    assert rerun in flat
+    assert "run it again once, exactly as written here" in flat  # the prompt-copy path: no attempt left open
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    lines = [ln for ln in script.splitlines() if again.search(ln) or "step 1 again" in ln]
+    assert lines and all("as the prompt writes it" in ln for ln in lines), lines
+
+
+def test_readme_lets_a_nexts_own_add_back_command_take_a_marked_folder_c1309() -> None:
+    """B13 round 37 C1309 (ruling 121, prompt v36; makes things worse True for dropping the installer's
+    command): a folder whose [[source]] block vanished and whose name holds a control character, with no
+    look-alike, is listed marked, and step 1's NEXT gives `--source-local $'...'` with its real path, which
+    step 2 takes and which restores the source under its old id; v35's rule that a marked row cannot be
+    chosen read as forbidding it. A rename can give the folder another id, so the command stays, and the
+    prompt says it is the fix to run as given if the person names that folder, never the marked row pasted."""
+    step1 = _prompt_steps()[1]
     assert (
-        "rename it in its sync app, $again" in script
-        and 'again="then run $SELF --list-folders again"' in script
-    )
+        "and add that folder again only if I name it: if that line gives a --source-local command for a"
+        " folder whose row is marked, that command is the fix, so run it as given if I name that folder, and"
+        " never paste the marked row."
+    ) in step1
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'one --source-local $(shown_arg "$vreal")' in script
 
 
 def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
@@ -7757,7 +7822,7 @@ def test_the_guides_give_the_speech_helpers_swift_floor() -> None:
     assert f"Where developer tools with Swift {floor} or later are installed" in it_request
     assert "this Mac's Swift {installed} is older than the Swift {needed}" in speech.TOOLS_TOO_OLD
     prompt = readme[readme.index("Set up agentsync on this Mac (setup prompt") :]
-    assert "Swift" not in prompt[: prompt.index("prompt v35, <agent> and a colon")], "the prompt stays v35"
+    assert "Swift" not in prompt[: prompt.index("prompt v36, <agent> and a colon")], "the prompt stays v36"
 
 
 def test_the_records_page_says_purge_stops_over_a_lost_manifest() -> None:
