@@ -62,16 +62,24 @@ and `install.sh` with no `--source-local` keeps every source, updates agentsync 
 A sync reads everything under a synced folder, so a listed folder inside one has `[inside a synced folder]`
 before it, and one that holds one has `[contains a synced folder]`. Add only an unmarked folder: a marked one
 would be read twice. A synced folder the list does not reach (deeper than two levels, or outside
-`~/Library/CloudStorage`) is printed first with the same mark. When no synced folder under `~/Library/CloudStorage`
-is missing, such a Mac gets that line and exit 0 even when nothing else can be listed (for example, OneDrive signed
-out and only a folder outside `~/Library/CloudStorage` synced). When a synced folder under `~/Library/CloudStorage`
-is missing and its app is signed out (its provider folder, such as `OneDrive-Contoso`, is gone with no other folder
-of that app beside it, or is there and empty), it gets the line, the `[synced]` lines and exit 3, logged
-`note=not-signed-in apps=<app> missing=M synced=N`. Its `NEXT:` asks for that app's sign-in and a re-run, and says the `[synced]`
-folders are kept. Since v20, step 1 of the one-prompt setup waits for that sign-in instead of going on to a step 2
-that would fail. Since v21, an agent that cannot ask (an unattended tool, or a question that comes back
-unanswered) does not wait there and logs nothing for it: it goes to step 3's report. A folder missing while its app is
-signed in (renamed, moved or deleted there, not synced on this Mac, or under another
+`~/Library/CloudStorage`) is printed first with the same mark. Three marks open a row before any of those, for
+another reason than a double read. A row that opens with `[name holds a control character: rename it to sync it]`
+names a folder whose name holds a control character, shown escaped (a newline as `\n`, a tab as `\t`, a carriage
+return as `\r`, any other control character as `?`), so the row is not the folder's own name; one that opens with
+`[name reads as another folder there: rename one of them to sync it]` is a plain name that reads as such a folder's
+escaped form in the same parent. Neither can be added as shown, and `--source-local` refuses both: rename the folder
+(for the second mark, it or the other one) in its sync app, then run `install.sh --list-folders` again, not the
+whole of step 1. A row that opens with `[name holds a control character]` and then `[synced]` or `[inside a synced
+folder]` is such a folder already kept: nothing to rename and nothing to paste. When no synced folder under
+`~/Library/CloudStorage` is missing, such a Mac gets that line and exit 0 even when nothing else can be listed (for
+example, OneDrive signed out and only a folder outside `~/Library/CloudStorage` synced). When a synced folder under
+`~/Library/CloudStorage` is missing and its app is signed out (its provider folder, such as `OneDrive-Contoso`, is
+gone with no other folder of that app beside it, or is there and empty), it gets the line, the `[synced]` lines and
+exit 3, logged `note=not-signed-in apps=<app> missing=M synced=N`. Its `NEXT:` asks for that app's sign-in and a
+re-run, and says the `[synced]` folders are kept. Since v20, step 1 of the one-prompt setup waits for that sign-in
+instead of going on to a step 2 that would fail. Since v21, an agent that cannot ask (an unattended tool, or a
+question that comes back unanswered) does not wait there and logs nothing for it: it goes to step 3's report. A
+folder missing while its app is signed in (renamed, moved or deleted there, not synced on this Mac, or under another
 account's provider folder) keeps exit 0: the `NEXT:` names it, and step 2's status names its fix. So does a folder
 in a SharePoint library that is not synced on this Mac (`OneDrive-SharedLibraries-Contoso` gone, or there and empty,
 beside `OneDrive-Contoso`): its `NEXT:` says to sync the library with Sync on its SharePoint page, never to sign in.

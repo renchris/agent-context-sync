@@ -3849,6 +3849,29 @@ def test_k59_gives_each_escape_step_1_shows_c1281() -> None:
     assert "a newline as `\\n` and other control characters as `?`" not in row
 
 
+def test_the_guides_name_every_mark_a_folder_row_opens_with_c1280() -> None:
+    """B13 round 37 C1280 (ruling 121): docs/deploy/README.md, which the prompt says explains every step,
+    and setup-feedback.md's folder-list bullets named only [synced], [inside a synced folder] and [contains a
+    synced folder], with "a marked one would be read twice", a reason false for the escape marks. Each now
+    names all three first marks, read from install.sh's own constants, the escapes step 1 shows (a tab and a
+    carriage return as \\t and \\r, K59), and the next step after a rename, --list-folders, never step 1."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    marks = []
+    for name in ("ESCAPED_MARK", "TWIN_MARK", "ESCAPED_KEPT_MARK"):
+        [mark] = re.findall(rf"^{name}=([\"'])(.*?)\1", script, flags=re.MULTILINE)
+        marks.append(mark[1].rstrip(" "))
+    guide = " ".join(_page("docs/deploy/README.md").split())
+    page = " ".join(_feedback_page().split())
+    bullet = page.split("A sync reads the whole tree under a synced folder.", 1)[1].split(" - ", 1)[0]
+    for text in (guide, bullet):
+        for mark in marks:
+            assert f"opens with `{mark}`" in text, mark
+        for shown in ("a newline as `\\n`", "a tab as `\\t`", "a carriage return as `\\r`"):
+            assert shown in text, shown
+        assert "then run `install.sh --list-folders` again, not the whole of step 1" in text
+        assert "is such a folder already kept: nothing to rename and nothing to paste" in text
+
+
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
     tool ran unattended, the folder question came back unanswered, and step 1 said to stop and wait: a

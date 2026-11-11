@@ -721,6 +721,16 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
 - A sync reads the whole tree under a synced folder. So a listed folder inside one has
   `[inside a synced folder]` before its path, and one that holds one has `[contains a synced folder]`. Only
   an unmarked folder is one to add: a marked one, added, would be read twice.
+  Three marks open a row before those three, for another reason than a double read. A row that opens with `[name
+  holds a control character: rename it to sync it]` names a folder whose name holds a control character, shown
+  escaped (a newline as `\n`, a tab as `\t`, a carriage return as `\r`, any other control character as `?`), so
+  the row is not the folder's own name; one that opens with `[name reads as another folder there: rename one of
+  them to sync it]` is a plain name that reads as such a folder's escaped form in the same parent. Neither can be
+  added as shown, and `--source-local` refuses both: rename the folder (for the second mark, it or the other one)
+  in its sync app, then run `install.sh --list-folders` again, not the whole of step 1. A row that opens with
+  `[name holds a control character]` and then `[synced]` or `[inside a synced folder]` is such a folder already
+  kept: nothing to rename and nothing to paste. (B13 round 36 C1072, K59; round 37 ruling 121, lane RB's
+  `ESCAPED_MARK`, `TWIN_MARK` and `ESCAPED_KEPT_MARK`; C1280)
 - A list that ends on a click (exit 4: a provider this terminal app was denied, or macOS still asking) has
   the line and the marks too, for what it could list. Step 1's exception applies there as well, and the click
   is needed only to add a folder from that provider. Its log line reads `result=failed note=denied synced=2`.

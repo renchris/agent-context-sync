@@ -40594,6 +40594,19 @@ refusals' `--list-folders again`), `test_only_the_closed_prompt_copy_path_reruns
 `test_readme_lets_a_nexts_own_add_back_command_take_a_marked_folder_c1309`,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
+**The guides name every mark a folder row opens with** (C1280; ruling 121; docs only). docs/deploy/README.md, which the
+prompt says explains every step, and setup-feedback.md's folder-list bullet named only `[synced]`, `[inside a synced
+folder]` and `[contains a synced folder]`, then said a marked folder would be read twice, a reason false for the escape
+marks. Each now names lane RB's three first marks, `ESCAPED_MARK` (`[name holds a control character: rename it to sync
+it]`, a name shown escaped: a newline as `\n`, a tab as `\t`, a carriage return as `\r`, any other control character as
+`?`), `TWIN_MARK` (`[name reads as another folder there: rename one of them to sync it]`, a plain name that reads as
+such a folder's escaped form in the same parent) and `ESCAPED_KEPT_MARK` (`[name holds a control character]` before
+`[synced]` or `[inside a synced folder]`, a folder already kept: nothing to rename or paste); the first two cannot be
+added as shown, `--source-local` refuses both, and after the rename the next step is `install.sh --list-folders` again,
+not the whole of step 1 (C1275). The "read twice" reason stays for the three containment marks. Test:
+`test_the_guides_name_every_mark_a_folder_row_opens_with_c1280`, which reads each mark from install.sh's own constant
+and fails without either guide's sentences.
+
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
 The plan is `docs/plans/cli-conventions.md`. Every subsection below is one unit's and only that unit edits it, so units
