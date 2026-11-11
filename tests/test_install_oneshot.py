@@ -1064,10 +1064,11 @@ def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> Non
     # NEXT no longer lists them, round 23 A31; round 24 B68)
     kinds = f"(each names its fix: {doctor.PERSONS_KINDS}), not a step for the agent"
     assert f"PERSONS_FAILS=\"the [FAIL] lines above are the person's to fix {kinds}" in text
-    # B13 round 18 V53: --help prints the header's list, in the same kinds and order (plus "or sentinel")
-    shown = subprocess.run(
-        ["/bin/bash", str(INSTALL_SH), "--help"], capture_output=True, text=True, check=True
-    ).stdout
+    # B13 round 18 V53: the header's list is in the same kinds and order (plus "or sentinel"). D29 (Option B):
+    # it stays in the header's full notes, which the short --help (U-C11) no longer prints
+    lines = text.splitlines()[1:]
+    block = lines[: next(i for i, ln in enumerate(lines) if not ln.startswith("#"))]
+    shown = " ".join(ln.lstrip("#").strip() for ln in block)
     header = doctor.PERSONS_KINDS.replace("a [[source]] path,", "a [[source]] path or sentinel,")
     assert f"is the person's ({header}), the NEXT says so" in " ".join(shown.split())
 

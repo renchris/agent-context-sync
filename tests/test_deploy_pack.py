@@ -1192,7 +1192,8 @@ def _commands(text: str) -> list[str]:
 
 
 def _installer_help() -> str:
-    """install.sh's --help text, read from its header comment (what show_help prints) without running it."""
+    """install.sh's whole header comment, read without running it: the short help show_help prints, up to its
+    ``# -- end of help --`` line, then the full notes."""
     lines = SCRIPTS[0].read_text(encoding="utf-8").splitlines()[1:]
     return "\n".join(ln for ln in itertools.takewhile(lambda ln: ln.startswith("#"), lines))
 

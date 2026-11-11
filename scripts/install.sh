@@ -1,4 +1,91 @@
 #!/bin/bash
+# agentsync installer: install agentsync with no admin rights, safe to re-run.
+#
+# Usage: scripts/install.sh [--source-local <DIR>]... [--confirm-install-agent
+#                           [--launcher <PATH>]] [--timeout <DURATION>]
+#                           [--cwd <DIR>] [--debug] [--non-interactive]
+#        scripts/install.sh --list-folders [-a | -n <NUMBER>] [--json]
+#        scripts/install.sh --report-only
+#        scripts/install.sh --version [--json]
+#        scripts/install.sh --log-start <AGENT>
+#        scripts/install.sh --log <STEP> <KIND> <WHAT> <FIX>
+#        scripts/install.sh [--help] [help]
+#
+# Options:
+#   -a, --all                 with --list-folders: list every folder
+#   --confirm-install-agent   also set up background sync, the operator's choice
+#                             (a coding agent running the setup prompt never
+#                             passes it): build the signed launcher, sync once,
+#                             install and start the two LaunchAgents
+#   --cwd <DIR>               change to <DIR> before any relative path is read
+#   --debug                   also print the run's settings on stderr, each
+#                             line starting "debug: "
+#   -h, --help                print this help and exit 0; the word help does
+#                             the same
+#   --json                    with --list-folders or --version: print JSON
+#                             instead of text
+#   --launcher <PATH>         with --confirm-install-agent: use this prebuilt,
+#                             signed AgentSyncLauncher.app, not a new build
+#   -n, --limit <NUMBER>      with --list-folders: list at most <NUMBER>
+#                             folders (default: 200)
+#   --list-folders            list the folders this Mac syncs, as candidates
+#                             for --source-local; installs nothing
+#   --log <STEP> <KIND> <WHAT> <FIX>
+#                             append one event to the friction log
+#   --log-start <AGENT>       start an attempt in the friction log
+#   --non-interactive         accepted and ignored: the installer never asks
+#   --report-only             only write the setup report, then exit
+#   --source-local <DIR>      sync <DIR> as a local source; repeatable
+#   --timeout <DURATION>      one limit for the first sync and both waits:
+#                             30s, 5m or a number of seconds
+#                             (default: 3600 s, 180 s and 120 s)
+#   --version                 print this checkout's commit, then the setup
+#                             prompt version it reads
+#
+# Examples:
+#   scripts/install.sh --list-folders
+#   scripts/install.sh --source-local <DIR>
+#   AGENTSYNC_INSTALL_DRY_RUN=1 scripts/install.sh --source-local <DIR>
+#
+# Notes:
+#   AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something
+#   and changes nothing. AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds the launcher
+#   even when it is up to date (a developer variable). Without --timeout,
+#   AGENTSYNC_WAIT_SECONDS (default: 180) and AGENTSYNC_REINSTALL_WAIT_SECONDS
+#   (default: 120) set the two waits. AGENTSYNC_SETUP_LOG and
+#   AGENTSYNC_FRICTION_LOG move the setup log and the friction log.
+#   An option's value may follow =, as --source-local=<DIR>: a folder named
+#   like an option needs that form or ./ before its name. -- ends the options.
+#   --log-start takes 'prompt vN, TOOL': N is the version in the first line of
+#   the prompt, TOOL the coding agent's tool and model id. --log takes four
+#   arguments, each in single quotes; <KIND> is question, click, approval,
+#   deviation, error or prompt. Each of the two is the first argument and
+#   takes no other option.
+#   Exit status: 0 every step ran; 1 a step failed; 2 a usage error, or a new
+#   config with no folder to sync; 3 the wait for the first background run
+#   ran out; 129, 130 or 143 stopped by a signal. --list-folders: 0 listed,
+#   3 nothing to list, 4 this terminal was denied access. --log-start and
+#   --log: 0 logged, 1 not written, 2 a usage error.
+#
+# Terms (all of them, and the agentsync nouns: docs/design/glossary.md):
+#   folder          a folder on this Mac, as --source-local names it and
+#                   --list-folders lists it
+#   source          one entry of the config that agentsync reads from; a
+#                   folder becomes a local source when it is added, and the
+#                   mail, Teams and Graph drive kinds are sources that are
+#                   no folder
+#   LaunchAgent     one of the two macOS background jobs that agentsync
+#                   install-agent installs and starts
+#   background sync the runs those LaunchAgents start, the operator's choice
+#   coding agent    the tool that runs the setup prompt for the person
+#   agent step      the step, logged step=agent, that installs the
+#                   LaunchAgents: agent there is the LaunchAgent, and "not a
+#                   step for the agent" means the coding agent
+#
+# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml.
+# The full notes (each option in detail, the steps, the logs, every exit
+# status) are this file's comment header, below this help.
+# -- end of help --
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
 # Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
@@ -1752,7 +1839,8 @@ usage_error() {
 	fi
 	exit 2
 }
-show_help() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
+# The short help: the header's first section, up to its "-- end of help --" line; the full notes follow it.
+show_help() { awk 'NR > 1 && /^# -- end of help --$/ { exit } NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
 have_devtools() {
 	local d
 	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"

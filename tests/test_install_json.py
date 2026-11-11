@@ -129,11 +129,15 @@ def test_the_help_says_what_json_goes_with_and_names_the_rows_mark_c1456_c1483(
 ) -> None:
     """B13 round 38 C1456 with C1483: --help's --json entry said --version with --json is a usage error,
     though it prints one document, and gave the folder row as {"path","state"} with no "mark", which a marked
-    row carries. The entry's refused list now matches what each refuses, and it names the optional mark."""
+    row carries. The entry's refused list now matches what each refuses, and it names the optional mark.
+    U-C11 (D29 B) cut --help to the short help above ``# -- end of help --``; this full entry is the header's
+    reference below it, which --help no longer prints."""
     cp = install_sh(env, "--help")
-    assert cp.returncode == 0, cp.stdout + cp.stderr
-    found = re.search(r"--json {2,}(.*?)\n {0,4}--log-start", cp.stdout, re.S)
-    assert found is not None, cp.stdout
+    assert cp.returncode == 0 and "--json" in cp.stdout, cp.stdout + cp.stderr
+    header = Path(INSTALL_SH).read_text(encoding="utf-8").split("# -- end of help --", 1)[1]
+    reference = "\n".join(ln[1:] for ln in header.splitlines() if ln.startswith("#"))
+    found = re.search(r"--json {2,}(.*?)\n {0,4}--log-start", reference, re.S)
+    assert found is not None, reference
     entry = " ".join(found.group(1).split())
     assert '{"folders":[{"path","state"[,"mark"]}],' in entry.replace("], ", "],"), entry
     assert "mark, only on a marked row, its first mark (escaped, kept or twin)" in entry, entry

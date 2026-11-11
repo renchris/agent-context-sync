@@ -20510,7 +20510,8 @@ byte (the prompt's second exception reads its opening words). An older stamp or 
 folders`: there step 2 reinstalls first and may load the config. The prompt keys its skip on "does not reinstall it",
 which the older-stamp clause does not hold. Test: `test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load`.
 
-**The header states the narrowed exit 3** (N46). `install.sh --help` (the header comment) and `list_folders`'s
+**The header states the narrowed exit 3** (N46). install.sh's header comment (its full notes, which the short
+`--help` of 16.300.28 no longer prints) and `list_folders`'s
 comment said a set-up Mac with nothing to list exits 0, and "3 none"; they now name the exit 3 for a synced folder
 whose app is signed out, listed or not, and the exit 0 for one gone from a signed-in provider. Comments only.
 
@@ -42732,7 +42733,22 @@ run from DIR (`test_cwd_rerun_names_absolute_folders`). R061's carve-out, in the
 
 #### 16.300.28 U-C11: install.sh short help
 
-Reserved.
+`scripts/install.sh --help` (and `-h`, and the word `help`) prints a short help and exits 0: the first section of the
+header comment, every line at most 80 columns, in this order: a one-line summary starting `agentsync installer`
+(first, as `test_install_help_exits_zero` pins it), `Usage:` (with `[--source-local <DIR>]...`), `Options:` sorted by long name with `<DIR>`, `<PATH>`, `<NUMBER>` and `<DURATION>` hints and
+`(default: VALUE)`, three `Examples:` with no `$`, `Notes:` (`AGENTSYNC_INSTALL_DRY_RUN=1`,
+`AGENTSYNC_REBUILD_LAUNCHER=1`, the operator variables, the `--log-start` and `--log` forms and the exit statuses),
+`Terms`, the config line, and one line saying the full notes are the comment header. `show_help`'s awk stops at the
+comment line `# -- end of help --`; the full notes follow it in the same header, unchanged, so the readers of the
+whole header (tests/test_deploy_pack.py `_installer_help`, the C926 and V53 pins) still find them. The Options list
+is exactly the parsed public options (`INSTALL_OPTIONS["main"]` without the `=` forms, `--`, the SOURCE seam and
+`INSTALL_HIDDEN`). Help stays in comments: a new `printf` format or quoted string would add report words.
+
+D29 (Option B): the persons sentence (step 5's list of the [FAIL] fixes that are the person's) is no longer printed
+by `--help`; `test_doctors_persons_fix_words_are_install_shs` reads it from the header and keeps its wording check.
+Tests: `test_help_fits_80_columns_and_sorts_options`, `test_help_stops_at_the_sentinel`,
+`test_every_help_example_parses` (each example runs under `AGENTSYNC_INSTALL_DRY_RUN=1` in a tmp HOME, no usage
+error, exit not 2, HOME unchanged), `test_every_listed_option_is_a_parsed_option`.
 
 #### 16.300.29 U-C12: tenant-probes exit and stream contract
 

@@ -1,5 +1,6 @@
 """install.sh's --help names no test seam and says what its words and its list run mean (U-B8), and what the
-optional helpers and uv's failures print.
+optional helpers and uv's failures print. The help is short (U-C11): 80 columns, sorted options, examples that
+parse, and a sentinel before the header's full notes.
 
 The harness is test_install_oneshot's: a tmp HOME, a stub ``uv``, a stub ``launchctl``.
 """
@@ -7,13 +8,16 @@ The harness is test_install_oneshot's: a tmp HOME, a stub ``uv``, a stub ``launc
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 import pytest
 
 from agentsync import setup_report
+from test_contracts import INSTALL_HIDDEN, INSTALL_OPTIONS
 from test_install_oneshot import (  # noqa: F401  (env, wheel and folder are fixtures)
     ESCAPED_MARK,
+    INSTALL_SH,
     REPO,
     STUB_TOOL_PYTHON,
     _cloud,
@@ -29,6 +33,7 @@ from test_install_oneshot import (  # noqa: F401  (env, wheel and folder are fix
 )
 
 GLOSSARY = REPO / "docs" / "design" / "glossary.md"
+SENTINEL = "# -- end of help --"
 
 SEAMS = (
     "AGENTSYNC_NO_NEXT_HINT",
@@ -67,6 +72,72 @@ def test_help_has_the_terms_block(env: dict[str, str]) -> None:  # noqa: F811
         assert re.search(rf"^  {term}\s", block, flags=re.MULTILINE), term
     assert help_text.index("Terms ") < help_text.index("The config is $AGENTSYNC_CONFIG")
     assert "a coding agent running the setup" in help_text and "setup agent" not in help_text
+
+
+def _block(help_text: str, heading: str) -> list[str]:
+    """The lines under ``heading`` (a line of its own), up to the next blank line."""
+    lines = help_text.splitlines()
+    start = lines.index(heading) + 1
+    end = next((i for i in range(start, len(lines)) if not lines[i].strip()), len(lines))
+    return lines[start:end]
+
+
+def _listed_options(help_text: str) -> list[list[str]]:
+    """Each Options row's spellings: ``-a, --all`` is ``["-a", "--all"]``; a value hint is not one."""
+    rows: list[list[str]] = []
+    for line in _block(help_text, "Options:"):
+        if line.startswith("  -"):
+            head = re.split(r"\s{2,}", line.strip(), maxsplit=1)[0]
+            rows.append(re.findall(r"(?<![\w<-])(--?[a-z][a-z-]*)", head))
+    return rows
+
+
+def test_help_fits_80_columns_and_sorts_options(env: dict[str, str]) -> None:  # noqa: F811
+    help_text = install_sh(env, "--help").stdout
+    assert [ln for ln in help_text.splitlines() if len(ln) > 80] == []
+    summary, _, usage = help_text.splitlines()[:3]
+    assert summary.startswith("agentsync installer: ") and usage.startswith("Usage: scripts/install.sh ")
+    longs = [next(s for s in row if s.startswith("--")) for row in _listed_options(help_text)]
+    assert longs == sorted(longs, key=lambda s: s.lstrip("-")), longs
+    assert "  scripts/install.sh [--help] [help]" in help_text
+    assert "[--source-local <DIR>]... " in help_text
+
+
+def test_help_stops_at_the_sentinel(env: dict[str, str]) -> None:  # noqa: F811
+    cp = install_sh(env, "--help")
+    assert cp.returncode == 0, cp.stderr
+    lines = INSTALL_SH.read_text(encoding="utf-8").splitlines()
+    short = lines[1 : lines.index(SENTINEL)]
+    assert cp.stdout == "".join(re.sub(r"^# ?", "", ln) + "\n" for ln in short)
+    assert "B13 round" not in cp.stdout and "end of help" not in cp.stdout
+    assert "Setup prompt: SETUP_PROMPT_COMPAT" not in cp.stdout, "the full notes stay in the file"
+    assert next(ln for ln in lines[lines.index(SENTINEL) :] if not ln.startswith("#")).startswith(
+        "SETUP_PROMPT_COMPAT="
+    ), "the full notes follow the sentinel in the same comment header"
+
+
+def test_every_help_example_parses(env: dict[str, str], folder: Path) -> None:  # noqa: F811
+    """R100: each example runs as printed, <DIR> a synced folder, under the dry run: never a live change."""
+    examples = [ln.strip() for ln in _block(install_sh(env, "--help").stdout, "Examples:")]
+    assert 2 <= len(examples) <= 3 and not any(ln.startswith("$") for ln in examples), examples
+    home = Path(env["HOME"])
+    before = sorted(home.rglob("*"))
+    for example in examples:
+        words = shlex.split(example.replace("<DIR>", shlex.quote(str(folder))))
+        variables = {}
+        while "=" in words[0]:
+            name, value = words.pop(0).split("=", 1)
+            variables[name] = value
+        assert words[0] == "scripts/install.sh", example
+        cp = install_sh({**env, **variables, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, *words[1:])
+        assert "usage error" not in cp.stderr and cp.returncode != 2, (example, cp.stdout + cp.stderr)
+        assert sorted(home.rglob("*")) == before, example
+
+
+def test_every_listed_option_is_a_parsed_option(env: dict[str, str]) -> None:  # noqa: F811
+    listed = {s for row in _listed_options(install_sh(env, "--help").stdout) for s in row}
+    parsed = {o for o in INSTALL_OPTIONS["main"] if o not in {"*", "--"} and not o.endswith("=*")}
+    assert listed == parsed - INSTALL_HIDDEN
 
 
 def test_glossary_lists_meaning_identity_and_banned_synonyms() -> None:
