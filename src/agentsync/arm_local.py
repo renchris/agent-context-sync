@@ -144,6 +144,45 @@ class _KnownStat(Protocol):
     def created_ns(self) -> int | None: ...
 
 
+ESCAPED_KEPT_MARK = "[name holds a control character]"
+"""install.sh's ``$ESCAPED_KEPT_MARK``: step 1's mark for a kept row ([synced] or [inside a synced folder])
+whose name it prints escaped (B13 round 37 ruling 121). Every folder a walk names lies inside a synced source,
+so it is the mark that folder's row would carry (C1244)."""
+
+_LIST_ESCAPES = {"\n": "\\n", "\x1e": "\\n", "\t": "\\t", "\r": "\\r"}
+_LIST_ESCAPED_RE = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+"""What install.sh's ``LIST_ESC_AWK`` escapes (its ``escd``): a control character (``[[:cntrl:]]`` under
+LC_ALL=C), a C1 control, U+2028 and U+2029. A change to that awk changes this with it:
+``test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`` runs the awk over bidi and zero-width
+names too, so a commit that widens one and not the other is red."""
+
+
+def list_shown_name(name: str) -> str:
+    """``name`` as step 1's list shows a kept folder's row (install.sh's ``LIST_ESC_AWK``, byte for byte): a
+    newline, or the RS it travels as, becomes ``\\n``, a tab ``\\t``, a CR ``\\r``, and any other character
+    :data:`_LIST_ESCAPED_RE` matches ``?``, behind :data:`ESCAPED_KEPT_MARK` and a space; a backslash and a
+    ``?`` stay as they are, and a name with none of them is unchanged. The alarm and ``sync -v`` spell a
+    folder so, so its name matches its step 1 row, never a look-alike twin's (B13 round 37 C1244: they
+    printed ``repr``, whose ``'Line one\\nNEXT'`` was the list's text of the other folder of a twin pair)."""
+    if not _LIST_ESCAPED_RE.search(name):
+        return name
+    return f"{ESCAPED_KEPT_MARK} " + _LIST_ESCAPED_RE.sub(lambda m: _LIST_ESCAPES.get(m.group(), "?"), name)
+
+
+def quoted_shown_name(name: str) -> str:
+    """:func:`list_shown_name` between quotes, for a line that lists folders: ``'...'``, or ``"..."`` when it
+    holds a ``'``, so ``, `` stays a boundary and the setup report's ``%r`` cut (``setup_report._QUOTED_RE``)
+    still reads each as one quoted name and cuts it; ``repr(name)`` for the rare name that holds both quotes
+    or ends in an odd run of backslashes, which would escape a closing quote there and leave the name in a
+    report (C1244 review: a bare ``'...'`` leaked a name with an apostrophe)."""
+    shown = list_shown_name(name)
+    if (len(shown) - len(shown.rstrip("\\"))) % 2 == 0:
+        for quote in ("'", '"'):
+            if quote not in shown:
+                return f"{quote}{shown}{quote}"
+    return repr(name)
+
+
 UNKNOWN_EMPTY = "empty"  # zero children in a cloud tree
 UNKNOWN_PRIVACY = "privacy"  # EPERM: macOS privacy access (TCC) or the sandbox refused the listing
 UNKNOWN_MODE = (
@@ -649,7 +688,7 @@ def _warn_unlisted(state: _WalkState, source_id: str, *, echoed: bool) -> None:
         source_id,
         len(unlisted),
         "folder" if len(unlisted) == 1 else "folders",  # B13 round 13 O35: "1 folder(s)"
-        ", ".join(f"{d!r} ({state.unknown[d]})" for d in unlisted[:5]),
+        ", ".join(f"{quoted_shown_name(d)} ({state.unknown[d]})" for d in unlisted[:5]),
         f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else "",
         extra={ECHOED_ALARM: True} if echoed else None,
     )
@@ -665,11 +704,12 @@ def _log_unknown(state: _WalkState, source_id: str) -> None:
     found = unlisted | set(state.empty) | ({"."} if state.empty_root else set())
     rest = sorted((d for d in found if d != "."), key=natural_key)
     for shown in (["."] if "." in found else []) + rest:
+        quoted = quoted_shown_name(shown)  # as step 1 lists it, as the alarm that points here does (C1244)
         if shown in unlisted:
-            log.info("%s: directory %r is unknown (%s)", source_id, shown, state.unknown[shown])
+            log.info("%s: directory %s is unknown (%s)", source_id, quoted, state.unknown[shown])
         else:
             log.info(
-                "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
+                "%s: directory %s has zero children in a cloud tree; treated as unknown", source_id, quoted
             )
 
 
@@ -1305,7 +1345,10 @@ class LocalArm:
             # The cap is applied here, so only here is it known that names were held back: the pointer at
             # ``sync -v`` (which logs each folder) is given then, and the waits that point at this alarm
             # never give it (B13 round 7 H12: they named it for a single folder).
-            shown = ", ".join(repr(d) + (f" ({why[d].reason})" if reasons else "") for d in names[:5])
+            # Each name as step 1 lists it (B13 round 37 C1244), quoted so ", " stays a boundary.
+            shown = ", ".join(
+                quoted_shown_name(d) + (f" ({why[d].reason})" if reasons else "") for d in names[:5]
+            )
             more = len(names) - min(len(names), 5)
             return shown + (f" (+{more} more; `{AGENTSYNC_BIN} sync -v` logs each one)" if more else "")
 

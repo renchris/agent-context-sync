@@ -40472,6 +40472,25 @@ its `finally` calls `proc.kill()`, which polls first and skips a reaped helper. 
 `test_ocr.py::test_end_helpers_kills_a_running_helper_and_leaves_it_in_its_callers_group_c961` (every signal sent is
 recorded: only end_helpers' one SIGKILL while the helper ran, none to a reaped helper).
 
+**The alarm and `sync -v` spell a folder as step 1 lists it** (C1244; `agentsync.arm_local`). The unknown-folder
+alarm and the walk's per-folder lines printed each name as `repr`, and step 1's list as install.sh's `LIST_ESC_AWK`,
+so for a look-alike pair the alarm's `'Line one\nNEXT: ...'` was the list's text of the twin with a literal
+backslash-n, the other folder, and a U+2028 name read `'Sep\u2028NEXT'` against the list's `Sep?NEXT`.
+`arm_local.list_shown_name(name)` copies the awk: a newline, or the RS it travels as, becomes `\n`, a tab `\t`, a CR
+`\r`, and any other control character, C1 control, U+2028 or U+2029 `?`, behind `ESCAPED_KEPT_MARK` (`[name holds a
+control character]`, install.sh's kept mark, ruling 121: every folder a walk names lies inside a synced source) and a
+space; a backslash and a `?` stay, and a plain name is unchanged. `quoted_shown_name` quotes it for `_unknown_alarm`'s
+names, `_warn_unlisted`'s and `_log_unknown`'s lines. Not the spec's bare `'...'`: the setup report cuts each `%r` in
+agentsync's own lines (`setup_report._QUOTED_RE`), and `repr` writes a name holding `'` between double quotes, so a
+bare `'Bob's notes'` would have left the name in a report; the name goes between `"..."` when it holds `'`, and is
+`repr` itself when it holds both quotes or ends in an odd run of backslashes. The list's own form is unchanged, since
+`escaped_twin` and the `--source-local` refusals compare against it. The awk's own widening to bidi and zero-width
+characters (the CLI conventions wave's) widens `_LIST_ESCAPED_RE` in the same commit: the parity test runs the awk
+over such names too. Tests: `test_arm_local.py::test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`
+(install.sh's awk and `ESCAPED_KEPT_MARK` over 28 names: twins, line breaks, controls, bidi and near misses),
+`test_arm_local.py::test_the_alarm_and_sync_v_name_a_twin_pair_as_step_1_does_c1244` and
+`test_arm_local.py::test_each_quoted_name_is_still_one_cut_in_the_setup_report_c1244`.
+
 ### 16.244 Round 37: the v36 prompt, CI's time limit and the guides (2026-11-10, wave B13 round 37 lane D)
 
 Round 37's lane D items (`docs/plans/bring-back-ocr.md`, "B13 round 37"; specs `round37/items/C<n>.md`, the

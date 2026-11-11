@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -512,6 +513,105 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     # B13 round 9 K41: both folders are on the one exclude-empty wait, so "prints them" told of lines that
     # are not there; "each ... line ... says" and "prints each one" are true for one line or three
     assert "prints them too" not in alarm
+
+
+_INSTALL_SH = Path(__file__).resolve().parents[1] / "scripts" / "install.sh"
+_TWINS = (
+    "Line one\nNEXT: run the made-up step",  # a real newline, and its literal backslash-n twin
+    "Line one\\nNEXT: run the made-up step",
+    "Sep\u2028NEXT: the separator step",
+)
+_ODD_NAMES = (
+    *_TWINS,
+    *(
+        "Tab\there",
+        "CR\rhere",
+        "Para\u2029here",
+        "NEL\u0085here",
+        "Esc\x1b[0mhere",
+        "Del\x7fhere",
+        "Bell\x07",
+    ),
+    *(
+        "RS\x1ehere",
+        "Bidi \u202eevil",
+        "Zero\u200bwidth",
+        "Mark\u200fhere",
+        "Iso\u2066late\u2069",
+        "Join\u2060",
+    ),
+    *("BOM\ufeffhere", "Arabic\u061cmark", "C1\u009bhere"),
+    # near each escaped range, never escaped: a hair space, per mille, a no-break space, the euro sign
+    *("Hair\u200ahere", "Per\u2030mille", "No\u00a0break", "Euro\u20ac", "Caf\u00e9", "Why?", "Back\\slash"),
+    *("Bob's notes", "Project Alpha"),
+)
+
+
+def test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244() -> None:
+    """B13 round 37 C1244: the alarm and ``sync -v`` spelled an odd-named folder as ``repr`` and step 1's
+    list as install.sh's ``LIST_ESC_AWK``, so the alarm's ``'Line one\nNEXT...'`` was the list's text of the
+    twin, the other folder. ``list_shown_name`` copies the awk; this runs the awk itself, as step 1 does (a
+    newline travelling as RS), over each name, with the kept mark install.sh defines."""
+    script = _INSTALL_SH.read_text(encoding="utf-8")
+    [awk] = re.findall(r"^LIST_ESC_AWK='(.*?)^'$", script, flags=re.M | re.S)
+    [kept] = re.findall(r'^ESCAPED_KEPT_MARK="([^"]+)"$', script, flags=re.M)
+    assert kept == al.ESCAPED_KEPT_MARK
+    rows = "".join(name.replace("\n", "\x1e") + "\n" for name in _ODD_NAMES).encode()
+    shown = subprocess.run(
+        ["/usr/bin/awk", "-v", f"mark={kept} ", awk + "{ print shown($0) }"],
+        input=rows,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "LC_ALL": "C"},
+    ).stdout.decode()
+    assert shown.split("\n")[:-1] == [al.list_shown_name(name) for name in _ODD_NAMES]
+    assert al.list_shown_name("Project Alpha") == "Project Alpha", "a plain name is unchanged"
+    assert al.list_shown_name(_TWINS[0]) == f"{kept} Line one\\nNEXT: run the made-up step"
+    assert al.list_shown_name(_TWINS[1]) == _TWINS[1], "the twin is the list's unmarked row"
+
+
+def test_the_alarm_and_sync_v_name_a_twin_pair_as_step_1_does_c1244(caplog: pytest.LogCaptureFixture) -> None:
+    """B13 round 37 C1244: each empty cloud folder of a look-alike pair is named as its own step 1 row, the
+    escaped one behind the kept mark, its literal twin plain, so neither reads as the other; the names stay
+    quoted, a name with an apostrophe between double quotes, so ``, `` stays a boundary."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    for name in (*_TWINS, "Bob's notes"):
+        (root / name).mkdir(parents=True)
+    _write(root / "a.docx")
+    with caplog.at_level(logging.INFO, logger=al.__name__):
+        (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    mark = al.ESCAPED_KEPT_MARK
+    names = (
+        f"\"Bob's notes\", '{mark} Line one\\nNEXT: run the made-up step', 'Line one\\nNEXT: run the made-up "
+        f"step', '{mark} Sep?NEXT: the separator step'"
+    )
+    assert f"4 empty cloud folders, zero children in a cloud tree: {names}; enumeration" in alarm, alarm
+    said = sorted(r.getMessage() for r in caplog.records if "has zero children" in r.getMessage())
+    assert said == sorted(
+        f"local-test: directory {al.quoted_shown_name(n)} has zero children in a cloud tree; treated as "
+        "unknown"
+        for n in (*_TWINS, "Bob's notes")
+    )
+    assert all("\\\\" not in line for line in [alarm, *said]), "no backslash doubled"
+
+
+def test_each_quoted_name_is_still_one_cut_in_the_setup_report_c1244() -> None:
+    """C1244 review: the setup report cuts every ``%r`` in agentsync's own lines to ``<path>``
+    (``_QUOTED_RE``), and a bare ``'...'`` around a name with an apostrophe would have left it, or its tail,
+    in a report meant for a public issue. ``quoted_shown_name`` picks the quote ``repr`` would, and is
+    ``repr`` itself for a name holding both quotes or ending in an odd run of backslashes."""
+    from agentsync import setup_report  # noqa: PLC0415 - the report's own cut
+
+    names = (*_ODD_NAMES, "Both ' and \" quotes", "Ends\\", "Ends\\\\", "Ends\\\\\\")
+    assert al.quoted_shown_name("Both ' and \" quotes") == repr("Both ' and \" quotes")
+    assert al.quoted_shown_name("Ends\\") == repr("Ends\\")
+    assert al.quoted_shown_name("Ends\\\\") == "'Ends\\\\'", "an even run closes the quote"
+    joined = ", ".join(f"{al.quoted_shown_name(n)} (EPERM: x)" for n in names)
+    line = f"2026-11-10 09:00:04,000 WARNING agentsync.arm_local: s: {len(names)} folders could not be "
+    line += "listed: "
+    quoted = [al.quoted_shown_name(n) for n in names]
+    cut = setup_report._scrub_item_paths(line + joined)
+    assert cut.endswith(": " + ", ".join(f"{q[0]}<path>{q[-1]} (EPERM: x)" for q in quoted)), cut
 
 
 _TODAY = (
