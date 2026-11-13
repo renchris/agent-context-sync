@@ -60,6 +60,7 @@ from agentsync.loop import (
     empty_cloud_folders_held,
     empty_folder_fix,
     empty_root_fix,
+    says_first,
 )
 from agentsync.manifest import (
     LOST_MANIFEST,
@@ -297,11 +298,7 @@ def listing_state_governance_note(err: GovernanceUnreadError, check: str, *, hol
         said = "has lost a purge the audit trail records"
     else:
         said = "cannot be read"
-    first = (
-        f"the governance.hold and {check} [FAIL] lines say what to do first"
-        if hold_lost and check != "governance.hold"
-        else f"the {check} [FAIL] line says what to do first"
-    )
+    first = says_first(check, hold_lost=hold_lost)
     return (
         f"as of its last walk: {err.role} {said}; no sync lists it again until the person fixes it; " + first
     )
@@ -4073,7 +4070,8 @@ def _check_heartbeat(
                 stopped = loop._sync_stopped_on(config)
                 if stopped is not None:
                     # actor-free, as the loop's: the FAIL's fix and NEXT say whose it is (B13 round 33 C746)
-                    detail += f"; {stopped_listing_clause(stopped)}"
+                    # and, under a lost hold, both lines that say what to do first (B13 round 38 C1428)
+                    detail += f"; {stopped_listing_clause(stopped)}{loop.lost_hold_first(config, stopped)}"
                 else:
                     detail += f", a warn after {_INCOMPLETE_RUNS}"
             out.append(_ok(name, detail))

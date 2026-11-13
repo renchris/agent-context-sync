@@ -144,6 +144,33 @@ def test_beside_a_fail_the_syncs_guard_stops_on_the_head_says_no_sync_runs_c631(
     ), out
 
 
+def test_beside_a_lost_hold_and_queue_the_head_names_both_lines_c1428(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1428 (ruling 94): with the hold on all and a queued purge, governance/ moved aside, the
+    head's stop clause names governance.purge_queue, whose fix lets a sync run, and then both lines that say
+    what to do first, as status's NEXT leads with governance.hold, said once."""
+    root = _root()
+    (root / "Empty").mkdir()
+    (root / "Note.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    hold = ["hold", "all", "--reason", "matter 8", "--owner", "Contoso Legal", "--config", str(cfg)]
+    assert cli.main(hold) == cli.EXIT_OK
+    state = expand(load_config(cfg).state_paths.root)
+    dlp = governance.PurgeSelector.parse("docs=mirror/work/Note.txt.md", source_id=None)
+    assert governance.enqueue_purge(state, dlp, governance.PurgeReason.DLP_REMEDIATION)
+    governance.governance_dir(state).rename(state / "governance.kept")
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK, out
+    both = "the governance.hold and governance.purge_queue [FAIL] lines say what to do first"
+    assert out.rstrip().endswith(
+        "once the governance.purge_queue [FAIL] line is fixed, the next sync lists work without that folder; "
+        f"until then no sync runs; {both}"
+    ), out
+    assert out.count(both) == 1, out
+
+
 def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -248,7 +248,9 @@ def _named(
     prints = f"a plain `{BIN} sync` prints {it} too"
     stops = _stops(stopped)
     if stops:
-        prints = f"once {fail_lines(stops)}, {prints}; until then no sync runs"
+        prints = (
+            f"once {fail_lines(stops)}, {prints}; until then no sync runs{lost_hold_first(config, stops)}"
+        )
     if len(ids) == 1:
         return f"{state} keeps the alarm line for {ids[0]}, which names {what} ({prints})"
     listed = f"{', '.join(ids[:-1])} and {ids[-1]}"
@@ -269,7 +271,7 @@ def _named_since(
     if stops and not in_state:
         # no sync runs while that FAIL stands, said once (B13 round 32 C631; ruling 65); every stop named
         # (B13 round 36 C1048)
-        again = f"once {fail_lines(stops)}, {again}; until then no sync runs"
+        again = f"once {fail_lines(stops)}, {again}; until then no sync runs{lost_hold_first(config, stops)}"
     if in_state:
         return (
             f"the alarm line under ## {sid} below is from that source's last sync, before the exclude, so it "
@@ -324,6 +326,33 @@ def fail_lines(names: Sequence[str]) -> str:
     if len(names) == 1:
         return f"the {names[0]} [FAIL] line is fixed"
     return f"the {', '.join(names[:-1])} and {names[-1]} [FAIL] lines are fixed"
+
+
+def says_first(check: str, *, hold_lost: bool) -> str:
+    """Which [FAIL] lines say what to do first beside the stop ``check``: ``the <check> [FAIL] line``, or,
+    with a hold lost too (``hold_lost``), whose governance.hold FAIL status's NEXT leads with, ``the
+    governance.hold and <check> [FAIL] lines`` (B13 round 34 C811; ruling 94)."""
+    if hold_lost and check != "governance.hold":
+        return f"the governance.hold and {check} [FAIL] lines say what to do first"
+    return f"the {check} [FAIL] line says what to do first"
+
+
+def lost_hold_first(config: Config, stopped: str | Sequence[str] | None) -> str:
+    """``; <both lines say what to do first>`` (:func:`says_first`) beside a governance stop other than
+    governance.hold while a hold is lost (``governance.lost_holds``: governance/ moved aside under a hold),
+    else ``""``. The stop's own clause keeps naming the check whose fix lets a sync run (ruling 94); this
+    names the governance.hold FAIL that status's NEXT leads with too, in every place the clause prints: the
+    [ok] heartbeat, the empty-folder waits and exclude-empty, as the [warn] note already did (B13 round 38
+    C1428)."""
+    stops = _stops(stopped)
+    gov = [s for s in stops if s.startswith("governance.")]
+    if not gov or "governance.hold" in stops:
+        return ""
+    try:
+        lost = governance.lost_holds(expand(config.state_paths.root))
+    except Exception:  # the error path: never a second error over the first
+        return ""
+    return f"; {says_first(gov[0], hold_lost=True)}" if lost else ""
 
 
 def empty_root_fix(sid: str, *, inbox: bool, root: str, config_shown: str, grant: str) -> str:

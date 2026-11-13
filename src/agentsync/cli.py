@@ -1819,6 +1819,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         lists = f"the next sync that runs {without}"
     elif stopped:  # every stop it waits on (B13 round 36 C1048)
         lists = f"once {loop.fail_lines(stopped)}, {lists}; until then no sync runs"
+        lists += loop.lost_hold_first(config, stopped)  # both lines under a lost hold (B13 round 38 C1428)
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
         f"({len(clear)} empty cloud {'folder' if len(clear) == 1 else 'folders'} added); an excluded "

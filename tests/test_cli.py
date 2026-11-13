@@ -4615,6 +4615,42 @@ def test_the_listing_note_beside_a_lost_hold_and_queue_names_both_lines_c811(
     assert rc == cli.EXIT_FAILED and out[0].startswith(lead), out[:2]
 
 
+@pytest.mark.parametrize("incomplete", [1, 3])
+def test_every_clause_beside_a_lost_hold_and_queue_names_both_lines_c1428(
+    initialised: Config, capsys: pytest.CaptureFixture[str], incomplete: int
+) -> None:
+    """B13 round 38 C1428 (ruling 94 kept): with the hold on all and a queued purge, governance/ moved aside,
+    status's NEXT leads with governance.hold while the [ok] heartbeat (below the warn's threshold) and the
+    empty-folder waits named only governance.purge_queue: one missing folder, two checks. Every form now
+    names both lines through one helper, loop.lost_hold_first, while the stop clause still names
+    governance.purge_queue, the check whose fix lets a sync run (the release-and-purge-by-hand path)."""
+    cfg, root, _page = _hold_and_queue_dlp(initialised, capsys)
+    sid = initialised.sources[0].id
+    hb = expand(initialised.state_paths.heartbeat)
+    data = json.loads(hb.read_text(encoding="utf-8"))
+    data[sid]["consecutive_incomplete"] = incomplete
+    hb.write_text(json.dumps(data), encoding="utf-8")
+    governance.governance_dir(root).rename(root / "governance.kept")
+    capsys.readouterr()
+    assert loop._sync_stopped_on(initialised) == "governance.purge_queue"
+    stops = loop._sync_stops(initialised)
+    both = "the governance.hold and governance.purge_queue [FAIL] lines say what to do first"
+    assert loop.lost_hold_first(initialised, stops) == f"; {both}"
+    (beat,) = [c for c in cli._build_status(initialised).checks if c.name == f"heartbeat.{sid}"]
+    said = beat.detail if incomplete == 1 else (beat.note or "")
+    assert beat.ok is (incomplete == 1) and said.endswith(both), beat
+    if incomplete == 1:
+        assert "until the governance.purge_queue [FAIL] line is fixed; " + both in said, said
+    for wait in (
+        loop._named(initialised, [sid], "the folder", stopped=stops),
+        loop._named_since(initialised, sid, 2, stopped=stops),
+    ):
+        assert f"governance.purge_queue [FAIL] line is fixed, a plain `{loop.BIN} sync` prints" in wait
+        assert wait.count(both) == 1 and f"until then no sync runs; {both}" in wait, wait
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and out[0].startswith("NEXT: the governance.hold check failed"), out[:2]
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 def test_a_listing_warn_beside_a_hold_record_the_sync_runs_over_keeps_its_fix_c729(
     initialised: Config, capsys: pytest.CaptureFixture[str]

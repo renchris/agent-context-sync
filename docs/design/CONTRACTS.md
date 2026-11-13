@@ -40762,6 +40762,20 @@ expected (`an empty folder chosen as a source: pause it or fill it`), keyed on t
 `::test_an_empty_local_folder_keeps_its_warn_with_the_pause_or_check_fix_c1401` (two local folders: a [warn] with that
 fix, no Finder or Full Disk Access words, the pause words `loop.empty_root_fix`'s own).
 
+**Every clause beside a lost hold and queue names both lines** (C1428; ruling 94 kept). With the hold on all and a
+queued purge, governance/ moved aside, status's NEXT leads with governance.hold, while the [ok] heartbeat (below the
+warn's threshold), the empty-folder waits (`loop._named`, `loop._named_since`) and exclude-empty's head named only
+governance.purge_queue; C811 had given only the [warn] note both lines. The stop clause still names
+governance.purge_queue, the check whose fix lets a sync run (its fix's release-and-purge-by-hand path runs a sync
+without the folder put back, so a folder-only wording would make `until then no sync runs` false), and one helper,
+`loop.lost_hold_first(config, stops)`, appends `; the governance.hold and governance.purge_queue [FAIL] lines say what
+to do first` wherever that clause prints, when a governance stop other than governance.hold stands and
+`governance.lost_holds` is not empty. Its words are `loop.says_first`'s, which the [warn] note
+(`doctor.listing_state_governance_note`) takes too. Tests:
+`test_cli.py::test_every_clause_beside_a_lost_hold_and_queue_names_both_lines_c1428` (consecutive_incomplete 1 and 3:
+the [ok] detail and the [warn] note, both waits, the stop clause and NEXT) and
+`test_exclude_empty.py::test_beside_a_lost_hold_and_queue_the_head_names_both_lines_c1428`.
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
