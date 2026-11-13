@@ -9008,7 +9008,7 @@ change:
 |---|---|
 | 1 uv, 2 agentsync | as in any run: the tool is installed again from this checkout unless the last install was this same clean commit |
 | 3 launcher, helpers | launcher skipped (`not-requested`); the `helpers` step builds the OCR helper when developer tools exist, as in any run |
-| 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `skipped`, note `exists` |
+| 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `done`, note `exists` (**Amended 2026-11-13, §16.246 C1405:** it was logged `skipped`; `init` ran, ensuring the inbox) |
 | 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:`, and so does the report's Summary line (**Amended (2026-10-11, §16.40)**) |
 | 9 report, `NEXT:` | the report is written, the run ends on the loop's `NEXT:` and exits 0 |
 
@@ -9017,7 +9017,7 @@ One thing was added. Step 4 now says what became of the folder choice, in counts
 - One line, after the step's own output: `folders: kept the N already synced (none added)`, `folders: M added
   to the N already synced`, or `folders: M added (none was synced before)`. A run that synced none and added
   none prints no such line; its `NEXT:` says there is no folder to sync yet.
-- Two fields at the end of the step's line in the setup log: `kept=N added=M` (`step=config ... result=skipped
+- Two fields at the end of the step's line in the setup log: `kept=N added=M` (`step=config ... result=done
   note=exists kept=2 added=0`). N is the folders synced before the step, 0 when the step created the config.
   M is how many more are synced after it. The note is unchanged: `created`, `add-source` or `exists`.
 - Both counts are the installed agentsync's, taken before and after the step with the interpreter step 2
@@ -40716,6 +40716,15 @@ earlier run's rows from redaction (makes worse True). Tests:
 `test_a_new_wording_row_in_install_out_takes_the_fallback_over_another_builds_render_c1447`,
 `test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072` (two old-wording rows) and
 `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+
+**The config step that ran `init` over an existing config is logged `done`** (C1405 with C1421, one defect from two
+finders; amends §6's re-run table, dated line there; `scripts/install.sh`). With no folder named, step 4 always runs
+`agentsync init`, which ensures the inbox and prints `config: <path> exists (inbox ensured)`, yet ended `step_end
+skipped`, so the report's Installer row read `skipped (exists: kept 2, added 0)` beside its own seconds. It now ends
+`step_end "done" 0 "exists$FOLDER_COUNTS"`; the note stays `exists`, which the report's sync label reads, and old-log
+fixtures keep `skipped`, which the report still renders. Test:
+`test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs` (the log line and the report's `| config | N | done
+(exists: kept 1, added 0) |` row).
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 

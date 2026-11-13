@@ -11439,7 +11439,7 @@ if [ "$CONFIG_STATE" = "created" ]; then
 elif [ "${#FOLDERS[@]}" -gt 0 ]; then
 	step_end "done" 0 "add-source$FOLDER_COUNTS"
 else
-	step_end skipped 0 "exists$FOLDER_COUNTS"
+	step_end "done" 0 "exists$FOLDER_COUNTS"
 fi
 # Sources other than the inbox: init and add-source always add the inbox (KISS K05), so a config holding only
 # the inbox still has no folder to sync and gets "choose a folder to sync".

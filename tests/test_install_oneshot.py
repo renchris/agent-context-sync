@@ -12183,14 +12183,17 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "not-requested"),
         ("helpers", "done", "0", "") if _have_git() else ("helpers", "skipped", "0", "no-devtools"),
-        ("config", "skipped", "0", "exists"),
+        ("config", "done", "0", "exists"),
         ("status", "done", "0", ""),
         ("first-sync", "done", "0", "converted-0-deferred-0"),
         ("agent", "skipped", "0", "not-requested"),
         ("wait", "skipped", "0", "not-requested"),
         ("report", "done", "0", "agentsync"),
     ]
-    assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
+    assert _config_line(env).endswith(" result=done note=exists kept=1 added=0")
+    # B13 round 38 C1405 with C1421: init ran (the inbox ensured), so the step is done, not skipped
+    report = report_path(env).read_text(encoding="utf-8")
+    assert re.search(r"^\| config +\| +\d+ \| done \(exists: kept 1, added 0\) +\|$", report, re.M), report
     # Its report reads those counts: nobody had to be asked for a folder, and none was added.
     summary = report_path(env).read_text(encoding="utf-8").split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
     assert (
@@ -12234,7 +12237,7 @@ def test_a_set_up_mac_with_nothing_to_list_is_kept_by_the_run_its_list_names(
     assert again.returncode == 0, again.stdout + again.stderr
     assert "folders: kept the 1 already synced (none added)" in again.stdout.splitlines()
     assert "sync: converted 0, deferred 0 online-only" in again.stdout.splitlines()
-    assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
+    assert _config_line(env).endswith(" result=done note=exists kept=1 added=0")
 
 
 def _summary_lines(cp: subprocess.CompletedProcess[str]) -> tuple[list[str], list[str]]:
