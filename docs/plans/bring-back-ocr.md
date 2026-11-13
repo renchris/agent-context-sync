@@ -2609,6 +2609,51 @@ commit: C1275 with C1309's prompt half, and the prompt words of C1201, C1242 and
 kit (C1206, C1208, C1209, C1217 with C1291, C1218, C1219, C1220 with C1234 and C1289, C1230, C1232, C1235, C1240,
 and C1296 split between them) and the hand-off of C1305 with C1282.
 
+### B13 round 37 landed (2026-11-12)
+
+All five lanes landed, and the prompt is v36 (`dccafc9c`, lane D's commit: C1275 with C1309's prompt half, and the
+prompt words of C1201, C1242 and C1308). Notes `lanes/r37-<lane>.md`, lead notes `round29/lead-notes.md`. All 98
+confirmed items are built: 81 in the lanes' 48 commits (`fdc372f1..5faea74b`, with the CLI conventions wave's commits
+between them; every landed tip's CI green, read back by the lead) and the lead's 17. Nothing was left unbuilt; what the
+notes record as not built is an option inside an item, each with its measured reason: the probe-keyed option of C1267
+(the probe disagrees with the page once the helper came or went), a length bound on C1254's pre-pass (it leaked the
+login behind a 300-byte volume name), C1204's run-state key (it brings back round 7's H52), and the `--json` rows'
+mark field of ruling 121 (below). A "twin past the 200 cap" test cannot be written: a control-character name sorts
+before its plain twin, so the cap never keeps one without the other. C1304's optional fifth step (a zero-byte `.msg`
+and the Office names `_GuardedConverter` screens keep a cached answer from before C930) moves the cache key of every
+guarded converter, so it is recorded in §16.243 for round 38. Of the lead's 17, the kit items are in round 38's
+script (`round38/tools/edit.py`, `harvest-lead.txt`, 12 kit scripts in `round38/tools/kit/`); C1305 with C1282
+(tenant-probes.md's exit 78 row) is built in the CLI conventions wave's queue ("docs(tenant-probes): exit 78 says
+which case writes a report") and was not on trunk at this land, so round 38's harvest checks it.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `fdc372f1..0404ab02` (4), `fc2c5776` (C1244) |
+| RB | `14364c7e` (ruling 120, over RA's two), `4ead0fe4..52b3600c` (3: C1300, rulings 121 and 123) |
+| RA | `ef78671a..19b1f575` (7), `2541f581` and `6ef3d934` (under RB's ruling 120) |
+| B | `4c79b0b4..3acd0c1e`, 18 commits |
+| D | `26d53205..a2917ae1` (8), `dccafc9c..b02f244c` (3, v36 at `dccafc9c`), `5faea74b` (C1049's dated lines) |
+
+Learnings: from the first fire (2026-11-10 06:5x) to the last land took about 50 hours. All five lanes and
+the CLI conventions wave landed with plain `scripts/ship-land.sh` under the repo's one lock, and every land pushed on
+its first green gate; the queue, not the gates, set the pace. Gates took 1 to 2.5 hours at a load of 240 to 480 on
+10 cores, and one test outside every diff (`test_gate_slot_plugin`'s interrupt-while-queued test) timed out under
+that load and turned lane B's third attempt red; it passed alone and on the next attempt. Two seams between waves
+cost most of the wait. Ruling 121 needed the CLI queue's `--json` rows for its mark field, and that queue lands one
+commit per gate (22 queued, about one a day); after 24 hours the lead ruled (decision `187eda4b1eaa`, conviction 80)
+that RB lands on trunk without the field and the queue rebases on RB, which the CLI wave's lead agreed to (the field
+landed with the queue's `1cc27a89`); lanes D
+and E, both waiting on ruling 121's marks, landed within six hours of it. And C1258 was circular: RA's report tail
+needed B's `EMPTY_ROOT_GRANT_*` constant while B's tests were red without RA's tail, so B carried one joint hunk in
+`setup_report.py` and RA reviewed it; RA's session had ended by B's land, so the lead recorded the half. Lane D
+caught two missing dated lines in B's land tip (§16.242 amending §16.237's C1101) before B's gate did.
+
+Round 38: the round 37 workflow (`round37/round37-workflow.js` through `round38/tools/edit.py` and `edit-xvendor.py`,
+codex-only: the allow rule for `~/.claude/scripts/agy-review.sh` is still the operator's, backlog `8ed9dae0fbc0`)
+with the harvest list in `round38/tools/harvest-lead.txt`, on this section's landed tip, BASE `e9cf4411`, ids C1401
+and up, prompt v36 (v35's block from `3acd0c1e`), outputs `round38/`. The stop rule names Codex and Gemini: a clean
+round without Gemini goes to the operator before the loop closes.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
