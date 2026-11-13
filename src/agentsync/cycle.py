@@ -5942,7 +5942,8 @@ class _Cycle:
         (``recordings_wait_ocr`` false) gets no OCR-down words and so is never kept here.
 
         Only with no label rule on (:meth:`Publisher.ocr_waits`; one withholds an image whatever the engine
-        does), live outputs all OK, intact and made by the image or the recording converter, and a row that
+        does), live outputs all OK (or an OCR-made unreadable stub: a QUARANTINED output on a QUARANTINED
+        row, B13 round 38 C1403), intact and made by the image or the recording converter, and a row that
         still holds its canonical hash (a row a re-screen forgot is never kept).  An image whose read needs a
         download keeps the page unread and is settled as ``_keeps_page`` settles it.  An image on this Mac is
         read through ``arm`` with a probe budget of its own (no download, and none of the source's
@@ -5961,7 +5962,12 @@ class _Cycle:
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
         if (
             not live
-            or any(o.status is not OutputStatus.OK for o in live)
+            or any(
+                o.status is not OutputStatus.OK
+                # an OCR-made unreadable stub stands as a page OCR made does (C1403)
+                and not (o.status is OutputStatus.QUARANTINED and row.state is RowState.QUARANTINED)
+                for o in live
+            )
             or any(o.converter_id not in _OCR_KEPT_CONVERTERS for o in live)
             or not _pages_intact(self.repo, outs)
         ):

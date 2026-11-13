@@ -40300,11 +40300,13 @@ then working again), `::test_an_unchanged_image_keeps_its_ocr_page_past_the_file
 `::test_an_online_only_image_keeps_its_ocr_page_unread_while_the_helper_fails_c1286` (a `materialise PATH` run
 names the evicted image: nothing fetched, the page kept, the row `DATALESS`).
 
-Amended 2026-11-13, §16.247 C1442: "an image" here is an image or a recording, and "made by `image-ocr`" reads "made by
+Amended 2026-11-13, §16.247 C1442, C1403: "an image" here is an image or a recording, and "made by `image-ocr`" reads "made by
 `image-ocr` or `recording-av`" (`cycle._OCR_KEPT_CONVERTERS`): C1268 gives a recording waiting on a failed OCR helper the
 OCR-down words while the media helper is ready, so `_keeps_ocr_page` keeps its page and transcript under the same gates.
 A recording whose media helper is not ready (`recordings_wait_ocr` false) gets no OCR-down words, so a touch still
-gives it the `no converter for <suffix>` stub.
+gives it the `no converter for <suffix>` stub. And (C1403) "the row's live outputs are all OK" reads "all OK, or an
+OCR-made unreadable stub (a QUARANTINED output on a QUARANTINED row)": an image whose page OCR made says `unreadable`
+keeps that page while the helper fails, and the row stays quarantined, as QUARANTINE.tsv says.
 
 **QUARANTINE.tsv follows an image's OCR-down page** (C1211 with C1204, C1238, C1259, C1269; ruling 122; amends
 §16.237 C1101). While the OCR helper fails, an image's page says `publish.OCR_DOWN_REASON` and sends the reader to
@@ -40723,6 +40725,18 @@ the `next` argv, run with `--dry-run --json`, plans the chosen config's removal 
 goes on the other commands a run prints for a re-run against that install: the `graph login` `next` of a whoami that is
 not signed in and of the except-ladder's `login_required`, and the interrupted mutation's `status` recovery line
 (`::test_every_login_next_runs_against_the_chosen_config_c1486`).
+
+**An image's unreadable OCR page is kept while the OCR helper fails** (C1403; ruling 127; amends §16.242 C1286).
+`Cycle._keeps_ocr_page` kept only live outputs that are all OK, so an image whose page OCR made was the `unreadable`
+stub (`image too small to hold text`, `no text found in the image by on-device OCR`: `_STUB_STATES` maps it to a
+QUARANTINED output on a QUARANTINED row) and whose mtime alone moved while the helper failed was rewritten to the
+OCR-down stub, counted as waiting for the helper, and written back once it worked. An output passes the status test
+when it is OK, or QUARANTINED on a QUARANTINED row; never by the row's state alone, since a kept online-only row is not
+LIVE. The keep path never changes the row's state, so the row stays quarantined with its reason; a transient
+`recognition failed` is FAILED and never kept; every other gate stands. Test:
+`test_cycle.py::test_an_unchanged_image_keeps_its_unreadable_ocr_page_while_the_helper_fails_c1403` (a too-small and a
+no-text image: the page byte for byte, the row `TOUCHED_NOT_CHANGED` and QUARANTINED, nothing counted; then working
+again, the page unchanged).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 

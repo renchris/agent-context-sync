@@ -2802,6 +2802,43 @@ def test_an_unchanged_image_keeps_its_ocr_page_while_the_helper_fails_c1286(
     assert path.read_bytes() == before
 
 
+@pytest.mark.parametrize(
+    ("spec", "reason"),
+    [
+        ({"skipped": True}, "image too small to hold text"),
+        ({}, "no text found in the image by on-device OCR"),
+    ],
+    ids=["too small", "no text"],
+)
+def test_an_unchanged_image_keeps_its_unreadable_ocr_page_while_the_helper_fails_c1403(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, spec: dict[str, Any], reason: str
+) -> None:
+    """B13 round 38 C1403 (ruling 127): C1286 kept only an OK page, so an image whose page OCR made was the
+    unreadable stub (a QUARANTINED output on a QUARANTINED row) and whose mtime alone moved while the helper
+    failed was rewritten to the OCR-down stub and counted as waiting for the helper, then written back once it
+    worked. That stub stands as OCR made it: byte for byte, the row settled and still quarantined."""
+    config = config_with(tmp_path, local_source_dir)
+    _use_ocr(monkeypatch, tmp_path)
+    image = picture(local_source_dir / SITE_PLAN, **spec)
+    assert run(config).exit_code == 0
+    path = config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)
+    before = path.read_bytes()
+    fm, _body = _image_page(config, SITE_PLAN)
+    assert fm["converter"].startswith("image-ocr@"), fm
+    assert (fm["status"], fm["reason"]) == ("unreadable", reason), fm
+    _fail_ocr(monkeypatch)
+    _touch(image)
+    report = run(config)
+    assert report.exit_code == 0
+    assert path.read_bytes() == before
+    row = _item(config, SITE_PLAN)
+    assert row.last_verdict is Verdict.TOUCHED_NOT_CHANGED and row.state is RowState.QUARANTINED, row
+    assert sum(s.ocr_unread + s.refused_unread for s in report.sources) == 0, report.sources
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(config).exit_code == 0
+    assert path.read_bytes() == before
+
+
 def test_an_unchanged_image_keeps_its_ocr_page_past_the_file_cap_while_the_helper_fails_c1286(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
