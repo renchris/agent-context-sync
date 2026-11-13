@@ -3922,7 +3922,13 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
     paragraph takes a dated line with the code points."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     [escd] = re.findall(r"^function escd\(s\) \{ return s ~ /(.*)/ \}$", script, flags=re.MULTILINE)
-    for part in (r"\342\200[\213-\217\250-\256]", r"\342\201[\240\246-\251]", r"\357\273\277", r"\330\234"):
+    for part in (
+        r"\302[\200-\237]",
+        r"\342\200[\213-\217\250-\256]",
+        r"\342\201[\240\246-\251]",
+        r"\357\273\277",
+        r"\330\234",
+    ):
         assert part in escd, part
     assert r'if (c == "\036") o = o "\\n"' in script
     said = (
@@ -3940,10 +3946,10 @@ def test_the_guides_name_every_character_the_list_escapes_c1455() -> None:
         _contracts_section("**The guides name every mark a folder row opens with**", "\n\n").split()
     )
     assert (
-        "Amended 2026-11-13, §16.249 C1455: since 8528ea2a4 (§16.300.18) the escaped form also writes the C1"
-        " controls, U+2028 and U+2029, the bidi controls (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069,"
-        " U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF) as `?`, and a name holding"
-        r" the record separator 0x1E shows it as `\n`"
+        "Amended 2026-11-13, §16.249 C1455: the escaped form also writes the C1 controls and U+2028 and"
+        " U+2029 as `?` (since fad8817a5, §16.236 C1072), and since 8528ea2a4 (§16.300.18) the bidi controls"
+        " (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width characters"
+        r" (U+200B-U+200D, U+2060, U+FEFF), and a name holding the record separator 0x1E shows it as `\n`"
     ) in c1280
 
 
@@ -9835,7 +9841,7 @@ def test_the_guides_say_when_compaction_runs_never_a_deadline_c1489() -> None:
     assert (
         "| compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by"
         " default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a"
-        " failure leaves it (status: overdue) |"
+        " failure leaves it (status: due, then overdue) |"
     ) in gov
     assert (
         "Compaction becomes due once a commit is older than `history_days` plus `compaction_slack_days` (7 by"

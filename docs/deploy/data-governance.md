@@ -23,7 +23,7 @@ refuses to push to a remote that is not listed.
 
 | Location | Holds | Bounded by | Purge reaches it |
 |---|---|---|---|
-| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a failure leaves it (status: overdue) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
+| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction, due once a commit is older than `history_days` + `compaction_slack_days` (30 + 7 by default) and run by the next reconcile (`sync`'s full pass) whose land gate passes; a hold or a failure leaves it (status: due, then overdue) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
 | `~/Library/Caches/agentsync` | converter outputs by content hash | GC after each complete enumeration | yes |
 | `~/Library/Application Support/agentsync/manifest.sqlite` | paths, ids, hashes, labels, cursors (0600); no content | tombstone reap, 180 days | yes (rows forgotten) |
 | `…/agentsync/staging`, `…/agentsync/teams/` | raw downloads (per cycle); Teams month stores | emptied each cycle; Teams rolls up by month | staging: n/a; Teams: yes |

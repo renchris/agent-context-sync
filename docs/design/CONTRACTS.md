@@ -40699,11 +40699,11 @@ added as shown, `--source-local` refuses both, and after the rename the next ste
 not the whole of step 1 (C1275). The "read twice" reason stays for the three containment marks. Test:
 `test_the_guides_name_every_mark_a_folder_row_opens_with_c1280`, which reads each mark from install.sh's own constant
 and fails without either guide's sentences.
-Amended 2026-11-13, §16.249 C1455: since 8528ea2a4 (§16.300.18) the escaped form also writes the C1 controls, U+2028
-and U+2029, the bidi controls (U+200E, U+200F, U+202A-U+202E, U+2066-U+2069, U+061C) and the zero-width characters
-(U+200B-U+200D, U+2060, U+FEFF) as `?`, and a name holding the record separator 0x1E shows it as `\n`, as install.sh's
-LIST_ESC_AWK and `arm_local._LIST_ESCAPES` do on purpose (C1492); both guides name them, and lane RB's C1447 words the
-marks `hidden or control character`.
+Amended 2026-11-13, §16.249 C1455: the escaped form also writes the C1 controls and U+2028 and U+2029 as `?` (since
+fad8817a5, §16.236 C1072), and since 8528ea2a4 (§16.300.18) the bidi controls (U+200E, U+200F, U+202A-U+202E,
+U+2066-U+2069, U+061C) and the zero-width characters (U+200B-U+200D, U+2060, U+FEFF), and a name holding the record
+separator 0x1E shows it as `\n`, as install.sh's LIST_ESC_AWK and `arm_local._LIST_ESCAPES` do on purpose (C1492);
+both guides name them, and lane RB's C1447 words the marks `hidden or control character`.
 
 **The `$'...'` sentences say a refusal offers no such spelling, and the installer's own commands do** (C1307; amends
 §16.236 C1001 and §16.239 C1072; docs only). §16.236 said "No escaped spelling is taken and no `$'...'` form offered",
@@ -41301,7 +41301,7 @@ minutes longer; a runner wait still does not count against it. Tests: `test_clau
 and `test_the_recording_tests_limit_names_cis_own_limit`.
 
 **Setup prompt v37: step 1 quotes each mark whole, in the words install.sh prints** (C1402 with lane RB's C1447, ruling
-129; amends §16.244 C1275). Since 8528ea2a4 the folder list also escapes bidi, zero-width and separator characters,
+129; amends §16.244 C1275). Since 8528ea2a4 the folder list also escapes bidi and zero-width characters,
 so lane RB's C1447 commit words `ESCAPED_MARK` and `ESCAPED_KEPT_MARK` `[name holds a hidden or control character:
 rename it to sync it]` and `[name holds a hidden or control character]`, and v36's step 1 quoted the old words. v36
 also split `[name reads as another folder there: rename one of them to sync it]` across two of the block's lines, so
@@ -41319,20 +41319,19 @@ the block quotes, read from install.sh, whole on one block line, and no block li
 joined-text assertions of `test_readme_step1_says_a_marked_row_cannot_be_chosen` kept,
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_prompt_compat_matches_the_installer`.
 
-**The guides name every character the folder list escapes** (C1455 with C1492, one defect from two finders, built
-once, on lane RB's C1447; docs only; dated line at §16.244 C1280). Both guides said the escape mark's row shows "any
-other control character as `?`", while install.sh's `escd` and `esc` (LIST_ESC_AWK, widened by 8528ea2a4, U-B11)
-also mark and write as `?` U+2028 and U+2029 and the bidi and zero-width characters, which are Unicode Zl, Zp and Cf,
-not control characters (Cc), and map the record separator 0x1E, which carries a newline through the list's files, to
+**The guides name every character the folder list escapes** (C1455 with C1492, one defect from two finders, built once,
+on lane RB's C1447; docs only; dated line at §16.244 C1280). Both guides said the escape mark's row shows "any other
+control character as `?`", while install.sh's `escd` and `esc` (LIST_ESC_AWK) also mark and write as `?` U+2028 and
+U+2029 (since fad8817a5) and the bidi and zero-width characters (since 8528ea2a4, U-B11), which are Unicode Zl, Zp and
+Cf, not control characters (Cc), and map the record separator 0x1E, which carries a newline through the list's files, to
 `\n`. `arm_local._LIST_ESCAPES` and `_LIST_ESCAPED_RE` copy both on purpose, held by
-`test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`, so no code changes. Lane RB's C1447 already
-words the mark `hidden or control character`; each guide's parenthetical now ends `and any other control character,
-a line or paragraph separator, or an invisible bidi or zero-width character as ?; a name holding the record
-separator, 0x1E, shows it as \n too`, the code-point ranges kept here and in C1280's dated line, the reference that
-must match `escd`. The substrings the C1280 test reads stay. setup-feedback.md's K59 row records what v35 said and
-is history, left as written. Test: `test_the_guides_name_every_character_the_list_escapes_c1455`, which reads
-`escd`'s byte classes and the 0x1E mapping from install.sh first, so a change to what the installer escapes fails it
-rather than leaving the guides stale.
+`test_list_shown_name_spells_a_folder_as_install_shs_list_does_c1244`, so no code changes. Lane RB's C1447 already words
+the mark `hidden or control character`; each guide's parenthetical now ends `and any other control character, a line or
+paragraph separator, or an invisible bidi or zero-width character as ?; a name holding the record separator, 0x1E, shows
+it as \n too`, the code-point ranges kept here and in C1280's dated line, the reference that must match `escd`. The
+substrings the C1280 test reads stay. setup-feedback.md's K59 row records what v35 said and is history, left as written.
+Test: `test_the_guides_name_every_character_the_list_escapes_c1455`, which reads `escd`'s byte classes and the 0x1E
+mapping from install.sh first, so a change to what the installer escapes fails it rather than leaving the guides stale.
 
 ### 16.300 CLI conventions: agreement with the vendor-neutral command-line checklist (wave CLI conventions)
 
