@@ -40813,6 +40813,16 @@ outlives agentsync to stop swiftc's and SwiftPM's process groups (B13 Q73, C963)
 Test: `test_install_signals.py::test_with_timeout_bounds_a_child_that_outlives_its_term_and_reports_it_stopped_c1494`
 (a plain child, one that swallows the TERM and exits 0, one KILLed after the grace, and one done in time).
 
+**install.sh's --help says what --json goes with and names the row's mark** (C1456 with C1483, one build; amends
+§16.300.19, dated line there; `scripts/install.sh`). The --json entry said that with `--version` it is a usage error,
+though `--version --json` prints one document, and gave the folder row as `{"path","state"}`, though a marked row also
+carries `"mark"`. The entry now opens `with --list-folders (and --version, above)`, gives the row as
+`{"path","state"[,"mark"]}` with `mark, only on a marked row, its first mark (escaped, kept or twin)`, and ends `With
+an install run, --report-only or --help it is a usage error`; the comment above `json_goes_with`'s call says the
+same. The usage error's own message, `--json works with --list-folders --version only`, is unchanged. Test:
+`test_install_json.py::test_the_help_says_what_json_goes_with_and_names_the_rows_mark_c1456_c1483` (each refused
+mode exits 2, `--version --json` exits 0).
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
@@ -41507,6 +41517,9 @@ and `--help` (`--json works with --list-folders only`, exit 2). U-B17 widens it 
 `JSON_WITH`: the `--version`, `-h`/`--help` and `help` arms already call it, and the message is built from that
 variable. install.out and install.log are what the same list writes without `--json` (with the whole list, as
 `--all` writes it), so `setup_report.listed_folder_names` still reads the human lines; the tees close fd 8 and 9.
+Amended 2026-11-13, §16.246 C1456: a marked row also carries `"mark"`, its first mark (escaped, kept or twin, as
+§16.241 says), so the row is `{"path","state"[,"mark"]}`; U-B17 added `--version` alone to `JSON_WITH`, and `--help
+--json` stays the usage error. install.sh's --help says both.
 The setup prompt does not use `--json`. D14 Option B: the default stdout stays byte for byte, NEXT last
 (`test_default_stdout_keeps_next_last`). Tests: tests/test_install_json.py.
 

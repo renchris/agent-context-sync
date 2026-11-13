@@ -68,14 +68,15 @@
 #                           and the depth of 2 still hold)
 #   -n, --limit NUMBER      with --list-folders: list at most NUMBER folders (1 or more; default 200), then
 #                           "(N more)"; when some are not listed, its NEXT: ends with the --all command
-#   --json                  with --list-folders: stdout is one JSON document in place of the list, every folder
-#                           unless --limit is given: {"folders":[{"path","state"}],"total","pagination","next"},
-#                           state listed, synced, inside_synced or contains_synced; on exit 3 or 4 stdout is
-#                           empty and stderr is one JSON line, {"status":"action_required","reason","message",
-#                           "next","data":{"folders"}}, reason denied, tcc_pending, not_signed_in or no_folders,
-#                           and any other error is one JSON line there too. install.out and the setup log are
-#                           as they are without it. With an install run, --report-only, --version or --help it
-#                           is a usage error
+#   --json                  with --list-folders (and --version, above): stdout is one JSON document in place of
+#                           the list, every folder unless --limit is given: {"folders":[{"path","state"[,"mark"]}],
+#                           "total","pagination","next"}, state listed, synced, inside_synced or contains_synced,
+#                           and mark, only on a marked row, its first mark (escaped, kept or twin); on exit 3 or
+#                           4 stdout is empty and stderr is one JSON line, {"status":"action_required","reason",
+#                           "message","next","data":{"folders"}}, reason denied, tcc_pending, not_signed_in or
+#                           no_folders, and any other error is one JSON line there too. install.out and the setup
+#                           log are as they are without it. With an install run, --report-only or --help it is a
+#                           usage error
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -10139,7 +10140,8 @@ if [ -n "$LIST_OPT" ]; then
 		;;
 	esac
 fi
-# --json goes with the folder list only (D15): an install run and --report-only are a usage error. A JSON list is
+# --json goes with the folder list and --version (D15, D17): an install run and --report-only are a usage error
+# (B13 round 38 C1483). A JSON list is
 # every folder unless --limit is given, so its pagination is null; LIST_ARG, which the re-run names, stays.
 if [ "$LIST_FOLDERS" -eq 1 ]; then json_goes_with --list-folders; else json_goes_with install; fi
 [ "$JSON_RUN" -eq 0 ] || [ -n "$LIST_MAX" ] || LIST_MAX=all

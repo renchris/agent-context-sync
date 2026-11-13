@@ -124,6 +124,27 @@ def test_json_elsewhere_is_a_usage_error(env: dict[str, str], args: list[str]) -
     assert not (Path(env["HOME"]) / "agent-context").exists(), "a parse error writes nothing"
 
 
+def test_the_help_says_what_json_goes_with_and_names_the_rows_mark_c1456_c1483(
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    """B13 round 38 C1456 with C1483: --help's --json entry said --version with --json is a usage error,
+    though it prints one document, and gave the folder row as {"path","state"} with no "mark", which a marked
+    row carries. The entry's refused list now matches what each refuses, and it names the optional mark."""
+    cp = install_sh(env, "--help")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    found = re.search(r"--json {2,}(.*?)\n {0,4}--log-start", cp.stdout, re.S)
+    assert found is not None, cp.stdout
+    entry = " ".join(found.group(1).split())
+    assert '{"folders":[{"path","state"[,"mark"]}],' in entry.replace("], ", "],"), entry
+    assert "mark, only on a marked row, its first mark (escaped, kept or twin)" in entry, entry
+    refused = re.search(r"With (.*) it is a usage error", entry)
+    assert refused is not None and refused.group(1) == "an install run, --report-only or --help", entry
+    for args in ((), ("--report-only",), ("--help",)):
+        assert install_sh(env, *args, "--json").returncode == 2, args
+    version = install_sh(env, "--version", "--json")
+    assert version.returncode == 0 and json.loads(version.stdout)["setupPromptCompat"] == COMPAT
+
+
 def test_redaction_still_sees_a_json_list_run(env: dict[str, str], folder: Path) -> None:  # noqa: F811
     """The setup report keeps listed names in clear by reading install.out's human lines, which a JSON run
     still writes there."""
