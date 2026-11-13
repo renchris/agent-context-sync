@@ -4,6 +4,7 @@ traceback, and SIGTERM or SIGHUP during a sync runs Ctrl-C's cleanup and exits 1
 from __future__ import annotations
 
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -93,7 +94,9 @@ def test_sigterm_during_sync_cleans_up_and_exits_143(
     rc, err = _sync_killed_by(signal.SIGTERM, initialised, monkeypatch, capsys)
     assert rc == 143
     assert "interrupted" in err and "interrupted: Stopped." in err, err
-    assert f"    {loop.BIN} status" in err.splitlines(), err
+    # the install the person chose (B13 round 38 C1486)
+    tail = f" --config {shlex.quote(str(initialised.config_path))}"
+    assert f"    {loop.BIN} status{tail}" in err.splitlines(), err
     assert not (initialised.state_paths.root / "agentsync.lock.json").exists()
 
 
@@ -117,5 +120,6 @@ def test_an_interrupted_purge_says_stopped_not_nothing_changed(
     monkeypatch.setattr(governance, "carry_round28_record", interrupted)
     assert cli.main(["purge", "id=abc", "--config", str(initialised.config_path)]) == 130
     err = capsys.readouterr().err
-    assert "interrupted: Stopped." in err and f"    {loop.BIN} status" in err.splitlines(), err
+    tail = f" --config {shlex.quote(str(initialised.config_path))}"  # B13 round 38 C1486
+    assert "interrupted: Stopped." in err and f"    {loop.BIN} status{tail}" in err.splitlines(), err
     assert "Nothing was changed" not in err, err

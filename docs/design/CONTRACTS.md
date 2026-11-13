@@ -40710,6 +40710,20 @@ is not ready keeps the `no converter for <suffix>` stub on a touch, as before. T
 helper failed with `media.probe` ready and an mtime-only touch: the page byte for byte, the row `TOUCHED_NOT_CHANGED`,
 nothing counted; with the helper back, no piece is read again).
 
+**offboard's recovery command carries the chosen `--config`** (C1486; ruling 128; data integrity). A refused
+`offboard --confirm <wrong>` printed `To remove, run` and returned in `next` a command without the `--config` the
+person gave, while `_inspect`'s commands carry it (R249): where the default install names the same docs repo, running
+that command as given offboards the default install, its config, cache, log and launch labels, and with
+`--purge-data` its data. One helper, `cli._config_tail(args)`, gives `_inspect` and offboard the ` --config <path>`
+tail (the path as given, `shlex`-quoted; nothing without `--config`), and offboard builds the command once, so its
+text and its `next` are one string. Tests: `test_cli_conventions.py::test_offboard_wrong_confirm_prints_a_runnable_command`
+(the text line ends `--purge-data --config <path>`) and
+`::test_offboard_recovery_command_runs_against_the_chosen_config_c1486` (a default install naming the same docs repo:
+the `next` argv, run with `--dry-run --json`, plans the chosen config's removal and never the default's). The same tail
+goes on the other commands a run prints for a re-run against that install: the `graph login` `next` of a whoami that is
+not signed in and of the except-ladder's `login_required`, and the interrupted mutation's `status` recovery line
+(`::test_every_login_next_runs_against_the_chosen_config_c1486`).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the

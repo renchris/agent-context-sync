@@ -381,11 +381,17 @@ def _loop_doc(lines: Sequence[str]) -> dict[str, object]:
     }
 
 
+def _config_tail(args: argparse.Namespace) -> str:
+    """`` --config <path>`` as the person gave it, else nothing: every command a handler prints for a re-run
+    runs against the install the person chose (R249; B13 round 38 C1486, ruling 128: offboard's recovery
+    command dropped it, so with two configs naming one docs repo it removed the default install's config)."""
+    config = getattr(args, "config", None)
+    return f" --config {shlex.quote(str(config))}" if config is not None else ""
+
+
 def _inspect(args: argparse.Namespace, *words: str) -> list[dict[str, object]]:
     """A mutation's ``next`` (R249): the one command that shows what it changed, under the same config."""
-    config = getattr(args, "config", None)
-    tail = f" --config {shlex.quote(str(config))}" if config is not None else ""
-    command = f"{loop.BIN} {' '.join(words)}{tail}"
+    command = f"{loop.BIN} {' '.join(words)}{_config_tail(args)}"
     return [{"command": command, "argv": _argv(command)}]
 
 
@@ -4190,7 +4196,7 @@ def _cmd_graph(args: argparse.Namespace) -> int:
             if clio.json_mode():
                 clio.emit({"account": account})
             return EXIT_OK
-        login = f"{loop.BIN} graph login"
+        login = f"{loop.BIN} graph login{_config_tail(args)}"  # the install the person chose (C1486)
         clio.error_doc(
             clio.Reason.login_required,
             "not signed in",
@@ -4685,8 +4691,8 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
     purge = " --purge-data" if args.purge_data else ""
     if not dry and args.confirm != expected:
         _err("error: Can't offboard: --confirm doesn't match the docs repo path.")
-        _recovery("To remove, run", f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}")
-        approved = f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}"
+        approved = f"{loop.BIN} offboard --confirm {shlex.quote(expected)}{purge}{_config_tail(args)}"
+        _recovery("To remove, run", approved)  # the text and the `next` are one string (C1486)
         clio.error_doc(
             clio.Reason.confirmation_required,
             "Can't offboard: --confirm doesn't match the docs repo path.",
@@ -5250,7 +5256,7 @@ def _json_error(
         return
     if reason is None:
         reason = next((r for kind, r in _JSON_REASONS if isinstance(exc, kind)), clio.Reason.failed)
-    login = f"{loop.BIN} graph login"
+    login = f"{loop.BIN} graph login{_config_tail(args)}"  # the install the person chose (C1486)
     data: dict[str, object] | None = None
     if reason is clio.Reason.canceled:  # a read takes no lock, so it touched nothing remote
         data = {"remote": "none" if _is_read(args) else "unknown"}
@@ -5504,7 +5510,7 @@ def _main(argv: Sequence[str] | None) -> int:
             _err("interrupted: Canceled. Nothing was changed.")
         else:  # a mutation may be part done, so never "nothing was changed" (R294)
             _err("interrupted: Stopped.")
-            _recovery("See what the last pass committed", f"{loop.BIN} status")
+            _recovery("See what the last pass committed", f"{loop.BIN} status{_config_tail(args)}")
         _json_error(exc, args, "Canceled." if _is_read(args) else "Stopped.")
         return 128 + exc.signum if isinstance(exc, clio.Terminated) else 130
     if (clio.stdout_closed() or _stderr_closed) and _is_read(args):

@@ -4,7 +4,9 @@ sources.toml whole or not at all."""
 
 from __future__ import annotations
 
+import dataclasses
 import errno
+import json
 import os
 import shlex
 import subprocess
@@ -15,9 +17,9 @@ from typing import Any
 
 import pytest
 
-from agentsync import cli, governance, loop
+from agentsync import cli, clio, governance, loop
 from agentsync.config import Config, load_config
-from agentsync.errors import GraphError
+from agentsync.errors import AuthRequiredError, GraphError
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
 from agentsync.graph.drive import DiscoveredScope
@@ -69,8 +71,41 @@ def test_offboard_wrong_confirm_prints_a_runnable_command(
     assert cli.main(argv) == cli.EXIT_FAILED
     err = capsys.readouterr().err
     assert "confirm=" not in err, err
-    assert f"    {loop.BIN} offboard --confirm {shlex.quote(str(docs))} --purge-data" in err.splitlines(), err
+    want = f"    {loop.BIN} offboard --confirm {shlex.quote(str(docs))} --purge-data"
+    want += f" --config {shlex.quote(cfg)}"
+    assert want in err.splitlines(), err  # B13 round 38 C1486: the config the person chose
     assert docs.is_dir() and initialised.state_paths.root.is_dir()
+
+
+def test_offboard_recovery_command_runs_against_the_chosen_config_c1486(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 38 C1486 (ruling 128; data integrity): offboard's refusal printed and returned in ``next`` a
+    command without the ``--config`` the person gave, so where the default install names the same docs repo,
+    running it as given would offboard the default install, ``--purge-data`` included. The text and the
+    ``next`` are one string carrying ``--config``; its argv, dry run, plans the chosen config's removal."""
+    _no_keychain(monkeypatch)
+    cfg = _synced(initialised)
+    assert cli.main(["add-source", str(local_source_dir)]) == cli.EXIT_OK  # the default install
+    default = Path.home() / "agent-context" / "sources.toml"
+    assert default.is_file() and load_config(default).docs_repo == initialised.docs_repo
+    docs = expand(initialised.docs_repo)
+    capsys.readouterr()
+    argv = ["offboard", "--confirm", str(docs) + "-not", "--purge-data", "--config", cfg, "--json"]
+    assert cli.main(argv) == cli.EXIT_FAILED
+    said = capsys.readouterr()
+    doc = json.loads(said.err.strip().splitlines()[-1])
+    (step,) = doc["next"]
+    assert step["argv"][-2:] == ["--config", cfg], step
+    assert step["argv"][1:] == shlex.split(step["command"])[1:], step
+    assert cli.main([*step["argv"][1:], "--dry-run", "--json"]) == cli.EXIT_OK
+    plan = json.loads(capsys.readouterr().out)
+    text = json.dumps(plan)
+    assert str(Path(cfg)) in text and str(default) not in text, plan
+    assert docs.is_dir() and default.is_file() and Path(cfg).is_file()
 
 
 def test_offboard_table_has_a_header_off_a_tty(
@@ -157,3 +192,30 @@ def test_a_contradictory_command_line_is_refused_and_writes_nothing(
     err = capsys.readouterr().err
     assert all(option in err for option in named), err
     assert not home.exists()
+
+
+def test_every_login_next_runs_against_the_chosen_config_c1486(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1486 (ruling 128): a `graph login` `next` (whoami not signed in, and any command the
+    except-ladder ends on login_required) dropped the ``--config`` the person gave, so running it as given
+    signed in with the default install's tenant, client and cache. Both carry it, through ``_config_tail``."""
+
+    class SignedOut(FakeAuth):
+        def _status(self) -> Any:
+            return dataclasses.replace(super()._status(), signed_in=False)
+
+    monkeypatch.setattr(graph_auth, "MsalAuth", SignedOut)
+    cfg = _graph_config(initialised)
+    capsys.readouterr()
+    assert cli.main(["whoami", "--config", cfg, "--json"]) == cli.EXIT_REAUTH
+    (step,) = json.loads(capsys.readouterr().err.strip().splitlines()[-1])["next"]
+    assert step["argv"][1:] == ["graph", "login", "--config", cfg], step
+    args = cli.build_parser().parse_args(["sync", "--config", cfg])
+    clio.set_json(True)
+    try:
+        cli._json_error(AuthRequiredError("REAUTH_REQUIRED"), args, "sign in again")
+    finally:
+        clio.set_json(False)
+    (step,) = json.loads(capsys.readouterr().err.strip().splitlines()[-1])["next"]
+    assert step["argv"][1:] == ["graph", "login", "--config", cfg], step
