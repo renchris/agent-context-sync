@@ -40809,6 +40809,15 @@ person's words, the text view still says `below`).
 that quotes none, and a runnable command keeps its argv. §16.300.6's `next` sentence says so. Test:
 `test_cli_json.py::test_a_next_command_with_a_placeholder_has_no_argv_c1444`.
 
+**A governance file's stop has one JSON reason wherever it is met** (C1446; ruling 128). The same damaged or misplaced
+holds.json gave `state_misplaced` with a `state: ...` message where a command's guard met it (`_not_a_file_stop`'s
+`_stop_doc`) and `governance_unreadable` with the bare message where the except-ladder met it
+(`GovernanceUnreadError`). The reason now follows where the stop is: `_stop_doc` takes `governance_file`, true for a
+check whose id starts `governance.`, and gives `governance_unreadable` with `error: state: ` stripped, the ladder's
+message; the lock, heartbeat.json, the manifest, its sides and the state folder keep `state_misplaced`. §16.300.6 says
+so. Test: `test_cli_json.py::test_a_governance_files_stop_has_one_reason_wherever_it_is_met_c1446` (damaged JSON and a
+folder at holds.json: `sync`, `purge --queue --dry-run` and `hold --list` give one reason and one message).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
@@ -41046,7 +41055,9 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
   No command with `--json` is a `usage` line too. `main` turns JSON mode off again on return.
 - Each arm of `_main`'s except-ladder keeps its human lines (no-ops in JSON mode) and calls `cli._json_error`, which
   writes one `clio.error_doc` line: the reason from `_JSON_REASONS` (first match), else `failed`, or the arm's own when
-  its branch says more (a misplaced or refused file under a sqlite or governance error). The exit codes are unchanged,
+  its branch says more (a misplaced or refused file under a sqlite or governance error). A command's state guard
+  (`_stop_doc`) gives `state_misplaced`, except a governance file's stop, which is `governance_unreadable` with the
+  ladder's message, wherever it is met (C1446). The exit codes are unchanged,
   77 and 78 included. `lock_held` and `rate_limited` carry `retryable: true` (`rate_limited` also `retryAfter`);
   `login_required` and `sign_in_blocked` are `status: action_required` with `userActionRequired` and a `next` of
   `graph login`; `api_error` carries `data.status`, `data.code` and `requestId`; `canceled` carries `data.remote`, `none`

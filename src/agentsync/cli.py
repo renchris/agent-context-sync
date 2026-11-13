@@ -3990,9 +3990,16 @@ def _lost_state_stop(args: argparse.Namespace, config: Config) -> bool:
     return _not_a_file_stop(args, config)
 
 
-def _stop_doc(args: argparse.Namespace, said: str) -> None:
-    """A state guard's stop as its one JSON error line (a no-op without ``--json``): status names the fix."""
-    clio.error_doc(clio.Reason.state_misplaced, said.removeprefix("error: "), next=_inspect(args, "status"))
+def _stop_doc(args: argparse.Namespace, said: str, *, governance_file: bool = False) -> None:
+    """A state guard's stop as its one JSON error line (a no-op without ``--json``): status names the fix.
+    ``state_misplaced``, but ``governance_unreadable`` for a governance file's stop (``governance_file``), as
+    the except-ladder gives every ``GovernanceUnreadError``, with its message: the same damaged or misplaced
+    governance file reads alike wherever it is met (B13 round 38 C1446, ruling 128)."""
+    if governance_file:
+        reason, message = clio.Reason.governance_unreadable, said.removeprefix("error: state: ")
+    else:
+        reason, message = clio.Reason.state_misplaced, said.removeprefix("error: ")
+    clio.error_doc(reason, message, next=_inspect(args, "status"))
 
 
 def _open_state_or_raise(config: Config) -> None:
@@ -4045,7 +4052,7 @@ def _not_a_file_stop(
     said = f"error: state: {result.detail}{fix}"
     _err(said)
     _misplaced_next(args, said, where, kind=LOST_LIST_KIND if lost and _list_lost(config, where) else None)
-    _stop_doc(args, said)
+    _stop_doc(args, said, governance_file=result.name.startswith("governance."))  # by where it is (C1446)
     return True
 
 

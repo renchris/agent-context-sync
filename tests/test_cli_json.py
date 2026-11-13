@@ -375,3 +375,29 @@ def test_a_next_command_with_a_placeholder_has_no_argv_c1444(
     assert '"<folder>"' in step["command"] and step["argv"] == [], step
     assert cli._step("run `~/.local/bin/agentsync sync` now")["argv"][1:] == ["sync"]
     assert cli._step("no command here") == {"command": None, "argv": [], "when": "no command here"}
+
+
+@pytest.mark.parametrize("how", ["damaged JSON", "a folder"])
+def test_a_governance_files_stop_has_one_reason_wherever_it_is_met_c1446(
+    initialised: Config, capsys: pytest.CaptureFixture[str], how: str
+) -> None:
+    """B13 round 38 C1446 (ruling 128): the same holds.json gave ``state_misplaced`` where a command's guard
+    met it (``_not_a_file_stop``) and ``governance_unreadable`` where the except-ladder did, with different
+    messages. A governance file's stop is ``governance_unreadable`` wherever it is met, its message the
+    ladder's (no ``error: state:`` head); a lock that is not a file stays ``state_misplaced``."""
+    cfg = _synced(initialised, capsys)
+    holds = governance._holds_file(initialised.state_paths.root)
+    if how == "a folder":
+        holds.unlink(missing_ok=True)
+        holds.mkdir(parents=True)
+    else:
+        holds.parent.mkdir(parents=True, exist_ok=True)
+        holds.write_text("{not json", encoding="utf-8")
+    seen: set[tuple[str, str]] = set()
+    for argv in (["sync"], ["purge", "--queue", "--dry-run"], ["hold", "--list"]):
+        rc, error = _error([*argv, "--config", cfg], capsys)
+        assert rc != cli.EXIT_OK, argv
+        assert error["reason"] == "governance_unreadable", (argv, error)
+        assert not error["message"].startswith("error:"), (argv, error)
+        seen.add((error["reason"], error["message"]))
+    assert len(seen) == 1, seen
