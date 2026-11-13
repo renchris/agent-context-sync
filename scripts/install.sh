@@ -12172,6 +12172,14 @@ cleared_listings() {
 		printf "heartbeat.%s: this run's sync listed it in full; deletions are no longer held\n" "$id"
 	done
 }
+# A WAITING line on stdin with status's pointer to its own [warn] line below (loop.EMPTY_ROOT_GRANT_BELOW) gets the
+# sync's pointer to status (loop.EMPTY_ROOT_GRANT_STATUS) back: install.sh copies no [warn] line after its waits,
+# so "below" pointed at nothing; a test holds both strings to loop's. Older builds print neither: a no-op
+# (B13 round 38 C1438 with C1426, ruling 131; never an "above" form, which install.out's order does not promise).
+empty_grant_status() {
+	# shellcheck disable=SC2016 # the backticks are loop's words, not a command
+	LC_ALL=C sed 's/the source\.\([^ ]*\)\.listable \[warn\] line below names the folder and the Python/`~\/.local\/bin\/agentsync status`'"'"'s source.\1.listable [warn] line names the folder and the Python/'
+}
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
 	local fails blocking held waits chmods srun=0
 	LOOP_OUT="$(mktemp)"
@@ -12216,7 +12224,7 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 		next="run $AGENTSYNC sync and follow its NEXT line"
 	fi
 	if [ -n "$waits" ]; then # printed above the NEXT, which status puts first
-		printf '%s\n' "$waits"
+		printf '%s\n' "$waits" | empty_grant_status
 	fi
 }
 EXIT_RC=0

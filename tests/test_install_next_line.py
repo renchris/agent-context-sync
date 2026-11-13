@@ -15,13 +15,17 @@ import sys
 from pathlib import Path
 
 import exec_stub
+from agentsync import loop
 from test_install_oneshot import (
     BASH32,
     INSTALL_SH,
     ISSUE_LINK,
+    LOOP_NEXT,
     STUB_AGENTSYNC,
     STUB_LAUNCHCTL,
     STUB_UV,
+    _shell_function,
+    install_sh,
     xcrun_db,
 )
 
@@ -257,3 +261,53 @@ def test_the_report_of_each_install_run_expects_its_own_next_line_after_it(tmp_p
     out = (home / "agent-context" / "setup" / "install.out").read_text(encoding="utf-8").splitlines()
     assert sum(ln.startswith("# run=") for ln in out) == 2
     assert sum(ln.startswith("NEXT:") for ln in out) == 2
+
+
+def test_the_shells_empty_root_pointer_is_loops_two_strings_c1438() -> None:
+    """B13 round 38 C1438 with C1426 (ruling 131): status points its empty-root wait at its own [warn] line
+    `below` (loop.EMPTY_ROOT_GRANT_BELOW), and install.sh copies no [warn] line after the waits it prints, so
+    its one sed turns that back into the sync's pointer to status (loop.EMPTY_ROOT_GRANT_STATUS): the sed's
+    two strings are loop's, any other line passes byte for byte, and an older build's line is left alone."""
+    sid = "empty-project"
+    head = "WAITING ON YOU: the folder is empty: grant Full Disk Access to agentsync's Python ("
+    lines = [
+        f"{head}{loop.EMPTY_ROOT_GRANT_BELOW.format(sid=sid)})",
+        f"{head}{loop.EMPTY_ROOT_GRANT_STATUS.format(sid=sid)})",
+        "WAITING ON YOU: macOS held the listing of fy26-projects for a privacy prompt",
+    ]
+    cp = subprocess.run(
+        [BASH32, "-c", _shell_function("empty_grant_status") + "\nempty_grant_status"],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stderr
+    assert cp.stdout.splitlines() == [lines[1], lines[1], lines[2]], cp.stdout
+
+
+def test_install_points_an_empty_roots_wait_at_status_not_at_a_line_below_c1438(tmp_path: Path) -> None:
+    """B13 round 38 C1438 with C1426 (ruling 131): the closing status's empty-root wait said `the
+    source.<sid>.listable [warn] line below`, and install.sh printed that wait with no [warn] line after it.
+    It now names status's line, as the sync's own wait does, and no `line below` lacks its line below."""
+    env = _env(tmp_path)
+    env["STUB_AGENTSYNC"] = env["STUB_INNER"]
+    folder = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    wheel = tmp_path / "dist" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+    grant = "WAITING ON YOU: the folder is empty: grant Full Disk Access to agentsync's Python ({})"
+    env["STUB_STATUS_OUT"] = (
+        f"NEXT: {LOOP_NEXT}\n{grant.format(loop.EMPTY_ROOT_GRANT_BELOW.format(sid='fy26-projects'))}\n"
+        "[warn] source.fy26-projects.listable: empty folder (stub)"
+    )
+    cp = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert grant.format(loop.EMPTY_ROOT_GRANT_STATUS.format(sid="fy26-projects")) in cp.stdout.splitlines(), (
+        cp.stdout
+    )
+    out = cp.stdout.splitlines()
+    for i, line in enumerate(out):  # step 5's whole status copy keeps its own [warn] line below its wait
+        if "line below" in line:
+            assert any(x.startswith("[warn] source.fy26-projects.listable") for x in out[i + 1 :]), cp.stdout
+    assert "line below" not in cp.stderr, cp.stderr

@@ -40445,6 +40445,8 @@ The wait's root, `the folder of <id>`, is unchanged, so its head still equals do
 `test_loop.py::test_an_empty_cloud_roots_wait_and_warn_give_one_remedy_c1004` (the status form in sync's stdout and
 STATE.md, no folder path and no "~/" but the command's, the below form in status above its [warn] line and never
 `` `~/.local/bin/agentsync status`'s ``, and the bare grant once the folder fills). The setup report's Loop line, which copies the waits, says `Doctor's source.<id>.listable [warn] line names the folder and the Python` when its Doctor section prints that [warn], else `status's source.<id>.listable [warn] line names the folder and the Python`, with no `~/` path either way (a fix is never copied): `setup_report._empty_root_grant_in_report`, keyed per source on both loop forms, landed in this lane's commit jointly with lane RA (the lead's ruling; RA's review). Test: `test_setup_report.py::test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258` (Doctor showing the warn and not), with `::test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft`.
+Amended 2026-11-13, §16.246 C1438: install.sh's copy of the closing status's waits, which no [warn] line follows,
+turns the below form back into `loop.EMPTY_ROOT_GRANT_STATUS` (`empty_grant_status`, ruling 131).
 
 ### 16.243 Round 37: the converters: one spelling for odd-named folders, the slow-helper fix, and an empty caption's cache identity (2026-11-10, wave B13 round 37 lane E)
 
@@ -40725,6 +40727,15 @@ skipped`, so the report's Installer row read `skipped (exists: kept 2, added 0)`
 fixtures keep `skipped`, which the report still renders. Test:
 `test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs` (the log line and the report's `| config | N | done
 (exists: kept 1, added 0) |` row).
+
+**An empty root's wait copied by install.sh names status's line, not one below it** (C1438 with C1426, one build;
+ruling 131; amends §16.242 C1243, dated line there; `scripts/install.sh`). Status maps the empty-root grant's pointer
+to `loop.EMPTY_ROOT_GRANT_BELOW` when its own [warn] line follows; install.sh's `loop_next` printed that WAITING line
+with no [warn] line after it. `empty_grant_status`, one `LC_ALL=C` sed over the WAITING lines alone, turns it back into
+`loop.EMPTY_ROOT_GRANT_STATUS`, a no-op where an older build prints neither; never an `above` form, which install.out's
+order does not promise (C1426's form not taken). Tests (`tests/test_install_next_line.py`):
+`test_the_shells_empty_root_pointer_is_loops_two_strings_c1438` and
+`test_install_points_an_empty_roots_wait_at_status_not_at_a_line_below_c1438`.
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
