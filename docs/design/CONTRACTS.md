@@ -40850,6 +40850,22 @@ the `--config` the person gave (`_config_tail`). logout is not interactive and n
 (`graph login` and `login`, with and without `--device-code`: nothing built, the error line and its `next`; logout's
 document; without --json the sign-in runs).
 
+**Under --json no text log reaches stderr, and a blocked sync says so** (C1484; ruling 128). `_setup_logging` attached
+agentsync's text handler in JSON mode too, so `sync --json -v` wrote timestamped text lines on stderr, and a sync the
+land gate blocked wrote `land gate: 1 blocking finding(s)` and `land gate blocked the commit` as text beside a document
+saying `unchanged` with no reason, exit 1. In JSON mode the one handler is `clio.JsonLogHandler`: WARNING and worse
+records go into the `warnings` of the document `clio.emit` writes (after the loop's notes) or of the line
+`clio.error_doc` writes, each once, as `{"message", "level", "logger"}`; with `-v` each record at its level is also one
+compact JSON object on stderr, `{"level", "logger", "time", "message"}`. `_alarms_in_the_report` holds nothing back
+in JSON mode, since no report prints. `_run_doc` gives a cycle whose findings block it with no commit the outcome
+`blocked` and `findings`, the blocking ones in curate's shape (`code`, `path`, `message`, `blocking`); accept-deletions'
+document shares it. §16.300.6 says so. Tests:
+`test_cli_json.py::test_a_sync_the_land_gate_blocks_is_blocked_with_its_findings_and_no_text_log_c1484` (a hand-edited
+mirror page: exit 1, empty stderr, `blocked` with the FRONTMATTER finding, both records in `warnings`),
+`::test_sync_json_verbose_writes_each_log_record_as_json_c1484`,
+`::test_an_error_line_after_a_warning_is_the_one_stderr_line_c1484` and
+`::test_a_warning_no_document_took_is_never_lost_c1484` (a run with no document, and one logged after status's).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
@@ -41082,6 +41098,13 @@ options named, nothing written.
 `CLI_GLOBAL_OPTIONS` and in `_cli_surface`'s common set, so `sync`, `curate` and `status` still show no option of their
 own (§16.10). Without it, every byte of stdout and stderr and every exit code is as before.
 
+- In JSON mode `_setup_logging` attaches no text log handler but `clio.JsonLogHandler`: each WARNING or worse record
+  joins the `warnings` of the document `clio.emit` or the line `clio.error_doc` writes next, as `{"message", "level",
+  "logger"}`, and with `-v` every record at its level is also one JSON object of its own on stderr, `{"level",
+  "logger", "time", "message"}`, never text; a run's held alarm records are not held, since no report prints. A record
+  no document took is never lost: at `main`'s end `clio.flush_log_warnings` writes it as the run's one document
+  `{"warnings": [...]}` when nothing was written, else as one JSON object on stderr; after the error line, which stays
+  last, it is dropped (C1484).
 - `_main` reads argv before parsing: `--json` turns `clio.set_json` on, so a usage error is one `usage` line on stderr
   (exit 2), and `--version --json` prints `{"version": "<version>"}` unless `-h` or `--help` is also given, which wins.
   No command with `--json` is a `usage` line too. `main` turns JSON mode off again on return.
@@ -41097,7 +41120,8 @@ own (§16.10). Without it, every byte of stdout and stderr and every exit code i
 - `status --json` prints `_Status.document()`: `{"status": {"checks": [{"id", "ok", "severity", "message", "fix"}],
   "next", "waitingOnYou", "warnings"}}`. `curate --json` prints `{"findings": [{"code", "path", "message",
   "blocking"}], "next", "waitingOnYou", "warnings"}`. `sync --json` prints `{"run": {"id", "mode", "commit",
-  "sources"}, "outcome": "committed" | "unchanged", "next", "waitingOnYou", "warnings"}`. `next` is
+  "sources"}, "outcome": "committed" | "blocked" | "unchanged", "next", "waitingOnYou", "warnings"}`, where `blocked`
+  (the land gate stopped the commit) adds `"findings"`, its blocking findings in curate's shape (C1484). `next` is
   `[{"command", "argv", "when"}]` from the loop's NEXT lines (`cli._loop_doc`, the lines the text view prints), with
   `~` expanded in argv and a null command for a step that quotes none; argv is `[]` for a command that carries a
   `<placeholder>` the caller fills from `when` (C1444); it ignores AGENTSYNC_NO_NEXT_HINT. An empty

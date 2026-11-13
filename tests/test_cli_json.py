@@ -5,6 +5,7 @@ for every other command, with the inspect command as ``next`` after a mutation (
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -13,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from agentsync import __version__, cli, governance
+from agentsync import __version__, cli, clio, governance
 from agentsync.config import Config, load_config
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
@@ -450,3 +451,100 @@ def test_login_under_json_is_a_usage_error_before_any_sign_in_c1441(
     assert rc == cli.EXIT_OK and doc == {"outcome": "signed_out"} and err == "", (doc, err)
     assert cli.main([*verb, "--config", cfg]) == cli.EXIT_OK  # without --json the person signs in
     assert "signing in through the macOS broker" in capsys.readouterr().out
+
+
+def test_a_sync_the_land_gate_blocks_is_blocked_with_its_findings_and_no_text_log_c1484(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1484 (ruling 128): JSON mode kept agentsync's text log handler, so a sync the land gate
+    blocked wrote two timestamped text lines on stderr and a document saying ``unchanged`` with no reason.
+    No text handler is attached under --json: the WARNING and ERROR records are in the document's
+    ``warnings``, and the outcome is ``blocked`` with the blocking findings in curate's shape."""
+    cfg = _synced(initialised, capsys)
+    page = initialised.docs_repo / "mirror" / "source" / "projects" / "sample.txt.md"
+    page.write_text(page.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+    rc, doc, err = _doc(["sync", "--config", cfg], capsys)
+    assert rc == cli.EXIT_FAILED and err == "", err
+    assert doc["outcome"] == "blocked" and doc["run"]["commit"] is None, doc
+    (finding,) = doc["findings"]
+    assert set(finding) == {"code", "path", "message", "blocking"} and finding["blocking"] is True, finding
+    assert finding["code"] == "FRONTMATTER" and finding["path"].endswith("sample.txt.md"), finding
+    logged = [w for w in doc["warnings"] if "logger" in w]
+    assert {(w["level"], w["logger"]) for w in logged} >= {
+        ("warning", "agentsync.lints"),
+        ("error", "agentsync.cycle"),
+    }
+    assert any("land gate blocked the commit" in w["message"] for w in logged), logged
+
+
+def test_sync_json_verbose_writes_each_log_record_as_json_c1484(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1484: ``sync --json -v`` wrote its INFO records as text on stderr. With -v each record
+    is one JSON object of its own on stderr, stdout still one document."""
+    cfg = str(initialised.config_path)
+    rc, doc, err = _doc(["sync", "--config", cfg, "-v"], capsys)
+    assert rc == cli.EXIT_OK and doc["outcome"] == "committed", doc
+    lines = err.splitlines()
+    assert lines, "with -v the run logs"
+    records = [json.loads(line) for line in lines]
+    assert all(set(r) == {"level", "logger", "time", "message"} for r in records), records
+    assert any(r["level"] == "info" and r["logger"].startswith("agentsync.") for r in records), records
+
+
+def test_an_error_line_after_a_warning_is_the_one_stderr_line_c1484(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 38 C1484: a WARNING logged before an error under --json joins the error line's ``warnings``,
+    which stays the last and only line on stderr."""
+    clio.set_json(True)
+    try:
+        cli._setup_logging(0)
+        logging.getLogger("agentsync.cycle").warning("the media helper is not ready: %s", "Contoso")
+        clio.error_doc(clio.Reason.failed, "sync failed")
+    finally:
+        clio.set_json(False)
+        cli._setup_logging(0)
+    out, err = capsys.readouterr()
+    assert out == "" and len(err.splitlines()) == 1, err
+    doc = json.loads(err)
+    assert doc["warnings"] == [
+        {"message": "the media helper is not ready: Contoso", "level": "warning", "logger": "agentsync.cycle"}
+    ], doc
+
+
+def test_a_warning_no_document_took_is_never_lost_c1484(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1484: with no text handler under --json, a WARNING logged by a run with no document of
+    its own, or after its document, was dropped. At the run's end it is the run's one document when nothing
+    was written, else one JSON object on stderr; stdout keeps one document either way."""
+    clio.set_json(True)
+    try:
+        cli._setup_logging(0)
+        logging.getLogger("agentsync.cycle").warning("Contoso drop folder is slow")
+        clio.flush_log_warnings()
+    finally:
+        clio.set_json(False)
+        cli._setup_logging(0)
+    out, err = capsys.readouterr()
+    assert err == "" and json.loads(out) == {
+        "warnings": [
+            {"message": "Contoso drop folder is slow", "level": "warning", "logger": "agentsync.cycle"}
+        ]
+    }, (out, err)
+    real = cli._Status.lines
+
+    def late(self: Any) -> list[str]:  # logged after status's document is written
+        logging.getLogger("agentsync.loop").warning("a late Contoso warning")
+        return real(self)
+
+    monkeypatch.setattr(cli._Status, "lines", late)
+    rc, doc, err = _doc(["status", "--config", str(initialised.config_path)], capsys)
+    assert rc in (cli.EXIT_OK, cli.EXIT_FAILED) and "status" in doc
+    (line,) = err.splitlines()
+    assert json.loads(line) == {
+        "message": "a late Contoso warning",
+        "level": "warning",
+        "logger": "agentsync.loop",
+    }

@@ -11,11 +11,13 @@ import contextlib
 import enum
 import itertools
 import json
+import logging
 import os
 import platform
 import shlex
 import signal
 import sys
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from types import FrameType
 from typing import TextIO
@@ -129,6 +131,72 @@ def set_json(on: bool) -> None:
     """Turn JSON mode on or off for this process."""
     global _json_mode  # noqa: PLW0603 - set once, from the parsed command line
     _json_mode = on
+    _log_warnings.clear()
+    _written.clear()
+
+
+_written: list[str] = []
+"""What JSON mode has written this run: ``"document"`` (stdout) and ``"error"`` (stderr)."""
+
+
+_log_warnings: list[dict[str, str]] = []
+"""The WARNING and worse records JSON mode's log handler kept, not yet in a document (B13 round 38 C1484)."""
+
+
+class JsonLogHandler(logging.Handler):
+    """JSON mode's one log handler, in place of the text one, so stderr carries only the error document (B13
+    round 38 C1484, ruling 128): each WARNING or worse record is kept for the ``warnings`` of the document
+    :func:`emit` or :func:`error_doc` writes next, ``{"message", "level", "logger"}``; with ``echo`` (``-v``)
+    every record at the handler's level is also written to stderr as one JSON object of its own,
+    ``{"level", "logger", "time", "message"}``, never as text."""
+
+    def __init__(self, level: int, *, echo: bool) -> None:
+        super().__init__(level)
+        self.echo = echo
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Keep ``record`` for the next document, and with ``echo`` write it to stderr as JSON."""
+        try:
+            message = record.getMessage()
+        except Exception:  # a record whose arguments do not format: its template, never a crash
+            message = str(record.msg)
+        level = record.levelname.lower()
+        if record.levelno >= logging.WARNING:
+            _log_warnings.append({"message": message, "level": level, "logger": record.name})
+        if self.echo:
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(record.created))
+            stamp += f".{int(record.msecs):03d}Z"
+            line = {"level": level, "logger": record.name, "time": stamp, "message": message}
+            _flush_stdout()
+            sys.stderr.write(json.dumps(line, separators=(",", ":")) + "\n")
+            sys.stderr.flush()
+
+
+def flush_log_warnings() -> None:
+    """At a JSON-mode run's end, the WARNING records no document took (B13 round 38 C1484): a command with
+    no document of its own, or a record logged after it, never loses one. With nothing written yet they are
+    the run's one document, ``{"warnings": [...]}``; after a document, each is one JSON object on stderr, as
+    ``-v`` writes it; after the error line, which stays the last on stderr, they are kept in its place by
+    nothing and dropped, since that line already ended the run's account."""
+    if not _json_mode or not _log_warnings:
+        return
+    if not _written:
+        emit({})
+        return
+    if "error" in _written:
+        _log_warnings.clear()
+        return
+    _flush_stdout()
+    for record in _take_log_warnings():
+        sys.stderr.write(json.dumps(record, separators=(",", ":")) + "\n")
+    sys.stderr.flush()
+
+
+def _take_log_warnings() -> list[dict[str, str]]:
+    """The kept log records (:class:`JsonLogHandler`), each told once."""
+    taken = list(_log_warnings)
+    _log_warnings.clear()
+    return taken
 
 
 def json_mode() -> bool:
@@ -139,10 +207,16 @@ def json_mode() -> bool:
 def emit(doc: Mapping[str, object]) -> None:
     """One document on stdout: indented by two on a terminal, one compact line otherwise. Non-ASCII is
     escaped, so remote text cannot reach a terminal as a control character and any stream can encode it."""
+    whole = dict(doc)
+    _written.append("document")
+    logged = _take_log_warnings()
+    if logged:  # the run's WARNING records, after the loop's notes (B13 round 38 C1484)
+        kept = whole.get("warnings")
+        whole["warnings"] = [*(kept if isinstance(kept, list) else []), *logged]
     if stdout_is_tty():
-        _write_stdout(json.dumps(dict(doc), indent=2))
+        _write_stdout(json.dumps(whole, indent=2))
     else:
-        _write_stdout(json.dumps(dict(doc), separators=(",", ":")))
+        _write_stdout(json.dumps(whole, separators=(",", ":")))
 
 
 class Reason(enum.StrEnum):
@@ -199,8 +273,10 @@ def error_doc(
         doc["retryAfter"] = retry_after
     if request_id is not None:
         doc["requestId"] = request_id
-    if warnings:
-        doc["warnings"] = [dict(warning) for warning in warnings]
+    _written.append("error")
+    every = [*(dict(warning) for warning in warnings), *_take_log_warnings()]
+    if every:
+        doc["warnings"] = every
     _flush_stdout()
     sys.stderr.write(json.dumps(doc, separators=(",", ":")) + "\n")
 

@@ -1198,7 +1198,8 @@ def _alarms_in_the_report(config: Config) -> Iterator[_HeldAlarms | None]:
     reads, which no alarm line on its out.log matches (None is yielded). A cycle that raises prints no
     report, so the held records are logged then."""
     handlers = [h for h in logging.getLogger().handlers if getattr(h, "_agentsync", False)]
-    if not handlers or launchd.started_by_our_job(config):
+    # JSON mode prints no report, so its document's warnings keep every record (B13 round 38 C1484)
+    if not handlers or clio.json_mode() or launchd.started_by_our_job(config):
         yield None
         return
     held = _HeldAlarms(handlers)
@@ -1600,7 +1601,14 @@ def _sync_document(config: Config, report: CycleReport) -> None:
 
 
 def _run_doc(report: CycleReport) -> dict[str, object]:
-    """A cycle's ``run`` and ``outcome``, for sync's and accept-deletions' documents."""
+    """A cycle's ``run`` and ``outcome``, for sync's and accept-deletions' documents: ``committed``,
+    ``blocked`` with the blocking ``findings`` when the land gate stopped the commit (B13 round 38 C1484), or
+    ``unchanged``."""
+    blocking = [
+        {"code": f.code, "path": f.path, "message": f.message, "blocking": f.blocking}
+        for f in report.lint_findings
+        if f.blocking
+    ]
     sources = [
         {
             "id": s.source_id,
@@ -1619,7 +1627,9 @@ def _run_doc(report: CycleReport) -> dict[str, object]:
             "commit": report.commit_sha,
             "sources": sources,
         },
-        "outcome": "committed" if report.commit_sha else "unchanged",
+        "outcome": "committed" if report.commit_sha else "blocked" if blocking else "unchanged",
+        # the land gate's blocking findings, in curate's shape (B13 round 38 C1484, ruling 128)
+        **({"findings": blocking} if blocking and not report.commit_sha else {}),
     }
 
 
@@ -5274,6 +5284,14 @@ def _setup_logging(verbosity: int) -> None:
     for h in list(root.handlers):
         if getattr(h, "_agentsync", False):
             root.removeHandler(h)
+    if clio.json_mode():
+        # no text handler: a record goes into the document's or the error line's warnings, and with -v to
+        # stderr as one JSON object each (B13 round 38 C1484, ruling 128)
+        captured = clio.JsonLogHandler(level, echo=verbosity > 0)
+        captured._agentsync = True  # type: ignore[attr-defined]
+        root.addHandler(captured)
+        root.setLevel(level)
+        return
     handler = logging.StreamHandler(sys.stderr)
     # UTC with a Z, as the launcher's lines beside these in the err.log and the times inside the messages are
     # (a lock holder's "since"): local time with no zone showed two clocks on one line (B13 round 8 J26). No
@@ -5299,6 +5317,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _main(argv)
     finally:
         os.umask(previous)
+        clio.flush_log_warnings()  # under --json, no WARNING lost (B13 round 38 C1484)
         clio.set_json(False)  # a caller in this process (a test) gets text again
 
 
