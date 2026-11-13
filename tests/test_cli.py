@@ -14941,7 +14941,8 @@ def test_a_state_hold_is_named_while_governance_does_not_load_c1247(
 ) -> None:
     """B13 round 37 C1247 (ruling 124): under a [governance] that did not load, a hold the state lists was an
     [ok] row the refused table's filter dropped, so status said nothing of a hold in force. It is named as an
-    [info] line ending _HOLD_NOT_JUDGED, with no fix and no [ok] line, every pointer resolved; with the table
+    [info] line opening _HOLD_NOT_JUDGED (round 38 C1443: ending it, the report's cut took the clause as the
+    reason and owner, with the time), with no fix and no [ok] line, every pointer resolved; with the table
     restored the [ok] line comes back."""
     cfg = _synced(initialised)
     root = expand(initialised.state_paths.root)
@@ -14955,8 +14956,14 @@ def test_a_state_hold_is_named_while_governance_does_not_load_c1247(
     _rc, out = _status(cfg, capsys)
     assert [ln for ln in out if ln.startswith("[FAIL] governance.config ")], out
     (held,) = [ln for ln in out if ln.startswith("[info] governance.hold ")]
-    assert held.split(" — ", 1)[1].startswith("hold all (state): made-up litigation hold"), held
-    assert held.endswith(f"; {cli._HOLD_NOT_JUDGED}") and "(fix: " not in held, held
+    # B13 round 38 C1443: the clause first, the hold's own words ending the line, as both reports' cuts read
+    want = f"{cli._HOLD_NOT_JUDGED}; hold all (state): made-up litigation hold"
+    assert held.split(" — ", 1)[1].startswith(want) and "(fix: " not in held, held
+    cut = setup_report._cut_holds(held)
+    assert cut.startswith("[info] governance.hold ") and "(fix: " not in cut, cut
+    assert cut.split(" — ", 1)[1].startswith(f"{cli._HOLD_NOT_JUDGED}; hold all (state) since "), cut
+    assert cut.endswith(": reason and owner not shown"), cut
+    assert "litigation" not in cut and "Contoso Legal" not in cut, cut
     assert not [ln for ln in out if ln.startswith("[ok  ] governance.hold")], out
     assert _unresolved_fail_pointers(out) == [], out
     path.write_text(table, encoding="utf-8")

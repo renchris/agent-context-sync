@@ -3300,8 +3300,9 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     would speak for a hold setting nobody could read (B13 round 35 C958). They are read with no table
     (``gov=None``), so no queued purge is judged over a default table that knows no hold: the count stays, as
     an [info] line with no fix, and nothing invites a run every purge refuses (B13 round 36 C1026). A hold
-    the state lists is named the same way, an [info] line ending :data:`_HOLD_NOT_JUDGED` with no fix, never
-    an [ok] one, so a hold in force is never unsaid (B13 round 37 C1247)."""
+    the state lists is named the same way, an [info] line opening :data:`_HOLD_NOT_JUDGED` with no fix, never
+    an [ok] one, so a hold in force is never unsaid (B13 round 37 C1247); the hold's own words end the line,
+    as both reports' hold cuts read them (B13 round 38 C1443)."""
     try:
         gov = governance.load_governance(config.config_path)
     except ConfigError as exc:
@@ -3317,9 +3318,11 @@ _QUEUE_NOT_JUDGED = "not judged: [governance] does not load; the governance.conf
 """The clause the queued count takes when sources.toml's [governance] does not load: every purge and `purge
 --queue` refuse until it does, so the count is told and no run, hold or split is (B13 round 36 C1026)."""
 _HOLD_NOT_JUDGED = "the config's own hold is not judged: [governance] does not load; see governance.config"
-"""The clause a hold the state lists takes when sources.toml's [governance] does not load: the hold is named,
-as an [info] line with no fix, never an [ok] line beside a hold setting nobody could read, nor dropped with
-the ok rows, which left a hold in force unsaid (B13 round 37 C1247; ruling 124)."""
+"""The clause a hold the state lists opens with when sources.toml's [governance] does not load: the hold is
+named, as an [info] line with no fix, never an [ok] line beside a hold setting nobody could read, nor dropped
+with the ok rows, which left a hold in force unsaid (B13 round 37 C1247; ruling 124). It comes first and
+``Hold.describe()`` ends the line, since both reports' hold cuts read the hold's words up to the line's end:
+after them, the clause was cut as the reason and owner, with the time (B13 round 38 C1443)."""
 
 
 def _governance_lines(config: Config, gov: governance.GovernanceConfig | None) -> list[doctor.CheckResult]:
@@ -3364,7 +3367,7 @@ def _governance_lines(config: Config, gov: governance.GovernanceConfig | None) -
             if gov is None:  # named, never judged: the config's own hold is not read (B13 round 37 C1247)
                 out += [
                     _check(
-                        "governance.hold", False, f"{h.describe()}; {_HOLD_NOT_JUDGED}", doctor.Severity.INFO
+                        "governance.hold", False, f"{_HOLD_NOT_JUDGED}; {h.describe()}", doctor.Severity.INFO
                     )
                     for h in holds
                 ]

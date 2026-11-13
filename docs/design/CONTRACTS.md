@@ -40382,6 +40382,9 @@ not judged: [governance] does not load; see governance.config"), not ok and with
 NEXT; with a table that loads it is the [ok] line as before. Test:
 `test_cli.py::test_a_state_hold_is_named_while_governance_does_not_load_c1247`.
 
+Amended 2026-11-13, §16.247 C1443: the line is `[info] governance.hold — ` + `_HOLD_NOT_JUDGED` + `; <hold>`, the clause
+first and `Hold.describe()` ending the line, as both reports' hold cuts read a hold's words to the line's end.
+
 **A remote prefix that does not parse is governance.config's FAIL, its password never printed** (C1261; ruling 124,
 makes worse True). `_parse_remote` raised ValueError out of `parse_governance` for a port that is not a number, a
 broken IPv6 host or a host NFKC changes, so status printed `governance — check crashed` and no governance.config
@@ -40775,6 +40778,15 @@ to do first` wherever that clause prints, when a governance stop other than gove
 `test_cli.py::test_every_clause_beside_a_lost_hold_and_queue_names_both_lines_c1428` (consecutive_incomplete 1 and 3:
 the [ok] detail and the [warn] note, both waits, the stop clause and NEXT) and
 `test_exclude_empty.py::test_beside_a_lost_hold_and_queue_the_head_names_both_lines_c1428`.
+
+**A hold named while [governance] does not load keeps its time in the report** (C1443; amends §16.242 C1247). The
+[info] line read `<hold>; ` + `_HOLD_NOT_JUDGED`, while `setup_report._HOLD_SET_RE` and install.sh's `hold_cut` read
+`Hold.describe()` to the line's end or one fixed ending, so their lazy match took the clause as the reason and owner:
+the report printed `hold all (state): reason and owner not shown` with no `since <iso>` and no `not judged` clause.
+`cli._governance_lines` now writes `_HOLD_NOT_JUDGED` first and `describe()` last, so neither cut needs a new pattern:
+the clause and the time survive, the reason and owner are cut, the [info] status stands. Lane RB adds the
+both-reports row. Test: `test_cli.py::test_a_state_hold_is_named_while_governance_does_not_load_c1247` (the clause
+first, and `setup_report._cut_holds` keeping it and `since`, cutting the reason and owner).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
