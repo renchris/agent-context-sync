@@ -5713,6 +5713,36 @@ def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it() -> None:
     assert setup_report._exited(1) == "exited 1"
 
 
+def test_the_install_line_says_a_first_sync_that_did_not_run_c1404(tmp_path: Path) -> None:
+    """B13 round 38 C1404: the Summary's install.sh step list printed ``first-sync 0s`` for a first sync
+    install.sh skipped (status failed, a busy lock), which reads as a sync that ran in 0 s. A first sync that
+    is not done says its result after a comma, ``first-sync 0s, skipped``; one done keeps its bare seconds,
+    and every other step is unchanged: install.sh logs ``skipped`` for a config step that ran (``exists``)
+    and for an agentsync step already current, whose seconds and note stay as they were."""
+    run = "20261011T100000Z-4242"
+    r = setup_report._Run.__new__(setup_report._Run)
+
+    def line(first_sync: str) -> str:
+        log = tmp_path / f"install-{len(list(tmp_path.iterdir()))}.log"
+        log.write_text(
+            f"2026-10-11T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout args=\n"
+            f"2026-10-11T10:00:00Z run={run} step=agentsync seconds=0 rc=0 result=skipped note=current\n"
+            f"2026-10-11T10:00:03Z run={run} step=config seconds=3 rc=0 result=skipped note=exists\n"
+            f"2026-10-11T10:00:15Z run={run} step=status seconds=12 rc=1 result=failed note=fail-lines\n"
+            f"2026-10-11T10:00:15Z run={run} step=first-sync {first_sync}\n"
+            f"2026-10-11T10:00:18Z run={run} end rc=1 seconds=18\n",
+            encoding="utf-8",
+        )
+        runs = setup_report.read_install_runs(log)
+        r.install_runs = runs
+        return setup_report._install_line(r, runs, scoped=False)
+
+    head = "agentsync 0s, already current, not reinstalled · config 3s · status 12s"
+    assert f"({head} · first-sync 0s, skipped)" in line("seconds=0 rc=0 result=skipped note=status-failed")
+    assert f"({head} · first-sync 601s, skipped)" in line("seconds=601 rc=0 result=skipped note=lock-busy")
+    assert f"({head} · first-sync 34s)" in line("seconds=34 rc=0 result=done")
+
+
 def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: Path) -> None:
     """install.sh notes on its step=agentsync line what it saw of the background sync's lock; the Summary
     carries that note, so a 59 s step reads as a wait, not a slow uv (B13 round 2 R34). Other steps' notes

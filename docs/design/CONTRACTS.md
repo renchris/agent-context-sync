@@ -40774,6 +40774,13 @@ recordings while the media helper is ready (C1452, C1454). Test:
 `test_a_recording_waiting_on_a_failed_ocr_helper_is_classed_by_its_page_c1433` (`build_report` over manifest rows
 and pages the real `Publisher._plan_stub` writes, label rule off and on, the OCR probe ready and not).
 
+**A first sync that did not run says so in the install.sh step list** (C1404). The Summary's `install.sh:` line
+printed `first-sync 0s` for a first sync install.sh skipped (status failed, a busy lock), which reads as a sync that
+ran in 0 s. `_install_line` adds a first sync's result when it is not `done`, `first-sync 0s, skipped`, after a
+comma (round 12 N33); every other step keeps its bare seconds, since install.sh logs `skipped` for a config step
+that ran (`exists`) and an agentsync step already current (dropping or marking them makes worse True). Test:
+`test_the_install_line_says_a_first_sync_that_did_not_run_c1404`.
+
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
 A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.

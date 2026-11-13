@@ -16613,10 +16613,14 @@ def _install_line(
     closing = _closing_stopped(last.step("report"))
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
-    # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33)
+    # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33). A first sync
+    # that did not run to done says its result, `first-sync 0s, skipped`, so it never reads as a sync that ran
+    # in 0s; every other step keeps its bare seconds, since install.sh logs `skipped` for a config step that
+    # ran (`exists`) and an agentsync step already current (B13 round 38 C1404)
     steps = " · ".join(
         f"{k} {v.get('seconds', '?')}s"
         + (f", {_agentsync_note(v['note'])}" if k == "agentsync" and v.get("note") else "")
+        + (f", {v['result']}" if k == "first-sync" and v.get("result") not in (None, "done") else "")
         for k, v in last.steps
         if k != "report"
     )
