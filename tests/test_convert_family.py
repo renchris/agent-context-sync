@@ -18,8 +18,11 @@ from agentsync import policy as policy_mod
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file
 from agentsync.convert import _common as common_mod
+from agentsync.convert import msg as msg_mod
 from agentsync.convert import pptx as pptx_mod
 from agentsync.convert import vtt as vtt_mod
+from agentsync.convert.base import Converter, options_hash
+from agentsync.convert.msg import NOT_MSG_REASON
 from agentsync.convert.pandoc import PandocConverter
 from agentsync.convert.pptx import PptxConverter
 from agentsync.convert.registry import Registry
@@ -27,6 +30,7 @@ from agentsync.convert.xlsx import XlsxConverter
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, RowState
+from agentsync.policy import NOT_OOXML_REASON
 from agentsync.setup_report import quarantine_class
 from test_convert_builders import build_potx, build_pptx_rich, make_zip
 from test_review_fixes import all_objects, git, item_id, make_env, page_fm, run
@@ -318,6 +322,114 @@ def test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304(
     assert quarantine_class(row.state_reason) == "empty"
     assert _row(config, "Contoso standup.vtt").state is RowState.LIVE, "a transcript still converts"
     assert _row(config, "Contoso earlier.vtt").state_reason == vtt_mod._NOT_VTT, "settled: kept, no re-read"
+
+
+def _older_zero_byte_answers(old: pytest.MonkeyPatch) -> None:
+    """The build before C930: a zero-byte Office name is ``not-ooxml`` and a zero-byte ``.msg`` ``not-msg``,
+    both cached UNREADABLE, under a key with no ``empty_screen``."""
+    screen, msg_convert = policy_mod.screen_file, msg_mod.MsgConverter.convert
+
+    def older_screen(path: Path, *, name: str, policy: policy_mod.PolicyConfig):  # type: ignore[no-untyped-def]
+        if name.lower().endswith(policy_mod.OOXML_SUFFIXES) and not path.read_bytes():
+            return policy_mod.Screening(policy_mod.ScreenStatus.UNREADABLE, "not-ooxml", NOT_OOXML_REASON)
+        return screen(path, name=name, policy=policy)
+
+    def older_msg(self: msg_mod.MsgConverter, path: Path, *, name: str):  # type: ignore[no-untyped-def]
+        if not path.read_bytes():
+            raise UnreadableSourceError(msg_mod.NOT_MSG_REASON)
+        return msg_convert(self, path, name=name)
+
+    def older_identity(conv: Converter, name: str) -> tuple[str, str]:
+        return conv.version(), options_hash({**conv.options(), "input_suffix": convert_pkg._suffix(name)})
+
+    old.setattr(policy_mod, "screen_file", older_screen)
+    old.setattr(msg_mod.MsgConverter, "convert", older_msg)
+    old.setattr(convert_pkg, "_identity", older_identity)
+
+
+def _options_hash(config, name: str) -> str | None:  # type: ignore[no-untyped-def]
+    with Manifest(config.state_paths.db) as m:
+        (out,) = m.outputs_for("src", item_id(config, name))
+        return out.options_hash
+
+
+@pytest.mark.parametrize(
+    ("suffix", "older", "real"),
+    [
+        (".docx", NOT_OOXML_REASON, None),
+        (".xlsx", NOT_OOXML_REASON, None),
+        (".pptx", NOT_OOXML_REASON, build_pptx_rich),
+        (".potx", NOT_OOXML_REASON, build_potx),
+        (".vsdx", NOT_OOXML_REASON, None),
+        (".msg", NOT_MSG_REASON, None),
+    ],
+)
+def test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_empty_c1450(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+    older: str,
+    real: Callable[[Path], object] | None,
+) -> None:
+    """B13 round 38 C1450 with C1488 (ruling 132): before C930 a zero-byte Office file or ``.msg`` was a
+    cached UNREADABLE ``not-ooxml`` or ``not-msg`` (classed ``not the type its name says``), and C930 moved no
+    version, so an upgraded Mac served every new zero-byte file of that suffix (one canonical hash) the older
+    answer while a fresh one said ``empty``. The guard's ``empty_screen`` option moves those converters' keys:
+    a new zero-byte file is ``empty``, a real file still converts, and the row the older build settled keeps
+    its class (C930's rule: no re-read)."""
+    config, src = make_env(tmp_path)
+    with monkeypatch.context() as old:
+        _older_zero_byte_answers(old)
+        (src / f"Contoso earlier{suffix}").write_bytes(b"")
+        assert run(config).exit_code == 0
+    earlier = _row(config, f"Contoso earlier{suffix}")
+    assert earlier.state_reason == older
+    assert quarantine_class(older) == "not the type its name says"
+    (src / f"Contoso zero{suffix}").write_bytes(b"")
+    if real is not None:
+        real(src / f"Contoso real{suffix}")
+    assert run(config).exit_code == 0
+    row = _row(config, f"Contoso zero{suffix}")
+    assert row.state is RowState.QUARANTINED and row.state_reason == policy_mod.EMPTY_OUTPUT_REASON
+    assert quarantine_class(row.state_reason) == "empty"
+    assert _options_hash(config, f"Contoso zero{suffix}") != _options_hash(config, f"Contoso earlier{suffix}")
+    if real is not None:
+        assert _row(config, f"Contoso real{suffix}").state is RowState.LIVE, "a real file still converts"
+    assert _row(config, f"Contoso earlier{suffix}").state_reason == older, "settled: kept, no re-read"
+
+
+@pytest.mark.parametrize(
+    ("name", "screened"),
+    [
+        ("a.docx", True),
+        ("a.xlsx", True),
+        ("a.pptx", True),
+        ("a.potx", True),
+        ("a.vsdx", True),
+        ("a.vsdm", True),
+        ("a.XLSM", True),
+        ("a.msg", True),
+        ("a.rtf", False),
+        ("a.html", False),
+        ("a.odt", False),
+        ("a.drawio", False),
+        ("a.pdf", False),
+        ("a.eml", False),
+        ("a.vtt", False),
+        ("a.txt", False),
+        ("a.teams.json", False),
+        ("a.md", False),
+    ],
+)
+def test_only_an_office_name_or_msg_carries_the_empty_screen_option_c1450(name: str, screened: bool) -> None:
+    """B13 round 38 C1450 with C1488 (ruling 132): ``empty_screen`` moves only the keys of the names whose
+    zero-byte answer C930 changed; a ``.rtf``, ``.html``, ``.odt`` or ``.drawio`` its converter shares with an
+    Office name, and a pdf, mail, transcript or text file, keeps its key and every result the cache holds."""
+    conv = Registry.default(ConvertConfig()).for_name(name)
+    assert conv is not None
+    base = {**conv.options(), "input_suffix": convert_pkg._suffix(name)}
+    want = options_hash({**base, "empty_screen": 1} if screened else base)
+    assert convert_pkg._identity(conv, name) == (conv.version(), want)
 
 
 @pytest.mark.parametrize(

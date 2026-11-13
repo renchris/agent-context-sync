@@ -38999,6 +38999,10 @@ Amended 2026-11-08, §16.238 C1050, C1117: the "Not built here" half is built: a
 Amended 2026-11-10, §16.243 C1304: `.vtt` is the exception to `no emitter bump`: its zero-byte result before C1050
 was a cached UNREADABLE, not an uncached failure, so vtt's emitter is 1.0.1 and a new zero-byte transcript is
 `empty` on an upgraded Mac too.
+Amended 2026-11-13, §16.248 C1450, C1488: `a failed one was never cached` is wrong for the Office names and `.msg`:
+their zero-byte answer before C930 was a cached UNREADABLE `not-ooxml` or `not-msg`, so an upgraded Mac served it to
+every new zero-byte file of the suffix. An `empty_screen` option moves those names' keys; still no emitter bump and
+no re-read, so a row already settled keeps its class.
 Amended 2026-11-08, §16.238 C1033: "a wrong-type `.vsdx`" is a `.vsdx` that is not a ZIP, or an Office package of
 another family: a ZIP that is no Office package at all still reads `not a Visio drawing` and is tried again.
 Amended 2026-11-08, §16.239 C1034, C1118: a blank or byte-order-mark-only `.drawio` takes `not-drawio` by choice,
@@ -40468,6 +40472,9 @@ C930, whose keys did not move either. Test:
 `test_convert_family.py::test_a_zero_byte_vtt_after_an_older_builds_cached_result_is_empty_c1304` (an older
 build's sync at 1.0.0 caches `not a WebVTT transcript`; a new zero-byte transcript is then `empty`, a real one
 converts, and the settled row keeps its class).
+Amended 2026-11-13, §16.248 C1450, C1488: the `Not built here` sentence is built: an Office package name or a `.msg`
+carries `empty_screen: 1` in its action key's options, so its key moved once and an older build's `not-ooxml` or
+`not-msg` answer is never served to a new zero-byte file.
 
 **A test kills its helper through the helper's own Popen, never a bare pid** (C1272; `tests/test_ocr.py`). The C961
 test's `finally` (C1036's red-run cleanup) sent SIGKILL to the helper's bare pid after its green path had asserted
@@ -40672,7 +40679,32 @@ Reserved for round 38 lane B of B13.
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
-Reserved for round 38 lane E of B13.
+Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
+verifier's corrected fix built, as the lead's ruling 132 settles it). A dated line this round writes reads
+`Amended 2026-11-13, §16.248 C<n>`.
+
+**An Office file or `.msg` of zero bytes is `empty` after an older build's cached answer too** (C1450 with C1488,
+one defect from two finders, built once; `agentsync.convert`; amends §16.233 C930 and §16.243 C1304). C930
+made a zero-byte Office name (`screen_file`'s guard) and a zero-byte `.msg` (`MsgConverter.convert`) `empty-output`
+where both had been a cached UNREADABLE `not-ooxml` or `not-msg`, and moved no part of the action key, which every
+zero-byte file of a suffix shares. So on a Mac that synced one before the upgrade, every new zero-byte `.docx`,
+`.xlsx`, `.pptx`, `.potx`, `.vsdx` or `.msg` was served `not the type its name says` while a fresh Mac said `empty`
+(the verifiers' two builds over one cache). `convert._identity`, which folds the name's suffix into the key's
+options, adds `empty_screen: 1` only when that suffix is in `policy.OOXML_SUFFIXES` or is `.msg`: the keys of those
+names move once, and every other name keeps its key, so no recording is transcribed and no scan is read again for
+this. Not in `_GuardedConverter.options`, as ruling 132 had it: with an OCR engine pandoc is two converters, and the
+`.rtf`, `.html` and `.htm` one claims no Office suffix, so a converter-wide option gave `.rtf` one key with an engine
+and another without (measured, red:
+`test_convert_formats.py::test_an_rtf_or_html_file_is_converted_as_on_a_mac_without_an_engine` and two
+`test_convert_core.py` identity tests); keyed on the name, a `.rtf`, `.html`, `.odt` or `.drawio`
+keeps its key too, since C930 changed no cached answer of theirs. Not five emitter bumps: msg's and diagram's
+`outdated_key` hold the version, and the version is what the pages show. `KEY_SCHEMA_VERSION` stays, no `outdated`
+rule reads options, and `_republish_from_cache` is unchanged, so a row already settled keeps its class until its
+bytes change (C930's ruling). Tests:
+`test_convert_family.py::test_a_zero_byte_office_file_or_msg_after_an_older_builds_cached_result_is_empty_c1450`
+(six suffixes: an older build's sync caches `not-ooxml` or `not-msg` under a key without the option; a new zero-byte
+file is then `empty` under another options hash, a real `.pptx` or `.potx` converts, and the settled row keeps its
+class) and `test_convert_family.py::test_only_an_office_name_or_msg_carries_the_empty_screen_option_c1450`.
 
 ### 16.249 Round 38: the v37 prompt, the retention promise and the guides (2026-11-13, wave B13 round 38 lane D)
 

@@ -13,6 +13,7 @@ from agentsync.convert.cache import ConverterCache, action_key
 from agentsync.convert.registry import Registry
 from agentsync.errors import NotConvertibleError, UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit
+from agentsync.policy import OOXML_SUFFIXES
 
 log = logging.getLogger(__name__)
 
@@ -112,8 +113,18 @@ def _identity(conv: Converter, name: str) -> tuple[str, str]:
     The input suffix is folded into the effective options: the action key has no file-name component, and a
     converter may render the same bytes differently per suffix (``.csv`` table vs ``.txt`` fence), so the
     suffix must be part of the producer identity.  Nothing else of the name may influence output.
+
+    An Office package name or a ``.msg`` also carries ``empty_screen``: C930 changed its zero-byte answer from
+    a cached ``not-ooxml`` or ``not-msg`` to ``empty`` and moved no version, so an older build's answer is
+    never served (B13 round 38 C1450 with C1488, ruling 132). Keyed on the name, not on the converter's
+    suffixes: with an OCR engine pandoc is two converters, and ``.rtf`` keeps the one key it has on a Mac
+    without an engine.
     """
-    return conv.version(), options_hash({**conv.options(), "input_suffix": _suffix(name)})
+    suffix = _suffix(name)
+    opts = {**conv.options(), "input_suffix": suffix}
+    if suffix in OOXML_SUFFIXES or suffix == ".msg":
+        opts["empty_screen"] = 1
+    return conv.version(), options_hash(opts)
 
 
 def convert_file(
