@@ -1095,7 +1095,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     # (round 9 K33; round 10 L50); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
-    # an image whose OCR helper fails, as its page says, never "no converter" (C1101, C1271)
+    # an image, or a recording while the media helper is ready, waiting on an OCR helper that fails, as its
+    # page says, never "no converter" (C1101, C1268, C1271)
     ocr_down = sum(s.ocr_unread for s in report.sources)
     unread_tail = "".join(
         f"; {n} {what}"
@@ -2751,11 +2752,11 @@ def _governance_listing_note(config: Config | None) -> str | None:
 
 
 def _stopped_listing_note(config: Config | None) -> str | None:
-    """The listing note beside any other stop that blocks every sync (``loop._sync_stopped_on``: the lock, or
-    a purge record or suppression list this account cannot open), in the [ok] line's words, so one check reads
-    alike above and below the warn's threshold; its fix was a sync the guard refuses, or a pointer that never
-    said no sync runs. None where the sync runs, as over a hold record at 0000, which keeps its fix (B13 round
-    33 C729; ruling 87)."""
+    """The listing note beside any other stop that blocks every sync (``loop._sync_stopped_on``, the first of
+    ``loop._sync_stops``, which lists them in the order the sync meets them: B13 round 38 C1449), in the [ok]
+    line's words, so one check reads alike above and below the warn's threshold; its fix was a sync the guard
+    refuses, or a pointer that never said no sync runs. None where the sync runs, as over a hold record at
+    0000, which keeps its fix (B13 round 33 C729; ruling 87)."""
     if config is None:
         return None
     try:
