@@ -14570,6 +14570,70 @@ def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outc
     ]
 
 
+def test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 38 C1434: a first sync or status step install.sh's own watchdog stopped at its limit logs
+    ``rc=143 result=failed note=timeout``, and the report read the rc alone: the step row said ``stopped by
+    SIGTERM, rc 143 (timeout)``, the retry item ``from outside install.sh``, which was false, and the outcome
+    dropped the limit. Each reads ``stopped at its limit of <N>s, rc 143`` now, from the step's note, at each
+    call site; a TERM from outside keeps its words, and the stale lock a limit-stopped first sync leaves is
+    still expected (_signal_lock reads _rc_words, which is unchanged)."""
+    log = fake_mac["setup"] / "install.log"
+    write_friction(fake_mac, retry_friction())
+    limit = "stopped at its limit of 3600s, rc 143"
+    failed = install_run("2026-09-29T10:00:00Z", 1).replace(
+        "step=first-sync seconds=34 rc=0 result=done note=converted-3-deferred-0",
+        "step=first-sync seconds=3600 rc=143 result=failed note=timeout",
+    )
+    log.write_text(LIST_RUN + failed + install_run("2026-09-29T10:20:00Z", 0), encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    got = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+    assert got == (
+        f"- install.sh · step 2 · run 20260929T100000Z exited 1 at its first-sync step ({limit})"
+        "; the same command was run again and ended 0"
+    ), got
+    assert "from outside install.sh" not in text and "SIGTERM" not in text, text
+    runs = setup_report.read_install_runs(log)
+    first = next(run for run in runs if run.step("first-sync") and run.rc == 1)
+    table = "\n".join(setup_report._step_table(list(first.steps)))
+    assert f"| failed, {limit} |" in table and "timeout" not in table, table
+    assert setup_report._reached(first) != "" and limit in setup_report._run_end(first, runs)
+    words, _counts = setup_report._sync_step_words(dict(first.step("first-sync") or {}))
+    assert words == f"failed in 3600s, {limit}", words
+    status = {"seconds": "900", "rc": "143", "result": "failed", "note": "timeout"}
+    assert setup_report._step_rc_words(status) == "stopped at its limit of 900s, rc 143"
+    assert setup_report._step_rc_words({"rc": "143", "result": "failed"}) == "stopped by SIGTERM, rc 143"
+    # the outcome of an attempt whose last run stopped so names the limit too
+    log.write_text(LIST_RUN + failed, encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    outcome = section(text, "Summary").strip().splitlines()[0]
+    assert f"its first-sync step failed, {limit}" in outcome and "SIGTERM" not in outcome, outcome
+    # the stale lock a first sync stopped at its limit leaves is still the signal-stopped sync's
+    cfg = fake_mac["config"]
+    lock = expand(load_config(cfg).state_paths.lock)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    run = "2026-10-29T01:38:20Z run=20261029T013830Z-40 "
+    log.write_text(
+        run
+        + "start install.sh compat=6 commit=0123456789ab kind=checkout source=- args=x\n"
+        + run
+        + "step=first-sync seconds=3600 rc=143 result=failed note=timeout\n"
+        + run
+        + "end rc=1 seconds=3615\n",
+        encoding="utf-8",
+    )
+    lock.write_text("153 1700000000 2026-10-29T01:38:21Z cli\n", encoding="ascii")
+    r = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    stale = (
+        "free, but pid 153 (sync, started 2026-10-29T01:38:21Z) ended without releasing it; the next cycle"
+    )
+    r.facts.doctor_problems = [("warn", "lock", stale)]
+    got_sort = setup_report._sort_doctor(r, setup_report.read_install_runs(log))
+    assert got_sort.expected == {setup_report._SIGNAL_LOCK_WORDS: ["lock"]}, got_sort
+
+
 def test_a_retried_runs_first_sync_a_signal_stopped_is_named_by_its_signal_c612(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

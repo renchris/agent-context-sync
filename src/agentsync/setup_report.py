@@ -3986,9 +3986,9 @@ def compute_outcome(
         # B13 round 32 C614, C635 (ruling 66): a step a signal stopped is named by its signal, as the step row
         # and the sync line name it ("failed, stopped by SIGTERM, rc 143"); a plain rc keeps "with rc N", and
         # ``rc`` stays raw for the "during" check below
-        words = _rc_words(rc) if rc else ""
+        words = _step_rc_words(failing[1]) if failing and rc else ""
         said = f" with rc {rc}" if rc else " with no rc logged"
-        if words.startswith("stopped by "):
+        if words.startswith(("stopped by ", "stopped at its limit")):  # its own limit too (C1434)
             said = f", {words}"
         where = f": its {failing[0]} step failed{said}" if failing else ""
         if last.rc is None:
@@ -6854,6 +6854,7 @@ _FIRST_SYNC_NOTE_WORDS = {
     "tcc-denied": "this terminal app may not read the folders",
     # exit 65 (B13 round 18 V50), with no bracket: the row and the sync line put the words in one
     "state-unreadable": "agentsync's state file, manifest.sqlite, cannot be read: the person's to fix",
+    "timeout": "stopped at its limit",  # B13 round 38 C1434: install.sh's own limit, never an outside signal
 }
 """install.log's first-sync notes with no number -> the report's words (B13 round 11 M40)."""
 
@@ -6948,6 +6949,7 @@ _STATUS_NOTE_WORDS = {
     # the same lines to a run that asks for none (B13 round 15 S35)
     "tcc-pending": "its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)",
     "status-error": "agentsync status exited with no [FAIL] line",
+    "timeout": "stopped at its limit",  # B13 round 38 C1434
 }
 """install.log's status-step notes -> the Installer table's words (B13 round 14 Q4, Q50)."""
 
@@ -7007,6 +7009,20 @@ def _rc_words(rc: str) -> str:
     return f"rc {rc}"
 
 
+def _step_rc_words(fields: dict[str, str]) -> str:
+    """One logged step's rc in words, as :func:`_rc_words` gives them, but a step install.sh stopped at its
+    own limit (``note=timeout``: the first sync's or status's watchdog sent the TERM, ``rc=143``) reads
+    ``stopped at its limit of 3600s, rc 143``, never ``stopped by SIGTERM`` (B13 round 38 C1434: both reports
+    called the run's own limit an outside signal, and "from outside install.sh" was false). Read at each call
+    site, never inside :func:`_rc_words`: :func:`_signal_lock` reads that one, since a step stopped at its
+    limit is killed by the same SIGTERM and leaves the same stale lock."""
+    rc = fields.get("rc", "")
+    if fields.get("note") == "timeout" and rc not in ("", "0"):
+        secs = fields.get("seconds", "")
+        return f"stopped at its limit{f' of {secs}s' if secs.isdigit() else ''}, rc {rc}"
+    return _rc_words(rc)
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
     """A run's steps as the Installer table's rows. With ``sign_in`` the run is the list whose sign-in step 1
     asked for, and the attempt went on (:func:`_sign_in_run`): its failed list-folders row reads ``stopped``,
@@ -7019,7 +7035,7 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             result = "stopped"
         rc = v.get("rc", "0")
         if rc not in ("0", ""):
-            result += f", {_rc_words(rc)}"
+            result += f", {_step_rc_words(v)}"
         kept, added = _count(v, "kept"), _count(v, "added")
         # the config step's folder counts, which "(add-source)" alone hid: a run that added no folder read as
         # one that did (B13 round 7 H10); install.sh's note stays, the first-sync label reads it
@@ -7043,6 +7059,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             elif unread is not None:
                 counts = f"could not read which folders sources.toml syncs, because {unread}"
         said = v.get("note", "")
+        if said == "timeout" and rc not in ("0", ""):  # the rc's words already say so (C1434)
+            said = ""
         if name == "agentsync":
             said = _agentsync_note(said)
         elif name == "first-sync":
@@ -7626,7 +7644,7 @@ def _reached(run: InstallRun, *, stopped: bool = False) -> str:
     if stopped and name == "list-folders" and result == "failed":
         result = "stopped"
     return f"{_step_word(name)} ({_step_word(result)}" + (
-        f", {_rc_words(rc)})" if rc.isdigit() and rc != "0" else ")"
+        f", {_step_rc_words(fields)})" if rc.isdigit() and rc != "0" else ")"
     )
 
 
@@ -7668,7 +7686,7 @@ def _run_end(run: InstallRun, runs: Sequence[InstallRun]) -> str:
     if failing is not None and run.steps and run.steps[-1][0] != failing[0]:
         rc = failing[1].get("rc", "")
         end += f", {_step_word(failing[0])} failed" + (
-            f", {_rc_words(rc)}" if rc.isdigit() and rc != "0" else ""
+            f", {_step_rc_words(failing[1])}" if rc.isdigit() and rc != "0" else ""
         )
     closing = _closing_stopped(run.step("report"))
     return f"{end}, its closing status {closing}" if closing is not None else end
@@ -16136,15 +16154,16 @@ def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | Non
     ``converted-N-deferred-M[-reread-R]`` note carries (None when it carries none)."""
     counts: tuple[int, int, int] | None = None
     text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
+    limited = v.get("note") == "timeout" and v.get("rc", "0") not in ("0", "")
     if v.get("rc", "0") not in ("0", ""):
-        text += f", {_rc_words(v['rc'])}"
+        text += f", {_step_rc_words(v)}"
     note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
     if note is not None:
         if note["c"] is not None:
             counts = (int(note["c"]), int(note["d"]), int(note["r"] or 0))
         if note["w"] or note["w2"]:
             text += ", after waiting for another sync to end"
-    elif v.get("note"):
+    elif v.get("note") and not limited:  # a limit's note is in the rc's words already (C1434)
         # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
         # (round 6 G34; B13 round 12 N14, N33 found "(lock busy: ...) (install.log)")
         text += f", {_first_sync_note(v['note'])}"
@@ -17597,7 +17616,7 @@ def _failed_at(r: _Run, run: InstallRun) -> tuple[str | None, str]:
     :func:`_retry_line`'s, with no run that ended 0 needed (B13 round 34 C813)."""
     failing = next(
         (
-            (name, f" at its {_step_word(name)} step", fields.get("rc", ""))
+            (name, f" at its {_step_word(name)} step", fields)
             for name, fields in run.steps
             if name != "report"
             and (fields.get("result") == "failed" or fields.get("rc", "0") not in ("0", ""))
@@ -17608,12 +17627,15 @@ def _failed_at(r: _Run, run: InstallRun) -> tuple[str | None, str]:
         return None, ""
     at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
     # B13 round 32 C612 (ruling 66): a step a signal stopped is named by its signal, in the step row's
-    # words; "from outside install.sh" only for the first sync, the one step install.sh's NEXT says it of
-    words = _rc_words(failing[2])
+    # words; "from outside install.sh" only for the first sync, the one step install.sh's NEXT says it of.
+    # B13 round 38 C1434: a step stopped at install.sh's own limit says so, never "from outside"
+    words = _step_rc_words(failing[2])
     if words.startswith("stopped by "):
         outside = ", from outside install.sh" if failing[0] == "first-sync" else ""
         # inside a status step's [FAIL] bracket when it has one: never two in a row (C617, ruling 66)
         at = _one_bracket(at, f"{words}{outside}")
+    elif words.startswith("stopped at its limit"):
+        at = _one_bracket(at, words)
     return failing[0], at
 
 

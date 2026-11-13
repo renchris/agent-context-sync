@@ -7011,9 +7011,11 @@ report fallback the installer's fallback report
 status fail-lines agentsync status reported [FAIL] lines
 status tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)
 status status-error agentsync status exited with no [FAIL] line
+status timeout stopped at its limit
 doctor fail-lines agentsync status reported [FAIL] lines
 doctor tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)
-doctor status-error agentsync status exited with no [FAIL] line" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
+doctor status-error agentsync status exited with no [FAIL] line
+doctor timeout stopped at its limit" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
 # The Installer output paragraph's sentence on a person's fix: line, which a renderer before ba5e253f lacks (B13
 # round 16 T23): it goes after STOPPED_NEXT_STEP, whose full stop becomes a semicolon.
 STOPPED_NEXT_STEP=" before install.sh's own next step. "

@@ -40790,6 +40790,17 @@ when Doctor ran in full (`facts.doctor` read) and printed none; status's form on
 run or had no hook. Test: `test_the_loop_lines_empty_root_grant_names_the_line_the_report_prints_c1258` (three
 cases).
 
+**A step stopped at install.sh's own limit is never an outside signal** (C1434; lane RB builds
+`prior_signal_first_sync` and test_install_bounds.py's report assertions). A first sync or status step that hits its
+limit logs `rc=143 result=failed note=timeout`, and the report read the rc alone: the step row said `stopped by
+SIGTERM, rc 143 (timeout)`, the retry item added `from outside install.sh`, which was false, and the outcome dropped
+the limit. `setup_report._step_rc_words` reads the step's note and gives `stopped at its limit of <seconds>s, rc
+143`, at each call site (`_step_table`, `_reached`, `_run_end`, `_sync_step_words`, the Summary outcome,
+`_failed_at`), the `timeout` note itself dropped where those words carry it; `_rc_words` is unchanged, so
+`_signal_lock` still files the stale lock such a sync leaves as expected (a change inside it makes worse True). The
+closing status keeps its words: install.sh logs nothing that tells a limit from a signal there. Test:
+`test_a_step_install_sh_stopped_at_its_own_limit_is_never_an_outside_signal_c1434`.
+
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 
 A dated line this round writes in another section reads `Amended <date>, §16.246 C<n>: ...`.
