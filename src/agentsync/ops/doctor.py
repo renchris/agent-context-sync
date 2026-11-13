@@ -820,7 +820,10 @@ def _shell_path(path: Path | str) -> str:
     quoted part is the raw path, so the report's redaction still finds every name in it. A path with a
     ``'`` is quoted by what it holds (§16.45 R78): ``~/"<rest>"`` (or ``"<path>"``) when it has none of
     ``!$`\\"``, still the raw path in one piece; else each ``'`` is spliced as ``'\\''``, which splits a name
-    holding one for the redaction."""
+    holding one for the redaction. A path holding a character :data:`arm_local._LIST_ESCAPED_RE` matches (a
+    control character, a C1 control, a line or paragraph separator, a bidi or zero-width one) is written in
+    :func:`ansi_c_word`'s ``$'...'`` form instead, never raw, so a fix never sends an escape sequence to the
+    terminal and still names the real folder when pasted (B13 round 38 C1414, ruling 126)."""
     p = str(path)
     home = Path.home()
     forms = {str(home)}
@@ -837,8 +840,41 @@ def _shell_path(path: Path | str) -> str:
     return _quoted(p)
 
 
+def ansi_c_word(text: str) -> str:
+    """``text`` as one bash ``$'...'`` word: ESC as ``\\e``, a tab as ``\\t``, every other character
+    :data:`arm_local._LIST_ESCAPED_RE` matches as ``\\NNN`` for each byte of its UTF-8 form (three octal
+    digits), a backslash as ``\\\\`` and a ``'`` as ``\\'``, everything else as it is. bash and zsh decode it
+    to ``text``; the setup report aliases a folder's word in this form (B13 round 38 C1414, ruling 126)."""
+    out: list[str] = []
+    for ch in text:
+        if ch in "\\'":
+            out.append("\\" + ch)
+        elif ch == "\x1b":
+            out.append("\\e")
+        elif ch == "\t":
+            out.append("\\t")
+        elif arm_local._LIST_ESCAPED_RE.match(ch):
+            out.append("".join(f"\\{b:03o}" for b in ch.encode("utf-8")))
+        else:
+            out.append(ch)
+    return "$'" + "".join(out) + "'"
+
+
+def list_spelling(path: Path | str) -> str:
+    """``path`` as a detail line shows it: each character :data:`arm_local._LIST_ESCAPED_RE` matches spelled
+    as step 1's list spells a folder's name (``\\n``, ``\\t``, ``\\r``, else ``?``; install.sh's
+    ``LIST_ESC_AWK``), with no mark, so a name never sends an escape sequence to the terminal; a path with
+    none is unchanged. The setup report aliases this spelling (B13 round 38 C1414, ruling 126)."""
+    text = str(path)
+    if not arm_local._LIST_ESCAPED_RE.search(text):
+        return text
+    return arm_local._LIST_ESCAPED_RE.sub(lambda m: arm_local._LIST_ESCAPES.get(m.group(), "?"), text)
+
+
 def _quoted(text: str) -> str:
     """``text`` as one quoted shell word, by what it holds (:func:`_shell_path`)."""
+    if arm_local._LIST_ESCAPED_RE.search(text):
+        return ansi_c_word(text)
     if "'" not in text:
         return f"'{text}'"
     if not _DOUBLE_QUOTE_SPECIAL.intersection(text):
@@ -2990,6 +3026,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         return [_bad(base, "no path configured", fix=f'set path in the [[source]] with id = "{src.id}"')]
     root = expand(src.path)
     cloud = is_cloud_path(root)
+    shown = list_spelling(root)  # every detail's spelling of the root, never raw (B13 round 38 C1414)
 
     # only once the listing has answered: the fix reads the provider folder, which a hidden Allow prompt
     # holds too (B13 round 13 O47: read first, it held status past the listing's bound); once, for the
@@ -3001,7 +3038,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # An error with no rule of its own (an I/O error, a sync app that stopped answering) is the person's to
     # look at, so its fix says where: for the listing, and for the sentinel read below.
     sync_app = " and that its sync app is running and signed in" if cloud else ""
-    look_fix = f"check that {root} opens in Finder{sync_app}"
+    look_fix = f"check that {shown} opens in Finder{sync_app}"
     out: list[CheckResult] = []
     listed = False
     try:
@@ -3012,7 +3049,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             # is for the folder config.ensure_inbox keeps: any other inbox source is one the person added.
             kept = canonical_source_root(expand(config.docs_repo).parent / "inbox")
             hint = " (drop files you save by hand here)" if src.path == kept else ""
-            out.append(_ok(f"{base}.listable", f"{root} is empty{hint}"))
+            out.append(_ok(f"{base}.listable", f"{shown} is empty{hint}"))
         elif first is None:
             # the walk's own test (``arm_local.zero_children_unknown``): a cloud folder outside every File
             # Provider domain reads as complete to the walk, which stores no empty root and so no wait, so
@@ -3035,16 +3072,16 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                     fix = empty_folder_fix(
                         src.id, root=_shell_path(root), config_shown=_shown(config.config_path)
                     )
-            out.append(_bad(f"{base}.listable", f"{root} {detail}", Severity.WARN, fix=fix))
+            out.append(_bad(f"{base}.listable", f"{shown} {detail}", Severity.WARN, fix=fix))
         else:
-            out.append(_ok(f"{base}.listable", f"{root} is listable"))
+            out.append(_ok(f"{base}.listable", f"{shown} is listable"))
     except CallTimedOutError:
         # A listing that never returns is macOS holding the read for an Allow prompt in this terminal: a FAIL
         # like EPERM (never "empty"), and the sentinel and volume reads below would wait on it too.
         out.append(
             _bad(
                 f"{base}.listable",
-                f"{root}: listing did not return within {_LISTING_TIMEOUT_S:.0f}s; macOS is most likely "
+                f"{shown}: listing did not return within {_LISTING_TIMEOUT_S:.0f}s; macOS is most likely "
                 "waiting for you to click Allow on a privacy prompt (it can sit behind other windows)",
                 # the command to run after, as the sign-in's (B13 round 12 N56)
                 fix=f"click Allow on the macOS prompt, then run {BIN} status again; if no prompt shows: "
@@ -3053,12 +3090,12 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         )
         return out
     except FileNotFoundError:
-        out.append(_bad(f"{base}.listable", f"{root} does not exist", fix=missing_fix()))
+        out.append(_bad(f"{base}.listable", f"{shown} does not exist", fix=missing_fix()))
     except NotADirectoryError:
         out.append(
             _bad(
                 f"{base}.listable",
-                f"{root} is not a directory",
+                f"{shown} is not a directory",
                 fix=f'point [[source]] id = "{src.id}" path at a folder',
             )
         )
@@ -3067,19 +3104,20 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             out.append(
                 _bad(
                     f"{base}.listable",
-                    f"{root}: Operation not permitted (macOS privacy/TCC)",
+                    f"{shown}: Operation not permitted (macOS privacy/TCC)",
                     fix=_fda_fix(image),
                 )
             )
         else:
             out.append(
-                _bad(f"{base}.listable", f"{root}: permission denied", fix=f"chmod u+rx {_shell_path(root)}")
+                _bad(f"{base}.listable", f"{shown}: permission denied", fix=f"chmod u+rx {_shell_path(root)}")
             )
     except OSError as exc:
-        out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}", fix=look_fix))
+        out.append(_bad(f"{base}.listable", f"{shown}: {exc.strerror or exc}", fix=look_fix))
 
     if src.sentinel:
         target = root / src.sentinel
+        sentinel = list_spelling(target)  # never raw (C1414)
         try:
             target.lstat()  # lstat never hydrates a dataless placeholder
             out.append(_ok(f"{base}.sentinel", f"{src.sentinel} present"))
@@ -3087,16 +3125,16 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             out.append(
                 _bad(
                     f"{base}.sentinel",
-                    f"{target} is missing: every pass would be incomplete (no deletions, no cursor)",
-                    fix=f'restore {target}, or change sentinel in [[source]] id = "{src.id}"',
+                    f"{sentinel} is missing: every pass would be incomplete (no deletions, no cursor)",
+                    fix=f'restore {sentinel}, or change sentinel in [[source]] id = "{src.id}"',
                 )
             )
         except PermissionError:
-            out.append(_bad(f"{base}.sentinel", f"{target}: not permitted (TCC)", fix=_fda_fix(image)))
+            out.append(_bad(f"{base}.sentinel", f"{sentinel}: not permitted (TCC)", fix=_fda_fix(image)))
         except OSError as exc:
             # Any other answer (the path is a file, an I/O error, a sync app that stopped answering) is this
             # line's own: leaving the check with it cost the source its other lines and their fixes.
-            out.append(_bad(f"{base}.sentinel", f"{target}: {exc.strerror or exc}", fix=look_fix))
+            out.append(_bad(f"{base}.sentinel", f"{sentinel}: {exc.strerror or exc}", fix=look_fix))
     elif cloud:
         # add-source writes the sentinel as a commented recommendation, and the walk already holds back
         # deletions for a cloud folder it cannot list, or finds empty inside a File Provider domain (the
@@ -3122,7 +3160,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         out.append(
             _bad(
                 f"{base}.volume",
-                f"{kind} UUID not checked: {root} is missing",
+                f"{kind} UUID not checked: {shown} is missing",
                 fix=missing_fix(),
             )
         )
@@ -3142,7 +3180,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         out.append(
             _bad(
                 f"{base}.volume",
-                f"{kind} UUID unreadable for {root}: {exc}; stable ids cannot be formed",
+                f"{kind} UUID unreadable for {shown}: {exc}; stable ids cannot be formed",
                 fix="check the volume is mounted (diskutil info <mount>)",
             )
         )

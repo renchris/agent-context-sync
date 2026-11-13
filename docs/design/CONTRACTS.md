@@ -41059,6 +41059,24 @@ piece of the name prints, each listable and volume FAIL is one line ending in it
 `::test_the_reports_evidence_damage_line_splits_at_a_newline_alone_c1431` (the state folder under a folder holding
 each: the state_dir.manifest FAIL is one line naming the whole path).
 
+**Doctor's source lines spell a folder's name as the list does, and its fixes in bash's `$'...'` form** (C1414; ruling
+126; privacy). Doctor's `source.<id>.listable` detail and fix printed a synced folder's name raw, so a name holding ESC
+sent an escape sequence to the terminal on every status and install run, and a tab or a separator split the line. Every
+`source.<id>.listable`, `.sentinel` and `.volume` detail of `_check_local_source`, and `look_fix`, now spells the path
+through `doctor.list_spelling`: each character `arm_local._LIST_ESCAPED_RE` matches becomes `\n`, `\t`, `\r` (the RS
+as `\n`) or `?`, as install.sh's `LIST_ESC_AWK` spells a folder's row, with no mark. `doctor._shell_path` writes a path
+holding such a character as `doctor.ansi_c_word`'s `$'...'` word, ESC as `\e`, a tab as `\t`, every other matched
+character as `\NNN` for each byte of its UTF-8 form, `\\` and `\'` escaped (`~/$'<rest>'` under the home folder), never
+`?`, so the Finder fix, ruling 130's pause-or-check fix and `chmod u+rx` still reach the folder. Lane RA's
+`setup_report.folder_spellings` aliases both spellings, and this lands on its sha (a spelling no alias knows prints in
+clear); install.sh's `source-local:` line is lane RB's. Tests:
+`test_ops_doctor.py::test_a_listable_line_spells_a_synced_folders_name_as_the_list_does_c1414` (a name with ESC, a tab,
+U+2028, a C1 control, a zero-width space and a `'`, in and outside a File Provider domain: no raw control byte in any
+detail or fix, and `bash -c 'ls -d <word>'` reaches the folder) and
+`::test_a_refused_listing_fix_reaches_a_folder_whose_name_holds_a_control_character_c1414` (`chmod u+rx`) and
+`::test_doctors_spellings_of_a_folder_are_the_reports_aliases_c1414` (both spellings are among
+`setup_report.folder_spellings`, read from the report's own helper).
+
 **A recording keeps its page while the OCR helper fails** (C1442; ruling 127; data integrity; amends §16.242 C1286).
 C1268 gives a recording waiting on a failed OCR helper the OCR-down words while the media helper is ready
 (`recordings_wait_ocr`), so `Cycle._keeps_ocr_page` passed its `ocr_waits` gate for one, then declined it because its

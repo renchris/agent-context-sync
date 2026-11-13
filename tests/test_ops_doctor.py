@@ -2636,6 +2636,82 @@ def test_an_empty_local_folder_keeps_its_warn_with_the_pause_or_check_fix_c1401(
     assert pause in cloud
 
 
+_C1414_NAME = "Contoso\x1b[7mInverse\tTab\u2028Board\x85x\u200by's"
+"""A synced folder's name with ESC, a tab, U+2028, a C1 control, a zero-width space and a ``'`` (C1414)."""
+
+
+def _ls_d(word: str) -> str:
+    """What ``bash -c 'ls -d <word>'`` prints for a fix's path word, with this test's home folder."""
+    done = subprocess.run(
+        ["/bin/bash", "-c", f"ls -d {word}"],
+        capture_output=True,
+        check=True,
+        env={**os.environ, "LC_ALL": "C"},
+    )
+    return os.fsdecode(done.stdout.rstrip(b"\n"))
+
+
+@pytest.mark.parametrize("domain", [True, False])
+def test_a_listable_line_spells_a_synced_folders_name_as_the_list_does_c1414(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, domain: bool
+) -> None:
+    """B13 round 38 C1414 (ruling 126; privacy): doctor's source.<id>.listable detail and its fix printed a
+    synced folder's name raw, so a name holding ESC sent an escape sequence to the person's terminal on every
+    status and install run. Each detail spells the root as step 1's list does (no raw control byte), and the
+    Finder fix writes it in install.sh's ``$'...'`` form, never ``?``: bash reaches the real folder with
+    it."""
+    monkeypatch.setattr(arm_local, "_is_domain", lambda provider: domain)
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / _C1414_NAME
+    root.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=None)
+    results = doctor._check_local_source(sample_config, src, Path(sys.executable))
+    raw = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u200b]")
+    shown = "Contoso?[7mInverse\\tTab?Board?x?y's"
+    for r in results:
+        assert not raw.search(r.detail) and not raw.search(r.fix or ""), (r.detail, r.fix)
+    listable = by_name(results)["source.local-fixture.listable"]
+    want = f"{Path.home()}/Library/CloudStorage/OneDrive-Contoso/{shown} "
+    assert listable.detail.startswith(want), listable.detail
+    if domain:
+        assert listable.fix is not None
+        (word,) = re.findall(r"^open (\S+) in Finder once; ", listable.fix)
+        head = "~/$'Library/CloudStorage/OneDrive-Contoso/Contoso\\e[7mInverse\\tTab\\342\\200\\250"
+        assert word.startswith(head), word
+        assert "\\'s'" in word and "?" not in word, word
+        assert _ls_d(word) == str(root)
+    else:  # ruling 130's pause-or-check fix names the root in the same form
+        (word,) = set(
+            re.findall(
+                r"^if (\S+) is meant to be empty, .*; else check that (\S+) is the", listable.fix or ""
+            )[0]
+        )
+        assert word.startswith("~/$'Library/CloudStorage/") and _ls_d(word) == str(root), word
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root lists a mode-000 folder")
+def test_a_refused_listing_fix_reaches_a_folder_whose_name_holds_a_control_character_c1414(
+    sample_config: Config,
+) -> None:
+    """B13 round 38 C1414: the ``chmod u+rx`` fix for a folder this account cannot list wrote the raw name;
+    it now writes the ``$'...'`` form, which bash decodes to that folder, and the detail spells it as the
+    list does."""
+    root = Path.home() / "Projects" / _C1414_NAME
+    root.mkdir(parents=True)
+    src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.LOCAL, path=root, sentinel=None)
+    root.chmod(0)
+    try:
+        listable = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))[
+            "source.local-fixture.listable"
+        ]
+    finally:
+        root.chmod(0o700)
+    want = f"{Path.home()}/Projects/Contoso?[7mInverse\\tTab?Board?x?y's: permission denied"
+    assert listable.detail == want, listable.detail
+    (word,) = re.findall(r"^chmod u\+rx (\S+)$", listable.fix or "")
+    assert word.startswith("~/$'Projects/Contoso\\e[7mInverse") and _ls_d(word) == str(root), word
+    assert doctor.ansi_c_word("a\\b'c") == "$'a\\\\b\\'c'" and doctor._shell_path("/x/plain") == "'/x/plain'"
+
+
 def test_only_the_kept_inbox_is_called_the_drop_folder(sample_config: Config, tmp_path: Path) -> None:
     """Field report 2026-10-08: a Mac with inbox sources the person added (a bridge folder another tool
     writes) beside the inbox agentsync keeps. Both are empty and both are OK, but only the kept one, the
@@ -4884,3 +4960,16 @@ def test_governance_refuser_answers_yes_or_no_c960(tmp_path: Path) -> None:
         assert doctor.governance_refuser(root, None) is False
     finally:
         gov.chmod(0o700)
+
+
+@pytest.mark.parametrize(
+    "name", [_C1414_NAME, "Contoso\x1bInverse", "Board\tTab", "Line\u2028Two", "a\x85b", "Zero\u200bWidth"]
+)
+def test_doctors_spellings_of_a_folder_are_the_reports_aliases_c1414(name: str) -> None:
+    """B13 round 38 C1414 (ruling 126): the report cuts a folder name only in the spellings it aliases, so
+    doctor's detail spelling and the body of its ``$'...'`` fix word are each one of
+    ``setup_report.folder_spellings``: read from the report's own helper, never a copy."""
+    spellings = setup_report.folder_spellings(name)
+    assert doctor.list_spelling(name) in spellings, (doctor.list_spelling(name), spellings)
+    word = doctor.ansi_c_word(name)
+    assert word.startswith("$'") and word.endswith("'") and word[2:-1] in spellings, (word, spellings)
