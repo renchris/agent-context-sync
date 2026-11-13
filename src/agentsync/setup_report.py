@@ -1320,8 +1320,9 @@ _WITHHELD_UNREAD_RE = re.compile(r"\b(\d+) withheld unread by the label rule\b")
 # and since B13 round 18 V13 "; W waiting for its/their converter (...)", files whose converter could not
 # start, after the split and before the two above (B13 round 19 W52)
 _CONVERTER_WAITING_RE = re.compile(r"\b(\d+) waiting for (?:its|their) converter\b")
-# and since B13 round 36 C1101 "; O waiting for the OCR helper (...)", images whose OCR helper is built but
-# not working, between the withheld and the refused clause (cli.OCR_WAIT_CLAUSE; B13 round 37 C1266, C1260)
+# and since B13 round 36 C1101 "; O waiting for the OCR helper (...)", between the withheld and the refused
+# clause (cli.OCR_WAIT_CLAUSE; B13 round 37 C1266, C1260): images whose OCR helper fails this run
+# (`ocr.engine_state` `failed`), or recordings while the media helper is ready (C1268; B13 round 38 C1452)
 _OCR_WAITING_RE = re.compile(r"\b(\d+) waiting for the OCR helper\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
@@ -8472,7 +8473,8 @@ EVIDENCE_TITLES = (
 the ``## `` headings stay :data:`SECTION_TITLES`)."""
 QUARANTINE_CLASSES = (
     "no converter",
-    "waiting for the OCR helper",  # B13 round 37 C1267: its stub page says so (publish.OCR_DOWN_REASON)
+    # B13 round 37 C1267: an image's or a recording's stub page says so (publish.ocr_down_reason; C1433)
+    "waiting for the OCR helper",
     "no text layer (OCR not run)",
     "no text layer (OCR found no text)",
     "no text layer (over the OCR page limit)",
@@ -8522,6 +8524,11 @@ def _unreadable_examples() -> str:
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
 """``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
+_RECORDING_SUFFIXES = (".m4v", ".mov", ".mp4")
+"""``RecordingConverter.extensions`` (tests/test_setup_report.py holds the two equal): a recording, whose stub
+page says the OCR helper is not working while the media helper was ready (``publish.ocr_down_reason``, B13
+round 37 C1268). :meth:`_Mirror.read_image_pages` reads such a page as it reads an image's (B13 round 38 C1433
+with C1451, C1487, C1490, C1465 and C1454; ruling 127); a label rule never withholds a recording."""
 _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
 """``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
 while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
@@ -8579,9 +8586,10 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = (), ocr_
     ``withheld`` is ``withheld by label rule``: the suffixes a label rule now leaves without one
     (:data:`_LABEL_WITHHELD`; an image when its stub page says so, and by this report's OCR probe only when
     the page could not be read or says neither withheld nor no converter, B13 round 8 J52, J54; round 11 M79;
-    round 12 N59: :meth:`_Mirror.withheld_for`). ``ocr_waits``: the row's stub page says the OCR helper is not
-    working (:meth:`_Mirror.page_waits`), so a ``no converter`` row is ``waiting for the OCR helper``, as the
-    page and the sync line say, never by this report's own probe (B13 round 37 C1267 with C1273)."""
+    round 12 N59: :meth:`_Mirror.withheld_for`). ``ocr_waits``: the row's stub page, an image's or a
+    recording's, says the OCR helper is not working (:meth:`_Mirror.page_waits`), so a ``no converter`` row is
+    ``waiting for the OCR helper``, as the page, ``_sync/QUARANTINE.tsv`` and the sync line say, never by this
+    report's own probe (B13 round 37 C1267 with C1273; a recording's since B13 round 38 C1433)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
@@ -8918,8 +8926,9 @@ class _Mirror:
         self.labels_active = labels_active
         self.withheld: set[str] = set(_LABEL_WITHHELD.difference(_IMAGE_SUFFIXES)) if labels_active else set()
         self.image_pages: dict[tuple[str, str], bool] = {}
-        # the image stubs whose page says the OCR helper is not working (publish.OCR_DOWN_REASON), read with
-        # or without a label rule: their class is the page's (B13 round 37 C1267 with C1273)
+        # the image and recording stubs whose page says the OCR helper is not working
+        # (publish.ocr_down_reason), read with or without a label rule: their class is the page's (B13 round
+        # 37 C1267 with C1273; a recording's since B13 round 38 C1433)
         self.ocr_waiting: set[tuple[str, str]] = set()
         self.images_by_probe = False
         self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read or says neither
@@ -9028,14 +9037,15 @@ class _Mirror:
         return {*self.withheld, tail} if (self.images_by_probe if page is None else page) else self.withheld
 
     def page_waits(self, reason: str | None, source_id: object, stable_id: object) -> bool:
-        """Whether one row's ``no converter for <image suffix>`` stub page says the OCR helper is not working
-        (:attr:`ocr_waiting`, read by :meth:`read_image_pages`)."""
+        """Whether one row's ``no converter for <image or recording suffix>`` stub page says the OCR helper is
+        not working (:attr:`ocr_waiting`, read by :meth:`read_image_pages`; a recording's since B13 round 38
+        C1433, ruling 127). :meth:`withheld_for` stays image-only."""
         text = " ".join((reason or "").split()).casefold()
-        return (
-            text.startswith(_NO_CONVERTER)
-            and text[len(_NO_CONVERTER) :] in _IMAGE_SUFFIXES
-            and (str(source_id), str(stable_id)) in self.ocr_waiting
-        )
+        tail = text[len(_NO_CONVERTER) :] if text.startswith(_NO_CONVERTER) else ""
+        return (tail in _IMAGE_SUFFIXES or tail in _RECORDING_SUFFIXES) and (
+            str(source_id),
+            str(stable_id),
+        ) in self.ocr_waiting
 
     def read_image_pages(self, docs: Path) -> None:
         """Read the ``reason:`` of each image stub page whose row says ``no converter for <image suffix>``.
@@ -9054,26 +9064,42 @@ class _Mirror:
         count of 400 sent every later stub to the probe; the parts after the OCR part keep the rest); a page
         that is missing, a symlink, past that time or neither ``no converter`` nor withheld is counted in
         :attr:`pages_unread` and goes by the probe, and a query that fails sets :attr:`pages_failed`. Only the
-        class is kept: the reason's text is never shown."""
+        class is kept: the reason's text is never shown.
+
+        A recording's row, ``no converter for <recording suffix>`` (:data:`_RECORDING_SUFFIXES`), is read too,
+        after every image's, so it never spends the image pages' time (B13 round 38 C1433 with C1451, C1487,
+        C1490, C1465 and C1454; ruling 127): it waits only when its page's ``reason:`` is
+        ``publish.ocr_down_reason`` of its suffix, as ``_sync/QUARANTINE.tsv`` reads it (an image's words on a
+        recording's page, or a recording's on an image's, never wait), and it never enters
+        :attr:`image_pages`, :attr:`pages_unread` or the withheld test, label rule or not: a label rule never
+        withholds a recording."""
         from agentsync import policy  # noqa: PLC0415 - lazy: only the evidence parts read pages
         from agentsync.frontmatter import parse_frontmatter, split_frontmatter  # noqa: PLC0415
-        from agentsync.publish import OCR_DOWN_REASON  # noqa: PLC0415
+        from agentsync.publish import ocr_down_reason  # noqa: PLC0415
 
-        marks = ", ".join("?" for _ in _IMAGE_SUFFIXES)
+        suffixes = (*_IMAGE_SUFFIXES, *_RECORDING_SUFFIXES)
+        marks = ", ".join("?" for _ in suffixes)
+        recorded = ", ".join("?" for _ in _RECORDING_SUFFIXES)
         try:
             found = self.rows(
                 "SELECT i.source_id, i.stable_id, (SELECT o.output_path FROM outputs o "
                 "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id ORDER BY o.built_run DESC "
-                f"LIMIT 1) FROM items i WHERE i.is_dir = 0 AND lower(i.state_reason) IN ({marks}) "
-                "ORDER BY i.source_id, i.stable_id",
-                [_NO_CONVERTER + suffix for suffix in _IMAGE_SUFFIXES],
+                "LIMIT 1), lower(i.state_reason) FROM items i WHERE i.is_dir = 0 "
+                f"AND lower(i.state_reason) IN ({marks}) "
+                f"ORDER BY lower(i.state_reason) IN ({recorded}), i.source_id, i.stable_id",
+                [
+                    *(_NO_CONVERTER + suffix for suffix in suffixes),
+                    *(_NO_CONVERTER + suffix for suffix in _RECORDING_SUFFIXES),
+                ],
             )
         except Exception:
             self.pages_failed = self.labels_active  # with no label rule no stub goes by the probe (C1267)
             raise
         root = docs.resolve()
         stop = time.monotonic() + min(max(self.left(), 0.0) / 4, _PAGES_S)
-        for sid, stable, rel in found:
+        for sid, stable, rel, stored in found:
+            suffix = str(stored)[len(_NO_CONVERTER) :]
+            recording = suffix in _RECORDING_SUFFIXES
             says: bool | None = None
             waits = False
             if isinstance(rel, str) and rel and time.monotonic() < stop:
@@ -9088,9 +9114,9 @@ class _Mirror:
                             data = parse_frontmatter(head)[0]
                             said = (data.get("reason"), data.get("summary"))
                         shown, summary = (v if isinstance(v, str) else None for v in said)
-                        if shown is not None and shown.strip() == OCR_DOWN_REASON:
+                        if shown is not None and shown.strip() == ocr_down_reason(suffix):
                             waits = True
-                        elif not self.labels_active:
+                        elif recording or not self.labels_active:
                             pass
                         elif policy.page_says_withheld(shown, summary, body):
                             says = True
@@ -9098,7 +9124,7 @@ class _Mirror:
                             says = False
             if waits:
                 self.ocr_waiting.add((str(sid), str(stable)))
-            elif not self.labels_active:
+            elif recording or not self.labels_active:  # a recording keeps its stored class (C1433)
                 continue
             elif says is None:
                 self.pages_unread += 1

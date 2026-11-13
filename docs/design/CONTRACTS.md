@@ -17562,6 +17562,9 @@ the Doctor section agree and the "re-run install.sh" fix is dropped. Test:
 Amended 2026-11-10, §16.240 C1266: since round 36's C1101 the CLI's line carries `; O waiting for the OCR helper
 (...)` between W and Q, images whose OCR helper is built but not working, no longer in Q; the clause copies it there,
 without its bracket, each only when above 0, and the source tag names `the waiting-for-the-OCR-helper count`.
+Amended 2026-11-13, §16.245 C1433, C1452: O counts images whose OCR helper fails this run (C1271's words for "built
+but not working": its build failed, it may not be run, or it does not answer `--version`) and, since round 37's
+C1268, recordings on this Mac while the media helper is ready; setup-feedback.md's Summary row says so.
 
 **Repeat conversions says it counts options** (J30; dated line at §16.28 Repeat conversions). Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache`.
@@ -40085,6 +40088,8 @@ and the clause copies `; O waiting for the OCR helper` between W and Q, in the C
 count is the line's, tagged `the waiting-for-the-OCR-helper count`. setup-feedback.md's Summary row lists six parts.
 Tests: `test_first_sync_clause_carries_the_read_again_count` (its rows read the CLI's own constant) and
 `test_the_first_sync_row_names_every_clause_the_summary_adds` (three counted clauses).
+Amended 2026-11-13, §16.245 C1433, C1452: O is images whose OCR helper fails this run (C1271) and, since C1268,
+recordings while the media helper is ready, in the guide's Summary row and `_OCR_WAITING_RE`'s comment alike.
 
 **An image waiting on the OCR helper takes its page's class** (C1267 with C1273; ruling 122; dated lines at §16.28
 and §16.235 C1101). Round 36's C1101 writes an image's stub page with `publish.OCR_DOWN_REASON` while the OCR helper
@@ -40101,6 +40106,9 @@ whenever the helper came back or broke after the stub (makes worse True for the 
 makes `_sync/QUARANTINE.tsv` follow the same page (§16.242). Test:
 `test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101` (rewritten: a `.png` row with an
 OCR-down page and a `.gif` with a `no converter` page, the probe ready and then gone).
+Amended 2026-11-13, §16.245 C1433: a recording's `no converter for <suffix>` row is read too, after the images', and
+waits only when its page says `publish.ocr_down_reason` of its suffix (round 37's C1268 page); it never enters
+`image_pages`, `pages_unread` or the withheld test, and the OCR part's images line stays image-only.
 
 **The stopped-after-install note is words** (C1252). Round 36's C1119 has install.sh's on_exit log `step=agentsync
 ... result=done note=stopped-after-install` when a SIGTERM was acted on after the reinstall's uv run ended 0, and
@@ -40361,6 +40369,7 @@ now says "the OCR helper fails this run (`ocr.engine_state` `failed`: its build 
 is built and does not answer `--version`)", or "a helper that fails" for short. §16.237's C1101 paragraph has a
 dated line. `OCR_DOWN_REASON`'s text, the stored reason and the sync-line clause are unchanged. Test: none
 (comments only).
+Amended 2026-11-13, §16.245 C1452: and setup_report, whose `_OCR_WAITING_RE` comment said "built but not working".
 
 **A sync's wait names every stop the cycle meets** (C1301 with C1246; ruling 124, completing ruling 116; amends
 §16.237 C1048 and §16.232 C933). `_sync_stops` took the guard's first stop alone, so with a folder at heartbeat.json
@@ -40748,6 +40757,22 @@ the rule install.sh's recut takes (lane RB, §16.246). Behind a volume `_VOLUME_
 and `_VOLUME_HOME_RE` finds every head, overlapping, so `/Volumes/Users/Users/olga/x` is cut. Test:
 `test_the_provider_folder_is_kept_only_as_a_placeholder_and_a_volume_head_overlaps_c1481_c1440`; the both-reports
 rows are lane RB's.
+
+**A recording waiting on a failed OCR helper takes its page's class** (C1433 and C1452 with C1451, C1487, C1490,
+C1465 and C1454; ruling 127; data integrity; dated lines at §16.74 J39, §16.240 C1266, C1267 and §16.242 C1271).
+Since round 37's C1268 a recording on this Mac whose OCR helper fails, the media helper ready, gets a page that says
+so (`publish.OCR_DOWN_RECORDING_REASON`), and `_sync/QUARANTINE.tsv` and the sync line follow it, while
+`_Mirror.read_image_pages` read image rows only, so the Quarantine table said `no converter` and the by-type line
+counted `.mp4`. It now reads `no converter for <suffix>` rows for `setup_report._RECORDING_SUFFIXES` too (a test
+holds it equal to `RecordingConverter.extensions`), ordered after every image's so they never spend the image pages'
+time; a row waits only when its page's `reason:` is `publish.ocr_down_reason` of its suffix, as `write_quarantine`
+compares, so an image's words on a recording's page, or a recording's on an image's, never wait; a recording row never
+enters `image_pages`, `pages_unread` or the withheld test, label rule or not. `page_waits` takes both sets;
+`withheld_for` and the OCR part's images line stay image-only. setup-feedback.md's Summary row (`O waiting for the
+OCR helper`) and Quarantine row, and `_OCR_WAITING_RE`'s comment, say images whose OCR helper fails this run and
+recordings while the media helper is ready (C1452, C1454). Test:
+`test_a_recording_waiting_on_a_failed_ocr_helper_is_classed_by_its_page_c1433` (`build_report` over manifest rows
+and pages the real `Publisher._plan_stub` writes, label rule off and on, the OCR probe ready and not).
 
 ### 16.246 Round 38: the installer: the recut only over another build's render, the hidden-character marks, and the stopped copy's lines (2026-11-13, wave B13 round 38 lane RB)
 

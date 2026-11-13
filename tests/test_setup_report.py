@@ -16187,7 +16187,7 @@ def test_a_failed_image_stub_query_is_said_not_passed_over(
     rows_of = setup_report._Mirror.rows
 
     def rows(self: setup_report._Mirror, sql: str, params: Sequence[object] = ()) -> list[tuple[Any, ...]]:
-        if "ORDER BY i.source_id, i.stable_id" in sql:
+        if "(SELECT o.output_path FROM outputs o" in sql and "lower(i.state_reason) IN" in sql:  # the pages'
             raise sqlite3.OperationalError("database is locked")
         return rows_of(self, sql, params)
 
@@ -24313,6 +24313,119 @@ def test_an_image_waiting_on_a_broken_ocr_helper_is_no_no_converter_page_c1101(
         with pytest.raises(sqlite3.OperationalError):
             mirror.read_image_pages(docs)
         assert mirror.pages_failed is active
+
+
+def _recording_stub(cfg: Path, seed: Seed, source_id: str, stable: str, *, ocr_down: bool) -> str:
+    """The page the real publisher plans for a recording ``no converter`` refused, this run's OCR helper
+    failing (``ocr_down``) with the media helper ready, or working: ``Publisher._plan_stub``'s own words."""
+    from agentsync import publish  # noqa: PLC0415
+    from agentsync.model import ConversionResult, ConversionStatus  # noqa: PLC0415
+
+    config = load_config(cfg)
+    item = seed.m.get_item(source_id, stable)
+    assert item is not None
+    pub = publish.Publisher(config, seed.m)
+    pub.ocr_down = ocr_down
+    pub.recordings_wait_ocr = True
+    suffix = Path(item.name).suffix
+    refused = ConversionResult(
+        status=ConversionStatus.REFUSED,
+        converter_id="",
+        converter_version="",
+        options_hash="sha256:" + "0" * 64,
+        action_key="1" * 64,
+        content_sha256="2" * 64,
+        canonical_sha256="3" * 64,
+        units=(),
+        reason=publish.NO_CONVERTER_PREFIX + suffix,
+    )
+    (page,) = pub.plan_pages(config.source(source_id), item, refused)
+    return page.text
+
+
+@pytest.mark.parametrize("labels", [False, True], ids=["no label rule", "label rule"])
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_recording_waiting_on_a_failed_ocr_helper_is_classed_by_its_page_c1433(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, labels: bool
+) -> None:
+    """B13 round 38 C1433 with C1451, C1487, C1490, C1465 and C1454 (ruling 127; data integrity): since C1268
+    a recording on this Mac whose OCR helper fails, the media helper ready, gets a page that says so
+    (publish.OCR_DOWN_RECORDING_REASON), and QUARANTINE.tsv and the sync line follow it, while the report read
+    image rows only and classed it `no converter`, `.mp4` in the by-type line. Through build_report, over
+    manifest rows and pages the real publisher writes, label rule off and on, OCR probe ready and not: that
+    recording is `waiting for the OCR helper` and leaves the by-type line; a recording page that says `no
+    converter for .mov`, and an .mp4 page carrying an image's words (OCR_DOWN_REASON), keep `no converter`;
+    the OCR part's images line is the one the image rows alone give, and no recording row reaches image_pages
+    or pages_unread."""
+    from agentsync import publish  # noqa: PLC0415
+
+    assert RecordingConverter.extensions == setup_report._RECORDING_SUFFIXES
+    cfg = fake_mac["config"]
+    if labels:
+        cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    docs = load_config(cfg).docs_repo
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    helper = ocr._helper_path(load_config(cfg).cache_dir)
+
+    def page(source_id: str, stable: str, text: str) -> None:
+        path = docs / "mirror" / source_id / f"{stable}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def evidence(ready: bool) -> tuple[list[list[str]], str, list[str]]:
+        if ready:
+            write_fake(helper)
+        else:
+            helper.unlink(missing_ok=True)
+        rows, part = quarantine_rows(fake_mac)
+        images = [ln for ln in status_parts(fake_mac)[1]["OCR"].splitlines() if ln.startswith("- images: ")]
+        return sorted(rows), part, images
+
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    chart = seed.item(
+        one, "Northwind chart.gif", reason="no converter for .gif", state="refused", page="refused"
+    )
+    seed.close()
+    page(one, chart, '---\nreason: "no converter for .gif"\nstatus: refused\n---\nstub\n')
+    before = {ready: evidence(ready) for ready in (True, False)}
+
+    seed = Seed(cfg)
+    standup = seed.item(
+        one, "Contoso standup.mp4", reason="no converter for .mp4", state="refused", page="refused"
+    )
+    review = seed.item(
+        one, "Contoso review.mov", reason="no converter for .mov", state="refused", page="refused"
+    )
+    worded = seed.item(
+        one, "Contoso demo.mp4", reason="no converter for .mp4", state="refused", page="refused"
+    )
+    waiting = _recording_stub(cfg, seed, one, standup, ocr_down=True)
+    plain = _recording_stub(cfg, seed, one, review, ocr_down=False)
+    seed.close()
+    assert f"reason: {json.dumps(publish.OCR_DOWN_RECORDING_REASON)}" in waiting, waiting
+    assert 'reason: "no converter for .mov"' in plain, plain
+    page(one, standup, waiting)
+    page(one, review, plain)
+    page(one, worded, f"---\nreason: {json.dumps(publish.OCR_DOWN_REASON)}\nstatus: refused\n---\nstub\n")
+    for ready in (True, False):  # the class is the page's, whatever this report's probe finds
+        rows, part, images = evidence(ready)
+        old_rows, _old_part, old_images = before[ready]
+        assert old_rows == [["no converter", "1"]], (ready, old_rows)
+        assert rows == [["no converter", "3"], ["waiting for the OCR helper", "1"]], (ready, rows, part)
+        (by_type,) = [ln for ln in part.splitlines() if ", no converter by type: " in ln]
+        assert ".mov 1" in by_type and ".mp4 1" in by_type, by_type  # the page with an image's words only
+        assert images == old_images, (ready, images, old_images)
+    for active in (False, True):
+        mirror = setup_report._Mirror(load_config(cfg).state_paths.db, 5.0, labels_active=active)
+        try:
+            mirror.read_image_pages(docs)
+        finally:
+            mirror.close()
+        assert mirror.ocr_waiting == {(one, standup)}, mirror.ocr_waiting
+        assert set(mirror.image_pages) <= {(one, chart)}, mirror.image_pages
+        assert mirror.pages_unread == 0, mirror.pages_unread
 
 
 def test_a_helper_a_cut_call_started_does_not_outlive_the_report_c961(
