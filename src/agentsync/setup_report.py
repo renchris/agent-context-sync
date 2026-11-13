@@ -8255,7 +8255,7 @@ def _with_evidence_damage(r: _Run, config: Config, lines: list[str]) -> list[str
         return lines
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-    failed = doctor.format_results([doctor.manifest_damaged(expand(config.state_paths.db), exc)]).splitlines()
+    failed = doctor.format_lines([doctor.manifest_damaged(expand(config.state_paths.db), exc)])  # C1431
     at = max((i + 1 for i, n in enumerate(names) if n is not None and n.startswith("state_dir.")), default=0)
     r.facts.evidence_damage_failed = True  # the Loop line says so beside its NEXT (B13 round 20 X80)
     return [*lines[:at], *failed, *lines[at:]]

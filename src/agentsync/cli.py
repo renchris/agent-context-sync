@@ -2148,7 +2148,7 @@ class _Status:
         return any(not r.ok and r.severity is doctor.Severity.ERROR for r in self.checks)
 
     def check_lines(self) -> list[str]:
-        return doctor.format_results(list(self.checks)).splitlines()
+        return doctor.format_lines(list(self.checks))
 
     def lines(self) -> list[str]:
         return [*self.loop, self.line, *self.check_lines(), *self.detail]
@@ -3722,7 +3722,7 @@ def _report_hooks() -> setup_report.ReportHooks:
             _PURGE_YOURS_NOTE: _PURGE_YOURS_REPORT_NOTE,
         }
         results = [dataclasses.replace(r, note=swaps[r.note]) if r.note in swaps else r for r in results]
-        return doctor.format_results(results).splitlines()
+        return doctor.format_lines(results)
 
     def doctor_abandoned() -> None:
         """The report gave up on the doctor call: nothing it publishes later counts, and what it already

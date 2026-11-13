@@ -40679,7 +40679,18 @@ Reserved for round 38 lane RB of B13.
 
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
-Reserved for round 38 lane B of B13.
+**Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
+Doctor hook (`cli._report_hooks().doctor`) and the report's evidence-damage line (`setup_report._with_evidence_damage`)
+split `doctor.format_results` with `str.splitlines()`, which also ends a line at `\r`, `\v`, `\f`, `\x1c` to `\x1e`,
+U+0085, U+2028 and U+2029, so a source folder whose name held one and went missing printed its listable and volume
+FAILs in two pieces, and the second, `Merger Board does not exist (fix: ...)`, reached the report's redactor alone
+and printed in clear (C1249 had closed the same split for install.out and the friction log only). The three sites
+split through one helper, `doctor.format_lines`, at `\n` alone, `[]` for no results, as `setup_report._text_lines`
+splits install.out. Tests: `test_cli.py::test_doctor_lines_split_at_a_newline_alone_through_the_real_report_hooks_c1431`
+(each of the nine code points in a missing source folder's name, through `build_report` with the real hooks: no
+piece of the name prints, each listable and volume FAIL is one line ending in its fix) and
+`::test_the_reports_evidence_damage_line_splits_at_a_newline_alone_c1431` (the state folder under a folder holding
+each: the state_dir.manifest FAIL is one line naming the whole path).
 
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 

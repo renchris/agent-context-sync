@@ -15110,3 +15110,61 @@ def test_the_chmod_goes_first_only_beside_the_persons_fails_alone_c911() -> None
     assert cli._chmod_beside_persons([person]) is None
     assert cli._chmod_beside_persons([person, loose]) is None  # a loose mode the sync reads past (C177)
     assert cli._chmod_beside_persons([chmod]) is None
+
+
+_SPLITLINES_BREAKS = ("\r", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
+"""Every code point ``str.splitlines()`` ends a line at besides ``\\n`` (B13 round 38 C1431, ruling 126)."""
+
+
+@pytest.mark.parametrize("brk", _SPLITLINES_BREAKS, ids=[f"U+{ord(c):04X}" for c in _SPLITLINES_BREAKS])
+def test_doctor_lines_split_at_a_newline_alone_through_the_real_report_hooks_c1431(
+    initialised: Config, tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str], brk: str
+) -> None:
+    """B13 round 38 C1431 (ruling 126; privacy): the report's Doctor hook and status split doctor's text with
+    ``str.splitlines()``, so a source folder ``Contoso<break>Merger Board`` that went missing printed its
+    listable and volume FAILs in two pieces and ``Merger Board does not exist`` in clear on a line of its own.
+    Both now split at ``\\n`` alone: each FAIL is one line ending in its fix, and no piece of the name
+    prints."""
+    gone = tmp_path / f"Contoso{brk}Merger Board"
+    shutil.copytree(local_source_dir, gone)
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(gone), "--config", cfg]) == cli.EXIT_OK
+    shutil.rmtree(gone)
+    capsys.readouterr()
+    config = load_config(initialised.config_path)
+    text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
+    assert "Merger" not in text and brk not in text.replace("\r\n", "\n"), text
+    doctor_part = text.split("\n## Doctor", 1)[1].split("\n## ", 1)[0]
+    tagged = re.compile(r"\[FAIL\] source\.\S+\.(listable|volume) ")
+    fails = [ln for ln in doctor_part.split("\n") if tagged.match(ln)]
+    assert len(fails) >= 2 and all(ln.endswith(")") and "(fix: " in ln for ln in fails), fails
+    joined = doctor.format_results(list(cli._status_checks(config, offline=True)))
+    assert cli._report_hooks().doctor(config) == joined.split("\n")
+    assert doctor.format_lines([]) == []
+
+
+@pytest.mark.parametrize("brk", _SPLITLINES_BREAKS, ids=[f"U+{ord(c):04X}" for c in _SPLITLINES_BREAKS])
+def test_the_reports_evidence_damage_line_splits_at_a_newline_alone_c1431(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    brk: str,
+) -> None:
+    """B13 round 38 C1431 (ruling 126): _with_evidence_damage split its state_dir.manifest FAIL with
+    ``str.splitlines()``, and its detail names the manifest's path, so a state folder under a folder whose
+    name holds a line break code point other than ``\\n`` reached Doctor's section in two lines. It is one."""
+    home = tmp_path / f"Contoso{brk}Merger Board"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))  # the state folder sits under it
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
+    capsys.readouterr()
+    config = load_config(cfg)
+    r = setup_report._Run(cfg, cli._report_hooks(), budget_s=2.0)
+    r.evidence_unreadable = sqlite3.DatabaseError("file is not a database")
+    lines = ["[ok  ] state_dir.files — manifest.sqlite is 0600", "[ok  ] python — 3.12"]
+    got = setup_report._with_evidence_damage(r, config, lines)
+    assert len(got) == len(lines) + 1, got
+    (failed,) = [ln for ln in got if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert f"Contoso{brk}Merger Board" in failed and failed.endswith(")"), failed

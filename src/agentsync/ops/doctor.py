@@ -4384,3 +4384,13 @@ def format_results(results: list[CheckResult]) -> str:
             line += f" ({r.note})"
         lines.append(line)
     return "\n".join(lines)
+
+
+def format_lines(results: list[CheckResult]) -> list[str]:
+    """:func:`format_results`' lines, split at ``\\n`` alone, ``[]`` for no results. ``str.splitlines()``
+    also ends a line at ``\\r``, ``\\v``, ``\\f``, ``\\x1c`` to ``\\x1e``, U+0085, U+2028 and U+2029, so a
+    detail naming a folder that holds one reached the report's redactor in two pieces and the folder's tail
+    printed in clear on a line of its own (B13 round 38 C1431, ruling 126; C1249 for install.out). Status,
+    the report's Doctor hook and its evidence-damage line all split through this one helper."""
+    text = format_results(results)
+    return text.split("\n") if text else []
