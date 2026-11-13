@@ -40726,6 +40726,13 @@ rare path at the cost of one fetch. Tests:
 entry stays, a real `.docx` converts, and the settled row keeps its class) and
 `test_convert_family.py::test_convert_file_neither_reads_nor_writes_the_cache_for_zero_bytes_c1466`.
 
+**`engine()`'s docstring names the cycle's one look** (C1467; `agentsync.convert.ocr`). `engine()` still opened
+"The engine a cycle should use", while the cycle looks once through `engine_state` (`cycle._cycle_ocr_state`) and
+no src module calls `engine()`, as C1270's dated line at §16.26 already says. Its first sentence now names the
+engine `engine_state` finds and says why the function stays: for tests/test_ocr.py and the `engine()` shape
+`media` and `speech` share (the cycle does call theirs, so their docstrings stay). The body is unchanged. Test:
+`test_ocr.py::test_engines_docstring_names_engine_state_as_the_cycles_one_look_c1467`.
+
 ### 16.249 Round 38: the v37 prompt, the retention promise and the guides (2026-11-13, wave B13 round 38 lane D)
 
 Reserved for round 38 lane D of B13.

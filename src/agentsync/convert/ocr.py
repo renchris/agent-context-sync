@@ -700,8 +700,11 @@ def engine_state(cfg: ConvertConfig, cache_dir: Path) -> EngineState:
 
 
 def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None:
-    """The engine a cycle should use, or None when :func:`probe` is not ``ready`` (logged).  Never compiles
-    and never raises: without OCR every converter behaves as it did before OCR existed.
+    """The engine :func:`engine_state` finds, or None when :func:`probe` is not ``ready`` (logged).  The cycle
+    looks once through :func:`engine_state` (``cycle._cycle_ocr_state``) and takes its ``.engine``; this is
+    kept for tests/test_ocr.py and for the ``engine()`` shape :mod:`media` and :mod:`speech` share, and no src
+    module calls it (B13 round 38 C1467).  Never compiles and never raises: without OCR every converter
+    behaves as it did before OCR existed.
 
     The helper it hands out gets a new modification time: that is its last use, which is what a later build
     goes by when it removes old helpers (:func:`_prune`).  :func:`probe` only looks and stamps nothing."""

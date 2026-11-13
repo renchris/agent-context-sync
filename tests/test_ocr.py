@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import inspect
 import json
 import logging
 import os
@@ -2274,3 +2275,20 @@ def test_a_helper_a_signal_stopped_holds_its_signal_in_no_bracket_c719(
             assert result.severity == doctor.Severity.WARN and result.fix, result
             rendered = doctor.format_results([result])
             assert f"signal {number}" in rendered and _deepest_bracket(rendered) <= 1, rendered
+
+
+def test_engines_docstring_names_engine_state_as_the_cycles_one_look_c1467() -> None:
+    """B13 round 38 C1467: ``ocr.engine()``'s docstring opened "The engine a cycle should use", while the
+    cycle looks once through ``engine_state`` (``cycle._cycle_ocr_state``) and no src module calls
+    ``engine()``. It names the engine ``engine_state`` finds and why the function stays, and its body is
+    unchanged."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    doc = " ".join((ocr.engine.__doc__ or "").split())
+    assert "a cycle should use" not in doc
+    assert doc.startswith("The engine :func:`engine_state` finds, or None when :func:`probe` is not")
+    assert "The cycle looks once through :func:`engine_state` (``cycle._cycle_ocr_state``)" in doc
+    shape = "kept for tests/test_ocr.py and for the ``engine()`` shape :mod:`media` and :mod:`speech` share"
+    assert shape in doc
+    assert "ocr.engine_state(" in inspect.getsource(cycle._cycle_ocr_state)
+    assert inspect.getsource(ocr.engine).rstrip().endswith("return engine_state(cfg, cache_dir).engine")
