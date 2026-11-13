@@ -20,10 +20,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -71,6 +74,16 @@ def parse_verdict(line: str) -> dict[str, str]:
     return fields
 
 
+def _replay(previous: Any, deferred: list[int], *, defer: bool) -> None:
+    """Put SIGINT's handler back and, if an interrupt came while it was away, raise it now
+    (:func:`_acquire`)."""
+    if not defer:
+        return
+    signal.signal(signal.SIGINT, previous)
+    if deferred:
+        signal.raise_signal(signal.SIGINT)
+
+
 def _acquire(config: pytest.Config) -> None:
     if "PYTEST_XDIST_WORKER" in os.environ or config.getoption("collectonly", False):
         return
@@ -82,14 +95,29 @@ def _acquire(config: pytest.Config) -> None:
         return
     argv = [cli, "acquire", "--holder-pid", str(os.getpid()), "--want", str(want), "--min", "2"]
     argv += ["--label", f"pytest -n {want} {Path.cwd()}"]
+    # A SIGINT while Popen waits for the exec (the helper may already be queued) raised before ``proc`` was
+    # bound, so nothing terminated the helper and its children held the run's stderr. The interrupt is only
+    # recorded around Popen, then replayed in the try that terminates it (B13 round 38 C1461). The signal
+    # mask is never touched: a mask is inherited across exec, which would leave the helper's INT trap dead; a
+    # caught disposition resets to SIG_DFL there, and SIG_IGN or SIG_DFL is left as it is.
+    previous = signal.getsignal(signal.SIGINT)
+    deferred: list[int] = []
+    defer = callable(previous) and threading.current_thread() is threading.main_thread()
+    if defer:
+        signal.signal(signal.SIGINT, lambda signum, _frame: deferred.append(signum))
     try:
         proc = subprocess.Popen(
             argv, stdout=subprocess.PIPE, text=True
         )  # stderr passes through: QUEUED lines
     except OSError as error:
+        _replay(previous, deferred, defer=defer)
         _warn(f"{cli} could not start ({error}); running {want} workers uncapped")
         return
+    except BaseException:  # any other failure puts the handler back too: Ctrl-C never stays dead
+        _replay(previous, deferred, defer=defer)
+        raise
     try:
+        _replay(previous, deferred, defer=defer)
         out, _ = proc.communicate()
     except KeyboardInterrupt:
         # CPython's own path SIGKILLs the child 0.25 s later, which leaves its trap nothing to clean.

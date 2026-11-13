@@ -276,3 +276,35 @@ def test_an_interrupt_while_queued_terminates_the_helper(inner: Inner) -> None:
     assert Path(f"{inner.log}.term").exists(), out
     assert proc.returncode != 0, out
     assert not _passed(out), out
+
+
+SLOW_EXEC = """
+import subprocess
+import time
+
+_execute_child = subprocess.Popen._execute_child
+
+
+def _slow(self, *args, **kwargs):
+    _execute_child(self, *args, **kwargs)
+    time.sleep(3)  # still inside Popen: the helper has exec'd and queued, proc is not bound yet
+
+
+subprocess.Popen._execute_child = _slow
+"""
+
+
+def test_an_interrupt_inside_the_helpers_spawn_terminates_the_helper_c1461(inner: Inner) -> None:
+    """B13 round 38 C1461: a SIGINT that came while Popen waited for the helper's exec raised before the
+    plugin held ``proc``, so its terminate path never ran: the helper's ``sleep 600`` kept the run's stderr
+    and the run waited out its ceiling. Each Popen of the inner run now takes 3 s after the exec; the
+    interrupt lands inside it, is replayed once Popen returns, and the helper's TERM trap runs."""
+    (inner.suite / "conftest.py").write_text(SLOW_EXEC + CONFTEST, encoding="utf-8")
+    inner.env["STUB_MODE"] = "forever"
+    proc = inner.start("-n", "3")
+    with _reaped(proc):
+        _wait_for(Path(f"{inner.log}.queued"), proc)
+        os.kill(proc.pid, signal.SIGINT)
+        out, _ = proc.communicate(timeout=60)
+    assert Path(f"{inner.log}.term").exists(), out
+    assert proc.returncode != 0 and not _passed(out), out

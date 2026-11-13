@@ -40825,6 +40825,19 @@ one JSON line on stderr`, naming no command (init, install-skill, setup-report a
 "every command"). Test: `test_cli_json.py::test_the_json_help_is_true_under_every_command_c1445` (each visible
 command's help shows it, and it names no command).
 
+**An interrupt during the gate-slot helper's spawn terminates the helper** (C1461; makes worse True). `tests/_gate_slot.py`'s
+`_acquire` caught only `OSError` around `subprocess.Popen`, and its `KeyboardInterrupt` arm, which terminates the
+helper, covered only `communicate()`. Popen waits for the exec on its error pipe, so under load the helper could exec
+and queue before the parent ran again; a SIGINT then raised inside Popen before `proc` was bound, the helper's `sleep
+600` kept the run's stderr, and the run waited out its ceiling. Around Popen, SIGINT's handler is swapped for one that
+only records the interrupt, and `_replay` puts the handler back and raises a recorded interrupt first thing in the try
+that terminates the helper (and on the `OSError` path). The signal mask is never touched (blocking SIGINT, as the
+finder proposed, is inherited across exec and would leave the helper's INT trap dead, and on the `OSError` path would
+leave Ctrl-C dead for the whole run); a caught disposition resets to SIG_DFL across exec, so the helper starts as
+before, and a SIG_IGN or SIG_DFL parent, or a thread other than the main one, is left as it is. Test:
+`test_gate_slot_plugin.py::test_an_interrupt_inside_the_helpers_spawn_terminates_the_helper_c1461` (every Popen of the
+inner run takes 3 s after its exec, the interrupt lands inside it: the helper's TERM trap runs and the run ends red).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the
