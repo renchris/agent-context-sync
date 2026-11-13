@@ -40818,6 +40818,13 @@ message; the lock, heartbeat.json, the manifest, its sides and the state folder 
 so. Test: `test_cli_json.py::test_a_governance_files_stop_has_one_reason_wherever_it_is_met_c1446` (damaged JSON and a
 folder at holds.json: `sync`, `purge --queue --dry-run` and `hold --list` give one reason and one message).
 
+**`--json`'s help is true under every command** (C1445; ruling 128). The common option's help, shown under every
+command, read `status, curate and sync print one JSON document`, false under hold, purge, offboard and the others that
+print theirs. It is now `cli.JSON_HELP`, `print the result as one JSON document where this command has one; an error is
+one JSON line on stderr`, naming no command (init, install-skill, setup-report and others have no document, so never
+"every command"). Test: `test_cli_json.py::test_the_json_help_is_true_under_every_command_c1445` (each visible
+command's help shows it, and it names no command).
+
 ### 16.248 Round 38: the converters: a zero-byte file never takes an older build's cached answer (2026-11-13, wave B13 round 38 lane E)
 
 Round 38's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 38"; specs `round38/items/C<n>.md`, the

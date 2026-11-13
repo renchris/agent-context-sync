@@ -350,6 +350,13 @@ def _to_stderr(write: Callable[[], None]) -> None:
 _COMMAND_SPAN = re.compile(r"`([^`]+)`")
 
 
+JSON_HELP = (
+    "print the result as one JSON document where this command has one; an error is one JSON line on stderr"
+)
+"""``--json``'s help, shown under every command, so it names none: status, curate and sync are not the only
+commands with a document (hold, purge, offboard, ... have theirs), and some have none (B13 round 38 C1445)."""
+
+
 def _argv(command: str) -> list[str]:
     """``command`` as an argv a caller can exec: ``~`` in its program expanded, since no shell will."""
     try:
@@ -426,7 +433,7 @@ def _common(sub_default: object) -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         default=sub_default,
-        help="status, curate and sync print one JSON document; an error is one JSON line on stderr",
+        help=JSON_HELP,
     )
     # --version at any depth (R082): listed on the root page only
     shown = "show program's version number and exit"  # argparse's own words

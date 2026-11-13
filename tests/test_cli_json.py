@@ -401,3 +401,16 @@ def test_a_governance_files_stop_has_one_reason_wherever_it_is_met_c1446(
         assert not error["message"].startswith("error:"), (argv, error)
         seen.add((error["reason"], error["message"]))
     assert len(seen) == 1, seen
+
+
+@pytest.mark.parametrize("verb", sorted(CLI_SURFACE["visible"]))
+def test_the_json_help_is_true_under_every_command_c1445(
+    verb: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 38 C1445 (ruling 128): ``--json``'s help, shown under every command, said "status, curate and
+    sync print one JSON document", false under hold, purge, offboard and the rest, which print theirs. It now
+    names no command: the result is one document where the command has one, an error one line on stderr."""
+    assert cli.main([verb, "--help"]) == 0
+    shown = " ".join(capsys.readouterr().out.split())  # argparse wraps help text
+    assert " ".join(cli.JSON_HELP.split()) in shown, shown
+    assert not any(f" {v} " in f" {cli.JSON_HELP} " for v in CLI_SURFACE["visible"]), cli.JSON_HELP
