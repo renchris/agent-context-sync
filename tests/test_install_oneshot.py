@@ -2405,7 +2405,8 @@ def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], 
     assert cp.returncode == 2
     assert "usage error: --source-local is not an existing folder" in cp.stderr
     assert report_path(env).is_file() and "usage error" in report_path(env).read_text()
-    assert last_line(cp).startswith("NEXT: fix the usage error above")
+    # a full path not on disk is the person's to put back or name again (B13 round 38 C1407)
+    assert last_line(cp).startswith("NEXT: no folder is at the path given: ")
     assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == [], (
         "no step ran (the report's reads of launchd only)"
     )
@@ -9742,6 +9743,70 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
         assert last_line(cp).startswith(RENAME_NEXT), last_line(cp)
     assert "Contoso" not in last_line(cp) and "Fabrikam" not in last_line(cp), "the NEXT names no folder"
     assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == []
+
+
+@pytest.mark.parametrize(
+    ("given", "owner"),
+    [
+        ("<lib>/Fabrikam Missing Folder", "person"),
+        ("<lib>/Fabrikam Missing Folder\0<lib>/Real", "person"),
+        ("Fabrikam Missing Folder", "agent"),  # relative: the agent chose its spelling
+        ("[synced] <lib>/Real", "kept"),
+        ("[inside a synced folder] <lib>/Real", "kept"),
+        ("[contains a synced folder] <lib>/Real", "contains"),
+    ],
+)
+def test_a_missing_source_local_folder_names_its_owner_c1407(
+    env: dict[str, str], tmp_path: Path, given: str, owner: str
+) -> None:
+    """B13 round 38 C1407 (makes worse True): a --source-local folder given as a full path and not on disk
+    was refused with `fix the usage error above ..., then run the corrected command`, though putting it back
+    or naming another folder is the person's. Such a refusal now takes the person's NEXT; a relative path,
+    whose spelling the agent chose, keeps the corrected command; and a row pasted with a kept mark is refused
+    in its own words, never as a missing folder, with a NEXT the agent acts on."""
+    lib = _cloud(env) / "OneDrive-Contoso"
+    (lib / "Real").mkdir(parents=True)
+    args: list[str] = []
+    for one in given.replace("<lib>", str(lib)).split("\0"):
+        args += ["--source-local", one]
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=_install_bound(120),
+        env=env,
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    nxt = last_line(cp)
+    if owner == "person":
+        assert "--source-local is not an existing folder: " in cp.stderr, cp.stderr
+        assert nxt.startswith(
+            "NEXT: no folder is at the path given: if that path is not exactly a row "
+            f"{INSTALL_SH} --list-folders printed, run the command again with that row's path; if it is, "
+            "putting it back, syncing it to this Mac in its app, or naming another folder is the person's, "
+            "not a step for the agent, so show them the error and go on to the report; "
+        ), nxt
+        assert f"run {INSTALL_SH} --list-folders again and go by what it prints" in nxt, nxt
+    elif owner == "agent":
+        assert "--source-local is not an existing folder: " in cp.stderr, cp.stderr
+        assert nxt.startswith(f"NEXT: fix the usage error above (see {INSTALL_SH} --help)"), nxt
+    else:
+        mark = given.split("] ", 1)[0] + "]"
+        why = (
+            "a sync would read the synced folder inside it twice"
+            if owner == "contains"
+            else "that folder already syncs"
+        )
+        assert cp.stderr.splitlines()[0] == (
+            f"usage error: --source-local {lib}/Real: this is a row step 1 marked {mark}: {why}, so paste "
+            "nothing for it (see --help)"
+        ), cp.stderr
+        assert "is not an existing folder" not in cp.stderr, cp.stderr
+        assert nxt.startswith("NEXT: leave that --source-local out: the folder it names "), nxt
+    assert "Fabrikam" not in nxt, "the NEXT names no folder"
 
 
 @pytest.mark.parametrize(

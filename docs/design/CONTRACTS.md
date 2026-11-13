@@ -40757,6 +40757,23 @@ cut off (C1410, makes worse True for the finder's sentence). Tests:
 kept) and `test_a_stopped_copy_whose_helper_probe_the_pause_cut_files_it_not_judged_c1410` (one and two helpers, and a
 swiftc warn kept unexpected).
 
+**A missing --source-local folder given as a full path is the person's; a pasted kept row is refused in its own words**
+(C1407, makes worse True; `scripts/install.sh`). A folder not on disk went to the `is not an existing folder` refusal
+with the default NEXT `fix the usage error above ..., then run the corrected command`, though putting it back or naming
+another folder is the person's. When every such folder was given as a full path (or `~/...`), its NEXT is now
+`MISSING_NEXT`: `no folder is at the path given: if that path is not exactly a row <installer> --list-folders printed,
+run the command again with that row's path; if it is, putting it back, syncing it to this Mac in its app, or naming
+another folder is the person's, not a step for the agent, so show them the error and go on to the report; ...` (every
+person-owned NEXT says `not a step for the agent, so show them the error and go on to the report`, the words the
+prompt's step 2 keys on), for one folder and for the more-than-5 count alike. A relative path, whose spelling the agent chose, keeps the corrected-command
+NEXT; and a row pasted with `[synced]`, `[inside a synced folder]` or `[contains a synced folder]`, which the same
+branch used to word as a missing folder, has its own case arm (`this is a row step 1 marked <mark>: that folder
+already syncs, so paste nothing for it`, the contains row: `a sync would read the synced folder inside it twice`) with
+a NEXT that leaves that --source-local out. Every NEXT for one person's folder covers the agent's mistake too, so the
+finder's one person's NEXT for the branch is not taken. Test:
+`test_a_missing_source_local_folder_names_its_owner_c1407` (absolute, absolute beside a real folder, relative, and the
+three kept marks).
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's

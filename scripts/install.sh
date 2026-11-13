@@ -10209,6 +10209,11 @@ fi
 # and so is a row an earlier run marked in the words before B13 round 38 C1447, naming its own mark.
 again="then run $SELF --list-folders again"
 twin_tail="and it cannot be told apart from another folder there; rename it in its sync app, $again"
+KEPT_NEXT="leave that --source-local out: the folder it names already syncs, and a re-run keeps it; then run the corrected command"
+# A folder given as a full path that is not on disk is the person's to put back or name again; one given relative,
+# whose spelling the agent chose, keeps the corrected-command NEXT (B13 round 38 C1407, makes worse True)
+MISSING_NEXT="no folder is at the path given: if that path is not exactly a row $SELF --list-folders printed, run the command again with that row's path; if it is, putting it back, syncing it to this Mac in its app, or naming another folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is back, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
+BAD_RELATIVE=0
 RENAME_NEXT="renaming that folder is the person's, not a step for the agent, so show them the error and go on to the report; once they say it is renamed in its sync app, run $SELF --list-folders again and go by what it prints (leaving it out is their choice, not the agent's)"
 source_local_refused() { # SHOWN-NAME WORDS [NEXT]
 	USAGE_ERROR_REPORTED="--source-local <path>: $2"
@@ -10236,15 +10241,27 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	*"$ESCAPED_KEPT_MARK"* | *"$ESCAPED_KEPT_MARK_OLD"*)
 		pm="$ESCAPED_KEPT_MARK"
 		case "$f" in *"$ESCAPED_KEPT_MARK_OLD"*) pm="$ESCAPED_KEPT_MARK_OLD" ;; esac
-		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: that folder already syncs, so paste nothing for it" \
-			"leave that --source-local out: the folder it names already syncs, and a re-run keeps it; then run the corrected command"
+		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: that folder already syncs, so paste nothing for it" "$KEPT_NEXT"
+		;;
+	"$SYNCED_MARK "* | "$INSIDE_MARK "*)
+		# a kept row pasted with its mark (B13 round 38 C1407): the agent's to correct, never a missing folder
+		pm="$SYNCED_MARK"
+		case "$f" in "$INSIDE_MARK "*) pm="$INSIDE_MARK" ;; esac
+		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: that folder already syncs, so paste nothing for it" "$KEPT_NEXT"
+		;;
+	"$CONTAINS_MARK "*)
+		source_local_refused "$(pasted_row "$f" "$CONTAINS_MARK")" "this is a row step 1 marked $CONTAINS_MARK: a sync would read the synced folder inside it twice, so paste nothing for it" \
+			"leave that --source-local out: the folder it names holds one that already syncs; then run the corrected command"
 		;;
 	esac
 	case "$f" in
 	\~) f="$HOME" ;;
 	\~/*) f="$HOME/${f#\~/}" ;;
 	/*) ;;
-	*) f="$PWD/$f" ;;
+	*)
+		f="$PWD/$f"
+		[ -d "$f" ] || BAD_RELATIVE=1
+		;;
 	esac
 	if [ -d "$f" ]; then
 		if escaped_twin "$f" dir && name_escaped "$f"; then
@@ -10266,6 +10283,7 @@ while [ "$bad_shown" -lt 5 ] && [ "$((bad_shown + 1))" -lt "$bad_total" ]; do
 	printf 'usage error: --source-local is not an existing folder: %s (see --help)\n' "$(list_name "${BAD_FOLDERS[$bad_shown]}")" >&2
 	bad_shown=$((bad_shown + 1))
 done
+[ "$bad_total" -eq 0 ] || [ "$BAD_RELATIVE" -eq 1 ] || USAGE_NEXT="$MISSING_NEXT"
 if [ "$bad_total" -gt 5 ]; then
 	usage_error "--source-local: $((bad_total - 5)) more folders are not existing folders"
 elif [ "$bad_total" -gt 0 ]; then
