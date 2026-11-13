@@ -6950,8 +6950,8 @@ report_recut() { # OTHER
 	if CUT_COUNT="$tmp.n1" foreign_home_cut recut <"$REPORT_PATH" |
 		if [ "${1:-1}" -eq 1 ]; then CUT_COUNT="$tmp.n2" report_words_cut; else cat; fi >"$tmp" && [ -s "$tmp" ]; then
 		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp" "$tmp.n1" "$tmp.n2"; return 0; fi
-		read -r n1 <"$tmp.n1" 2>/dev/null || n1=0
-		read -r n2 <"$tmp.n2" 2>/dev/null || n2=0
+		{ read -r n1 <"$tmp.n1"; } 2>/dev/null || n1=0 # n2 is written by another build's pass alone
+		{ read -r n2 <"$tmp.n2"; } 2>/dev/null || n2=0
 		rm -f "$tmp.n1" "$tmp.n2"
 		[ "${1:-1}" -ne 1 ] || recut_note "$tmp" $((n1 + n2)) || true # the cut render stays, note or not
 		chmod 600 "$tmp" 2>/dev/null || true
@@ -9486,11 +9486,16 @@ list_shown() { # rows on stdin [TWINS: a file of the rows list_twins found]
 # plain rows list_shown marks $TWIN_MARK (B13 round 37 ruling 121, C1229, C1242). Only such a name lists its parent.
 # Read under a denied or asking provider too, so a look-alike another provider listed is marked: a kept row, the
 # only kind that can sit under a provider never listed, is skipped (list_shown never marks it), and each test runs
-# under the time left before list_folders' $TWIN_DEADLINE (else $LIST_TIMEOUT), a test cut short marking nothing
-# and none run once it is spent (B13 round 38 C1464). Step 2's refusal keeps its unbounded escaped_twin.
+# under the time left before list_folders' $TWIN_DEADLINE when a provider was denied or is asking (unbounded when
+# none was; $LIST_TIMEOUT outside list_folders), a test cut short marking nothing and none run once it is spent
+# (B13 round 38 C1464, and the lane's review: a slow listing alone never leaves a look-alike unmarked). Step 2's refusal keeps its unbounded escaped_twin.
 list_twins() {
-	local p t end="${TWIN_DEADLINE:-$((SECONDS + LIST_TIMEOUT))}"
+	local p t end="${TWIN_DEADLINE-$((SECONDS + LIST_TIMEOUT))}"
 	while IFS= read -r p; do
+		if [ -z "$end" ]; then # no provider denied or asking: unbounded, as before C1464
+			! escaped_twin "$p" dir </dev/null || printf '%s\n' "$p"
+			continue
+		fi
 		t=$((end - SECONDS))
 		[ "$t" -gt 0 ] || break
 		! with_timeout "$t" escaped_twin "$p" dir </dev/null >/dev/null 2>&1 || printf '%s\n' "$p"
@@ -9551,7 +9556,7 @@ list_name() { # PATH: as list_plain shows it, for an error
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
-	local TWIN_DEADLINE=$((SECONDS + LIST_TOTAL)) # list_twins' bound, the same as deadline (C1464)
+	local TWIN_DEADLINE="" # list_twins' bound, set to deadline's only once a provider was denied or asked (C1464)
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
 	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vreal="" vplain="" vtail="" vlog="" cerr="" ctail="" clog="" stail="" crole="" clink="" cunread="" lwhat="" lfix="" lfact="" lown="" chbmode="" cshort="" cmis="" cmisread="" sfix="" cside="" codd="" fnoun="" stopsat="" chold=""
 	step_start list-folders
@@ -9710,6 +9715,7 @@ list_folders() {
 			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first $first, then the list)"
 		fi
 		# read while a provider was denied or is still asking too, bounded by the list's deadline (C1464)
+		[ -z "$denied$asking" ] || TWIN_DEADLINE=$deadline
 		tail -n +3 "$tmp/marked" | list_twins >"$tmp/twins"
 		tail -n +3 "$tmp/marked" | list_shown "$tmp/twins"
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
@@ -9760,6 +9766,7 @@ list_folders() {
 			esac
 		done <"$tmp/marked"
 	else
+		[ -z "$denied$asking" ] || TWIN_DEADLINE=$deadline
 		list_twins <"$tmp/shown" >"$tmp/twins"
 		list_shown "$tmp/twins" <"$tmp/shown"
 	fi
@@ -10403,7 +10410,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 		source_local_refused "$(pasted_row "$f" "$pm")" "this is a row step 1 marked $pm: its shown name is not the folder's own; rename it in its sync app, $again"
 		;;
 	*"$TWIN_MARK"*)
-		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: its name is step 1's escaped form of another folder there; rename one of them in its sync app, $again" "$TWIN_NEXT"
+		source_local_refused "$(pasted_row "$f" "$TWIN_MARK")" "this is a row step 1 marked $TWIN_MARK: it is step 1's escaped form of another folder there; rename one of them in its sync app, $again" "$TWIN_NEXT"
 		;;
 	*"$ESCAPED_KEPT_MARK"* | *"$ESCAPED_KEPT_MARK_OLD"*)
 		pm="$ESCAPED_KEPT_MARK"
@@ -10432,13 +10439,13 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 	esac
 	if [ -d "$f" ]; then
 		if escaped_twin "$f" dir && name_escaped "$f"; then
-			source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a control character, $twin_tail"
+			source_local_refused "$(list_name "$f")" "step 1 shows this folder's name with a hidden or control character, $twin_tail"
 		elif escaped_twin "$f" dir; then
-			source_local_refused "$(list_name "$f")" "its name is step 1's escaped form of another folder there, whose name holds a control character; rename one of them in its sync app, $again" "$TWIN_NEXT"
+			source_local_refused "$(list_name "$f")" "its name is step 1's escaped form of another folder there, whose name holds a hidden or control character; rename one of them in its sync app, $again" "$TWIN_NEXT"
 		fi
 		FOLDERS+=("$f")
 	elif escaped_twin "$f"; then
-		source_local_refused "$(list_name "$f")" "this is how step 1 shows a folder whose name holds a control character, not a folder's own name; rename that folder in its sync app, $again"
+		source_local_refused "$(list_name "$f")" "this is how step 1 shows a folder whose name holds a hidden or control character, not a folder's own name; rename that folder in its sync app, $again"
 	else
 		BAD_FOLDERS+=("$f")
 	fi

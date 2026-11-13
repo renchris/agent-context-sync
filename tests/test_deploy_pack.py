@@ -3797,7 +3797,7 @@ def test_readme_step1_says_a_marked_row_cannot_be_chosen() -> None:
         [mark] = re.findall(rf"^{name}=([\"'])(.*?)\1", script, flags=re.MULTILINE)
         assert mark[1].rstrip(" ") == words, name
     # a usage error, never a silent escaped spelling; each refusal says the prompt's next step (lane RB's)
-    assert "step 1 shows this folder's name with a control character" in script
+    assert "step 1 shows this folder's name with a hidden or control character" in script  # round 38 C1447
     assert 'again="then run $SELF --list-folders again"' in script
     assert "rename it in its sync app, $again" in script
     assert "rename one of them in its sync app, $again" in script

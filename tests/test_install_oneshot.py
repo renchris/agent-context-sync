@@ -9579,18 +9579,18 @@ when pasted: install.sh's ``ESCAPED_MARK_OLD`` and ``ESCAPED_KEPT_MARK_OLD``."""
 AGAIN = f"then run {INSTALL_SH} --list-folders again"
 """How each rename refusal ends: --list-folders again, never step 1's whole command (B13 round 37 C1275)."""
 TWIN_WORDS = (
-    "step 1 shows this folder's name with a control character, and it cannot be told apart from another "
-    f"folder there; rename it in its sync app, {AGAIN}"
+    "step 1 shows this folder's name with a hidden or control character, and it cannot be told apart from "
+    f"another folder there; rename it in its sync app, {AGAIN}"
 )
 """--source-local's usage error for a folder step 1 cannot show apart from another (B13 round 36 C1072)."""
 LOOK_ALIKE_WORDS = (
-    "its name is step 1's escaped form of another folder there, whose name holds a control character; "
-    f"rename one of them in its sync app, {AGAIN}"
+    "its name is step 1's escaped form of another folder there, whose name holds a hidden or control "
+    f"character; rename one of them in its sync app, {AGAIN}"
 )
 """The same for a plain look-alike, with no control character in its name (B13 round 37 C1213, C1229)."""
 NO_FOLDER_WORDS = (
-    "this is how step 1 shows a folder whose name holds a control character, not a folder's own name; rename "
-    f"that folder in its sync app, {AGAIN}"
+    "this is how step 1 shows a folder whose name holds a hidden or control character, not a folder's own "
+    f"name; rename that folder in its sync app, {AGAIN}"
 )
 """The same for a path with no folder that is step 1's escaped text of one (B13 round 37 C1239)."""
 RENAME_NEXT = (
@@ -9735,7 +9735,8 @@ def test_list_folders_names_the_real_folder_in_the_add_back_command_c1001(
     assert back.stdout == str(odd), back.stdout
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", back.stdout)
     assert "usage error" not in cp.stderr, cp.stderr
-    assert f"source-local: {odd}" in cp.stdout, cp.stdout
+    # B13 round 38 C1414: the line prints list_name's spelling, never the raw name
+    assert f"source-local: {str(odd).replace(chr(10), chr(92) + 'n')}" in cp.stdout, cp.stdout
 
 
 @pytest.mark.parametrize(
@@ -9786,7 +9787,7 @@ def test_source_local_refuses_an_escaped_row_or_a_folder_with_a_look_alike_c1072
         # the lead's review: a pasted marked row claims no twin it may not have
         "marked": f"this is a row step 1 marked {ESCAPED_MARK}: its shown name is not the folder's own; "
         f"rename it in its sync app, {AGAIN}",
-        "twin marked": f"this is a row step 1 marked {TWIN_MARK}: its name is step 1's escaped form of "
+        "twin marked": f"this is a row step 1 marked {TWIN_MARK}: it is step 1's escaped form of "
         f"another folder there; rename one of them in its sync app, {AGAIN}",
         "kept marked": f"this is a row step 1 marked {ESCAPED_KEPT_MARK}: that folder already syncs, so "
         "paste nothing for it",
@@ -9956,7 +9957,8 @@ def test_source_local_still_takes_an_odd_name_with_no_look_alike_c1072(
         (lib / n).mkdir(parents=True)
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--source-local", str(lib / name))
     assert "usage error" not in cp.stderr, cp.stderr
-    assert f"source-local: {lib / name}" in cp.stdout, cp.stdout
+    shown = name.replace("\x02", "?")  # B13 round 38 C1414: list_name's spelling, never a raw control byte
+    assert f"source-local: {lib / shown}" in cp.stdout, cp.stdout
 
 
 def test_the_source_local_line_prints_a_folder_in_list_spelling_c1414(env: dict[str, str]) -> None:

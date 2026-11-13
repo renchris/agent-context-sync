@@ -1198,7 +1198,7 @@ def test_the_checkouts_cut_leaves_a_current_python_render_byte_for_byte_c1237(
     # B13 round 38 C1453: this checkout's own render takes the other-home cut alone, never the fixed-word cut
     report.write_bytes(older)
     cp = _report_recut_harness(tmp_path, report, other=0)
-    assert cp.returncode == 0, cp.stderr
+    assert (cp.returncode, cp.stderr) == (0, b""), cp.stderr  # the lane's review: no missing count file named
     assert report.read_bytes() == older.replace(
         b"/Volumes/<path>\xc2\xa0Drive/Users/olga/Fabrikam", b"/Volumes/<path>"
     )

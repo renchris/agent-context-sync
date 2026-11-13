@@ -41028,6 +41028,15 @@ re-run was the agent's. A step=first-sync line with ` note=timeout` is no longer
 `test_install_bounds.py`'s two hung-step tests, which render this checkout's report from the run's install.log and
 find `stopped at its limit of 2s, rc 143` and no `from outside install.sh`.
 
+**The lane's review of round 38** (C1447, C1432, C1406, C1464; `scripts/install.sh`). A pasted `TWIN_MARK` row's
+refusal said `...marked <mark>: its name is step 1's escaped form ...`, whose second clause opens with a refusal head,
+so both reports' last-head cut took the first clause into the name: it now reads `...marked <mark>: it is step 1's
+escaped form ...`. The three refusals that still said `a control character` say `a hidden or control character`, as
+the marks do (C1447). `report_recut` reads its count files inside `{ ...; } 2>/dev/null`, so this checkout's render,
+which writes no second count, names no missing file on stderr. `list_twins` is bounded only when a provider was
+denied or is still asking (`TWIN_DEADLINE` set from the list's deadline then); otherwise it runs unbounded as before
+C1464, so a slow listing alone never leaves a look-alike unmarked.
+
 ### 16.247 Round 38: --json documents, an empty source folder, names in doctor's lines, and a recording's kept page (2026-11-13, wave B13 round 38 lane B)
 
 **Doctor's lines split at `\n` alone** (C1431; ruling 126; privacy). Status's `_Status.check_lines`, the report's
